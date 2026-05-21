@@ -68,6 +68,10 @@ pub fn extract_operation_context(req: &Request) -> OperationContext {
 pub struct EmfApiMetrics<'a> {
     pub operation_type: &'a str,
     pub operation_name: &'a str,
+    /// "user", "session", "api_token", or "unauthenticated"
+    pub caller_type: &'a str,
+    /// The caller's ID — included as a log property only, not a CW dimension (high cardinality).
+    pub caller_id: &'a str,
     pub auth_error: bool,
     pub server_error: bool,
     pub graphql_error_count: usize,
@@ -85,9 +89,11 @@ impl EmfApiMetrics<'_> {
             .unwrap_or_default()
             .as_millis();
         println!(
-            r#"{{"_aws":{{"Timestamp":{ts},"CloudWatchMetrics":[{{"Namespace":"Seslogin/API","Dimensions":[["OperationType"]],"Metrics":[{{"Name":"RequestCount","Unit":"Count"}},{{"Name":"SuccessCount","Unit":"Count"}},{{"Name":"GraphQLErrorCount","Unit":"Count"}},{{"Name":"AuthErrorCount","Unit":"Count"}},{{"Name":"ServerErrorCount","Unit":"Count"}},{{"Name":"LatencyMs","Unit":"Milliseconds"}},{{"Name":"DynamoDBReadUnits","Unit":"Count"}},{{"Name":"DynamoDBWriteUnits","Unit":"Count"}}]}}]}},"OperationType":"{op_type}","OperationName":"{op_name}","RequestCount":1,"SuccessCount":{success},"GraphQLErrorCount":{gql_errs},"AuthErrorCount":{auth_n},"ServerErrorCount":{server_n},"LatencyMs":{lat:.1},"DynamoDBReadUnits":{rru:.1},"DynamoDBWriteUnits":{wru:.1}}}"#,
+            r#"{{"_aws":{{"Timestamp":{ts},"CloudWatchMetrics":[{{"Namespace":"Seslogin/API","Dimensions":[["OperationType","CallerType"]],"Metrics":[{{"Name":"RequestCount","Unit":"Count"}},{{"Name":"SuccessCount","Unit":"Count"}},{{"Name":"GraphQLErrorCount","Unit":"Count"}},{{"Name":"AuthErrorCount","Unit":"Count"}},{{"Name":"ServerErrorCount","Unit":"Count"}},{{"Name":"LatencyMs","Unit":"Milliseconds"}},{{"Name":"DynamoDBReadUnits","Unit":"Count"}},{{"Name":"DynamoDBWriteUnits","Unit":"Count"}}]}}]}},"OperationType":"{op_type}","OperationName":"{op_name}","CallerType":"{caller_type}","CallerId":"{caller_id}","RequestCount":1,"SuccessCount":{success},"GraphQLErrorCount":{gql_errs},"AuthErrorCount":{auth_n},"ServerErrorCount":{server_n},"LatencyMs":{lat:.1},"DynamoDBReadUnits":{rru:.1},"DynamoDBWriteUnits":{wru:.1}}}"#,
             op_type = self.operation_type,
             op_name = self.operation_name,
+            caller_type = self.caller_type,
+            caller_id = self.caller_id,
             gql_errs = self.graphql_error_count,
             auth_n = u8::from(self.auth_error),
             server_n = u8::from(self.server_error),

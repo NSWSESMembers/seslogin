@@ -13,6 +13,15 @@ use seslogin::request_metrics::{self, RequestMetrics};
 
 use crate::app;
 use crate::auth::{self, AuthInfo};
+
+fn caller_info(auth: Option<&AuthInfo>) -> (&'static str, String) {
+    match auth {
+        None => ("unauthenticated", "unknown".to_owned()),
+        Some(AuthInfo::User { id, .. }) => ("user", id.clone()),
+        Some(AuthInfo::Session { id, .. }) => ("session", id.clone()),
+        Some(AuthInfo::ApiToken { id, .. }) => ("api_token", id.clone()),
+    }
+}
 use crate::db;
 use crate::errors::{ClientError, ServerError};
 use crate::graphql;
@@ -49,11 +58,13 @@ impl<H: db::Handler + Send + Sync + 'static> Handler<H> {
             Ok(q) => q,
         };
 
-        match self.try_auth(&headers).await {
+        let auth_opt = match self.try_auth(&headers).await {
             Err(auth::AuthError::Permanent(ref msg)) => {
                 EmfApiMetrics {
                     operation_type: "unknown",
                     operation_name: "unknown",
+                    caller_type: "unauthenticated",
+                    caller_id: "unknown",
                     auth_error: true,
                     server_error: false,
                     graphql_error_count: 0,
@@ -72,6 +83,8 @@ impl<H: db::Handler + Send + Sync + 'static> Handler<H> {
                 EmfApiMetrics {
                     operation_type: "unknown",
                     operation_name: "unknown",
+                    caller_type: "unauthenticated",
+                    caller_id: "unknown",
                     auth_error: false,
                     server_error: true,
                     graphql_error_count: 0,
@@ -85,8 +98,11 @@ impl<H: db::Handler + Send + Sync + 'static> Handler<H> {
                     graphql_error("Service temporarily unavailable"),
                 );
             }
-            Ok(Some(auth)) => query = query.data(auth),
-            Ok(None) => {}
+            Ok(opt) => opt,
+        };
+        let (caller_type, caller_id) = caller_info(auth_opt.as_ref());
+        if let Some(auth) = auth_opt {
+            query = query.data(auth);
         }
 
         query = query
@@ -107,6 +123,8 @@ impl<H: db::Handler + Send + Sync + 'static> Handler<H> {
                 .operation_name
                 .as_deref()
                 .unwrap_or("unknown"),
+            caller_type,
+            caller_id: &caller_id,
             auth_error: false,
             server_error: false,
             graphql_error_count: gql_error_count,
