@@ -1,10 +1,7 @@
-import { useUserInfo } from "../components/useUserInfo";
 import ClearLocationButton from "../components/ClearLocationButton";
 import DevOnly from "../components/DevOnly";
 
 export default function AdminHome() {
-  const userInfo = useUserInfo();
-
   return (
     <div>
       <p>
@@ -14,10 +11,6 @@ export default function AdminHome() {
 
       <DevOnly>
         <ClearLocationButton />
-        <p>User info</p>
-        <pre style={{ textAlign: "left" }}>
-          {JSON.stringify(userInfo, null, 2)}
-        </pre>
       </DevOnly>
     </div>
   );
