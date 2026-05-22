@@ -252,7 +252,7 @@ impl SesClient {
         max_retries: usize,
     ) -> Result<Self> {
         let client = Client::builder()
-            .timeout(Duration::from_secs(30))
+            .timeout(Duration::from_secs(10))
             .build()
             .context("Building SES HTTP client")?;
 
