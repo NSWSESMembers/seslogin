@@ -57,7 +57,7 @@ type Location {
 	lastSuccessfulMemberSync: Int
 	people: [Person!]!
 	periods(onlyActive: Boolean, startTime: Int, endTime: Int, after: String, before: String, first: Int, last: Int): PeriodConnection!
-	periodSummaryByMember(startTime: Int!, endTime: Int!): [MemberPeriodSummary!]!
+	periodSummaryByMember(startTime: Int!, endTime: Int!, category: ID): [MemberPeriodSummary!]!
 	periodSummaryByCategory(startTime: Int!, endTime: Int!): [CategoryPeriodSummary!]!
 	periodSummaryByMemberByCategory(startTime: Int!, endTime: Int!): [MemberCategoryPeriodSummary!]!
 	periodSummaryByCategoryByMember(startTime: Int!, endTime: Int!): [CategoryMemberPeriodSummary!]!

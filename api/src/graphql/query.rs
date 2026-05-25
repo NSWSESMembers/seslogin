@@ -816,6 +816,7 @@ impl<A: App + HasDb + Send + Sync> Location<A> {
         ctx: &Context<'_>,
         start_time: i64,
         end_time: i64,
+        category: Option<ID>,
     ) -> Result<Vec<MemberPeriodSummary<A>>> {
         if start_time >= end_time {
             return Err(anyhow!("start_time must be before end_time"));
@@ -824,6 +825,7 @@ impl<A: App + HasDb + Send + Sync> Location<A> {
             .map_err(|_| anyhow!("start_time must be a non-negative unix timestamp"))?;
         let range_end = u64::try_from(end_time)
             .map_err(|_| anyhow!("end_time must be a non-negative unix timestamp"))?;
+        let category_filter = category.map(|c| c.0);
 
         if let Location::DB { rec, _marker: _ } = self {
             let app = ctx.data_unchecked::<Arc<A>>();
@@ -848,6 +850,11 @@ impl<A: App + HasDb + Send + Sync> Location<A> {
 
             let mut totals_by_member: HashMap<String, u64> = HashMap::new();
             for period in periods {
+                if let Some(ref wanted) = category_filter
+                    && period.category_id.as_deref() != Some(wanted.as_str())
+                {
+                    continue;
+                }
                 if let Some(duration) = period_duration(&period) {
                     *totals_by_member.entry(period.person_id).or_insert(0) += duration;
                 }

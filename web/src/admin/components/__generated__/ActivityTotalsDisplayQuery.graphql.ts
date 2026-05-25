@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<448469834ddc6b2d036f26f4b02d204f>>
+ * @generated SignedSource<<c31c4456f3a45dc342baa1ac95d14ae4>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -10,6 +10,7 @@
 
 import { ConcreteRequest } from 'relay-runtime';
 export type ActivityTotalsDisplayQuery$variables = {
+  category?: string | null | undefined;
   endTime: number;
   location: string;
   startTime: number;
@@ -43,45 +44,48 @@ const node: ConcreteRequest = (function(){
 var v0 = {
   "defaultValue": null,
   "kind": "LocalArgument",
-  "name": "endTime"
+  "name": "category"
 },
 v1 = {
   "defaultValue": null,
   "kind": "LocalArgument",
-  "name": "location"
+  "name": "endTime"
 },
 v2 = {
   "defaultValue": null,
   "kind": "LocalArgument",
-  "name": "startTime"
+  "name": "location"
 },
 v3 = {
+  "defaultValue": null,
+  "kind": "LocalArgument",
+  "name": "startTime"
+},
+v4 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
   "name": "id",
   "storageKey": null
 },
-v4 = [
-  {
-    "kind": "Variable",
-    "name": "endTime",
-    "variableName": "endTime"
-  },
-  {
-    "kind": "Variable",
-    "name": "startTime",
-    "variableName": "startTime"
-  }
-],
 v5 = {
+  "kind": "Variable",
+  "name": "endTime",
+  "variableName": "endTime"
+},
+v6 = {
+  "kind": "Variable",
+  "name": "startTime",
+  "variableName": "startTime"
+},
+v7 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
   "name": "totalTime",
   "storageKey": null
 },
-v6 = [
+v8 = [
   {
     "alias": null,
     "args": [
@@ -96,10 +100,18 @@ v6 = [
     "name": "location",
     "plural": false,
     "selections": [
-      (v3/*: any*/),
+      (v4/*: any*/),
       {
         "alias": null,
-        "args": (v4/*: any*/),
+        "args": [
+          {
+            "kind": "Variable",
+            "name": "category",
+            "variableName": "category"
+          },
+          (v5/*: any*/),
+          (v6/*: any*/)
+        ],
         "concreteType": "MemberPeriodSummary",
         "kind": "LinkedField",
         "name": "periodSummaryByMember",
@@ -113,7 +125,7 @@ v6 = [
             "name": "person",
             "plural": false,
             "selections": [
-              (v3/*: any*/),
+              (v4/*: any*/),
               {
                 "alias": null,
                 "args": null,
@@ -131,13 +143,16 @@ v6 = [
             ],
             "storageKey": null
           },
-          (v5/*: any*/)
+          (v7/*: any*/)
         ],
         "storageKey": null
       },
       {
         "alias": null,
-        "args": (v4/*: any*/),
+        "args": [
+          (v5/*: any*/),
+          (v6/*: any*/)
+        ],
         "concreteType": "CategoryPeriodSummary",
         "kind": "LinkedField",
         "name": "periodSummaryByCategory",
@@ -151,7 +166,7 @@ v6 = [
             "name": "category",
             "plural": false,
             "selections": [
-              (v3/*: any*/),
+              (v4/*: any*/),
               {
                 "alias": null,
                 "args": null,
@@ -162,7 +177,7 @@ v6 = [
             ],
             "storageKey": null
           },
-          (v5/*: any*/)
+          (v7/*: any*/)
         ],
         "storageKey": null
       }
@@ -175,37 +190,39 @@ return {
     "argumentDefinitions": [
       (v0/*: any*/),
       (v1/*: any*/),
-      (v2/*: any*/)
+      (v2/*: any*/),
+      (v3/*: any*/)
     ],
     "kind": "Fragment",
     "metadata": null,
     "name": "ActivityTotalsDisplayQuery",
-    "selections": (v6/*: any*/),
+    "selections": (v8/*: any*/),
     "type": "QueryRoot",
     "abstractKey": null
   },
   "kind": "Request",
   "operation": {
     "argumentDefinitions": [
-      (v1/*: any*/),
       (v2/*: any*/),
+      (v3/*: any*/),
+      (v1/*: any*/),
       (v0/*: any*/)
     ],
     "kind": "Operation",
     "name": "ActivityTotalsDisplayQuery",
-    "selections": (v6/*: any*/)
+    "selections": (v8/*: any*/)
   },
   "params": {
-    "cacheID": "4f0551c848eaad8cf242b0ba142aeedc",
+    "cacheID": "b35ad60995354dc632fdbf7e175dd548",
     "id": null,
     "metadata": {},
     "name": "ActivityTotalsDisplayQuery",
     "operationKind": "query",
-    "text": "query ActivityTotalsDisplayQuery(\n  $location: ID!\n  $startTime: Int!\n  $endTime: Int!\n) {\n  location(id: $location) {\n    id\n    periodSummaryByMember(startTime: $startTime, endTime: $endTime) {\n      person {\n        id\n        firstName\n        lastName\n      }\n      totalTime\n    }\n    periodSummaryByCategory(startTime: $startTime, endTime: $endTime) {\n      category {\n        id\n        name\n      }\n      totalTime\n    }\n  }\n}\n"
+    "text": "query ActivityTotalsDisplayQuery(\n  $location: ID!\n  $startTime: Int!\n  $endTime: Int!\n  $category: ID\n) {\n  location(id: $location) {\n    id\n    periodSummaryByMember(startTime: $startTime, endTime: $endTime, category: $category) {\n      person {\n        id\n        firstName\n        lastName\n      }\n      totalTime\n    }\n    periodSummaryByCategory(startTime: $startTime, endTime: $endTime) {\n      category {\n        id\n        name\n      }\n      totalTime\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "2094824a7aaf25db6e3f3488c822a31c";
+(node as any).hash = "6fa73a68c7ff2230ddb758171cf20565";
 
 export default node;

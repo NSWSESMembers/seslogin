@@ -1,5 +1,6 @@
-import { Suspense } from "react";
+import { Suspense, useState } from "react";
 import { useSettings } from "../../lib/settings";
+import ActivityCategorySelector from "../components/ActivityCategorySelector";
 import ActivityTimeRange from "../components/ActivityTimeRange";
 import ActivityTotalsDisplay from "../components/ActivityTotalsDisplay";
 import LoadingIndicator from "../../components/LoadingIndicator";
@@ -7,6 +8,7 @@ import useActivityTimeRange from "../components/useActivityTimeRange";
 
 export default function ActivityTotals() {
   const settings = useSettings();
+  const [category, setCategory] = useState("");
   const {
     startInput,
     endInput,
@@ -25,6 +27,9 @@ export default function ActivityTotals() {
         onStartChange={setStartInput}
         onEndChange={setEndInput}
       />
+      <Suspense fallback={<LoadingIndicator />}>
+        <ActivityCategorySelector value={category} onChange={setCategory} />
+      </Suspense>
       {!hasValidRange && (
         <p className="error">Start time must be before end time.</p>
       )}
@@ -35,6 +40,7 @@ export default function ActivityTotals() {
             locationId={settings?.locationId || ""}
             startTime={queryStartTime}
             endTime={queryEndTime}
+            category={category || undefined}
           />
         </Suspense>
       )}

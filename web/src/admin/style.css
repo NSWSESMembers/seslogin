@@ -548,6 +548,14 @@ form dl dd .medium {
   align-items: flex-start;
 }
 
+#admin .activity-category-selector {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 16px;
+}
+
 #admin .activity-totals-range {
   display: flex;
   gap: 20px;

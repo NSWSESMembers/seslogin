@@ -3,29 +3,36 @@ import { useLazyLoadQuery } from "react-relay";
 import ActivityTotalsTable, {
   type ActivityTotalsRow,
 } from "./ActivityTotalsTable";
-import type { ActivityTotalsQuery } from "../pages/__generated__/ActivityTotalsQuery.graphql";
+import type { ActivityTotalsDisplayQuery } from "./__generated__/ActivityTotalsDisplayQuery.graphql";
 
 interface ActivityTotalsDisplayProps {
   locationId: string;
   startTime: number;
   endTime: number;
+  category?: string;
 }
 
 export default function ActivityTotalsDisplay({
   locationId,
   startTime,
   endTime,
+  category,
 }: ActivityTotalsDisplayProps) {
-  const data = useLazyLoadQuery<ActivityTotalsQuery>(
+  const data = useLazyLoadQuery<ActivityTotalsDisplayQuery>(
     graphql`
       query ActivityTotalsDisplayQuery(
         $location: ID!
         $startTime: Int!
         $endTime: Int!
+        $category: ID
       ) {
         location(id: $location) {
           id
-          periodSummaryByMember(startTime: $startTime, endTime: $endTime) {
+          periodSummaryByMember(
+            startTime: $startTime
+            endTime: $endTime
+            category: $category
+          ) {
             person {
               id
               firstName
@@ -47,6 +54,7 @@ export default function ActivityTotalsDisplay({
       location: locationId,
       startTime,
       endTime,
+      category: category || null,
     },
   );
 
@@ -67,7 +75,9 @@ export default function ActivityTotalsDisplay({
   return (
     <div className="activity-totals-grid">
       <ActivityTotalsTable title="Time per member" rows={memberRows} />
-      <ActivityTotalsTable title="Time per category" rows={categoryRows} />
+      {!category && (
+        <ActivityTotalsTable title="Time per category" rows={categoryRows} />
+      )}
     </div>
   );
 }
