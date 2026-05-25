@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<9beba1b7e898348c600e44df28c90f8d>>
+ * @generated SignedSource<<3529bce6bbbfa1fe57b61e4872cbfc84>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -9,15 +9,15 @@
 // @ts-nocheck
 
 import { ConcreteRequest } from 'relay-runtime';
-export type SettingsDeletePasskeyMutation$variables = {
+export type SettingsPasskeysDeleteMutation$variables = {
   id: string;
 };
-export type SettingsDeletePasskeyMutation$data = {
+export type SettingsPasskeysDeleteMutation$data = {
   readonly deletePasskey: boolean;
 };
-export type SettingsDeletePasskeyMutation = {
-  response: SettingsDeletePasskeyMutation$data;
-  variables: SettingsDeletePasskeyMutation$variables;
+export type SettingsPasskeysDeleteMutation = {
+  response: SettingsPasskeysDeleteMutation$data;
+  variables: SettingsPasskeysDeleteMutation$variables;
 };
 
 const node: ConcreteRequest = (function(){
@@ -48,7 +48,7 @@ return {
     "argumentDefinitions": (v0/*: any*/),
     "kind": "Fragment",
     "metadata": null,
-    "name": "SettingsDeletePasskeyMutation",
+    "name": "SettingsPasskeysDeleteMutation",
     "selections": (v1/*: any*/),
     "type": "MutationRoot",
     "abstractKey": null
@@ -57,20 +57,20 @@ return {
   "operation": {
     "argumentDefinitions": (v0/*: any*/),
     "kind": "Operation",
-    "name": "SettingsDeletePasskeyMutation",
+    "name": "SettingsPasskeysDeleteMutation",
     "selections": (v1/*: any*/)
   },
   "params": {
-    "cacheID": "103f8c5429589c21f10ab2dda33437e4",
+    "cacheID": "6cbb058afb4dd8a0055bc75e61bb626c",
     "id": null,
     "metadata": {},
-    "name": "SettingsDeletePasskeyMutation",
+    "name": "SettingsPasskeysDeleteMutation",
     "operationKind": "mutation",
-    "text": "mutation SettingsDeletePasskeyMutation(\n  $id: String!\n) {\n  deletePasskey(id: $id)\n}\n"
+    "text": "mutation SettingsPasskeysDeleteMutation(\n  $id: String!\n) {\n  deletePasskey(id: $id)\n}\n"
   }
 };
 })();
 
-(node as any).hash = "d8587f6140377af665c8b80dae0ef86e";
+(node as any).hash = "16cc73109c9247c4da6ef3d74b82c9bc";
 
 export default node;

@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<cda9e494ac5467e4a8072937d89707c4>>
+ * @generated SignedSource<<ff35e4cc46ea8358c19779ab69c78031>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -9,19 +9,19 @@
 // @ts-nocheck
 
 import { ConcreteRequest } from 'relay-runtime';
-export type SettingsRenamePasskeyMutation$variables = {
+export type SettingsPasskeysRenameMutation$variables = {
   id: string;
   name: string;
 };
-export type SettingsRenamePasskeyMutation$data = {
+export type SettingsPasskeysRenameMutation$data = {
   readonly renamePasskey: {
     readonly id: string;
     readonly name: string;
   };
 };
-export type SettingsRenamePasskeyMutation = {
-  response: SettingsRenamePasskeyMutation$data;
-  variables: SettingsRenamePasskeyMutation$variables;
+export type SettingsPasskeysRenameMutation = {
+  response: SettingsPasskeysRenameMutation$data;
+  variables: SettingsPasskeysRenameMutation$variables;
 };
 
 const node: ConcreteRequest = (function(){
@@ -80,7 +80,7 @@ return {
     "argumentDefinitions": (v0/*: any*/),
     "kind": "Fragment",
     "metadata": null,
-    "name": "SettingsRenamePasskeyMutation",
+    "name": "SettingsPasskeysRenameMutation",
     "selections": (v1/*: any*/),
     "type": "MutationRoot",
     "abstractKey": null
@@ -89,20 +89,20 @@ return {
   "operation": {
     "argumentDefinitions": (v0/*: any*/),
     "kind": "Operation",
-    "name": "SettingsRenamePasskeyMutation",
+    "name": "SettingsPasskeysRenameMutation",
     "selections": (v1/*: any*/)
   },
   "params": {
-    "cacheID": "913258fac78fc544ef1a2092520e19a1",
+    "cacheID": "63bc7ec9f496b9a412b0c734331a2ec5",
     "id": null,
     "metadata": {},
-    "name": "SettingsRenamePasskeyMutation",
+    "name": "SettingsPasskeysRenameMutation",
     "operationKind": "mutation",
-    "text": "mutation SettingsRenamePasskeyMutation(\n  $id: String!\n  $name: String!\n) {\n  renamePasskey(id: $id, name: $name) {\n    id\n    name\n  }\n}\n"
+    "text": "mutation SettingsPasskeysRenameMutation(\n  $id: String!\n  $name: String!\n) {\n  renamePasskey(id: $id, name: $name) {\n    id\n    name\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "d755cf2eb0ff9e47efa2a6544d3b1c76";
+(node as any).hash = "8b7d47ff824f05171dd08bb4aeeb4e22";
 
 export default node;

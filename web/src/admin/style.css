@@ -385,7 +385,8 @@ body.mobile dl.align_list {
   padding-left: 30px;
 }
 
-#admin a.button {
+#admin a.button,
+#admin button.button {
   text-decoration: none;
   display: inline-block;
   color: white;
@@ -403,7 +404,8 @@ body.mobile dl.align_list {
   font-size: 16px;
 }
 
-#admin a.button:hover {
+#admin a.button:hover,
+#admin button.button:hover {
   background-image: -webkit-gradient(
     linear,
     left top,

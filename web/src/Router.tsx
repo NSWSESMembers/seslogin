@@ -33,7 +33,8 @@ import ActivityCurrent from "./admin/pages/ActivityCurrent";
 import ActivityTotals from "./admin/pages/ActivityTotals";
 import ActivityBreakdown from "./admin/pages/ActivityBreakdown";
 import Reports from "./admin/pages/Reports";
-import Settings from "./admin/pages/Settings";
+import SettingsPasskeys from "./admin/pages/SettingsPasskeys";
+import SettingsDailyEmail from "./admin/pages/SettingsDailyEmail";
 
 // Kiosk imports
 import KioskMain from "./kiosk/KioskMain";
@@ -94,7 +95,8 @@ export default function Router() {
             <Route index element={<Reports />} />
           </Route>
           <Route path="settings">
-            <Route index element={<Settings />} />
+            <Route index element={<SettingsPasskeys />} />
+            <Route path="daily-email" element={<SettingsDailyEmail />} />
           </Route>
           <Route path="*" element={<h1>Not Found</h1>} />
         </Route>

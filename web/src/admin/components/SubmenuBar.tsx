@@ -11,6 +11,7 @@ export default function SubmenuBar({ isSuper }: SubmenuBarProps) {
   const isLocationsSection = useMatch("/admin/locations/*");
   const isUsersSection = useMatch("/admin/users/*");
   const isCategoriesSection = useMatch("/admin/categories/*");
+  const isSettingsSection = useMatch("/admin/settings/*");
 
   return (
     <>
@@ -91,6 +92,17 @@ export default function SubmenuBar({ isSuper }: SubmenuBarProps) {
           </NavLink>
           <NavLink to="/admin/categories/nitc-groups/new" end>
             New NITC group
+          </NavLink>
+        </div>
+      )}
+
+      {isSettingsSection && (
+        <div id="submenu_bar">
+          <NavLink to="/admin/settings" end>
+            Passkeys
+          </NavLink>
+          <NavLink to="/admin/settings/daily-email" end>
+            Daily Email Summary
           </NavLink>
         </div>
       )}

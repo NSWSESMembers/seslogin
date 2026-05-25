@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<93f2ac293695bb8a0cafc9fb7f79c931>>
+ * @generated SignedSource<<3100977cd6c6206a5da8d439dc8bdf75>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -9,8 +9,8 @@
 // @ts-nocheck
 
 import { ConcreteRequest } from 'relay-runtime';
-export type SettingsQuery$variables = Record<PropertyKey, never>;
-export type SettingsQuery$data = {
+export type SettingsDailyEmailQuery$variables = Record<PropertyKey, never>;
+export type SettingsDailyEmailQuery$data = {
   readonly user: {
     readonly emailSummaryLocationIds: ReadonlyArray<string>;
     readonly id: string;
@@ -18,17 +18,11 @@ export type SettingsQuery$data = {
       readonly id: string;
       readonly name: string;
     }>;
-    readonly passkeys: ReadonlyArray<{
-      readonly createdAt: number;
-      readonly id: string;
-      readonly lastUsedAt: number | null | undefined;
-      readonly name: string;
-    }>;
   };
 };
-export type SettingsQuery = {
-  response: SettingsQuery$data;
-  variables: SettingsQuery$variables;
+export type SettingsDailyEmailQuery = {
+  response: SettingsDailyEmailQuery$data;
+  variables: SettingsDailyEmailQuery$variables;
 };
 
 const node: ConcreteRequest = (function(){
@@ -39,14 +33,7 @@ var v0 = {
   "name": "id",
   "storageKey": null
 },
-v1 = {
-  "alias": null,
-  "args": null,
-  "kind": "ScalarField",
-  "name": "name",
-  "storageKey": null
-},
-v2 = [
+v1 = [
   {
     "alias": null,
     "args": null,
@@ -72,32 +59,11 @@ v2 = [
         "plural": true,
         "selections": [
           (v0/*: any*/),
-          (v1/*: any*/)
-        ],
-        "storageKey": null
-      },
-      {
-        "alias": null,
-        "args": null,
-        "concreteType": "PasskeyInfo",
-        "kind": "LinkedField",
-        "name": "passkeys",
-        "plural": true,
-        "selections": [
-          (v0/*: any*/),
-          (v1/*: any*/),
           {
             "alias": null,
             "args": null,
             "kind": "ScalarField",
-            "name": "createdAt",
-            "storageKey": null
-          },
-          {
-            "alias": null,
-            "args": null,
-            "kind": "ScalarField",
-            "name": "lastUsedAt",
+            "name": "name",
             "storageKey": null
           }
         ],
@@ -112,8 +78,8 @@ return {
     "argumentDefinitions": [],
     "kind": "Fragment",
     "metadata": null,
-    "name": "SettingsQuery",
-    "selections": (v2/*: any*/),
+    "name": "SettingsDailyEmailQuery",
+    "selections": (v1/*: any*/),
     "type": "QueryRoot",
     "abstractKey": null
   },
@@ -121,20 +87,20 @@ return {
   "operation": {
     "argumentDefinitions": [],
     "kind": "Operation",
-    "name": "SettingsQuery",
-    "selections": (v2/*: any*/)
+    "name": "SettingsDailyEmailQuery",
+    "selections": (v1/*: any*/)
   },
   "params": {
-    "cacheID": "8b95f80b4f801c04fa615385876cf2a9",
+    "cacheID": "ca98825c98b88e318a2162f605f3d0ef",
     "id": null,
     "metadata": {},
-    "name": "SettingsQuery",
+    "name": "SettingsDailyEmailQuery",
     "operationKind": "query",
-    "text": "query SettingsQuery {\n  user {\n    id\n    emailSummaryLocationIds\n    locations {\n      id\n      name\n    }\n    passkeys {\n      id\n      name\n      createdAt\n      lastUsedAt\n    }\n  }\n}\n"
+    "text": "query SettingsDailyEmailQuery {\n  user {\n    id\n    emailSummaryLocationIds\n    locations {\n      id\n      name\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "6fb2ec37c20753750d9b0fbe4e916aad";
+(node as any).hash = "231e6ab2cfbe92a6ca89624f17f30777";
 
 export default node;
