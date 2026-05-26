@@ -1,5 +1,6 @@
 import { useAuth0 } from "@auth0/auth0-react";
 import { getGraphQLEndpoint } from "../lib/api";
+import { getAdminToken } from "../lib/adminToken";
 
 export default function GraphiQLLink() {
   const { getAccessTokenSilently } = useAuth0();
@@ -8,11 +9,15 @@ export default function GraphiQLLink() {
   async function showAuthToken(event: React.MouseEvent<HTMLAnchorElement>) {
     event.preventDefault();
 
-    let authToken = "";
-    try {
-      authToken = await getAccessTokenSilently();
-    } catch (err) {
-      console.error("Failed to get Auth0 token:", err);
+    // Prefer the stored seslogin token (email-code / passkey login); fall back
+    // to Auth0. Mirrors AdminRelayEnvironment's token resolution.
+    let authToken = getAdminToken() ?? "";
+    if (!authToken) {
+      try {
+        authToken = await getAccessTokenSilently();
+      } catch (err) {
+        console.error("Failed to get Auth0 token:", err);
+      }
     }
 
     const headers = {
