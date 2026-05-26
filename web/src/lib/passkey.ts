@@ -42,7 +42,7 @@ export function markPasskeyEnrollPromptShown(): void {
 async function rawGraphQL(
   query: string,
   variables: Record<string, unknown>,
-): Promise<unknown> {
+): Promise<{ data?: Record<string, unknown>; errors?: unknown[] }> {
   const resp = await fetch(getGraphQLEndpoint(), {
     method: "POST",
     headers: {
@@ -53,7 +53,13 @@ async function rawGraphQL(
     cache: "no-store",
   });
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-  return await resp.json();
+  const body = await resp.json();
+  // Surface GraphQL errors — otherwise a failed finish/begin just looks like a
+  // silent null and the login appears to "do nothing".
+  if (body?.errors) {
+    console.warn("[passkey] GraphQL returned errors:", body.errors);
+  }
+  return body;
 }
 
 /**
@@ -67,6 +73,8 @@ async function rawGraphQL(
 export async function loginWithPasskey(opts?: {
   useAutofill?: boolean;
 }): Promise<string | null> {
+  const useAutofill = opts?.useAutofill ?? false;
+
   const beginResp = (await rawGraphQL(
     `mutation BeginPasskeyLogin {
       beginPasskeyLogin { challengeId optionsJson }
@@ -79,7 +87,13 @@ export async function loginWithPasskey(opts?: {
   };
 
   const challenge = beginResp?.data?.beginPasskeyLogin;
-  if (!challenge) return null;
+  if (!challenge) {
+    console.warn(
+      "[passkey] beginPasskeyLogin returned no challenge",
+      beginResp,
+    );
+    return null;
+  }
 
   const optionsJSON = JSON.parse(challenge.optionsJson);
 
@@ -87,10 +101,11 @@ export async function loginWithPasskey(opts?: {
   try {
     authResponse = await startAuthentication({
       optionsJSON,
-      useBrowserAutofill: opts?.useAutofill ?? false,
+      useBrowserAutofill: useAutofill,
     });
-  } catch {
+  } catch (err) {
     // User cancelled, no matching credential, or an aborted autofill request.
+    console.warn("[passkey] startAuthentication threw/aborted:", err);
     return null;
   }
 
@@ -107,6 +122,11 @@ export async function loginWithPasskey(opts?: {
   const token = finishResp?.data?.finishPasskeyLogin ?? null;
   if (token) {
     sessionStorage.setItem(PASSKEY_LOGIN_FLAG, "1");
+  } else {
+    console.warn(
+      "[passkey] finishPasskeyLogin returned no token (verification failed or unknown credential)",
+      finishResp,
+    );
   }
   return token;
 }

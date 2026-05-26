@@ -70,26 +70,38 @@ export default function AdminLoginPage({
     onNewTokenReceivedRef.current = onNewTokenReceived;
   }, [onNewTokenReceived]);
 
+  // Ensures the autofill ceremony is started only once. StrictMode (dev) runs
+  // effects setup→cleanup→setup on the same instance, so without this guard we
+  // fire beginPasskeyLogin twice and end up with two competing ceremonies.
+  const autofillStartedRef = useRef(false);
+  // Tracks whether the component is really mounted. StrictMode's fake unmount
+  // flips this false, but its second setup flips it back true — so a token from
+  // the single ceremony isn't discarded, while a real unmount still discards.
+  const mountedRef = useRef(true);
+
   // Transparent passkey login: when the page loads, prime a discoverable
   // challenge and attach it to the email field via browser autofill. If the
   // user picks a saved passkey we log them straight in; otherwise this is a
   // no-op and the email-code / Auth0 flows remain available.
   useEffect(() => {
+    mountedRef.current = true;
     if (showUnauthorizedMessage) return;
-    let cancelled = false;
+    if (autofillStartedRef.current) return;
+    autofillStartedRef.current = true;
     (async () => {
       try {
         if (!(await browserSupportsWebAuthnAutofill())) return;
         const token = await loginWithPasskey({ useAutofill: true });
-        if (!cancelled && token) {
+        if (token && mountedRef.current) {
           onNewTokenReceivedRef.current(token);
         }
-      } catch {
+      } catch (err) {
         // Conditional UI unsupported or aborted — ignore silently.
+        console.warn("[passkey] autofill effect threw:", err);
       }
     })();
     return () => {
-      cancelled = true;
+      mountedRef.current = false;
     };
   }, [showUnauthorizedMessage]);
 
@@ -107,7 +119,8 @@ export default function AdminLoginPage({
           "No passkey was used. Make sure you've added one, or sign in another way.",
         );
       }
-    } catch {
+    } catch (err) {
+      console.warn("[passkey] manual button threw:", err);
       setPasskeyError("Passkey sign-in failed. Please try again.");
     } finally {
       setPasskeySigningIn(false);
