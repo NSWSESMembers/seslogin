@@ -84,9 +84,28 @@ function LoginRequired() {
   }, [isLoading, isAuthenticated, authState]);
 
   function onUnauthorized() {
-    clearAdminToken();
-    setAuthState("unauthenticated");
-    setAccessDenied(true);
+    // Distinguish which credential the rejected request used. AdminRelay-
+    // Environment prefers the stored seslogin token and only falls back to
+    // Auth0 when there's none, so a present stored token means our own token
+    // was rejected. This only fires on a definitive 401 — transient 5xx /
+    // network failures never reach here, so we never drop a valid token over a
+    // blip.
+    if (getAdminToken() !== null) {
+      // Our seslogin token expired or was revoked: discard it and return the
+      // user to the login window with a clear message.
+      clearAdminToken();
+      setAccessDenied(false);
+      setLoginError(
+        "Your session has expired or is no longer valid, please login again.",
+      );
+      setAuthState("unauthenticated");
+    } else {
+      // Auth0-authenticated request was rejected (e.g. the email isn't a
+      // registered admin). Preserve the existing Auth0 behavior unchanged.
+      clearAdminToken();
+      setAuthState("unauthenticated");
+      setAccessDenied(true);
+    }
   }
 
   function onTokenError() {
