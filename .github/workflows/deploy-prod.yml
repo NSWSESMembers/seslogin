@@ -79,6 +79,7 @@ jobs:
         env:
           VITE_API_URL: ${{ vars.PROD_API_URL }}
           VITE_BEACON_URL: ${{ vars.BEACON_URL }}
+          VITE_TURNSTILE_SITE_KEY: ${{ vars.TURNSTILE_SITE_KEY }}
           VITE_CLIENT_VERSION: ${{ github.sha }}
         run: npm run build
 
