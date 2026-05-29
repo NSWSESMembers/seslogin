@@ -41,7 +41,7 @@ pub async fn run(db: &impl db::Handler, args: SummaryArgs) -> Result<()> {
     let all_users = db.list_users().await?;
 
     for user in &all_users {
-        if user.deleted {
+        if !user.enabled {
             continue;
         }
         if args.user_id_filter.as_deref().is_some_and(|f| f != user.id) {

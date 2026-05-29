@@ -84,6 +84,10 @@ async fn fetch_update_user_auth_info<A: App + HasDb>(
         .flatten()
         .ok_or_else(|| AuthError::Permanent("User not found".into()))?;
 
+    if !user.enabled {
+        return Err(AuthError::Permanent("User account is disabled".into()));
+    }
+
     // if access time is older than 1 minute ago then update it - helps reduce DB write load
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

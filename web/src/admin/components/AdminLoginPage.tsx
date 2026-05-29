@@ -264,8 +264,8 @@ export default function AdminLoginPage({
         {step === "awaiting_code" && (
           <form onSubmit={handleVerifyCode}>
             <p className="action-panel__intro">
-              A 6-digit code was sent to <strong>{email}</strong>. Enter it
-              below.
+              If <strong>{email}</strong> was valid and registered for access to
+              the system, a 6-digit code has been sent. Enter it below to login.
             </p>
             {codeError && (
               <div className="action-panel__message action-panel__message--error">

@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<ef6200641a8fbdee69923c47b520c0bc>>
+ * @generated SignedSource<<393484bbf21972b290e62b3667fa1291>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -12,10 +12,12 @@ import { ReaderFragment } from 'relay-runtime';
 import { FragmentRefs } from "relay-runtime";
 export type UserList_user$data = {
   readonly accessTime: number | null | undefined;
-  readonly deleted: boolean;
   readonly email: string | null | undefined;
+  readonly enabled: boolean;
   readonly id: string;
+  readonly isDev: boolean;
   readonly isSuper: boolean;
+  readonly locationGrantIds: ReadonlyArray<string>;
   readonly locations: ReadonlyArray<{
     readonly id: string;
     readonly name: string;
@@ -66,6 +68,20 @@ return {
     {
       "alias": null,
       "args": null,
+      "kind": "ScalarField",
+      "name": "isDev",
+      "storageKey": null
+    },
+    {
+      "alias": null,
+      "args": null,
+      "kind": "ScalarField",
+      "name": "locationGrantIds",
+      "storageKey": null
+    },
+    {
+      "alias": null,
+      "args": null,
       "concreteType": "Location",
       "kind": "LinkedField",
       "name": "locations",
@@ -86,7 +102,7 @@ return {
       "alias": null,
       "args": null,
       "kind": "ScalarField",
-      "name": "deleted",
+      "name": "enabled",
       "storageKey": null
     }
   ],
@@ -95,6 +111,6 @@ return {
 };
 })();
 
-(node as any).hash = "1293b9f1aebb46f8bd3e5667dafddb2e";
+(node as any).hash = "13c232d9f7ca183f12e8c832e6ef90f7";
 
 export default node;

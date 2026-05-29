@@ -206,7 +206,7 @@ impl TryInto<User> for Item {
             is_super: self.bool_field("super")?.unwrap_or(false),
             is_dev: self.bool_field("dev")?.unwrap_or(false),
             location_grants: self.string_set_field("location_grants")?,
-            deleted: self.bool_field("deleted")?.unwrap_or(false),
+            enabled: self.i64_field("enabled")?.is_some(),
             access_time: self.i64_field("access_time")?.map(|i| i as u64),
             email_config: {
                 let raw = self.string_field("email_config")?;
@@ -690,8 +690,6 @@ impl db::Handler for Handler {
             .client
             .scan()
             .table_name(self.table_name("user"))
-            .filter_expression("attribute_not_exists(deleted) OR deleted = :false")
-            .expression_attribute_values(":false", AttributeValue::N("0".to_string()))
             .return_consumed_capacity(ReturnConsumedCapacity::Total)
             .send()
             .await
@@ -743,7 +741,7 @@ impl db::Handler for Handler {
                 ),
             )
             .item("location_grants", av_location_grants)
-            .item("deleted", AttributeValue::N("0".to_string()))
+            .item("enabled", AttributeValue::N("1".to_string()))
             .return_consumed_capacity(ReturnConsumedCapacity::Total)
             .send()
             .await
@@ -756,7 +754,7 @@ impl db::Handler for Handler {
             is_super,
             is_dev: false,
             location_grants,
-            deleted: false,
+            enabled: true,
             access_time: None,
             email_config: serde_json::Map::new(),
         })
@@ -771,7 +769,7 @@ impl db::Handler for Handler {
                 email,
                 is_super,
                 is_dev,
-                deleted,
+                enabled,
                 location_grants,
             } => {
                 let location_grants = if location_grants.is_empty() {
@@ -779,31 +777,33 @@ impl db::Handler for Handler {
                 } else {
                     AttributeValue::Ss(location_grants)
                 };
-                let deleted_value = if deleted {
-                    AttributeValue::N(
-                        SystemTime::now()
-                            .duration_since(UNIX_EPOCH)
-                            .unwrap()
-                            .as_secs()
-                            .to_string(),
-                    )
-                } else {
-                    AttributeValue::N("0".to_string())
-                };
-                let resp = self.client
+                // `enabled` is stored sparsely: N:1 when enabled, attribute removed
+                // when disabled (so it can back a sparse GSI later).
+                let mut builder = self
+                    .client
                     .update_item()
                     .table_name(self.table_name("user"))
                     .key("id", AttributeValue::S(id.to_string()))
                     .condition_expression("attribute_exists(id)")
-                    .update_expression(
-                        "SET email = :email, deleted = :deleted, #super = :super, dev = :dev, location_grants = :location_grants",
-                    )
                     .expression_attribute_names("#super", "super")
                     .expression_attribute_values(":email", AttributeValue::S(email.to_string()))
-                    .expression_attribute_values(":deleted", deleted_value)
                     .expression_attribute_values(":super", AttributeValue::Bool(is_super))
                     .expression_attribute_values(":dev", AttributeValue::Bool(is_dev))
-                    .expression_attribute_values(":location_grants", location_grants)
+                    .expression_attribute_values(":location_grants", location_grants);
+
+                if enabled {
+                    builder = builder
+                        .update_expression(
+                            "SET email = :email, #super = :super, dev = :dev, location_grants = :location_grants, enabled = :enabled",
+                        )
+                        .expression_attribute_values(":enabled", AttributeValue::N("1".to_string()));
+                } else {
+                    builder = builder.update_expression(
+                        "SET email = :email, #super = :super, dev = :dev, location_grants = :location_grants REMOVE enabled",
+                    );
+                }
+
+                let resp = builder
                     .return_consumed_capacity(ReturnConsumedCapacity::Total)
                     .send()
                     .await

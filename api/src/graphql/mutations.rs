@@ -139,6 +139,23 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
             }
         };
 
+        match self.app.db().get_users(&[&user_id]).await {
+            Ok(users) => match users.into_iter().next().flatten() {
+                Some(user) if user.enabled => {}
+                _ => {
+                    info!("request_auth_code: user disabled or missing id={}", user_id);
+                    return true;
+                }
+            },
+            Err(e) => {
+                warn!(
+                    "DB error checking user enabled in request_auth_code: {:#}",
+                    e
+                );
+                return true;
+            }
+        }
+
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
@@ -244,6 +261,23 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
             }
         };
 
+        match self.app.db().get_users(&[&user_id]).await {
+            Ok(users) => match users.into_iter().next().flatten() {
+                Some(user) if user.enabled => {}
+                _ => {
+                    info!("verify_auth_code: user disabled or missing id={}", user_id);
+                    return None;
+                }
+            },
+            Err(e) => {
+                warn!(
+                    "DB error checking user enabled in verify_auth_code: {:#}",
+                    e
+                );
+                return None;
+            }
+        }
+
         match auth::issue_user_token(&*self.app, &user_id).await {
             Ok(token) => {
                 info!("Issued user token for user_id={}", user_id);
@@ -306,7 +340,7 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
         email: String,
         is_super: bool,
         is_dev: bool,
-        deleted: bool,
+        enabled: bool,
         location_grants: Vec<String>,
     ) -> Result<User<A>> {
         if !location_grants.is_empty() {
@@ -329,7 +363,7 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
                     email: &email,
                     is_super,
                     is_dev,
-                    deleted,
+                    enabled,
                     location_grants,
                 },
             )
@@ -1468,6 +1502,25 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
             .await;
 
         let _ = self.app.db().delete_webauthn_state(&challenge_id).await;
+
+        match self
+            .app
+            .db()
+            .get_users(&[&stored.user_id])
+            .await?
+            .into_iter()
+            .next()
+            .flatten()
+        {
+            Some(user) if user.enabled => {}
+            _ => {
+                info!(
+                    "finish_passkey_login: user disabled or missing id={}",
+                    stored.user_id
+                );
+                return Ok(None);
+            }
+        }
 
         let token = auth::issue_user_token(&*self.app, &stored.user_id).await?;
         info!(

@@ -68,9 +68,8 @@ impl<A: App + HasDb + Send + Sync + 'static> User<A> {
     async fn is_dev(&self) -> bool {
         self.rec.is_dev
     }
-    /// defaults to false if missing
-    async fn deleted(&self) -> bool {
-        self.rec.deleted
+    async fn enabled(&self) -> bool {
+        self.rec.enabled
     }
 
     async fn access_time(&self) -> Option<i64> {

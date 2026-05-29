@@ -17,6 +17,7 @@ export default function UserEdit() {
           email
           isSuper
           isDev
+          enabled
           locationGrantIds
         }
         locations {
@@ -36,7 +37,7 @@ export default function UserEdit() {
         $isSuper: Boolean!
         $isDev: Boolean!
         $locationGrants: [String!]!
-        $deleted: Boolean!
+        $enabled: Boolean!
       ) {
         updateUser(
           id: $id
@@ -44,7 +45,7 @@ export default function UserEdit() {
           isSuper: $isSuper
           isDev: $isDev
           locationGrants: $locationGrants
-          deleted: $deleted
+          enabled: $enabled
         ) {
           id
           email
@@ -60,6 +61,7 @@ export default function UserEdit() {
     const email = formData.get("email")?.toString() || "";
     const isSuper = formData.get("super") === "on";
     const isDev = formData.get("dev") === "on";
+    const enabled = formData.get("enabled") === "on";
     const locationGrants = formData
       .getAll("locations")
       .map((v) => v.toString());
@@ -72,7 +74,7 @@ export default function UserEdit() {
           isSuper,
           isDev,
           locationGrants,
-          deleted: false,
+          enabled,
         },
         onCompleted: resolve,
         onError: reject,
@@ -91,6 +93,7 @@ export default function UserEdit() {
   const user = data.user;
   const [isSuper, setIsSuper] = useState(user.isSuper);
   const [isDev, setIsDev] = useState(user.isDev);
+  const [enabled, setEnabled] = useState(user.enabled);
   const [selectedLocations, setSelectedLocations] = useState(
     () => new Set(user.locationGrantIds),
   );
@@ -138,6 +141,18 @@ export default function UserEdit() {
               id="dev"
               checked={isDev}
               onChange={(e) => setIsDev(e.target.checked)}
+            />
+          </dd>
+          <dt>
+            <label htmlFor="enabled">Enabled</label>
+          </dt>
+          <dd>
+            <input
+              type="checkbox"
+              name="enabled"
+              id="enabled"
+              checked={enabled}
+              onChange={(e) => setEnabled(e.target.checked)}
             />
           </dd>
           {!isSuper && (

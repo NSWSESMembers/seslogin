@@ -93,7 +93,7 @@ type MutationRoot {
 	"""
 	logout: Boolean!
 	createUser(email: String!, isSuper: Boolean!, locationGrants: [String!]!): User!
-	updateUser(id: ID!, email: String!, isSuper: Boolean!, isDev: Boolean!, deleted: Boolean!, locationGrants: [String!]!): User!
+	updateUser(id: ID!, email: String!, isSuper: Boolean!, isDev: Boolean!, enabled: Boolean!, locationGrants: [String!]!): User!
 	createPerson(locationId: ID!, firstName: String!, lastName: String!, memberNumber: String!): Person!
 	updatePerson(id: ID!, firstName: String!, lastName: String!, memberNumber: String!): Person!
 	deletePerson(id: ID!): Boolean!
@@ -375,10 +375,7 @@ type User {
 	"""
 	isSuper: Boolean!
 	isDev: Boolean!
-	"""
-	defaults to false if missing
-	"""
-	deleted: Boolean!
+	enabled: Boolean!
 	accessTime: Int
 	emailSummaryLocationIds: [String!]!
 	locationGrantIds: [ID!]!

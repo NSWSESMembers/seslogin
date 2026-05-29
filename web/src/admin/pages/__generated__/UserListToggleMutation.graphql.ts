@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<693cdf0f34368f2d8d84b44deab9532d>>
+ * @generated SignedSource<<be0f7fa415e8922c9e5390a5e7041bb3>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -9,7 +9,7 @@
 // @ts-nocheck
 
 import { ConcreteRequest } from 'relay-runtime';
-export type UserEditMutation$variables = {
+export type UserListToggleMutation$variables = {
   email: string;
   enabled: boolean;
   id: string;
@@ -17,18 +17,15 @@ export type UserEditMutation$variables = {
   isSuper: boolean;
   locationGrants: ReadonlyArray<string>;
 };
-export type UserEditMutation$data = {
+export type UserListToggleMutation$data = {
   readonly updateUser: {
-    readonly email: string | null | undefined;
+    readonly enabled: boolean;
     readonly id: string;
-    readonly isDev: boolean;
-    readonly isSuper: boolean;
-    readonly locationGrantIds: ReadonlyArray<string>;
   };
 };
-export type UserEditMutation = {
-  response: UserEditMutation$data;
-  variables: UserEditMutation$variables;
+export type UserListToggleMutation = {
+  response: UserListToggleMutation$data;
+  variables: UserListToggleMutation$variables;
 };
 
 const node: ConcreteRequest = (function(){
@@ -113,28 +110,7 @@ v6 = [
         "alias": null,
         "args": null,
         "kind": "ScalarField",
-        "name": "email",
-        "storageKey": null
-      },
-      {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "isSuper",
-        "storageKey": null
-      },
-      {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "isDev",
-        "storageKey": null
-      },
-      {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "locationGrantIds",
+        "name": "enabled",
         "storageKey": null
       }
     ],
@@ -153,7 +129,7 @@ return {
     ],
     "kind": "Fragment",
     "metadata": null,
-    "name": "UserEditMutation",
+    "name": "UserListToggleMutation",
     "selections": (v6/*: any*/),
     "type": "MutationRoot",
     "abstractKey": null
@@ -169,20 +145,20 @@ return {
       (v1/*: any*/)
     ],
     "kind": "Operation",
-    "name": "UserEditMutation",
+    "name": "UserListToggleMutation",
     "selections": (v6/*: any*/)
   },
   "params": {
-    "cacheID": "df6db32ceb50ef2b8d0134f48000abf9",
+    "cacheID": "f189cb4338d44fea75a6e19e0a74f1b0",
     "id": null,
     "metadata": {},
-    "name": "UserEditMutation",
+    "name": "UserListToggleMutation",
     "operationKind": "mutation",
-    "text": "mutation UserEditMutation(\n  $id: ID!\n  $email: String!\n  $isSuper: Boolean!\n  $isDev: Boolean!\n  $locationGrants: [String!]!\n  $enabled: Boolean!\n) {\n  updateUser(id: $id, email: $email, isSuper: $isSuper, isDev: $isDev, locationGrants: $locationGrants, enabled: $enabled) {\n    id\n    email\n    isSuper\n    isDev\n    locationGrantIds\n  }\n}\n"
+    "text": "mutation UserListToggleMutation(\n  $id: ID!\n  $email: String!\n  $isSuper: Boolean!\n  $isDev: Boolean!\n  $locationGrants: [String!]!\n  $enabled: Boolean!\n) {\n  updateUser(id: $id, email: $email, isSuper: $isSuper, isDev: $isDev, locationGrants: $locationGrants, enabled: $enabled) {\n    id\n    enabled\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "5fd479c95d3f14a6aae2eb5e279d6b6a";
+(node as any).hash = "e559ab0561296c94690c6d667be27903";
 
 export default node;

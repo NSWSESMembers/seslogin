@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<8dec900aa4d31e6fe85bd8ba21cd15a9>>
+ * @generated SignedSource<<d15d959b5a164ba122b17beadf389c5e>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -19,6 +19,7 @@ export type UserEditQuery$data = {
   }>;
   readonly user: {
     readonly email: string | null | undefined;
+    readonly enabled: boolean;
     readonly id: string;
     readonly isDev: boolean;
     readonly isSuper: boolean;
@@ -86,6 +87,13 @@ v2 = [
         "alias": null,
         "args": null,
         "kind": "ScalarField",
+        "name": "enabled",
+        "storageKey": null
+      },
+      {
+        "alias": null,
+        "args": null,
+        "kind": "ScalarField",
         "name": "locationGrantIds",
         "storageKey": null
       }
@@ -130,16 +138,16 @@ return {
     "selections": (v2/*: any*/)
   },
   "params": {
-    "cacheID": "56c66f88bf008a31a023c9eb5b66e289",
+    "cacheID": "297e0cd0ced6f0bfd5e34653d958a23e",
     "id": null,
     "metadata": {},
     "name": "UserEditQuery",
     "operationKind": "query",
-    "text": "query UserEditQuery(\n  $id: ID!\n) {\n  user(id: $id) {\n    id\n    email\n    isSuper\n    isDev\n    locationGrantIds\n  }\n  locations {\n    id\n    name\n  }\n}\n"
+    "text": "query UserEditQuery(\n  $id: ID!\n) {\n  user(id: $id) {\n    id\n    email\n    isSuper\n    isDev\n    enabled\n    locationGrantIds\n  }\n  locations {\n    id\n    name\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "08a7f6e79ad0bd32c34e5e23efc862f6";
+(node as any).hash = "8ead0bec6acac5bfa610420ba35e3c66";
 
 export default node;

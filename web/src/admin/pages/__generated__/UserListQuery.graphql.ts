@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<85743133ca92784474871f8762f525a3>>
+ * @generated SignedSource<<bd28707673a0ccef2531a769ba024c56>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -14,6 +14,7 @@ export type UserListQuery$variables = Record<PropertyKey, never>;
 export type UserListQuery$data = {
   readonly users: ReadonlyArray<{
     readonly accessTime: number | null | undefined;
+    readonly enabled: boolean;
     readonly id: string;
     readonly " $fragmentSpreads": FragmentRefs<"UserList_user">;
   }>;
@@ -37,6 +38,13 @@ v1 = {
   "kind": "ScalarField",
   "name": "accessTime",
   "storageKey": null
+},
+v2 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
+  "name": "enabled",
+  "storageKey": null
 };
 return {
   "fragment": {
@@ -55,6 +63,7 @@ return {
         "selections": [
           (v0/*: any*/),
           (v1/*: any*/),
+          (v2/*: any*/),
           {
             "args": null,
             "kind": "FragmentSpread",
@@ -83,6 +92,7 @@ return {
         "selections": [
           (v0/*: any*/),
           (v1/*: any*/),
+          (v2/*: any*/),
           {
             "alias": null,
             "args": null,
@@ -95,6 +105,20 @@ return {
             "args": null,
             "kind": "ScalarField",
             "name": "isSuper",
+            "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "isDev",
+            "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "locationGrantIds",
             "storageKey": null
           },
           {
@@ -115,13 +139,6 @@ return {
               }
             ],
             "storageKey": null
-          },
-          {
-            "alias": null,
-            "args": null,
-            "kind": "ScalarField",
-            "name": "deleted",
-            "storageKey": null
           }
         ],
         "storageKey": null
@@ -129,16 +146,16 @@ return {
     ]
   },
   "params": {
-    "cacheID": "97b1dd221296c705fbf8086a72f3259e",
+    "cacheID": "22a1d63edaaaea3b65cd8a890bbb1e8b",
     "id": null,
     "metadata": {},
     "name": "UserListQuery",
     "operationKind": "query",
-    "text": "query UserListQuery {\n  users {\n    id\n    accessTime\n    ...UserList_user\n  }\n}\n\nfragment UserList_user on User {\n  id\n  email\n  accessTime\n  isSuper\n  locations {\n    id\n    name\n  }\n  deleted\n}\n"
+    "text": "query UserListQuery {\n  users {\n    id\n    accessTime\n    enabled\n    ...UserList_user\n  }\n}\n\nfragment UserList_user on User {\n  id\n  email\n  accessTime\n  isSuper\n  isDev\n  locationGrantIds\n  locations {\n    id\n    name\n  }\n  enabled\n}\n"
   }
 };
 })();
 
-(node as any).hash = "1a693aaaf6e1865a84560f867d3ea352";
+(node as any).hash = "309adf320bce4221d7beccd586eb3b5e";
 
 export default node;
