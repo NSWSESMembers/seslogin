@@ -51,12 +51,14 @@ export default function KioskEnvironment({
   profile: string;
   children: ReactNode;
 }) {
-  const initialScanAuthToken = useMemo(() => {
+  // Lazy useState initializer: read the persisted token once on mount. Later
+  // `profile` changes intentionally don't re-seed the ref/state below.
+  const [initialScanAuthToken] = useState<string | null>(() => {
     const settings = readAppSettings(profile);
     return typeof settings.scanAuthToken === "string"
       ? settings.scanAuthToken
       : null;
-  }, []);
+  });
   const scanAuthTokenRef = useRef<string | null>(initialScanAuthToken);
   const [isUnauthorized, setIsUnauthorized] = useState(
     initialScanAuthToken == null,
