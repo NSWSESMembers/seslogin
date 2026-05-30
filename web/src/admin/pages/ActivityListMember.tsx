@@ -1,18 +1,32 @@
-import { graphql } from "relay-runtime";
+import { graphql, readInlineData } from "relay-runtime";
 import { fetchQuery, useLazyLoadQuery, useRelayEnvironment } from "react-relay";
 import ActivityListTable from "../components/ActivityListTable";
 import type {
   ActivityListMemberQuery,
   ActivityListMemberQuery$data,
 } from "./__generated__/ActivityListMemberQuery.graphql";
+import type { ActivityListMember_periodName$key } from "./__generated__/ActivityListMember_periodName.graphql";
 import { useParams } from "react-router";
 import { startTransition, useEffect, useState } from "react";
 
-type PeriodEdge =
-  ActivityListMemberQuery$data["person"]["periods"]["edges"][number];
-type Period = NonNullable<PeriodEdge>["node"];
-
 const ACTIVITY_MEMBER_PAGE_SIZE = 100;
+
+type PeriodRef = NonNullable<
+  NonNullable<
+    ActivityListMemberQuery$data["person"]["periods"]["edges"][number]
+  >["node"]
+>;
+
+// This (per-member) view shows the location each period happened at. Colocate
+// that data dependency here, read inside getRowLabel from the same period ref.
+const activityListMemberPeriodName = graphql`
+  fragment ActivityListMember_periodName on Period @inline {
+    location {
+      id
+      name
+    }
+  }
+`;
 
 export default function ActivityListMember() {
   const params = useParams();
@@ -31,19 +45,8 @@ export default function ActivityListMember() {
           periods(first: $first, after: $after) {
             edges {
               node {
-                id
-                startTime
-                endTime
-                nitcExportStatus
-                nitcEventId
-                category {
-                  id
-                  name
-                }
-                location {
-                  id
-                  name
-                }
+                ...ActivityListTable_period
+                ...ActivityListMember_periodName
               }
             }
             pageInfo {
@@ -61,7 +64,7 @@ export default function ActivityListMember() {
     },
   );
 
-  const [periods, setPeriods] = useState<Period[]>([]);
+  const [periods, setPeriods] = useState<PeriodRef[]>([]);
   const [hasNextPage, setHasNextPage] = useState(false);
   const [endCursor, setEndCursor] = useState<string | null>(null);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
@@ -75,8 +78,12 @@ export default function ActivityListMember() {
     });
   }, [data.person.id, data.person.periods.edges, data.person.periods.pageInfo]);
 
-  function getname(p: Period) {
-    return p.location?.name;
+  function getRowLabel(periodRef: PeriodRef) {
+    const { location } = readInlineData<ActivityListMember_periodName$key>(
+      activityListMemberPeriodName,
+      periodRef,
+    );
+    return location?.name ?? "";
   }
 
   async function onLoadMore() {
@@ -101,18 +108,8 @@ export default function ActivityListMember() {
               periods(first: $first, after: $after) {
                 edges {
                   node {
-                    id
-                    startTime
-                    endTime
-                    nitcExportStatus
-                    category {
-                      id
-                      name
-                    }
-                    location {
-                      id
-                      name
-                    }
+                    ...ActivityListTable_period
+                    ...ActivityListMember_periodName
                   }
                 }
                 pageInfo {
@@ -148,7 +145,7 @@ export default function ActivityListMember() {
       <ActivityListTable
         firstcol="location"
         periods={periods}
-        getname={getname}
+        getRowLabel={getRowLabel}
         hasNextPage={hasNextPage}
         isLoadingMore={isLoadingMore}
         onLoadMore={onLoadMore}

@@ -1,7 +1,9 @@
 import { graphql, useLazyLoadQuery } from "react-relay";
 import { useEffect, useState } from "react";
 import type { StatusQuery } from "./__generated__/StatusQuery.graphql";
-import StatusCurrentDisplay from "../components/StatusCurrentDisplay";
+import StatusCurrentDisplay, {
+  type StatusPeriod,
+} from "../components/StatusCurrentDisplay";
 
 const REFRESH_INTERVAL_MS = 60_000;
 
@@ -41,9 +43,19 @@ export default function Status() {
     { fetchKey, fetchPolicy: "network-only" },
   );
 
-  const periods = data.session.location.periods.edges
+  // StatusCurrentDisplay is presentational (also rendered with mock data in
+  // StatusDemo), so build its plain view model here, reading each field.
+  const periods: StatusPeriod[] = data.session.location.periods.edges
     .filter((edge): edge is NonNullable<typeof edge> => edge?.node != null)
-    .map((edge) => edge.node);
+    .map(({ node }) => ({
+      id: node.id,
+      startTime: node.startTime,
+      person: {
+        id: node.person.id,
+        firstName: node.person.firstName,
+        lastName: node.person.lastName,
+      },
+    }));
 
   return <StatusCurrentDisplay periods={periods} />;
 }

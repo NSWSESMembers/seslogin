@@ -3,7 +3,10 @@ import { useMemo } from "react";
 import { formatTimeDiff } from "../../lib/time";
 import ClientVersionLabel from "../../components/ClientVersionLabel";
 
-type Period = {
+// Presentational component: takes plain data so it can be driven by a Relay query
+// (Status.tsx) or by mock data (StatusDemo.tsx). The display shape is exported so
+// callers can build it.
+export type StatusPeriod = {
   id: string;
   startTime: number;
   person: {
@@ -23,7 +26,7 @@ function getSignInColor(startTime: number): string {
 }
 
 type Props = {
-  periods: Period[];
+  periods: StatusPeriod[];
 };
 
 export default function StatusCurrentDisplay({ periods }: Props) {

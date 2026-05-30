@@ -8,6 +8,11 @@ export { UserInfoContext, type UserInfoContextType } from "./UserInfoContext";
 
 const USER_INFO_RELOAD_INTERVAL_MS = 2 * 60 * 1000;
 
+// These fields are not read in this file: they are exposed app-wide through
+// UserInfoContext and consumed via useUserInfo(). That non-Relay channel is
+// invisible to the relay/unused-fields lint rule, so disable it here rather than
+// fragment-colocating a global current-user across ~10 consumers.
+/* eslint-disable relay/unused-fields */
 const userInfoQuery = graphql`
   query UserInfoProviderQuery {
     user {
@@ -23,6 +28,7 @@ const userInfoQuery = graphql`
     }
   }
 `;
+/* eslint-enable relay/unused-fields */
 
 /**
  * Provider component that fetches and provides basic user info via GraphQL

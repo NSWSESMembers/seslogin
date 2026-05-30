@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<2135222cf2363fa236b288e848c9ac3e>>
+ * @generated SignedSource<<5a2bec277c1cdac94db5d108da158914>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -9,6 +9,7 @@
 // @ts-nocheck
 
 import { ConcreteRequest } from 'relay-runtime';
+import { FragmentRefs } from "relay-runtime";
 export type ActivityCurrentLoadMoreQuery$variables = {
   after?: string | null | undefined;
   first: number;
@@ -20,18 +21,7 @@ export type ActivityCurrentLoadMoreQuery$data = {
     readonly periods: {
       readonly edges: ReadonlyArray<{
         readonly node: {
-          readonly category: {
-            readonly id: string;
-            readonly name: string;
-          } | null | undefined;
-          readonly endTime: number | null | undefined;
-          readonly id: string;
-          readonly person: {
-            readonly firstName: string;
-            readonly id: string;
-            readonly lastName: string;
-          };
-          readonly startTime: number;
+          readonly " $fragmentSpreads": FragmentRefs<"ActivityCurrent_periodName" | "ActivityListTable_period">;
         };
       }>;
       readonly pageInfo: {
@@ -62,167 +52,135 @@ v2 = {
   "kind": "LocalArgument",
   "name": "location"
 },
-v3 = {
+v3 = [
+  {
+    "kind": "Variable",
+    "name": "id",
+    "variableName": "location"
+  }
+],
+v4 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
   "name": "id",
   "storageKey": null
 },
-v4 = [
+v5 = [
   {
-    "alias": null,
-    "args": [
-      {
-        "kind": "Variable",
-        "name": "id",
-        "variableName": "location"
-      }
-    ],
-    "concreteType": "Location",
-    "kind": "LinkedField",
-    "name": "location",
-    "plural": false,
-    "selections": [
-      (v3/*: any*/),
-      {
-        "alias": null,
-        "args": [
-          {
-            "kind": "Variable",
-            "name": "after",
-            "variableName": "after"
-          },
-          {
-            "kind": "Variable",
-            "name": "first",
-            "variableName": "first"
-          },
-          {
-            "kind": "Literal",
-            "name": "onlyActive",
-            "value": true
-          }
-        ],
-        "concreteType": "PeriodConnection",
-        "kind": "LinkedField",
-        "name": "periods",
-        "plural": false,
-        "selections": [
-          {
-            "alias": null,
-            "args": null,
-            "concreteType": "PeriodEdge",
-            "kind": "LinkedField",
-            "name": "edges",
-            "plural": true,
-            "selections": [
-              {
-                "alias": null,
-                "args": null,
-                "concreteType": "Period",
-                "kind": "LinkedField",
-                "name": "node",
-                "plural": false,
-                "selections": [
-                  (v3/*: any*/),
-                  {
-                    "alias": null,
-                    "args": null,
-                    "kind": "ScalarField",
-                    "name": "startTime",
-                    "storageKey": null
-                  },
-                  {
-                    "alias": null,
-                    "args": null,
-                    "kind": "ScalarField",
-                    "name": "endTime",
-                    "storageKey": null
-                  },
-                  {
-                    "alias": null,
-                    "args": null,
-                    "concreteType": "Category",
-                    "kind": "LinkedField",
-                    "name": "category",
-                    "plural": false,
-                    "selections": [
-                      (v3/*: any*/),
-                      {
-                        "alias": null,
-                        "args": null,
-                        "kind": "ScalarField",
-                        "name": "name",
-                        "storageKey": null
-                      }
-                    ],
-                    "storageKey": null
-                  },
-                  {
-                    "alias": null,
-                    "args": null,
-                    "concreteType": "Person",
-                    "kind": "LinkedField",
-                    "name": "person",
-                    "plural": false,
-                    "selections": [
-                      (v3/*: any*/),
-                      {
-                        "alias": null,
-                        "args": null,
-                        "kind": "ScalarField",
-                        "name": "firstName",
-                        "storageKey": null
-                      },
-                      {
-                        "alias": null,
-                        "args": null,
-                        "kind": "ScalarField",
-                        "name": "lastName",
-                        "storageKey": null
-                      }
-                    ],
-                    "storageKey": null
-                  }
-                ],
-                "storageKey": null
-              }
-            ],
-            "storageKey": null
-          },
-          {
-            "alias": null,
-            "args": null,
-            "concreteType": "PageInfo",
-            "kind": "LinkedField",
-            "name": "pageInfo",
-            "plural": false,
-            "selections": [
-              {
-                "alias": null,
-                "args": null,
-                "kind": "ScalarField",
-                "name": "hasNextPage",
-                "storageKey": null
-              },
-              {
-                "alias": null,
-                "args": null,
-                "kind": "ScalarField",
-                "name": "endCursor",
-                "storageKey": null
-              }
-            ],
-            "storageKey": null
-          }
-        ],
-        "storageKey": null
-      }
-    ],
-    "storageKey": null
+    "kind": "Variable",
+    "name": "after",
+    "variableName": "after"
+  },
+  {
+    "kind": "Variable",
+    "name": "first",
+    "variableName": "first"
+  },
+  {
+    "kind": "Literal",
+    "name": "onlyActive",
+    "value": true
   }
-];
+],
+v6 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
+  "name": "startTime",
+  "storageKey": null
+},
+v7 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
+  "name": "endTime",
+  "storageKey": null
+},
+v8 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
+  "name": "nitcExportStatus",
+  "storageKey": null
+},
+v9 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
+  "name": "nitcEventId",
+  "storageKey": null
+},
+v10 = {
+  "alias": null,
+  "args": null,
+  "concreteType": "Category",
+  "kind": "LinkedField",
+  "name": "category",
+  "plural": false,
+  "selections": [
+    (v4/*: any*/),
+    {
+      "alias": null,
+      "args": null,
+      "kind": "ScalarField",
+      "name": "name",
+      "storageKey": null
+    }
+  ],
+  "storageKey": null
+},
+v11 = {
+  "alias": null,
+  "args": null,
+  "concreteType": "Person",
+  "kind": "LinkedField",
+  "name": "person",
+  "plural": false,
+  "selections": [
+    (v4/*: any*/),
+    {
+      "alias": null,
+      "args": null,
+      "kind": "ScalarField",
+      "name": "firstName",
+      "storageKey": null
+    },
+    {
+      "alias": null,
+      "args": null,
+      "kind": "ScalarField",
+      "name": "lastName",
+      "storageKey": null
+    }
+  ],
+  "storageKey": null
+},
+v12 = {
+  "alias": null,
+  "args": null,
+  "concreteType": "PageInfo",
+  "kind": "LinkedField",
+  "name": "pageInfo",
+  "plural": false,
+  "selections": [
+    {
+      "alias": null,
+      "args": null,
+      "kind": "ScalarField",
+      "name": "hasNextPage",
+      "storageKey": null
+    },
+    {
+      "alias": null,
+      "args": null,
+      "kind": "ScalarField",
+      "name": "endCursor",
+      "storageKey": null
+    }
+  ],
+  "storageKey": null
+};
 return {
   "fragment": {
     "argumentDefinitions": [
@@ -233,7 +191,77 @@ return {
     "kind": "Fragment",
     "metadata": null,
     "name": "ActivityCurrentLoadMoreQuery",
-    "selections": (v4/*: any*/),
+    "selections": [
+      {
+        "alias": null,
+        "args": (v3/*: any*/),
+        "concreteType": "Location",
+        "kind": "LinkedField",
+        "name": "location",
+        "plural": false,
+        "selections": [
+          (v4/*: any*/),
+          {
+            "alias": null,
+            "args": (v5/*: any*/),
+            "concreteType": "PeriodConnection",
+            "kind": "LinkedField",
+            "name": "periods",
+            "plural": false,
+            "selections": [
+              {
+                "alias": null,
+                "args": null,
+                "concreteType": "PeriodEdge",
+                "kind": "LinkedField",
+                "name": "edges",
+                "plural": true,
+                "selections": [
+                  {
+                    "alias": null,
+                    "args": null,
+                    "concreteType": "Period",
+                    "kind": "LinkedField",
+                    "name": "node",
+                    "plural": false,
+                    "selections": [
+                      {
+                        "kind": "InlineDataFragmentSpread",
+                        "name": "ActivityListTable_period",
+                        "selections": [
+                          (v4/*: any*/),
+                          (v6/*: any*/),
+                          (v7/*: any*/),
+                          (v8/*: any*/),
+                          (v9/*: any*/),
+                          (v10/*: any*/)
+                        ],
+                        "args": null,
+                        "argumentDefinitions": []
+                      },
+                      {
+                        "kind": "InlineDataFragmentSpread",
+                        "name": "ActivityCurrent_periodName",
+                        "selections": [
+                          (v11/*: any*/)
+                        ],
+                        "args": null,
+                        "argumentDefinitions": []
+                      }
+                    ],
+                    "storageKey": null
+                  }
+                ],
+                "storageKey": null
+              },
+              (v12/*: any*/)
+            ],
+            "storageKey": null
+          }
+        ],
+        "storageKey": null
+      }
+    ],
     "type": "QueryRoot",
     "abstractKey": null
   },
@@ -246,19 +274,73 @@ return {
     ],
     "kind": "Operation",
     "name": "ActivityCurrentLoadMoreQuery",
-    "selections": (v4/*: any*/)
+    "selections": [
+      {
+        "alias": null,
+        "args": (v3/*: any*/),
+        "concreteType": "Location",
+        "kind": "LinkedField",
+        "name": "location",
+        "plural": false,
+        "selections": [
+          (v4/*: any*/),
+          {
+            "alias": null,
+            "args": (v5/*: any*/),
+            "concreteType": "PeriodConnection",
+            "kind": "LinkedField",
+            "name": "periods",
+            "plural": false,
+            "selections": [
+              {
+                "alias": null,
+                "args": null,
+                "concreteType": "PeriodEdge",
+                "kind": "LinkedField",
+                "name": "edges",
+                "plural": true,
+                "selections": [
+                  {
+                    "alias": null,
+                    "args": null,
+                    "concreteType": "Period",
+                    "kind": "LinkedField",
+                    "name": "node",
+                    "plural": false,
+                    "selections": [
+                      (v4/*: any*/),
+                      (v6/*: any*/),
+                      (v7/*: any*/),
+                      (v8/*: any*/),
+                      (v9/*: any*/),
+                      (v10/*: any*/),
+                      (v11/*: any*/)
+                    ],
+                    "storageKey": null
+                  }
+                ],
+                "storageKey": null
+              },
+              (v12/*: any*/)
+            ],
+            "storageKey": null
+          }
+        ],
+        "storageKey": null
+      }
+    ]
   },
   "params": {
-    "cacheID": "0e9536f5624642971a0668d46bfc23a5",
+    "cacheID": "5baabb6b19d89ffd5ef3b128159473a0",
     "id": null,
     "metadata": {},
     "name": "ActivityCurrentLoadMoreQuery",
     "operationKind": "query",
-    "text": "query ActivityCurrentLoadMoreQuery(\n  $location: ID!\n  $first: Int!\n  $after: String\n) {\n  location(id: $location) {\n    id\n    periods(onlyActive: true, first: $first, after: $after) {\n      edges {\n        node {\n          id\n          startTime\n          endTime\n          category {\n            id\n            name\n          }\n          person {\n            id\n            firstName\n            lastName\n          }\n        }\n      }\n      pageInfo {\n        hasNextPage\n        endCursor\n      }\n    }\n  }\n}\n"
+    "text": "query ActivityCurrentLoadMoreQuery(\n  $location: ID!\n  $first: Int!\n  $after: String\n) {\n  location(id: $location) {\n    id\n    periods(onlyActive: true, first: $first, after: $after) {\n      edges {\n        node {\n          ...ActivityListTable_period\n          ...ActivityCurrent_periodName\n          id\n        }\n      }\n      pageInfo {\n        hasNextPage\n        endCursor\n      }\n    }\n  }\n}\n\nfragment ActivityCurrent_periodName on Period {\n  person {\n    id\n    firstName\n    lastName\n  }\n}\n\nfragment ActivityListTable_period on Period {\n  id\n  startTime\n  endTime\n  nitcExportStatus\n  nitcEventId\n  category {\n    id\n    name\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "8cacc4ba4a3871dc995c10dc45956191";
+(node as any).hash = "c4155a5f010753320a2d45545bca53dd";
 
 export default node;

@@ -1,41 +1,51 @@
 import { formatTime, formatTimeDiff } from "../../lib/time";
-import { graphql } from "relay-runtime";
+import { graphql, readInlineData } from "relay-runtime";
 import { useMutation } from "react-relay";
 import { Link } from "react-router";
 import type { ActivityListTableDeleteMutation } from "./__generated__/ActivityListTableDeleteMutation.graphql";
+import type {
+  ActivityListTable_period$data,
+  ActivityListTable_period$key,
+} from "./__generated__/ActivityListTable_period.graphql";
 import bulletOrange from "../../assets/bullet-orange.svg";
 import bulletGreen from "../../assets/bullet-green.svg";
 import { useUserInfo } from "./useUserInfo";
 
 type Firstcol = "location" | "person";
 
-interface IPeriod {
-  readonly id: string;
-  readonly category:
-    | {
-        readonly id: string;
-        readonly name: string;
-      }
-    | null
-    | undefined;
-  readonly endTime: number | null | undefined;
-  readonly startTime: number;
-  readonly nitcExportStatus?: string | null;
-  readonly nitcEventId?: string | null;
-}
+// Colocated data dependency for a single activity row: only the fields this table
+// actually renders. The display name (person vs location) differs per page, so each
+// page colocates its own name fragment and supplies a `getRowLabel` that reads it from
+// the same period ref. Marked @inline so the day-grouping loop and Row can read the
+// fields via readInlineData outside of useFragment.
+const activityListTablePeriod = graphql`
+  fragment ActivityListTable_period on Period @inline {
+    id
+    startTime
+    endTime
+    nitcExportStatus
+    nitcEventId
+    category {
+      id
+      name
+    }
+  }
+`;
 
-function Section<
-  TPeriod extends IPeriod,
-  TPeriods extends ReadonlyArray<TPeriod>,
->({
+type Period = ActivityListTable_period$data;
+// Each row keeps the original fragment ref (passed to the page's getRowLabel) alongside
+// the data already read for this table's own fields.
+type Entry<T extends ActivityListTable_period$key> = { ref: T; data: Period };
+
+function Section<T extends ActivityListTable_period$key>({
   day,
-  periods,
-  getname,
+  entries,
+  getRowLabel,
   isDev,
 }: {
   day: string;
-  periods: TPeriods;
-  getname: (p: TPeriod) => string;
+  entries: ReadonlyArray<Entry<T>>;
+  getRowLabel: (p: T) => string;
   isDev: boolean;
 }) {
   const colSpan = isDev ? 8 : 7;
@@ -49,12 +59,12 @@ function Section<
       <tr>
         <td className="gap" colSpan={colSpan}></td>
       </tr>
-      {periods.map((period, idx) => (
+      {entries.map((entry, idx) => (
         <Row
-          key={period.id}
-          period={period}
+          key={entry.data.id}
+          entry={entry}
           idx={idx}
-          getname={getname}
+          getRowLabel={getRowLabel}
           isDev={isDev}
         />
       ))}
@@ -62,17 +72,18 @@ function Section<
   );
 }
 
-function Row<TPeriod extends IPeriod>({
-  period,
+function Row<T extends ActivityListTable_period$key>({
+  entry,
   idx,
-  getname,
+  getRowLabel,
   isDev,
 }: {
-  period: TPeriod;
+  entry: Entry<T>;
   idx: number;
-  getname: (p: TPeriod) => string;
+  getRowLabel: (p: T) => string;
   isDev: boolean;
 }) {
+  const period = entry.data;
   const [commitMutation, isMutationInFlight] =
     useMutation<ActivityListTableDeleteMutation>(graphql`
       mutation ActivityListTableDeleteMutation($id: ID!) {
@@ -152,7 +163,7 @@ function Row<TPeriod extends IPeriod>({
             {period.id}
           </td>
         )}
-        <td>{getname(period)}</td>
+        <td>{getRowLabel(entry.ref)}</td>
         <td>{formatTime(start)}</td>
         <td>{end ? formatTime(end) : ""}</td>
         <td>{timeDiff}</td>
@@ -173,25 +184,24 @@ function Row<TPeriod extends IPeriod>({
 }
 
 export default function ActivityListTable<
-  TPeriod extends IPeriod,
-  TPeriods extends ReadonlyArray<TPeriod>,
+  T extends ActivityListTable_period$key,
 >({
   periods,
   firstcol,
-  getname,
+  getRowLabel,
   hasNextPage,
   isLoadingMore,
   onLoadMore,
 }: {
-  periods: TPeriods;
+  periods: ReadonlyArray<T>;
   firstcol: Firstcol;
-  getname: (p: TPeriod) => string;
+  getRowLabel: (p: T) => string;
   hasNextPage?: boolean;
   isLoadingMore?: boolean;
   onLoadMore?: () => void;
 }) {
   const { isDev } = useUserInfo();
-  const dayGroupedRows = new Map<string, Array<TPeriod>>();
+  const dayGroupedRows = new Map<string, Array<Entry<T>>>();
   const dateOptions: Intl.DateTimeFormatOptions = {
     weekday: "long",
     year: "numeric",
@@ -199,14 +209,15 @@ export default function ActivityListTable<
     day: "numeric",
   };
 
-  for (const period of periods) {
-    if (!period) continue;
-    const startTime = new Date(period.startTime * 1000);
+  for (const periodRef of periods) {
+    const data = readInlineData(activityListTablePeriod, periodRef);
+    if (!data) continue;
+    const startTime = new Date(data.startTime * 1000);
     const day = startTime.toLocaleDateString(undefined, dateOptions);
     if (!dayGroupedRows.has(day)) {
       dayGroupedRows.set(day, []);
     }
-    dayGroupedRows.get(day)!.push(period);
+    dayGroupedRows.get(day)!.push({ ref: periodRef, data });
   }
 
   return (
@@ -225,12 +236,12 @@ export default function ActivityListTable<
           </tr>
         </thead>
         <tbody>
-          {Array.from(dayGroupedRows).map(([day, periods]) => (
+          {Array.from(dayGroupedRows).map(([day, entries]) => (
             <Section
               key={day}
               day={day}
-              periods={periods}
-              getname={getname}
+              entries={entries}
+              getRowLabel={getRowLabel}
               isDev={isDev}
             />
           ))}
