@@ -16,6 +16,7 @@ gha-lint:
 format:
 	(cd api && cargo fmt)
 	(cd web && npm run format)
+	(cd infra && terraform fmt -recursive)
 
 check:	pre-commit-checks
 
@@ -28,6 +29,8 @@ pre-commit-checks:
 	@cd web && npm run lint
 	@cd web && npm run typecheck
 	@cd web && npm run build
+	@echo "Running infra checks..."
+	@cd infra && terraform fmt -recursive -check -diff
 	@echo "Running API checks..."
 	@cd api && cargo fmt --check
 	@cd api && cargo run --locked --bin export-schema > /tmp/schema.generated.graphql

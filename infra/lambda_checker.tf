@@ -3,8 +3,8 @@ resource "aws_lambda_function" "checker" {
   role          = aws_iam_role.checker_lambda.arn
   runtime       = "provided.al2023"
   handler       = "bootstrap"
-  timeout                        = 60
-  filename                       = "${path.module}/placeholder.zip"
+  timeout       = 60
+  filename      = "${path.module}/placeholder.zip"
 
   environment {
     variables = {

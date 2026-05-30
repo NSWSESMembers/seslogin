@@ -1,0 +1,16 @@
+name: Infra check (reusable)
+on:
+  workflow_call:
+
+jobs:
+  infra_check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+      - name: Check Terraform formatting
+        # Advisory only: report formatting issues without failing the run,
+        # so this check can never block a merge or deployment.
+        continue-on-error: true
+        run: cd infra && terraform fmt -recursive -check -diff

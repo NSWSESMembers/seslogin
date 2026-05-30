@@ -3,9 +3,9 @@ resource "aws_lambda_function" "sync_members" {
   role          = aws_iam_role.sync_lambda.arn
   runtime       = "provided.al2023"
   handler       = "bootstrap"
-  timeout                        = 300
-  memory_size                    = 256
-  filename                       = "${path.module}/placeholder.zip"
+  timeout       = 300
+  memory_size   = 256
+  filename      = "${path.module}/placeholder.zip"
 
   environment {
     variables = {

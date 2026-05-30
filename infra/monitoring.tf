@@ -13,11 +13,11 @@ resource "aws_cloudwatch_dashboard" "api" {
   dashboard_body = jsonencode({
     widgets = [
       {
-        type       = "metric"
-        x          = 0
-        y          = 0
-        width      = 12
-        height     = 6
+        type   = "metric"
+        x      = 0
+        y      = 0
+        width  = 12
+        height = 6
         properties = {
           title  = "Request Outcomes (per minute)"
           region = "ap-southeast-2"
@@ -32,11 +32,11 @@ resource "aws_cloudwatch_dashboard" "api" {
         }
       },
       {
-        type       = "metric"
-        x          = 12
-        y          = 0
-        width      = 12
-        height     = 6
+        type   = "metric"
+        x      = 12
+        y      = 0
+        width  = 12
+        height = 6
         properties = {
           title  = "Errors (per minute)"
           region = "ap-southeast-2"
@@ -51,11 +51,11 @@ resource "aws_cloudwatch_dashboard" "api" {
         }
       },
       {
-        type       = "metric"
-        x          = 0
-        y          = 6
-        width      = 12
-        height     = 6
+        type   = "metric"
+        x      = 0
+        y      = 6
+        width  = 12
+        height = 6
         properties = {
           title  = "Latency (ms)"
           region = "ap-southeast-2"
@@ -70,11 +70,11 @@ resource "aws_cloudwatch_dashboard" "api" {
         }
       },
       {
-        type       = "metric"
-        x          = 12
-        y          = 6
-        width      = 12
-        height     = 6
+        type   = "metric"
+        x      = 12
+        y      = 6
+        width  = 12
+        height = 6
         properties = {
           title  = "DynamoDB Capacity Units (per minute)"
           region = "ap-southeast-2"

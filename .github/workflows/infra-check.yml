@@ -1,0 +1,11 @@
+name: Infra check
+on:
+  pull_request:
+    paths:
+      - 'infra/**'
+      - '.github/workflows/infra-check.yml'
+      - '.github/workflows/_check-infra.yml'
+
+jobs:
+  infra_check:
+    uses: ./.github/workflows/_check-infra.yml
