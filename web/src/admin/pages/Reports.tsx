@@ -156,9 +156,9 @@ export default function Reports() {
         "Name",
         "Category Name",
         "Start Time",
-        "Sign-In Session",
+        "Sign-In Kiosk",
         "End Time",
-        "Sign-Out Session",
+        "Sign-Out Kiosk",
         "Duration",
       ];
       const startPart = startInput.replaceAll(":", "-");
