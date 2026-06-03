@@ -34,12 +34,6 @@ jobs:
         with:
           workspaces: api
 
-      - name: Write .env file
-        run: |
-          source .env
-          echo "JWT_SECRET=${{ secrets.JWT_SECRET }}" > api/.env
-          echo "DB_PREFIX=$DB_PREFIX" >> api/.env
-
       - name: Install cargo-lambda
         run: pip install cargo-lambda
 
