@@ -10,7 +10,7 @@ aws_secret_access_key = ...
 region = ap-southeast-2
 ```
 
-3. `RUST_LOG=info cargo run`
+3. `RUST_LOG=info cargo run --bin poem`
 
 ## Run tests
 

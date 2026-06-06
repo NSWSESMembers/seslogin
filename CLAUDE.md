@@ -16,7 +16,7 @@ make dev                    # Start everything: API + Relay compiler watch + web
 
 Or individually:
 ```bash
-cd api && RUST_LOG=info cargo run meh --enable-mutations             # API server (port 8000)
+cd api && RUST_LOG=info cargo run --bin poem -- --enable-mutations    # API server (port 8000)
 cd web && npm run relay -- --watch                                    # Relay GraphQL compiler
 cd web && npm run dev                                                  # Web dev server
 ```
