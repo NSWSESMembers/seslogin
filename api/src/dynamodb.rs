@@ -1119,7 +1119,7 @@ impl db::Handler for Handler {
             .return_consumed_capacity(ReturnConsumedCapacity::Total);
         let builder = match query {
             ListSessionsQuery::ByLocation(location_id) => builder
-                .index_name("active-location_id-index")
+                .index_name("active-location_id-v2-index")
                 .key_condition_expression("active = :active AND location_id = :location_id")
                 .expression_attribute_values(
                     ":location_id",

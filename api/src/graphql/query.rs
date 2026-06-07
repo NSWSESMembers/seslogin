@@ -1157,12 +1157,28 @@ pub struct Session<A: App + HasDb + Send + Sync> {
     pub(super) rec: db::Session,
 }
 
-impl<A: App + HasDb + Send + Sync> Session<A> {
+impl<A: App + HasDb + Send + Sync + 'static> Session<A> {
     pub(crate) fn new(rec: db::Session) -> Self {
         Self {
             _marker: Default::default(),
             rec,
         }
+    }
+
+    /// Load the authoritative base-table record for this session.
+    ///
+    /// The heartbeat fields (`last_contact`, `client_version`) are intentionally
+    /// not projected into `active-location_id-v2-index`, so a `Session` produced
+    /// by the listing carries `None` for them. Resolve those fields from the
+    /// base table instead, batched and cached per-request by the DataLoader.
+    async fn full_record(&self, ctx: &Context<'_>) -> Result<Option<db::Session>> {
+        let loader = ctx.data_unchecked::<DataLoader<DatabaseLoader<A>>>();
+        Ok(loader
+            .load_one(SessionId(ID(self.rec.id.clone())))
+            .await
+            .map_err(|e| anyhow!("Failed to load session via DataLoader: {}", e))?
+            .flatten()
+            .map(|s| s.rec))
     }
 }
 
@@ -1181,12 +1197,16 @@ impl<A: App + HasDb + Send + Sync + 'static> Session<A> {
         ID(self.rec.id.clone())
     }
 
-    async fn last_contact(&self) -> Option<i64> {
-        self.rec.last_contact.map(|ts| ts as i64)
+    async fn last_contact(&self, ctx: &Context<'_>) -> Result<Option<i64>> {
+        Ok(self
+            .full_record(ctx)
+            .await?
+            .and_then(|r| r.last_contact)
+            .map(|ts| ts as i64))
     }
 
-    async fn client_version(&self) -> Option<&str> {
-        self.rec.client_version.as_deref()
+    async fn client_version(&self, ctx: &Context<'_>) -> Result<Option<String>> {
+        Ok(self.full_record(ctx).await?.and_then(|r| r.client_version))
     }
 
     async fn name(&self) -> &String {

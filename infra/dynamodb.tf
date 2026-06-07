@@ -231,6 +231,19 @@ resource "aws_dynamodb_table" "prod_session" {
     range_key       = "location_id"
     projection_type = "ALL"
   }
+  # Replacement for active-location_id-index that deliberately omits the
+  # frequently-written heartbeat fields (last_contact, client_version) from its
+  # projection, so that a last_contact refresh no longer rewrites this GSI. The
+  # session listing reads these two fields from the base table via the DataLoader
+  # instead. Staged migration: this index is added and the code switched over
+  # first; the old ALL-projection index is removed in a follow-up apply.
+  global_secondary_index {
+    name               = "active-location_id-v2-index"
+    hash_key           = "active"
+    range_key          = "location_id"
+    projection_type    = "INCLUDE"
+    non_key_attributes = ["name", "code", "config", "healthcheck_url", "created_at", "updated_at"]
+  }
   global_secondary_index {
     name            = "legacy_id-index"
     hash_key        = "legacy_id"
