@@ -30,6 +30,9 @@ fn classify_db_err(msg: &str, e: db::Error) -> AuthError {
 pub const CLIENT_VERSION_HEADER: &str = "X-Client-Version";
 const MAX_CLIENT_VERSION_LEN: usize = 64;
 
+/// How stale a session's `last_contact` must be before we write a refresh.
+const LAST_CONTACT_REFRESH_SECS: u64 = 5 * 60;
+
 pub enum AuthInfo {
     User {
         id: String,
@@ -146,9 +149,16 @@ async fn fetch_update_session_auth_info<A: App + HasDb + HasSqs>(
         }
     };
 
-    // if access time is older than 1 minute ago then update it - helps reduce DB write load
+    // Only refresh last_contact if it's older than this window, to reduce DB
+    // write load. The admin UI only renders last_contact at minute+ granularity
+    // (the "online" status dot uses a 10-minute green band), so finer precision
+    // here just burns writes (each one also rewrites the ALL-projection GSI and
+    // adds PITR churn).
     let now = crate::clock::now_sec();
-    if session.last_contact.is_none_or(|t| now > t + 60) {
+    if session
+        .last_contact
+        .is_none_or(|t| now > t + LAST_CONTACT_REFRESH_SECS)
+    {
         let client_version = normalize_client_version(client_version);
         match app
             .db()
