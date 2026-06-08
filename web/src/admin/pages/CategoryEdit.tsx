@@ -6,7 +6,7 @@ import { useNotify } from "../components/useNotify";
 
 export default function CategoryEdit() {
   const navigate = useNavigate();
-  const { notifyError } = useNotify();
+  const { notifyError, notifySuccess } = useNotify();
   const params = useParams();
   const id = params.categoryId!;
   const data = useLazyLoadQuery<CategoryEditQuery>(
@@ -76,6 +76,7 @@ export default function CategoryEdit() {
       notifyError(err, "Couldn't save category");
       return;
     }
+    notifySuccess("Category saved");
     navigate("/admin/categories");
   }
 

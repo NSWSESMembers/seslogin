@@ -25,7 +25,7 @@ function Row({
   idx: number;
   categories: ReadonlyArray<CategoryData>;
 }) {
-  const { notifyError } = useNotify();
+  const { notifyError, notifySuccess } = useNotify();
   const [commitMutation, isMutationInFlight] =
     useMutation<NitcGroupListDeleteMutation>(graphql`
       mutation NitcGroupListDeleteMutation($id: ID!) {
@@ -49,6 +49,7 @@ function Row({
             },
           });
         });
+        notifySuccess(`NITC group ${group.id} deleted`);
       } catch (err) {
         notifyError(err, `Couldn't delete NITC group ${group.id}`);
       }

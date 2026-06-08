@@ -10,7 +10,7 @@ import { useNotify } from "../components/useNotify";
 export default function ActivityEdit() {
   const params = useParams();
   const navigate = useNavigate();
-  const { notifyError } = useNotify();
+  const { notifyError, notifySuccess } = useNotify();
   const selectedLocation = useSelectedLocation();
   const locationId = selectedLocation.id;
   const data = useLazyLoadQuery<ActivityEditQuery>(
@@ -114,6 +114,7 @@ export default function ActivityEdit() {
       notifyError(err, "Couldn't save activity entry");
       return;
     }
+    notifySuccess("Activity entry saved");
     navigate("/admin/activity");
   }
 

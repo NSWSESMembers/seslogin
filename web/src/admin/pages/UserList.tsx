@@ -15,7 +15,7 @@ import { useNotify } from "../components/useNotify";
 
 function Row(props: { user: UserList_user$key; idx: number; isDev: boolean }) {
   const isDev = props.isDev;
-  const { notifyError } = useNotify();
+  const { notifyError, notifySuccess } = useNotify();
   const user = useFragment<UserList_user$key>(
     graphql`
       fragment UserList_user on User {
@@ -83,6 +83,7 @@ function Row(props: { user: UserList_user$key; idx: number; isDev: boolean }) {
             },
           });
         });
+        notifySuccess(`User ${user.email} ${action}d`);
       } catch (err) {
         notifyError(err, `Couldn't ${action} user ${user.email}`);
       }

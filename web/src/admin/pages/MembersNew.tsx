@@ -5,7 +5,7 @@ import type { MembersNewMutation } from "./__generated__/MembersNewMutation.grap
 import { useNotify } from "../components/useNotify";
 
 export default function MembersNew() {
-  const { notifyError } = useNotify();
+  const { notifyError, notifySuccess } = useNotify();
   const [commitMutation, isMutationInFlight] = useMutation<MembersNewMutation>(
     graphql`
       mutation MembersNewMutation(
@@ -54,6 +54,7 @@ export default function MembersNew() {
       return;
     }
 
+    notifySuccess("Member created");
     navigate("/admin/members");
   }
 

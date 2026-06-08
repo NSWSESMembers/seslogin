@@ -7,7 +7,7 @@ import { useNotify } from "../components/useNotify";
 export default function NitcGroupEdit() {
   const navigate = useNavigate();
   const params = useParams();
-  const { notifyError } = useNotify();
+  const { notifyError, notifySuccess } = useNotify();
   const id = params.nitcGroupId!;
 
   const data = useLazyLoadQuery<NitcGroupEditQuery>(
@@ -71,6 +71,7 @@ export default function NitcGroupEdit() {
       return;
     }
 
+    notifySuccess("NITC group saved");
     navigate("/admin/categories/nitc-groups");
   }
 

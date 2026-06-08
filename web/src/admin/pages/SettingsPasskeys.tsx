@@ -43,7 +43,7 @@ export default function SettingsPasskeys() {
   const atCap = passkeys.length >= MAX_PASSKEYS;
 
   const register = usePasskeyRegistration();
-  const { notifyError } = useNotify();
+  const { notifyError, notifySuccess } = useNotify();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -77,6 +77,7 @@ export default function SettingsPasskeys() {
     try {
       await register(trimmed);
       refresh();
+      notifySuccess("Passkey added");
     } catch (err) {
       setError(`Couldn't add a passkey: ${getErrorMessage(err)}`);
     } finally {
@@ -91,7 +92,10 @@ export default function SettingsPasskeys() {
     if (!trimmed) return;
     commitRename({
       variables: { id, name: trimmed },
-      onCompleted: () => refresh(),
+      onCompleted: () => {
+        refresh();
+        notifySuccess("Passkey renamed");
+      },
       onError: (err) => notifyError(err, "Couldn't rename passkey"),
     });
   }
@@ -110,6 +114,7 @@ export default function SettingsPasskeys() {
       onCompleted: () => {
         if (wasLastPasskey) markPasskeyEnrollPromptShown();
         refresh();
+        notifySuccess("Passkey deleted");
       },
       onError: (err) => notifyError(err, "Couldn't delete passkey"),
     });

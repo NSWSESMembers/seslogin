@@ -5,7 +5,7 @@ import type { CategoryNewMutation } from "./__generated__/CategoryNewMutation.gr
 import { useNotify } from "../components/useNotify";
 
 export default function CategoryNew() {
-  const { notifyError } = useNotify();
+  const { notifyError, notifySuccess } = useNotify();
   const [commitMutation, isMutationInFlight] = useMutation<CategoryNewMutation>(
     graphql`
       mutation CategoryNewMutation(
@@ -61,6 +61,7 @@ export default function CategoryNew() {
       return;
     }
 
+    notifySuccess("Category created");
     navigate("/admin/categories");
   }
 

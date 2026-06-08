@@ -7,7 +7,7 @@ import { useNotify } from "../components/useNotify";
 export default function EditLocation() {
   const params = useParams();
   const navigate = useNavigate();
-  const { notifyError } = useNotify();
+  const { notifyError, notifySuccess } = useNotify();
   const id = params.locationId!;
 
   const data = useLazyLoadQuery<LocationEditQuery>(
@@ -72,6 +72,7 @@ export default function EditLocation() {
       return;
     }
 
+    notifySuccess("Location saved");
     navigate("/admin/locations");
   }
 

@@ -8,7 +8,7 @@ import { useNotify } from "../components/useNotify";
 export default function UserEdit() {
   const navigate = useNavigate();
   const params = useParams();
-  const { notifyError } = useNotify();
+  const { notifyError, notifySuccess } = useNotify();
   const id = params.userId!;
 
   const data = useLazyLoadQuery<UserEditQuery>(
@@ -91,6 +91,7 @@ export default function UserEdit() {
       return;
     }
 
+    notifySuccess("User saved");
     navigate("/admin/users");
   }
 

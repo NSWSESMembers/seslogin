@@ -24,7 +24,7 @@ function Row(props: {
   const isDev = props.isDev;
   const settingsDispatch = useSettingsDispatch()!;
   const navigate = useNavigate();
-  const { notifyError } = useNotify();
+  const { notifyError, notifySuccess } = useNotify();
   const location = useFragment<LocationList_item$key>(
     graphql`
       fragment LocationList_item on Location {
@@ -70,6 +70,9 @@ function Row(props: {
   function triggerSync() {
     commitSync({
       variables: { locationId: location.id },
+      onCompleted: () => {
+        notifySuccess(`Sync queued for ${location.name}`);
+      },
       onError: (err) => {
         notifyError(err, `Couldn't queue sync for ${location.name}`);
       },
@@ -98,6 +101,7 @@ function Row(props: {
             },
           });
         });
+        notifySuccess(`Location ${location.name} ${action}d`);
       } catch (err) {
         notifyError(err, `Couldn't ${action} location ${location.name}`);
       }

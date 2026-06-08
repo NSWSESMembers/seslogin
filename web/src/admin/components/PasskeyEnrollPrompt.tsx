@@ -7,6 +7,7 @@ import {
   markPasskeyEnrollPromptShown,
 } from "../../lib/passkey";
 import { usePasskeyRegistration } from "./usePasskeyRegistration";
+import { useNotify } from "./useNotify";
 import { getErrorMessage } from "../../lib/relayErrors";
 import type { PasskeyEnrollPromptQuery } from "./__generated__/PasskeyEnrollPromptQuery.graphql";
 
@@ -55,6 +56,7 @@ export default function PasskeyEnrollPrompt({
 
 function PasskeyInterstitial({ onDone }: { onDone: () => void }) {
   const register = usePasskeyRegistration();
+  const { notifySuccess } = useNotify();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -63,6 +65,7 @@ function PasskeyInterstitial({ onDone }: { onDone: () => void }) {
     setError(null);
     try {
       await register(defaultPasskeyName());
+      notifySuccess("Passkey added");
       onDone();
     } catch (err) {
       setError(`Couldn't add a passkey: ${getErrorMessage(err)}`);

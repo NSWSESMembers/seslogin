@@ -24,7 +24,7 @@ function Row({
   idx: number;
   isDev: boolean;
 }) {
-  const { notifyError } = useNotify();
+  const { notifyError, notifySuccess } = useNotify();
   const [commitMutation, isMutationInFlight] =
     useMutation<MembersListDeleteMutation>(graphql`
       mutation MembersListDeleteMutation($id: ID!) {
@@ -50,6 +50,7 @@ function Row({
             },
           });
         });
+        notifySuccess(`Member ${person.firstName} ${person.lastName} deleted`);
       } catch (err) {
         notifyError(
           err,
@@ -136,19 +137,16 @@ export default function MembersList() {
       }
     `,
   );
-  const [syncStatus, setSyncStatus] = useState<string | null>(null);
-  const { notifyError } = useNotify();
+  const { notifyError, notifySuccess } = useNotify();
 
   function triggerSync() {
     commitSync({
       variables: { locationId },
       onCompleted: () => {
-        setSyncStatus("Sync queued");
+        notifySuccess("Member sync queued");
       },
       onError: (err) => {
-        setSyncStatus("Sync failed");
         notifyError(err, "Couldn't queue member sync");
-        setTimeout(() => setSyncStatus(null), 10_000);
       },
     });
   }
@@ -179,9 +177,6 @@ export default function MembersList() {
               Sync now
             </button>
           )}
-          {syncStatus ? (
-            <span style={{ marginLeft: 8 }}>{syncStatus}</span>
-          ) : null}
         </div>
       ) : null}
       <table className="admin">

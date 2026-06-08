@@ -32,12 +32,11 @@ export default function SettingsDailyEmail() {
       }
     `);
 
-  const { notifyError } = useNotify();
+  const { notifyError, notifySuccess } = useNotify();
   const user = data.user;
   const [selectedLocations, setSelectedLocations] = useState(
     () => new Set(user.emailSummaryLocationIds),
   );
-  const [saved, setSaved] = useState(false);
 
   const locations = [...user.locations].sort((a, b) =>
     a.name.localeCompare(b.name),
@@ -45,7 +44,6 @@ export default function SettingsDailyEmail() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setSaved(false);
     try {
       await new Promise<void>((resolve, reject) => {
         commitMutation({
@@ -57,7 +55,7 @@ export default function SettingsDailyEmail() {
           },
         });
       });
-      setSaved(true);
+      notifySuccess("Daily email settings saved");
     } catch (err) {
       notifyError(err, "Couldn't save daily email settings");
     }
@@ -103,7 +101,6 @@ export default function SettingsDailyEmail() {
             <button type="submit" disabled={isMutationInFlight}>
               Save
             </button>
-            {saved && <span>&nbsp; Saved.</span>}
           </dd>
         </dl>
       </form>

@@ -8,7 +8,7 @@ import { useNotify } from "../components/useNotify";
 export default function MembersEdit() {
   const params = useParams();
   const navigate = useNavigate();
-  const { notifyError } = useNotify();
+  const { notifyError, notifySuccess } = useNotify();
   const selectedLocation = useSelectedLocation();
   const locationId = selectedLocation.id;
   const data = useLazyLoadQuery<MembersEditQuery>(
@@ -68,6 +68,7 @@ export default function MembersEdit() {
       notifyError(err, "Couldn't save member");
       return;
     }
+    notifySuccess("Member saved");
     navigate("/admin/members");
   }
 

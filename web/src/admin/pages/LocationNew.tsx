@@ -4,7 +4,7 @@ import { type LocationNewMutation } from "./__generated__/LocationNewMutation.gr
 import { useNotify } from "../components/useNotify";
 
 export default function LocationNew() {
-  const { notifyError } = useNotify();
+  const { notifyError, notifySuccess } = useNotify();
   const [commitMutation, isMutationInFlight] = useMutation<LocationNewMutation>(
     graphql`
       mutation LocationNewMutation($name: String!, $nitcEnabled: Int) {
@@ -45,6 +45,7 @@ export default function LocationNew() {
     }
 
     // this should only happen if no error was thrown
+    notifySuccess("Location created");
     navigate("/admin/locations");
   }
 

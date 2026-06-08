@@ -101,7 +101,7 @@ function Row<T extends ActivityListTable_period$key>({
   isDev: boolean;
 }) {
   const period = entry.data;
-  const { notifyError } = useNotify();
+  const { notifyError, notifySuccess } = useNotify();
   const [commitMutation, isMutationInFlight] =
     useMutation<ActivityListTableDeleteMutation>(graphql`
       mutation ActivityListTableDeleteMutation($id: ID!) {
@@ -125,6 +125,7 @@ function Row<T extends ActivityListTable_period$key>({
             },
           });
         });
+        notifySuccess("Activity entry deleted");
       } catch (err) {
         notifyError(err, "Couldn't delete activity entry");
       }

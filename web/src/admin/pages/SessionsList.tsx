@@ -28,7 +28,7 @@ function Row({
   isDev: boolean;
 }) {
   const [now] = useState(() => Math.round(Date.now() / 1000));
-  const { notifyError } = useNotify();
+  const { notifyError, notifySuccess } = useNotify();
   const [commitMutation, isMutationInFlight] =
     useMutation<SessionsListDeleteMutation>(graphql`
       mutation SessionsListDeleteMutation($id: ID!) {
@@ -52,6 +52,7 @@ function Row({
             },
           });
         });
+        notifySuccess(`Kiosk ${session.name} deleted`);
       } catch (err) {
         notifyError(err, `Couldn't delete kiosk ${session.name}`);
       }

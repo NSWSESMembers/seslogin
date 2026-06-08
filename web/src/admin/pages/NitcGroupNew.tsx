@@ -6,7 +6,7 @@ import { useNotify } from "../components/useNotify";
 
 export default function NitcGroupNew() {
   const navigate = useNavigate();
-  const { notifyError } = useNotify();
+  const { notifyError, notifySuccess } = useNotify();
 
   const data = useLazyLoadQuery<NitcGroupNewQuery>(
     graphql`
@@ -58,6 +58,7 @@ export default function NitcGroupNew() {
       return;
     }
 
+    notifySuccess("NITC group created");
     navigate("/admin/categories/nitc-groups");
   }
 

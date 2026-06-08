@@ -8,7 +8,7 @@ import { useNotify } from "../components/useNotify";
 export default function SessionsEdit() {
   const navigate = useNavigate();
   const params = useParams();
-  const { notifyError } = useNotify();
+  const { notifyError, notifySuccess } = useNotify();
   const id = params.sessionId!;
 
   const data = useLazyLoadQuery<SessionsEditQuery>(
@@ -64,6 +64,7 @@ export default function SessionsEdit() {
       return;
     }
 
+    notifySuccess("Kiosk saved");
     navigate("/admin/sessions");
   }
 

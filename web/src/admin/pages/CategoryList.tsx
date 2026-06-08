@@ -31,7 +31,7 @@ function Row({
   idx: number;
   isDev: boolean;
 }) {
-  const { notifyError } = useNotify();
+  const { notifyError, notifySuccess } = useNotify();
   const [commitMutation, isMutationInFlight] =
     useMutation<CategoryListDisableMutation>(graphql`
       mutation CategoryListDisableMutation(
@@ -75,6 +75,7 @@ function Row({
             },
           });
         });
+        notifySuccess(`Category ${category.name} disabled`);
       } catch (err) {
         notifyError(err, `Couldn't disable category ${category.name}`);
       }

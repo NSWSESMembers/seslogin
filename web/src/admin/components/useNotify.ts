@@ -11,6 +11,8 @@ export type Toast = {
 export type NotifyContextValue = {
   /** Show a plain message toast (defaults to an error toast). */
   notify: (message: string, kind?: ToastKind) => void;
+  /** Show a green success toast, e.g. after a mutation completes. */
+  notifySuccess: (message: string) => void;
   /**
    * Show an error toast built from a caught error / rejected mutation. Extracts
    * the server's error detail and optionally prefixes it with context, e.g.

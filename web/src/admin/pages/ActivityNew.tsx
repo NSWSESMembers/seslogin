@@ -11,7 +11,7 @@ export default function ActivityNew() {
   const selectedLocation = useSelectedLocation();
   const locationId = selectedLocation.id;
   const navigate = useNavigate();
-  const { notifyError } = useNotify();
+  const { notifyError, notifySuccess } = useNotify();
   const [startValue, setStartValue] = useState("");
   const [endValue, setEndValue] = useState("");
   const data = useLazyLoadQuery<ActivityNewQuery>(
@@ -102,6 +102,7 @@ export default function ActivityNew() {
       notifyError(err, "Couldn't create activity entry");
       return;
     }
+    notifySuccess("Activity entry created");
     navigate("/admin/activity");
   }
 

@@ -6,7 +6,7 @@ import { useNotify } from "../components/useNotify";
 
 export default function NewUser() {
   const navigate = useNavigate();
-  const { notifyError } = useNotify();
+  const { notifyError, notifySuccess } = useNotify();
   const data = useLazyLoadQuery<UserNewQuery>(
     graphql`
       query UserNewQuery {
@@ -61,6 +61,7 @@ export default function NewUser() {
       return;
     }
 
+    notifySuccess("User created");
     navigate("/admin/users");
   }
 

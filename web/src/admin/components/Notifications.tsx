@@ -21,6 +21,11 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     [dismiss],
   );
 
+  const notifySuccess = useCallback(
+    (message: string) => notify(message, "success"),
+    [notify],
+  );
+
   const notifyError = useCallback(
     (err: unknown, prefix?: string) => {
       const detail = getErrorMessage(err);
@@ -32,8 +37,8 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   );
 
   const value = useMemo(
-    () => ({ notify, notifyError, dismiss }),
-    [notify, notifyError, dismiss],
+    () => ({ notify, notifySuccess, notifyError, dismiss }),
+    [notify, notifySuccess, notifyError, dismiss],
   );
 
   return (
