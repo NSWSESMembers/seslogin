@@ -530,6 +530,23 @@ resource "aws_iam_role_policy" "test_api_lambda_dynamodb" {
   })
 }
 
+resource "aws_iam_role_policy" "preprod_api_lambda_dynamodb" {
+  name = "dynamodb-access"
+  role = aws_iam_role.preprod_api_lambda.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Action = local.dynamodb_actions
+      Resource = [
+        "arn:aws:dynamodb:${local.region}:${local.account_id}:table/${var.db_prefix}*",
+        "arn:aws:dynamodb:${local.region}:${local.account_id}:table/${var.db_prefix}*/index/*",
+      ]
+    }]
+  })
+}
+
 resource "aws_iam_role_policy" "dispatcher_lambda_dynamodb" {
   name = "dynamodb-access"
   role = aws_iam_role.dispatcher_lambda.id

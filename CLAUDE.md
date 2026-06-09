@@ -61,9 +61,12 @@ Auto-deployment is split by branch via `.github/workflows/deploy.yml`:
 | Branch | Deploys |
 |--------|---------|
 | `prod` | Production API Lambda (`seslogin-api`) + web to `new.seslogin.com` |
+| `preprod` | Preprod API Lambda (`seslogin-preprod-api`) + web to `preprod.seslogin.com` |
 | `main` | Test API Lambda (`seslogin-test-api`) + sync/dispatcher/checker/nitc-export/healthcheck/activity-summary/sync-locations Lambdas + web to `test.seslogin.com` |
 
-The following Lambdas are only deployed from `main`, not `prod`: sync (`seslogin-sync-members`), dispatcher (`seslogin-dispatcher`), checker (`seslogin-checker`), nitc-export (`seslogin-nitc-export`), healthcheck (`seslogin-healthcheck`), activity-summary (`seslogin-activity-summary`), and sync-locations (`seslogin-sync-locations`).
+`preprod` is a production-like clone for staging: the `seslogin-preprod-api` Lambda intentionally shares prod's database (`DB_PREFIX=seslogin_prod`), SQS queues, and secrets (JWT/SES/Turnstile), so it operates on **live production data** with mutations enabled. It only differs from prod in its function name, IAM role, and WebAuthn/CORS origin (`preprod.seslogin.com`). Like `prod`, it deploys only the API Lambda + web (not the sync/utility Lambdas).
+
+The following Lambdas are only deployed from `main`, not `prod` or `preprod`: sync (`seslogin-sync-members`), dispatcher (`seslogin-dispatcher`), checker (`seslogin-checker`), nitc-export (`seslogin-nitc-export`), healthcheck (`seslogin-healthcheck`), activity-summary (`seslogin-activity-summary`), and sync-locations (`seslogin-sync-locations`).
 
 ### Infrastructure (Terraform)
 

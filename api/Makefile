@@ -4,6 +4,9 @@ build:
 deploy: build
 	cargo lambda deploy --binary-name lambda --role arn:aws:iam::303170530482:role/seslogin-api-lambda-role seslogin-api
 
+deploy-preprod: build
+	cargo lambda deploy --binary-name lambda --role arn:aws:iam::303170530482:role/seslogin-preprod-api-lambda-role seslogin-preprod-api
+
 deploy-sync-lambda:
 	cargo lambda build --release --bin sync-members-lambda
 	cargo lambda deploy --binary-name sync-members-lambda --role arn:aws:iam::303170530482:role/seslogin-sync-lambda-role seslogin-sync-members

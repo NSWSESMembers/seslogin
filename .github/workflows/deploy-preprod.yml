@@ -1,0 +1,92 @@
+name: Deploy (preprod)
+
+on:
+  push:
+    branches:
+      - preprod
+
+jobs:
+  api_check:
+    uses: ./.github/workflows/_check-api.yml
+
+  web_check:
+    uses: ./.github/workflows/_check-web.yml
+
+  pagination_check:
+    uses: ./.github/workflows/_check-pagination.yml
+    secrets: inherit
+
+  deploy_lambdas:
+    # Note: AWS_ACCOUNT_ID must be set as a repository secret.
+    # It is used to construct Lambda IAM role ARNs (e.g. arn:aws:iam::<account-id>:role/...).
+    needs: [api_check, web_check, pagination_check]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: api
+
+      - name: Install cargo-lambda
+        run: pip install cargo-lambda
+
+      - name: Build lambda
+        working-directory: ./api
+        run: cargo lambda build --release --bin lambda
+
+      - name: Deploy seslogin-preprod-api
+        working-directory: ./api
+        run: cargo lambda deploy --binary-name lambda --role arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/seslogin-preprod-api-lambda-role seslogin-preprod-api
+        env:
+          AWS_DEFAULT_REGION: ap-southeast-2
+          AWS_ACCESS_KEY_ID: ${{ vars.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+  deploy_web:
+    needs: deploy_lambdas
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+
+      - name: Install dependencies
+        working-directory: ./web
+        run: npm install
+
+      - name: Run relay compiler
+        working-directory: ./web
+        run: npm run relay
+
+      - name: Build web app
+        working-directory: ./web
+        env:
+          VITE_API_URL: ${{ vars.PREPROD_API_URL }}
+          VITE_BEACON_URL: ${{ vars.BEACON_URL }}
+          VITE_TURNSTILE_SITE_KEY: ${{ vars.TURNSTILE_SITE_KEY }}
+          VITE_CLIENT_VERSION: ${{ github.sha }}
+        run: npm run build
+
+      - name: Deploy to S3
+        run: aws s3 sync --follow-symlinks --delete ./web/dist s3://preprod.seslogin.com
+        env:
+          AWS_ACCESS_KEY_ID: ${{ vars.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: "ap-southeast-2"
+
+      - name: Invalidate CloudFront
+        env:
+          AWS_ACCESS_KEY_ID: ${{ vars.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: us-east-1
+        run: aws cloudfront create-invalidation --distribution-id "${{ vars.PREPROD_CLOUDFRONT_DISTRIBUTION_ID }}" --paths "/*"

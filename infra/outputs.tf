@@ -48,6 +48,16 @@ output "test_api_lambda_function_url" {
   value       = aws_lambda_function_url.test_api.function_url
 }
 
+output "preprod_api_lambda_function_url" {
+  description = "HTTPS endpoint for the seslogin-preprod-api Lambda function (set as the PREPROD_API_URL GitHub variable)"
+  value       = aws_lambda_function_url.preprod_api.function_url
+}
+
+output "preprod_cloudfront_distribution_id" {
+  description = "CloudFront distribution ID for preprod.seslogin.com (set as the PREPROD_CLOUDFRONT_DISTRIBUTION_ID GitHub variable)"
+  value       = aws_cloudfront_distribution.preprod.id
+}
+
 output "test_cloudfront_distribution_id" {
   description = "CloudFront distribution ID for test.seslogin.com"
   value       = aws_cloudfront_distribution.test.id

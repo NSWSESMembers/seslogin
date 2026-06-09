@@ -260,6 +260,15 @@
         "arn:aws:s3:::seslogin-terraform-state",
         "arn:aws:s3:::seslogin-terraform-state/*"
       ]
+    },
+    {
+      "Sid": "S3WebBuckets",
+      "Effect": "Allow",
+      "Action": "s3:*",
+      "Resource": [
+        "arn:aws:s3:::*.seslogin.com",
+        "arn:aws:s3:::*.seslogin.com/*"
+      ]
     }
   ]
 }
