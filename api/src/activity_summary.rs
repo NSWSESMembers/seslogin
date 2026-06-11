@@ -1,5 +1,5 @@
 use anyhow::{Result, anyhow};
-use chrono::{Duration, TimeZone};
+use chrono::{Duration, NaiveDate, TimeZone};
 use chrono_tz::Australia::Sydney;
 use std::collections::HashMap;
 use tracing::{info, warn};
@@ -8,30 +8,35 @@ use crate::db::{self, ListPeriodsPage};
 use crate::mail;
 
 pub struct SummaryArgs {
+    /// The date (in Sydney local time) to summarise.
+    pub date: NaiveDate,
     pub dry_run: bool,
     pub user_id_filter: Option<String>,
     pub override_to: Option<String>,
 }
 
+/// Yesterday's date in Sydney local time — the default day to summarise.
+pub fn yesterday_sydney() -> NaiveDate {
+    chrono::Utc::now().with_timezone(&Sydney).date_naive() - Duration::days(1)
+}
+
 pub async fn run(db: &impl db::Handler, args: SummaryArgs) -> Result<()> {
-    let now_utc = chrono::Utc::now();
-    let now_sydney = now_utc.with_timezone(&Sydney);
-    let yesterday = now_sydney.date_naive() - Duration::days(1);
+    let date = args.date;
 
     let start_sydney = Sydney
-        .from_local_datetime(&yesterday.and_hms_opt(0, 0, 0).unwrap())
+        .from_local_datetime(&date.and_hms_opt(0, 0, 0).unwrap())
         .earliest()
-        .ok_or_else(|| anyhow!("Could not compute start of yesterday in Sydney time"))?;
+        .ok_or_else(|| anyhow!("Could not compute start of {} in Sydney time", date))?;
     let end_sydney = Sydney
-        .from_local_datetime(&yesterday.and_hms_opt(23, 59, 59).unwrap())
+        .from_local_datetime(&date.and_hms_opt(23, 59, 59).unwrap())
         .latest()
-        .ok_or_else(|| anyhow!("Could not compute end of yesterday in Sydney time"))?;
+        .ok_or_else(|| anyhow!("Could not compute end of {} in Sydney time", date))?;
 
     let start_ts = start_sydney.timestamp() as u64;
     let end_ts = end_sydney.timestamp() as u64;
-    let report_ts = now_utc.timestamp() as u64;
+    let report_ts = chrono::Utc::now().timestamp() as u64;
 
-    let date_label = yesterday.format("%d %B %Y").to_string();
+    let date_label = date.format("%d %B %Y").to_string();
 
     info!(
         "Activity summary: processing periods for {} ({} – {})",
@@ -245,7 +250,7 @@ fn build_summary_html(
         ));
 
         if loc.periods.is_empty() {
-            html.push_str("<p style=\"color:#6b7280\">No activity recorded for this location yesterday.</p>\n");
+            html.push_str("<p style=\"color:#6b7280\">No activity recorded for this location on this date.</p>\n");
             continue;
         }
 

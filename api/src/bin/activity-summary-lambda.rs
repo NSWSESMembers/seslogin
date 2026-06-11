@@ -15,6 +15,7 @@ async fn handler(_event: LambdaEvent<Value>) -> Result<Value, LambdaError> {
             activity_summary::run(
                 &db,
                 activity_summary::SummaryArgs {
+                    date: activity_summary::yesterday_sydney(),
                     dry_run: false,
                     user_id_filter: None,
                     override_to: None,
