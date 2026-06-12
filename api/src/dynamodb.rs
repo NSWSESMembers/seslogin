@@ -150,8 +150,14 @@ impl TryInto<Category> for Item {
             enabled: self.bool_field("enabled")?.unwrap_or(false),
             nitc_participant_type: self.string_field("nitc_participant_type")?,
             nitc_group_id: self.string_field("nitc_group_id")?,
-            created_at: self.i64_field("created_at")?.map(|i| i as u64),
-            updated_at: self.i64_field("updated_at")?.map(|i| i as u64),
+            created_at: self
+                .i64_field("created_at")?
+                .ok_or_else(|| anyhow!("Category missing created_at"))?
+                as u64,
+            updated_at: self
+                .i64_field("updated_at")?
+                .ok_or_else(|| anyhow!("Category missing updated_at"))?
+                as u64,
         })
     }
 }
@@ -193,8 +199,14 @@ impl TryInto<Location> for Item {
             last_successful_member_sync: self
                 .i64_field("last_successful_member_sync")?
                 .map(|i| i as u64),
-            created_at: self.i64_field("created_at")?.map(|i| i as u64),
-            updated_at: self.i64_field("updated_at")?.map(|i| i as u64),
+            created_at: self
+                .i64_field("created_at")?
+                .ok_or_else(|| anyhow!("Location missing created_at"))?
+                as u64,
+            updated_at: self
+                .i64_field("updated_at")?
+                .ok_or_else(|| anyhow!("Location missing updated_at"))?
+                as u64,
         })
     }
 }
@@ -221,8 +233,12 @@ impl TryInto<User> for Item {
                         .map_err(|e| anyhow!("Invalid email_config JSON: {}", e))?,
                 }
             },
-            created_at: self.i64_field("created_at")?.map(|i| i as u64),
-            updated_at: self.i64_field("updated_at")?.map(|i| i as u64),
+            created_at: self
+                .i64_field("created_at")?
+                .ok_or_else(|| anyhow!("User missing created_at"))? as u64,
+            updated_at: self
+                .i64_field("updated_at")?
+                .ok_or_else(|| anyhow!("User missing updated_at"))? as u64,
         })
     }
 }
@@ -768,8 +784,8 @@ impl db::Handler for Handler {
             enabled: true,
             access_time: None,
             email_config: serde_json::Map::new(),
-            created_at: Some(now),
-            updated_at: Some(now),
+            created_at: now,
+            updated_at: now,
         })
     }
 
@@ -2251,8 +2267,8 @@ impl db::Handler for Handler {
             nitc_enabled,
             ses_api_headquarters_id: ses_api_headquarters_id.map(str::to_string),
             last_successful_member_sync: None,
-            created_at: Some(now),
-            updated_at: Some(now),
+            created_at: now,
+            updated_at: now,
         })
     }
 
@@ -2426,8 +2442,8 @@ impl db::Handler for Handler {
             enabled: true,
             nitc_participant_type: nitc_participant_type.map(str::to_string),
             nitc_group_id: nitc_group_id.map(str::to_string),
-            created_at: Some(now),
-            updated_at: Some(now),
+            created_at: now,
+            updated_at: now,
         })
     }
 

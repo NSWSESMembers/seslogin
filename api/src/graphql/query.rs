@@ -75,12 +75,12 @@ impl<A: App + HasDb + Send + Sync + 'static> User<A> {
         self.rec.access_time.map(|t| t as i64)
     }
 
-    async fn created_at(&self) -> Option<i64> {
-        self.rec.created_at.map(|t| t as i64)
+    async fn created_at(&self) -> i64 {
+        self.rec.created_at as i64
     }
 
-    async fn updated_at(&self) -> Option<i64> {
-        self.rec.updated_at.map(|t| t as i64)
+    async fn updated_at(&self) -> i64 {
+        self.rec.updated_at as i64
     }
 
     async fn email_summary_location_ids(&self) -> Vec<String> {
@@ -217,12 +217,12 @@ impl<A: App + HasDb + Send + Sync + 'static> Category<A> {
         Ok(app.db().get_nitc_group(gid).await?.map(NitcGroup::new))
     }
 
-    async fn created_at(&self) -> Option<i64> {
-        self.rec.created_at.map(|t| t as i64)
+    async fn created_at(&self) -> i64 {
+        self.rec.created_at as i64
     }
 
-    async fn updated_at(&self) -> Option<i64> {
-        self.rec.updated_at.map(|t| t as i64)
+    async fn updated_at(&self) -> i64 {
+        self.rec.updated_at as i64
     }
 }
 
@@ -800,12 +800,12 @@ impl<A: App + HasDb + Send + Sync> Location<A> {
         self.rec.last_successful_member_sync.map(|t| t as i64)
     }
 
-    async fn created_at(&self) -> Option<i64> {
-        self.rec.created_at.map(|t| t as i64)
+    async fn created_at(&self) -> i64 {
+        self.rec.created_at as i64
     }
 
-    async fn updated_at(&self) -> Option<i64> {
-        self.rec.updated_at.map(|t| t as i64)
+    async fn updated_at(&self) -> i64 {
+        self.rec.updated_at as i64
     }
 
     async fn people(&self, ctx: &Context<'_>) -> Result<Vec<Person<A>>> {

@@ -91,8 +91,8 @@ pub struct User {
     pub location_grants: Vec<String>,
     pub access_time: Option<u64>,
     pub email_config: serde_json::Map<String, serde_json::Value>,
-    pub created_at: Option<u64>,
-    pub updated_at: Option<u64>,
+    pub created_at: u64,
+    pub updated_at: u64,
 }
 
 impl HasID for User {
@@ -324,8 +324,8 @@ pub struct Location {
     pub nitc_enabled: Option<u64>,
     pub ses_api_headquarters_id: Option<String>,
     pub last_successful_member_sync: Option<u64>,
-    pub created_at: Option<u64>,
-    pub updated_at: Option<u64>,
+    pub created_at: u64,
+    pub updated_at: u64,
 }
 
 impl HasID for Location {
@@ -341,8 +341,8 @@ pub struct Category {
     pub enabled: bool,
     pub nitc_participant_type: Option<String>,
     pub nitc_group_id: Option<String>,
-    pub created_at: Option<u64>,
-    pub updated_at: Option<u64>,
+    pub created_at: u64,
+    pub updated_at: u64,
 }
 
 impl HasID for Category {

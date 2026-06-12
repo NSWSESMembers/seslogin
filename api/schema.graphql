@@ -17,8 +17,8 @@ type Category {
 	nitcGroupId: String
 	nitcParticipantType: String
 	nitcGroup: NitcGroup
-	createdAt: Int
-	updatedAt: Int
+	createdAt: Int!
+	updatedAt: Int!
 }
 
 type CategoryMemberPeriodSummary {
@@ -57,8 +57,8 @@ type Location {
 	nitcEnabled: Int
 	sesApiHeadquartersId: String
 	lastSuccessfulMemberSync: Int
-	createdAt: Int
-	updatedAt: Int
+	createdAt: Int!
+	updatedAt: Int!
 	people: [Person!]!
 	periods(onlyActive: Boolean, startTime: Int, endTime: Int, after: String, before: String, first: Int, last: Int): PeriodConnection!
 	periodSummaryByMember(startTime: Int!, endTime: Int!, category: ID): [MemberPeriodSummary!]!
@@ -398,8 +398,8 @@ type User {
 	isDev: Boolean!
 	enabled: Boolean!
 	accessTime: Int
-	createdAt: Int
-	updatedAt: Int
+	createdAt: Int!
+	updatedAt: Int!
 	emailSummaryLocationIds: [String!]!
 	locationGrantIds: [ID!]!
 	locations: [Location!]!
