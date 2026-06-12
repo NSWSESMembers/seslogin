@@ -631,29 +631,39 @@ async fn run(db: &impl Handler, object: Object) -> Result<()> {
             PersonCmd::GetByRego {
                 registration_number,
             } => {
-                match db
+                let ids = db
                     .get_person_id_by_registration_number(&registration_number)
-                    .await?
-                {
-                    Some(id) => {
-                        println!("Resolved to id: {id}\n");
-                        let persons = db.get_persons(&[id]).await?;
-                        show_persons(db, &persons.into_iter().flatten().collect::<Vec<_>>()).await;
+                    .await?;
+                if ids.is_empty() {
+                    println!("No person with registration number {registration_number}");
+                } else {
+                    if ids.len() > 1 {
+                        println!(
+                            "⚠ {} people share registration number {registration_number}",
+                            ids.len()
+                        );
                     }
-                    None => println!("No person with registration number {registration_number}"),
+                    println!("Resolved to ids: {}\n", ids.join(", "));
+                    let persons = db.get_persons(&ids).await?;
+                    show_persons(db, &persons.into_iter().flatten().collect::<Vec<_>>()).await;
                 }
             }
             PersonCmd::GetBySesId { ses_api_person_id } => {
-                match db
+                let ids = db
                     .get_person_id_by_ses_api_person_id(&ses_api_person_id)
-                    .await?
-                {
-                    Some(id) => {
-                        println!("Resolved to id: {id}\n");
-                        let persons = db.get_persons(&[id]).await?;
-                        show_persons(db, &persons.into_iter().flatten().collect::<Vec<_>>()).await;
+                    .await?;
+                if ids.is_empty() {
+                    println!("No person with SES API id {ses_api_person_id}");
+                } else {
+                    if ids.len() > 1 {
+                        println!(
+                            "⚠ {} people share SES API id {ses_api_person_id}",
+                            ids.len()
+                        );
                     }
-                    None => println!("No person with SES API id {ses_api_person_id}"),
+                    println!("Resolved to ids: {}\n", ids.join(", "));
+                    let persons = db.get_persons(&ids).await?;
+                    show_persons(db, &persons.into_iter().flatten().collect::<Vec<_>>()).await;
                 }
             }
             PersonCmd::List {
@@ -723,13 +733,22 @@ async fn run(db: &impl Handler, object: Object) -> Result<()> {
                         .await?;
                 show_sessions(db, &sessions).await;
             }
-            SessionCmd::GetByCode { code } => match db.get_session_by_code(&code).await? {
-                Some(s) => {
-                    println!("Resolved to id: {}\n", s.id);
-                    show_sessions(db, &[s]).await;
+            SessionCmd::GetByCode { code } => {
+                let ids = db.get_session_id_by_code(&code).await?;
+                // Fetch the resolved ids, keeping only those that still exist.
+                let sessions: Vec<Session> =
+                    db.get_sessions(&ids).await?.into_iter().flatten().collect();
+                if sessions.is_empty() {
+                    println!("No session with code {code}");
+                } else {
+                    if sessions.len() > 1 {
+                        println!("⚠ {} sessions share code {code}", sessions.len());
+                    }
+                    let resolved: Vec<&str> = sessions.iter().map(|s| s.id.as_str()).collect();
+                    println!("Resolved to ids: {}\n", resolved.join(", "));
+                    show_sessions(db, &sessions).await;
                 }
-                None => println!("No session with code {code}"),
-            },
+            }
             SessionCmd::List { location } => {
                 let sessions = list_sessions(db, location).await?;
                 let loc_ids: Vec<String> = sessions.iter().map(|s| s.location_id.clone()).collect();
@@ -837,14 +856,19 @@ async fn run(db: &impl Handler, object: Object) -> Result<()> {
                     fetch_present(&ids, |ids| async move { Ok(db.get_users(&ids).await?) }).await?;
                 show_users(db, &users).await;
             }
-            UserCmd::GetByEmail { email } => match db.get_user_id_by_email(&email).await? {
-                Some(id) => {
-                    println!("Resolved to id: {id}\n");
-                    let users = db.get_users(&[id]).await?;
+            UserCmd::GetByEmail { email } => {
+                let ids = db.get_user_id_by_email(&email).await?;
+                if ids.is_empty() {
+                    println!("No user with email {email}");
+                } else {
+                    if ids.len() > 1 {
+                        println!("⚠ {} users share email {email}", ids.len());
+                    }
+                    println!("Resolved to ids: {}\n", ids.join(", "));
+                    let users = db.get_users(&ids).await?;
                     show_users(db, &users.into_iter().flatten().collect::<Vec<_>>()).await;
                 }
-                None => println!("No user with email {email}"),
-            },
+            }
             UserCmd::List => {
                 let mut users = db.list_users().await?;
                 users.sort_by(|a, b| a.email.cmp(&b.email));

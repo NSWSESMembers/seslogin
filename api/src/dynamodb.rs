@@ -66,6 +66,12 @@ impl Item {
             .to_string()
     }
 
+    /// True if the attribute is present at all, regardless of type. Used for
+    /// presence-marker attributes like `active` that encode state by existence.
+    pub fn has_field(&self, field: &str) -> bool {
+        self.0.contains_key(field)
+    }
+
     pub fn string_field(&self, field: &str) -> anyhow::Result<Option<String>> {
         if let Some(v) = self.0.get(field) {
             match v {
@@ -274,6 +280,7 @@ impl TryInto<Session> for Item {
             location_id: self
                 .string_field("location_id")?
                 .ok_or_else(|| anyhow!("Session missing location_id"))?,
+            active: self.has_field("active"),
             last_contact: self.i64_field("last_contact")?.map(|i| i as u64),
             client_version: self.string_field("client_version")?,
             code: self.string_field("code")?,
@@ -687,7 +694,7 @@ impl db::Handler for Handler {
         self.get_records("user", ids).await
     }
 
-    async fn get_user_id_by_email(&self, email: &str) -> db::Result<Option<String>> {
+    async fn get_user_id_by_email(&self, email: &str) -> db::Result<Vec<String>> {
         let resp = self
             .client
             .query()
@@ -705,17 +712,12 @@ impl db::Handler for Handler {
             CapKind::Read,
         );
 
-        if resp.count == 1 {
-            let item = resp.items.unwrap().into_iter().next().unwrap();
-            Ok(Some(Item(item).id()))
-        } else if resp.count == 0 {
-            Ok(None)
-        } else {
-            Err(Error::Integrity(format!(
-                "Multiple users found with email {}, data integrity error",
-                email
-            )))
-        }
+        Ok(resp
+            .items
+            .unwrap_or_default()
+            .into_iter()
+            .map(|item| Item(item).id())
+            .collect())
     }
 
     async fn list_users(&self) -> db::Result<Vec<User>> {
@@ -896,7 +898,7 @@ impl db::Handler for Handler {
     async fn get_person_id_by_registration_number(
         &self,
         registration_number: &str,
-    ) -> db::Result<Option<String>> {
+    ) -> db::Result<Vec<String>> {
         let resp = self
             .client
             .query()
@@ -917,30 +919,18 @@ impl db::Handler for Handler {
             CapKind::Read,
         );
 
-        if resp.count > 1 {
-            return Err(Error::Integrity(format!(
-                "Multiple people found with registration number {}",
-                registration_number
-            )));
-        }
-
-        if resp.count == 1 {
-            let item = resp
-                .items
-                .ok_or_else(|| Error::Infrastructure("missing item list".to_string()))?
-                .into_iter()
-                .next()
-                .ok_or_else(|| Error::Infrastructure("empty item list".to_string()))?;
-            Ok(Some(Item(item).id()))
-        } else {
-            Ok(None)
-        }
+        Ok(resp
+            .items
+            .unwrap_or_default()
+            .into_iter()
+            .map(|item| Item(item).id())
+            .collect())
     }
 
     async fn get_person_id_by_ses_api_person_id(
         &self,
         ses_api_person_id: &str,
-    ) -> db::Result<Option<String>> {
+    ) -> db::Result<Vec<String>> {
         let resp = self
             .client
             .query()
@@ -961,24 +951,12 @@ impl db::Handler for Handler {
             CapKind::Read,
         );
 
-        if resp.count > 1 {
-            return Err(Error::Integrity(format!(
-                "Multiple people found with ses_api_person_id {}, data integrity error",
-                ses_api_person_id
-            )));
-        }
-
-        if resp.count == 1 {
-            let item = resp
-                .items
-                .ok_or_else(|| Error::Infrastructure("missing item list".to_string()))?
-                .into_iter()
-                .next()
-                .ok_or_else(|| Error::Infrastructure("empty item list".to_string()))?;
-            Ok(Some(Item(item).id()))
-        } else {
-            Ok(None)
-        }
+        Ok(resp
+            .items
+            .unwrap_or_default()
+            .into_iter()
+            .map(|item| Item(item).id())
+            .collect())
     }
 
     async fn get_sessions<T: AsRef<str> + Sync>(
@@ -988,7 +966,7 @@ impl db::Handler for Handler {
         self.get_records("session", ids).await
     }
 
-    async fn get_session_by_code(&self, code: &str) -> db::Result<Option<Session>> {
+    async fn get_session_id_by_code(&self, code: &str) -> db::Result<Vec<String>> {
         let resp = self
             .client
             .query()
@@ -1001,46 +979,17 @@ impl db::Handler for Handler {
             .await
             .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
         record_capacity(
-            "get_session_by_code query",
+            "get_session_id_by_code",
             resp.consumed_capacity(),
             CapKind::Read,
         );
 
-        if resp.count == 1 {
-            let gsi_item = Item(
-                resp.items
-                    .ok_or_else(|| Error::Infrastructure("items missing".to_string()))?
-                    .into_iter()
-                    .next()
-                    .unwrap(),
-            );
-            let id = gsi_item.id();
-            let get_resp = self
-                .client
-                .get_item()
-                .table_name(self.table_name("session"))
-                .key("id", AttributeValue::S(id))
-                .return_consumed_capacity(ReturnConsumedCapacity::Total)
-                .send()
-                .await
-                .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
-            record_capacity(
-                "get_session_by_code get",
-                get_resp.consumed_capacity(),
-                CapKind::Read,
-            );
-            match get_resp.item {
-                Some(item) if item.contains_key("active") => Ok(Some(Item(item).try_into()?)),
-                _ => Ok(None),
-            }
-        } else if resp.count == 0 {
-            Ok(None)
-        } else {
-            Err(Error::Integrity(format!(
-                "Multiple sessions found with code {}",
-                code
-            )))
-        }
+        Ok(resp
+            .items
+            .unwrap_or_default()
+            .into_iter()
+            .map(|item| Item(item).id())
+            .collect())
     }
 
     async fn get_session_by_legacy_id(&self, legacy_id: &str) -> db::Result<Option<Session>> {
@@ -1858,6 +1807,7 @@ impl db::Handler for Handler {
             id,
             name: name.to_string(),
             location_id: location_id.to_string(),
+            active: true,
             last_contact: Some(unix_time),
             client_version: None,
             code: Some(code),

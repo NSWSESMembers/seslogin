@@ -698,13 +698,18 @@ pub async fn run(config: SyncConfig) -> Result<RunStats> {
         // iterating here is not ideal but Dynamo gives us no choice
         let mut person_id_by_ses_id: HashMap<String, String> = HashMap::new();
         for item in &ses_items {
-            if let Some(id) = db
+            let matches = db
                 .get_person_id_by_ses_api_person_id(&item.ses_api_person_id)
                 .await
                 .with_context(|| {
                     format!("Lookup local person by SES ID for location={}", location.id)
-                })?
-            {
+                })?;
+            if let Some(id) = crate::db::at_most_one(matches, || {
+                format!(
+                    "Multiple people share ses_api_person_id {} (location={})",
+                    item.ses_api_person_id, location.id
+                )
+            })? {
                 person_id_by_ses_id.insert(item.ses_api_person_id.clone(), id);
             }
         }
@@ -712,7 +717,7 @@ pub async fn run(config: SyncConfig) -> Result<RunStats> {
         // iterating here is not ideal but Dynamo gives us no choice
         let mut person_id_by_registration_number: HashMap<String, String> = HashMap::new();
         for item in &ses_items {
-            if let Some(id) = db
+            let matches = db
                 .get_person_id_by_registration_number(&item.registration_number)
                 .await
                 .with_context(|| {
@@ -720,8 +725,13 @@ pub async fn run(config: SyncConfig) -> Result<RunStats> {
                         "Lookup local person by registration number for location={}",
                         location.id
                     )
-                })?
-            {
+                })?;
+            if let Some(id) = crate::db::at_most_one(matches, || {
+                format!(
+                    "Multiple people share registration number {} (location={})",
+                    item.registration_number, location.id
+                )
+            })? {
                 person_id_by_registration_number.insert(item.registration_number.clone(), id);
             }
         }

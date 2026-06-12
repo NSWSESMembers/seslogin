@@ -59,12 +59,26 @@ pub async fn issue_token_for_scan_code<A: App + HasDb>(app: &A, code: &str) -> R
     if code.is_empty() {
         return Err(anyhow!("Scan code cannot be empty"));
     }
-    let item = app.db().get_session_by_code(code).await?;
-    let session_id = item.ok_or_else(|| anyhow!("Invalid code"))?.id;
+    let ids = app.db().get_session_id_by_code(code).await?;
+    let session_id = db::at_most_one(ids, || "Multiple sessions share this scan code".to_string())?
+        .ok_or_else(|| anyhow!("Invalid code"))?;
 
-    app.db().wipe_session_code(&session_id).await?;
+    // Verify the resolved session actually exists and is active (the code GSI still
+    // contains soft-deleted sessions, since deletion only removes the `active` marker).
+    let session = app
+        .db()
+        .get_sessions(&[&session_id])
+        .await?
+        .pop()
+        .flatten()
+        .ok_or_else(|| anyhow!("Invalid code"))?;
+    if !session.active {
+        return Err(anyhow!("Invalid code"));
+    }
 
-    issue_token_for_session_id(app, &session_id)
+    app.db().wipe_session_code(&session.id).await?;
+
+    issue_token_for_session_id(app, &session.id)
 }
 
 pub fn issue_token_for_session_id<A: App + HasDb>(app: &A, session_id: &str) -> Result<String> {

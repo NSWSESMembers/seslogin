@@ -21,7 +21,7 @@ impl db::Handler for Handler {
         Self::unsupported()
     }
 
-    async fn get_user_id_by_email(&self, _email: &str) -> db::Result<Option<String>> {
+    async fn get_user_id_by_email(&self, _email: &str) -> db::Result<Vec<String>> {
         Self::unsupported()
     }
 
@@ -52,14 +52,14 @@ impl db::Handler for Handler {
     async fn get_person_id_by_registration_number(
         &self,
         _registration_number: &str,
-    ) -> db::Result<Option<String>> {
+    ) -> db::Result<Vec<String>> {
         Self::unsupported()
     }
 
     async fn get_person_id_by_ses_api_person_id(
         &self,
         _ses_api_person_id: &str,
-    ) -> db::Result<Option<String>> {
+    ) -> db::Result<Vec<String>> {
         Self::unsupported()
     }
 
@@ -70,7 +70,7 @@ impl db::Handler for Handler {
         Self::unsupported()
     }
 
-    async fn get_session_by_code(&self, _code: &str) -> db::Result<Option<Session>> {
+    async fn get_session_id_by_code(&self, _code: &str) -> db::Result<Vec<String>> {
         Self::unsupported()
     }
 

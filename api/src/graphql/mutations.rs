@@ -131,7 +131,13 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
             }
         }
 
-        let user_id = match self.app.db().get_user_id_by_email(&email).await {
+        let lookup = self
+            .app
+            .db()
+            .get_user_id_by_email(&email)
+            .await
+            .and_then(|ids| db::at_most_one(ids, || format!("Multiple users share email {email}")));
+        let user_id = match lookup {
             Ok(Some(id)) => id,
             Ok(None) => return true,
             Err(e) => {
@@ -250,7 +256,13 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
 
         let _ = self.app.db().delete_login_code(&email).await;
 
-        let user_id = match self.app.db().get_user_id_by_email(&email).await {
+        let lookup = self
+            .app
+            .db()
+            .get_user_id_by_email(&email)
+            .await
+            .and_then(|ids| db::at_most_one(ids, || format!("Multiple users share email {email}")));
+        let user_id = match lookup {
             Ok(Some(id)) => id,
             Ok(None) => {
                 warn!("verify_auth_code: user not found for email={}", email);
@@ -1036,11 +1048,14 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
             }
         };
 
-        let Some(person_id) = self
+        let matches = self
             .app
             .db()
             .get_person_id_by_registration_number(&registration_number)
-            .await?
+            .await?;
+        let Some(person_id) = db::at_most_one(matches, || {
+            format!("Multiple people share registration number {registration_number}")
+        })?
         else {
             return Ok(RegisterResult {
                 state: RegisterState::NotFound,

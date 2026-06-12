@@ -26,6 +26,18 @@ pub enum Error {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
+/// Collapse the results of a lookup on an attribute that is *expected* to be unique
+/// (but not enforced as unique by the data model) down to at most one row. Returns an
+/// `Integrity` error if more than one row shares the attribute, so callers that assume
+/// uniqueness fail loudly rather than silently picking an arbitrary match. The CLI
+/// deliberately bypasses this to print every matching row when debugging duplicates.
+pub fn at_most_one<T>(mut matches: Vec<T>, describe: impl FnOnce() -> String) -> Result<Option<T>> {
+    if matches.len() > 1 {
+        return Err(Error::Integrity(describe()));
+    }
+    Ok(matches.pop())
+}
+
 pub enum ListSessionsQuery {
     ByLocation(String),
 }
@@ -157,6 +169,8 @@ pub struct Session {
     pub id: String,
     pub name: String,
     pub location_id: String,
+    /// False once the session has been soft-deleted (the `active` marker removed).
+    pub active: bool,
     pub last_contact: Option<u64>,
     pub client_version: Option<String>,
     pub code: Option<String>,
@@ -413,10 +427,10 @@ pub trait Handler {
         &self,
         ids: &[T],
     ) -> impl Future<Output = Result<Vec<Option<User>>>> + Send;
-    fn get_user_id_by_email(
-        &self,
-        email: &str,
-    ) -> impl Future<Output = Result<Option<String>>> + Send;
+    /// Returns the IDs of every user with this email. Expected to be at most one;
+    /// returns multiple only when the uniqueness invariant has been violated.
+    fn get_user_id_by_email(&self, email: &str)
+    -> impl Future<Output = Result<Vec<String>>> + Send;
     fn list_users(&self) -> impl Future<Output = Result<Vec<User>>> + Send;
     fn create_user(
         &self,
@@ -433,22 +447,30 @@ pub trait Handler {
         &self,
         ids: &[T],
     ) -> impl Future<Output = Result<Vec<Option<Person>>>> + Send;
+    /// Returns the IDs of every person with this registration number. Expected to be at
+    /// most one; returns multiple only when the uniqueness invariant has been violated.
     fn get_person_id_by_registration_number(
         &self,
         registration_number: &str,
-    ) -> impl Future<Output = Result<Option<String>>> + Send;
+    ) -> impl Future<Output = Result<Vec<String>>> + Send;
+    /// Returns the IDs of every person with this SES API person ID. Expected to be at
+    /// most one; returns multiple only when the uniqueness invariant has been violated.
     fn get_person_id_by_ses_api_person_id(
         &self,
         ses_api_person_id: &str,
-    ) -> impl Future<Output = Result<Option<String>>> + Send;
+    ) -> impl Future<Output = Result<Vec<String>>> + Send;
     fn get_sessions<T: AsRef<str> + Sync>(
         &self,
         ids: &[T],
     ) -> impl Future<Output = Result<Vec<Option<Session>>>> + Send;
-    fn get_session_by_code(
+    /// Returns the IDs of every session whose scan code matches (from the code GSI).
+    /// Expected to be at most one; returns multiple only when the uniqueness invariant
+    /// has been violated. Does not verify the underlying rows — callers should fetch each
+    /// ID with [`get_sessions`](Self::get_sessions) to confirm it exists.
+    fn get_session_id_by_code(
         &self,
         code: &str,
-    ) -> impl Future<Output = Result<Option<Session>>> + Send;
+    ) -> impl Future<Output = Result<Vec<String>>> + Send;
     fn get_session_by_legacy_id(
         &self,
         legacy_id: &str,
