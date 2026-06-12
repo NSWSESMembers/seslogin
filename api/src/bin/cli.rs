@@ -5,7 +5,7 @@
 //! the ID in the first column. All access is read-only.
 
 use anyhow::{Result, anyhow};
-use chrono::DateTime;
+use chrono::{DateTime, Local};
 use clap::{Parser, Subcommand};
 use seslogin::db::{
     Category, Handler, ListLocationsFilter, ListPeriodsPage, ListSessionsQuery, Location, Period,
@@ -222,12 +222,13 @@ fn relative(epoch_secs: u64) -> String {
     }
 }
 
-/// Absolute UTC datetime plus a relative suffix, e.g. `2026-06-12 04:30 UTC (2h ago)`.
+/// Absolute datetime in the system local timezone (honors the `TZ` env var) plus a
+/// relative suffix, e.g. `2026-06-12 14:30 +10:00 (2h ago)`.
 fn fmt_ts(epoch_secs: u64) -> String {
     match DateTime::from_timestamp(epoch_secs as i64, 0) {
         Some(dt) => format!(
             "{} ({})",
-            dt.format("%Y-%m-%d %H:%M UTC"),
+            dt.with_timezone(&Local).format("%Y-%m-%d %H:%M %Z"),
             relative(epoch_secs)
         ),
         None => epoch_secs.to_string(),
