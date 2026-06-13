@@ -80,6 +80,11 @@ enum Object {
         #[command(subcommand)]
         cmd: NitcEventCmd,
     },
+    /// Daily activity-summary email subscriptions.
+    ActivitySummary {
+        #[command(subcommand)]
+        cmd: ActivitySummaryCmd,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -199,6 +204,13 @@ enum NitcTagCmd {
 enum NitcEventCmd {
     /// Show one or more NITC events by ID.
     Get { ids: Vec<String> },
+}
+
+#[derive(Subcommand, Debug)]
+enum ActivitySummaryCmd {
+    /// List each user that would receive a daily activity-summary email and the
+    /// units they're subscribed to. Users with no subscriptions are omitted.
+    List,
 }
 
 fn now_secs() -> u64 {
@@ -1058,7 +1070,64 @@ async fn run(db: &impl Handler, object: Object) -> Result<()> {
                 }
             }
         },
+
+        Object::ActivitySummary { cmd } => match cmd {
+            ActivitySummaryCmd::List => {
+                list_activity_summary_subscriptions(db).await?;
+            }
+        },
     }
+    Ok(())
+}
+
+/// List the users who would receive a daily activity-summary email and the units
+/// they're subscribed to, mirroring the recipient logic in
+/// `activity_summary::run`: the user must be enabled and have at least one
+/// `email_config` entry whose value is an object containing a `daily` key.
+async fn list_activity_summary_subscriptions(db: &impl Handler) -> Result<()> {
+    let mut users = db.list_users().await?;
+    users.sort_by(|a, b| a.email.cmp(&b.email));
+
+    // Build subscription lists, dropping users with none.
+    let subscriptions: Vec<(String, Vec<String>)> = users
+        .iter()
+        .filter(|u| u.enabled)
+        .filter_map(|u| {
+            let loc_ids: Vec<String> = u
+                .email_config
+                .iter()
+                .filter_map(|(loc_id, val)| {
+                    val.as_object()
+                        .filter(|m| m.contains_key("daily"))
+                        .map(|_| loc_id.clone())
+                })
+                .collect();
+            (!loc_ids.is_empty()).then(|| (u.email.clone(), loc_ids))
+        })
+        .collect();
+
+    // Resolve all referenced location IDs to names in one batch.
+    let all_loc_ids: Vec<String> = subscriptions
+        .iter()
+        .flat_map(|(_, ids)| ids.clone())
+        .collect();
+    let locs = location_names(db, &all_loc_ids).await;
+
+    // One row per subscription; the email is shown only on a user's first row.
+    let mut rows: Vec<Vec<String>> = Vec::new();
+    for (email, loc_ids) in &subscriptions {
+        let mut names: Vec<String> = loc_ids
+            .iter()
+            .map(|id| locs.get(id).cloned().unwrap_or_else(|| id.clone()))
+            .collect();
+        names.sort();
+        for (i, name) in names.into_iter().enumerate() {
+            let email_cell = if i == 0 { email.clone() } else { String::new() };
+            rows.push(vec![email_cell, name]);
+        }
+    }
+
+    print_table(&["email", "unit"], &rows);
     Ok(())
 }
 
