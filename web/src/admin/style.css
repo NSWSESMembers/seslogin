@@ -643,6 +643,32 @@ form dl dd .medium {
   border-radius: 4px;
 }
 
+#location-selector input[type="text"].location-filter {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 16px;
+  margin-bottom: 24px;
+  font-size: 18px;
+  font-family: TitilliumMapsTitle, Verdana, sans-serif;
+  border: 2px solid #e0e0e0;
+  border-radius: 4px;
+  background-color: #f9f9f9;
+  transition: all 0.2s ease;
+}
+
+#location-selector input[type="text"].location-filter:focus {
+  outline: none;
+  border-color: #d56227;
+  background-color: #fff;
+  box-shadow: 0 0 0 3px rgba(213, 98, 39, 0.1);
+}
+
+#location-selector .no-results {
+  color: #666;
+  text-align: center;
+  padding: 8px 0;
+}
+
 #location-selector .location-list {
   list-style: none;
   padding: 0;

@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { useSettings, useSettingsDispatch } from "../../lib/settings";
 import { useUserInfo } from "./useUserInfo";
@@ -13,9 +13,13 @@ export default function LocationSelector({ children }: LocationSelectorProps) {
   const settings = useSettings();
   const settingsDispatch = useSettingsDispatch();
   const { locations } = useUserInfo();
+  const [filter, setFilter] = useState("");
   const enabledLocations = locations
     .filter((loc) => loc.enabled)
     .sort((a, b) => a.name.localeCompare(b.name));
+  const filteredLocations = enabledLocations.filter((loc) =>
+    loc.name.toLowerCase().includes(filter.trim().toLowerCase()),
+  );
   const selectedLocationId = getSelectedLocationId(settings);
   const selectedLocation =
     selectedLocationId == null
@@ -56,8 +60,8 @@ export default function LocationSelector({ children }: LocationSelectorProps) {
         <p>
           You are logging in for the first time or your location has been reset.
           Please select the unit you would like to administer. You can always
-          swap to a different location by clicking "Switch to" on the locations
-          page.
+          swap to a different location by clicking the unit name in the menu
+          bar.
         </p>
 
         {enabledLocations.length === 0 ? (
@@ -65,18 +69,32 @@ export default function LocationSelector({ children }: LocationSelectorProps) {
             No locations available. Please contact an administrator.
           </p>
         ) : (
-          <ul className="location-list">
-            {enabledLocations.map((location) => (
-              <li key={location.id}>
-                <button
-                  onClick={() => handleSelectLocation(location.id)}
-                  className="location-button"
-                >
-                  <span className="location-name">{location.name}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
+          <>
+            <input
+              type="text"
+              className="location-filter"
+              placeholder="Filter locations…"
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+              autoFocus
+            />
+            {filteredLocations.length === 0 ? (
+              <p className="no-results">No locations match “{filter}”.</p>
+            ) : (
+              <ul className="location-list">
+                {filteredLocations.map((location) => (
+                  <li key={location.id}>
+                    <button
+                      onClick={() => handleSelectLocation(location.id)}
+                      className="location-button"
+                    >
+                      <span className="location-name">{location.name}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </>
         )}
       </div>
     </div>
