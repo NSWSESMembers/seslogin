@@ -8,20 +8,11 @@ use async_graphql::{
 use http::{Method, StatusCode};
 use lambda_http::{Body, Error, Request, Response};
 use poem::web::headers;
-use seslogin::emf::{self, EmfApiMetrics};
+use seslogin::emf::{self, RequestTelemetry};
 use seslogin::request_metrics::{self, RequestMetrics};
 
 use crate::app;
 use crate::auth::{self, AuthInfo};
-
-fn caller_info(auth: Option<&AuthInfo>) -> (&'static str, String) {
-    match auth {
-        None => ("unauthenticated", "unknown".to_owned()),
-        Some(AuthInfo::User { id, .. }) => ("user", id.clone()),
-        Some(AuthInfo::Session { id, .. }) => ("session", id.clone()),
-        Some(AuthInfo::ApiToken { id, .. }) => ("api_token", id.clone()),
-    }
-}
 use crate::db;
 use crate::errors::{ClientError, ServerError};
 use crate::graphql;
@@ -60,19 +51,7 @@ impl<H: db::Handler + Send + Sync + 'static> Handler<H> {
 
         let auth_opt = match self.try_auth(&headers).await {
             Err(auth::AuthError::Permanent(ref msg)) => {
-                EmfApiMetrics {
-                    operation_type: "unknown",
-                    operation_name: "unknown",
-                    caller_type: "unauthenticated",
-                    caller_id: "unknown",
-                    auth_error: true,
-                    server_error: false,
-                    graphql_error_count: 0,
-                    latency_ms: request_start.elapsed().as_secs_f64() * 1000.0,
-                    rru: 0.0,
-                    wru: 0.0,
-                }
-                .emit();
+                emit_auth_failure_telemetry(401, request_start);
                 return error_response(
                     StatusCode::UNAUTHORIZED,
                     graphql_error(format!("Authentication error: {}", msg)),
@@ -80,19 +59,7 @@ impl<H: db::Handler + Send + Sync + 'static> Handler<H> {
             }
             Err(auth::AuthError::Transient(ref msg)) => {
                 tracing::error!("Transient auth error: {}", msg);
-                EmfApiMetrics {
-                    operation_type: "unknown",
-                    operation_name: "unknown",
-                    caller_type: "unauthenticated",
-                    caller_id: "unknown",
-                    auth_error: false,
-                    server_error: true,
-                    graphql_error_count: 0,
-                    latency_ms: request_start.elapsed().as_secs_f64() * 1000.0,
-                    rru: 0.0,
-                    wru: 0.0,
-                }
-                .emit();
+                emit_auth_failure_telemetry(503, request_start);
                 return error_response(
                     StatusCode::SERVICE_UNAVAILABLE,
                     graphql_error("Service temporarily unavailable"),
@@ -100,7 +67,7 @@ impl<H: db::Handler + Send + Sync + 'static> Handler<H> {
             }
             Ok(opt) => opt,
         };
-        let (caller_type, caller_id) = caller_info(auth_opt.as_ref());
+        let (caller_type, caller_id) = auth::caller_info(auth_opt.as_ref());
         if let Some(auth) = auth_opt {
             query = query.data(auth);
         }
@@ -115,9 +82,13 @@ impl<H: db::Handler + Send + Sync + 'static> Handler<H> {
             .scope(metrics.clone(), self.schema.execute(query))
             .await;
         let gql_error_count = gql_response.errors.len();
-        let latency_ms = request_start.elapsed().as_secs_f64() * 1000.0;
 
-        EmfApiMetrics {
+        // Serialize first so the emitted telemetry carries the real final HTTP status.
+        let result = serde_json::to_string(&gql_response);
+        let status: u16 = if result.is_ok() { 200 } else { 500 };
+
+        RequestTelemetry {
+            status,
             operation_type: operation_context.operation_type,
             operation_name: operation_context
                 .operation_name
@@ -125,36 +96,27 @@ impl<H: db::Handler + Send + Sync + 'static> Handler<H> {
                 .unwrap_or("unknown"),
             caller_type,
             caller_id: &caller_id,
-            auth_error: false,
-            server_error: false,
+            latency_ms: request_start.elapsed().as_secs_f64() * 1000.0,
             graphql_error_count: gql_error_count,
-            latency_ms,
+            query_failures: metrics.query_failures(),
+            mutation_failures: metrics.mutation_failures(),
             rru: metrics.read_units(),
             wru: metrics.write_units(),
+            ddb_calls: metrics.ddb_calls(),
         }
         .emit();
-        tracing::info!(
-            "GraphQL {:?} rru={:.1} wru={:.1}",
-            operation_context,
-            metrics.read_units(),
-            metrics.write_units(),
-        );
 
-        let result = serde_json::to_string(&gql_response);
-        let response_body = match result {
-            Ok(body) => body,
-            Err(e) => {
-                return error_response(
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    graphql_error(ServerError::from(e)),
-                );
-            }
-        };
-        Response::builder()
-            .status(200)
-            .body(Body::Text(response_body))
-            .map_err(ServerError::from)
-            .map_err(Error::from)
+        match result {
+            Ok(response_body) => Response::builder()
+                .status(200)
+                .body(Body::Text(response_body))
+                .map_err(ServerError::from)
+                .map_err(Error::from),
+            Err(e) => error_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                graphql_error(ServerError::from(e)),
+            ),
+        }
     }
 
     async fn graphql_request_from_post(
@@ -193,6 +155,26 @@ impl<H: db::Handler + Send + Sync + 'static> Handler<H> {
         };
         Ok(opt)
     }
+}
+
+/// Emits request telemetry for an auth failure that short-circuits before GraphQL execution.
+/// `status` is 401 (permanent / unauthenticated) or 503 (transient backend error).
+fn emit_auth_failure_telemetry(status: u16, request_start: Instant) {
+    RequestTelemetry {
+        status,
+        operation_type: "unknown",
+        operation_name: "unknown",
+        caller_type: "unauthenticated",
+        caller_id: "unknown",
+        latency_ms: request_start.elapsed().as_secs_f64() * 1000.0,
+        graphql_error_count: 0,
+        query_failures: 0,
+        mutation_failures: 0,
+        rru: 0.0,
+        wru: 0.0,
+        ddb_calls: 0,
+    }
+    .emit();
 }
 
 fn graphql_error(message: impl Display) -> String {

@@ -63,43 +63,83 @@ pub fn extract_operation_context(req: &Request) -> OperationContext {
     }
 }
 
-/// Per-request metrics emitted as CloudWatch Embedded Metrics Format.
-/// On Lambda, the log agent picks up each line and extracts it as real CW metrics.
-pub struct EmfApiMetrics<'a> {
+/// Per-request telemetry. `emit()` produces two log lines:
+///   1. A slim CloudWatch Embedded Metrics Format (EMF) line carrying just four dimensionless
+///      counters (request success/failure + query/mutation failures). On Lambda the log agent
+///      extracts these as real CloudWatch metrics — kept minimal to control metric cardinality/cost.
+///   2. A structured `api_request` tracing event carrying the detailed, high-cardinality fields
+///      (operation, caller, latency, DynamoDB usage) for CloudWatch Logs Insights instead of metrics.
+pub struct RequestTelemetry<'a> {
+    /// Final HTTP status code; `>= 500` counts as a request failure.
+    pub status: u16,
     pub operation_type: &'a str,
     pub operation_name: &'a str,
     /// "user", "session", "api_token", or "unauthenticated"
     pub caller_type: &'a str,
-    /// The caller's ID — included as a log property only, not a CW dimension (high cardinality).
     pub caller_id: &'a str,
-    pub auth_error: bool,
-    pub server_error: bool,
-    pub graphql_error_count: usize,
     pub latency_ms: f64,
+    pub graphql_error_count: usize,
+    pub query_failures: u64,
+    pub mutation_failures: u64,
     pub rru: f64,
     pub wru: f64,
+    pub ddb_calls: u64,
 }
 
-impl EmfApiMetrics<'_> {
+impl RequestTelemetry<'_> {
     pub fn emit(&self) {
-        let success =
-            u8::from(!self.auth_error && !self.server_error && self.graphql_error_count == 0);
+        let success = self.status < 500;
         let ts = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
             .as_millis();
+        // EMF metric line: four dimensionless Count metrics, namespace Seslogin/API.
         println!(
-            r#"{{"_aws":{{"Timestamp":{ts},"CloudWatchMetrics":[{{"Namespace":"Seslogin/API","Dimensions":[["OperationType","CallerType"]],"Metrics":[{{"Name":"RequestCount","Unit":"Count"}},{{"Name":"SuccessCount","Unit":"Count"}},{{"Name":"GraphQLErrorCount","Unit":"Count"}},{{"Name":"AuthErrorCount","Unit":"Count"}},{{"Name":"ServerErrorCount","Unit":"Count"}},{{"Name":"LatencyMs","Unit":"Milliseconds"}},{{"Name":"DynamoDBReadUnits","Unit":"Count"}},{{"Name":"DynamoDBWriteUnits","Unit":"Count"}}]}}]}},"OperationType":"{op_type}","OperationName":"{op_name}","CallerType":"{caller_type}","CallerId":"{caller_id}","RequestCount":1,"SuccessCount":{success},"GraphQLErrorCount":{gql_errs},"AuthErrorCount":{auth_n},"ServerErrorCount":{server_n},"LatencyMs":{lat:.1},"DynamoDBReadUnits":{rru:.1},"DynamoDBWriteUnits":{wru:.1}}}"#,
-            op_type = self.operation_type,
-            op_name = self.operation_name,
+            r#"{{"_aws":{{"Timestamp":{ts},"CloudWatchMetrics":[{{"Namespace":"Seslogin/API","Dimensions":[[]],"Metrics":[{{"Name":"RequestSuccess","Unit":"Count"}},{{"Name":"RequestFailure","Unit":"Count"}},{{"Name":"QueryFailure","Unit":"Count"}},{{"Name":"MutationFailure","Unit":"Count"}}]}}]}},"RequestSuccess":{req_success},"RequestFailure":{req_failure},"QueryFailure":{query_failures},"MutationFailure":{mutation_failures}}}"#,
+            req_success = u8::from(success),
+            req_failure = u8::from(!success),
+            query_failures = self.query_failures,
+            mutation_failures = self.mutation_failures,
+        );
+        // Detailed structured log for Logs Insights (queryable fields under Lambda JSON log format).
+        tracing::info!(
+            log_type = "api_request",
+            operation_type = self.operation_type,
+            operation_name = self.operation_name,
             caller_type = self.caller_type,
             caller_id = self.caller_id,
-            gql_errs = self.graphql_error_count,
-            auth_n = u8::from(self.auth_error),
-            server_n = u8::from(self.server_error),
-            lat = self.latency_ms,
+            status = self.status,
+            latency_ms = self.latency_ms,
+            graphql_error_count = self.graphql_error_count,
+            query_failures = self.query_failures,
+            mutation_failures = self.mutation_failures,
             rru = self.rru,
             wru = self.wru,
+            ddb_calls = self.ddb_calls,
+            "api request",
         );
     }
+}
+
+/// Structured log emitted when a top-level GraphQL query/mutation field fails. The `field` and
+/// `parent_type` together identify the GraphQL node; `caller_type` is the request kind
+/// (user / session / api_token / unauthenticated).
+pub fn emit_graphql_error_log(
+    operation_type: &str,
+    field: &str,
+    parent_type: &str,
+    caller_type: &str,
+    caller_id: &str,
+    error: &str,
+) {
+    tracing::warn!(
+        log_type = "graphql_error",
+        operation_type = operation_type,
+        field = field,
+        parent_type = parent_type,
+        caller_type = caller_type,
+        caller_id = caller_id,
+        error = error,
+        "graphql field error",
+    );
 }

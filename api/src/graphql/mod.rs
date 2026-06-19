@@ -9,6 +9,8 @@ use std::sync::Arc;
 use crate::app::App;
 use crate::app::HasDb;
 use crate::app::HasSqs;
+use crate::auth::AuthInfo;
+use crate::emf;
 use crate::request_metrics;
 
 pub mod auth;
@@ -87,6 +89,56 @@ impl Extension for ForceMutationErrorsExt {
     }
 }
 
+/// Always-on extension that records top-level query/mutation field failures. On each error it bumps
+/// the per-request failure counter (consumed by the slim EMF metrics) and emits a structured
+/// `graphql_error` log line for CloudWatch Logs Insights. It never alters resolver behaviour.
+struct RequestMetricsExt;
+
+impl ExtensionFactory for RequestMetricsExt {
+    fn create(&self) -> Arc<dyn Extension> {
+        Arc::new(RequestMetricsExtImpl)
+    }
+}
+
+struct RequestMetricsExtImpl;
+
+#[async_graphql::async_trait::async_trait]
+impl Extension for RequestMetricsExtImpl {
+    async fn resolve(
+        &self,
+        ctx: &ExtensionContext<'_>,
+        info: ResolveInfo<'_>,
+        next: NextResolve<'_>,
+    ) -> ServerResult<Option<Value>> {
+        let parent_type = info.parent_type;
+        let operation_type = match parent_type {
+            "QueryRoot" => Some("query"),
+            "MutationRoot" => Some("mutation"),
+            _ => None,
+        };
+        let field = info.name;
+        let res = next.run(ctx, info).await;
+
+        // Only observe top-level query/mutation fields, not nested object fields.
+        if let (Some(operation_type), Err(err)) = (operation_type, &res) {
+            let _ = request_metrics::METRICS.try_with(|m| match operation_type {
+                "mutation" => m.incr_mutation_failure(),
+                _ => m.incr_query_failure(),
+            });
+            let (caller_type, caller_id) = crate::auth::caller_info(ctx.data_opt::<AuthInfo>());
+            emf::emit_graphql_error_log(
+                operation_type,
+                field,
+                parent_type,
+                caller_type,
+                &caller_id,
+                &err.message,
+            );
+        }
+        res
+    }
+}
+
 pub fn build_schema<A: App + HasDb + HasSqs + Send + Sync + 'static>(
     app: Arc<A>,
     webauthn: Arc<webauthn_rs::prelude::Webauthn>,
@@ -98,7 +150,8 @@ pub fn build_schema<A: App + HasDb + HasSqs + Send + Sync + 'static>(
         EmptySubscription,
     )
     .data(app.clone())
-    .data(webauthn);
+    .data(webauthn)
+    .extension(RequestMetricsExt);
 
     if FORCE_MUTATION_ERRORS {
         builder = builder.extension(ForceMutationErrors);

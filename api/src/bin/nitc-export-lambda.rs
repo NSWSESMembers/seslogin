@@ -94,6 +94,11 @@ async fn handler(event: LambdaEvent<Value>) -> Result<Value, LambdaError> {
     let message: NitcMessage = serde_json::from_str(&record.body)
         .map_err(|e| anyhow!("Failed to parse SQS message body: {e}"))?;
 
+    let (msg_type, msg_id) = match &message {
+        NitcMessage::PeriodExport { period_id } => ("period_export", period_id.clone()),
+        NitcMessage::EventExport { nitc_event_id, .. } => ("event_export", nitc_event_id.clone()),
+    };
+
     let (config, db_prefix) = build_config()?;
     let clients = nitc_export::make_dynamodb_clients(&config, db_prefix).await?;
 
@@ -102,11 +107,31 @@ async fn handler(event: LambdaEvent<Value>) -> Result<Value, LambdaError> {
         .scope(metrics.clone(), process_message(message, &config, &clients))
         .await;
 
-    tracing::info!(
-        "rru={:.1} wru={:.1}",
-        metrics.read_units(),
-        metrics.write_units(),
-    );
+    match &result {
+        Ok(_) => tracing::info!(
+            log_type = "sqs_message",
+            consumer = "nitc-export",
+            success = true,
+            msg_type = msg_type,
+            msg_id = %msg_id,
+            rru = metrics.read_units(),
+            wru = metrics.write_units(),
+            ddb_calls = metrics.ddb_calls(),
+            "sqs message processed",
+        ),
+        Err(e) => tracing::error!(
+            log_type = "sqs_message",
+            consumer = "nitc-export",
+            success = false,
+            msg_type = msg_type,
+            msg_id = %msg_id,
+            error = %e,
+            rru = metrics.read_units(),
+            wru = metrics.write_units(),
+            ddb_calls = metrics.ddb_calls(),
+            "sqs message failed",
+        ),
+    }
 
     Ok(result?)
 }

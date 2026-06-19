@@ -30,18 +30,46 @@ async fn handler(event: LambdaEvent<Value>) -> Result<Value, LambdaError> {
         let msg: HealthcheckMessage = match serde_json::from_str(&record.body) {
             Ok(m) => m,
             Err(e) => {
-                tracing::warn!("Failed to parse healthcheck message: {e:?}");
+                tracing::warn!(
+                    log_type = "sqs_message",
+                    consumer = "healthcheck",
+                    success = false,
+                    error = %e,
+                    rru = 0.0,
+                    wru = 0.0,
+                    ddb_calls = 0,
+                    "failed to parse healthcheck message",
+                );
                 failed += 1;
                 continue;
             }
         };
         match reqwest::get(&msg.healthcheck_url).await {
             Ok(_) => {
-                tracing::info!(session_id = %msg.session_id, "Healthcheck ok");
+                tracing::info!(
+                    log_type = "sqs_message",
+                    consumer = "healthcheck",
+                    success = true,
+                    session_id = %msg.session_id,
+                    rru = 0.0,
+                    wru = 0.0,
+                    ddb_calls = 0,
+                    "sqs message processed",
+                );
                 ok += 1;
             }
             Err(e) => {
-                tracing::warn!(session_id = %msg.session_id, "Healthcheck failed: {e:?}");
+                tracing::warn!(
+                    log_type = "sqs_message",
+                    consumer = "healthcheck",
+                    success = false,
+                    session_id = %msg.session_id,
+                    error = %e,
+                    rru = 0.0,
+                    wru = 0.0,
+                    ddb_calls = 0,
+                    "sqs message failed",
+                );
                 failed += 1;
             }
         }

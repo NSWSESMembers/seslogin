@@ -55,6 +55,17 @@ pub enum AuthInfo {
 pub const API_TOKEN_PREFIX: &str = "slgn_";
 pub const USER_TOKEN_PREFIX: &str = "slu_";
 
+/// Maps an optional [`AuthInfo`] to `(caller_type, caller_id)` for telemetry/logging.
+/// `caller_type` is one of "user", "session", "api_token", or "unauthenticated".
+pub fn caller_info(auth: Option<&AuthInfo>) -> (&'static str, String) {
+    match auth {
+        None => ("unauthenticated", "unknown".to_owned()),
+        Some(AuthInfo::User { id, .. }) => ("user", id.clone()),
+        Some(AuthInfo::Session { id, .. }) => ("session", id.clone()),
+        Some(AuthInfo::ApiToken { id, .. }) => ("api_token", id.clone()),
+    }
+}
+
 pub async fn issue_token_for_scan_code<A: App + HasDb>(app: &A, code: &str) -> Result<String> {
     if code.is_empty() {
         return Err(anyhow!("Scan code cannot be empty"));

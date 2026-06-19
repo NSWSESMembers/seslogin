@@ -7,6 +7,7 @@ use seslogin::app::MyApp;
 use std::env;
 use std::error::Error;
 use std::sync::Arc;
+use std::time::Instant;
 use tracing::info;
 
 use seslogin::app;
@@ -66,13 +67,15 @@ async fn index<H: db::Handler + Send + Sync + 'static>(
         .and_then(|value| value.to_str().ok())
         .map(str::trim)
         .filter(|value| !value.is_empty());
+    let mut caller_type = "unauthenticated";
+    let mut caller_id = String::from("unknown");
     if let Some(auth_header) = headers.get("Authorization")
         && let Ok(auth_str) = auth_header.to_str()
         && auth_str.starts_with("Bearer ")
     {
         let token = &auth_str[7..];
         let res = auth::verify_token(&***app, token, client_version).await;
-        let auth_option = match res {
+        let auth_info = match res {
             Err(auth::AuthError::Permanent(ref msg)) => {
                 info!("Auth permanent failure: {}", msg);
                 let response = GraphQLResponse(async_graphql::Response::from_errors(vec![
@@ -93,26 +96,40 @@ async fn index<H: db::Handler + Send + Sync + 'static>(
             }
             Ok(v) => v,
         };
-        req = req.data(auth_option);
+        (caller_type, caller_id) = auth::caller_info(Some(&auth_info));
+        req = req.data(auth_info);
     }
     req = req
         .data(app.clone())
         .data(graphql::get_dataloader(app.clone()));
 
     let operation_context = emf::extract_operation_context(&req);
-
+    let request_start = Instant::now();
     let metrics = Arc::new(RequestMetrics::default());
     let gql_response = request_metrics::METRICS
         .scope(metrics.clone(), schema.execute(req))
         .await;
+    let gql_error_count = gql_response.errors.len();
     let response = GraphQLResponse(gql_response).into_response();
-    info!(
-        "GraphQL request: {:?} => {} (rru={:.1} wru={:.1})",
-        operation_context,
-        response.status(),
-        metrics.read_units(),
-        metrics.write_units(),
-    );
+
+    emf::RequestTelemetry {
+        status: response.status().as_u16(),
+        operation_type: operation_context.operation_type,
+        operation_name: operation_context
+            .operation_name
+            .as_deref()
+            .unwrap_or("unknown"),
+        caller_type,
+        caller_id: &caller_id,
+        latency_ms: request_start.elapsed().as_secs_f64() * 1000.0,
+        graphql_error_count: gql_error_count,
+        query_failures: metrics.query_failures(),
+        mutation_failures: metrics.mutation_failures(),
+        rru: metrics.read_units(),
+        wru: metrics.write_units(),
+        ddb_calls: metrics.ddb_calls(),
+    }
+    .emit();
     response
 }
 

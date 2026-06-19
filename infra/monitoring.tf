@@ -22,10 +22,8 @@ resource "aws_cloudwatch_dashboard" "api" {
           title  = "Request Outcomes (per minute)"
           region = "ap-southeast-2"
           metrics = [
-            ["Seslogin/API", "RequestCount", "OperationType", "query", { label = "requests (query)", stat = "Sum" }],
-            ["Seslogin/API", "RequestCount", "OperationType", "mutation", { label = "requests (mutation)", stat = "Sum" }],
-            ["Seslogin/API", "SuccessCount", "OperationType", "query", { label = "success (query)", stat = "Sum" }],
-            ["Seslogin/API", "SuccessCount", "OperationType", "mutation", { label = "success (mutation)", stat = "Sum" }],
+            ["Seslogin/API", "RequestSuccess", { label = "success (2xx-4xx)", stat = "Sum", color = "#2ca02c" }],
+            ["Seslogin/API", "RequestFailure", { label = "failure (5xx)", stat = "Sum", color = "#d62728" }],
           ]
           period = 60
           view   = "timeSeries"
@@ -38,52 +36,28 @@ resource "aws_cloudwatch_dashboard" "api" {
         width  = 12
         height = 6
         properties = {
-          title  = "Errors (per minute)"
+          title  = "GraphQL Field Failures (per minute)"
           region = "ap-southeast-2"
           metrics = [
-            ["Seslogin/API", "AuthErrorCount", "OperationType", "unknown", { label = "auth errors (401)", stat = "Sum" }],
-            ["Seslogin/API", "ServerErrorCount", "OperationType", "unknown", { label = "server errors (503)", stat = "Sum" }],
-            ["Seslogin/API", "GraphQLErrorCount", "OperationType", "query", { label = "graphql errors (query)", stat = "Sum" }],
-            ["Seslogin/API", "GraphQLErrorCount", "OperationType", "mutation", { label = "graphql errors (mutation)", stat = "Sum" }],
+            ["Seslogin/API", "QueryFailure", { label = "query failures", stat = "Sum" }],
+            ["Seslogin/API", "MutationFailure", { label = "mutation failures", stat = "Sum" }],
           ]
           period = 60
           view   = "timeSeries"
         }
       },
       {
-        type   = "metric"
+        # Latency and DynamoDB usage are no longer custom metrics — they live as fields on the
+        # structured `api_request` log lines. This widget derives them via Logs Insights.
+        type   = "log"
         x      = 0
         y      = 6
-        width  = 12
+        width  = 24
         height = 6
         properties = {
-          title  = "Latency (ms)"
+          title  = "Latency & DynamoDB usage (from api_request logs, prod + preprod)"
           region = "ap-southeast-2"
-          metrics = [
-            ["Seslogin/API", "LatencyMs", "OperationType", "query", { label = "p50 query", stat = "p50" }],
-            ["Seslogin/API", "LatencyMs", "OperationType", "query", { label = "p95 query", stat = "p95" }],
-            ["Seslogin/API", "LatencyMs", "OperationType", "mutation", { label = "p50 mutation", stat = "p50" }],
-            ["Seslogin/API", "LatencyMs", "OperationType", "mutation", { label = "p95 mutation", stat = "p95" }],
-          ]
-          period = 60
-          view   = "timeSeries"
-        }
-      },
-      {
-        type   = "metric"
-        x      = 12
-        y      = 6
-        width  = 12
-        height = 6
-        properties = {
-          title  = "DynamoDB Capacity Units (per minute)"
-          region = "ap-southeast-2"
-          metrics = [
-            ["Seslogin/API", "DynamoDBReadUnits", "OperationType", "query", { label = "read units (query)", stat = "Sum" }],
-            ["Seslogin/API", "DynamoDBReadUnits", "OperationType", "mutation", { label = "read units (mutation)", stat = "Sum" }],
-            ["Seslogin/API", "DynamoDBWriteUnits", "OperationType", "mutation", { label = "write units (mutation)", stat = "Sum" }],
-          ]
-          period = 60
+          query  = "SOURCE '/aws/lambda/seslogin-api' SOURCE '/aws/lambda/seslogin-preprod-api' | filter log_type = 'api_request' | stats avg(latency_ms) as avg_ms, pct(latency_ms, 95) as p95_ms, sum(rru) as read_units, sum(wru) as write_units, sum(ddb_calls) as ddb_calls by bin(1m)"
           view   = "timeSeries"
         }
       },

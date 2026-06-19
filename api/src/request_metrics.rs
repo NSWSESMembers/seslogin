@@ -7,10 +7,17 @@ use tokio::task::JoinHandle;
 pub struct RequestMetrics {
     read_units: Mutex<f64>,
     write_units: Mutex<f64>,
+    /// Number of DynamoDB API calls made during the request.
+    ddb_calls: Mutex<u64>,
+    /// Top-level query/mutation field errors observed by the GraphQL metrics extension.
+    query_failures: Mutex<u64>,
+    mutation_failures: Mutex<u64>,
 }
 
 impl RequestMetrics {
     pub fn record(&self, description: &str, read_units: f64, write_units: f64) {
+        // Count every DynamoDB call, including zero-capacity ones.
+        *self.ddb_calls.lock().unwrap() += 1;
         if read_units > 0.0 || write_units > 0.0 {
             tracing::debug!(
                 "capacity {}: rcu={:.1} wcu={:.1}",
@@ -29,6 +36,26 @@ impl RequestMetrics {
 
     pub fn write_units(&self) -> f64 {
         *self.write_units.lock().unwrap()
+    }
+
+    pub fn ddb_calls(&self) -> u64 {
+        *self.ddb_calls.lock().unwrap()
+    }
+
+    pub fn incr_query_failure(&self) {
+        *self.query_failures.lock().unwrap() += 1;
+    }
+
+    pub fn incr_mutation_failure(&self) {
+        *self.mutation_failures.lock().unwrap() += 1;
+    }
+
+    pub fn query_failures(&self) -> u64 {
+        *self.query_failures.lock().unwrap()
+    }
+
+    pub fn mutation_failures(&self) -> u64 {
+        *self.mutation_failures.lock().unwrap()
     }
 }
 

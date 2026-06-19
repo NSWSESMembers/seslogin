@@ -80,17 +80,42 @@ async fn handler(event: LambdaEvent<Value>) -> Result<Value, LambdaError> {
     let mode = if config.dry_run { "dry-run" } else { "apply" };
 
     let metrics = Arc::new(RequestMetrics::default());
-    let stats = request_metrics::METRICS
+    let result = request_metrics::METRICS
         .scope(metrics.clone(), member_sync::run(config))
-        .await?;
+        .await;
 
-    tracing::info!(
-        "location_id={} rru={:.1} wru={:.1}",
-        location_id,
-        metrics.read_units(),
-        metrics.write_units(),
-    );
+    match &result {
+        Ok(stats) => tracing::info!(
+            log_type = "sqs_message",
+            consumer = "sync-members",
+            success = true,
+            location_id = %location_id,
+            mode = mode,
+            processed_locations = stats.processed_locations,
+            skipped_locations = stats.skipped_locations,
+            creates = stats.creates,
+            updates = stats.updates,
+            soft_deletes = stats.soft_deletes,
+            total_mutations = stats.total_mutations(),
+            rru = metrics.read_units(),
+            wru = metrics.write_units(),
+            ddb_calls = metrics.ddb_calls(),
+            "sqs message processed",
+        ),
+        Err(e) => tracing::error!(
+            log_type = "sqs_message",
+            consumer = "sync-members",
+            success = false,
+            location_id = %location_id,
+            error = %e,
+            rru = metrics.read_units(),
+            wru = metrics.write_units(),
+            ddb_calls = metrics.ddb_calls(),
+            "sqs message failed",
+        ),
+    }
 
+    let stats = result?;
     Ok(json!({
         "ok": true,
         "location_id": location_id,
