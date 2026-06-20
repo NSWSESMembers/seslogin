@@ -1040,6 +1040,12 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
         #[graphql(name = "memberNumber")] registration_number: String,
     ) -> Result<RegisterResult<A>> {
         require_writable(ctx)?;
+
+        let registration_number = registration_number.trim();
+        if registration_number.is_empty() {
+            return Err(anyhow!("registration_number cannot be empty"));
+        }
+
         let auth = ctx.data_opt::<AuthInfo>();
         let (session_id, location_id) = match auth {
             Some(AuthInfo::Session { id, location }) => (id, location),
@@ -1051,7 +1057,7 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
         let matches = self
             .app
             .db()
-            .get_person_id_by_registration_number(&registration_number)
+            .get_person_id_by_registration_number(registration_number)
             .await?;
         let Some(person_id) = db::at_most_one(matches, || {
             format!("Multiple people share registration number {registration_number}")
