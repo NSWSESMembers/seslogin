@@ -9,7 +9,7 @@ resource "aws_sns_topic_subscription" "member_sync_email" {
 }
 
 resource "aws_cloudwatch_dashboard" "api" {
-  dashboard_name = "seslogin-api"
+  dashboard_name = "CloudWatch-Default"
   dashboard_body = jsonencode({
     widgets = [
       {
@@ -57,7 +57,7 @@ resource "aws_cloudwatch_dashboard" "api" {
         properties = {
           title  = "Latency & DynamoDB usage (from api_request logs, prod + preprod)"
           region = "ap-southeast-2"
-          query  = "SOURCE '/aws/lambda/seslogin-api' SOURCE '/aws/lambda/seslogin-preprod-api' | filter log_type = 'api_request' | stats avg(latency_ms) as avg_ms, pct(latency_ms, 95) as p95_ms, sum(rru) as read_units, sum(wru) as write_units, sum(ddb_calls) as ddb_calls by bin(1m)"
+          query  = "SOURCE '/aws/lambda/seslogin-api' | SOURCE '/aws/lambda/seslogin-preprod-api' | filter log_type = 'api_request' | stats avg(latency_ms) as avg_ms, pct(latency_ms, 95) as p95_ms, sum(rru) as read_units, sum(wru) as write_units, sum(ddb_calls) as ddb_calls by bin(1m)"
           view   = "timeSeries"
         }
       },

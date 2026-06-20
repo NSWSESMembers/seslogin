@@ -117,7 +117,10 @@
         "cloudwatch:DeleteDashboards",
         "cloudwatch:GetDashboard"
       ],
-      "Resource": "arn:aws:cloudwatch::${account_id}:dashboard/seslogin-*"
+      "Resource": [
+        "arn:aws:cloudwatch::${account_id}:dashboard/seslogin-*",
+        "arn:aws:cloudwatch::${account_id}:dashboard/CloudWatch-Default"
+      ]
     },
     {
       "Sid": "LambdaRead",
