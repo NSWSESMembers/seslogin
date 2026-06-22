@@ -1232,6 +1232,7 @@ async fn list_active_locations(db: &impl Handler, days: u64, session_days: u64) 
         members: usize,
         active_sessions: usize,
         synced: usize,
+        nitc_on: String,
     }
     let mut rows = Vec::new();
     let mut total_members: HashSet<String> = HashSet::new();
@@ -1270,6 +1271,13 @@ async fn list_active_locations(db: &impl Handler, days: u64, session_days: u64) 
         total_members.extend(distinct_members.iter().map(|s| s.to_string()));
         total_active_sessions += active_sessions;
 
+        // Date (YYYY-MM-DD) NITC export was turned on, blank if disabled.
+        let nitc_on = loc
+            .nitc_enabled
+            .and_then(|ts| DateTime::from_timestamp(ts as i64, 0))
+            .map(|dt| dt.with_timezone(&Local).format("%Y-%m-%d").to_string())
+            .unwrap_or_default();
+
         rows.push(Row {
             id: loc.id.clone(),
             name: loc.name.clone(),
@@ -1277,6 +1285,7 @@ async fn list_active_locations(db: &impl Handler, days: u64, session_days: u64) 
             members: distinct_members.len(),
             active_sessions,
             synced,
+            nitc_on,
         });
     }
 
@@ -1297,11 +1306,14 @@ async fn list_active_locations(db: &impl Handler, days: u64, session_days: u64) 
                 r.members.to_string(),
                 r.active_sessions.to_string(),
                 r.synced.to_string(),
+                r.nitc_on.clone(),
             ]
         })
         .collect();
     print_table(
-        &["id", "name", "periods", "members", "sessions", "synced"],
+        &[
+            "id", "name", "periods", "members", "sessions", "synced", "nitc on",
+        ],
         &table_rows,
     );
 
