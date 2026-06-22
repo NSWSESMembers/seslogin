@@ -1,4 +1,5 @@
 #![allow(clippy::too_many_arguments)]
+use anyhow::Context as _;
 use anyhow::Result;
 use anyhow::anyhow;
 use async_graphql::Context;
@@ -22,18 +23,6 @@ use hex;
 
 use super::auth::{AuthGuard, AuthRequirement, require_location_access, require_writable};
 use super::{ApiToken, Category, Location, NitcGroup, PasskeyInfo, Period, Person, Session, User};
-
-async fn enqueue_nitc_export(sqs: &crate::sqs_dispatch::SqsQueue, period_id: &str) {
-    if let Err(e) =
-        crate::sqs_dispatch::enqueue_period_nitc_export(&sqs.client, &sqs.queue_url, period_id)
-            .await
-    {
-        warn!(
-            "Failed to enqueue NITC export for period {}: {}",
-            period_id, e
-        );
-    }
-}
 
 fn parse_session_config_json(
     config: Option<&str>,
@@ -96,6 +85,50 @@ struct CreateApiTokenResult {
 
 pub struct MutationRoot<A: App + HasDb + HasSqs + Send + Sync> {
     pub(super) app: Arc<A>,
+}
+
+impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
+    /// Enqueue a Phase 1 (period) NITC export for a mutated period.
+    ///
+    /// `old_nitc_event_id` is the event the period was assigned to *before* this mutation (read
+    /// from the pre-update record). If set, we bump that event's version synchronously here.
+    /// Phase 2 (event_export) messages carry a 60s delay and are guarded only by the event
+    /// version, so without this bump an already-queued event_export could fire after this period
+    /// was mutated but before its Phase 1 reassignment runs — syncing an inconsistent snapshot to
+    /// SES. Bumping the version now makes any in-flight event_export for that event stale; Phase 1
+    /// will enqueue a fresh one reflecting the settled state.
+    async fn enqueue_nitc_export(
+        &self,
+        period_id: &str,
+        old_nitc_event_id: Option<&str>,
+    ) -> Result<()> {
+        // The bump must not be best-effort: if it fails the in-flight event_export for this
+        // event would not be invalidated, so an inconsistent snapshot could reach SES. Fail
+        // the whole mutation so the caller retries rather than silently leaving the race open.
+        if let Some(event_id) = old_nitc_event_id {
+            self.app
+                .db()
+                .bump_nitc_event_version(event_id)
+                .await
+                .with_context(|| {
+                    format!(
+                        "bumping NITC event {} version for mutated period {}",
+                        event_id, period_id
+                    )
+                })?;
+        }
+        let sqs = &self.app.sqs().nitc_export;
+        if let Err(e) =
+            crate::sqs_dispatch::enqueue_period_nitc_export(&sqs.client, &sqs.queue_url, period_id)
+                .await
+        {
+            warn!(
+                "Failed to enqueue NITC export for period {}: {}",
+                period_id, e
+            );
+        }
+        Ok(())
+    }
 }
 
 #[Object]
@@ -534,7 +567,8 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
             )
             .await?;
 
-        enqueue_nitc_export(&self.app.sqs().nitc_export, &rec.id).await;
+        // Newly created period is not yet assigned to any NITC event.
+        self.enqueue_nitc_export(&rec.id, None).await?;
         Ok(Period::new(rec))
     }
 
@@ -610,7 +644,8 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
             .flatten()
             .ok_or_else(|| anyhow!("Period with ID {:?} missing", &id))?;
 
-        enqueue_nitc_export(&self.app.sqs().nitc_export, &period.id).await;
+        self.enqueue_nitc_export(&period.id, existing.nitc_event_id.as_deref())
+            .await?;
         Ok(Period::new(period))
     }
 
@@ -667,7 +702,8 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
             .flatten()
             .ok_or_else(|| anyhow!("Period with ID {:?} missing", &id))?;
 
-        enqueue_nitc_export(&self.app.sqs().nitc_export, &period.id).await;
+        self.enqueue_nitc_export(&period.id, existing.nitc_event_id.as_deref())
+            .await?;
         Ok(Period::new(period))
     }
 
@@ -689,7 +725,8 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
             .db()
             .update_period(&id, db::PeriodUpdateShape::Delete)
             .await?;
-        enqueue_nitc_export(&self.app.sqs().nitc_export, &id).await;
+        self.enqueue_nitc_export(&id, existing.nitc_event_id.as_deref())
+            .await?;
         Ok(true)
     }
 
@@ -1158,7 +1195,10 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
         rec.category_id = Some(category_id.to_string());
         rec.signed_out_session_id = Some(session_id);
 
-        enqueue_nitc_export(&self.app.sqs().nitc_export, &rec.id).await;
+        // rec is the pre-update record (only local field copies were changed above), so
+        // rec.nitc_event_id is still the event the period was assigned to before this sign-out.
+        self.enqueue_nitc_export(&rec.id, rec.nitc_event_id.as_deref())
+            .await?;
         Ok(Period::new(rec))
     }
 

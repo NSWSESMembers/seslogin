@@ -556,6 +556,41 @@ pub async fn sync_nitc_event<D: db::Handler>(
         .filter(|p| p.deleted.is_none() && p.end_time.is_some())
         .collect();
 
+    // Defensive guard: every live period's category must map to this event's nitc_group.
+    // A period whose category maps to a different group would carry an incompatible
+    // participant type and make SES reject the whole update. Error out before we talk to
+    // SES so the offending event can be investigated rather than silently corrupting it.
+    let mismatched: Vec<String> = live_periods
+        .iter()
+        .filter(|p| {
+            let group = p
+                .category_id
+                .as_deref()
+                .and_then(|id| categories.get(id))
+                .and_then(|c| c.nitc_group_id.as_ref());
+            group != Some(&event.nitc_group_id)
+        })
+        .map(|p| {
+            let group = p
+                .category_id
+                .as_deref()
+                .and_then(|id| categories.get(id))
+                .and_then(|c| c.nitc_group_id.clone());
+            format!(
+                "period {} (category {:?}, nitc_group {:?})",
+                p.id, p.category_id, group
+            )
+        })
+        .collect();
+    if !mismatched.is_empty() {
+        return Err(anyhow!(
+            "NITC event {} (nitc_group {}) has live periods whose category maps to a different nitc_group: {}",
+            event_id,
+            event.nitc_group_id,
+            mismatched.join(", ")
+        ));
+    }
+
     // Validate location NITC eligibility and resolve SES HQ ID
     if location.nitc_enabled.is_none() {
         warn!(
