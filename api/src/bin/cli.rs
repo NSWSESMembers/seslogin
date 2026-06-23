@@ -1087,12 +1087,20 @@ async fn run(db: &impl Handler, object: Object) -> Result<()> {
                 location,
                 group,
                 date,
-            } => match db.get_nitc_event_for_day(&location, &group, date).await? {
-                Some(event) => show_nitc_events(db, std::slice::from_ref(&event)).await,
-                None => {
-                    println!("No NITC event for location {location}, group {group}, date {date}")
+            } => {
+                let events = db.list_nitc_events_for_day(&location, &group, date).await?;
+                if events.is_empty() {
+                    println!("No NITC event for location {location}, group {group}, date {date}");
+                } else {
+                    if events.len() > 1 {
+                        eprintln!(
+                            "WARNING: {} NITC events found for location {location}, group {group}, date {date} (expected at most 1 — data integrity issue)",
+                            events.len()
+                        );
+                    }
+                    show_nitc_events(db, &events).await;
                 }
-            },
+            }
         },
 
         Object::ActivitySummary { cmd } => match cmd {

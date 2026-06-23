@@ -611,13 +611,18 @@ pub trait Handler {
 
     // ── NITC export ──────────────────────────────────────────────────────────
 
-    /// Read-only lookup of the nitc_events row for (location, nitc_group, date).
-    fn get_nitc_event_for_day(
+    /// Read-only lookup of the nitc_events rows for (location, nitc_group, date).
+    ///
+    /// There should be at most one such row; callers that need a single value can
+    /// use [`at_most_one`] to collapse the result and surface an integrity error
+    /// when duplicates exist. The CLI lists all rows so the duplicate situation
+    /// can be inspected when it arises.
+    fn list_nitc_events_for_day(
         &self,
         location_id: &str,
         nitc_group_id: &str,
         date: NaiveDate,
-    ) -> impl Future<Output = Result<Option<NitcEvent>>> + Send;
+    ) -> impl Future<Output = Result<Vec<NitcEvent>>> + Send;
 
     /// Get or create the nitc_events row for (location, nitc_group, date).
     /// Creates with ses_api_nitc_id=NULL; the SES API call happens later in Phase 2.

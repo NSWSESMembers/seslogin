@@ -297,10 +297,18 @@ pub async fn assign_period<D: db::Handler>(
     let event_date = unix_to_sydney_date(period.start_time);
 
     if config.dry_run {
-        let existing = clients
-            .db
-            .get_nitc_event_for_day(&period.location_id, &nitc_group_id, event_date)
-            .await?;
+        let existing = db::at_most_one(
+            clients
+                .db
+                .list_nitc_events_for_day(&period.location_id, &nitc_group_id, event_date)
+                .await?,
+            || {
+                format!(
+                    "Multiple nitc_events for location {} nitc_group {} date {}",
+                    period.location_id, nitc_group_id, event_date
+                )
+            },
+        )?;
         match &existing {
             Some(r) => info!(
                 "[dry-run] Would assign period {} to existing NITC event {} (location={}, nitc_group={}, date={})",

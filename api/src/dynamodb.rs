@@ -2384,12 +2384,12 @@ impl db::Handler for Handler {
         Ok(())
     }
 
-    async fn get_nitc_event_for_day(
+    async fn list_nitc_events_for_day(
         &self,
         location_id: &str,
         nitc_group_id: &str,
         date: chrono::NaiveDate,
-    ) -> db::Result<Option<db::NitcEvent>> {
+    ) -> db::Result<Vec<db::NitcEvent>> {
         let resp = self
             .client
             .query()
@@ -2401,29 +2401,21 @@ impl db::Handler for Handler {
                 ":td",
                 AttributeValue::S(topic_date_key(nitc_group_id, date)),
             )
-            .limit(2)
             .return_consumed_capacity(ReturnConsumedCapacity::Total)
             .send()
             .await
             .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
         record_capacity(
-            "get_nitc_event_for_day",
+            "list_nitc_events_for_day",
             resp.consumed_capacity(),
             CapKind::Read,
         );
 
-        let items = resp.items.unwrap_or_default();
-        if items.len() > 1 {
-            return Err(Error::Integrity(format!(
-                "Multiple nitc_events for location {} nitc_group {} date {}",
-                location_id, nitc_group_id, date
-            )));
-        }
-        items
+        resp.items
+            .unwrap_or_default()
             .into_iter()
-            .next()
             .map(|i| -> HydrationResult<db::NitcEvent> { Item(i).try_into() })
-            .transpose()
+            .collect::<HydrationResult<Vec<_>>>()
             .map_err(db::Error::from)
     }
 
@@ -2436,10 +2428,17 @@ impl db::Handler for Handler {
         if self.read_only {
             return Err(db::Error::MutationDisabled);
         }
-        if let Some(existing) = self
-            .get_nitc_event_for_day(location_id, nitc_group_id, date)
-            .await?
-        {
+        let existing = db::at_most_one(
+            self.list_nitc_events_for_day(location_id, nitc_group_id, date)
+                .await?,
+            || {
+                format!(
+                    "Multiple nitc_events for location {} nitc_group {} date {}",
+                    location_id, nitc_group_id, date
+                )
+            },
+        )?;
+        if let Some(existing) = existing {
             return Ok(existing);
         }
 

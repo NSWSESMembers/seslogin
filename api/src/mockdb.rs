@@ -268,12 +268,12 @@ impl db::Handler for Handler {
         Self::unsupported()
     }
 
-    async fn get_nitc_event_for_day(
+    async fn list_nitc_events_for_day(
         &self,
         _location_id: &str,
         _nitc_group_id: &str,
         _date: chrono::NaiveDate,
-    ) -> db::Result<Option<db::NitcEvent>> {
+    ) -> db::Result<Vec<db::NitcEvent>> {
         Self::unsupported()
     }
 
