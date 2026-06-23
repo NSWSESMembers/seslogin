@@ -2438,23 +2438,15 @@ impl db::Handler for Handler {
         if self.read_only {
             return Err(db::Error::MutationDisabled);
         }
-        let existing = db::at_most_one(
-            self.list_nitc_events_for_day(location_id, nitc_group_id, date)
-                .await?,
-            || {
-                format!(
-                    "Multiple nitc_events for location {} nitc_group {} date {}",
-                    location_id, nitc_group_id, date
-                )
-            },
-        )?;
-        if let Some(existing) = existing {
+        // Every nitc_event row uses the deterministic id (see nitc_event_key), so we can
+        // look it up directly by primary key — a strongly-consistent read — rather than
+        // querying the eventually-consistent GSI. The conditional put below closes the
+        // create race: concurrent callers compute the same id and collide on the PK.
+        let id = nitc_event_key(location_id, nitc_group_id, date);
+        if let Some(existing) = self.get_nitc_event_by_id(&id).await? {
             return Ok(existing);
         }
 
-        // Deterministic id so concurrent creates collide on the base-table PK
-        // (strongly consistent) instead of racing the eventually-consistent GSI read above.
-        let id = nitc_event_key(location_id, nitc_group_id, date);
         let now = crate::clock::now_sec();
         let date_str = date.format("%Y-%m-%d").to_string();
         let resp = self
