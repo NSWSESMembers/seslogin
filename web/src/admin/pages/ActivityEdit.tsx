@@ -28,6 +28,7 @@ export default function ActivityEdit() {
         categories {
           id
           name
+          enabled
         }
       }
     `,
@@ -118,10 +119,13 @@ export default function ActivityEdit() {
     navigate("/admin/activity");
   }
 
-  // sort categories alphabetically
-  const categories = [...data.categories].sort((a, b) =>
-    a.name.localeCompare(b.name),
-  );
+  // only offer enabled categories, but keep this period's current category in
+  // the list even if it has since been disabled, so editing times doesn't force
+  // a category change. Sorted alphabetically.
+  const currentCategoryId = data.period.category?.id;
+  const categories = data.categories
+    .filter((cat) => cat.enabled || cat.id === currentCategoryId)
+    .sort((a, b) => a.name.localeCompare(b.name));
 
   return (
     <>

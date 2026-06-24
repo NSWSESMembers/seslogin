@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<9d7604c27466c9b1ed853927f0953a58>>
+ * @generated SignedSource<<20102eaabf24b52f9aff4c6748631c3b>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -14,6 +14,7 @@ export type ActivityEditQuery$variables = {
 };
 export type ActivityEditQuery$data = {
   readonly categories: ReadonlyArray<{
+    readonly enabled: boolean;
     readonly id: string;
     readonly name: string;
   }>;
@@ -47,16 +48,13 @@ v1 = {
   "name": "id",
   "storageKey": null
 },
-v2 = [
-  (v1/*: any*/),
-  {
-    "alias": null,
-    "args": null,
-    "kind": "ScalarField",
-    "name": "name",
-    "storageKey": null
-  }
-],
+v2 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
+  "name": "name",
+  "storageKey": null
+},
 v3 = [
   {
     "alias": null,
@@ -94,7 +92,10 @@ v3 = [
         "kind": "LinkedField",
         "name": "category",
         "plural": false,
-        "selections": (v2/*: any*/),
+        "selections": [
+          (v1/*: any*/),
+          (v2/*: any*/)
+        ],
         "storageKey": null
       }
     ],
@@ -107,7 +108,17 @@ v3 = [
     "kind": "LinkedField",
     "name": "categories",
     "plural": true,
-    "selections": (v2/*: any*/),
+    "selections": [
+      (v1/*: any*/),
+      (v2/*: any*/),
+      {
+        "alias": null,
+        "args": null,
+        "kind": "ScalarField",
+        "name": "enabled",
+        "storageKey": null
+      }
+    ],
     "storageKey": null
   }
 ];
@@ -129,16 +140,16 @@ return {
     "selections": (v3/*: any*/)
   },
   "params": {
-    "cacheID": "6eaffb1cea65b50dfb188467a208aae2",
+    "cacheID": "205cd2072655830750369170b7175610",
     "id": null,
     "metadata": {},
     "name": "ActivityEditQuery",
     "operationKind": "query",
-    "text": "query ActivityEditQuery(\n  $id: ID!\n) {\n  period(id: $id) {\n    id\n    startTime\n    endTime\n    category {\n      id\n      name\n    }\n  }\n  categories {\n    id\n    name\n  }\n}\n"
+    "text": "query ActivityEditQuery(\n  $id: ID!\n) {\n  period(id: $id) {\n    id\n    startTime\n    endTime\n    category {\n      id\n      name\n    }\n  }\n  categories {\n    id\n    name\n    enabled\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "d6003f47a55c56f87add0d90458dbe5d";
+(node as any).hash = "05fa2a419ec0be1c3b3547165158e7f4";
 
 export default node;

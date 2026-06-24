@@ -28,6 +28,7 @@ export default function ActivityNew() {
         categories {
           id
           name
+          enabled
         }
       }
     `,
@@ -106,10 +107,10 @@ export default function ActivityNew() {
     navigate("/admin/activity");
   }
 
-  // sort categories alphabetically
-  const categories = [...data.categories].sort((a, b) =>
-    a.name.localeCompare(b.name),
-  );
+  // only offer enabled categories, sorted alphabetically
+  const categories = data.categories
+    .filter((cat) => cat.enabled)
+    .sort((a, b) => a.name.localeCompare(b.name));
 
   const people = [...data.location.people].sort((a, b) =>
     `${a.firstName} ${a.lastName}`.localeCompare(
