@@ -129,6 +129,50 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
         }
         Ok(())
     }
+
+    /// Reject the mutation if any non-deleted person already holds `registration_number`.
+    ///
+    /// Registration numbers (member numbers) are intended to be globally unique. DynamoDB cannot
+    /// enforce uniqueness on a non-key attribute, so we check at the application layer before
+    /// writing. Soft-deleted holders do not block reuse — only active duplicates are the problem.
+    ///
+    /// `exclude_person_id` is the id of the record being edited, so that re-saving a person with
+    /// its own unchanged number succeeds.
+    async fn ensure_registration_number_available(
+        &self,
+        registration_number: &str,
+        exclude_person_id: Option<&str>,
+    ) -> Result<()> {
+        let candidate_ids: Vec<String> = self
+            .app
+            .db()
+            .get_person_id_by_registration_number(registration_number)
+            .await?
+            .into_iter()
+            .filter(|id| Some(id.as_str()) != exclude_person_id)
+            .collect();
+
+        if candidate_ids.is_empty() {
+            return Ok(());
+        }
+
+        let has_active_holder = self
+            .app
+            .db()
+            .get_persons(&candidate_ids)
+            .await?
+            .into_iter()
+            .flatten()
+            .any(|person| person.deleted.is_none());
+
+        if has_active_holder {
+            return Err(anyhow!(
+                "A member with member number {registration_number} already exists"
+            ));
+        }
+
+        Ok(())
+    }
 }
 
 #[Object]
@@ -446,6 +490,9 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
             .flatten()
             .ok_or_else(|| anyhow!("Location {:?} not found", &location_id))?;
 
+        self.ensure_registration_number_available(&registration_number, None)
+            .await?;
+
         let rec = self
             .app
             .db()
@@ -475,6 +522,9 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
             .flatten()
             .ok_or_else(|| anyhow!("Person with ID {:?} missing", &id))?;
         require_location_access(ctx, &existing.location_id)?;
+
+        self.ensure_registration_number_available(&registration_number, Some(id.as_str()))
+            .await?;
 
         self.app
             .db()
