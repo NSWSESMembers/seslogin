@@ -1253,7 +1253,9 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
     }
 
     #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
-    async fn enqueue_member_sync(&self, location_id: ID) -> Result<bool> {
+    async fn enqueue_member_sync(&self, ctx: &Context<'_>, location_id: ID) -> Result<bool> {
+        require_writable(ctx)?;
+        require_location_access(ctx, &location_id)?;
         self.app
             .db()
             .get_locations(&[&location_id])
