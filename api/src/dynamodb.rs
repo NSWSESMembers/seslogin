@@ -2315,25 +2315,29 @@ impl db::Handler for Handler {
         let id = new_id();
         let now = crate::clock::now_sec();
 
-        let nitc_group_id_val = nitc_group_id
-            .map(|s| AttributeValue::S(s.to_string()))
-            .unwrap_or(AttributeValue::Null(true));
-        let nitc_participant_type_val = nitc_participant_type
-            .map(|s| AttributeValue::S(s.to_string()))
-            .unwrap_or(AttributeValue::Null(true));
-
-        let resp = self
+        let mut put = self
             .client
             .put_item()
             .table_name(self.table_name("category"))
             .item("id", AttributeValue::S(id.clone()))
             .item("name", AttributeValue::S(name.to_string()))
             .item("enabled", AttributeValue::Bool(true))
-            .item("nitc_group_id", nitc_group_id_val)
-            .item("nitc_participant_type", nitc_participant_type_val)
             .item("created_at", AttributeValue::N(now.to_string()))
             .item("updated_at", AttributeValue::N(now.to_string()))
-            .return_consumed_capacity(ReturnConsumedCapacity::Total)
+            .return_consumed_capacity(ReturnConsumedCapacity::Total);
+
+        // Omit the optional NITC attributes when absent rather than storing
+        // Null. nitc_group_id is the hash key of the nitc_group_id-index GSI,
+        // where a Null value is rejected outright; for nitc_participant_type
+        // omitting keeps the item clean and consistent.
+        if let Some(gid) = nitc_group_id {
+            put = put.item("nitc_group_id", AttributeValue::S(gid.to_string()));
+        }
+        if let Some(pt) = nitc_participant_type {
+            put = put.item("nitc_participant_type", AttributeValue::S(pt.to_string()));
+        }
+
+        let resp = put
             .send()
             .await
             .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
@@ -2361,30 +2365,54 @@ impl db::Handler for Handler {
         if self.read_only {
             return Err(db::Error::MutationDisabled);
         }
-        let nitc_group_id_val = nitc_group_id
-            .map(|s| AttributeValue::S(s.to_string()))
-            .unwrap_or(AttributeValue::Null(true));
-        let nitc_participant_type_val = nitc_participant_type
-            .map(|s| AttributeValue::S(s.to_string()))
-            .unwrap_or(AttributeValue::Null(true));
-        let resp = self
+        // Omit the optional NITC attributes when absent rather than storing
+        // Null: SET them when present, otherwise REMOVE them. nitc_group_id is
+        // the hash key of the nitc_group_id-index GSI, where a Null value is
+        // rejected outright; nitc_participant_type is handled the same way for
+        // consistency.
+        let mut set_clauses = vec![
+            "#name = :name",
+            "enabled = :enabled",
+            "updated_at = :updated_at",
+        ];
+        let mut remove_clauses = Vec::new();
+        let mut builder = self
             .client
             .update_item()
             .table_name(self.table_name("category"))
             .key("id", AttributeValue::S(id.to_string()))
-            .update_expression(
-                "SET #name = :name, enabled = :enabled, \
-                 nitc_group_id = :ngid, nitc_participant_type = :npt, updated_at = :updated_at",
-            )
             .expression_attribute_names("#name", "name")
             .expression_attribute_values(":name", AttributeValue::S(name.to_string()))
             .expression_attribute_values(":enabled", AttributeValue::Bool(active))
-            .expression_attribute_values(":ngid", nitc_group_id_val)
-            .expression_attribute_values(":npt", nitc_participant_type_val)
             .expression_attribute_values(
                 ":updated_at",
                 AttributeValue::N(crate::clock::now_sec().to_string()),
-            )
+            );
+
+        match nitc_group_id {
+            Some(gid) => {
+                set_clauses.push("nitc_group_id = :ngid");
+                builder = builder
+                    .expression_attribute_values(":ngid", AttributeValue::S(gid.to_string()));
+            }
+            None => remove_clauses.push("nitc_group_id"),
+        }
+        match nitc_participant_type {
+            Some(pt) => {
+                set_clauses.push("nitc_participant_type = :npt");
+                builder =
+                    builder.expression_attribute_values(":npt", AttributeValue::S(pt.to_string()));
+            }
+            None => remove_clauses.push("nitc_participant_type"),
+        }
+
+        let mut update_expr = format!("SET {}", set_clauses.join(", "));
+        if !remove_clauses.is_empty() {
+            update_expr.push_str(&format!(" REMOVE {}", remove_clauses.join(", ")));
+        }
+
+        let resp = builder
+            .update_expression(update_expr)
             .return_consumed_capacity(ReturnConsumedCapacity::Total)
             .send()
             .await
