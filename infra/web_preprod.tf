@@ -1,5 +1,5 @@
 resource "aws_s3_bucket" "preprod_web" {
-  bucket = "preprod.seslogin.com"
+  bucket = "seslogin-preprod-web-641079927221"
 }
 
 resource "aws_s3_bucket_public_access_block" "preprod_web" {

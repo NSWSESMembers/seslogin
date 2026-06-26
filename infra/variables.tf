@@ -20,6 +20,12 @@ variable "aws_account_id" {
   type        = string
 }
 
+variable "aws_profile" {
+  description = "AWS CLI/SSO profile Terraform uses for all providers"
+  type        = string
+  default     = "seslogin-new"
+}
+
 variable "jwt_secret_test" {
   description = "JWT signing secret for the test environment"
   type        = string
@@ -56,7 +62,3 @@ variable "db_prefix_test" {
   default     = "seslogin_test"
 }
 
-variable "seslogin_terraform_policy_arn" {
-  description = "ARN of the seslogin-terraform IAM policy (managed outside Terraform — see SESLOGIN_TERRAFORM_POLICY_ARN in .env.secret)"
-  type        = string
-}
