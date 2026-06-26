@@ -1,5 +1,5 @@
 resource "aws_s3_bucket" "prod_web" {
-  bucket = "new.seslogin.com"
+  bucket = "seslogin-prod-web-641079927221"
 }
 
 resource "aws_s3_bucket_public_access_block" "prod_web" {

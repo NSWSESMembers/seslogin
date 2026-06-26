@@ -75,14 +75,7 @@ cd infra && terraform plan   # Preview infra changes
 cd infra && terraform apply  # Apply infra changes
 ```
 
-To update the `seslogin-terraform` IAM policy (not managed by Terraform — bootstrapping constraint), edit `infra/seslogin-dev-policy.json.tftpl` then use the helper script:
-
-```bash
-uv run infra/push-dev-policy.py           # diff local tftpl vs deployed policy
-uv run infra/push-dev-policy.py --update  # push new version (waits a few mins to propagate)
-```
-
-The policy ARN is in `.env.secret` as `SESLOGIN_TERRAFORM_POLICY_ARN`. The script uses the default AWS CLI profile (not the `seslogin` profile).
+Terraform uses the `seslogin-new` AWS profile by default (var `aws_profile`) — an IAM Identity Center (SSO) profile for account `641079927221`. Run `aws sso login --profile seslogin-new` first. Admin access is the `SesloginAdmin` permission set (PowerUserAccess + `iam:*`); there is no separate `seslogin-terraform` managed policy.
 
 ## Architecture
 

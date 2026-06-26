@@ -10,7 +10,7 @@ terraform {
 
 provider "aws" {
   region  = "ap-southeast-2"
-  profile = "seslogin"
+  profile = var.aws_profile
 }
 
 locals {
