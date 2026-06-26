@@ -34,11 +34,6 @@ resource "aws_s3_bucket_policy" "prod_web" {
   })
 }
 
-data "aws_cloudfront_function" "request_rewrite" {
-  name  = "seslogin-request-rewrite"
-  stage = "LIVE"
-}
-
 resource "aws_cloudfront_distribution" "prod" {
   aliases             = ["seslogin.com", "new.seslogin.com"]
   enabled             = true
@@ -76,10 +71,6 @@ resource "aws_cloudfront_distribution" "prod" {
     cached_methods         = ["GET", "HEAD"]
     compress               = true
     cache_policy_id        = "658327ea-f89d-4fab-a63d-7e88639e58f6"
-    function_association {
-      event_type   = "viewer-request"
-      function_arn = data.aws_cloudfront_function.request_rewrite.arn
-    }
   }
 
   # OAC returns 403 (not 404) for missing S3 keys — catch both for SPA routing
