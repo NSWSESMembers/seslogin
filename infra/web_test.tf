@@ -26,7 +26,7 @@ resource "aws_s3_bucket_policy" "test_web" {
       Effect    = "Allow"
       Principal = { Service = "cloudfront.amazonaws.com" }
       Action    = "s3:GetObject"
-      Resource  = "arn:aws:s3:::test.seslogin.com/*"
+      Resource  = "${aws_s3_bucket.test_web.arn}/*"
       Condition = { StringEquals = {
         "AWS:SourceArn" = aws_cloudfront_distribution.test.arn
       } }
@@ -35,7 +35,7 @@ resource "aws_s3_bucket_policy" "test_web" {
 }
 
 resource "aws_cloudfront_distribution" "test" {
-  aliases             = ["test.seslogin.com"]
+  aliases             = var.cutover ? ["test.seslogin.com"] : []
   enabled             = true
   http_version        = "http2"
   is_ipv6_enabled     = true
@@ -92,22 +92,11 @@ resource "aws_cloudfront_distribution" "test" {
   }
 
   viewer_certificate {
-    acm_certificate_arn      = aws_acm_certificate_validation.test.certificate_arn
-    ssl_support_method       = "sni-only"
-    minimum_protocol_version = "TLSv1.2_2021"
+    cloudfront_default_certificate = var.cutover ? null : true
+    acm_certificate_arn            = var.cutover ? one(aws_acm_certificate_validation.test[*].certificate_arn) : null
+    ssl_support_method             = var.cutover ? "sni-only" : null
+    minimum_protocol_version       = var.cutover ? "TLSv1.2_2021" : null
   }
 }
 
-# Replace existing placeholder CNAME (test.seslogin.com → seslogin.com) with CloudFront A alias.
-# Before running terraform apply for Part B, import the existing CNAME:
-#   terraform -chdir=infra import aws_route53_record.test Z2X4360EUGI76W_test.seslogin.com._CNAME
-resource "aws_route53_record" "test" {
-  zone_id = data.aws_route53_zone.seslogin.zone_id
-  name    = "test.seslogin.com"
-  type    = "A"
-  alias {
-    name                   = aws_cloudfront_distribution.test.domain_name
-    zone_id                = aws_cloudfront_distribution.test.hosted_zone_id
-    evaluate_target_health = false
-  }
-}
+# App DNS alias record (test.seslogin.com) is centralized in route53.tf.
