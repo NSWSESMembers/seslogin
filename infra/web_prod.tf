@@ -26,7 +26,7 @@ resource "aws_s3_bucket_policy" "prod_web" {
       Effect    = "Allow"
       Principal = { Service = "cloudfront.amazonaws.com" }
       Action    = "s3:GetObject"
-      Resource  = "arn:aws:s3:::new.seslogin.com/*"
+      Resource  = "${aws_s3_bucket.prod_web.arn}/*"
       Condition = { StringEquals = {
         "AWS:SourceArn" = aws_cloudfront_distribution.prod.arn
       } }
@@ -35,7 +35,7 @@ resource "aws_s3_bucket_policy" "prod_web" {
 }
 
 resource "aws_cloudfront_distribution" "prod" {
-  aliases             = ["seslogin.com", "new.seslogin.com"]
+  aliases             = var.cutover ? ["seslogin.com", "new.seslogin.com"] : []
   enabled             = true
   http_version        = "http2"
   is_ipv6_enabled     = true
@@ -92,8 +92,9 @@ resource "aws_cloudfront_distribution" "prod" {
   }
 
   viewer_certificate {
-    acm_certificate_arn      = aws_acm_certificate.prod.arn
-    ssl_support_method       = "sni-only"
-    minimum_protocol_version = "TLSv1.2_2021"
+    cloudfront_default_certificate = var.cutover ? null : true
+    acm_certificate_arn            = var.cutover ? one(aws_acm_certificate_validation.prod[*].certificate_arn) : null
+    ssl_support_method             = var.cutover ? "sni-only" : null
+    minimum_protocol_version       = var.cutover ? "TLSv1.2_2021" : null
   }
 }

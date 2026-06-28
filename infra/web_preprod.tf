@@ -26,7 +26,7 @@ resource "aws_s3_bucket_policy" "preprod_web" {
       Effect    = "Allow"
       Principal = { Service = "cloudfront.amazonaws.com" }
       Action    = "s3:GetObject"
-      Resource  = "arn:aws:s3:::preprod.seslogin.com/*"
+      Resource  = "${aws_s3_bucket.preprod_web.arn}/*"
       Condition = { StringEquals = {
         "AWS:SourceArn" = aws_cloudfront_distribution.preprod.arn
       } }
@@ -35,7 +35,7 @@ resource "aws_s3_bucket_policy" "preprod_web" {
 }
 
 resource "aws_cloudfront_distribution" "preprod" {
-  aliases             = ["preprod.seslogin.com"]
+  aliases             = var.cutover ? ["preprod.seslogin.com"] : []
   enabled             = true
   http_version        = "http2"
   is_ipv6_enabled     = true
@@ -92,30 +92,11 @@ resource "aws_cloudfront_distribution" "preprod" {
   }
 
   viewer_certificate {
-    acm_certificate_arn      = aws_acm_certificate_validation.preprod.certificate_arn
-    ssl_support_method       = "sni-only"
-    minimum_protocol_version = "TLSv1.2_2021"
+    cloudfront_default_certificate = var.cutover ? null : true
+    acm_certificate_arn            = var.cutover ? one(aws_acm_certificate_validation.preprod[*].certificate_arn) : null
+    ssl_support_method             = var.cutover ? "sni-only" : null
+    minimum_protocol_version       = var.cutover ? "TLSv1.2_2021" : null
   }
 }
 
-resource "aws_route53_record" "preprod_a" {
-  zone_id = data.aws_route53_zone.seslogin.zone_id
-  name    = "preprod.seslogin.com"
-  type    = "A"
-  alias {
-    name                   = aws_cloudfront_distribution.preprod.domain_name
-    zone_id                = aws_cloudfront_distribution.preprod.hosted_zone_id
-    evaluate_target_health = false
-  }
-}
-
-resource "aws_route53_record" "preprod_aaaa" {
-  zone_id = data.aws_route53_zone.seslogin.zone_id
-  name    = "preprod.seslogin.com"
-  type    = "AAAA"
-  alias {
-    name                   = aws_cloudfront_distribution.preprod.domain_name
-    zone_id                = aws_cloudfront_distribution.preprod.hosted_zone_id
-    evaluate_target_health = false
-  }
-}
+# App DNS alias records (preprod.seslogin.com) are centralized in route53.tf.

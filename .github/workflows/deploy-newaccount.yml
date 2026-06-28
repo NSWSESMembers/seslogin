@@ -1,0 +1,132 @@
+name: Deploy to new account (641079927221)
+
+# Migration helper: builds the Rust Lambdas natively on Linux (no local Zig) and
+# the web bundles, then deploys everything to the NEW account via GitHub OIDC.
+# Manually triggered while we stand up / validate the new environment. Removed
+# once the regular workflows are cut over to the new account.
+
+on:
+  # Push-triggered so it runs from this branch without the default-branch
+  # requirement that workflow_dispatch has. Pushes to new_aws_account redeploy.
+  push:
+    branches:
+      - new_aws_account
+  workflow_dispatch:
+    inputs:
+      deploy_web:
+        description: "Also build & deploy the web stacks"
+        type: boolean
+        default: true
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: ap-southeast-2
+  DEPLOY_ROLE_ARN: arn:aws:iam::641079927221:role/seslogin-github-deploy
+
+jobs:
+  lambdas:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: api
+
+      - name: Install cargo-lambda
+        run: pip install cargo-lambda
+
+      - name: Build all lambdas
+        working-directory: ./api
+        run: cargo lambda build --release --bin lambda --bin sync-members-lambda --bin dispatcher-lambda --bin checker-lambda --bin nitc-export-lambda --bin healthcheck-lambda --bin activity-summary-lambda --bin sync-locations-lambda
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # Functions already exist (created by Terraform with their execution roles),
+      # so we update code only — no --role (avoids needing iam:PassRole).
+      - name: Deploy API lambdas (shared 'lambda' binary)
+        working-directory: ./api
+        run: |
+          cargo lambda deploy --binary-name lambda seslogin-api
+          cargo lambda deploy --binary-name lambda seslogin-preprod-api
+          cargo lambda deploy --binary-name lambda seslogin-test-api
+
+      - name: Deploy worker lambdas
+        working-directory: ./api
+        run: |
+          cargo lambda deploy --binary-name sync-members-lambda    seslogin-sync-members
+          cargo lambda deploy --binary-name dispatcher-lambda      seslogin-dispatcher
+          cargo lambda deploy --binary-name checker-lambda         seslogin-checker
+          cargo lambda deploy --binary-name nitc-export-lambda     seslogin-nitc-export
+          cargo lambda deploy --binary-name healthcheck-lambda     seslogin-healthcheck
+          cargo lambda deploy --binary-name activity-summary-lambda seslogin-activity-summary
+          cargo lambda deploy --binary-name sync-locations-lambda  seslogin-sync-locations
+
+  web:
+    needs: lambdas
+    if: ${{ github.event_name == 'push' || inputs.deploy_web }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - env: prod
+            api_url: https://zba3de77v7oiwjwfzkyilnwgyu0lpddq.lambda-url.ap-southeast-2.on.aws/
+            bucket: seslogin-prod-web-641079927221
+            distribution: E2WJ7H8FF3QOS3
+          - env: preprod
+            api_url: https://ykfbjqjwa2whdhrmilwjse6ape0smjrb.lambda-url.ap-southeast-2.on.aws/
+            bucket: seslogin-preprod-web-641079927221
+            distribution: E1J1EQQKDJODOC
+          - env: test
+            api_url: https://rkrle4ilsgx6btclhy66ziufgu0yjgyr.lambda-url.ap-southeast-2.on.aws/
+            bucket: seslogin-test-web-641079927221
+            distribution: E3HQAX3Z0AQJDM
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+
+      - name: Install dependencies
+        working-directory: ./web
+        run: npm install
+
+      - name: Run relay compiler
+        working-directory: ./web
+        run: npm run relay
+
+      - name: Build web app
+        working-directory: ./web
+        env:
+          VITE_API_URL: ${{ matrix.api_url }}
+          VITE_BEACON_URL: ${{ vars.BEACON_URL }}
+          VITE_TURNSTILE_SITE_KEY: ${{ vars.TURNSTILE_SITE_KEY }}
+          VITE_CLIENT_VERSION: ${{ github.sha }}
+        run: npm run build
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Deploy to S3
+        run: aws s3 sync --follow-symlinks --delete ./web/dist s3://${{ matrix.bucket }}
+
+      - name: Invalidate CloudFront
+        run: aws cloudfront create-invalidation --distribution-id "${{ matrix.distribution }}" --paths "/*"
