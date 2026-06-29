@@ -5,6 +5,10 @@
   text-align: left;
   margin: 0;
   padding: 3px 80px 3px 80px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
 }
 
 #menu_bar a,
@@ -14,8 +18,11 @@
   text-decoration: none;
   display: inline-block;
   color: white;
-  padding: 2px 10px 2px 10px;
+  padding: 8px 12px 8px 12px;
   font-size: 18px;
+  border-radius: 4px;
+  transition: background-color 0.2s ease;
+  white-space: nowrap;
 }
 
 #menu_bar button.link-button {
@@ -221,23 +228,10 @@ table.admin td a {
   height: 3px;
 }
 
-#admin table.admin td.options {
-  padding: 0px 4px 0px 4px;
-  width: 1px;
-  text-align: right;
-  white-space: nowrap;
-}
+  #admin table.admin td.options:before {
+    display: none;
+  }
 
-#admin table.admin td.nowrap {
-  white-space: nowrap;
-}
-
-#admin table.admin td.center {
-  text-align: center;
-}
-
-#admin table.admin td.good {
-  color: green;
 }
 
 #admin table.admin td.warning1 {
@@ -440,32 +434,32 @@ body.mobile dl.align_list {
 
 /* form elements */
 #admin form dl {
-  display: inline-block;
-  overflow: auto;
+  display: block;
   width: 700px;
   margin: 30px auto 30px auto;
   padding-top: 10px;
   padding-bottom: 10px;
   border-top: 1px #555555 solid;
   border-bottom: 1px #555555 solid;
+  box-sizing: border-box;
 }
 
 #admin form dl dt {
   font-family: TitilliumMapsTitle, Verdana, sans-serif;
   clear: both;
-  float: left;
+  display: block;
   text-align: right;
-  width: 45%;
-  margin: 14px 10px 10px 0px;
+  width: 100%;
+  margin: 14px 0 6px 0;
   vertical-align: middle;
 }
 
 #admin form dl dd {
-  float: left;
+  display: block;
   margin: 0;
-  width: 50%;
+  width: 100%;
   text-align: left;
-  margin: 10px 0px 10px 10px;
+  margin: 0 0 12px 0;
   vertical-align: middle;
   min-height: 22px;
 }
@@ -508,25 +502,30 @@ body.mobile dl.align_list {
 #admin form dl dd input[type="url"],
 #admin form dl dd textarea {
   font-size: 14px;
-  width: 90%;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 #admin form dl dd select {
   font-size: 14px;
-  width: 92%;
+  width: 100%;
   height: 28px;
+  box-sizing: border-box;
 }
 
 #admin form dl dd .small {
-  width: 25% !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
 }
 
 #admin form dl dd .half {
-  width: 45% !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
 }
 
 form dl dd .medium {
-  width: 70% !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
 }
 
 #admin form dl ul.errors {
@@ -565,12 +564,14 @@ form dl dd .medium {
 
 #admin .activity-totals-grid {
   display: flex;
+  flex-wrap: wrap;
   gap: 20px;
   align-items: flex-start;
 }
 
 #admin .activity-category-selector {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   align-items: center;
   justify-content: center;
@@ -579,6 +580,7 @@ form dl dd .medium {
 
 #admin .activity-totals-range {
   display: flex;
+  flex-wrap: wrap;
   gap: 20px;
   justify-content: center;
   margin-bottom: 16px;
@@ -736,5 +738,422 @@ form dl dd .medium {
 @keyframes spin {
   to {
     transform: rotate(360deg);
+  }
+}
+
+/* ===== MOBILE RESPONSIVE STYLES ===== */
+
+/* Tablet and small screens (768px and below) */
+@media (max-width: 768px) {
+  #menu_bar,
+  #submenu_bar {
+    padding: 3px 12px;
+    gap: 3px;
+  }
+
+  #menu_bar a,
+  #menu_bar button.link-button,
+  #submenu_bar a {
+    padding: 6px 10px;
+    font-size: 16px;
+    margin-right: 2px;
+  }
+
+  #submenu_bar a {
+    font-size: 13px;
+    padding: 4px 8px;
+  }
+
+  #admin div#content {
+    padding: 12px 2%;
+  }
+
+  #admin form dl {
+    width: 95%;
+    margin: 20px auto;
+    padding: 10px 8px;
+  }
+
+  #admin form dl dt {
+    text-align: left;
+    font-size: 0.95em;
+  }
+
+  #admin form dl dd {
+    margin: 0 0 10px 0;
+  }
+
+  #admin form button {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 8px 12px;
+    font-size: 14px;
+  }
+
+  #admin .segmented-control {
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
+    border-radius: 0;
+  }
+
+  #admin .segmented-control .segment-button {
+    min-width: auto;
+    padding: 8px 4px;
+    font-size: 13px;
+  }
+
+  #admin table.admin {
+    font-size: 0.9em;
+  }
+
+  #admin table.admin th {
+    padding: 4px 3px;
+    font-size: 0.85em;
+  }
+
+  #admin table.admin td {
+    padding: 2px 3px;
+  }
+
+  #admin table.admin td.options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3px;
+    justify-content: center;
+    align-items: center;
+  }
+
+  #admin table.admin td.options a,
+  #admin table.admin td.options button {
+    padding: 6px 10px;
+    font-size: 12px;
+    margin: 0;
+    white-space: nowrap;
+    display: inline-block;
+  }
+
+  #admin .activity-totals-grid {
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  #admin .activity-totals-panel {
+    width: 100%;
+  }
+
+  #admin .activity-row {
+    padding: 4px 3px;
+    gap: 8px;
+  }
+
+  #location-selector .selector-container {
+    padding: 24px 16px;
+    margin: 0 12px;
+  }
+
+  #location-selector h1 {
+    font-size: 24px;
+    margin-bottom: 8px;
+  }
+
+  #location-selector input[type="text"].location-filter {
+    padding: 12px;
+    font-size: 16px;
+    margin-bottom: 16px;
+  }
+
+  #location-selector .location-button {
+    padding: 12px;
+  }
+
+  #location-selector .location-name {
+    font-size: 16px;
+  }
+}
+
+/* Small phones (480px and below) */
+@media (max-width: 480px) {
+  #menu_bar,
+  #submenu_bar {
+    padding: 3px 8px;
+    gap: 2px;
+  }
+
+  #menu_bar a,
+  #menu_bar button.link-button,
+  #submenu_bar a {
+    padding: 4px 8px;
+    font-size: 14px;
+    margin-right: 1px;
+    flex: 1;
+    text-align: center;
+    min-width: fit-content;
+  }
+
+  #submenu_bar a {
+    font-size: 12px;
+    padding: 4px 6px;
+  }
+
+  #admin div#content {
+    padding: 8px 1%;
+  }
+
+  #admin form dl {
+    width: 100%;
+    margin: 15px 0;
+    padding: 8px 6px;
+  }
+
+  #admin form dl dt {
+    font-size: 0.9em;
+    margin: 8px 0 4px 0;
+  }
+
+  #admin form dl dd {
+    margin: 0 0 8px 0;
+  }
+
+  #admin form button {
+    font-size: 13px;
+    padding: 6px 10px;
+  }
+
+  #admin .segmented-control {
+    grid-template-columns: repeat(auto-fit, minmax(65px, 1fr));
+  }
+
+  #admin .segmented-control .segment-button {
+    font-size: 12px;
+    padding: 6px 3px;
+  }
+
+  #admin table.admin {
+    font-size: 0.8em;
+    display: block;
+    width: 100%;
+    border-collapse: collapse;
+    overflow-x: auto;
+  }
+
+  #admin table.admin thead {
+    display: none;
+  }
+
+  #admin table.admin tbody,
+  #admin table.admin tr {
+    display: block;
+    width: 100%;
+  }
+
+  #admin table.admin tr {
+    margin-bottom: 12px;
+    border: 1px solid #ddd;
+    background-color: white;
+  }
+
+  #admin table.admin tr.odd {
+    background-color: #f9f9f9;
+  }
+
+  #admin table.admin tr.section-row,
+  #admin table.admin tr.gap-row {
+    margin-bottom: 0;
+    border: none;
+    background-color: transparent;
+  }
+
+  #admin table.admin tr.section-row th.section {
+    display: block;
+    padding: 8px 0 6px;
+    border-bottom: 1px solid #888888;
+    font-size: 0.95em;
+    background-color: transparent;
+  }
+
+  #admin table.admin tr.gap-row td.gap {
+    display: none;
+  }
+
+  #admin table.admin td {
+    display: block;
+    text-align: right;
+    padding: 8px 4px;
+    border: none;
+    border-bottom: 1px solid #eee;
+    position: relative;
+    padding-left: 50%;
+    min-height: 1.4em;
+    box-sizing: border-box;
+  }
+
+  #admin table.admin td:not(.options):empty::after {
+    content: "\00a0";
+    visibility: hidden;
+  }
+
+  #admin table.admin td.options {
+    display: flex !important;
+    text-align: right !important;
+    padding: 10px 8px !important;
+    padding-left: 8px !important;
+    padding-right: 8px !important;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 6px;
+    justify-content: flex-end;
+    align-items: center;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    overflow: visible;
+  }
+
+  #admin table.admin td:before {
+    content: attr(data-label);
+    position: absolute;
+    left: 4px;
+    font-weight: bold;
+    width: 45%;
+    text-align: left;
+  }
+
+  #admin table.admin td:last-child {
+    border-bottom: none;
+  }
+
+  #admin table.admin td.options:before {
+    display: none;
+  }
+
+  #admin table.admin td.options a,
+  #admin table.admin td.options button {
+    padding: 8px 10px;
+    font-size: 12px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0;
+    white-space: nowrap;
+    flex: 0 1 auto;
+    min-width: 68px;
+  }
+
+  #admin a.button,
+  #admin button.button {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 8px 12px;
+    font-size: 14px;
+  }
+
+  #admin .activity-category-selector {
+    gap: 6px;
+  }
+
+  #admin .activity-totals-range {
+    gap: 12px;
+    flex-direction: column;
+  }
+
+  #admin .activity-row {
+    padding: 3px 2px;
+    gap: 6px;
+    flex-direction: column;
+  }
+
+  #admin .activity-row-value {
+    white-space: normal;
+  }
+
+  /* Optimize location selector for phone */
+  #location-selector {
+    min-height: auto;
+    padding: 12px;
+  }
+
+  #location-selector .selector-container {
+    padding: 16px 12px;
+    margin: 0;
+    border-radius: 4px;
+  }
+
+  #location-selector h1 {
+    font-size: 20px;
+    margin-bottom: 6px;
+  }
+
+  #location-selector p {
+    font-size: 14px;
+    margin-bottom: 16px;
+  }
+
+  #location-selector input[type="text"].location-filter {
+    padding: 10px;
+    font-size: 16px;
+    margin-bottom: 12px;
+  }
+
+  #location-selector .location-button {
+    padding: 10px;
+    font-size: 14px;
+  }
+
+  #location-selector .location-name {
+    font-size: 14px;
+  }
+
+  /* Improve touch target sizes */
+  #admin button,
+  #admin a.button,
+  #admin .location-button {
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* Make checkboxes and radio buttons more touch-friendly */
+  #admin input[type="checkbox"],
+  #admin input[type="radio"] {
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+    margin-right: 8px;
+  }
+
+  #admin .mode-option {
+    grid-template-columns: auto 1fr;
+    gap: 6px;
+  }
+
+  .passkey-benefits li {
+    padding: 12px 12px;
+    font-size: 14px;
+  }
+
+  #admin .session-created-code {
+    font-size: 42px;
+    margin: 16px 0;
+  }
+
+  #admin .reports-actions {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  #admin .reports-actions button {
+    width: 100%;
+  }
+
+  .loading-container {
+    padding: 32px 16px;
+  }
+
+  .loading-spinner {
+    width: 36px;
+    height: 36px;
+    border-width: 3px;
   }
 }

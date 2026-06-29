@@ -64,7 +64,7 @@ function Row({
 
   return (
     <tr className={idx % 2 === 0 ? "odd" : "even"}>
-      <td className="center">
+      <td className="center" data-label="Status">
         {sesApiPersonId ? (
           <img
             src={bulletGreen}
@@ -77,15 +77,15 @@ function Row({
         ) : null}
       </td>
       {isDev && (
-        <td style={{ fontFamily: "monospace", fontSize: "0.85em" }}>
+        <td style={{ fontFamily: "monospace", fontSize: "0.85em" }} data-label="ID">
           {person.id}
         </td>
       )}
-      <td>{person.memberNumber}</td>
-      <td className="nowrap">
+      <td data-label="SES ID">{person.memberNumber}</td>
+      <td className="nowrap" data-label="Name">
         {person.firstName} {person.lastName}
       </td>
-      <td className="options">
+      <td className="options" data-label="Actions">
         <Link to={`/admin/members/activity/${person.id}`}>Activity</Link>
         {!sesApiPersonId ? (
           <>
