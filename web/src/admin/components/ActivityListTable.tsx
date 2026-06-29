@@ -68,12 +68,12 @@ function Section<T extends ActivityListTable_period$key>({
   const colSpan = isDev ? 8 : 7;
   return (
     <>
-      <tr>
+      <tr className="section-row">
         <th className="section" colSpan={colSpan}>
           {day}
         </th>
       </tr>
-      <tr>
+      <tr className="gap-row">
         <td className="gap" colSpan={colSpan}></td>
       </tr>
       {entries.map((entry, idx) => (
@@ -156,7 +156,7 @@ function Row<T extends ActivityListTable_period$key>({
   return (
     <>
       <tr className={idx % 2 === 0 ? "odd" : "even"}>
-        <td className="center">
+        <td className="center" data-label={nitcBullet ? "Status" : undefined}>
           {nitcBullet ? (
             nitcLink ? (
               <a href={nitcLink} target="_blank" rel="noreferrer">
@@ -182,26 +182,31 @@ function Row<T extends ActivityListTable_period$key>({
           ) : null}
         </td>
         {isDev && (
-          <td style={{ fontFamily: "monospace", fontSize: "0.85em" }}>
+          <td
+            style={{ fontFamily: "monospace", fontSize: "0.85em" }}
+            data-label="ID"
+          >
             {period.id}
           </td>
         )}
-        <td>{getRowLabel(entry.ref)}</td>
+        <td data-label="Member">{getRowLabel(entry.ref)}</td>
         <td
           title={period.signedInSession?.name ?? undefined}
           style={period.signedInSession ? sessionHintStyle : undefined}
+          data-label="Start"
         >
           {formatTime(start)}
         </td>
         <td
           title={period.signedOutSession?.name ?? undefined}
           style={period.signedOutSession ? sessionHintStyle : undefined}
+          data-label="End"
         >
           {end ? formatTime(end) : ""}
         </td>
-        <td>{timeDiff}</td>
-        <td>{period.category?.name}</td>
-        <td className="options">
+        <td data-label="Duration">{timeDiff}</td>
+        <td data-label="Category">{period.category?.name}</td>
+        <td className="options" data-label="Actions">
           <Link to={`/admin/activity/${period.id}`}>Edit</Link>&nbsp;
           <button
             className="delete"
