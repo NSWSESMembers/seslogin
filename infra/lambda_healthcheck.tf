@@ -20,4 +20,5 @@ resource "aws_lambda_event_source_mapping" "healthcheck_sqs" {
   event_source_arn = aws_sqs_queue.healthcheck.arn
   function_name    = aws_lambda_function.healthcheck.arn
   batch_size       = 10
+  enabled          = var.background_jobs_enabled
 }

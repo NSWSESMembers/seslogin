@@ -36,6 +36,17 @@ variable "enable_certs" {
   default     = false
 }
 
+# Background workers (member sync, dispatcher, checker, nitc-export, healthcheck,
+# activity-summary, location-sync) via their EventBridge schedules + SQS event
+# source mappings. Disabled during new-account testing so we don't sync members,
+# export to NITC, send summary emails, or run healthchecks. Flip to true at the
+# prod cutover. The 3 API servers are unaffected.
+variable "background_jobs_enabled" {
+  description = "Enable the worker lambdas' schedules + SQS triggers. false during testing; true at prod cutover."
+  type        = bool
+  default     = true
+}
+
 # Per-environment cutover. When an env's flag is true, that distribution gets its
 # real alias(es) + ACM cert and the zone's app record points at the new CF; when
 # false it serves the default cert with no alias and the record points at the old

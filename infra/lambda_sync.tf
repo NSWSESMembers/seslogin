@@ -34,4 +34,5 @@ resource "aws_lambda_event_source_mapping" "sync_members_sqs" {
   event_source_arn = aws_sqs_queue.member_sync.arn
   function_name    = aws_lambda_function.sync_members.arn
   batch_size       = 1
+  enabled          = var.background_jobs_enabled
 }
