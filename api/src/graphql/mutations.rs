@@ -254,6 +254,10 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
         }
 
         let code = crate::nonce::generate_code(6);
+
+        // log only in debug builds to avoid putting codes in production logs
+        #[cfg(debug_assertions)]
+        info!("Email login code for email={}: {}", email, code);
         let code_hash = {
             let mut hasher = Sha256::new();
             hasher.update(code.as_bytes());
