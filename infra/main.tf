@@ -17,6 +17,6 @@ locals {
   account_id = var.aws_account_id
   region     = "ap-southeast-2"
 
-  # Certs exist when explicitly enabled, or implicitly once we cut over.
-  create_certs = var.enable_certs || var.cutover
+  # Certs exist when explicitly enabled, or implicitly once any env cuts over.
+  create_certs = var.enable_certs || var.cutover_prod || var.cutover_preprod || var.cutover_test
 }

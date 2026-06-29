@@ -36,8 +36,25 @@ variable "enable_certs" {
   default     = false
 }
 
-variable "cutover" {
-  description = "Attach the production aliases + ACM cert to the new CloudFront distributions (Phase 7 cutover). Implies enable_certs."
+# Per-environment cutover. When an env's flag is true, that distribution gets its
+# real alias(es) + ACM cert and the zone's app record points at the new CF; when
+# false it serves the default cert with no alias and the record points at the old
+# account's CF (var.app_cf_domain_*). Lets us cut over test -> preprod -> prod
+# independently. Any of these implies enable_certs.
+variable "cutover_prod" {
+  description = "Cut seslogin.com / new.seslogin.com over to the new prod CloudFront."
+  type        = bool
+  default     = false
+}
+
+variable "cutover_preprod" {
+  description = "Cut preprod.seslogin.com over to the new preprod CloudFront."
+  type        = bool
+  default     = false
+}
+
+variable "cutover_test" {
+  description = "Cut test.seslogin.com over to the new test CloudFront."
   type        = bool
   default     = false
 }
