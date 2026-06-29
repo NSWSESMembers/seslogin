@@ -86,13 +86,13 @@ export default function ActivityLastSeen() {
                 : null;
             return (
               <tr key={member.id} className={idx % 2 === 0 ? "odd" : "even"}>
-                <td>
+                <td data-label="Name">
                   {member.firstName} {member.lastName}
                 </td>
-                <td>
+                <td data-label="Last Seen">
                   {lastSeenDate ? formatFullDateTime(lastSeenDate) : "Never"}
                 </td>
-                <td>
+                <td data-label="Time Ago">
                   {lastSeenDate
                     ? formatTimeDiff(lastSeenDate, now) + " ago"
                     : "-"}

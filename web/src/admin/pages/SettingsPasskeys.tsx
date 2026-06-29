@@ -151,10 +151,12 @@ export default function SettingsPasskeys() {
           <tbody>
             {passkeys.map((pk, idx) => (
               <tr key={pk.id} className={idx % 2 === 0 ? "odd" : "even"}>
-                <td>{pk.name}</td>
-                <td>{formatDate(pk.createdAt)}</td>
-                <td>{pk.lastUsedAt ? formatDate(pk.lastUsedAt) : "Never"}</td>
-                <td className="options">
+                <td data-label="Name">{pk.name}</td>
+                <td data-label="Added">{formatDate(pk.createdAt)}</td>
+                <td data-label="Last Used">
+                  {pk.lastUsedAt ? formatDate(pk.lastUsedAt) : "Never"}
+                </td>
+                <td className="options" data-label="Actions">
                   <button
                     type="button"
                     onClick={() => handleRename(pk.id, pk.name)}

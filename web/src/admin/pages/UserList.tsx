@@ -93,24 +93,27 @@ function Row(props: { user: UserList_user$key; idx: number; isDev: boolean }) {
   return (
     <tr className={props.idx % 2 === 0 ? "odd" : "even"}>
       {isDev && (
-        <td style={{ fontFamily: "monospace", fontSize: "0.85em" }}>
+        <td
+          style={{ fontFamily: "monospace", fontSize: "0.85em" }}
+          data-label="ID"
+        >
           {user.id}
         </td>
       )}
-      <td>
+      <td data-label="Email">
         <span className={user.enabled ? "" : "strike"}>{user.email}</span>
       </td>
-      <td>
+      <td data-label="Last Access">
         {user.accessTime
           ? formatTimeDiff(new Date(user.accessTime * 1000), new Date()) +
             " ago"
           : "-"}
       </td>
-      <td>{user.isSuper ? "Yes" : "No"}</td>
-      <td>
+      <td data-label="Super">{user.isSuper ? "Yes" : "No"}</td>
+      <td data-label="Locations">
         {user.isSuper ? null : user.locations.map((l) => l.name).join(", ")}
       </td>
-      <td className="options">
+      <td className="options" data-label="Actions">
         <Link to={`/admin/users/${user.id}`}>Edit</Link>&nbsp;
         <button
           className={user.enabled ? "delete" : ""}

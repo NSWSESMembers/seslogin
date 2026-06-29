@@ -73,19 +73,22 @@ function Row({
   return (
     <>
       <tr className={idx % 2 === 0 ? "odd" : "even"}>
-        <td className="center">
+        <td className="center" data-label="Status">
           <SessionStatus lastContact={session.lastContact} />
         </td>
         {isDev && (
-          <td style={{ fontFamily: "monospace", fontSize: "0.85em" }}>
+          <td
+            style={{ fontFamily: "monospace", fontSize: "0.85em" }}
+            data-label="ID"
+          >
             {session.id}
           </td>
         )}
-        <td>{session.name}</td>
-        <td>{timeSinceAccess}</td>
-        <td>{session.code}</td>
-        <td>{clientVersion}</td>
-        <td className="options">
+        <td data-label="Name">{session.name}</td>
+        <td data-label="Last Contact">{timeSinceAccess}</td>
+        <td data-label="Code">{session.code}</td>
+        <td data-label="Version">{clientVersion}</td>
+        <td className="options" data-label="Actions">
           <Link to={`/admin/sessions/${session.id}`}>Edit</Link>&nbsp;
           <button
             className="delete"
