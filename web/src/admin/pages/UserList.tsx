@@ -93,7 +93,10 @@ function Row(props: { user: UserList_user$key; idx: number; isDev: boolean }) {
   return (
     <tr className={props.idx % 2 === 0 ? "odd" : "even"}>
       {isDev && (
-        <td style={{ fontFamily: "monospace", fontSize: "0.85em" }} data-label="ID">
+        <td
+          style={{ fontFamily: "monospace", fontSize: "0.85em" }}
+          data-label="ID"
+        >
           {user.id}
         </td>
       )}

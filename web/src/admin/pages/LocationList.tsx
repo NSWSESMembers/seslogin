@@ -123,14 +123,19 @@ function Row(props: {
   return (
     <tr className={idx % 2 === 0 ? "odd" : "even"}>
       {isDev && (
-        <td style={{ fontFamily: "monospace", fontSize: "0.85em" }} data-label="ID">
+        <td
+          style={{ fontFamily: "monospace", fontSize: "0.85em" }}
+          data-label="ID"
+        >
           {location.id}
         </td>
       )}
       <td className="nowrap" data-label="Name">
         <div className={location.enabled ? "" : "strike"}>{location.name}</div>
       </td>
-      <td className="nowrap" data-label="Last Sync">{lastSync}</td>
+      <td className="nowrap" data-label="Last Sync">
+        {lastSync}
+      </td>
       <td data-label="NITC">
         {location.nitcEnabled
           ? new Date(location.nitcEnabled * 1000).toISOString().slice(0, 10)

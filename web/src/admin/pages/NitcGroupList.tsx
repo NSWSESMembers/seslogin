@@ -62,12 +62,17 @@ function Row({
 
   return (
     <tr className={idx % 2 === 0 ? "odd" : "even"}>
-      <td style={{ fontFamily: "monospace", fontSize: "0.85em" }} data-label="ID">
+      <td
+        style={{ fontFamily: "monospace", fontSize: "0.85em" }}
+        data-label="ID"
+      >
         {group.id}
       </td>
       <td data-label="NITC Type">{group.nitcType}</td>
       <td data-label="SES Tags">{tagNames}</td>
-      <td title={categoryNames || undefined} data-label="Categories">{usingCategories.length}</td>
+      <td title={categoryNames || undefined} data-label="Categories">
+        {usingCategories.length}
+      </td>
       <td className="options" data-label="Actions">
         <Link to={`/admin/categories/nitc-groups/${group.id}`}>Edit</Link>&nbsp;
         <button

@@ -87,15 +87,23 @@ function Row({
   return (
     <tr className={idx % 2 === 0 ? "odd" : "even"}>
       {isDev && (
-        <td style={{ fontFamily: "monospace", fontSize: "0.85em" }} data-label="ID">
+        <td
+          style={{ fontFamily: "monospace", fontSize: "0.85em" }}
+          data-label="ID"
+        >
           {category.id}
         </td>
       )}
       <td className="nowrap" data-label="Name">
         <div className={category.enabled ? "" : "strike"}>{category.name}</div>
       </td>
-      <td data-label="Participant Type">{category.nitcParticipantType ?? ""}</td>
-      <td style={{ fontFamily: "monospace", fontSize: "0.85em" }} data-label="NITC Group ID">
+      <td data-label="Participant Type">
+        {category.nitcParticipantType ?? ""}
+      </td>
+      <td
+        style={{ fontFamily: "monospace", fontSize: "0.85em" }}
+        data-label="NITC Group ID"
+      >
         {category.nitcGroupId ?? ""}
       </td>
       <td data-label="NITC Type">{category.nitcGroup?.nitcType ?? ""}</td>

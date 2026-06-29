@@ -228,12 +228,6 @@ table.admin td a {
   height: 3px;
 }
 
-  #admin table.admin td.options:before {
-    display: none;
-  }
-
-}
-
 #admin table.admin td.warning1 {
   color: #ffcc11;
 }

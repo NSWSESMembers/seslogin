@@ -182,7 +182,10 @@ function Row<T extends ActivityListTable_period$key>({
           ) : null}
         </td>
         {isDev && (
-          <td style={{ fontFamily: "monospace", fontSize: "0.85em" }} data-label="ID">
+          <td
+            style={{ fontFamily: "monospace", fontSize: "0.85em" }}
+            data-label="ID"
+          >
             {period.id}
           </td>
         )}

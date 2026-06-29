@@ -77,7 +77,10 @@ function Row({
           <SessionStatus lastContact={session.lastContact} />
         </td>
         {isDev && (
-          <td style={{ fontFamily: "monospace", fontSize: "0.85em" }} data-label="ID">
+          <td
+            style={{ fontFamily: "monospace", fontSize: "0.85em" }}
+            data-label="ID"
+          >
             {session.id}
           </td>
         )}

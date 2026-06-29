@@ -153,7 +153,9 @@ export default function SettingsPasskeys() {
               <tr key={pk.id} className={idx % 2 === 0 ? "odd" : "even"}>
                 <td data-label="Name">{pk.name}</td>
                 <td data-label="Added">{formatDate(pk.createdAt)}</td>
-                <td data-label="Last Used">{pk.lastUsedAt ? formatDate(pk.lastUsedAt) : "Never"}</td>
+                <td data-label="Last Used">
+                  {pk.lastUsedAt ? formatDate(pk.lastUsedAt) : "Never"}
+                </td>
                 <td className="options" data-label="Actions">
                   <button
                     type="button"

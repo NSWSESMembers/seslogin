@@ -77,7 +77,10 @@ function Row({
         ) : null}
       </td>
       {isDev && (
-        <td style={{ fontFamily: "monospace", fontSize: "0.85em" }} data-label="ID">
+        <td
+          style={{ fontFamily: "monospace", fontSize: "0.85em" }}
+          data-label="ID"
+        >
           {person.id}
         </td>
       )}
