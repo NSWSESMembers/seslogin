@@ -30,6 +30,7 @@ resource "aws_lambda_event_source_mapping" "nitc_export_sqs" {
   event_source_arn = aws_sqs_queue.nitc_export.arn
   function_name    = aws_lambda_function.nitc_export.arn
   batch_size       = 1
+  enabled          = var.background_jobs_enabled
 
   scaling_config {
     maximum_concurrency = 2

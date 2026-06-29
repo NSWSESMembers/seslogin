@@ -1,6 +1,7 @@
 resource "aws_scheduler_schedule" "member_sync_hourly" {
   name       = "seslogin-member-sync-hourly"
   group_name = "default"
+  state      = var.background_jobs_enabled ? "ENABLED" : "DISABLED"
 
   flexible_time_window {
     mode = "OFF"
@@ -20,6 +21,7 @@ resource "aws_scheduler_schedule" "member_sync_hourly" {
 resource "aws_scheduler_schedule" "checker_daily" {
   name       = "seslogin-checker-daily"
   group_name = "default"
+  state      = var.background_jobs_enabled ? "ENABLED" : "DISABLED"
 
   flexible_time_window {
     mode = "OFF"
@@ -40,6 +42,7 @@ resource "aws_scheduler_schedule" "checker_daily" {
 resource "aws_scheduler_schedule" "activity_summary_nightly" {
   name       = "seslogin-activity-summary-nightly"
   group_name = "default"
+  state      = var.background_jobs_enabled ? "ENABLED" : "DISABLED"
 
   flexible_time_window {
     mode = "OFF"
@@ -59,6 +62,7 @@ resource "aws_scheduler_schedule" "activity_summary_nightly" {
 resource "aws_scheduler_schedule" "location_sync_nightly" {
   name       = "seslogin-location-sync-nightly"
   group_name = "default"
+  state      = var.background_jobs_enabled ? "ENABLED" : "DISABLED"
 
   flexible_time_window {
     mode = "OFF"
