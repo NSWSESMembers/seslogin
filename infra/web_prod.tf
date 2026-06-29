@@ -35,7 +35,7 @@ resource "aws_s3_bucket_policy" "prod_web" {
 }
 
 resource "aws_cloudfront_distribution" "prod" {
-  aliases             = var.cutover ? ["seslogin.com", "new.seslogin.com"] : []
+  aliases             = var.cutover_prod ? ["seslogin.com", "new.seslogin.com"] : []
   enabled             = true
   http_version        = "http2"
   is_ipv6_enabled     = true
@@ -92,9 +92,9 @@ resource "aws_cloudfront_distribution" "prod" {
   }
 
   viewer_certificate {
-    cloudfront_default_certificate = var.cutover ? null : true
-    acm_certificate_arn            = var.cutover ? one(aws_acm_certificate_validation.prod[*].certificate_arn) : null
-    ssl_support_method             = var.cutover ? "sni-only" : null
-    minimum_protocol_version       = var.cutover ? "TLSv1.2_2021" : null
+    cloudfront_default_certificate = var.cutover_prod ? null : true
+    acm_certificate_arn            = var.cutover_prod ? one(aws_acm_certificate_validation.prod[*].certificate_arn) : null
+    ssl_support_method             = var.cutover_prod ? "sni-only" : null
+    minimum_protocol_version       = var.cutover_prod ? "TLSv1.2_2021" : null
   }
 }

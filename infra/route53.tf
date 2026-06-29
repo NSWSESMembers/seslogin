@@ -12,6 +12,12 @@ resource "aws_route53_zone" "seslogin" {
 locals {
   # CloudFront's fixed hosted-zone id for Route53 alias targets (global, all distributions).
   cf_alias_zone_id = "Z2FDTNDATAQYW2"
+
+  # Per-env alias target: the NEW distribution once that env cuts over, otherwise
+  # the OLD account's CloudFront (var.app_cf_domain_*) so the live site is unchanged.
+  prod_alias_target    = var.cutover_prod ? aws_cloudfront_distribution.prod.domain_name : var.app_cf_domain_prod
+  preprod_alias_target = var.cutover_preprod ? aws_cloudfront_distribution.preprod.domain_name : var.app_cf_domain_preprod
+  test_alias_target    = var.cutover_test ? aws_cloudfront_distribution.test.domain_name : var.app_cf_domain_test
 }
 
 # ── App aliases ───────────────────────────────────────────────────────────────
@@ -20,7 +26,7 @@ resource "aws_route53_record" "apex_a" {
   name    = "seslogin.com"
   type    = "A"
   alias {
-    name                   = var.app_cf_domain_prod
+    name                   = local.prod_alias_target
     zone_id                = local.cf_alias_zone_id
     evaluate_target_health = false
   }
@@ -31,7 +37,7 @@ resource "aws_route53_record" "apex_aaaa" {
   name    = "seslogin.com"
   type    = "AAAA"
   alias {
-    name                   = var.app_cf_domain_prod
+    name                   = local.prod_alias_target
     zone_id                = local.cf_alias_zone_id
     evaluate_target_health = false
   }
@@ -42,7 +48,7 @@ resource "aws_route53_record" "new_a" {
   name    = "new.seslogin.com"
   type    = "A"
   alias {
-    name                   = var.app_cf_domain_prod
+    name                   = local.prod_alias_target
     zone_id                = local.cf_alias_zone_id
     evaluate_target_health = false
   }
@@ -53,7 +59,7 @@ resource "aws_route53_record" "new_aaaa" {
   name    = "new.seslogin.com"
   type    = "AAAA"
   alias {
-    name                   = var.app_cf_domain_prod
+    name                   = local.prod_alias_target
     zone_id                = local.cf_alias_zone_id
     evaluate_target_health = false
   }
@@ -64,7 +70,7 @@ resource "aws_route53_record" "preprod_a" {
   name    = "preprod.seslogin.com"
   type    = "A"
   alias {
-    name                   = var.app_cf_domain_preprod
+    name                   = local.preprod_alias_target
     zone_id                = local.cf_alias_zone_id
     evaluate_target_health = false
   }
@@ -75,7 +81,7 @@ resource "aws_route53_record" "preprod_aaaa" {
   name    = "preprod.seslogin.com"
   type    = "AAAA"
   alias {
-    name                   = var.app_cf_domain_preprod
+    name                   = local.preprod_alias_target
     zone_id                = local.cf_alias_zone_id
     evaluate_target_health = false
   }
@@ -87,7 +93,7 @@ resource "aws_route53_record" "test_a" {
   name    = "test.seslogin.com"
   type    = "A"
   alias {
-    name                   = var.app_cf_domain_test
+    name                   = local.test_alias_target
     zone_id                = local.cf_alias_zone_id
     evaluate_target_health = false
   }
