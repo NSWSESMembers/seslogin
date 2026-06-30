@@ -16,6 +16,7 @@ use crate::app::HasDb;
 use crate::app::HasSqs;
 use crate::auth;
 use crate::auth::AuthInfo;
+use crate::badges;
 use crate::db;
 use crate::db::Handler;
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
@@ -73,6 +74,21 @@ enum RegisterState {
 struct RegisterResult<A: App + HasDb + Send + Sync + 'static> {
     state: RegisterState,
     period: Option<Period<A>>,
+    awarded_badges: Vec<BadgeAward>,
+}
+
+#[derive(SimpleObject)]
+struct BadgeAward {
+    id: String,
+    name: String,
+    description: String,
+    tier: String,
+}
+
+#[derive(SimpleObject)]
+struct ScanSignOutResult<A: App + HasDb + Send + Sync + 'static> {
+    period: Period<A>,
+    awarded_badges: Vec<BadgeAward>,
 }
 
 #[derive(SimpleObject)]
@@ -88,6 +104,50 @@ pub struct MutationRoot<A: App + HasDb + HasSqs + Send + Sync> {
 }
 
 impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
+    async fn apply_badge_event(
+        &self,
+        person: &db::Person,
+        location: &db::Location,
+        event: badges::BadgeEvent,
+        sign_out_category_id: Option<&str>,
+    ) -> Result<Vec<BadgeAward>> {
+        if !location.gamification_enabled {
+            return Ok(vec![]);
+        }
+
+        let mut state = badges::state_from_map(&person.badge_state);
+        let awarded = badges::apply_event(
+            &mut state,
+            &location.id,
+            event,
+            crate::clock::now_sec(),
+            sign_out_category_id,
+        );
+        if awarded.is_empty() {
+            return Ok(vec![]);
+        }
+
+        self.app
+            .db()
+            .update_person(
+                &person.id,
+                db::PersonUpdateShape::BadgeState {
+                    badge_state: badges::state_to_map(&state),
+                },
+            )
+            .await?;
+
+        Ok(awarded
+            .into_iter()
+            .map(|b| BadgeAward {
+                id: b.id,
+                name: b.name,
+                description: b.description,
+                tier: b.tier,
+            })
+            .collect())
+    }
+
     /// Enqueue a Phase 1 (period) NITC export for a mutated period.
     ///
     /// `old_nitc_event_id` is the event the period was assigned to *before* this mutation (read
@@ -216,7 +276,10 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
             .and_then(|ids| db::at_most_one(ids, || format!("Multiple users share email {email}")));
         let user_id = match lookup {
             Ok(Some(id)) => id,
-            Ok(None) => return true,
+            Ok(None) => {
+                info!("request_auth_code: no user found for email={}", email);
+                return true;
+            }
             Err(e) => {
                 warn!("DB error looking up user in request_auth_code: {:#}", e);
                 return true;
@@ -1017,10 +1080,21 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
         name: String,
         enabled: bool,
         nitc_enabled: Option<i64>,
+        gamification_enabled: Option<bool>,
+        badge_weekly_digest_enabled: Option<bool>,
     ) -> Result<Location<A>> {
         let nitc_enabled = nitc_enabled
             .and_then(|ts| u64::try_from(ts).ok())
             .filter(|&ts| ts > 0);
+        let existing = self
+            .app
+            .db()
+            .get_locations(&[&id])
+            .await?
+            .into_iter()
+            .next()
+            .flatten()
+            .ok_or_else(|| anyhow!("Location with ID {:?} missing", &id))?;
         self.app
             .db()
             .update_location(
@@ -1029,6 +1103,10 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
                     name: &name,
                     enabled,
                     nitc_enabled,
+                    gamification_enabled: gamification_enabled
+                        .unwrap_or(existing.gamification_enabled),
+                    badge_weekly_digest_enabled: badge_weekly_digest_enabled
+                        .unwrap_or(existing.badge_weekly_digest_enabled),
                 },
             )
             .await?;
@@ -1157,8 +1235,28 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
             return Ok(RegisterResult {
                 state: RegisterState::NotFound,
                 period: None,
+                awarded_badges: vec![],
             });
         };
+
+        let person = self
+            .app
+            .db()
+            .get_persons(&[&person_id])
+            .await?
+            .into_iter()
+            .next()
+            .flatten()
+            .ok_or_else(|| anyhow!("Person with ID {:?} missing", &person_id))?;
+        let location = self
+            .app
+            .db()
+            .get_locations(&[&location_id])
+            .await?
+            .into_iter()
+            .next()
+            .flatten()
+            .ok_or_else(|| anyhow!("Location with ID {:?} missing", &location_id))?;
 
         // lookup most recent unfinished period for this person scoped to this session's location
         let existing_unfinished_period = self
@@ -1184,6 +1282,7 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
             Ok(RegisterResult {
                 state: RegisterState::SignOutPending,
                 period: Some(Period::new(period)),
+                awarded_badges: vec![],
             })
         } else {
             // no existing unfinished period, so sign them in
@@ -1193,9 +1292,14 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
                 .start_period_for_person_location(&person_id, location_id, session_id)
                 .await?;
 
+            let awarded_badges = self
+                .apply_badge_event(&person, &location, badges::BadgeEvent::CheckIn, None)
+                .await?;
+
             Ok(RegisterResult {
                 state: RegisterState::SignedIn,
                 period: Some(Period::new(rec)),
+                awarded_badges,
             })
         }
     }
@@ -1208,7 +1312,7 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
         start_time: i64,
         end_time: i64,
         category_id: ID,
-    ) -> Result<Period<A>> {
+    ) -> Result<ScanSignOutResult<A>> {
         require_writable(ctx)?;
         if start_time >= end_time {
             return Err(anyhow!("start_time must be before end_time"));
@@ -1249,11 +1353,43 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
         rec.category_id = Some(category_id.to_string());
         rec.signed_out_session_id = Some(session_id);
 
+        let person = self
+            .app
+            .db()
+            .get_persons(&[&rec.person_id])
+            .await?
+            .into_iter()
+            .next()
+            .flatten()
+            .ok_or_else(|| anyhow!("Person with ID {:?} missing", &rec.person_id))?;
+        let location = self
+            .app
+            .db()
+            .get_locations(&[&rec.location_id])
+            .await?
+            .into_iter()
+            .next()
+            .flatten()
+            .ok_or_else(|| anyhow!("Location with ID {:?} missing", &rec.location_id))?;
+
         // rec is the pre-update record (only local field copies were changed above), so
         // rec.nitc_event_id is still the event the period was assigned to before this sign-out.
         self.enqueue_nitc_export(&rec.id, rec.nitc_event_id.as_deref())
             .await?;
-        Ok(Period::new(rec))
+
+        let awarded_badges = self
+            .apply_badge_event(
+                &person,
+                &location,
+                badges::BadgeEvent::SignOut,
+                Some(category_id.as_ref()),
+            )
+            .await?;
+
+        Ok(ScanSignOutResult {
+            period: Period::new(rec),
+            awarded_badges,
+        })
     }
 
     #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]

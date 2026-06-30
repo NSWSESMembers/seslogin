@@ -61,6 +61,12 @@ function Row({
   }
 
   const sesApiPersonId = person.sesApiPersonId;
+  const badgeCount = person.badges.length;
+  const lastBadgeEarnedAt =
+    badgeCount > 0
+      ? [...person.badges].sort((a, b) => b.awardedAt - a.awardedAt)[0]
+          .awardedAt
+      : null;
 
   return (
     <tr className={idx % 2 === 0 ? "odd" : "even"}>
@@ -85,8 +91,24 @@ function Row({
       <td className="nowrap">
         {person.firstName} {person.lastName}
       </td>
+      <td className="nowrap">
+        {badgeCount > 0 ? (
+          <>
+            <span className="member-badge-count">{badgeCount}</span>
+            <span className="member-badge-last-earned">
+              {lastBadgeEarnedAt
+                ? formatFullDateTime(new Date(lastBadgeEarnedAt * 1000))
+                : ""}
+            </span>
+          </>
+        ) : (
+          <span className="member-badge-last-earned">None</span>
+        )}
+      </td>
       <td className="options">
         <Link to={`/admin/members/activity/${person.id}`}>Activity</Link>
+        &nbsp;
+        <Link to={`/admin/members/badges/${person.id}`}>Badges</Link>
         {!sesApiPersonId ? (
           <>
             &nbsp;
@@ -122,6 +144,10 @@ export default function MembersList() {
             lastName
             memberNumber
             sesApiPersonId
+            badges(locationId: $location) {
+              id
+              awardedAt
+            }
           }
         }
       }
@@ -186,6 +212,7 @@ export default function MembersList() {
             {isDev && <th>ID</th>}
             <th style={{ width: 100 }}>SES ID</th>
             <th>Name</th>
+            <th style={{ width: 210 }}>Badges</th>
             <th style={{ width: 100 }}></th>
           </tr>
         </thead>

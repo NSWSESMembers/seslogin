@@ -1,5 +1,5 @@
 import { graphql, useMutation } from "react-relay";
-import type { TransactionSignedOut } from "../ScanState";
+import type { BadgeAward, TransactionSignedOut } from "../ScanState";
 import {
   useCallback,
   useEffect,
@@ -79,6 +79,12 @@ export default function ScanController(props: {
       mutation ScanControllerRegister2Mutation($memberNumber: String!) {
         scanRegister2(memberNumber: $memberNumber) {
           state
+          awardedBadges {
+            id
+            name
+            description
+            tier
+          }
           period {
             id
             startTime
@@ -106,21 +112,35 @@ export default function ScanController(props: {
           endTime: $endTime
           categoryId: $categoryId
         ) {
-          id
-          person {
-            id
-            firstName
-            lastName
-          }
-          startTime
-          endTime
-          category {
+          awardedBadges {
             id
             name
+            description
+            tier
+          }
+          period {
+            id
+            person {
+              id
+              firstName
+              lastName
+            }
+            startTime
+            endTime
+            category {
+              id
+              name
+            }
           }
         }
       }
     `);
+
+  function toBadges(
+    awardedBadges: ReadonlyArray<BadgeAward> | null | undefined,
+  ): BadgeAward[] {
+    return awardedBadges ? [...awardedBadges] : [];
+  }
 
   async function completeSubmit(memberId: string, uuid: string) {
     focusMainInputRef.current?.();
@@ -165,6 +185,7 @@ export default function ScanController(props: {
         person: res.scanRegister2.period!.person!,
         status: "SIGNED_IN",
         startTime,
+        awardedBadges: toBadges(res.scanRegister2.awardedBadges),
       });
       return;
     } else if (state == "SIGN_OUT_PENDING") {
@@ -177,6 +198,7 @@ export default function ScanController(props: {
         person: res.scanRegister2.period!.person!,
         status: "SIGNED_OUT",
         startTime,
+        awardedBadges: toBadges(res.scanRegister2.awardedBadges),
       });
       return;
     }
@@ -271,13 +293,15 @@ export default function ScanController(props: {
       endTime: Math.floor(endTime.getTime() / 1000),
       categoryId: tx.categoryId!,
     };
-    const onCompleted = () => {
+    const onCompleted = (res: ScanControllerSignOutMutation["response"]) => {
       console.log("Adjust mutation completed");
+      const period = res.scanSignOut.period;
       dispatchTransaction({
         type: "ADJUST_PERIOD",
         uuid,
-        startTime,
-        endTime,
+        startTime: new Date(period.startTime * 1000),
+        endTime: new Date(period.endTime! * 1000),
+        awardedBadges: toBadges(res.scanSignOut.awardedBadges),
       });
       focusMainInputRef.current?.();
     };

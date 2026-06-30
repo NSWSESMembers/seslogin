@@ -16,6 +16,14 @@ export type PersonResolvedAction = {
   periodId: string;
   startTime: Date;
   endTime?: Date;
+  awardedBadges?: BadgeAward[];
+};
+
+export type BadgeAward = {
+  id: string;
+  name: string;
+  description: string;
+  tier: string;
 };
 
 export type ErrorAction = {
@@ -40,6 +48,7 @@ export type AdjustPeriodAction = {
   uuid: string;
   startTime: Date;
   endTime: Date;
+  awardedBadges?: BadgeAward[];
 };
 
 export type PurgeExpiredTransactionsAction = {
@@ -75,6 +84,7 @@ export type TransactionSignedIn = {
     lastName: string;
   };
   startTime: Date;
+  awardedBadges?: BadgeAward[];
 };
 
 export type TransactionSignedOut = {
@@ -91,6 +101,7 @@ export type TransactionSignedOut = {
   endTime?: Date;
   categoryId?: string;
   adjusted: boolean;
+  awardedBadges?: BadgeAward[];
 };
 
 export type TransactionLoading = {
@@ -149,6 +160,7 @@ export function reducer(
           finalizedTime,
           status: "SIGNED_IN",
           periodId: action.periodId,
+          awardedBadges: action.awardedBadges,
         };
       } else if (action.status == "SIGNED_OUT") {
         updatedTransaction = {
@@ -159,6 +171,7 @@ export function reducer(
           status: "SIGNED_OUT",
           adjusted: false,
           periodId: action.periodId,
+          awardedBadges: action.awardedBadges,
         };
       } else {
         throw Error("Invalid status in PERSON_RESOLVED action");
@@ -263,6 +276,7 @@ export function reducer(
         endTime: action.endTime,
         adjusted: true,
         finalizedTime: new Date(),
+        awardedBadges: action.awardedBadges ?? oldTransaction.awardedBadges,
       };
       return {
         ...state,

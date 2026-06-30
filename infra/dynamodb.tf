@@ -622,3 +622,37 @@ resource "aws_iam_role_policy" "activity_summary_lambda_dynamodb" {
     }]
   })
 }
+
+resource "aws_iam_role_policy" "badge_digest_lambda_dynamodb" {
+  name = "dynamodb"
+  role = aws_iam_role.badge_digest_lambda.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Action = local.dynamodb_actions
+      Resource = [
+        "arn:aws:dynamodb:${local.region}:${local.account_id}:table/${var.db_prefix}*",
+        "arn:aws:dynamodb:${local.region}:${local.account_id}:table/${var.db_prefix}*/index/*",
+      ]
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "badge_nightly_lambda_dynamodb" {
+  name = "dynamodb"
+  role = aws_iam_role.badge_nightly_lambda.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Action = local.dynamodb_actions
+      Resource = [
+        "arn:aws:dynamodb:${local.region}:${local.account_id}:table/${var.db_prefix}*",
+        "arn:aws:dynamodb:${local.region}:${local.account_id}:table/${var.db_prefix}*/index/*",
+      ]
+    }]
+  })
+}

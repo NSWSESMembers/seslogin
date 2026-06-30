@@ -136,6 +136,7 @@ pub struct Person {
     pub last_name: String,
     pub registration_number: Option<String>,
     pub ses_api_person_id: Option<String>,
+    pub badge_state: serde_json::Map<String, serde_json::Value>,
     pub deleted: Option<u64>,
     pub created_at: Option<u64>,
     pub updated_at: Option<u64>,
@@ -159,6 +160,9 @@ pub enum PersonUpdateShape<'a> {
     },
     SesApiPersonId {
         ses_api_person_id: Option<&'a str>,
+    },
+    BadgeState {
+        badge_state: serde_json::Map<String, serde_json::Value>,
     },
     Undelete,
     Delete,
@@ -223,6 +227,8 @@ pub enum LocationUpdateShape<'a> {
         name: &'a str,
         enabled: bool,
         nitc_enabled: Option<u64>,
+        gamification_enabled: bool,
+        badge_weekly_digest_enabled: bool,
     },
     LastSyncTime {
         time: u64,
@@ -335,6 +341,8 @@ pub struct Location {
     pub name: String,
     pub enabled: bool,
     pub nitc_enabled: Option<u64>,
+    pub gamification_enabled: bool,
+    pub badge_weekly_digest_enabled: bool,
     pub ses_api_headquarters_id: Option<String>,
     pub last_successful_member_sync: Option<u64>,
     pub created_at: u64,

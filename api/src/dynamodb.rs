@@ -28,12 +28,13 @@ const NANOID_ALPHABET: [char; 62] = [
 /// `{}` just prints "service error"; `{:?}` dumps raw HTTP responses.
 /// This gives the DynamoDB error code + message for service errors, or the
 /// variant name for infrastructure errors (dispatch failure, timeout, etc.).
-fn sdk_err_msg<E: ProvideErrorMetadata>(e: SdkError<E>) -> String {
+fn sdk_err_msg<E: ProvideErrorMetadata + std::fmt::Debug>(e: SdkError<E>) -> String {
     match (e.code(), e.message()) {
         (Some(code), Some(msg)) => format!("{code}: {msg}"),
         (Some(code), None) => code.to_string(),
         (None, Some(msg)) => msg.to_string(),
-        (None, None) => format!("{e}"),
+        // For non-service failures (dispatch/timeout), Debug includes connector cause.
+        (None, None) => format!("{e:?}"),
     }
 }
 
@@ -200,6 +201,10 @@ impl TryInto<Location> for Item {
                     ts => ts,
                 },
             },
+            gamification_enabled: self.bool_field("gamification_enabled")?.unwrap_or(false),
+            badge_weekly_digest_enabled: self
+                .bool_field("badge_weekly_digest_enabled")?
+                .unwrap_or(false),
             ses_api_headquarters_id,
             last_successful_member_sync: self
                 .i64_field("last_successful_member_sync")?
@@ -260,6 +265,15 @@ impl TryInto<Person> for Item {
             last_name: self.string_field("last_name")?.unwrap_or_default(),
             registration_number: self.string_field("registration_number")?,
             ses_api_person_id: self.string_field("ses_api_person_id")?,
+            badge_state: {
+                let raw = self.string_field("badge_state")?;
+                match raw {
+                    None => serde_json::Map::new(),
+                    Some(s) if s.trim().is_empty() => serde_json::Map::new(),
+                    Some(s) => serde_json::from_str(&s)
+                        .map_err(|e| anyhow!("Invalid badge_state JSON: {}", e))?,
+                }
+            },
             deleted: self
                 .i64_field("deleted")?
                 .map(|i| i as u64)
@@ -1446,6 +1460,7 @@ impl db::Handler for Handler {
             last_name: last_name.to_string(),
             registration_number: Some(registration_number.to_string()),
             ses_api_person_id: None,
+            badge_state: serde_json::Map::new(),
             deleted: None,
             created_at: Some(now),
             updated_at: Some(now),
@@ -1524,6 +1539,41 @@ impl db::Handler for Handler {
                 } else {
                     request
                         .update_expression("SET updated_at = :updated_at REMOVE ses_api_person_id")
+                };
+
+                let resp = request
+                    .return_consumed_capacity(ReturnConsumedCapacity::Total)
+                    .send()
+                    .await
+                    .map_err(|e| map_update_err(e, format!("Person {}", id)))?;
+                record_capacity("update_person", resp.consumed_capacity(), CapKind::Write);
+            }
+            db::PersonUpdateShape::BadgeState { badge_state } => {
+                let mut request = self
+                    .client
+                    .update_item()
+                    .table_name(self.table_name("person"))
+                    .key("id", AttributeValue::S(id.to_string()))
+                    .condition_expression("attribute_exists(id)")
+                    .expression_attribute_values(
+                        ":updated_at",
+                        AttributeValue::N(crate::clock::now_sec().to_string()),
+                    );
+
+                request = if badge_state.is_empty() {
+                    request.update_expression("SET updated_at = :updated_at REMOVE badge_state")
+                } else {
+                    request
+                        .update_expression(
+                            "SET badge_state = :badge_state, updated_at = :updated_at",
+                        )
+                        .expression_attribute_values(
+                            ":badge_state",
+                            AttributeValue::S(
+                                serde_json::to_string(&badge_state)
+                                    .map_err(|e| Error::TypeConversion(e.to_string()))?,
+                            ),
+                        )
                 };
 
                 let resp = request
@@ -2165,6 +2215,8 @@ impl db::Handler for Handler {
             .item("id", AttributeValue::S(id.clone()))
             .item("name", AttributeValue::S(name.to_string()))
             .item("enabled", AttributeValue::Bool(true))
+            .item("gamification_enabled", AttributeValue::Bool(false))
+            .item("badge_weekly_digest_enabled", AttributeValue::Bool(false))
             .item(
                 "nitc_enabled",
                 AttributeValue::N(nitc_enabled.unwrap_or(0).to_string()),
@@ -2191,6 +2243,8 @@ impl db::Handler for Handler {
             name: name.to_string(),
             enabled: true,
             nitc_enabled,
+            gamification_enabled: false,
+            badge_weekly_digest_enabled: false,
             ses_api_headquarters_id: ses_api_headquarters_id.map(str::to_string),
             last_successful_member_sync: None,
             created_at: now,
@@ -2256,9 +2310,11 @@ impl db::Handler for Handler {
                 name,
                 enabled,
                 nitc_enabled,
+                gamification_enabled,
+                badge_weekly_digest_enabled,
             } => base
                 .update_expression(
-                    "SET #name = :name, enabled = :enabled, nitc_enabled = :nitc_enabled, updated_at = :updated_at",
+                    "SET #name = :name, enabled = :enabled, nitc_enabled = :nitc_enabled, gamification_enabled = :gamification_enabled, badge_weekly_digest_enabled = :badge_weekly_digest_enabled, updated_at = :updated_at",
                 )
                 .expression_attribute_names("#name", "name")
                 .expression_attribute_values(":name", AttributeValue::S(name.to_string()))
@@ -2266,6 +2322,14 @@ impl db::Handler for Handler {
                 .expression_attribute_values(
                     ":nitc_enabled",
                     AttributeValue::N(nitc_enabled.unwrap_or(0).to_string()),
+                )
+                .expression_attribute_values(
+                    ":gamification_enabled",
+                    AttributeValue::Bool(gamification_enabled),
+                )
+                .expression_attribute_values(
+                    ":badge_weekly_digest_enabled",
+                    AttributeValue::Bool(badge_weekly_digest_enabled),
                 )
                 .expression_attribute_values(
                     ":updated_at",

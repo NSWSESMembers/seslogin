@@ -20,6 +20,7 @@ use crate::app::App;
 use crate::app::HasDb;
 use crate::auth;
 use crate::auth::AuthInfo;
+use crate::badges;
 use crate::db;
 use crate::db::Handler;
 use crate::db::ListSessionsQuery;
@@ -284,6 +285,26 @@ impl<A: App + HasDb + Send + Sync> Clone for Person<A> {
     }
 }
 
+#[derive(SimpleObject, Clone, Debug)]
+pub struct PersonBadge {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub tier: String,
+    pub awarded_at: i64,
+}
+
+#[derive(SimpleObject, Clone, Debug)]
+pub struct PersonBadgeProgress {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub tier: String,
+    pub source: String,
+    pub earned: bool,
+    pub awarded_at: Option<i64>,
+}
+
 #[Object]
 impl<A: App + HasDb + Send + Sync> Person<A> {
     async fn id(&self) -> ID {
@@ -324,6 +345,75 @@ impl<A: App + HasDb + Send + Sync> Person<A> {
 
     async fn updated_at(&self) -> Option<i64> {
         self.rec.updated_at.map(|t| t as i64)
+    }
+
+    /// Earned badges for this person at the given location. Hidden when
+    /// gamification is disabled for that location.
+    async fn badges(&self, ctx: &Context<'_>, location_id: ID) -> Result<Vec<PersonBadge>> {
+        require_location_access(ctx, &location_id)?;
+        let app = ctx.data_unchecked::<Arc<A>>();
+        let location = app
+            .db()
+            .get_locations(&[&location_id])
+            .await?
+            .into_iter()
+            .next()
+            .flatten()
+            .ok_or_else(|| anyhow!("Location {:?} not found", &location_id))?;
+
+        if !location.gamification_enabled {
+            return Ok(vec![]);
+        }
+
+        let state = badges::state_from_map(&self.rec.badge_state);
+        let awards = badges::awards_in_range(&state, &location_id, 0, u64::MAX);
+        Ok(awards
+            .into_iter()
+            .map(|a| PersonBadge {
+                id: a.badge.id,
+                name: a.badge.name,
+                description: a.badge.description,
+                tier: a.badge.tier,
+                awarded_at: a.awarded_at as i64,
+            })
+            .collect())
+    }
+
+    /// Full badge catalog with earned status for this person at the given
+    /// location. Hidden when gamification is disabled for that location.
+    async fn badge_progress(
+        &self,
+        ctx: &Context<'_>,
+        location_id: ID,
+    ) -> Result<Vec<PersonBadgeProgress>> {
+        require_location_access(ctx, &location_id)?;
+        let app = ctx.data_unchecked::<Arc<A>>();
+        let location = app
+            .db()
+            .get_locations(&[&location_id])
+            .await?
+            .into_iter()
+            .next()
+            .flatten()
+            .ok_or_else(|| anyhow!("Location {:?} not found", &location_id))?;
+
+        if !location.gamification_enabled {
+            return Ok(vec![]);
+        }
+
+        let state = badges::state_from_map(&self.rec.badge_state);
+        Ok(badges::progress_for_location(&state, &location_id)
+            .into_iter()
+            .map(|progress| PersonBadgeProgress {
+                id: progress.badge.id,
+                name: progress.badge.name,
+                description: progress.badge.description,
+                tier: progress.badge.tier,
+                source: progress.source,
+                earned: progress.earned,
+                awarded_at: progress.awarded_at.map(|t| t as i64),
+            })
+            .collect())
     }
 
     async fn periods<'ctx>(
@@ -828,6 +918,14 @@ impl<A: App + HasDb + Send + Sync> Location<A> {
 
     async fn nitc_enabled(&self) -> Option<i64> {
         self.rec.nitc_enabled.map(|ts| ts as i64)
+    }
+
+    async fn gamification_enabled(&self) -> bool {
+        self.rec.gamification_enabled
+    }
+
+    async fn badge_weekly_digest_enabled(&self) -> bool {
+        self.rec.badge_weekly_digest_enabled
     }
 
     async fn ses_api_headquarters_id(&self) -> Option<String> {
