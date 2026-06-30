@@ -374,6 +374,21 @@ table.admin td a {
   margin-bottom: 14px;
 }
 
+#admin .member-badges-toolbar-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+#admin .member-badges-toolbar-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
 #admin .member-badges-toolbar-label {
   font-size: 0.92rem;
   font-weight: 700;
@@ -393,11 +408,71 @@ table.admin td a {
 #admin .member-badges-grid {
   display: grid;
   gap: 10px;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(220px, 320px));
+  justify-content: start;
+}
+
+#admin .member-badges-grid.member-badges-grid-source {
+  grid-template-columns: repeat(auto-fill, minmax(180px, 260px));
+}
+
+#admin .member-badges-stack-legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 10px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid #d6c7b4;
+  background: #fff8ee;
+  color: #6d5539;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+#admin .member-badges-stack-arrow {
+  color: #9c7b57;
+  font-weight: 800;
 }
 
 #admin .member-badges-tier-section {
   margin-bottom: 24px;
+  padding: 14px 14px 16px;
+  border-radius: 14px;
+  border: 1px solid #e4d8c9;
+  background: #fbfaf7;
+}
+
+#admin .member-badges-tier-section.tier-gold {
+  background: linear-gradient(180deg, #fffaf0 0%, #fff8e6 100%);
+  border-color: #e2cf9a;
+}
+
+#admin .member-badges-tier-section.tier-silver {
+  background: linear-gradient(180deg, #f7fbff 0%, #f2f6fb 100%);
+  border-color: #cdd6e0;
+}
+
+#admin .member-badges-tier-section.tier-bronze {
+  background: linear-gradient(180deg, #fff7f1 0%, #f9ede3 100%);
+  border-color: #e2c0a4;
+}
+
+#admin .member-badges-tier-section.tier-starter {
+  background: linear-gradient(180deg, #f7fbff 0%, #eef5ff 100%);
+  border-color: #c8d8ea;
+}
+
+#admin .member-badges-tier-section.tier-passport-stamps {
+  background: linear-gradient(180deg, #f4fbf7 0%, #eaf7ef 100%);
+  border-color: #c5e1cf;
+}
+
+#admin .member-badges-source-section {
+  background: linear-gradient(180deg, #fbfaf7 0%, #f5f0e8 100%);
+  border-color: #e3d4be;
 }
 
 #admin .member-badges-tier-heading {
@@ -435,6 +510,12 @@ table.admin td a {
   border: 1px solid #6a90b8;
 }
 
+#admin .member-badges-tier-heading.tier-passport-stamps {
+  background: #e9f7ef;
+  color: #1d5a3f;
+  border: 1px solid #3f8f68;
+}
+
 #admin .member-badges-source-heading {
   background: #f2efe8;
   color: #5b4a35;
@@ -442,12 +523,37 @@ table.admin td a {
 }
 
 #admin .member-badge-card {
+  box-sizing: border-box;
   border-radius: 10px;
   padding: 10px 12px;
   border: 1px solid #d5c0ad;
   background: #fffdf8;
   position: relative;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 10px;
+  width: 100%;
+}
+
+#admin .member-badges-grid-source .member-badge-card {
+  border-width: 2px;
+}
+
+#admin .member-badge-stack-rank {
+  display: inline-flex;
+  margin-top: 8px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #5c452d;
+  background: #f6ebdd;
+  border: 1px solid #d5bea4;
 }
 
 #admin .member-badge-card.earned {
@@ -485,9 +591,30 @@ table.admin td a {
   align-items: center;
 }
 
+#admin .member-badge-emblem {
+  width: 72px;
+  height: 72px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  margin-top: 4px;
+  background: radial-gradient(circle at 35% 30%, #ffffff 0%, #f8eedf 70%);
+  border: 1px solid rgba(145, 101, 47, 0.35);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.85),
+    0 5px 14px rgba(107, 70, 21, 0.18);
+}
+
+#admin .member-badge-content {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
 #admin .member-badge-icon {
-  width: 42px;
-  height: 42px;
+  width: 52px;
+  height: 52px;
   display: block;
 }
 
@@ -521,6 +648,7 @@ table.admin td a {
 #admin .member-badge-title {
   font-weight: 700;
   margin-bottom: 1px;
+  line-height: 1.2;
 }
 
 #admin .member-badge-status {
@@ -555,7 +683,7 @@ table.admin td a {
 }
 
 #admin .member-badge-description {
-  margin: 8px 0;
+  margin: 8px 0 10px;
   color: #3f3f3f;
 }
 
@@ -653,6 +781,11 @@ table.admin td a {
   border-color: #9ca3af;
 }
 
+#admin .member-badge-card.tier-passport-stamps {
+  border-color: #3f8f68;
+  box-shadow: inset 0 0 0 1px rgba(63, 143, 104, 0.18);
+}
+
 #admin .member-badge-card.tier-bronze {
   border-color: #b06f3e;
 }
@@ -664,6 +797,40 @@ table.admin td a {
 #admin .member-badge-card.tier-gold {
   border-color: #b98a00;
   box-shadow: 0 0 0 1px rgba(185, 138, 0, 0.2) inset;
+}
+
+#admin .member-badges-grid-source .member-badge-card.tier-starter {
+  box-shadow: inset 0 0 0 1px rgba(106, 144, 184, 0.25);
+}
+
+#admin .member-badges-grid-source .member-badge-card.tier-passport-stamps {
+  box-shadow: inset 0 0 0 1px rgba(63, 143, 104, 0.24);
+}
+
+#admin .member-badges-grid-source .member-badge-card.tier-bronze {
+  box-shadow: inset 0 0 0 1px rgba(176, 111, 62, 0.25);
+}
+
+#admin .member-badges-grid-source .member-badge-card.tier-silver {
+  box-shadow: inset 0 0 0 1px rgba(123, 135, 148, 0.28);
+}
+
+#admin .member-badges-grid-source .member-badge-card.tier-gold {
+  box-shadow:
+    inset 0 0 0 1px rgba(185, 138, 0, 0.25),
+    0 0 0 2px rgba(185, 138, 0, 0.12);
+}
+
+@media (max-width: 1200px) {
+  #admin .member-badges-grid.member-badges-grid-source {
+    grid-template-columns: repeat(2, minmax(220px, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  #admin .member-badges-grid.member-badges-grid-source {
+    grid-template-columns: repeat(1, minmax(220px, 1fr));
+  }
 }
 
 #admin .member-badge-count {

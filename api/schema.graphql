@@ -15,6 +15,7 @@ type BadgeAward {
 	name: String!
 	description: String!
 	tier: String!
+	icon: String!
 }
 
 type Category {
@@ -323,13 +324,16 @@ type Person {
 	createdAt: Int
 	updatedAt: Int
 	"""
-	Earned badges for this person at the given location. Hidden when
-	gamification is disabled for that location.
+	Earned badges for this person across all locations.
+	
+	`location_id` is used only for access control.
 	"""
 	badges(locationId: ID!): [PersonBadge!]!
 	"""
-	Full badge catalog with earned status for this person at the given
-	location. Hidden when gamification is disabled for that location.
+	Full badge catalog with earned status for this person across all
+	locations.
+	
+	`location_id` is used only for access control.
 	"""
 	badgeProgress(locationId: ID!): [PersonBadgeProgress!]!
 	periods(after: String, before: String, first: Int, last: Int): PeriodConnection!
@@ -344,6 +348,7 @@ type PersonBadge {
 	name: String!
 	description: String!
 	tier: String!
+	icon: String!
 	awardedAt: Int!
 }
 
@@ -352,6 +357,7 @@ type PersonBadgeProgress {
 	name: String!
 	description: String!
 	tier: String!
+	icon: String!
 	source: String!
 	earned: Boolean!
 	awardedAt: Int

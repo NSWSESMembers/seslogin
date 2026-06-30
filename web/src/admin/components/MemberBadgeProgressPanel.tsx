@@ -19,14 +19,51 @@ interface MemberBadgeProgressPanelProps {
   heading?: string;
 }
 
-const TIER_ORDER = ["gold", "silver", "bronze", "starter"] as const;
-const SOURCE_ORDER = ["Check-in", "Sign-out", "Manual"] as const;
+const TIER_ORDER_DESC = [
+  "gold",
+  "silver",
+  "bronze",
+  "starter",
+  "passport stamps",
+] as const;
+const TIER_ORDER_ASC = [
+  "starter",
+  "passport stamps",
+  "bronze",
+  "silver",
+  "gold",
+] as const;
+const SOURCE_ORDER = [
+  "Attendance",
+  "Training",
+  "Storm",
+  "Away sign-in",
+] as const;
 
-function tierRank(tier: string) {
-  const index = TIER_ORDER.indexOf(
-    tier.toLowerCase() as (typeof TIER_ORDER)[number],
-  );
-  return index === -1 ? TIER_ORDER.length : index;
+function tierKey(tier: string) {
+  return tier.trim().toLowerCase();
+}
+
+function tierCssClass(tier: string) {
+  return tierKey(tier).replace(/\s+/g, "-");
+}
+
+function tierLabel(tier: string) {
+  return `${tier
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ")} Tier`;
+}
+
+function tierRank(
+  tier: string,
+  order: ReadonlyArray<
+    "starter" | "passport stamps" | "bronze" | "silver" | "gold"
+  >,
+) {
+  const index = order.indexOf(tierKey(tier) as (typeof TIER_ORDER_ASC)[number]);
+  return index === -1 ? order.length : index;
 }
 
 function sourceRank(source: string) {
@@ -34,14 +71,21 @@ function sourceRank(source: string) {
   return index === -1 ? SOURCE_ORDER.length : index;
 }
 
-function compareBadges(a: BadgeProgressItem, b: BadgeProgressItem) {
-  if (a.earned !== b.earned) {
-    return a.earned ? -1 : 1;
-  }
-
-  const tierDifference = tierRank(a.tier) - tierRank(b.tier);
+function compareBadges(
+  a: BadgeProgressItem,
+  b: BadgeProgressItem,
+  mode: BadgeGroupMode,
+) {
+  const tierDifference =
+    mode === "source"
+      ? tierRank(a.tier, TIER_ORDER_ASC) - tierRank(b.tier, TIER_ORDER_ASC)
+      : tierRank(a.tier, TIER_ORDER_DESC) - tierRank(b.tier, TIER_ORDER_DESC);
   if (tierDifference !== 0) {
     return tierDifference;
+  }
+
+  if (a.earned !== b.earned) {
+    return a.earned ? -1 : 1;
   }
 
   if (a.awardedAt == null && b.awardedAt == null) {
@@ -70,7 +114,7 @@ function groupBadges(
   const groups = new Map<string, BadgeProgressItem[]>();
 
   for (const badge of badgeProgress) {
-    const key = mode === "tier" ? badge.tier.toLowerCase() : badge.source;
+    const key = mode === "tier" ? tierKey(badge.tier) : badge.source;
     const badges = groups.get(key);
     if (badges) {
       badges.push(badge);
@@ -81,7 +125,17 @@ function groupBadges(
 
   const orderedKeys =
     mode === "tier"
-      ? TIER_ORDER.filter((tier) => groups.has(tier))
+      ? [
+          ...TIER_ORDER_DESC.filter((tier) => groups.has(tier)),
+          ...[...groups.keys()]
+            .filter(
+              (tier) =>
+                !TIER_ORDER_DESC.includes(
+                  tier as (typeof TIER_ORDER_DESC)[number],
+                ),
+            )
+            .sort((left, right) => left.localeCompare(right)),
+        ]
       : [...groups.keys()].sort(
           (left, right) =>
             sourceRank(left) - sourceRank(right) || left.localeCompare(right),
@@ -89,11 +143,10 @@ function groupBadges(
 
   return orderedKeys.map((key) => ({
     key,
-    label:
-      mode === "tier"
-        ? `${key.charAt(0).toUpperCase()}${key.slice(1)} Tier`
-        : key,
-    badges: (groups.get(key) ?? []).slice().sort(compareBadges),
+    label: mode === "tier" ? tierLabel(key) : key,
+    badges: (groups.get(key) ?? [])
+      .slice()
+      .sort((a, b) => compareBadges(a, b, mode)),
   }));
 }
 
@@ -102,7 +155,11 @@ export default function MemberBadgeProgressPanel({
   heading,
 }: MemberBadgeProgressPanelProps) {
   const [mode, setMode] = useState<BadgeGroupMode>("tier");
-  const badgeGroups = groupBadges(badgeProgress, mode);
+  const [showUnawarded, setShowUnawarded] = useState(false);
+  const visibleBadgeProgress = showUnawarded
+    ? badgeProgress
+    : badgeProgress.filter((badge) => badge.earned);
+  const badgeGroups = groupBadges(visibleBadgeProgress, mode);
   const earnedBadgeCount = badgeProgress.filter((badge) => badge.earned).length;
   const totalBadgeCount = badgeProgress.length;
 
@@ -123,88 +180,125 @@ export default function MemberBadgeProgressPanel({
           <span className="member-badges-summary-value">{totalBadgeCount}</span>
           <span className="member-badges-summary-label">total</span>
         </div>
-        <div className="member-badges-summary-copy">
-          Earned badges are highlighted with a filled banner and an award stamp.
-        </div>
       </div>
       <div className="member-badges-toolbar">
-        <span className="member-badges-toolbar-label">Group by</span>
-        <div
-          className="segmented-control"
-          role="group"
-          aria-label="Badge grouping"
-        >
-          <button
-            type="button"
-            className="segment-button"
-            aria-pressed={mode === "tier"}
-            onClick={() => setMode("tier")}
-          >
-            Tier
-          </button>
-          <button
-            type="button"
-            className="segment-button"
-            aria-pressed={mode === "source"}
-            onClick={() => setMode("source")}
-          >
-            Source
-          </button>
+        <div className="member-badges-toolbar-controls">
+          <div className="member-badges-toolbar-group">
+            <span className="member-badges-toolbar-label">Group by</span>
+            <div
+              className="segmented-control"
+              role="group"
+              aria-label="Badge grouping"
+            >
+              <button
+                type="button"
+                className="segment-button"
+                aria-pressed={mode === "tier"}
+                onClick={() => setMode("tier")}
+              >
+                Tier
+              </button>
+              <button
+                type="button"
+                className="segment-button"
+                aria-pressed={mode === "source"}
+                onClick={() => setMode("source")}
+              >
+                Source
+              </button>
+            </div>
+          </div>
+          <div className="member-badges-toolbar-group">
+            <span className="member-badges-toolbar-label">Visibility</span>
+            <div
+              className="segmented-control"
+              role="group"
+              aria-label="Badge visibility"
+            >
+              <button
+                type="button"
+                className="segment-button"
+                aria-pressed={!showUnawarded}
+                onClick={() => setShowUnawarded(false)}
+              >
+                Earned
+              </button>
+              <button
+                type="button"
+                className="segment-button"
+                aria-pressed={showUnawarded}
+                onClick={() => setShowUnawarded(true)}
+              >
+                All
+              </button>
+            </div>
+          </div>
         </div>
       </div>
       {badgeGroups.length === 0 ? (
         <p className="member-badges-empty">
-          No badges are visible for this member at this location yet.
+          {showUnawarded
+            ? "No badges are visible for this member at this location yet."
+            : "No badges earned yet for this member at this location."}
         </p>
       ) : (
         badgeGroups.map(({ key, label, badges }) => (
-          <div key={key} className="member-badges-tier-section">
+          <div
+            key={key}
+            className={
+              mode === "tier"
+                ? `member-badges-tier-section tier-${tierCssClass(key)}`
+                : "member-badges-tier-section member-badges-source-section"
+            }
+          >
             <h4
               className={
                 mode === "tier"
-                  ? `member-badges-tier-heading tier-${key}`
+                  ? `member-badges-tier-heading tier-${tierCssClass(key)}`
                   : "member-badges-tier-heading member-badges-source-heading"
               }
             >
               {label}
             </h4>
-            <div className="member-badges-grid">
+            <div
+              className={`member-badges-grid ${mode === "source" ? "member-badges-grid-source" : ""}`}
+            >
               {badges.map((badge) => (
                 <article
                   key={badge.id}
-                  className={`member-badge-card tier-${badge.tier.toLowerCase()} ${badge.earned ? "earned" : "locked"}`}
+                  className={`member-badge-card tier-${tierCssClass(badge.tier)} ${badge.earned ? "earned" : "locked"}`}
                   aria-label={`${badge.name} badge ${badge.earned ? "earned" : "not yet earned"}`}
                 >
-                  <div className="member-badge-head">
+                  <div className="member-badge-emblem">
                     <BadgeIcon
                       badgeId={badge.id}
-                      tier={badge.tier.toLowerCase()}
+                      badgeName={badge.name}
+                      tier={tierKey(badge.tier)}
                       className="member-badge-icon"
                     />
-                    <div>
-                      <div className="member-badge-title">{badge.name}</div>
-                      <div className="member-badge-tier">{badge.tier} tier</div>
+                  </div>
+                  <div className="member-badge-content">
+                    <div className="member-badge-title">{badge.name}</div>
+                    <div className="member-badge-tier">{badge.tier} tier</div>
+                    {badge.description ? (
+                      <p className="member-badge-description">
+                        {badge.description}
+                      </p>
+                    ) : null}
+                    <div className="member-badge-earned">
+                      {badge.awardedAt ? (
+                        <>
+                          Earned{" "}
+                          <strong>
+                            {formatFullDateTime(
+                              new Date(badge.awardedAt * 1000),
+                            )}
+                          </strong>
+                        </>
+                      ) : (
+                        "Not yet earned"
+                      )}
                     </div>
-                  </div>
-                  <div
-                    className={`member-badge-status ${badge.earned ? "earned" : "locked"}`}
-                  >
-                    {badge.earned ? "Awarded" : "Locked"}
-                  </div>
-                  <p className="member-badge-description">
-                    {badge.description}
-                  </p>
-                  <div className="member-badge-earned">
-                    {badge.awardedAt ? (
-                      <>
-                        Earned{" "}
-                        <strong>
-                          {formatFullDateTime(new Date(badge.awardedAt * 1000))}
-                        </strong>
-                      </>
-                    ) : (
-                      "Not yet earned"
-                    )}
                   </div>
                 </article>
               ))}

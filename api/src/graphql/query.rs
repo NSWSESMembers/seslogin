@@ -30,6 +30,23 @@ use super::auth::{AuthGuard, AuthRequirement, require_location_access};
 use super::dataloader::DatabaseLoader;
 use super::{CategoryId, LocationId, NitcEventId, PersonId, SessionId, UserId};
 
+async fn location_name_by_id_for_badges<A: App + HasDb + Send + Sync>(
+    app: &Arc<A>,
+    state: &badges::BadgeState,
+) -> Result<HashMap<String, String>> {
+    let location_ids: Vec<&str> = state.locations.keys().map(String::as_str).collect();
+    if location_ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    let locations = app.db().get_locations(&location_ids).await?;
+    Ok(locations
+        .into_iter()
+        .flatten()
+        .map(|location| (location.id, location.name))
+        .collect())
+}
+
 #[derive(Debug, PartialEq)]
 pub struct User<A: App + HasDb + Send + Sync> {
     _marker: std::marker::PhantomData<A>,
@@ -291,6 +308,7 @@ pub struct PersonBadge {
     pub name: String,
     pub description: String,
     pub tier: String,
+    pub icon: String,
     pub awarded_at: i64,
 }
 
@@ -300,6 +318,7 @@ pub struct PersonBadgeProgress {
     pub name: String,
     pub description: String,
     pub tier: String,
+    pub icon: String,
     pub source: String,
     pub earned: bool,
     pub awarded_at: Option<i64>,
@@ -347,40 +366,47 @@ impl<A: App + HasDb + Send + Sync> Person<A> {
         self.rec.updated_at.map(|t| t as i64)
     }
 
-    /// Earned badges for this person at the given location. Hidden when
-    /// gamification is disabled for that location.
+    /// Earned badges for this person across all locations.
+    ///
+    /// `location_id` is used only for access control.
     async fn badges(&self, ctx: &Context<'_>, location_id: ID) -> Result<Vec<PersonBadge>> {
         require_location_access(ctx, &location_id)?;
         let app = ctx.data_unchecked::<Arc<A>>();
-        let location = app
-            .db()
-            .get_locations(&[&location_id])
-            .await?
-            .into_iter()
-            .next()
-            .flatten()
-            .ok_or_else(|| anyhow!("Location {:?} not found", &location_id))?;
-
-        if !location.gamification_enabled {
-            return Ok(vec![]);
-        }
-
         let state = badges::state_from_map(&self.rec.badge_state);
-        let awards = badges::awards_in_range(&state, &location_id, 0, u64::MAX);
+        let location_name_by_id = location_name_by_id_for_badges(app, &state).await?;
+        let awards = badges::awards_all_locations(&state);
         Ok(awards
             .into_iter()
-            .map(|a| PersonBadge {
-                id: a.badge.id,
-                name: a.badge.name,
-                description: a.badge.description,
-                tier: a.badge.tier,
-                awarded_at: a.awarded_at as i64,
+            .map(|a| {
+                let badge_id = a.badge.id.clone();
+                let (name, description) = if let Some(dynamic_location_id) =
+                    badges::first_signin_badge_location_id(&badge_id)
+                {
+                    if let Some(location_name) = location_name_by_id.get(dynamic_location_id) {
+                        (location_name.clone(), format!("Visited {}", location_name))
+                    } else {
+                        (a.badge.name, a.badge.description)
+                    }
+                } else {
+                    (a.badge.name, a.badge.description)
+                };
+
+                PersonBadge {
+                    id: badge_id,
+                    name,
+                    description,
+                    tier: a.badge.tier,
+                    icon: a.badge.icon,
+                    awarded_at: a.awarded_at as i64,
+                }
             })
             .collect())
     }
 
-    /// Full badge catalog with earned status for this person at the given
-    /// location. Hidden when gamification is disabled for that location.
+    /// Full badge catalog with earned status for this person across all
+    /// locations.
+    ///
+    /// `location_id` is used only for access control.
     async fn badge_progress(
         &self,
         ctx: &Context<'_>,
@@ -388,30 +414,34 @@ impl<A: App + HasDb + Send + Sync> Person<A> {
     ) -> Result<Vec<PersonBadgeProgress>> {
         require_location_access(ctx, &location_id)?;
         let app = ctx.data_unchecked::<Arc<A>>();
-        let location = app
-            .db()
-            .get_locations(&[&location_id])
-            .await?
-            .into_iter()
-            .next()
-            .flatten()
-            .ok_or_else(|| anyhow!("Location {:?} not found", &location_id))?;
-
-        if !location.gamification_enabled {
-            return Ok(vec![]);
-        }
-
         let state = badges::state_from_map(&self.rec.badge_state);
-        Ok(badges::progress_for_location(&state, &location_id)
+        let location_name_by_id = location_name_by_id_for_badges(app, &state).await?;
+        Ok(badges::progress_all_locations(&state)
             .into_iter()
-            .map(|progress| PersonBadgeProgress {
-                id: progress.badge.id,
-                name: progress.badge.name,
-                description: progress.badge.description,
-                tier: progress.badge.tier,
-                source: progress.source,
-                earned: progress.earned,
-                awarded_at: progress.awarded_at.map(|t| t as i64),
+            .map(|progress| {
+                let badge_id = progress.badge.id.clone();
+                let (name, description) = if let Some(dynamic_location_id) =
+                    badges::first_signin_badge_location_id(&badge_id)
+                {
+                    if let Some(location_name) = location_name_by_id.get(dynamic_location_id) {
+                        (location_name.clone(), format!("Visited {}", location_name))
+                    } else {
+                        (progress.badge.name, progress.badge.description)
+                    }
+                } else {
+                    (progress.badge.name, progress.badge.description)
+                };
+
+                PersonBadgeProgress {
+                    id: badge_id,
+                    name,
+                    description,
+                    tier: progress.badge.tier,
+                    icon: progress.badge.icon,
+                    source: progress.source,
+                    earned: progress.earned,
+                    awarded_at: progress.awarded_at.map(|t| t as i64),
+                }
             })
             .collect())
     }

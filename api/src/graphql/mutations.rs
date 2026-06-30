@@ -83,6 +83,7 @@ struct BadgeAward {
     name: String,
     description: String,
     tier: String,
+    icon: String,
 }
 
 #[derive(SimpleObject)]
@@ -110,22 +111,32 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
         location: &db::Location,
         event: badges::BadgeEvent,
         sign_out_category_id: Option<&str>,
+        sign_out_times: Option<(u64, u64)>,
     ) -> Result<Vec<BadgeAward>> {
-        if !location.gamification_enabled {
-            return Ok(vec![]);
+        let mut state = badges::state_from_map(&person.badge_state);
+        if location.gamification_enabled {
+            let _ = badges::apply_event(
+                &mut state,
+                &location.id,
+                event,
+                crate::clock::now_sec(),
+                person.location_id != location.id,
+                sign_out_category_id,
+                sign_out_times,
+            );
         }
 
-        let mut state = badges::state_from_map(&person.badge_state);
-        let awarded = badges::apply_event(
-            &mut state,
-            &location.id,
-            event,
-            crate::clock::now_sec(),
-            sign_out_category_id,
-        );
-        if awarded.is_empty() {
-            return Ok(vec![]);
-        }
+        let awards_to_display = if location.gamification_enabled {
+            let undisplayed = badges::undisplayed_awards_for_location(&state, &location.id);
+            let displayed_ids = undisplayed
+                .iter()
+                .map(|award| award.badge.id.clone())
+                .collect::<Vec<String>>();
+            badges::mark_awards_displayed(&mut state, &location.id, &displayed_ids);
+            undisplayed
+        } else {
+            vec![]
+        };
 
         self.app
             .db()
@@ -137,13 +148,24 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
             )
             .await?;
 
-        Ok(awarded
+        Ok(awards_to_display
             .into_iter()
-            .map(|b| BadgeAward {
-                id: b.id,
-                name: b.name,
-                description: b.description,
-                tier: b.tier,
+            .map(|award| {
+                let badge_id = award.badge.id.clone();
+                let (name, description) =
+                    if badges::first_signin_badge_location_id(&badge_id).is_some() {
+                        (location.name.clone(), format!("Visited {}", location.name))
+                    } else {
+                        (award.badge.name, award.badge.description)
+                    };
+
+                BadgeAward {
+                    id: badge_id,
+                    name,
+                    description,
+                    tier: award.badge.tier,
+                    icon: award.badge.icon,
+                }
             })
             .collect())
     }
@@ -1293,7 +1315,7 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
                 .await?;
 
             let awarded_badges = self
-                .apply_badge_event(&person, &location, badges::BadgeEvent::CheckIn, None)
+                .apply_badge_event(&person, &location, badges::BadgeEvent::CheckIn, None, None)
                 .await?;
 
             Ok(RegisterResult {
@@ -1383,6 +1405,7 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
                 &location,
                 badges::BadgeEvent::SignOut,
                 Some(category_id.as_ref()),
+                Some((start_time as u64, end_time as u64)),
             )
             .await?;
 

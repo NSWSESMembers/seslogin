@@ -244,6 +244,7 @@ function BadgeCelebration(props: {
               <span className="badge-icon-wrap">
                 <BadgeIcon
                   badgeId={badge.id}
+                  badgeName={badge.name}
                   tier={badge.tier.toLowerCase()}
                   className="badge-icon"
                 />
@@ -251,7 +252,9 @@ function BadgeCelebration(props: {
               <span className="badge-card-copy">
                 <span className="badge-label">New badge: {badge.name}</span>
                 <span className="badge-meta">
-                  {badge.tier} tier - {badge.description}
+                  {badge.description
+                    ? `${badge.tier} tier - ${badge.description}`
+                    : `${badge.tier} tier`}
                 </span>
               </span>
             </span>
