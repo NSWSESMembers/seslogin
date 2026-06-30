@@ -1,0 +1,48 @@
+services:
+  dev:
+    image: seslogin-build-env
+    build:
+      context: .
+      dockerfile: Dockerfile
+    working_dir: /workspace
+    stdin_open: true
+    tty: true
+    command: >-
+      bash -lc '
+      set -e;
+      npm ci --prefix web;
+      trap "kill 0" INT TERM EXIT;
+      (cd api && RUST_LOG=info cargo run --bin poem -- --enable-mutations) &
+      (cd web && npm run relay -- --watch) &
+      (cd web && npm run dev -- --host 0.0.0.0)
+      '
+    ports:
+      - "5173:5173"
+      - "8000:8000"
+    env_file:
+      - .env
+      - .env.secret
+    environment:
+      RUST_LOG: "info"
+      AWS_EC2_METADATA_DISABLED: "true"
+      AWS_SDK_LOAD_CONFIG: "1"
+      AWS_SHARED_CREDENTIALS_FILE: "/root/.aws/credentials"
+      AWS_CONFIG_FILE: "/root/.aws/config"
+      TF_PLUGIN_CACHE_DIR: "/root/.terraform.d/plugin-cache"
+      AWS_REGION: ${AWS_REGION:-ap-southeast-2}
+      AWS_DEFAULT_REGION: ${AWS_REGION:-ap-southeast-2}
+    volumes:
+      - .:/workspace
+      - seslogin-cargo-registry:/usr/local/cargo/registry
+      - seslogin-cargo-git:/usr/local/cargo/git
+      - seslogin-npm-cache:/root/.npm
+      - seslogin-terraform-plugin-cache:/root/.terraform.d/plugin-cache
+      - seslogin-web-node-modules:/workspace/web/node_modules
+      - ${AWS_DIR}:/root/.aws:ro
+
+volumes:
+  seslogin-cargo-registry:
+  seslogin-cargo-git:
+  seslogin-npm-cache:
+  seslogin-terraform-plugin-cache:
+  seslogin-web-node-modules:

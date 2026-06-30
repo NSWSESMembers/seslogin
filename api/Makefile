@@ -31,6 +31,14 @@ deploy-activity-summary-lambda:
 	cargo lambda build --release --bin activity-summary-lambda
 	cargo lambda deploy --binary-name activity-summary-lambda --role arn:aws:iam::641079927221:role/seslogin-activity-summary-lambda-role seslogin-activity-summary
 
+deploy-badge-digest-lambda:
+	cargo lambda build --release --bin badge-digest-lambda
+	cargo lambda deploy --binary-name badge-digest-lambda --role arn:aws:iam::303170530482:role/seslogin-badge-digest-lambda-role seslogin-badge-digest
+
+deploy-badge-nightly-lambda:
+	cargo lambda build --release --bin badge-nightly-lambda
+	cargo lambda deploy --binary-name badge-nightly-lambda --role arn:aws:iam::303170530482:role/seslogin-badge-nightly-lambda-role seslogin-badge-nightly
+
 deploy-sync-locations-lambda:
 	cargo lambda build --release --bin sync-locations-lambda
 	cargo lambda deploy --binary-name sync-locations-lambda --role arn:aws:iam::641079927221:role/seslogin-sync-locations-lambda-role seslogin-sync-locations

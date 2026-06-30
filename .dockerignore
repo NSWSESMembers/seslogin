@@ -1,0 +1,9 @@
+.git
+.github
+.env.secret
+api/target
+web/node_modules
+web/dist
+infra/.terraform
+infra/terraform.tfstate
+infra/terraform.tfstate.backup

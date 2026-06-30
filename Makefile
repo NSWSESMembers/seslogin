@@ -1,9 +1,13 @@
+DOCKER_COMPOSE := $(shell if docker compose version >/dev/null 2>&1; then echo "docker compose"; elif command -v docker-compose >/dev/null 2>&1; then echo "docker-compose"; else echo "docker compose"; fi)
+HOST_HOME := $(if $(SUDO_USER),/home/$(SUDO_USER),$(HOME))
+AWS_DIR ?= $(HOST_HOME)/.aws
+COMPOSE_ENV := AWS_DIR=$(AWS_DIR)
+
 dev:
-	@set -e; \
-	trap 'kill 0' INT TERM EXIT; \
-	(cd api && RUST_LOG=info cargo run --bin poem -- --enable-mutations) & \
-	(cd web && npm run relay -- --watch) & \
-	(cd web && npm run dev)
+	$(COMPOSE_ENV) $(DOCKER_COMPOSE) up dev
+
+dev-down:
+	-$(COMPOSE_ENV) $(DOCKER_COMPOSE) stop dev
 
 lint:	gh-lint
 	(cd api && cargo clippy)
@@ -53,3 +57,29 @@ do-sync-locations:
 
 load-nitc-tags:
 	cd api && RUST_LOG=info cargo run --bin load-nitc-tags --
+
+docker-image:
+	docker build -t seslogin-build-env .
+
+docker-shell:
+	$(COMPOSE_ENV) $(DOCKER_COMPOSE) exec dev bash
+
+docker-build:
+	docker run --rm \
+		-v $(CURDIR):/workspace \
+		-v seslogin-cargo-registry:/usr/local/cargo/registry \
+		-v seslogin-cargo-git:/usr/local/cargo/git \
+		-v seslogin-npm-cache:/root/.npm \
+		-w /workspace \
+		seslogin-build-env \
+		bash -lc "npm ci --prefix web && npm run build --prefix web && cargo build --manifest-path api/Cargo.toml --locked --bins"
+
+docker-up:
+	$(COMPOSE_ENV) $(DOCKER_COMPOSE) up -d dev
+
+docker-down:
+	$(COMPOSE_ENV) $(DOCKER_COMPOSE) down
+
+docker-workflow:
+	$(COMPOSE_ENV) $(DOCKER_COMPOSE) exec dev \
+		bash -lc "npm run build --prefix web && cargo build --manifest-path api/Cargo.toml --locked --bins"

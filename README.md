@@ -43,19 +43,46 @@ cp web/.env.local.example web/.env.local
 | --- | --- |
 | `VITE_BEACON_URL` | Base URL for the Beacon system, used to link NITC event IDs. For deployed builds, set the `BEACON_URL` repo variable in GitHub Actions Settings → Variables. |
 
-### 3. Run locally
+### 3. Run locally (Docker)
 
-```
+```bash
 make dev
 ```
 
-This starts the API server, Relay compiler (watch mode), and the Vite dev server together. Or run them individually:
+This starts the API server, Relay compiler (watch mode), and Vite dev server inside Docker Compose.
+
+- Web app: http://localhost:5173
+- API: http://localhost:8000
+
+To stop the dev container:
 
 ```bash
-cd api && RUST_LOG=info cargo run --bin poem -- --enable-mutations  # API on port 8000
-cd web && npm run relay -- --watch                                   # Relay compiler
-cd web && npm run dev                                                 # Web dev server
+make dev-down
 ```
+
+### 4. Build in Docker (optional)
+
+If you prefer not to install Rust and Node.js directly on your machine, you can use the containerized build environment:
+
+```bash
+make docker-image   # build the dev/build image (Rust stable + Node 22)
+make docker-build   # run web + API builds inside the container
+make docker-shell   # open an interactive shell in the container
+```
+
+The docker targets mount this repository into the container and use named volumes for Cargo and npm caches to speed up repeat builds.
+
+For a persistent container workflow, use Docker Compose:
+
+```bash
+make docker-up        # start the dev container in the background
+make docker-shell     # open a shell in the running dev container
+make docker-workflow  # run the web + API build workflow inside that container
+make docker-down      # stop and remove the compose stack
+```
+
+This workflow uses a single `dev` container as both the toolchain environment
+and the running API/web stack.
 
 ---
 
