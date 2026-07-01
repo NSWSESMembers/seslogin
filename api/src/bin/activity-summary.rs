@@ -27,7 +27,7 @@ struct Cli {
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let args = Cli::parse();
-    dotenvy::dotenv().ok();
+    seslogin::load_cli_env();
     tracing_subscriber::fmt::init();
     let db_prefix = std::env::var("DB_PREFIX")?;
     let db = dynamodb::Handler::new(&db_prefix, args.dry_run).await;

@@ -45,8 +45,7 @@ fn parse_env_usize(key: &str) -> Option<usize> {
 #[tokio::main]
 async fn main() -> Result<()> {
     tracing_subscriber::fmt::init();
-    dotenvy::from_filename(".env").ok();
-    dotenvy::from_filename(".env.secret").ok();
+    seslogin::load_cli_env();
 
     let cli = Cli::parse();
 

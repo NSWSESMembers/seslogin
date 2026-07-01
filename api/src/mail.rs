@@ -8,7 +8,7 @@ pub const FROM: &str = "no-reply@seslogin.com";
 pub const REPLY_TO: &str = "support@seslogin.com";
 
 async fn ses_client() -> Result<Client> {
-    let base = aws_config::load_defaults(aws_config::BehaviorVersion::latest()).await;
+    let base = crate::aws_config_loader().load().await;
     // While this account's SES production access is pending, SES_ROLE_ARN points
     // at a role in the SES-production (old) account. Assuming it means the email
     // is sent *by that account* (out of sandbox). Empty/unset -> send normally.

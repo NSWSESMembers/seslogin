@@ -32,8 +32,7 @@ enum Command {
 }
 
 fn main() -> Result<()> {
-    dotenvy::from_filename(".env").ok();
-    dotenvy::from_filename(".env.secret").ok();
+    seslogin::load_cli_env();
 
     let cli = Cli::parse();
 

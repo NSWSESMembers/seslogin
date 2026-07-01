@@ -1,5 +1,4 @@
 use anyhow::{Context, Result, anyhow};
-use aws_config::BehaviorVersion;
 use aws_sdk_sqs::Client as SqsClient;
 use chrono_tz::Australia::Sydney;
 use std::collections::HashMap;
@@ -146,7 +145,7 @@ pub async fn make_dynamodb_clients(
         100,
         config.max_retries,
     )?;
-    let aws_cfg = aws_config::load_defaults(BehaviorVersion::latest()).await;
+    let aws_cfg = crate::aws_config_loader().load().await;
     let sqs = SqsClients {
         client: SqsClient::new(&aws_cfg),
         queue_url: config.nitc_queue_url.clone(),

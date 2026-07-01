@@ -34,8 +34,7 @@ fn aest_5am_today_utc() -> u64 {
 #[tokio::main]
 async fn main() -> Result<()> {
     tracing_subscriber::fmt::init();
-    dotenvy::from_filename(".env").ok();
-    dotenvy::from_filename(".env.secret").ok();
+    seslogin::load_cli_env();
 
     let cli = Cli::parse();
 

@@ -1,3 +1,8 @@
+# Deploys use the new account's `seslogin` SSO profile by default. This only
+# affects the local `cargo lambda deploy` CLI (CI deploys via OIDC, not make);
+# the deployed Lambdas themselves use IAM roles. Override with AWS_PROFILE=...
+export AWS_PROFILE ?= seslogin
+
 build:
 	cargo lambda build --release
 

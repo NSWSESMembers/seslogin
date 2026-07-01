@@ -6,7 +6,6 @@ use crate::db::{
 use crate::nonce;
 use crate::request_metrics::METRICS;
 use anyhow::anyhow;
-use aws_config::BehaviorVersion;
 use aws_config::meta::region::RegionProviderChain;
 use aws_sdk_dynamodb::error::{ProvideErrorMetadata, SdkError};
 use aws_sdk_dynamodb::operation::update_item::UpdateItemError;
@@ -564,7 +563,7 @@ impl Handler {
 
     pub async fn new(table_prefix: &str, read_only: bool) -> Self {
         let region_provider = RegionProviderChain::default_provider().or_else("ap-southeast-2");
-        let config = aws_config::defaults(BehaviorVersion::latest())
+        let config = crate::aws_config_loader()
             .region(region_provider)
             .load()
             .await;

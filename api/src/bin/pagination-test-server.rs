@@ -212,8 +212,7 @@ async fn run_server<H: db::Handler + Send + Sync + 'static>(
 #[tokio::main]
 async fn main() -> Result<()> {
     tracing_subscriber::fmt::init();
-    dotenvy::from_filename(".env").ok();
-    dotenvy::from_filename(".env.secret").ok();
+    seslogin::load_cli_env();
 
     let cli = Cli::parse();
     let db_prefix = std::env::var("DB_PREFIX").expect("DB_PREFIX must be set");

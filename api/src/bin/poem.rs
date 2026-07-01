@@ -171,8 +171,7 @@ async fn run_server<H: db::Handler + Send + Sync + 'static>(
 async fn main() -> Result<(), Box<dyn Error>> {
     tracing_subscriber::fmt::init();
 
-    dotenvy::from_filename(".env").ok();
-    dotenvy::from_filename(".env.secret").ok();
+    seslogin::load_cli_env();
 
     let cli = Cli::parse();
 
@@ -186,7 +185,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         env::var("NITC_EXPORT_QUEUE_URL").expect("NITC_EXPORT_QUEUE_URL must be set");
     let healthcheck_queue_url =
         env::var("HEALTHCHECK_QUEUE_URL").expect("HEALTHCHECK_QUEUE_URL must be set");
-    let aws_cfg = aws_config::load_defaults(aws_config::BehaviorVersion::latest()).await;
+    let aws_cfg = seslogin::aws_config_loader().load().await;
     let sqs_client = aws_sdk_sqs::Client::new(&aws_cfg);
     let sqs = SqsQueues {
         member_sync: SqsQueue {
