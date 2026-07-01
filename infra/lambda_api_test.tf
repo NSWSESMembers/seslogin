@@ -26,6 +26,7 @@ resource "aws_lambda_function" "test_api" {
       TURNSTILE_SECRET_KEY  = var.turnstile_secret_key_test
       WEBAUTHN_RP_ID        = "seslogin.com"
       WEBAUTHN_RP_ORIGIN    = "https://test.seslogin.com"
+      SES_ROLE_ARN          = var.ses_role_arn
     }
   }
 }

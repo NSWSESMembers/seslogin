@@ -47,6 +47,16 @@ variable "background_jobs_enabled" {
   default     = true
 }
 
+# Temporary SES bridge: while this account's SES production access is pending, set
+# this to a role ARN in the old (production-SES) account that the email-sending
+# Lambdas assume so email is sent by that account. Clear it ("") once this
+# account has production SES.
+variable "ses_role_arn" {
+  description = "Cross-account role ARN for sending SES email from the production-SES account. Empty = send from this account."
+  type        = string
+  default     = ""
+}
+
 # Per-environment cutover. When an env's flag is true, that distribution gets its
 # real alias(es) + ACM cert and the zone's app record points at the new CF; when
 # false it serves the default cert with no alias and the record points at the old

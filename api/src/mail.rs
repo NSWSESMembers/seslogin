@@ -8,7 +8,26 @@ pub const FROM: &str = "no-reply@seslogin.com";
 pub const REPLY_TO: &str = "support@seslogin.com";
 
 async fn ses_client() -> Result<Client> {
-    let config = aws_config::load_defaults(aws_config::BehaviorVersion::latest()).await;
+    let base = aws_config::load_defaults(aws_config::BehaviorVersion::latest()).await;
+    // While this account's SES production access is pending, SES_ROLE_ARN points
+    // at a role in the SES-production (old) account. Assuming it means the email
+    // is sent *by that account* (out of sandbox). Empty/unset -> send normally.
+    let config = match std::env::var("SES_ROLE_ARN") {
+        Ok(role_arn) if !role_arn.is_empty() => {
+            let provider = aws_config::sts::AssumeRoleProvider::builder(role_arn)
+                .session_name("seslogin-ses")
+                .configure(&base)
+                .build()
+                .await;
+            let mut loader = aws_config::defaults(aws_config::BehaviorVersion::latest())
+                .credentials_provider(provider);
+            if let Some(region) = base.region() {
+                loader = loader.region(region.clone());
+            }
+            loader.load().await
+        }
+        _ => base,
+    };
     Ok(Client::new(&config))
 }
 
