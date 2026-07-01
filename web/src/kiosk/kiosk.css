@@ -171,48 +171,6 @@ div.scanview #transactions .badge-overlay-backdrop {
   z-index: 0;
 }
 
-div.scanview #transactions .badge-confetti-cannon {
-  position: fixed;
-  left: 20px;
-  bottom: 18px;
-  width: 52px;
-  height: 34px;
-  z-index: 2;
-  pointer-events: none;
-  transform: rotate(-8deg);
-  transform-origin: left bottom;
-}
-
-div.scanview #transactions .badge-confetti-cannon-core {
-  position: absolute;
-  left: 2px;
-  top: 10px;
-  width: 28px;
-  height: 14px;
-  border-radius: 999px;
-  background: linear-gradient(180deg, #3a3a3a, #000000);
-  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.4);
-}
-
-div.scanview #transactions .badge-confetti-cannon-flash {
-  position: absolute;
-  left: 24px;
-  top: 6px;
-  width: 28px;
-  height: 22px;
-  background: radial-gradient(
-    circle at 20% 50%,
-    #fff7d6 0%,
-    #ffe08a 28%,
-    #ffb347 65%,
-    rgba(255, 179, 71, 0) 70%
-  );
-  clip-path: polygon(0 50%, 100% 0, 100% 100%);
-  filter: drop-shadow(0 0 10px rgba(255, 179, 71, 0.8));
-  transform-origin: left center;
-  animation: badge-confetti-flash 1.1s ease-out infinite;
-}
-
 div.scanview #transactions .badge-confetti-field {
   position: fixed;
   inset: 0;
@@ -279,7 +237,8 @@ div.scanview #transactions .badge-overlay-badges {
 
 div.scanview #transactions .badge-confetti-piece {
   position: absolute;
-  left: 28px;
+  left: var(--confetti-origin-left, 28px);
+  right: var(--confetti-origin-right, auto);
   bottom: 26px;
   width: var(--confetti-size);
   height: calc(var(--confetti-size) * 0.55);
@@ -404,22 +363,6 @@ div.scanview #transactions span.loading.active {
   }
 }
 
-@keyframes badge-confetti-flash {
-  0%,
-  100% {
-    transform: scaleX(0.88) scaleY(0.88);
-    opacity: 0.72;
-  }
-  20% {
-    transform: scaleX(1.14) scaleY(1.14);
-    opacity: 1;
-  }
-  45% {
-    transform: scaleX(1.28) scaleY(1.28);
-    opacity: 0.2;
-  }
-}
-
 @keyframes badge-confetti-burst {
   0% {
     opacity: 0;
@@ -492,7 +435,6 @@ div.scanview #transactions span.loading.active {
     animation: none;
   }
 
-  div.scanview #transactions .badge-confetti-cannon-flash,
   div.scanview #transactions .badge-confetti-piece {
     animation: none;
     opacity: 0;

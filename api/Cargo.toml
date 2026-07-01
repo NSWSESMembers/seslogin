@@ -59,6 +59,14 @@ path = "src/bin/activity-summary-lambda.rs"
 name = "activity-summary"
 path = "src/bin/activity-summary.rs"
 
+[[bin]]
+name = "badge-digest"
+path = "src/bin/badge-digest.rs"
+
+[[bin]]
+name = "badge-nightly"
+path = "src/bin/badge-nightly.rs"
+
 [dependencies]
 anyhow = "1.0.99"
 async-graphql = { version = "7.0.17", features = ["dataloader"] }

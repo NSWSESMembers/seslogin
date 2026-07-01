@@ -15,6 +15,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 const FINALIZED_TRANSACTION_TIMEOUT_MS = 10_000;
 const FINALIZED_TRANSACTION_FADE_MS = 1_000;
 const SCAN_INPUT_TIMEOUT_MS = 10_000;
+const CONFETTI_COLORS = [
+  "#ff5f6d",
+  "#ffd166",
+  "#4ecdc4",
+  "#5c7cfa",
+  "#f8961e",
+  "#ffffff",
+] as const;
 
 function TransactionList(props: { transactionState: TransactionState }) {
   const [now, setNow] = useState(() => Date.now());
@@ -152,10 +160,15 @@ function BadgeCelebration(props: {
   const [dismissedBadgeSignature, setDismissedBadgeSignature] = useState<
     string | null
   >(null);
+  const audioFanfairRef = useRef<HTMLAudioElement | null>(null);
   const lastBadgeSignatureRef = useRef<string | null>(null);
   const badgeCount = props.badges?.length ?? 0;
   const badgeSignature =
     props.badges?.map((badge) => badge.id).join("|") ?? null;
+
+  useEffect(() => {
+    audioFanfairRef.current = new Audio("/audio/fanfair.mp3");
+  }, []);
 
   useEffect(() => {
     if (!props.badges || props.badges.length === 0) {
@@ -168,27 +181,33 @@ function BadgeCelebration(props: {
     }
 
     lastBadgeSignatureRef.current = badgeSignature;
+    const audioFanfair = audioFanfairRef.current;
+    if (audioFanfair) {
+      audioFanfair.currentTime = 0;
+      void audioFanfair.play().catch(() => undefined);
+    }
+
     const burstCount = Math.max(24, props.badges.length * 16);
     setConfettiPieces(
-      Array.from({ length: burstCount }, (_, id) => ({
-        id,
-        style: {
-          "--confetti-x": `${-36 + Math.random() * 72}vw`,
-          "--confetti-y": `${-22 - Math.random() * 42}vh`,
-          "--confetti-rotation": `${-720 + Math.random() * 1440}deg`,
-          "--confetti-delay": `${Math.random() * 160}ms`,
-          "--confetti-duration": `${1200 + Math.random() * 900}ms`,
-          "--confetti-size": `${6 + Math.random() * 8}px`,
-          "--confetti-color": [
-            "#ff5f6d",
-            "#ffd166",
-            "#4ecdc4",
-            "#5c7cfa",
-            "#f8961e",
-            "#ffffff",
-          ][id % 6],
-        } as CSSProperties,
-      })),
+      Array.from({ length: burstCount }, (_, id) => {
+        const launchFromRight = id % 2 === 1;
+        const horizontalOffset = 10 + Math.random() * 28;
+
+        return {
+          id,
+          style: {
+            "--confetti-origin-left": launchFromRight ? "auto" : "28px",
+            "--confetti-origin-right": launchFromRight ? "28px" : "auto",
+            "--confetti-x": `${launchFromRight ? -horizontalOffset : horizontalOffset}vw`,
+            "--confetti-y": `${-22 - Math.random() * 42}vh`,
+            "--confetti-rotation": `${-720 + Math.random() * 1440}deg`,
+            "--confetti-delay": `${Math.random() * 160}ms`,
+            "--confetti-duration": `${1200 + Math.random() * 900}ms`,
+            "--confetti-size": `${6 + Math.random() * 8}px`,
+            "--confetti-color": CONFETTI_COLORS[id % CONFETTI_COLORS.length],
+          } as CSSProperties,
+        };
+      }),
     );
 
     const timeoutId = window.setTimeout(() => {
@@ -217,10 +236,6 @@ function BadgeCelebration(props: {
           setDismissedBadgeSignature(badgeSignature);
         }}
       />
-      <span className="badge-confetti-cannon" aria-hidden="true">
-        <span className="badge-confetti-cannon-core" />
-        <span className="badge-confetti-cannon-flash" />
-      </span>
       <span className="badge-confetti-field" aria-hidden="true">
         {confettiPieces.map((piece) => (
           <span
@@ -234,9 +249,6 @@ function BadgeCelebration(props: {
         <span className="badge-overlay-kicker">Badge awarded</span>
         <span className="badge-overlay-title">
           {badgeCount} {badgeCount === 1 ? "badge" : "badges"} unlocked
-        </span>
-        <span className="badge-overlay-copy">
-          Celebrate the new award{badgeCount === 1 ? "" : "s"} for this member.
         </span>
         <span className="badge-overlay-badges">
           {props.badges.map((badge) => (
