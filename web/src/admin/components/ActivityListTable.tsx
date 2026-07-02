@@ -23,6 +23,7 @@ type Firstcol = "location" | "person";
 const activityListTablePeriod = graphql`
   fragment ActivityListTable_period on Period @inline {
     id
+    personId
     startTime
     endTime
     nitcExportStatus
@@ -66,11 +67,19 @@ function Section<T extends ActivityListTable_period$key>({
   isDev: boolean;
 }) {
   const colSpan = isDev ? 8 : 7;
+  const periodCount = entries.length;
+  const uniqueMemberCount = new Set(
+    entries.map((entry) => entry.data.personId).filter(Boolean),
+  ).size;
+  const periodLabel = periodCount === 1 ? "period" : "periods";
+  const memberLabel = uniqueMemberCount === 1 ? "member" : "members";
+
   return (
     <>
       <tr>
         <th className="section" colSpan={colSpan}>
-          {day}
+          {day} ({periodCount} {periodLabel}, {uniqueMemberCount} unique{" "}
+          {memberLabel})
         </th>
       </tr>
       <tr>
