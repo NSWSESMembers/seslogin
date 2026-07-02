@@ -87,20 +87,28 @@ function Row({
   return (
     <tr className={idx % 2 === 0 ? "odd" : "even"}>
       {isDev && (
-        <td style={{ fontFamily: "monospace", fontSize: "0.85em" }}>
+        <td
+          style={{ fontFamily: "monospace", fontSize: "0.85em" }}
+          data-label="ID"
+        >
           {category.id}
         </td>
       )}
-      <td className="nowrap">
+      <td className="nowrap" data-label="Name">
         <div className={category.enabled ? "" : "strike"}>{category.name}</div>
       </td>
-      <td>{category.nitcParticipantType ?? ""}</td>
-      <td style={{ fontFamily: "monospace", fontSize: "0.85em" }}>
+      <td data-label="Participant Type">
+        {category.nitcParticipantType ?? ""}
+      </td>
+      <td
+        style={{ fontFamily: "monospace", fontSize: "0.85em" }}
+        data-label="NITC Group ID"
+      >
         {category.nitcGroupId ?? ""}
       </td>
-      <td>{category.nitcGroup?.nitcType ?? ""}</td>
-      <td>{tagNames ?? ""}</td>
-      <td className="options">
+      <td data-label="NITC Type">{category.nitcGroup?.nitcType ?? ""}</td>
+      <td data-label="SES Tags">{tagNames ?? ""}</td>
+      <td className="options" data-label="Actions">
         <Link to={`/admin/categories/${category.id}`}>Edit</Link>&nbsp;
         {category.enabled && (
           <button
