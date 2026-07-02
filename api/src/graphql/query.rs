@@ -10,8 +10,9 @@ use async_graphql::Object;
 use async_graphql::SimpleObject;
 use async_graphql::connection::{Connection, EmptyFields};
 use async_graphql::dataloader::DataLoader;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
 use tracing::warn;
 use xxhash_rust::xxh64::xxh64;
 
@@ -166,6 +167,39 @@ pub struct PasskeyInfo {
     pub name: String,
     pub created_at: i64,
     pub last_used_at: Option<i64>,
+}
+
+#[derive(SimpleObject, Clone, Debug)]
+pub struct DashboardDailyPeriodSummary {
+    pub day_start: i64,
+    pub period_count: i64,
+    pub total_time: i64,
+}
+
+#[derive(SimpleObject, Clone, Debug)]
+pub struct DashboardCategoryPeriodSummary {
+    pub category_id: Option<String>,
+    pub category_name: String,
+    pub period_count: i64,
+    pub total_time: i64,
+}
+
+#[derive(SimpleObject, Clone, Debug)]
+pub struct LocationDashboardSummary {
+    pub as_of: i64,
+    pub total_members: i64,
+    pub active_members_24h: i64,
+    pub active_members_30d: i64,
+    pub check_ins_24h: i64,
+    pub check_ins_7d: i64,
+    pub total_time_7d: i64,
+    pub avg_completed_duration_7d: i64,
+    pub total_kiosks: i64,
+    pub online_kiosks: i64,
+    pub recently_active_kiosks: i64,
+    pub last_successful_member_sync: Option<i64>,
+    pub daily_periods_7d: Vec<DashboardDailyPeriodSummary>,
+    pub top_categories_7d: Vec<DashboardCategoryPeriodSummary>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -730,6 +764,10 @@ fn period_duration(period: &db::Period) -> Option<u64> {
 
 const DEFAULT_PERIOD_PAGE_SIZE: usize = 100;
 const MAX_PERIOD_PAGE_SIZE: usize = 1000;
+const DAY_SECONDS: u64 = 24 * 60 * 60;
+const THIRTY_DAYS_SECONDS: u64 = 30 * DAY_SECONDS;
+const SEVEN_DAYS_SECONDS: u64 = 7 * DAY_SECONDS;
+const ONLINE_SESSION_SECONDS: u64 = 15 * 60;
 
 fn encode_period_cursor(period: &db::Period) -> String {
     format!("{}:{}", period.start_time, period.id)
@@ -1148,6 +1186,217 @@ impl<A: App + HasDb + Send + Sync> Location<A> {
             })?;
 
         Ok(items.into_iter().map(Session::new).collect())
+    }
+
+    async fn dashboard_summary(
+        &self,
+        ctx: &Context<'_>,
+        as_of: Option<i64>,
+    ) -> Result<LocationDashboardSummary> {
+        require_location_access(ctx, &self.rec.id)?;
+
+        let as_of_ts = match as_of {
+            Some(ts) if ts > 0 => {
+                u64::try_from(ts).map_err(|_| anyhow!("as_of must be positive"))?
+            }
+            Some(_) => return Err(anyhow!("as_of must be positive")),
+            None => SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map_err(|_| anyhow!("system clock is before unix epoch"))?
+                .as_secs(),
+        };
+
+        let day_floor = as_of_ts / DAY_SECONDS;
+        let day_start_floor = day_floor.saturating_sub(6);
+        let range_30d_start = as_of_ts.saturating_sub(THIRTY_DAYS_SECONDS);
+        let range_24h_start = as_of_ts.saturating_sub(DAY_SECONDS);
+        let range_7d_start = as_of_ts.saturating_sub(SEVEN_DAYS_SECONDS);
+
+        let app = ctx.data_unchecked::<Arc<A>>();
+
+        let members = app
+            .db()
+            .list_people_for_location(&self.rec.id, true)
+            .await
+            .map_err(|e| {
+                warn!("db error: {:?}", e);
+                e
+            })?;
+
+        let categories = app.db().list_categories().await.map_err(|e| {
+            warn!("db error: {:?}", e);
+            e
+        })?;
+        let category_name_by_id: HashMap<String, String> = categories
+            .into_iter()
+            .map(|cat| (cat.id, cat.name))
+            .collect();
+
+        let periods_30d = app
+            .db()
+            .list_periods_for_location(
+                &self.rec.id,
+                false,
+                Some((range_30d_start, as_of_ts)),
+                db::ListPeriodsPage {
+                    after: None,
+                    before: None,
+                    limit: i32::MAX,
+                    descending: true,
+                },
+            )
+            .await
+            .map_err(|e| {
+                warn!("db error: {:?}", e);
+                e
+            })?;
+
+        let sessions = app
+            .db()
+            .list_sessions(ListSessionsQuery::ByLocation(self.rec.id.to_string()))
+            .await
+            .map_err(|e| {
+                warn!("db error: {:?}", e);
+                e
+            })?;
+
+        let mut active_members_30d: HashSet<String> = HashSet::new();
+        let mut active_members_24h: HashSet<String> = HashSet::new();
+        let mut check_ins_24h: i64 = 0;
+        let mut check_ins_7d: i64 = 0;
+        let mut total_time_7d: i64 = 0;
+        let mut completed_total_time_7d: i64 = 0;
+        let mut completed_count_7d: i64 = 0;
+        let mut daily_counts: HashMap<u64, (i64, i64)> = HashMap::new();
+        let mut category_totals_7d: HashMap<Option<String>, (i64, i64)> = HashMap::new();
+
+        for period in periods_30d {
+            active_members_30d.insert(period.person_id.clone());
+
+            if period.start_time >= range_24h_start {
+                active_members_24h.insert(period.person_id.clone());
+                check_ins_24h += 1;
+            }
+
+            if period.start_time >= range_7d_start {
+                check_ins_7d += 1;
+
+                let day = period.start_time / DAY_SECONDS;
+                if day >= day_start_floor && day <= day_floor {
+                    let bucket = daily_counts.entry(day).or_insert((0, 0));
+                    bucket.0 += 1;
+
+                    let bounded_end = std::cmp::min(period.end_time.unwrap_or(as_of_ts), as_of_ts);
+                    let duration = bounded_end.saturating_sub(period.start_time);
+                    let duration_i64 =
+                        i64::try_from(duration).map_err(|_| anyhow!("period duration overflow"))?;
+                    bucket.1 += duration_i64;
+                    total_time_7d += duration_i64;
+
+                    let category_bucket = category_totals_7d
+                        .entry(period.category_id.clone())
+                        .or_insert((0, 0));
+                    category_bucket.0 += 1;
+                    category_bucket.1 += duration_i64;
+
+                    if let Some(end_time) = period.end_time
+                        && end_time >= period.start_time
+                    {
+                        let completed_duration = end_time - period.start_time;
+                        let completed_duration_i64 = i64::try_from(completed_duration)
+                            .map_err(|_| anyhow!("period duration overflow"))?;
+                        completed_total_time_7d += completed_duration_i64;
+                        completed_count_7d += 1;
+                    }
+                }
+            }
+        }
+
+        let avg_completed_duration_7d = if completed_count_7d > 0 {
+            completed_total_time_7d / completed_count_7d
+        } else {
+            0
+        };
+
+        let total_kiosks = i64::try_from(sessions.len()).map_err(|_| anyhow!("too many kiosks"))?;
+        let online_kiosks = i64::try_from(
+            sessions
+                .iter()
+                .filter(|session| {
+                    session
+                        .last_contact
+                        .is_some_and(|last| as_of_ts.saturating_sub(last) <= ONLINE_SESSION_SECONDS)
+                })
+                .count(),
+        )
+        .map_err(|_| anyhow!("too many kiosks"))?;
+        let recently_active_kiosks = i64::try_from(
+            sessions
+                .iter()
+                .filter(|session| {
+                    session
+                        .last_contact
+                        .is_some_and(|last| as_of_ts.saturating_sub(last) <= DAY_SECONDS)
+                })
+                .count(),
+        )
+        .map_err(|_| anyhow!("too many kiosks"))?;
+
+        let mut daily_periods_7d: Vec<DashboardDailyPeriodSummary> = Vec::new();
+        for day in day_start_floor..=day_floor {
+            let day_start = day.saturating_mul(DAY_SECONDS);
+            let (period_count, total_time) = daily_counts.get(&day).copied().unwrap_or((0, 0));
+            daily_periods_7d.push(DashboardDailyPeriodSummary {
+                day_start: i64::try_from(day_start).map_err(|_| anyhow!("timestamp overflow"))?,
+                period_count,
+                total_time,
+            });
+        }
+
+        let mut top_categories_7d: Vec<DashboardCategoryPeriodSummary> = category_totals_7d
+            .into_iter()
+            .map(|(category_id, (period_count, total_time))| {
+                let category_name = match category_id.as_ref() {
+                    Some(id) => category_name_by_id
+                        .get(id)
+                        .cloned()
+                        .unwrap_or_else(|| "Unknown category".to_string()),
+                    None => "Uncategorised".to_string(),
+                };
+
+                DashboardCategoryPeriodSummary {
+                    category_id,
+                    category_name,
+                    period_count,
+                    total_time,
+                }
+            })
+            .collect();
+        top_categories_7d.sort_by(|a, b| {
+            b.period_count
+                .cmp(&a.period_count)
+                .then_with(|| b.total_time.cmp(&a.total_time))
+        });
+        top_categories_7d.truncate(5);
+
+        Ok(LocationDashboardSummary {
+            as_of: i64::try_from(as_of_ts).map_err(|_| anyhow!("timestamp overflow"))?,
+            total_members: i64::try_from(members.len()).map_err(|_| anyhow!("too many members"))?,
+            active_members_24h: i64::try_from(active_members_24h.len())
+                .map_err(|_| anyhow!("too many members"))?,
+            active_members_30d: i64::try_from(active_members_30d.len())
+                .map_err(|_| anyhow!("too many members"))?,
+            check_ins_24h,
+            check_ins_7d,
+            total_time_7d,
+            avg_completed_duration_7d,
+            total_kiosks,
+            online_kiosks,
+            recently_active_kiosks,
+            last_successful_member_sync: self.rec.last_successful_member_sync.map(|t| t as i64),
+            daily_periods_7d,
+            top_categories_7d,
+        })
     }
 }
 
