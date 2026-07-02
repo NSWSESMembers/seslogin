@@ -45,6 +45,19 @@ type CreateApiTokenResult {
 	secret: String!
 }
 
+type DashboardCategoryPeriodSummary {
+	categoryId: String
+	categoryName: String!
+	periodCount: Int!
+	totalTime: Int!
+}
+
+type DashboardDailyPeriodSummary {
+	dayStart: Int!
+	periodCount: Int!
+	totalTime: Int!
+}
+
 """
 A scalar that can represent any JSON value.
 """
@@ -66,6 +79,24 @@ type Location {
 	periodSummaryByMemberByCategory(startTime: Int!, endTime: Int!): [MemberCategoryPeriodSummary!]!
 	periodSummaryByCategoryByMember(startTime: Int!, endTime: Int!): [CategoryMemberPeriodSummary!]!
 	sessions: [Session!]!
+	dashboardSummary(asOf: Int): LocationDashboardSummary!
+}
+
+type LocationDashboardSummary {
+	asOf: Int!
+	totalMembers: Int!
+	activeMembers24H: Int!
+	activeMembers30D: Int!
+	checkIns24H: Int!
+	checkIns7D: Int!
+	totalTime7D: Int!
+	avgCompletedDuration7D: Int!
+	totalKiosks: Int!
+	onlineKiosks: Int!
+	recentlyActiveKiosks: Int!
+	lastSuccessfulMemberSync: Int
+	dailyPeriods7D: [DashboardDailyPeriodSummary!]!
+	topCategories7D: [DashboardCategoryPeriodSummary!]!
 }
 
 type MemberCategoryPeriodSummary {
