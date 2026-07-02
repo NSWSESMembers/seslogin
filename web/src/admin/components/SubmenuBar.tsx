@@ -11,6 +11,7 @@ export default function SubmenuBar({ isSuper }: SubmenuBarProps) {
   const isLocationsSection = useMatch("/admin/locations/*");
   const isUsersSection = useMatch("/admin/users/*");
   const isCategoriesSection = useMatch("/admin/categories/*");
+  const isReportsSection = useMatch("/admin/reports/*");
   const isSettingsSection = useMatch("/admin/settings/*");
 
   return (
@@ -95,6 +96,17 @@ export default function SubmenuBar({ isSuper }: SubmenuBarProps) {
           </NavLink>
           <NavLink to="/admin/categories/nitc-groups/new" end>
             New NITC group
+          </NavLink>
+        </div>
+      )}
+
+      {isReportsSection && (
+        <div id="submenu_bar">
+          <NavLink to="/admin/reports" end>
+            Activity Export
+          </NavLink>
+          <NavLink to="/admin/reports/badges" end>
+            Badge Report
           </NavLink>
         </div>
       )}

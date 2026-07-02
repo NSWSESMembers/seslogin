@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<afc55e197fd79b97b394b48d7b58a51a>>
+ * @generated SignedSource<<5e6dc0a6ffecc67610da515fab856991>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -9,11 +9,11 @@
 // @ts-nocheck
 
 import { ConcreteRequest } from 'relay-runtime';
-export type MembersEditQuery$variables = {
+export type MembersBadgesQuery$variables = {
   id: string;
   locationId: string;
 };
-export type MembersEditQuery$data = {
+export type MembersBadgesQuery$data = {
   readonly person: {
     readonly badgeProgress: ReadonlyArray<{
       readonly awardedAt: number | null | undefined;
@@ -30,9 +30,9 @@ export type MembersEditQuery$data = {
     readonly memberNumber: string | null | undefined;
   };
 };
-export type MembersEditQuery = {
-  response: MembersEditQuery$data;
-  variables: MembersEditQuery$variables;
+export type MembersBadgesQuery = {
+  response: MembersBadgesQuery$data;
+  variables: MembersBadgesQuery$variables;
 };
 
 const node: ConcreteRequest = (function(){
@@ -161,7 +161,7 @@ return {
     "argumentDefinitions": (v0/*: any*/),
     "kind": "Fragment",
     "metadata": null,
-    "name": "MembersEditQuery",
+    "name": "MembersBadgesQuery",
     "selections": (v2/*: any*/),
     "type": "QueryRoot",
     "abstractKey": null
@@ -170,20 +170,20 @@ return {
   "operation": {
     "argumentDefinitions": (v0/*: any*/),
     "kind": "Operation",
-    "name": "MembersEditQuery",
+    "name": "MembersBadgesQuery",
     "selections": (v2/*: any*/)
   },
   "params": {
-    "cacheID": "e950d9c8f36472c343147d6dfc4ae41c",
+    "cacheID": "9832fae42f6e44343822f54ffc49ae62",
     "id": null,
     "metadata": {},
-    "name": "MembersEditQuery",
+    "name": "MembersBadgesQuery",
     "operationKind": "query",
-    "text": "query MembersEditQuery(\n  $id: ID!\n  $locationId: ID!\n) {\n  person(id: $id) {\n    id\n    firstName\n    lastName\n    memberNumber\n    badgeProgress(locationId: $locationId) {\n      id\n      name\n      description\n      tier\n      source\n      earned\n      awardedAt\n    }\n  }\n}\n"
+    "text": "query MembersBadgesQuery(\n  $id: ID!\n  $locationId: ID!\n) {\n  person(id: $id) {\n    id\n    firstName\n    lastName\n    memberNumber\n    badgeProgress(locationId: $locationId) {\n      id\n      name\n      description\n      tier\n      source\n      earned\n      awardedAt\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "c411c98dcb603b717f2c2a27c8d3f6e3";
+(node as any).hash = "daf2f21ae2caba30865bcbc9f13d98bf";
 
 export default node;

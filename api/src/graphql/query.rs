@@ -20,6 +20,7 @@ use crate::app::App;
 use crate::app::HasDb;
 use crate::auth;
 use crate::auth::AuthInfo;
+use crate::badges;
 use crate::db;
 use crate::db::Handler;
 use crate::db::ListSessionsQuery;
@@ -28,6 +29,23 @@ use crate::ses_api;
 use super::auth::{AuthGuard, AuthRequirement, require_location_access};
 use super::dataloader::DatabaseLoader;
 use super::{CategoryId, LocationId, NitcEventId, PersonId, SessionId, UserId};
+
+async fn location_name_by_id_for_badges<A: App + HasDb + Send + Sync>(
+    app: &Arc<A>,
+    state: &badges::BadgeState,
+) -> Result<HashMap<String, String>> {
+    let location_ids: Vec<&str> = state.locations.keys().map(String::as_str).collect();
+    if location_ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    let locations = app.db().get_locations(&location_ids).await?;
+    Ok(locations
+        .into_iter()
+        .flatten()
+        .map(|location| (location.id, location.name))
+        .collect())
+}
 
 #[derive(Debug, PartialEq)]
 pub struct User<A: App + HasDb + Send + Sync> {
@@ -284,6 +302,28 @@ impl<A: App + HasDb + Send + Sync> Clone for Person<A> {
     }
 }
 
+#[derive(SimpleObject, Clone, Debug)]
+pub struct PersonBadge {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub tier: String,
+    pub icon: String,
+    pub awarded_at: i64,
+}
+
+#[derive(SimpleObject, Clone, Debug)]
+pub struct PersonBadgeProgress {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub tier: String,
+    pub icon: String,
+    pub source: String,
+    pub earned: bool,
+    pub awarded_at: Option<i64>,
+}
+
 #[Object]
 impl<A: App + HasDb + Send + Sync> Person<A> {
     async fn id(&self) -> ID {
@@ -324,6 +364,86 @@ impl<A: App + HasDb + Send + Sync> Person<A> {
 
     async fn updated_at(&self) -> Option<i64> {
         self.rec.updated_at.map(|t| t as i64)
+    }
+
+    /// Earned badges for this person across all locations.
+    ///
+    /// `location_id` is used only for access control.
+    async fn badges(&self, ctx: &Context<'_>, location_id: ID) -> Result<Vec<PersonBadge>> {
+        require_location_access(ctx, &location_id)?;
+        let app = ctx.data_unchecked::<Arc<A>>();
+        let state = badges::state_from_map(&self.rec.badge_state);
+        let location_name_by_id = location_name_by_id_for_badges(app, &state).await?;
+        let awards = badges::awards_all_locations(&state);
+        Ok(awards
+            .into_iter()
+            .map(|a| {
+                let badge_id = a.badge.id.clone();
+                let (name, description) = if let Some(dynamic_location_id) =
+                    badges::first_signin_badge_location_id(&badge_id)
+                {
+                    if let Some(location_name) = location_name_by_id.get(dynamic_location_id) {
+                        (location_name.clone(), format!("Visited {}", location_name))
+                    } else {
+                        (a.badge.name, a.badge.description)
+                    }
+                } else {
+                    (a.badge.name, a.badge.description)
+                };
+
+                PersonBadge {
+                    id: badge_id,
+                    name,
+                    description,
+                    tier: a.badge.tier,
+                    icon: a.badge.icon,
+                    awarded_at: a.awarded_at as i64,
+                }
+            })
+            .collect())
+    }
+
+    /// Full badge catalog with earned status for this person across all
+    /// locations.
+    ///
+    /// `location_id` is used only for access control.
+    async fn badge_progress(
+        &self,
+        ctx: &Context<'_>,
+        location_id: ID,
+    ) -> Result<Vec<PersonBadgeProgress>> {
+        require_location_access(ctx, &location_id)?;
+        let app = ctx.data_unchecked::<Arc<A>>();
+        let state = badges::state_from_map(&self.rec.badge_state);
+        let location_name_by_id = location_name_by_id_for_badges(app, &state).await?;
+        Ok(badges::progress_all_locations(&state)
+            .into_iter()
+            .map(|progress| {
+                let badge_id = progress.badge.id.clone();
+                let (name, description) = if let Some(dynamic_location_id) =
+                    badges::first_signin_badge_location_id(&badge_id)
+                {
+                    if let Some(location_name) = location_name_by_id.get(dynamic_location_id) {
+                        (location_name.clone(), format!("Visited {}", location_name))
+                    } else {
+                        (progress.badge.name, progress.badge.description)
+                    }
+                } else {
+                    (progress.badge.name, progress.badge.description)
+                };
+
+                PersonBadgeProgress {
+                    id: badge_id,
+                    name,
+                    description,
+                    tier: progress.badge.tier,
+                    icon: progress.badge.icon,
+                    source: progress.source,
+                    earned: progress.earned,
+                    awarded_at: progress.awarded_at.map(|t| t as i64),
+                }
+            })
+            .collect())
     }
 
     async fn periods<'ctx>(
@@ -828,6 +948,14 @@ impl<A: App + HasDb + Send + Sync> Location<A> {
 
     async fn nitc_enabled(&self) -> Option<i64> {
         self.rec.nitc_enabled.map(|ts| ts as i64)
+    }
+
+    async fn gamification_enabled(&self) -> bool {
+        self.rec.gamification_enabled
+    }
+
+    async fn badge_weekly_digest_enabled(&self) -> bool {
+        self.rec.badge_weekly_digest_enabled
     }
 
     async fn ses_api_headquarters_id(&self) -> Option<String> {

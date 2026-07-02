@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<afc55e197fd79b97b394b48d7b58a51a>>
+ * @generated SignedSource<<547a8036595e4348fef36ea27f73b39a>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -9,30 +9,25 @@
 // @ts-nocheck
 
 import { ConcreteRequest } from 'relay-runtime';
-export type MembersEditQuery$variables = {
+export type ScanMemberBadgesModalQuery$variables = {
   id: string;
   locationId: string;
 };
-export type MembersEditQuery$data = {
+export type ScanMemberBadgesModalQuery$data = {
   readonly person: {
-    readonly badgeProgress: ReadonlyArray<{
-      readonly awardedAt: number | null | undefined;
+    readonly badges: ReadonlyArray<{
+      readonly awardedAt: number;
       readonly description: string;
-      readonly earned: boolean;
       readonly id: string;
       readonly name: string;
-      readonly source: string;
       readonly tier: string;
     }>;
-    readonly firstName: string;
     readonly id: string;
-    readonly lastName: string;
-    readonly memberNumber: string | null | undefined;
   };
 };
-export type MembersEditQuery = {
-  response: MembersEditQuery$data;
-  variables: MembersEditQuery$variables;
+export type ScanMemberBadgesModalQuery = {
+  response: ScanMemberBadgesModalQuery$data;
+  variables: ScanMemberBadgesModalQuery$variables;
 };
 
 const node: ConcreteRequest = (function(){
@@ -73,27 +68,6 @@ v2 = [
       (v1/*: any*/),
       {
         "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "firstName",
-        "storageKey": null
-      },
-      {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "lastName",
-        "storageKey": null
-      },
-      {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "memberNumber",
-        "storageKey": null
-      },
-      {
-        "alias": null,
         "args": [
           {
             "kind": "Variable",
@@ -101,9 +75,9 @@ v2 = [
             "variableName": "locationId"
           }
         ],
-        "concreteType": "PersonBadgeProgress",
+        "concreteType": "PersonBadge",
         "kind": "LinkedField",
-        "name": "badgeProgress",
+        "name": "badges",
         "plural": true,
         "selections": [
           (v1/*: any*/),
@@ -132,20 +106,6 @@ v2 = [
             "alias": null,
             "args": null,
             "kind": "ScalarField",
-            "name": "source",
-            "storageKey": null
-          },
-          {
-            "alias": null,
-            "args": null,
-            "kind": "ScalarField",
-            "name": "earned",
-            "storageKey": null
-          },
-          {
-            "alias": null,
-            "args": null,
-            "kind": "ScalarField",
             "name": "awardedAt",
             "storageKey": null
           }
@@ -161,7 +121,7 @@ return {
     "argumentDefinitions": (v0/*: any*/),
     "kind": "Fragment",
     "metadata": null,
-    "name": "MembersEditQuery",
+    "name": "ScanMemberBadgesModalQuery",
     "selections": (v2/*: any*/),
     "type": "QueryRoot",
     "abstractKey": null
@@ -170,20 +130,20 @@ return {
   "operation": {
     "argumentDefinitions": (v0/*: any*/),
     "kind": "Operation",
-    "name": "MembersEditQuery",
+    "name": "ScanMemberBadgesModalQuery",
     "selections": (v2/*: any*/)
   },
   "params": {
-    "cacheID": "e950d9c8f36472c343147d6dfc4ae41c",
+    "cacheID": "6c94b4578838e42d34e87c75035eab21",
     "id": null,
     "metadata": {},
-    "name": "MembersEditQuery",
+    "name": "ScanMemberBadgesModalQuery",
     "operationKind": "query",
-    "text": "query MembersEditQuery(\n  $id: ID!\n  $locationId: ID!\n) {\n  person(id: $id) {\n    id\n    firstName\n    lastName\n    memberNumber\n    badgeProgress(locationId: $locationId) {\n      id\n      name\n      description\n      tier\n      source\n      earned\n      awardedAt\n    }\n  }\n}\n"
+    "text": "query ScanMemberBadgesModalQuery(\n  $id: ID!\n  $locationId: ID!\n) {\n  person(id: $id) {\n    id\n    badges(locationId: $locationId) {\n      id\n      name\n      description\n      tier\n      awardedAt\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "c411c98dcb603b717f2c2a27c8d3f6e3";
+(node as any).hash = "b45c238524c42535ed24a7f7dc77c467";
 
 export default node;

@@ -7,12 +7,22 @@ import type {
   TransactionError as TransactionErrorType,
 } from "../ScanState";
 import { formatTime, formatDayDateTime } from "../../lib/time";
+import { BadgeIcon } from "../../lib/badgeIcons";
+import type { CSSProperties } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 // ensure this is less than the transaction timeout in ScanState
 const FINALIZED_TRANSACTION_TIMEOUT_MS = 10_000;
 const FINALIZED_TRANSACTION_FADE_MS = 1_000;
 const SCAN_INPUT_TIMEOUT_MS = 10_000;
+const CONFETTI_COLORS = [
+  "#ff5f6d",
+  "#ffd166",
+  "#4ecdc4",
+  "#5c7cfa",
+  "#f8961e",
+  "#ffffff",
+] as const;
 
 function TransactionList(props: { transactionState: TransactionState }) {
   const [now, setNow] = useState(() => Date.now());
@@ -93,6 +103,7 @@ function TransactionSignedIn(props: {
           {txn.person.firstName} {txn.person.lastName}
         </span>{" "}
         signed in at {formatTime(txn.startTime)}
+        <BadgeCelebration badges={txn.awardedBadges} />
       </span>
       <span className="loading"></span>
     </p>
@@ -122,9 +133,147 @@ function TransactionSignedOut(props: {
           {txn.person.firstName} {txn.person.lastName}
         </span>{" "}
         signed out: {startTimeStr} &ndash; {endTimeStr}
+        <BadgeCelebration badges={txn.awardedBadges} />
       </span>
       <span className="loading"></span>
     </p>
+  );
+}
+
+function BadgeCelebration(props: {
+  badges:
+    | ReadonlyArray<{
+        id: string;
+        name: string;
+        description: string;
+        tier: string;
+      }>
+    | null
+    | undefined;
+}) {
+  type ConfettiPiece = {
+    id: number;
+    style: CSSProperties;
+  };
+
+  const [confettiPieces, setConfettiPieces] = useState<ConfettiPiece[]>([]);
+  const [dismissedBadgeSignature, setDismissedBadgeSignature] = useState<
+    string | null
+  >(null);
+  const audioFanfairRef = useRef<HTMLAudioElement | null>(null);
+  const lastBadgeSignatureRef = useRef<string | null>(null);
+  const badgeCount = props.badges?.length ?? 0;
+  const badgeSignature =
+    props.badges?.map((badge) => badge.id).join("|") ?? null;
+
+  useEffect(() => {
+    audioFanfairRef.current = new Audio("/audio/fanfair.mp3");
+  }, []);
+
+  useEffect(() => {
+    if (!props.badges || props.badges.length === 0) {
+      lastBadgeSignatureRef.current = null;
+      return;
+    }
+
+    if (lastBadgeSignatureRef.current === badgeSignature) {
+      return;
+    }
+
+    lastBadgeSignatureRef.current = badgeSignature;
+    const audioFanfair = audioFanfairRef.current;
+    if (audioFanfair) {
+      audioFanfair.currentTime = 0;
+      void audioFanfair.play().catch(() => undefined);
+    }
+
+    const burstCount = Math.max(24, props.badges.length * 16);
+    setConfettiPieces(
+      Array.from({ length: burstCount }, (_, id) => {
+        const launchFromRight = id % 2 === 1;
+        const horizontalOffset = 10 + Math.random() * 28;
+
+        return {
+          id,
+          style: {
+            "--confetti-origin-left": launchFromRight ? "auto" : "28px",
+            "--confetti-origin-right": launchFromRight ? "28px" : "auto",
+            "--confetti-x": `${launchFromRight ? -horizontalOffset : horizontalOffset}vw`,
+            "--confetti-y": `${-22 - Math.random() * 42}vh`,
+            "--confetti-rotation": `${-720 + Math.random() * 1440}deg`,
+            "--confetti-delay": `${Math.random() * 160}ms`,
+            "--confetti-duration": `${1200 + Math.random() * 900}ms`,
+            "--confetti-size": `${6 + Math.random() * 8}px`,
+            "--confetti-color": CONFETTI_COLORS[id % CONFETTI_COLORS.length],
+          } as CSSProperties,
+        };
+      }),
+    );
+
+    const timeoutId = window.setTimeout(() => {
+      setConfettiPieces([]);
+    }, 2_600);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [badgeSignature, props.badges]);
+
+  if (
+    !props.badges ||
+    props.badges.length === 0 ||
+    badgeSignature === dismissedBadgeSignature
+  ) {
+    return null;
+  }
+
+  return (
+    <span className="badge-burst" aria-live="polite">
+      <span
+        className="badge-overlay-backdrop"
+        aria-hidden="true"
+        onClick={() => {
+          setDismissedBadgeSignature(badgeSignature);
+        }}
+      />
+      <span className="badge-confetti-field" aria-hidden="true">
+        {confettiPieces.map((piece) => (
+          <span
+            key={piece.id}
+            className="badge-confetti-piece"
+            style={piece.style}
+          />
+        ))}
+      </span>
+      <span className="badge-overlay-panel">
+        <span className="badge-overlay-kicker">Badge awarded</span>
+        <span className="badge-overlay-title">
+          {badgeCount} {badgeCount === 1 ? "badge" : "badges"} unlocked
+        </span>
+        <span className="badge-overlay-badges">
+          {props.badges.map((badge) => (
+            <span key={badge.id} className="badge-card">
+              <span className="badge-icon-wrap">
+                <BadgeIcon
+                  badgeId={badge.id}
+                  badgeName={badge.name}
+                  tier={badge.tier.toLowerCase()}
+                  className="badge-icon"
+                />
+              </span>
+              <span className="badge-card-copy">
+                <span className="badge-label">New badge: {badge.name}</span>
+                <span className="badge-meta">
+                  {badge.description
+                    ? `${badge.tier} tier - ${badge.description}`
+                    : `${badge.tier} tier`}
+                </span>
+              </span>
+            </span>
+          ))}
+        </span>
+      </span>
+    </span>
   );
 }
 

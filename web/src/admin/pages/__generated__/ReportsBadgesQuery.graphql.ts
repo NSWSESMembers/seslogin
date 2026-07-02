@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<1c3253821d5f526fa6c9e3dc51204ebc>>
+ * @generated SignedSource<<0f014686995e7badc0b3345e9851a7ba>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -9,30 +9,28 @@
 // @ts-nocheck
 
 import { ConcreteRequest } from 'relay-runtime';
-export type MembersListQuery$variables = {
+export type ReportsBadgesQuery$variables = {
   location: string;
 };
-export type MembersListQuery$data = {
+export type ReportsBadgesQuery$data = {
   readonly location: {
     readonly id: string;
-    readonly lastSuccessfulMemberSync: number | null | undefined;
     readonly people: ReadonlyArray<{
       readonly badges: ReadonlyArray<{
         readonly awardedAt: number;
         readonly id: string;
+        readonly name: string;
       }>;
       readonly firstName: string;
       readonly id: string;
       readonly lastName: string;
       readonly memberNumber: string | null | undefined;
-      readonly sesApiPersonId: string | null | undefined;
     }>;
-    readonly sesApiHeadquartersId: string | null | undefined;
   };
 };
-export type MembersListQuery = {
-  response: MembersListQuery$data;
-  variables: MembersListQuery$variables;
+export type ReportsBadgesQuery = {
+  response: ReportsBadgesQuery$data;
+  variables: ReportsBadgesQuery$variables;
 };
 
 const node: ConcreteRequest = (function(){
@@ -69,20 +67,6 @@ v2 = [
       {
         "alias": null,
         "args": null,
-        "kind": "ScalarField",
-        "name": "sesApiHeadquartersId",
-        "storageKey": null
-      },
-      {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "lastSuccessfulMemberSync",
-        "storageKey": null
-      },
-      {
-        "alias": null,
-        "args": null,
         "concreteType": "Person",
         "kind": "LinkedField",
         "name": "people",
@@ -112,13 +96,6 @@ v2 = [
           },
           {
             "alias": null,
-            "args": null,
-            "kind": "ScalarField",
-            "name": "sesApiPersonId",
-            "storageKey": null
-          },
-          {
-            "alias": null,
             "args": [
               {
                 "kind": "Variable",
@@ -132,6 +109,13 @@ v2 = [
             "plural": true,
             "selections": [
               (v1/*: any*/),
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "name",
+                "storageKey": null
+              },
               {
                 "alias": null,
                 "args": null,
@@ -154,7 +138,7 @@ return {
     "argumentDefinitions": (v0/*: any*/),
     "kind": "Fragment",
     "metadata": null,
-    "name": "MembersListQuery",
+    "name": "ReportsBadgesQuery",
     "selections": (v2/*: any*/),
     "type": "QueryRoot",
     "abstractKey": null
@@ -163,20 +147,20 @@ return {
   "operation": {
     "argumentDefinitions": (v0/*: any*/),
     "kind": "Operation",
-    "name": "MembersListQuery",
+    "name": "ReportsBadgesQuery",
     "selections": (v2/*: any*/)
   },
   "params": {
-    "cacheID": "bdc51857810143fe352d358d484b0bd2",
+    "cacheID": "cad2113a79ea670c13f5d988238d12eb",
     "id": null,
     "metadata": {},
-    "name": "MembersListQuery",
+    "name": "ReportsBadgesQuery",
     "operationKind": "query",
-    "text": "query MembersListQuery(\n  $location: ID!\n) {\n  location(id: $location) {\n    id\n    sesApiHeadquartersId\n    lastSuccessfulMemberSync\n    people {\n      id\n      firstName\n      lastName\n      memberNumber\n      sesApiPersonId\n      badges(locationId: $location) {\n        id\n        awardedAt\n      }\n    }\n  }\n}\n"
+    "text": "query ReportsBadgesQuery(\n  $location: ID!\n) {\n  location(id: $location) {\n    id\n    people {\n      id\n      firstName\n      lastName\n      memberNumber\n      badges(locationId: $location) {\n        id\n        name\n        awardedAt\n      }\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "c1518a82f6d1ca01a66ed9dc906c9ae0";
+(node as any).hash = "d4825861613d55fdfbc06057f4103527";
 
 export default node;
