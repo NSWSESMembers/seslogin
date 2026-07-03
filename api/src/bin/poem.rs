@@ -7,7 +7,7 @@ use seslogin::app::MyApp;
 use std::env;
 use std::error::Error;
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use tracing::info;
 
 use seslogin::app;
@@ -162,6 +162,7 @@ async fn run_server<H: db::Handler + Send + Sync + 'static>(
         .data(app);
     info!("GraphiQL: http://localhost:8000");
     Server::new(TcpListener::bind("0.0.0.0:8000"))
+        .idle_timeout(Duration::from_secs(60))
         .run(routes)
         .await?;
     Ok(())

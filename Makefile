@@ -1,7 +1,7 @@
 dev:
 	@set -e; \
 	trap 'kill 0' INT TERM EXIT; \
-	(cd api && RUST_LOG=info cargo run --bin poem -- --enable-mutations) & \
+	(cd api && RUST_LOG=info exec cargo run --bin poem -- --enable-mutations) & \
 	(cd web && npm run relay -- --watch) & \
 	(cd web && npm run dev)
 
