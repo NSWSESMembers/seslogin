@@ -14,7 +14,7 @@ export default function TitleBar() {
   return (
     <div id="title_bar">
       <span>
-        <a href="/admin" onClick={changeLocation}>
+        <a href="/admin" onClick={changeLocation} title="Click to change unit">
           {selectedLocation.name}
         </a>
       </span>
