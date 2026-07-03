@@ -1,5 +1,6 @@
 import type {
   TransactionState,
+  MemberIdWithUuid,
   Transaction as TransactionType,
   TransactionLoading as TransactionLoadingType,
   TransactionSignedIn as TransactionSignedInType,
@@ -182,10 +183,17 @@ export default function ScanScreenMain(props: {
   screenPosition: ScreenPosition;
   submitDisabled: boolean;
   transactionState: TransactionState;
-  onSubmit: (memberId: string) => Promise<void>;
+  onSubmit: (ids: MemberIdWithUuid) => Promise<void>;
+  validateMemberId: (id: { memberId: string }) => boolean;
   onFocusInputReady?: (focusInput: () => void) => void;
 }) {
-  const { onFocusInputReady, onSubmit, screenPosition, submitDisabled } = props;
+  const {
+    onFocusInputReady,
+    onSubmit,
+    screenPosition,
+    submitDisabled,
+    validateMemberId,
+  } = props;
   const inputRef = useRef<HTMLInputElement>(null);
   const refocusTimeoutIdRef = useRef<number | null>(null);
   const clearTimeoutIdRef = useRef<number | null>(null);
@@ -240,7 +248,15 @@ export default function ScanScreenMain(props: {
       focusInput();
       return;
     }
-    await onSubmit(memberId);
+
+    const ids = { memberId, uuid: crypto.randomUUID() };
+    const isValidMemberId = validateMemberId({ memberId });
+
+    if (!isValidMemberId) {
+      focusInput();
+      return;
+    }
+    await onSubmit(ids);
   }
 
   return (
