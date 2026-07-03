@@ -1,5 +1,5 @@
 import { graphql, useMutation } from "react-relay";
-import type { TransactionSignedOut } from "../ScanState";
+import type { MemberIdWithUuid, TransactionSignedOut } from "../ScanState";
 import {
   useCallback,
   useEffect,
@@ -124,7 +124,8 @@ export default function ScanController(props: {
       }
     `);
 
-  async function completeSubmit(memberId: string, uuid: string) {
+  async function completeSubmit(ids: MemberIdWithUuid) {
+    const { memberId, uuid } = ids;
     focusMainInputRef.current?.();
 
     let res: ScanControllerRegister2Mutation$data;
@@ -187,15 +188,14 @@ export default function ScanController(props: {
     throw new Error("Unknown scan state");
   }
 
-  function handleValidateMemberId(uuid: string, memberId: string): boolean {
+  function handleValidateMemberId(ids: MemberIdWithUuid): boolean {
+    const { uuid, memberId } = ids;
     if (!isValidMemberIdText(memberId)) {
       audioError.play();
       dispatchTransaction({
         type: "ERROR",
         uuid,
-        message:
-          "Member ID must start with 400 and be at least 8 digits long: " +
-          memberId,
+        message: "Member ID must start with 400 and be at least 8 digits long",
       });
       return false;
     }
@@ -203,12 +203,14 @@ export default function ScanController(props: {
     return true;
   }
 
-  async function handleMemberIdEntered(uuid: string, memberId: string) {
+  async function handleMemberIdEntered(ids: MemberIdWithUuid) {
+    const { uuid, memberId } = ids;
+
     dispatchTransaction({ type: "LOAD_PERSON", uuid, memberId });
 
     // purposefully not awaited - we want the form submission to be considered complete
     // so we can re-render
-    completeSubmit(memberId, uuid);
+    completeSubmit({ memberId, uuid });
   }
 
   // most recent transaction

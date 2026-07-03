@@ -1,7 +1,10 @@
-export type LoadPersonAction = {
-  type: "LOAD_PERSON";
-  uuid: string;
+export type MemberIdWithUuid = {
   memberId: string;
+  uuid: string;
+};
+
+export type LoadPersonAction = MemberIdWithUuid & {
+  type: "LOAD_PERSON";
 };
 
 export type PersonResolvedAction = {
@@ -93,10 +96,8 @@ export type TransactionSignedOut = {
   adjusted: boolean;
 };
 
-export type TransactionLoading = {
-  uuid: string;
+export type TransactionLoading = MemberIdWithUuid & {
   status: "LOADING";
-  memberId: string;
 };
 
 export type TransactionError = {
