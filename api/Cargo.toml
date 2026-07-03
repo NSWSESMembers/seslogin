@@ -40,10 +40,6 @@ name = "list-recent-periods"
 path = "src/bin/list-recent-periods.rs"
 
 [[bin]]
-name = "check-category-ids"
-path = "src/bin/check-category-ids.rs"
-
-[[bin]]
 name = "nitc-export"
 path = "src/bin/nitc-export.rs"
 
