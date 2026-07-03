@@ -23,6 +23,7 @@ import type {
 import type { ScanControllerSignOutMutation } from "./__generated__/ScanControllerSignOutMutation.graphql";
 import { useKioskSession } from "./useKioskSession";
 import type { ScreenPosition } from "../../styles";
+import { isValidMemberIdText } from "../../lib/memberId";
 
 const PURGE_EXPIRED_TRANSACTIONS_INTERVAL_MS = 1_000;
 const SCAN_TRANSACTION_LOG_LEASE_ID = "scan:transaction-log";
@@ -186,9 +187,23 @@ export default function ScanController(props: {
     throw new Error("Unknown scan state");
   }
 
-  async function handleMemberIdEntered(memberId: string) {
-    const uuid = crypto.randomUUID();
+  function handleValidateMemberId(uuid: string, memberId: string): boolean {
+    if (!isValidMemberIdText(memberId)) {
+      audioError.play();
+      dispatchTransaction({
+        type: "ERROR",
+        uuid,
+        message:
+          "Member ID must start with 400 and be at least 8 digits long: " +
+          memberId,
+      });
+      return false;
+    }
 
+    return true;
+  }
+
+  async function handleMemberIdEntered(uuid: string, memberId: string) {
     dispatchTransaction({ type: "LOAD_PERSON", uuid, memberId });
 
     // purposefully not awaited - we want the form submission to be considered complete
@@ -303,6 +318,7 @@ export default function ScanController(props: {
         screenPosition={mainPos}
         transactionState={transactionState}
         submitDisabled={!memberIdEnabled}
+        validateMemberId={handleValidateMemberId}
         onSubmit={handleMemberIdEntered}
         onFocusInputReady={(focusInput) => {
           focusMainInputRef.current = focusInput;

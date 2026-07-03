@@ -182,10 +182,17 @@ export default function ScanScreenMain(props: {
   screenPosition: ScreenPosition;
   submitDisabled: boolean;
   transactionState: TransactionState;
-  onSubmit: (memberId: string) => Promise<void>;
+  onSubmit: (uuid: string, memberId: string) => Promise<void>;
+  validateMemberId: (uuid: string, memberId: string) => boolean;
   onFocusInputReady?: (focusInput: () => void) => void;
 }) {
-  const { onFocusInputReady, onSubmit, screenPosition, submitDisabled } = props;
+  const {
+    onFocusInputReady,
+    onSubmit,
+    screenPosition,
+    submitDisabled,
+    validateMemberId,
+  } = props;
   const inputRef = useRef<HTMLInputElement>(null);
   const refocusTimeoutIdRef = useRef<number | null>(null);
   const clearTimeoutIdRef = useRef<number | null>(null);
@@ -240,7 +247,15 @@ export default function ScanScreenMain(props: {
       focusInput();
       return;
     }
-    await onSubmit(memberId);
+
+    const uuid = crypto.randomUUID();
+    const isValidMemberId = validateMemberId(uuid, memberId);
+
+    if (!isValidMemberId) {
+      focusInput();
+      return;
+    }
+    await onSubmit(uuid, memberId);
   }
 
   return (
