@@ -8,9 +8,8 @@ resource "aws_lambda_function" "activity_summary" {
 
   environment {
     variables = {
-      DB_BACKEND   = "dynamodb"
-      DB_PREFIX    = var.db_prefix
-      SES_ROLE_ARN = var.ses_role_arn
+      DB_BACKEND = "dynamodb"
+      DB_PREFIX  = var.db_prefix
     }
   }
 

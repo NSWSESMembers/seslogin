@@ -24,7 +24,6 @@ resource "aws_lambda_function" "preprod_api" {
       TURNSTILE_SECRET_KEY  = var.turnstile_secret_key
       WEBAUTHN_RP_ID        = "seslogin.com"
       WEBAUTHN_RP_ORIGIN    = "https://preprod.seslogin.com"
-      SES_ROLE_ARN          = var.ses_role_arn
     }
   }
 

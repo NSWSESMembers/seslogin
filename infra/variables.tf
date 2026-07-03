@@ -36,16 +36,6 @@ variable "background_jobs_enabled" {
   default     = true
 }
 
-# Temporary SES bridge: while this account's SES production access is pending, set
-# this to a role ARN in the old (production-SES) account that the email-sending
-# Lambdas assume so email is sent by that account. Clear it ("") once this
-# account has production SES.
-variable "ses_role_arn" {
-  description = "Cross-account role ARN for sending SES email from the production-SES account. Empty = send from this account."
-  type        = string
-  default     = ""
-}
-
 variable "jwt_secret_test" {
   description = "JWT signing secret for the test environment"
   type        = string
