@@ -55,6 +55,60 @@ pub enum AuthInfo {
 pub const API_TOKEN_PREFIX: &str = "slgn_";
 pub const USER_TOKEN_PREFIX: &str = "slu_";
 
+/// Dev-only auth override configured via CLI flags on the poem server. When set,
+/// the server bypasses token verification entirely and treats every request as
+/// the configured caller. Intended for local UI testing/screenshots only — never
+/// enable in a deployed environment.
+pub enum DevAuthConfig {
+    /// Act as this session (kiosk) record id.
+    Session { id: String },
+    /// Act as this user, resolved by record id or email.
+    User { id_or_email: String },
+}
+
+/// Resolve a [`DevAuthConfig`] into an [`AuthInfo`] without any token check.
+pub async fn resolve_dev_auth<A: App + HasDb>(
+    app: &A,
+    config: &DevAuthConfig,
+) -> Result<AuthInfo, AuthError> {
+    match config {
+        DevAuthConfig::Session { id } => {
+            let session = app
+                .db()
+                .get_sessions(std::slice::from_ref(id))
+                .await
+                .map_err(|e| classify_db_err("dev auth: fetch session", e))?
+                .pop()
+                .flatten()
+                .ok_or_else(|| AuthError::Permanent(format!("Dev auth session not found: {id}")))?;
+            if !session.active {
+                return Err(AuthError::Permanent(format!(
+                    "Dev auth session is not active: {id}"
+                )));
+            }
+            Ok(AuthInfo::Session {
+                id: session.id,
+                location: session.location_id,
+            })
+        }
+        DevAuthConfig::User { id_or_email } => {
+            let user_id = if id_or_email.contains('@') {
+                let ids = app
+                    .db()
+                    .get_user_id_by_email(id_or_email)
+                    .await
+                    .map_err(|e| classify_db_err("dev auth: fetch user by email", e))?;
+                ids.into_iter().next().ok_or_else(|| {
+                    AuthError::Permanent(format!("Dev auth user not found: {id_or_email}"))
+                })?
+            } else {
+                id_or_email.clone()
+            };
+            fetch_update_user_auth_info(app, user_id).await
+        }
+    }
+}
+
 /// Maps an optional [`AuthInfo`] to `(caller_type, caller_id)` for telemetry/logging.
 /// `caller_type` is one of "user", "session", "api_token", or "unauthenticated".
 pub fn caller_info(auth: Option<&AuthInfo>) -> (&'static str, String) {

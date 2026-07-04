@@ -8,6 +8,15 @@ seslogin v2 is a member attendance tracking system for managing check-in/check-o
 
 ## Commands
 
+> ⚠️ **Almost everything points at the production database.** `var.db_prefix` defaults to
+> `seslogin_prod`, and nearly every environment uses it: prod, preprod, the `seslogin-test-api`
+> (deployed from `main`), all the sync/utility Lambdas, **and local dev** (`.env` sets
+> `DB_PREFIX=seslogin_prod`). The `seslogin_test_*` tables exist but are not wired into any
+> running environment yet. This means `make dev`, `make do-sync`, the dev-auth bypass below, and
+> any script you run locally are operating on **live production member data**. Be extremely
+> careful: prefer dry-runs, avoid destructive mutations, and double-check `DB_PREFIX` before
+> running anything that writes.
+
 ### Development
 
 ```bash
@@ -20,6 +29,26 @@ cd api && RUST_LOG=info cargo run --bin poem -- --enable-mutations    # API serv
 cd web && npm run relay -- --watch                                    # Relay GraphQL compiler
 cd web && npm run dev                                                  # Web dev server
 ```
+
+#### Bypassing auth for local UI testing
+
+To drive the web UI locally without logging in (e.g. taking screenshots or automated
+testing), start the `poem` server with one of these flags. Token verification is then
+bypassed and every request is treated as the given caller — no `Authorization` header
+needed from the browser:
+
+```bash
+cargo run --bin poem -- --enable-mutations --dev-auth-session <SESSION_ID>       # act as a kiosk/session
+cargo run --bin poem -- --enable-mutations --dev-auth-user <USER_ID_OR_EMAIL>    # act as a user (id or email)
+```
+
+The impersonated caller keeps its real permissions, so authorization still applies. This
+is dev-only (not present in the deployed Lambda) and logs a warning at startup; a missing
+or inactive record yields `401`. See `api/README.md` for details.
+
+> ⚠️ Combined with the default `DB_PREFIX=seslogin_prod`, this bypass acts as a real user or
+> kiosk against **live production data**. If you add `--enable-mutations`, writes hit prod. Only
+> impersonate records you own, and prefer read-only testing.
 
 ### After GraphQL Schema Changes
 
@@ -47,6 +76,10 @@ make pre-commit-checks                # Full CI suite: relay, prettier, eslint, 
 make sync      # Dry-run SES API sync (print changes only)
 make do-sync   # Apply SES API sync to database
 ```
+
+> ⚠️ With the default `DB_PREFIX=seslogin_prod`, `make do-sync` writes to the **production**
+> database. Always run `make sync` (dry-run) first and review the planned changes before
+> applying.
 
 ### Lambda Deployment
 

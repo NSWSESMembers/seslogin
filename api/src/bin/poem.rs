@@ -49,12 +49,23 @@ struct Cli {
     /// Enable mutations (disable read-only mode)
     #[arg(long, default_value_t = false)]
     enable_mutations: bool,
+
+    /// DEV ONLY: bypass auth and treat every request as this session (kiosk) record id.
+    /// Mutually exclusive with --dev-auth-user.
+    #[arg(long, value_name = "SESSION_ID")]
+    dev_auth_session: Option<String>,
+
+    /// DEV ONLY: bypass auth and treat every request as this user, given by record id
+    /// or email. Mutually exclusive with --dev-auth-session.
+    #[arg(long, value_name = "USER_ID_OR_EMAIL")]
+    dev_auth_user: Option<String>,
 }
 
 #[handler]
 async fn index<H: db::Handler + Send + Sync + 'static>(
     schema: Data<&Schema<H>>,
     app: Data<&Arc<app::MyApp<H>>>,
+    dev_auth: Data<&Arc<Option<auth::DevAuthConfig>>>,
     headers: &HeaderMap,
     req: GraphQLRequest,
 ) -> impl IntoResponse {
@@ -69,7 +80,24 @@ async fn index<H: db::Handler + Send + Sync + 'static>(
         .filter(|value| !value.is_empty());
     let mut caller_type = "unauthenticated";
     let mut caller_id = String::from("unknown");
-    if let Some(auth_header) = headers.get("Authorization")
+    if let Some(cfg) = (***dev_auth).as_ref() {
+        // Dev-only override: skip token verification and act as the configured caller.
+        match auth::resolve_dev_auth(&***app, cfg).await {
+            Ok(auth_info) => {
+                (caller_type, caller_id) = auth::caller_info(Some(&auth_info));
+                req = req.data(auth_info);
+            }
+            Err(e) => {
+                tracing::error!("Dev auth override failed: {}", e);
+                let response = GraphQLResponse(async_graphql::Response::from_errors(vec![
+                    ServerError::new("Dev auth override failed", None),
+                ]));
+                return response
+                    .with_status(StatusCode::UNAUTHORIZED)
+                    .into_response();
+            }
+        }
+    } else if let Some(auth_header) = headers.get("Authorization")
         && let Ok(auth_str) = auth_header.to_str()
         && auth_str.starts_with("Bearer ")
     {
@@ -144,6 +172,7 @@ async fn run_server<H: db::Handler + Send + Sync + 'static>(
     key: jwt::Key,
     response_lag_ms: u64,
     sqs: SqsQueues,
+    dev_auth: Option<auth::DevAuthConfig>,
 ) -> Result<(), Box<dyn Error>> {
     let webauthn = Arc::new(app::build_webauthn()?);
     let app = Arc::new(app::new(db, key, response_lag_ms, sqs));
@@ -159,7 +188,8 @@ async fn run_server<H: db::Handler + Send + Sync + 'static>(
         )
         .with(allow_cross_origin)
         .data(schema)
-        .data(app);
+        .data(app)
+        .data(Arc::new(dev_auth));
     info!("GraphiQL: http://localhost:8000");
     Server::new(TcpListener::bind("0.0.0.0:8000"))
         .idle_timeout(Duration::from_secs(60))
@@ -203,7 +233,22 @@ async fn main() -> Result<(), Box<dyn Error>> {
         },
     };
 
+    let dev_auth = match (cli.dev_auth_session, cli.dev_auth_user) {
+        (Some(_), Some(_)) => {
+            return Err("--dev-auth-session and --dev-auth-user are mutually exclusive".into());
+        }
+        (Some(id), None) => Some(auth::DevAuthConfig::Session { id }),
+        (None, Some(id_or_email)) => Some(auth::DevAuthConfig::User { id_or_email }),
+        (None, None) => None,
+    };
+    if dev_auth.is_some() {
+        tracing::warn!(
+            "DEV AUTH OVERRIDE ENABLED: token verification is bypassed for all requests. \
+             Never use this in a deployed environment."
+        );
+    }
+
     let db_prefix = env::var("DB_PREFIX").expect("DB_PREFIX must be set for dynamodb backend");
     let db = dynamodb::Handler::new(&db_prefix, !cli.enable_mutations).await;
-    run_server(db, key, cli.response_lag_ms, sqs).await
+    run_server(db, key, cli.response_lag_ms, sqs, dev_auth).await
 }
