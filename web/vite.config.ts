@@ -2,6 +2,7 @@ import { defineConfig } from "vite";
 import react, { reactCompilerPreset } from "@vitejs/plugin-react";
 import babel from "@rolldown/plugin-babel";
 import relay from "vite-plugin-relay";
+import tailwindcss from "@tailwindcss/vite";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -20,7 +21,12 @@ export default defineConfig({
   optimizeDeps: {
     include: ["exceljs"],
   },
-  plugins: [relay, react(), babel({ presets: [reactCompilerPreset()] })],
+  plugins: [
+    relay,
+    react(),
+    babel({ presets: [reactCompilerPreset()] }),
+    tailwindcss(),
+  ],
   server: {
     forwardConsole: true,
   },

@@ -1,0 +1,54 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "TitilliumMaps", Verdana, sans-serif;
+  --font-title: "TitilliumMapsTitle", Verdana, sans-serif;
+
+  /* brand/chrome colors (unchanged look) */
+  --color-accent: #fb6c0d;
+  --color-accent-light: #efa670;
+  --color-accent-dark: #c04f00;
+  --color-brand: #ef7229; /* title bar */
+  --color-menu: #d56227; /* menu bar / focus rings */
+  --color-menu-active: #dd8152;
+  --color-menu-hover: #e6a17d;
+  --color-submenu: #b84725;
+  --color-submenu-active: #bf5a3b;
+  --color-submenu-hover: #c66c51;
+  --color-navy: #1f3d79; /* headings / segmented control */
+}
+
+@font-face {
+  font-family: TitilliumMaps;
+  src: url("/fonts/titilliummaps-normal.otf");
+}
+@font-face {
+  font-family: TitilliumMaps;
+  font-weight: bold;
+  src: url("/fonts/titilliummaps-bold.otf");
+}
+@font-face {
+  font-family: TitilliumMapsTitle;
+  src: url("/fonts/titilliummaps-title.otf");
+}
+
+/* Legacy global typography the whole app was built around; Preflight zeroes these. */
+@layer base {
+  body {
+    padding-bottom: 1.2em;
+    text-align: center;
+    font-size: 16px;
+  }
+  h1,
+  h2,
+  h3 {
+    margin-top: 0.5em;
+  }
+  p {
+    margin-top: 1em;
+    margin-bottom: 1em;
+  }
+  button {
+    cursor: pointer;
+  }
+}
