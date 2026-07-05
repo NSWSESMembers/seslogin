@@ -8,12 +8,12 @@ export default function Scan() {
   const [signingOutName, setSigningOutName] = useState<string | null>(null);
 
   return (
-    <div>
+    <div className="flex h-dvh flex-col">
       <ScanTitleBar
         onCancelSignOut={cancelSignOut ?? undefined}
         signingOutName={signingOutName ?? undefined}
       />
-      <div className="absolute inset-x-0 top-24.75 bottom-0 m-0 overflow-hidden">
+      <div className="relative flex-1 overflow-hidden">
         <ScanController
           onCancelSignOutChange={(fn) => setCancelSignOut(fn ? () => fn : null)}
           onSigningOutNameChange={setSigningOutName}

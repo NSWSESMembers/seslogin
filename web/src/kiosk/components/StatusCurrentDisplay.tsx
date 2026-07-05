@@ -31,29 +31,31 @@ export default function StatusCurrentDisplay({ periods }: Props) {
   const sortedPeriods = [...periods].sort((a, b) => a.startTime - b.startTime);
 
   return (
-    <div className="relative box-border h-dvh overflow-hidden pb-16">
-      <ul className="m-0 h-full list-none columns-2 gap-8 overflow-hidden px-4 py-2 [column-fill:auto]">
-        {sortedPeriods.map((period) => (
-          <li
-            key={period.id}
-            className="flex break-inside-avoid items-baseline justify-between gap-4 py-[0.2rem] font-title text-2xl"
-          >
-            <span className="min-w-0 text-left">
-              {period.person.firstName} {period.person.lastName}
-            </span>
-            <span
-              className={`shrink-0 text-right ${getSignInColor(period.startTime)}`}
+    <div className="flex h-dvh flex-col overflow-hidden">
+      <div className="relative min-h-0 flex-1">
+        <ul className="m-0 h-full list-none columns-2 gap-8 overflow-hidden px-4 py-2 [column-fill:auto]">
+          {sortedPeriods.map((period) => (
+            <li
+              key={period.id}
+              className="flex break-inside-avoid items-baseline justify-between gap-4 py-[0.2rem] font-title text-2xl"
             >
-              {formatTimeDiff(new Date(period.startTime * 1000), new Date())}
-            </span>
-          </li>
-        ))}
-      </ul>
-      <div className="absolute inset-x-0 bottom-0 bg-neutral-900 px-4 py-2 text-center font-title text-[2rem] text-white">
-        {periods.length} member{periods.length !== 1 ? "s" : ""} signed in
+              <span className="min-w-0 text-left">
+                {period.person.firstName} {period.person.lastName}
+              </span>
+              <span
+                className={`shrink-0 text-right ${getSignInColor(period.startTime)}`}
+              >
+                {formatTimeDiff(new Date(period.startTime * 1000), new Date())}
+              </span>
+            </li>
+          ))}
+        </ul>
+        <div className="absolute right-4 bottom-1 text-xs text-neutral-400">
+          <ClientVersionLabel noLink />
+        </div>
       </div>
-      <div className="absolute right-4 bottom-[4.2rem] text-xs text-neutral-400">
-        <ClientVersionLabel noLink />
+      <div className="bg-neutral-900 px-4 py-2 text-center font-title text-[2rem] text-white">
+        {periods.length} member{periods.length !== 1 ? "s" : ""} signed in
       </div>
     </div>
   );
