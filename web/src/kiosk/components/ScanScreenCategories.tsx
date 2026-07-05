@@ -77,7 +77,7 @@ export function Inner(props: {
           </button>
         )}
       </div>
-      <ul className="clear-both pl-0">
+      <ul className="pl-0">
         {categories.map((category) => (
           <CategoryButton
             key={category.id}
