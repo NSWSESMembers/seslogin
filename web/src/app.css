@@ -35,7 +35,6 @@
 /* Legacy global typography the whole app was built around; Preflight zeroes these. */
 @layer base {
   body {
-    padding-bottom: 1.2em;
     text-align: center;
     font-size: 16px;
   }
