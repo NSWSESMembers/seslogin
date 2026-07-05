@@ -1,4 +1,4 @@
-import logoWhite from "../../assets/logo-white.svg";
+import TitleBarShell from "../../components/ui/TitleBarShell";
 import { useSettingsDispatch } from "../../lib/settings";
 import useSelectedLocation from "./useSelectedLocation";
 
@@ -12,10 +12,7 @@ export default function TitleBar() {
   };
 
   return (
-    <div className="flex items-center gap-5 bg-brand px-2 py-2 pl-5 text-left font-title text-[32px] text-white">
-      <a href="/">
-        <img src={logoWhite} alt="" className="block" />
-      </a>
+    <TitleBarShell>
       <a
         href="/admin"
         onClick={changeLocation}
@@ -24,6 +21,6 @@ export default function TitleBar() {
       >
         {selectedLocation.name}
       </a>
-    </div>
+    </TitleBarShell>
   );
 }
