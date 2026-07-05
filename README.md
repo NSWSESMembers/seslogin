@@ -73,6 +73,22 @@ See [SCHEMA.md](SCHEMA.md) for the data model and [MANUAL.md](MANUAL.md) for ope
 
 ---
 
+## Branches & deployments
+
+| Branch | Environment |
+| --- | --- |
+| `test` | [test.seslogin.com](https://test.seslogin.com) — experimental; frequently rewritten |
+| `preprod` | [preprod.seslogin.com](https://preprod.seslogin.com) — production-like staging |
+| `prod` | [new.seslogin.com](https://new.seslogin.com) — production |
+
+`test`, `preprod`, and `prod` are deployment branches: pushing to one deploys to its environment. They **may have their history rewritten / force-pushed** — `test` especially, as experimental work lands there often.
+
+> ⚠️ All three environments are usually configured to use the **same production database**, so a push to any of them (including `test`) can affect live data. Take care.
+
+`main` is the stable branch and is never force-pushed. It may be ahead of or behind the deployment branches. **Fork PR branches from `main`.**
+
+---
+
 ## Contributing
 
 Contributions are welcome — bug fixes, improvements, or new features. See [CONTRIBUTING.md](CONTRIBUTING.md) for how to submit a PR and run the checks.
