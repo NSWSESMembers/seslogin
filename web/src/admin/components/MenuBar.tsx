@@ -8,7 +8,7 @@ interface MenuBarProps {
 
 export default function MenuBar({ onLogout, isSuper }: MenuBarProps) {
   return (
-    <div className="bg-menu px-4 py-0.75 text-left font-title lg:px-20">
+    <div className="flex flex-wrap items-center gap-1 bg-menu px-5 py-0.75 font-title lg:px-20">
       <MenuLink to="/admin" end>
         Home
       </MenuLink>

@@ -12,19 +12,17 @@ export default function TitleBar() {
   };
 
   return (
-    <div className="relative bg-brand px-3.75 py-3.75 pl-5 text-left font-title text-[32px] text-white">
-      <span className="absolute top-5 left-20">
-        <a
-          href="/admin"
-          onClick={changeLocation}
-          title="Click to change unit"
-          className="text-white no-underline"
-        >
-          {selectedLocation.name}
-        </a>
-      </span>
+    <div className="flex items-center gap-5 bg-brand px-2 py-2 pl-5 text-left font-title text-[32px] text-white">
       <a href="/">
-        <img src={logoWhite} alt="" className="align-middle" />
+        <img src={logoWhite} alt="" className="block" />
+      </a>
+      <a
+        href="/admin"
+        onClick={changeLocation}
+        title="Click to change unit"
+        className="text-white no-underline"
+      >
+        {selectedLocation.name}
       </a>
     </div>
   );

@@ -4,16 +4,11 @@ interface TopBarProps {
 
 export default function TopBar({ username }: TopBarProps) {
   return (
-    <div className="bg-black px-2.5 py-1 text-[14px] font-bold text-white">
-      <div className="float-left">
-        <a href="/" className="text-white no-underline hover:underline">
-          SES Activity
-        </a>
-      </div>
-      <div className="float-right">
-        <span>{username}</span>
-      </div>
-      <div className="clear-both"></div>
+    <div className="flex items-center justify-between bg-black px-2 py-0.5 text-[14px] font-bold text-white">
+      <a href="/" className="text-white no-underline hover:underline">
+        SES Activity
+      </a>
+      <span>{username}</span>
     </div>
   );
 }
