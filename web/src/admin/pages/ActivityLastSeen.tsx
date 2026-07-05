@@ -3,6 +3,8 @@ import { useState } from "react";
 import { useSettings } from "../../lib/settings";
 import { formatFullDateTime, formatTimeDiff } from "../../lib/time";
 import type { ActivityLastSeenQuery } from "./__generated__/ActivityLastSeenQuery.graphql";
+import { AdminTable, Th, Td } from "../../components/ui/Table";
+import Select from "../../components/ui/Select";
 
 type SortMode = "alphabetical" | "recent" | "least-recent";
 
@@ -57,25 +59,26 @@ export default function ActivityLastSeen() {
 
   return (
     <>
-      <div style={{ marginBottom: "1em" }}>
+      <div className="mb-4">
         <label>
           Sort:{" "}
-          <select
+          <Select
+            width="auto"
             value={sort}
             onChange={(e) => setSort(e.target.value as SortMode)}
           >
             <option value="recent">Most recent</option>
             <option value="least-recent">Least recent</option>
             <option value="alphabetical">Alphabetical</option>
-          </select>
+          </Select>
         </label>
       </div>
-      <table className="admin">
+      <AdminTable>
         <thead>
           <tr>
-            <th>Name</th>
-            <th>Last seen</th>
-            <th>Ago</th>
+            <Th>Name</Th>
+            <Th>Last seen</Th>
+            <Th>Ago</Th>
           </tr>
         </thead>
         <tbody>
@@ -85,23 +88,26 @@ export default function ActivityLastSeen() {
                 ? new Date(member.lastSeen * 1000)
                 : null;
             return (
-              <tr key={member.id} className={idx % 2 === 0 ? "odd" : "even"}>
-                <td>
+              <tr
+                key={member.id}
+                className={idx % 2 === 0 ? "bg-neutral-50" : undefined}
+              >
+                <Td>
                   {member.firstName} {member.lastName}
-                </td>
-                <td>
+                </Td>
+                <Td>
                   {lastSeenDate ? formatFullDateTime(lastSeenDate) : "Never"}
-                </td>
-                <td>
+                </Td>
+                <Td>
                   {lastSeenDate
                     ? formatTimeDiff(lastSeenDate, now) + " ago"
                     : "-"}
-                </td>
+                </Td>
               </tr>
             );
           })}
         </tbody>
-      </table>
+      </AdminTable>
     </>
   );
 }

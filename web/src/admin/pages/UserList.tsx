@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { Link } from "react-router";
 import {
   graphql,
   useFragment,
@@ -12,6 +11,8 @@ import type { UserList_user$key } from "./__generated__/UserList_user.graphql";
 import { formatTimeDiff } from "../../lib/time";
 import { useUserInfo } from "../components/useUserInfo";
 import { useNotify } from "../components/useNotify";
+import { AdminTable, Th, Td } from "../../components/ui/Table";
+import { Button, ButtonLink } from "../../components/ui/Button";
 
 function Row(props: { user: UserList_user$key; idx: number; isDev: boolean }) {
   const isDev = props.isDev;
@@ -91,35 +92,38 @@ function Row(props: { user: UserList_user$key; idx: number; isDev: boolean }) {
   }
 
   return (
-    <tr className={props.idx % 2 === 0 ? "odd" : "even"}>
-      {isDev && (
-        <td style={{ fontFamily: "monospace", fontSize: "0.85em" }}>
-          {user.id}
-        </td>
-      )}
-      <td>
-        <span className={user.enabled ? "" : "strike"}>{user.email}</span>
-      </td>
-      <td>
+    <tr className={props.idx % 2 === 0 ? "bg-neutral-50" : undefined}>
+      {isDev && <Td className="font-mono text-[0.85em]">{user.id}</Td>}
+      <Td>
+        <span className={user.enabled ? undefined : "line-through"}>
+          {user.email}
+        </span>
+      </Td>
+      <Td>
         {user.accessTime
           ? formatTimeDiff(new Date(user.accessTime * 1000), new Date()) +
             " ago"
           : "-"}
-      </td>
-      <td>{user.isSuper ? "Yes" : "No"}</td>
-      <td>
+      </Td>
+      <Td>{user.isSuper ? "Yes" : "No"}</Td>
+      <Td>
         {user.isSuper ? null : user.locations.map((l) => l.name).join(", ")}
-      </td>
-      <td className="options">
-        <Link to={`/admin/users/${user.id}`}>Edit</Link>&nbsp;
-        <button
-          className={user.enabled ? "delete" : ""}
-          onClick={toggleEnabled}
-          disabled={isMutationInFlight}
-        >
-          {user.enabled ? "Disable" : "Enable"}
-        </button>
-      </td>
+      </Td>
+      <Td options>
+        <div className="flex justify-end gap-1">
+          <ButtonLink size="row" to={`/admin/users/${user.id}`}>
+            Edit
+          </ButtonLink>
+          <Button
+            size="row"
+            variant={user.enabled ? "danger" : "primary"}
+            onClick={toggleEnabled}
+            disabled={isMutationInFlight}
+          >
+            {user.enabled ? "Disable" : "Enable"}
+          </Button>
+        </div>
+      </Td>
     </tr>
   );
 }
@@ -161,15 +165,15 @@ export default function UserList() {
           Show disabled
         </label>
       </p>
-      <table className="admin">
+      <AdminTable>
         <thead>
           <tr>
-            {isDev && <th>ID</th>}
-            <th>Email</th>
-            <th>Last Access</th>
-            <th>Super</th>
-            <th>Locations</th>
-            <th style={{ width: 100 }}></th>
+            {isDev && <Th>ID</Th>}
+            <Th>Email</Th>
+            <Th>Last Access</Th>
+            <Th>Super</Th>
+            <Th>Locations</Th>
+            <Th style={{ width: 100 }}></Th>
           </tr>
         </thead>
         <tbody>
@@ -177,7 +181,7 @@ export default function UserList() {
             <Row key={user.id} user={user} idx={idx} isDev={isDev} />
           ))}
         </tbody>
-      </table>
+      </AdminTable>
     </>
   );
 }

@@ -3,6 +3,10 @@ import { graphql, useLazyLoadQuery, useMutation } from "react-relay";
 import type { CategoryNewQuery } from "./__generated__/CategoryNewQuery.graphql";
 import type { CategoryNewMutation } from "./__generated__/CategoryNewMutation.graphql";
 import { useNotify } from "../components/useNotify";
+import { FieldList, FormField } from "../../components/ui/FormField";
+import TextInput from "../../components/ui/TextInput";
+import Select from "../../components/ui/Select";
+import { Button } from "../../components/ui/Button";
 
 export default function CategoryNew() {
   const { notifyError, notifySuccess } = useNotify();
@@ -73,48 +77,40 @@ export default function CategoryNew() {
     <>
       <p>Enter the details of the new category in the form below.</p>
       <form action={handleSubmit}>
-        <dl>
-          <dt>
-            <label htmlFor="name" className="required">
-              Name
-            </label>
-          </dt>
-          <dd>
-            <input type="text" name="name" id="name" required />
-          </dd>
-          <dt>
-            <label htmlFor="nitcGroupId">NITC Group</label>
-          </dt>
-          <dd>
-            <select name="nitcGroupId" id="nitcGroupId">
+        <FieldList>
+          <FormField label={<label htmlFor="name">Name</label>}>
+            <TextInput type="text" name="name" id="name" required />
+          </FormField>
+          <FormField label={<label htmlFor="nitcGroupId">NITC Group</label>}>
+            <Select name="nitcGroupId" id="nitcGroupId">
               <option value="">None</option>
               {sortedGroups.map((g) => (
                 <option key={g.id} value={g.id}>
                   {g.id} — {g.nitcType}
                 </option>
               ))}
-            </select>
-          </dd>
-          <dt>
-            <label htmlFor="nitcParticipantType">NITC Participant Type</label>
-          </dt>
-          <dd>
-            <select name="nitcParticipantType" id="nitcParticipantType">
+            </Select>
+          </FormField>
+          <FormField
+            label={
+              <label htmlFor="nitcParticipantType">NITC Participant Type</label>
+            }
+          >
+            <Select name="nitcParticipantType" id="nitcParticipantType">
               <option value="">None</option>
               {[...data.ses_participant_types].sort().map((t) => (
                 <option key={t} value={t}>
                   {t}
                 </option>
               ))}
-            </select>
-          </dd>
-          <dt>&nbsp;</dt>
-          <dd>
-            <button type="submit" disabled={isMutationInFlight}>
+            </Select>
+          </FormField>
+          <FormField>
+            <Button type="submit" disabled={isMutationInFlight}>
               Save
-            </button>
-          </dd>
-        </dl>
+            </Button>
+          </FormField>
+        </FieldList>
       </form>
     </>
   );

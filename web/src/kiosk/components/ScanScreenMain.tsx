@@ -8,11 +8,19 @@ import type {
 } from "../ScanState";
 import { formatTime, formatDayDateTime } from "../../lib/time";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { scanView, scanViewPosition, type ScreenPosition } from "../../styles";
+import { inputBase } from "../../components/ui/inputStyles";
+import { Button } from "../../components/ui/Button";
 
 // ensure this is less than the transaction timeout in ScanState
 const FINALIZED_TRANSACTION_TIMEOUT_MS = 10_000;
 const FINALIZED_TRANSACTION_FADE_MS = 1_000;
 const SCAN_INPUT_TIMEOUT_MS = 10_000;
+
+const transactionBase =
+  "inline-block w-[800px] max-w-full rounded-md p-2.5 text-[1.2em] transition-opacity duration-1000";
+const loadingSpinnerBase =
+  "-mt-1.5 ml-2 inline-block size-[18px] rounded-full border-2 border-neutral-300 border-t-menu align-middle opacity-0";
 
 function TransactionList(props: { transactionState: TransactionState }) {
   const [now, setNow] = useState(() => Date.now());
@@ -28,7 +36,7 @@ function TransactionList(props: { transactionState: TransactionState }) {
   }, []);
 
   return (
-    <div id="transactions">
+    <div className="mt-12.5">
       {props.transactionState.transactions
         .filter((t) => {
           if (
@@ -72,11 +80,13 @@ function TransactionList(props: { transactionState: TransactionState }) {
 
 function TransactionLoading(props: { transaction: TransactionLoadingType }) {
   return (
-    <p className="transaction">
-      <span className="transaction">
+    <p>
+      <span className={`${transactionBase} bg-yellow-300`}>
         Fetching information for {props.transaction.memberId}
       </span>
-      <span className="loading active"></span>
+      <span
+        className={`${loadingSpinnerBase} animate-spin opacity-100 motion-reduce:animate-none`}
+      ></span>
     </p>
   );
 }
@@ -87,14 +97,16 @@ function TransactionSignedIn(props: {
 }) {
   const { transaction: txn, isFading } = props;
   return (
-    <p className="transaction">
-      <span className={`transaction success ${isFading ? "expiring" : ""}`}>
-        <span className="emphasis">
+    <p>
+      <span
+        className={`${transactionBase} bg-green-300 ${isFading ? "opacity-0" : ""}`}
+      >
+        <span className="font-bold">
           {txn.person.firstName} {txn.person.lastName}
         </span>{" "}
         signed in at {formatTime(txn.startTime)}
       </span>
-      <span className="loading"></span>
+      <span className={loadingSpinnerBase}></span>
     </p>
   );
 }
@@ -116,14 +128,16 @@ function TransactionSignedOut(props: {
         ? formatTime(txn.endTime)
         : formatDayDateTime(txn.endTime);
   return (
-    <p className="transaction">
-      <span className={`transaction success ${isFading ? "expiring" : ""}`}>
-        <span className="emphasis">
+    <p>
+      <span
+        className={`${transactionBase} bg-green-300 ${isFading ? "opacity-0" : ""}`}
+      >
+        <span className="font-bold">
           {txn.person.firstName} {txn.person.lastName}
         </span>{" "}
         signed out: {startTimeStr} &ndash; {endTimeStr}
       </span>
-      <span className="loading"></span>
+      <span className={loadingSpinnerBase}></span>
     </p>
   );
 }
@@ -134,11 +148,13 @@ function TransactionError(props: {
 }) {
   const { transaction: txn, isFading } = props;
   return (
-    <p className="transaction">
-      <span className={`transaction error ${isFading ? "expiring" : ""}`}>
-        <span className="emphasis">Error:</span> {txn.message}
+    <p>
+      <span
+        className={`${transactionBase} bg-red-300 ${isFading ? "opacity-0" : ""}`}
+      >
+        <span className="font-bold">Error:</span> {txn.message}
       </span>
-      <span className="loading"></span>
+      <span className={loadingSpinnerBase}></span>
     </p>
   );
 }
@@ -163,7 +179,7 @@ function Transaction(props: {
 }
 
 export default function ScanScreenMain(props: {
-  screenPosition: string;
+  screenPosition: ScreenPosition;
   submitDisabled: boolean;
   transactionState: TransactionState;
   onSubmit: (memberId: string) => Promise<void>;
@@ -228,15 +244,16 @@ export default function ScanScreenMain(props: {
   }
 
   return (
-    <div className="view scanview" style={{ left: screenPosition }}>
-      <p className="instructions">Please enter or scan your SES ID</p>
+    <div className={`${scanView} ${scanViewPosition[screenPosition]}`}>
+      <p className="mt-25 text-[2em]">Please enter or scan your SES ID</p>
 
-      <form action={handleSubmit} id="scan" autoComplete="off">
+      <form action={handleSubmit} autoComplete="off">
         <input
           ref={inputRef}
           type="text"
           name="id"
           maxLength={8}
+          className={`${inputBase} mr-3.75 w-62.5 text-center align-middle font-mono text-[3em] transition-colors duration-500`}
           onBlur={() => {
             clearRefocusTimeout();
             refocusTimeoutIdRef.current = window.setTimeout(() => {
@@ -256,7 +273,15 @@ export default function ScanScreenMain(props: {
             scheduleInputClearTimeout();
           }}
         />
-        <input type="submit" name="go" value="&gt;" disabled={submitDisabled} />
+        <Button
+          variant="kiosk"
+          size="bare"
+          type="submit"
+          className="h-16 w-17.5 text-[48px]"
+          disabled={submitDisabled}
+        >
+          &gt;
+        </Button>
       </form>
 
       <TransactionList transactionState={props.transactionState} />

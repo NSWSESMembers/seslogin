@@ -1,4 +1,4 @@
-import { Link } from "react-router";
+import { ButtonLink } from "../../components/ui/Button";
 
 type SessionCreatedInterstitialProps = {
   code: string;
@@ -8,7 +8,7 @@ export default function SessionCreatedInterstitial({
   code,
 }: SessionCreatedInterstitialProps) {
   return (
-    <div className="session-created-interstitial">
+    <div>
       <p>
         Your kiosk session has been created and can now be assigned to a
         computer.
@@ -19,12 +19,12 @@ export default function SessionCreatedInterstitial({
         module.
       </p>
 
-      <p className="session-created-code">{code || "Unavailable"}</p>
+      <p className="my-6 text-center text-[64px] font-bold tracking-[0.08em]">
+        {code || "Unavailable"}
+      </p>
 
-      <p className="session-created-actions">
-        <Link to="/admin/sessions" className="button">
-          Continue
-        </Link>
+      <p className="text-center">
+        <ButtonLink to="/admin/sessions">Continue</ButtonLink>
       </p>
     </div>
   );

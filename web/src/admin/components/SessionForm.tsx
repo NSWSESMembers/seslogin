@@ -1,4 +1,7 @@
 import { useState, type ChangeEvent } from "react";
+import { FieldList, FormField } from "../../components/ui/FormField";
+import TextInput from "../../components/ui/TextInput";
+import { Button } from "../../components/ui/Button";
 
 interface SessionFormProps {
   initialName: string;
@@ -97,22 +100,15 @@ function initializeConfigState(initialConfig: string): InitialConfigState {
 
 function NameField({ initialName }: { initialName: string }) {
   return (
-    <>
-      <dt>
-        <label htmlFor="name" className="required">
-          Name
-        </label>
-      </dt>
-      <dd>
-        <input
-          type="text"
-          name="name"
-          id="name"
-          defaultValue={initialName}
-          required
-        />
-      </dd>
-    </>
+    <FormField label={<label htmlFor="name">Name</label>}>
+      <TextInput
+        type="text"
+        name="name"
+        id="name"
+        defaultValue={initialName}
+        required
+      />
+    </FormField>
   );
 }
 
@@ -121,35 +117,30 @@ function ConfigEditorModeControl({
   onSetEditorMode,
 }: ConfigEditorModeControlProps) {
   return (
-    <>
-      <dt>
-        <span>Config Editor</span>
-      </dt>
-      <dd>
-        <div
-          className="segmented-control"
-          role="group"
-          aria-label="Config editor mode"
+    <FormField label={<span>Config Editor</span>}>
+      <div
+        className="inline-flex overflow-hidden rounded-lg border border-neutral-400"
+        role="group"
+        aria-label="Config editor mode"
+      >
+        <button
+          className="m-0 min-w-23 cursor-pointer rounded-none border-0 bg-neutral-100 px-3 py-1.5 text-neutral-800 hover:bg-neutral-200 aria-pressed:bg-navy aria-pressed:text-white aria-pressed:hover:bg-[#2b4f97]"
+          type="button"
+          onClick={() => onSetEditorMode("basic")}
+          aria-pressed={configEditorMode === "basic"}
         >
-          <button
-            className="segment-button"
-            type="button"
-            onClick={() => onSetEditorMode("basic")}
-            aria-pressed={configEditorMode === "basic"}
-          >
-            Basic
-          </button>
-          <button
-            className="segment-button"
-            type="button"
-            onClick={() => onSetEditorMode("advanced")}
-            aria-pressed={configEditorMode === "advanced"}
-          >
-            Advanced
-          </button>
-        </div>
-      </dd>
-    </>
+          Basic
+        </button>
+        <button
+          className="m-0 min-w-23 cursor-pointer rounded-none border-0 border-l border-neutral-400 bg-neutral-100 px-3 py-1.5 text-neutral-800 hover:bg-neutral-200 aria-pressed:bg-navy aria-pressed:text-white aria-pressed:hover:bg-[#2b4f97]"
+          type="button"
+          onClick={() => onSetEditorMode("advanced")}
+          aria-pressed={configEditorMode === "advanced"}
+        >
+          Advanced
+        </button>
+      </div>
+    </FormField>
   );
 }
 
@@ -162,35 +153,34 @@ function BasicSessionModeFields({
 }: BasicSessionModeFieldsProps) {
   return (
     <>
-      <dt>
-        <span>Mode</span>
-      </dt>
-      <dd>
-        <div className="mode-options" role="radiogroup" aria-label="Mode">
-          <label className="mode-option">
+      <FormField label={<span>Mode</span>}>
+        <div className="grid gap-2" role="radiogroup" aria-label="Mode">
+          <label className="grid grid-cols-[auto_auto_1fr] items-start gap-x-2">
             <input
               type="radio"
               name="sessionMode"
               value="scan"
               checked={sessionMode === "scan"}
               onChange={() => onChange("scan")}
+              className="mt-1"
             />
-            <span className="mode-option-label">Scan</span>
-            <span className="mode-option-description">
+            <span className="font-semibold">Scan</span>
+            <span className="text-neutral-600">
               allow members to sign in and out on this computer (touchscreen or
               mouse and keyboard required)
             </span>
           </label>
-          <label className="mode-option">
+          <label className="grid grid-cols-[auto_auto_1fr] items-start gap-x-2">
             <input
               type="radio"
               name="sessionMode"
               value="status"
               checked={sessionMode === "status"}
               onChange={() => onChange("status")}
+              className="mt-1"
             />
-            <span className="mode-option-label">Status</span>
-            <span className="mode-option-description">
+            <span className="font-semibold">Status</span>
+            <span className="text-neutral-600">
               show a live-updating non-interactive list of who is currently
               signed in at the unit along with how long they've been signed in
               for
@@ -198,27 +188,23 @@ function BasicSessionModeFields({
           </label>
         </div>
         <input type="hidden" name="config" value={configJson} />
-      </dd>
+      </FormField>
       {sessionMode === "scan" && (
-        <>
-          <dt>
-            <span>Options</span>
-          </dt>
-          <dd>
-            <label className="mode-option">
-              <input
-                type="checkbox"
-                checked={smallCategories}
-                onChange={(e) => onSmallCategoriesChange(e.target.checked)}
-              />
-              <span className="mode-option-label">Small categories</span>
-              <span className="mode-option-description">
-                use smaller category buttons to fit more on screen — useful on
-                smaller or lower-resolution displays
-              </span>
-            </label>
-          </dd>
-        </>
+        <FormField label={<span>Options</span>}>
+          <label className="grid grid-cols-[auto_auto_1fr] items-start gap-x-2">
+            <input
+              type="checkbox"
+              checked={smallCategories}
+              onChange={(e) => onSmallCategoriesChange(e.target.checked)}
+              className="mt-1"
+            />
+            <span className="font-semibold">Small categories</span>
+            <span className="text-neutral-600">
+              use smaller category buttons to fit more on screen — useful on
+              smaller or lower-resolution displays
+            </span>
+          </label>
+        </FormField>
       )}
     </>
   );
@@ -230,33 +216,33 @@ function HealthcheckUrlField({
   initialHealthcheckUrl: string;
 }) {
   return (
-    <>
-      <dt>
-        <label htmlFor="healthcheckUrl">Health Check URL</label>
-      </dt>
-      <dd>
-        <input
-          type="url"
-          name="healthcheckUrl"
-          id="healthcheckUrl"
-          defaultValue={initialHealthcheckUrl}
-          placeholder="https://hc-ping.com/..."
-          autoCapitalize="none"
-          autoCorrect="off"
-          autoComplete="url"
-          inputMode="url"
-        />
-        <p className="field-help-text">
-          Optional. SES Activity can ping this URL approximately every 5 minutes
-          or so while the kiosk using this session remains connected to the
-          system. Perfect for use with something like{" "}
-          <a href="https://healthchecks.io/" target="_blank" rel="noreferrer">
-            healthchecks.io
-          </a>{" "}
-          to automatically notify you when the kiosk isn't working.
-        </p>
-      </dd>
-    </>
+    <FormField label={<label htmlFor="healthcheckUrl">Health Check URL</label>}>
+      <TextInput
+        type="url"
+        name="healthcheckUrl"
+        id="healthcheckUrl"
+        defaultValue={initialHealthcheckUrl}
+        placeholder="https://hc-ping.com/..."
+        autoCapitalize="none"
+        autoCorrect="off"
+        autoComplete="url"
+        inputMode="url"
+      />
+      <p className="mt-1.5 mb-0 text-neutral-600">
+        Optional. SES Activity can ping this URL approximately every 5 minutes
+        or so while the kiosk using this session remains connected to the
+        system. Perfect for use with something like{" "}
+        <a
+          href="https://healthchecks.io/"
+          target="_blank"
+          rel="noreferrer"
+          className="underline"
+        >
+          healthchecks.io
+        </a>{" "}
+        to automatically notify you when the kiosk isn't working.
+      </p>
+    </FormField>
   );
 }
 
@@ -265,34 +251,27 @@ function AdvancedConfigFields({
   onChange,
 }: AdvancedConfigFieldsProps) {
   return (
-    <>
-      <dt>
-        <label htmlFor="config">Config (JSON object)</label>
-      </dt>
-      <dd>
-        <textarea
-          name="config"
-          id="config"
-          rows={8}
-          value={configJson}
-          onChange={onChange}
-          spellCheck={false}
-        />
-      </dd>
-    </>
+    <FormField label={<label htmlFor="config">Config (JSON object)</label>}>
+      <textarea
+        name="config"
+        id="config"
+        rows={8}
+        value={configJson}
+        onChange={onChange}
+        spellCheck={false}
+        className="w-full rounded-md border border-neutral-300 p-2 font-mono text-sm"
+      />
+    </FormField>
   );
 }
 
 function SubmitRow({ isMutationInFlight }: SubmitRowProps) {
   return (
-    <>
-      <dt>&nbsp;</dt>
-      <dd>
-        <button type="submit" disabled={isMutationInFlight}>
-          Save
-        </button>
-      </dd>
-    </>
+    <FormField>
+      <Button type="submit" disabled={isMutationInFlight}>
+        Save
+      </Button>
+    </FormField>
   );
 }
 
@@ -340,7 +319,7 @@ export default function SessionForm({
 
   return (
     <form action={onSubmit}>
-      <dl>
+      <FieldList>
         <NameField initialName={initialName} />
         <ConfigEditorModeControl
           configEditorMode={configEditorMode}
@@ -363,7 +342,7 @@ export default function SessionForm({
         )}
         <HealthcheckUrlField initialHealthcheckUrl={initialHealthcheckUrl} />
         <SubmitRow isMutationInFlight={isMutationInFlight} />
-      </dl>
+      </FieldList>
     </form>
   );
 }

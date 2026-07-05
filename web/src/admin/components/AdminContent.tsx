@@ -37,7 +37,7 @@ export default function AdminContent({
       <MenuBar onLogout={onLogout} isSuper={isSuper} />
       <SubmenuBar isSuper={isSuper} />
 
-      <div id="content">
+      <div className="bg-white px-[3%] py-5">
         <ErrorBoundary
           key={location.pathname}
           fallbackRender={({ error, resetErrorBoundary }: FallbackProps) => (

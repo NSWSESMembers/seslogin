@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { Link } from "react-router";
 import { graphql, useLazyLoadQuery, useMutation } from "react-relay";
 import type { CategoryListDisableMutation } from "./__generated__/CategoryListDisableMutation.graphql";
 import type { CategoryListQuery } from "./__generated__/CategoryListQuery.graphql";
 import { useUserInfo } from "../components/useUserInfo";
 import { useNotify } from "../components/useNotify";
+import { AdminTable, Th, Td } from "../../components/ui/Table";
+import { Button, ButtonLink } from "../../components/ui/Button";
 
 type CategoryData = {
   id: string;
@@ -85,33 +86,34 @@ function Row({
   const tagNames = category.nitcGroup?.sesTags.map((t) => t.name).join(", ");
 
   return (
-    <tr className={idx % 2 === 0 ? "odd" : "even"}>
-      {isDev && (
-        <td style={{ fontFamily: "monospace", fontSize: "0.85em" }}>
-          {category.id}
-        </td>
-      )}
-      <td className="nowrap">
-        <div className={category.enabled ? "" : "strike"}>{category.name}</div>
-      </td>
-      <td>{category.nitcParticipantType ?? ""}</td>
-      <td style={{ fontFamily: "monospace", fontSize: "0.85em" }}>
-        {category.nitcGroupId ?? ""}
-      </td>
-      <td>{category.nitcGroup?.nitcType ?? ""}</td>
-      <td>{tagNames ?? ""}</td>
-      <td className="options">
-        <Link to={`/admin/categories/${category.id}`}>Edit</Link>&nbsp;
-        {category.enabled && (
-          <button
-            className="delete"
-            onClick={disableCategory}
-            disabled={isMutationInFlight}
-          >
-            Disable
-          </button>
-        )}
-      </td>
+    <tr className={idx % 2 === 0 ? "bg-neutral-50" : undefined}>
+      {isDev && <Td className="font-mono text-[0.85em]">{category.id}</Td>}
+      <Td nowrap>
+        <div className={category.enabled ? undefined : "line-through"}>
+          {category.name}
+        </div>
+      </Td>
+      <Td>{category.nitcParticipantType ?? ""}</Td>
+      <Td className="font-mono text-[0.85em]">{category.nitcGroupId ?? ""}</Td>
+      <Td>{category.nitcGroup?.nitcType ?? ""}</Td>
+      <Td>{tagNames ?? ""}</Td>
+      <Td options>
+        <div className="flex justify-end gap-1">
+          <ButtonLink size="row" to={`/admin/categories/${category.id}`}>
+            Edit
+          </ButtonLink>
+          {category.enabled && (
+            <Button
+              size="row"
+              variant="danger"
+              onClick={disableCategory}
+              disabled={isMutationInFlight}
+            >
+              Disable
+            </Button>
+          )}
+        </div>
+      </Td>
     </tr>
   );
 }
@@ -165,16 +167,16 @@ export default function CategoryList() {
           Show disabled
         </label>
       </p>
-      <table className="admin">
+      <AdminTable>
         <thead>
           <tr>
-            {isDev && <th>ID</th>}
-            <th>Name</th>
-            <th>Participant Type</th>
-            <th>NITC Group ID</th>
-            <th>NITC Type</th>
-            <th>SES Tags</th>
-            <th style={{ width: 100 }}></th>
+            {isDev && <Th>ID</Th>}
+            <Th>Name</Th>
+            <Th>Participant Type</Th>
+            <Th>NITC Group ID</Th>
+            <Th>NITC Type</Th>
+            <Th>SES Tags</Th>
+            <Th style={{ width: 100 }}></Th>
           </tr>
         </thead>
         <tbody>
@@ -187,7 +189,7 @@ export default function CategoryList() {
             />
           ))}
         </tbody>
-      </table>
+      </AdminTable>
     </>
   );
 }

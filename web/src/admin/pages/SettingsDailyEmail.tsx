@@ -3,6 +3,8 @@ import { graphql, useLazyLoadQuery, useMutation } from "react-relay";
 import type { SettingsDailyEmailQuery } from "./__generated__/SettingsDailyEmailQuery.graphql";
 import type { SettingsDailyEmailMutation } from "./__generated__/SettingsDailyEmailMutation.graphql";
 import { useNotify } from "../components/useNotify";
+import { FieldList, FormField } from "../../components/ui/FormField";
+import { Button } from "../../components/ui/Button";
 
 export default function SettingsDailyEmail() {
   const data = useLazyLoadQuery<SettingsDailyEmailQuery>(
@@ -70,9 +72,8 @@ export default function SettingsDailyEmail() {
         activity.
       </p>
       <form onSubmit={handleSubmit}>
-        <dl>
-          <dt>Daily email — locations</dt>
-          <dd>
+        <FieldList>
+          <FormField label="Daily email — locations">
             {locations.length === 0 && (
               <p>No locations available to your account.</p>
             )}
@@ -95,14 +96,13 @@ export default function SettingsDailyEmail() {
                 <label htmlFor={`loc-${loc.id}`}>{loc.name}</label>
               </div>
             ))}
-          </dd>
-          <dt>&nbsp;</dt>
-          <dd>
-            <button type="submit" disabled={isMutationInFlight}>
+          </FormField>
+          <FormField>
+            <Button type="submit" disabled={isMutationInFlight}>
               Save
-            </button>
-          </dd>
-        </dl>
+            </Button>
+          </FormField>
+        </FieldList>
       </form>
     </>
   );

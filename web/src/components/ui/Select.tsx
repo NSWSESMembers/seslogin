@@ -7,6 +7,7 @@ const widths: Record<InputWidth, string> = {
   medium: tw`w-full md:w-[70%]`,
   half: tw`w-full md:w-[45%]`,
   small: tw`w-full md:w-[25%]`,
+  auto: tw`w-auto`,
 };
 
 type SelectProps = SelectHTMLAttributes<HTMLSelectElement> & {

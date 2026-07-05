@@ -4,6 +4,9 @@ import useSelectedLocation from "../components/useSelectedLocation";
 import type { MembersEditQuery } from "./__generated__/MembersEditQuery.graphql";
 import type { MembersEditMutation } from "./__generated__/MembersEditMutation.graphql";
 import { useNotify } from "../components/useNotify";
+import { FieldList, FormField } from "../../components/ui/FormField";
+import TextInput from "../../components/ui/TextInput";
+import { Button } from "../../components/ui/Button";
 
 export default function MembersEdit() {
   const params = useParams();
@@ -77,60 +80,44 @@ export default function MembersEdit() {
   return (
     <>
       <p>Edit the member's details, then click Save.</p>
-      {/* {updateError && <p className="error">Error: {updateError.message}</p>} */}
+      {/* {updateError && <p className="font-bold text-red-600">Error: {updateError.message}</p>} */}
 
       <form action={handleSubmit}>
-        <dl>
-          <dt>
-            <label htmlFor="givenname" className="required">
-              Given name
-            </label>
-          </dt>
-          <dd>
-            <input
+        <FieldList>
+          <FormField label={<label htmlFor="givenname">Given name</label>}>
+            <TextInput
               type="text"
               name="givenname"
               id="givenname"
               defaultValue={person?.firstName}
               required
             />
-          </dd>
-          <dt>
-            <label htmlFor="surname" className="required">
-              Surname
-            </label>
-          </dt>
-          <dd>
-            <input
+          </FormField>
+          <FormField label={<label htmlFor="surname">Surname</label>}>
+            <TextInput
               type="text"
               name="surname"
               id="surname"
               defaultValue={person.lastName}
               required
             />
-          </dd>
-          <dt>
-            <label htmlFor="serialnumber" className="required">
-              SES ID
-            </label>
-          </dt>
-          <dd>
-            <input
+          </FormField>
+          <FormField label={<label htmlFor="serialnumber">SES ID</label>}>
+            <TextInput
               type="text"
               name="serialnumber"
               id="serialnumber"
-              className="medium"
+              width="medium"
               defaultValue={person.memberNumber || ""}
               required
             />
-          </dd>
-          <dt>&nbsp;</dt>
-          <dd>
-            <button type="submit" disabled={isMutationInFlight}>
+          </FormField>
+          <FormField>
+            <Button type="submit" disabled={isMutationInFlight}>
               Save
-            </button>
-          </dd>
-        </dl>
+            </Button>
+          </FormField>
+        </FieldList>
       </form>
     </>
   );

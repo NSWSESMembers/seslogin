@@ -1,4 +1,5 @@
-import { NavLink } from "react-router";
+import MenuLink from "../../components/ui/MenuLink";
+import { menuButtonClasses } from "../../components/ui/menuStyles";
 
 interface MenuBarProps {
   onLogout: () => void;
@@ -7,19 +8,19 @@ interface MenuBarProps {
 
 export default function MenuBar({ onLogout, isSuper }: MenuBarProps) {
   return (
-    <div id="menu_bar">
-      <NavLink to="/admin" end>
+    <div className="bg-menu px-4 py-0.75 text-left font-title lg:px-20">
+      <MenuLink to="/admin" end>
         Home
-      </NavLink>
-      <NavLink to="/admin/members">Members</NavLink>
-      <NavLink to="/admin/activity">Activity</NavLink>
-      <NavLink to="/admin/reports">Reports</NavLink>
-      <NavLink to="/admin/sessions">Kiosks</NavLink>
-      <NavLink to="/admin/settings">Settings</NavLink>
-      {isSuper && <NavLink to="/admin/locations">Locations</NavLink>}
-      {isSuper && <NavLink to="/admin/users">Users</NavLink>}
-      {isSuper && <NavLink to="/admin/categories">Categories</NavLink>}
-      <button className="link-button" onClick={onLogout}>
+      </MenuLink>
+      <MenuLink to="/admin/members">Members</MenuLink>
+      <MenuLink to="/admin/activity">Activity</MenuLink>
+      <MenuLink to="/admin/reports">Reports</MenuLink>
+      <MenuLink to="/admin/sessions">Kiosks</MenuLink>
+      <MenuLink to="/admin/settings">Settings</MenuLink>
+      {isSuper && <MenuLink to="/admin/locations">Locations</MenuLink>}
+      {isSuper && <MenuLink to="/admin/users">Users</MenuLink>}
+      {isSuper && <MenuLink to="/admin/categories">Categories</MenuLink>}
+      <button className={menuButtonClasses} onClick={onLogout}>
         Logout
       </button>
     </div>

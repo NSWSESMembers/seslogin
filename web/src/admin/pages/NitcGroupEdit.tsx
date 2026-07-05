@@ -3,6 +3,9 @@ import { graphql, useLazyLoadQuery, useMutation } from "react-relay";
 import type { NitcGroupEditQuery } from "./__generated__/NitcGroupEditQuery.graphql";
 import type { NitcGroupEditMutation } from "./__generated__/NitcGroupEditMutation.graphql";
 import { useNotify } from "../components/useNotify";
+import { FieldList, FormField } from "../../components/ui/FormField";
+import Select from "../../components/ui/Select";
+import { Button } from "../../components/ui/Button";
 
 export default function NitcGroupEdit() {
   const navigate = useNavigate();
@@ -82,18 +85,12 @@ export default function NitcGroupEdit() {
     <>
       <p>Edit the NITC group&apos;s details, then click Save.</p>
       <form action={handleSubmit}>
-        <dl>
-          <dt>ID</dt>
-          <dd>
+        <FieldList>
+          <FormField label="ID">
             <code>{id}</code>
-          </dd>
-          <dt>
-            <label htmlFor="nitcType" className="required">
-              NITC Type
-            </label>
-          </dt>
-          <dd>
-            <select
+          </FormField>
+          <FormField label={<label htmlFor="nitcType">NITC Type</label>}>
+            <Select
               name="nitcType"
               id="nitcType"
               defaultValue={group.nitcType}
@@ -104,10 +101,9 @@ export default function NitcGroupEdit() {
                   {t}
                 </option>
               ))}
-            </select>
-          </dd>
-          <dt>SES Tags</dt>
-          <dd>
+            </Select>
+          </FormField>
+          <FormField label="SES Tags">
             {[...data.ses_nonincident_tags]
               .sort((a, b) => a.name.localeCompare(b.name))
               .map((tag) => (
@@ -122,14 +118,13 @@ export default function NitcGroupEdit() {
                   </label>
                 </div>
               ))}
-          </dd>
-          <dt>&nbsp;</dt>
-          <dd>
-            <button type="submit" disabled={isMutationInFlight}>
+          </FormField>
+          <FormField>
+            <Button type="submit" disabled={isMutationInFlight}>
               Save
-            </button>
-          </dd>
-        </dl>
+            </Button>
+          </FormField>
+        </FieldList>
       </form>
     </>
   );

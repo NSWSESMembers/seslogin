@@ -96,7 +96,7 @@ export default function ActivityBreakdownDisplay({
     }));
 
   return (
-    <div className="activity-totals-grid">
+    <div className="flex items-start gap-5 max-md:flex-col">
       <ActivityBreakdownTable
         title="Time per member per category"
         rows={memberCategoryRows}

@@ -12,14 +12,19 @@ export default function TitleBar() {
   };
 
   return (
-    <div id="title_bar">
-      <span>
-        <a href="/admin" onClick={changeLocation} title="Click to change unit">
+    <div className="relative bg-brand px-3.75 py-3.75 pl-5 text-left font-title text-[32px] text-white">
+      <span className="absolute top-5 left-20">
+        <a
+          href="/admin"
+          onClick={changeLocation}
+          title="Click to change unit"
+          className="text-white no-underline"
+        >
           {selectedLocation.name}
         </a>
       </span>
       <a href="/">
-        <img src={logoWhite} alt="" />
+        <img src={logoWhite} alt="" className="align-middle" />
       </a>
     </div>
   );

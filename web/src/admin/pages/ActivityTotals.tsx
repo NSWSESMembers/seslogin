@@ -31,7 +31,9 @@ export default function ActivityTotals() {
         <ActivityCategorySelector value={category} onChange={setCategory} />
       </Suspense>
       {!hasValidRange && (
-        <p className="error">Start time must be before end time.</p>
+        <p className="font-bold text-red-600">
+          Start time must be before end time.
+        </p>
       )}
 
       {hasValidRange && (

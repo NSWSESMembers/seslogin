@@ -8,18 +8,18 @@ export default function Scan() {
   const [signingOutName, setSigningOutName] = useState<string | null>(null);
 
   return (
-    <div id="scan">
+    <div>
       <ScanTitleBar
         onCancelSignOut={cancelSignOut ?? undefined}
         signingOutName={signingOutName ?? undefined}
       />
-      <div id="content">
+      <div className="absolute inset-x-0 top-24.75 bottom-0 m-0 overflow-hidden">
         <ScanController
           onCancelSignOutChange={(fn) => setCancelSignOut(fn ? () => fn : null)}
           onSigningOutNameChange={setSigningOutName}
         />
       </div>
-      <div id="scan-version">
+      <div className="fixed right-2.5 bottom-1.5 text-[0.75em] text-neutral-400">
         <ClientVersionLabel noLink />
       </div>
     </div>

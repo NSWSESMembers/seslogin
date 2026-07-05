@@ -21,26 +21,24 @@ type Props = {
 
 export default function ActivityBreakdownTable({ title, rows }: Props) {
   return (
-    <div className="activity-totals-panel">
+    <div className="flex-1">
       <h2>{title}</h2>
-      <div className="activity-list">
+      <div className="border-t border-neutral-400">
         {rows.map((entry) => (
           <Fragment key={entry.id}>
-            <div className="activity-row">
-              <div className="activity-row-name">{entry.name}</div>
-              <div className="activity-row-value">
+            <div className="flex justify-between gap-3 border-b border-neutral-200 px-1.5 py-1.5">
+              <div className="min-w-0">{entry.name}</div>
+              <div className="whitespace-nowrap">
                 {formatSeconds(entry.totalTime)}
               </div>
             </div>
             {entry.children.map((child) => (
               <div
                 key={`${entry.id}-${child.id}`}
-                className="activity-row activity-breakdown-child"
+                className="flex justify-between gap-3 border-b border-neutral-200 px-1.5 py-1.5 text-neutral-500"
               >
-                <div className="activity-row-name activity-breakdown-indent">
-                  {child.name}
-                </div>
-                <div className="activity-row-value">
+                <div className="min-w-0 pl-6">{child.name}</div>
+                <div className="whitespace-nowrap">
                   {formatSeconds(child.totalTime)}
                 </div>
               </div>

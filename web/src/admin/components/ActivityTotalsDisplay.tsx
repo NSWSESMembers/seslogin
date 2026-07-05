@@ -73,7 +73,7 @@ export default function ActivityTotalsDisplay({
     }));
 
   return (
-    <div className="activity-totals-grid">
+    <div className="flex items-start gap-5 max-md:flex-col">
       <ActivityTotalsTable title="Time per member" rows={memberRows} />
       {!category && (
         <ActivityTotalsTable title="Time per category" rows={categoryRows} />

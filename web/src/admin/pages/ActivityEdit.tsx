@@ -6,6 +6,10 @@ import useSelectedLocation from "../components/useSelectedLocation";
 import type { ActivityEditQuery } from "./__generated__/ActivityEditQuery.graphql";
 import type { ActivityEditMutation } from "./__generated__/ActivityEditMutation.graphql";
 import { useNotify } from "../components/useNotify";
+import { FieldList, FormField } from "../../components/ui/FormField";
+import TextInput from "../../components/ui/TextInput";
+import Select from "../../components/ui/Select";
+import { Button } from "../../components/ui/Button";
 
 export default function ActivityEdit() {
   const params = useParams();
@@ -131,14 +135,9 @@ export default function ActivityEdit() {
     <>
       <p>Edit the activity entry details, then click Save.</p>
       <form action={handleSubmit}>
-        <dl>
-          <dt>
-            <label htmlFor="category" className="required">
-              Category
-            </label>
-          </dt>
-          <dd>
-            <select
+        <FieldList>
+          <FormField label={<label htmlFor="category">Category</label>}>
+            <Select
               name="category"
               id="category"
               required
@@ -150,15 +149,10 @@ export default function ActivityEdit() {
                   {cat.name}
                 </option>
               ))}
-            </select>
-          </dd>
-          <dt>
-            <label htmlFor="start" className="required">
-              Start time
-            </label>
-          </dt>
-          <dd>
-            <input
+            </Select>
+          </FormField>
+          <FormField label={<label htmlFor="start">Start time</label>}>
+            <TextInput
               type="datetime-local"
               name="start"
               id="start"
@@ -166,14 +160,9 @@ export default function ActivityEdit() {
               value={startValue}
               onChange={(e) => setStartValue(e.target.value)}
             />
-          </dd>
-          <dt>
-            <label htmlFor="end" className="required">
-              End time
-            </label>
-          </dt>
-          <dd>
-            <input
+          </FormField>
+          <FormField label={<label htmlFor="end">End time</label>}>
+            <TextInput
               type="datetime-local"
               name="end"
               id="end"
@@ -181,16 +170,15 @@ export default function ActivityEdit() {
               value={endValue}
               onChange={(e) => setEndValue(e.target.value)}
             />
-            {error && <p className="error">{error}</p>}
-            {warning && <p className="warning">{warning}</p>}
-          </dd>
-          <dt>&nbsp;</dt>
-          <dd>
-            <button type="submit" disabled={isMutationInFlight || !!error}>
+            {error && <p className="font-bold text-red-600">{error}</p>}
+            {warning && <p className="font-bold text-orange-600">{warning}</p>}
+          </FormField>
+          <FormField>
+            <Button type="submit" disabled={isMutationInFlight || !!error}>
               Save
-            </button>
-          </dd>
-        </dl>
+            </Button>
+          </FormField>
+        </FieldList>
       </form>
     </>
   );

@@ -10,6 +10,15 @@ import {
   browserSupportsWebAuthn,
   browserSupportsWebAuthnAutofill,
 } from "../../lib/passkey";
+import {
+  Panel,
+  PanelBox,
+  PanelTitle,
+  PanelIntro,
+  PanelMessage,
+} from "../../components/ui/Panel";
+import { Button } from "../../components/ui/Button";
+import TextInput from "../../components/ui/TextInput";
 
 interface AdminLoginPageProps {
   errorMessage?: string | null;
@@ -169,73 +178,51 @@ export default function AdminLoginPage({
   }
 
   return (
-    <section className="action-panel">
-      <div className="action-panel__panel">
-        <h1>Please sign in to continue</h1>
+    <Panel>
+      <PanelBox>
+        <PanelTitle>Please sign in to continue</PanelTitle>
 
-        {errorMessage ? (
-          <div className="action-panel__message action-panel__message--error">
-            {errorMessage}
-          </div>
-        ) : null}
+        {errorMessage ? <PanelMessage>{errorMessage}</PanelMessage> : null}
 
         {/* Manual passkey login (fallback when autofill doesn't surface it) */}
         {passkeySupported && (
-          <button
-            type="button"
-            className="action-button action-panel__button"
+          <Button
+            size="panel"
             onClick={handlePasskeyLogin}
             disabled={passkeySigningIn}
           >
             {passkeySigningIn
               ? "Waiting for passkey..."
               : "Sign in via passkey"}
-          </button>
+          </Button>
         )}
 
-        {passkeyError && (
-          <div className="action-panel__message action-panel__message--error">
-            {passkeyError}
-          </div>
-        )}
+        {passkeyError && <PanelMessage>{passkeyError}</PanelMessage>}
 
         {/* Divider — only when there's a button above it (passkey) */}
         {passkeySupported && (
-          <div
-            style={{ margin: "1.5rem 0", textAlign: "center", color: "#888" }}
-          >
-            — or —
-          </div>
+          <div className="my-6 text-center text-[#888]">— or —</div>
         )}
 
         {/* New email-code login */}
         {step === "idle" && (
           <form onSubmit={handleSendCode}>
-            <p className="action-panel__intro">
+            <PanelIntro>
               Enter your registered email address to receive a login code.
-            </p>
-            {codeError && (
-              <div className="action-panel__message action-panel__message--error">
-                {codeError}
-              </div>
-            )}
-            <input
+            </PanelIntro>
+            {codeError && <PanelMessage>{codeError}</PanelMessage>}
+            <TextInput
               type="email"
-              className="action-panel__input"
+              className="mb-3 box-border block min-w-65 p-3 text-xl"
               placeholder="Email address"
               autoComplete="username webauthn"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
               disabled={step !== "idle"}
-              style={{
-                display: "block",
-                width: "100%",
-                marginBottom: "0.75rem",
-              }}
             />
             {TURNSTILE_SITE_KEY && (
-              <div style={{ marginBottom: "0.75rem" }}>
+              <div className="mb-3">
                 <Turnstile
                   ref={turnstileRef}
                   siteKey={TURNSTILE_SITE_KEY}
@@ -245,9 +232,10 @@ export default function AdminLoginPage({
                 />
               </div>
             )}
-            <button
+            <Button
               type="submit"
-              className="action-button action-panel__button action-panel__button--secondary"
+              size="panel"
+              variant="secondary"
               disabled={
                 !email ||
                 (!turnstileToken && !!TURNSTILE_SITE_KEY) ||
@@ -255,7 +243,7 @@ export default function AdminLoginPage({
               }
             >
               Send code
-            </button>
+            </Button>
           </form>
         )}
 
@@ -263,43 +251,36 @@ export default function AdminLoginPage({
 
         {step === "awaiting_code" && (
           <form onSubmit={handleVerifyCode}>
-            <p className="action-panel__intro">
+            <PanelIntro>
               If <strong>{email}</strong> was valid and registered for access to
               the system, a 6-digit code has been sent. Enter it below to login.
-            </p>
-            {codeError && (
-              <div className="action-panel__message action-panel__message--error">
-                {codeError}
-              </div>
-            )}
-            <input
+            </PanelIntro>
+            {codeError && <PanelMessage>{codeError}</PanelMessage>}
+            <TextInput
               type="text"
               inputMode="numeric"
               pattern="[0-9]{6}"
               maxLength={6}
-              className="action-panel__input"
+              className="mb-3 box-border block min-w-65 p-3 text-xl"
               placeholder="6-digit code"
               value={code}
               onChange={(e) => setCode(e.target.value)}
               required
               autoFocus
-              style={{
-                display: "block",
-                width: "100%",
-                marginBottom: "0.75rem",
-              }}
             />
-            <button
+            <Button
               type="submit"
-              className="action-button action-panel__button action-panel__button--secondary"
+              size="panel"
+              variant="secondary"
               disabled={code.length !== 6}
             >
               Verify code
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
-              className="action-button action-panel__button action-panel__button--secondary"
-              style={{ marginTop: "0.5rem" }}
+              size="panel"
+              variant="secondary"
+              className="mt-3"
               onClick={() => {
                 setStep("idle");
                 setCode("");
@@ -308,12 +289,12 @@ export default function AdminLoginPage({
               }}
             >
               Start over
-            </button>
+            </Button>
           </form>
         )}
 
         {step === "verifying" && <p>Verifying…</p>}
-      </div>
-    </section>
+      </PanelBox>
+    </Panel>
   );
 }

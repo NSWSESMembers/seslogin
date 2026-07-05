@@ -11,6 +11,14 @@ import { usePasskeyRegistration } from "./usePasskeyRegistration";
 import { useNotify } from "./useNotify";
 import { getErrorMessage } from "../../lib/relayErrors";
 import type { PasskeyEnrollPromptQuery } from "./__generated__/PasskeyEnrollPromptQuery.graphql";
+import {
+  Panel,
+  PanelBox,
+  PanelTitle,
+  PanelIntro,
+  PanelMessage,
+} from "../../components/ui/Panel";
+import { Button } from "../../components/ui/Button";
 
 /**
  * Gate shown right after sign-in if the user has no passkey yet. Renders a
@@ -78,62 +86,44 @@ function PasskeyInterstitial({ onDone }: { onDone: () => void }) {
   }
 
   return (
-    <section className="action-panel">
-      <div className="action-panel__panel">
-        <h1>Add a passkey</h1>
-        <p className="action-panel__intro">
+    <Panel>
+      <PanelBox>
+        <PanelTitle>Add a passkey</PanelTitle>
+        <PanelIntro>
           Skip the email codes — sign in with Face ID, Touch ID, or your device
           PIN. It only takes a moment to set up.
-        </p>
+        </PanelIntro>
 
-        <ul className="passkey-benefits">
-          <li>
+        <ul className="mb-6 grid list-none gap-3.5 p-0">
+          <li className="rounded-2xl border border-navy/10 bg-white/80 px-4 py-3.5 text-left leading-snug text-neutral-800">
             <strong>Faster than an email code.</strong> No waiting for a message
             to arrive — unlock with your face, fingerprint, or PIN and
             you&apos;re in.
           </li>
-          <li>
+          <li className="rounded-2xl border border-navy/10 bg-white/80 px-4 py-3.5 text-left leading-snug text-neutral-800">
             <strong>More secure than a password.</strong> Passkeys can&apos;t be
             guessed, reused, or phished, and never leave your device.
           </li>
         </ul>
 
-        {error && (
-          <div className="action-panel__message action-panel__message--error">
-            {error}
-          </div>
-        )}
+        {error && <PanelMessage>{error}</PanelMessage>}
 
-        <button
-          type="button"
-          className="action-button action-panel__button"
-          onClick={handleEnroll}
-          disabled={busy}
-        >
+        <Button size="panel" onClick={handleEnroll} disabled={busy}>
           {busy ? "Setting up…" : "Add a passkey"}
-        </button>
+        </Button>
 
-        <div style={{ marginTop: "18px" }}>
+        <div className="mt-4.5">
           <button
             type="button"
             onClick={onDone}
             disabled={busy}
-            style={{
-              background: "none",
-              border: "none",
-              padding: 0,
-              color: "#7a6a5d",
-              font: "inherit",
-              fontSize: "15px",
-              textDecoration: "underline",
-              cursor: "pointer",
-            }}
+            className="cursor-pointer border-0 bg-transparent p-0 font-[inherit] text-[15px] text-[#7a6a5d] underline"
           >
             Maybe later
           </button>
         </div>
-      </div>
-    </section>
+      </PanelBox>
+    </Panel>
   );
 }
 

@@ -7,13 +7,15 @@ import {
 } from "react-relay";
 import type { LocationList_item$key } from "./__generated__/LocationList_item.graphql";
 import type { LocationListQuery } from "./__generated__/LocationListQuery.graphql";
-import { Link, useNavigate } from "react-router";
+import { useNavigate } from "react-router";
 import type { LocationListToggleMutation } from "./__generated__/LocationListToggleMutation.graphql";
 import type { LocationListEnqueueSyncMutation } from "./__generated__/LocationListEnqueueSyncMutation.graphql";
 import { useSettingsDispatch } from "../../lib/settings";
 import { formatFullDateTime } from "../../lib/time";
 import { useUserInfo } from "../components/useUserInfo";
 import { useNotify } from "../components/useNotify";
+import { AdminTable, Th, Td } from "../../components/ui/Table";
+import { Button, ButtonLink } from "../../components/ui/Button";
 
 function Row(props: {
   location: LocationList_item$key;
@@ -121,36 +123,40 @@ function Row(props: {
     : "Never";
 
   return (
-    <tr className={idx % 2 === 0 ? "odd" : "even"}>
-      {isDev && (
-        <td style={{ fontFamily: "monospace", fontSize: "0.85em" }}>
-          {location.id}
-        </td>
-      )}
-      <td className="nowrap">
-        <div className={location.enabled ? "" : "strike"}>{location.name}</div>
-      </td>
-      <td className="nowrap">{lastSync}</td>
-      <td>
+    <tr className={idx % 2 === 0 ? "bg-neutral-50" : undefined}>
+      {isDev && <Td className="font-mono text-[0.85em]">{location.id}</Td>}
+      <Td nowrap>
+        <div className={location.enabled ? undefined : "line-through"}>
+          {location.name}
+        </div>
+      </Td>
+      <Td nowrap>{lastSync}</Td>
+      <Td>
         {location.nitcEnabled
           ? new Date(location.nitcEnabled * 1000).toISOString().slice(0, 10)
           : ""}
-      </td>
-      <td className="options">
-        <button onClick={switchToLocation}>Switch to</button>&nbsp;
-        <button onClick={triggerSync} disabled={isSyncInFlight}>
-          Sync
-        </button>
-        &nbsp;
-        <Link to={`/admin/locations/${location.id}`}>Edit</Link>&nbsp;
-        <button
-          className={location.enabled ? "delete" : ""}
-          onClick={toggleEnabled}
-          disabled={isMutationInFlight}
-        >
-          {location.enabled ? "Disable" : "Enable"}
-        </button>
-      </td>
+      </Td>
+      <Td options>
+        <div className="flex justify-end gap-1">
+          <Button size="row" onClick={switchToLocation}>
+            Switch to
+          </Button>
+          <Button size="row" onClick={triggerSync} disabled={isSyncInFlight}>
+            Sync
+          </Button>
+          <ButtonLink size="row" to={`/admin/locations/${location.id}`}>
+            Edit
+          </ButtonLink>
+          <Button
+            size="row"
+            variant={location.enabled ? "danger" : "primary"}
+            onClick={toggleEnabled}
+            disabled={isMutationInFlight}
+          >
+            {location.enabled ? "Disable" : "Enable"}
+          </Button>
+        </div>
+      </Td>
     </tr>
   );
 }
@@ -193,14 +199,14 @@ export default function LocationList() {
           Show disabled
         </label>
       </p>
-      <table className="admin">
+      <AdminTable>
         <thead>
           <tr>
-            {isDev && <th>ID</th>}
-            <th>Name</th>
-            <th>Last Member Sync</th>
-            <th>NITC Export</th>
-            <th style={{ width: 100 }}></th>
+            {isDev && <Th>ID</Th>}
+            <Th>Name</Th>
+            <Th>Last Member Sync</Th>
+            <Th>NITC Export</Th>
+            <Th style={{ width: 100 }}></Th>
           </tr>
         </thead>
         <tbody>
@@ -213,7 +219,7 @@ export default function LocationList() {
             />
           ))}
         </tbody>
-      </table>
+      </AdminTable>
     </>
   );
 }

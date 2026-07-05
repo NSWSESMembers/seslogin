@@ -13,13 +13,16 @@ type Props = {
 
 export default function ActivityTotalsTable({ title, rows }: Props) {
   return (
-    <div className="activity-totals-panel">
+    <div className="flex-1">
       <h2>{title}</h2>
-      <div className="activity-list">
+      <div className="border-t border-neutral-400">
         {rows.map((entry) => (
-          <div className="activity-row" key={entry.id}>
-            <div className="activity-row-name">{entry.name}</div>
-            <div className="activity-row-value">
+          <div
+            className="flex justify-between gap-3 border-b border-neutral-200 px-1.5 py-1.5"
+            key={entry.id}
+          >
+            <div className="min-w-0">{entry.name}</div>
+            <div className="whitespace-nowrap">
               {formatSeconds(entry.totalTime)}
             </div>
           </div>

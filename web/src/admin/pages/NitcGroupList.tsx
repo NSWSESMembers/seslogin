@@ -1,8 +1,9 @@
-import { Link } from "react-router";
 import { graphql, useLazyLoadQuery, useMutation } from "react-relay";
 import type { NitcGroupListQuery } from "./__generated__/NitcGroupListQuery.graphql";
 import type { NitcGroupListDeleteMutation } from "./__generated__/NitcGroupListDeleteMutation.graphql";
 import { useNotify } from "../components/useNotify";
+import { AdminTable, Th, Td } from "../../components/ui/Table";
+import { Button, ButtonLink } from "../../components/ui/Button";
 
 type NitcGroupData = {
   id: string;
@@ -61,23 +62,29 @@ function Row({
   const categoryNames = usingCategories.map((c) => c.name).join(", ");
 
   return (
-    <tr className={idx % 2 === 0 ? "odd" : "even"}>
-      <td style={{ fontFamily: "monospace", fontSize: "0.85em" }}>
-        {group.id}
-      </td>
-      <td>{group.nitcType}</td>
-      <td>{tagNames}</td>
-      <td title={categoryNames || undefined}>{usingCategories.length}</td>
-      <td className="options">
-        <Link to={`/admin/categories/nitc-groups/${group.id}`}>Edit</Link>&nbsp;
-        <button
-          className="delete"
-          onClick={deleteGroup}
-          disabled={isMutationInFlight}
-        >
-          Delete
-        </button>
-      </td>
+    <tr className={idx % 2 === 0 ? "bg-neutral-50" : undefined}>
+      <Td className="font-mono text-[0.85em]">{group.id}</Td>
+      <Td>{group.nitcType}</Td>
+      <Td>{tagNames}</Td>
+      <Td title={categoryNames || undefined}>{usingCategories.length}</Td>
+      <Td options>
+        <div className="flex justify-end gap-1">
+          <ButtonLink
+            size="row"
+            to={`/admin/categories/nitc-groups/${group.id}`}
+          >
+            Edit
+          </ButtonLink>
+          <Button
+            size="row"
+            variant="danger"
+            onClick={deleteGroup}
+            disabled={isMutationInFlight}
+          >
+            Delete
+          </Button>
+        </div>
+      </Td>
     </tr>
   );
 }
@@ -107,14 +114,14 @@ export default function NitcGroupList() {
   const groups = [...data.nitcGroups].sort((a, b) => a.id.localeCompare(b.id));
 
   return (
-    <table className="admin">
+    <AdminTable>
       <thead>
         <tr>
-          <th>ID</th>
-          <th>NITC Type</th>
-          <th>SES Tags</th>
-          <th>Categories</th>
-          <th style={{ width: 100 }}></th>
+          <Th>ID</Th>
+          <Th>NITC Type</Th>
+          <Th>SES Tags</Th>
+          <Th>Categories</Th>
+          <Th style={{ width: 100 }}></Th>
         </tr>
       </thead>
       <tbody>
@@ -127,6 +134,6 @@ export default function NitcGroupList() {
           />
         ))}
       </tbody>
-    </table>
+    </AdminTable>
   );
 }

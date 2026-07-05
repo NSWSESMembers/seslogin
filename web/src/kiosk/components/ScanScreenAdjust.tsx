@@ -3,6 +3,8 @@ import ScanModalDateTime from "./ScanModalDateTime";
 import { formatDayDate, formatTimeOfDay, isSameDay } from "../../lib/time";
 import type { TransactionSignedOut } from "../ScanState";
 import { categories as categoriesFixture } from "../../lib/categories";
+import { scanView, scanViewPosition, type ScreenPosition } from "../../styles";
+import { Button } from "../../components/ui/Button";
 
 type TimeOfDay = { hours: number; minutes: number };
 
@@ -124,79 +126,99 @@ function Inner(props: {
         }}
         onSave={uponModalSave}
       />
-      <h1 className="adjust-title">Adjust</h1>
+      <h1 className="m-0 mb-6 text-[3em]">Adjust</h1>
 
-      <div className="adjust-grid">
-        <div className="adjust-row">
-          <div className="adjust-label">Day:</div>
-          <div className="day_selector">
-            <button
-              className="button day_nav"
+      <div className="mx-auto flex w-fit min-w-175 flex-col text-[2em]">
+        <div className="flex items-center">
+          <div className="min-w-48.75 p-2.5 text-right">Day:</div>
+          <div className="flex flex-1 items-center justify-between p-2.5">
+            <Button
+              variant="kiosk"
+              size="bare"
+              className="px-3.5 py-1.5 text-[1em]"
               onClick={() => changeStartDay(-1)}
             >
               &#8592;
-            </button>
-            <span className="day_name">{startDayStr}</span>
-            <button
-              className="button day_nav"
+            </Button>
+            <span className="flex-1 text-center">{startDayStr}</span>
+            <Button
+              variant="kiosk"
+              size="bare"
+              className="px-3.5 py-1.5 text-[1em]"
               onClick={() => changeStartDay(1)}
               disabled={isStartToday}
             >
               &#8594;
-            </button>
+            </Button>
           </div>
         </div>
-        <div className="adjust-row">
-          <div className="adjust-label">Start time:</div>
-          <div className="time value_start">{startTimeStr}</div>
-          <div className="adjust-action">
-            <button
-              className="button edit_start"
+        <div className="flex items-center">
+          <div className="min-w-48.75 p-2.5 text-right">Start time:</div>
+          <div className="flex-1 p-2.5 font-mono text-[1.5em]">
+            {startTimeStr}
+          </div>
+          <div className="ml-auto p-2.5">
+            <Button
+              variant="kiosk"
+              size="bare"
+              className="px-4.5 py-1.5"
               onClick={() => showModalForField("startTime")}
             >
               Edit
-            </button>
+            </Button>
           </div>
         </div>
-        <div className="adjust-row">
-          <div className="adjust-label">End time:</div>
-          <div className="time value_end">{endTimeStr}</div>
-          <div className="adjust-action">
-            <button
-              className="button edit_end"
+        <div className="flex items-center">
+          <div className="min-w-48.75 p-2.5 text-right">End time:</div>
+          <div className="flex-1 p-2.5 font-mono text-[1.5em]">
+            {endTimeStr}
+          </div>
+          <div className="ml-auto p-2.5">
+            <Button
+              variant="kiosk"
+              size="bare"
+              className="px-4.5 py-1.5"
               onClick={() => showModalForField("endTime")}
             >
               Edit
-            </button>
+            </Button>
           </div>
         </div>
-        <div className="adjust-row">
-          <div className="adjust-label">Category:</div>
-          <div className="category_value">
+        <div className="flex items-center">
+          <div className="min-w-48.75 p-2.5 text-right">Category:</div>
+          <div className="flex flex-1 items-center justify-center gap-2.5 p-2.5">
             <img src={`/image/categories-cas/${categoryIcon}.png`} />
-            <div className="category_text">
+            <div className="pr-5 text-left text-xl whitespace-nowrap">
               <div>{categoryName}</div>
               <div>{subcategoryName}</div>
             </div>
           </div>
-          <div className="adjust-action">
-            <button
-              className="button edit_category"
+          <div className="ml-auto p-2.5">
+            <Button
+              variant="kiosk"
+              size="bare"
+              className="px-4.5 py-1.5"
               onClick={props.onEditCategory}
             >
               Edit
-            </button>
+            </Button>
           </div>
         </div>
       </div>
 
-      <button
-        className="button submit"
+      <Button
+        variant="kiosk"
+        size="bare"
+        className="mt-10 px-6 py-2.5 text-[42px]"
         onClick={onSubmit}
         disabled={props.isSubmitting}
       >
-        {props.isSubmitting ? <span className="adjust-spinner" /> : "Submit"}
-      </button>
+        {props.isSubmitting ? (
+          <span className="inline-block size-8 animate-spin rounded-full border-[3px] border-neutral-300 border-t-menu align-middle motion-reduce:animate-none" />
+        ) : (
+          "Submit"
+        )}
+      </Button>
     </>
   );
 }
@@ -206,13 +228,15 @@ function Inner(props: {
 export default function ScanScreenAdjust(props: {
   transaction: TransactionSignedOut | null;
   uuid: string | null;
-  screenPosition: string;
+  screenPosition: ScreenPosition;
   onEditCategory: () => void;
   onSubmit: (startTime: Date, endTime: Date) => void;
   isSubmitting: boolean;
 }) {
   return (
-    <div className="view adjustview" style={{ left: props.screenPosition }}>
+    <div
+      className={`${scanView} ${scanViewPosition[props.screenPosition]} inset-y-0 flex flex-col items-center justify-center`}
+    >
       {props.transaction && (
         <Inner
           key={props.transaction.uuid}

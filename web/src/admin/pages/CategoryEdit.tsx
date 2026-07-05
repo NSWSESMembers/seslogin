@@ -3,6 +3,10 @@ import { useNavigate, useParams } from "react-router";
 import type { CategoryEditMutation } from "./__generated__/CategoryEditMutation.graphql";
 import type { CategoryEditQuery } from "./__generated__/CategoryEditQuery.graphql";
 import { useNotify } from "../components/useNotify";
+import { FieldList, FormField } from "../../components/ui/FormField";
+import TextInput from "../../components/ui/TextInput";
+import Select from "../../components/ui/Select";
+import { Button } from "../../components/ui/Button";
 
 export default function CategoryEdit() {
   const navigate = useNavigate();
@@ -89,37 +93,26 @@ export default function CategoryEdit() {
     <>
       <p>Edit the category&apos;s details, then click Save.</p>
       <form action={handleSubmit}>
-        <dl>
-          <dt>
-            <label htmlFor="name" className="required">
-              Name
-            </label>
-          </dt>
-          <dd>
-            <input
+        <FieldList>
+          <FormField label={<label htmlFor="name">Name</label>}>
+            <TextInput
               type="text"
               name="name"
               id="name"
               defaultValue={category.name}
               required
             />
-          </dd>
-          <dt>
-            <label htmlFor="enabled">Enabled</label>
-          </dt>
-          <dd>
+          </FormField>
+          <FormField label={<label htmlFor="enabled">Enabled</label>}>
             <input
               type="checkbox"
               name="enabled"
               id="enabled"
               defaultChecked={category.enabled}
             />
-          </dd>
-          <dt>
-            <label htmlFor="nitcGroupId">NITC Group</label>
-          </dt>
-          <dd>
-            <select
+          </FormField>
+          <FormField label={<label htmlFor="nitcGroupId">NITC Group</label>}>
+            <Select
               name="nitcGroupId"
               id="nitcGroupId"
               defaultValue={category.nitcGroupId ?? ""}
@@ -130,13 +123,14 @@ export default function CategoryEdit() {
                   {g.id} — {g.nitcType}
                 </option>
               ))}
-            </select>
-          </dd>
-          <dt>
-            <label htmlFor="nitcParticipantType">NITC Participant Type</label>
-          </dt>
-          <dd>
-            <select
+            </Select>
+          </FormField>
+          <FormField
+            label={
+              <label htmlFor="nitcParticipantType">NITC Participant Type</label>
+            }
+          >
+            <Select
               name="nitcParticipantType"
               id="nitcParticipantType"
               defaultValue={category.nitcParticipantType ?? ""}
@@ -147,15 +141,14 @@ export default function CategoryEdit() {
                   {t}
                 </option>
               ))}
-            </select>
-          </dd>
-          <dt>&nbsp;</dt>
-          <dd>
-            <button type="submit" disabled={isMutationInFlight}>
+            </Select>
+          </FormField>
+          <FormField>
+            <Button type="submit" disabled={isMutationInFlight}>
               Save
-            </button>
-          </dd>
-        </dl>
+            </Button>
+          </FormField>
+        </FieldList>
       </form>
     </>
   );

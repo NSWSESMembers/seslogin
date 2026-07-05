@@ -4,6 +4,9 @@ import { graphql, useLazyLoadQuery, useMutation } from "react-relay";
 import type { UserEditQuery } from "./__generated__/UserEditQuery.graphql";
 import type { UserEditMutation } from "./__generated__/UserEditMutation.graphql";
 import { useNotify } from "../components/useNotify";
+import { FieldList, FormField } from "../../components/ui/FormField";
+import TextInput from "../../components/ui/TextInput";
+import { Button } from "../../components/ui/Button";
 
 export default function UserEdit() {
   const navigate = useNavigate();
@@ -109,28 +112,20 @@ export default function UserEdit() {
   return (
     <>
       <p>Edit the member's details, then click Save.</p>
-      {/* {updateError && <p className="error">Error: {updateError.message}</p>} */}
+      {/* {updateError && <p className="font-bold text-red-600">Error: {updateError.message}</p>} */}
 
       <form action={handleSubmit}>
-        <dl>
-          <dt>
-            <label htmlFor="email" className="required">
-              Email
-            </label>
-          </dt>
-          <dd>
-            <input
+        <FieldList>
+          <FormField label={<label htmlFor="email">Email</label>}>
+            <TextInput
               type="email"
               name="email"
               id="email"
               defaultValue={user.email}
               required
             />
-          </dd>
-          <dt>
-            <label htmlFor="super">Super</label>
-          </dt>
-          <dd>
+          </FormField>
+          <FormField label={<label htmlFor="super">Super</label>}>
             <input
               type="checkbox"
               name="super"
@@ -138,11 +133,8 @@ export default function UserEdit() {
               checked={isSuper}
               onChange={(e) => setIsSuper(e.target.checked)}
             />
-          </dd>
-          <dt>
-            <label htmlFor="dev">Dev</label>
-          </dt>
-          <dd>
+          </FormField>
+          <FormField label={<label htmlFor="dev">Dev</label>}>
             <input
               type="checkbox"
               name="dev"
@@ -150,11 +142,8 @@ export default function UserEdit() {
               checked={isDev}
               onChange={(e) => setIsDev(e.target.checked)}
             />
-          </dd>
-          <dt>
-            <label htmlFor="enabled">Enabled</label>
-          </dt>
-          <dd>
+          </FormField>
+          <FormField label={<label htmlFor="enabled">Enabled</label>}>
             <input
               type="checkbox"
               name="enabled"
@@ -162,56 +151,52 @@ export default function UserEdit() {
               checked={enabled}
               onChange={(e) => setEnabled(e.target.checked)}
             />
-          </dd>
+          </FormField>
           {!isSuper && (
-            <>
-              <dt>Locations</dt>
-              <dd>
-                <a
-                  href="#"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    setSelectedLocations(new Set());
-                  }}
-                >
-                  Deselect all
-                </a>
-                {locations.map((location: { id: string; name: string }) => (
-                  <div key={location.id}>
-                    <input
-                      type="checkbox"
-                      name="locations"
-                      id={`location-${location.id}`}
-                      value={location.id}
-                      checked={selectedLocations.has(location.id)}
-                      onChange={(e) =>
-                        setSelectedLocations((prev) => {
-                          const next = new Set(prev);
-                          if (e.target.checked) {
-                            next.add(location.id);
-                          } else {
-                            next.delete(location.id);
-                          }
-                          return next;
-                        })
-                      }
-                    />
-                    &nbsp;
-                    <label htmlFor={`location-${location.id}`}>
-                      {location.name}
-                    </label>
-                  </div>
-                ))}
-              </dd>
-            </>
+            <FormField label="Locations">
+              <a
+                href="#"
+                onClick={(e) => {
+                  e.preventDefault();
+                  setSelectedLocations(new Set());
+                }}
+              >
+                Deselect all
+              </a>
+              {locations.map((location: { id: string; name: string }) => (
+                <div key={location.id}>
+                  <input
+                    type="checkbox"
+                    name="locations"
+                    id={`location-${location.id}`}
+                    value={location.id}
+                    checked={selectedLocations.has(location.id)}
+                    onChange={(e) =>
+                      setSelectedLocations((prev) => {
+                        const next = new Set(prev);
+                        if (e.target.checked) {
+                          next.add(location.id);
+                        } else {
+                          next.delete(location.id);
+                        }
+                        return next;
+                      })
+                    }
+                  />
+                  &nbsp;
+                  <label htmlFor={`location-${location.id}`}>
+                    {location.name}
+                  </label>
+                </div>
+              ))}
+            </FormField>
           )}
-          <dt>&nbsp;</dt>
-          <dd>
-            <button type="submit" disabled={isMutationInFlight}>
+          <FormField>
+            <Button type="submit" disabled={isMutationInFlight}>
               Save
-            </button>
-          </dd>
-        </dl>
+            </Button>
+          </FormField>
+        </FieldList>
       </form>
     </>
   );

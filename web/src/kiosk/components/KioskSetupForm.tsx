@@ -1,6 +1,14 @@
 import { graphql, useMutation } from "react-relay";
 import type { KioskSetupFormMutation } from "./__generated__/KioskSetupFormMutation.graphql";
 import useKioskEnvironment from "./useKioskEnvironment";
+import {
+  Panel,
+  PanelBox,
+  PanelTitle,
+  PanelIntro,
+} from "../../components/ui/Panel";
+import { Button } from "../../components/ui/Button";
+import TextInput from "../../components/ui/TextInput";
 
 const kioskSetupFormMutation = graphql`
   mutation KioskSetupFormMutation($code: String!) {
@@ -37,19 +45,19 @@ export default function KioskSetupForm() {
   };
 
   return (
-    <section className="action-panel">
-      <div className="action-panel__panel">
-        <h1>Setup this kiosk</h1>
-        <p className="action-panel__intro">
+    <Panel>
+      <PanelBox>
+        <PanelTitle>Setup this kiosk</PanelTitle>
+        <PanelIntro>
           To setup the kiosk system on this computer you need to have someone
           with administrator access generate a kiosk setup code via the
           administrator dashboard. Enter the 6-digit kiosk setup code below to
           register this computer with the system.
-        </p>
+        </PanelIntro>
 
         <form action={onSubmit}>
-          <input
-            className="action-panel__input"
+          <TextInput
+            className="mb-3 box-border block min-w-65 p-3 text-xl"
             type="text"
             name="code"
             inputMode="numeric"
@@ -57,15 +65,11 @@ export default function KioskSetupForm() {
             placeholder="Enter 6 digit code"
             aria-label="Kiosk code"
           />
-          <button
-            type="submit"
-            className="action-button action-panel__button"
-            disabled={isMutationInFlight}
-          >
+          <Button type="submit" size="panel" disabled={isMutationInFlight}>
             {isMutationInFlight ? "Submitting..." : "Continue"}
-          </button>
+          </Button>
         </form>
-      </div>
-    </section>
+      </PanelBox>
+    </Panel>
   );
 }

@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { Link } from "react-router";
 import { formatSeconds } from "../../lib/time";
 import { graphql, useLazyLoadQuery, useMutation } from "react-relay";
 import SessionStatus from "../components/SessionStatus";
@@ -15,6 +14,8 @@ import type {
 } from "./__generated__/SessionsListQuery.graphql";
 import type { SessionsListDeleteMutation } from "./__generated__/SessionsListDeleteMutation.graphql";
 import { useNotify } from "../components/useNotify";
+import { AdminTable, Th, Td } from "../../components/ui/Table";
+import { Button, ButtonLink } from "../../components/ui/Button";
 
 type Session = SessionsListQuery$data["location"]["sessions"][number];
 
@@ -71,32 +72,31 @@ function Row({
     : "-";
 
   return (
-    <>
-      <tr className={idx % 2 === 0 ? "odd" : "even"}>
-        <td className="center">
-          <SessionStatus lastContact={session.lastContact} />
-        </td>
-        {isDev && (
-          <td style={{ fontFamily: "monospace", fontSize: "0.85em" }}>
-            {session.id}
-          </td>
-        )}
-        <td>{session.name}</td>
-        <td>{timeSinceAccess}</td>
-        <td>{session.code}</td>
-        <td>{clientVersion}</td>
-        <td className="options">
-          <Link to={`/admin/sessions/${session.id}`}>Edit</Link>&nbsp;
-          <button
-            className="delete"
+    <tr className={idx % 2 === 0 ? "bg-neutral-50" : undefined}>
+      <Td center>
+        <SessionStatus lastContact={session.lastContact} />
+      </Td>
+      {isDev && <Td className="font-mono text-[0.85em]">{session.id}</Td>}
+      <Td>{session.name}</Td>
+      <Td>{timeSinceAccess}</Td>
+      <Td>{session.code}</Td>
+      <Td>{clientVersion}</Td>
+      <Td options>
+        <div className="flex justify-end gap-1">
+          <ButtonLink size="row" to={`/admin/sessions/${session.id}`}>
+            Edit
+          </ButtonLink>
+          <Button
+            size="row"
+            variant="danger"
             onClick={deleteSession}
             disabled={isMutationInFlight}
           >
             Delete
-          </button>
-        </td>
-      </tr>
-    </>
+          </Button>
+        </div>
+      </Td>
+    </tr>
   );
 }
 
@@ -140,21 +140,26 @@ export default function SessionsList() {
         expires. Kiosks expire if the computer using it does not access the
         system for a period of 2 weeks.
       </p>
-      <p className="icons">
-        <img src={bulletGreen} alt="" /> OK <img src={bulletOrange} alt="" />{" "}
-        Warning <img src={bulletRed} alt="" /> Problem{" "}
-        <img src={bulletGray} alt="" /> Expired/Unused
+      <p>
+        <img src={bulletGreen} alt="" className="inline-block align-middle" />{" "}
+        OK{" "}
+        <img src={bulletOrange} alt="" className="inline-block align-middle" />{" "}
+        Warning{" "}
+        <img src={bulletRed} alt="" className="inline-block align-middle" />{" "}
+        Problem{" "}
+        <img src={bulletGray} alt="" className="inline-block align-middle" />{" "}
+        Expired/Unused
       </p>
-      <table className="admin">
+      <AdminTable>
         <thead>
           <tr>
-            <th style={{ width: 20 }}></th>
-            {isDev && <th>ID</th>}
-            <th>Name</th>
-            <th>Last contact</th>
-            <th>Code</th>
-            <th>Version</th>
-            <th></th>
+            <Th style={{ width: 20 }}></Th>
+            {isDev && <Th>ID</Th>}
+            <Th>Name</Th>
+            <Th>Last contact</Th>
+            <Th>Code</Th>
+            <Th>Version</Th>
+            <Th></Th>
           </tr>
         </thead>
         <tbody>
@@ -162,7 +167,7 @@ export default function SessionsList() {
             <Row session={session} idx={idx} key={session.id} isDev={isDev} />
           ))}
         </tbody>
-      </table>
+      </AdminTable>
     </>
   );
 }

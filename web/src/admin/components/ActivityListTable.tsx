@@ -2,7 +2,6 @@ import type { CSSProperties } from "react";
 import { formatTime, formatTimeDiff } from "../../lib/time";
 import { graphql, readInlineData } from "relay-runtime";
 import { useMutation } from "react-relay";
-import { Link } from "react-router";
 import type { ActivityListTableDeleteMutation } from "./__generated__/ActivityListTableDeleteMutation.graphql";
 import type {
   ActivityListTable_period$data,
@@ -12,6 +11,8 @@ import bulletOrange from "../../assets/bullet-orange.svg";
 import bulletGreen from "../../assets/bullet-green.svg";
 import { useUserInfo } from "./useUserInfo";
 import { useNotify } from "./useNotify";
+import { AdminTable, Th, Td } from "../../components/ui/Table";
+import { Button, ButtonLink } from "../../components/ui/Button";
 
 type Firstcol = "location" | "person";
 
@@ -77,13 +78,13 @@ function Section<T extends ActivityListTable_period$key>({
   return (
     <>
       <tr>
-        <th className="section" colSpan={colSpan}>
+        <Th section colSpan={colSpan}>
           {day} ({periodCount} {periodLabel}, {uniqueMemberCount} unique{" "}
           {memberLabel})
-        </th>
+        </Th>
       </tr>
       <tr>
-        <td className="gap" colSpan={colSpan}></td>
+        <td className="h-0.75" colSpan={colSpan}></td>
       </tr>
       {entries.map((entry, idx) => (
         <Row
@@ -163,65 +164,64 @@ function Row<T extends ActivityListTable_period$key>({
       : null;
 
   return (
-    <>
-      <tr className={idx % 2 === 0 ? "odd" : "even"}>
-        <td className="center">
-          {nitcBullet ? (
-            nitcLink ? (
-              <a href={nitcLink} target="_blank" rel="noreferrer">
-                <img
-                  src={nitcBullet}
-                  alt=""
-                  title={bulletTitle}
-                  width={12}
-                  height={12}
-                  style={{ verticalAlign: "middle" }}
-                />
-              </a>
-            ) : (
+    <tr className={idx % 2 === 0 ? "bg-neutral-50" : undefined}>
+      <Td center>
+        {nitcBullet ? (
+          nitcLink ? (
+            <a href={nitcLink} target="_blank" rel="noreferrer">
               <img
                 src={nitcBullet}
                 alt=""
                 title={bulletTitle}
                 width={12}
                 height={12}
-                style={{ verticalAlign: "middle" }}
+                className="max-w-none align-middle"
               />
-            )
-          ) : null}
-        </td>
-        {isDev && (
-          <td style={{ fontFamily: "monospace", fontSize: "0.85em" }}>
-            {period.id}
-          </td>
-        )}
-        <td>{getRowLabel(entry.ref)}</td>
-        <td
-          title={period.signedInSession?.name ?? undefined}
-          style={period.signedInSession ? sessionHintStyle : undefined}
-        >
-          {formatTime(start)}
-        </td>
-        <td
-          title={period.signedOutSession?.name ?? undefined}
-          style={period.signedOutSession ? sessionHintStyle : undefined}
-        >
-          {end ? formatTime(end) : ""}
-        </td>
-        <td>{timeDiff}</td>
-        <td>{period.category?.name}</td>
-        <td className="options">
-          <Link to={`/admin/activity/${period.id}`}>Edit</Link>&nbsp;
-          <button
-            className="delete"
+            </a>
+          ) : (
+            <img
+              src={nitcBullet}
+              alt=""
+              title={bulletTitle}
+              width={12}
+              height={12}
+              className="max-w-none align-middle"
+            />
+          )
+        ) : null}
+      </Td>
+      {isDev && <Td className="font-mono text-[0.85em]">{period.id}</Td>}
+      <Td>{getRowLabel(entry.ref)}</Td>
+      <Td
+        title={period.signedInSession?.name ?? undefined}
+        style={period.signedInSession ? sessionHintStyle : undefined}
+      >
+        {formatTime(start)}
+      </Td>
+      <Td
+        title={period.signedOutSession?.name ?? undefined}
+        style={period.signedOutSession ? sessionHintStyle : undefined}
+      >
+        {end ? formatTime(end) : ""}
+      </Td>
+      <Td>{timeDiff}</Td>
+      <Td>{period.category?.name}</Td>
+      <Td options>
+        <div className="flex justify-end gap-1">
+          <ButtonLink size="row" to={`/admin/activity/${period.id}`}>
+            Edit
+          </ButtonLink>
+          <Button
+            size="row"
+            variant="danger"
             onClick={deletePeriod}
             disabled={isMutationInFlight}
           >
             Delete
-          </button>
-        </td>
-      </tr>
-    </>
+          </Button>
+        </div>
+      </Td>
+    </tr>
   );
 }
 
@@ -264,17 +264,17 @@ export default function ActivityListTable<
 
   return (
     <>
-      <table className="admin">
+      <AdminTable>
         <thead>
           <tr>
-            <th style={{ width: 20 }}></th>
-            {isDev && <th>ID</th>}
-            <th>{firstcol === "location" ? "Location" : "Name"}</th>
-            <th>Start</th>
-            <th>End</th>
-            <th>Time</th>
-            <th>Category</th>
-            <th></th>
+            <Th style={{ width: 20 }}></Th>
+            {isDev && <Th>ID</Th>}
+            <Th>{firstcol === "location" ? "Location" : "Name"}</Th>
+            <Th>Start</Th>
+            <Th>End</Th>
+            <Th>Time</Th>
+            <Th>Category</Th>
+            <Th></Th>
           </tr>
         </thead>
         <tbody>
@@ -288,16 +288,12 @@ export default function ActivityListTable<
             />
           ))}
         </tbody>
-      </table>
+      </AdminTable>
       {hasNextPage && onLoadMore && (
         <p>
-          <button
-            className="action-button"
-            onClick={onLoadMore}
-            disabled={isLoadingMore}
-          >
+          <Button onClick={onLoadMore} disabled={isLoadingMore}>
             {isLoadingMore ? "Loading..." : "Load More"}
-          </button>
+          </Button>
         </p>
       )}
     </>

@@ -1,4 +1,5 @@
-import { NavLink, useMatch } from "react-router";
+import { useMatch } from "react-router";
+import MenuLink from "../../components/ui/MenuLink";
 
 interface SubmenuBarProps {
   isSuper: boolean;
@@ -16,97 +17,97 @@ export default function SubmenuBar({ isSuper }: SubmenuBarProps) {
   return (
     <>
       {isMembersSection && (
-        <div id="submenu_bar">
-          <NavLink to="/admin/members" end>
+        <div className="bg-submenu px-4 py-0.75 text-left font-title lg:px-20">
+          <MenuLink level="sub" to="/admin/members" end>
             List
-          </NavLink>
-          <NavLink to="/admin/members/new" end>
+          </MenuLink>
+          <MenuLink level="sub" to="/admin/members/new" end>
             New
-          </NavLink>
+          </MenuLink>
         </div>
       )}
 
       {isActivitySection && (
-        <div id="submenu_bar">
-          <NavLink to="/admin/activity" end>
+        <div className="bg-submenu px-4 py-0.75 text-left font-title lg:px-20">
+          <MenuLink level="sub" to="/admin/activity" end>
             Periods
-          </NavLink>
-          <NavLink to="/admin/activity/new" end>
+          </MenuLink>
+          <MenuLink level="sub" to="/admin/activity/new" end>
             New
-          </NavLink>
-          <NavLink to="/admin/activity/current" end>
+          </MenuLink>
+          <MenuLink level="sub" to="/admin/activity/current" end>
             Current
-          </NavLink>
-          <NavLink to="/admin/activity/totals" end>
+          </MenuLink>
+          <MenuLink level="sub" to="/admin/activity/totals" end>
             Totals
-          </NavLink>
-          <NavLink to="/admin/activity/breakdown" end>
+          </MenuLink>
+          <MenuLink level="sub" to="/admin/activity/breakdown" end>
             Breakdown
-          </NavLink>
-          <NavLink to="/admin/activity/last-seen" end>
+          </MenuLink>
+          <MenuLink level="sub" to="/admin/activity/last-seen" end>
             Last Seen
-          </NavLink>
+          </MenuLink>
         </div>
       )}
 
       {isSessionsSection && (
-        <div id="submenu_bar">
-          <NavLink to="/admin/sessions" end>
+        <div className="bg-submenu px-4 py-0.75 text-left font-title lg:px-20">
+          <MenuLink level="sub" to="/admin/sessions" end>
             List
-          </NavLink>
-          <NavLink to="/admin/sessions/new" end>
+          </MenuLink>
+          <MenuLink level="sub" to="/admin/sessions/new" end>
             New
-          </NavLink>
+          </MenuLink>
         </div>
       )}
 
       {isSuper && isLocationsSection && (
-        <div id="submenu_bar">
-          <NavLink to="/admin/locations" end>
+        <div className="bg-submenu px-4 py-0.75 text-left font-title lg:px-20">
+          <MenuLink level="sub" to="/admin/locations" end>
             List
-          </NavLink>
-          <NavLink to="/admin/locations/new" end>
+          </MenuLink>
+          <MenuLink level="sub" to="/admin/locations/new" end>
             New
-          </NavLink>
+          </MenuLink>
         </div>
       )}
 
       {isSuper && isUsersSection && (
-        <div id="submenu_bar">
-          <NavLink to="/admin/users" end>
+        <div className="bg-submenu px-4 py-0.75 text-left font-title lg:px-20">
+          <MenuLink level="sub" to="/admin/users" end>
             List
-          </NavLink>
-          <NavLink to="/admin/users/new" end>
+          </MenuLink>
+          <MenuLink level="sub" to="/admin/users/new" end>
             New
-          </NavLink>
+          </MenuLink>
         </div>
       )}
 
       {isSuper && isCategoriesSection && (
-        <div id="submenu_bar">
-          <NavLink to="/admin/categories" end>
+        <div className="bg-submenu px-4 py-0.75 text-left font-title lg:px-20">
+          <MenuLink level="sub" to="/admin/categories" end>
             List Categories
-          </NavLink>
-          <NavLink to="/admin/categories/new" end>
+          </MenuLink>
+          <MenuLink level="sub" to="/admin/categories/new" end>
             New Category
-          </NavLink>
-          <NavLink to="/admin/categories/nitc-groups" end>
+          </MenuLink>
+          <MenuLink level="sub" to="/admin/categories/nitc-groups" end>
             List NITC groups
-          </NavLink>
-          <NavLink to="/admin/categories/nitc-groups/new" end>
+          </MenuLink>
+          <MenuLink level="sub" to="/admin/categories/nitc-groups/new" end>
             New NITC group
-          </NavLink>
+          </MenuLink>
         </div>
       )}
 
       {isSettingsSection && (
-        <div id="submenu_bar">
-          <NavLink to="/admin/settings" end>
+        <div className="bg-submenu px-4 py-0.75 text-left font-title lg:px-20">
+          <MenuLink level="sub" to="/admin/settings" end>
             Passkeys
-          </NavLink>
-          <NavLink to="/admin/settings/daily-email" end>
+          </MenuLink>
+          <MenuLink level="sub" to="/admin/settings/daily-email" end>
             Daily Email Summary
-          </NavLink>
+          </MenuLink>
         </div>
       )}
     </>

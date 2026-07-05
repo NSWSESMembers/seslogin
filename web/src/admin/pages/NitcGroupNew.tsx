@@ -3,6 +3,10 @@ import { graphql, useLazyLoadQuery, useMutation } from "react-relay";
 import type { NitcGroupNewQuery } from "./__generated__/NitcGroupNewQuery.graphql";
 import type { NitcGroupNewMutation } from "./__generated__/NitcGroupNewMutation.graphql";
 import { useNotify } from "../components/useNotify";
+import { FieldList, FormField } from "../../components/ui/FormField";
+import TextInput from "../../components/ui/TextInput";
+import Select from "../../components/ui/Select";
+import { Button } from "../../components/ui/Button";
 
 export default function NitcGroupNew() {
   const navigate = useNavigate();
@@ -66,37 +70,26 @@ export default function NitcGroupNew() {
     <>
       <p>Enter the details of the new NITC group below.</p>
       <form action={handleSubmit}>
-        <dl>
-          <dt>
-            <label htmlFor="id" className="required">
-              ID
-            </label>
-          </dt>
-          <dd>
-            <input
+        <FieldList>
+          <FormField label={<label htmlFor="id">ID</label>}>
+            <TextInput
               type="text"
               name="id"
               id="id"
               placeholder="auto-generated if blank"
             />
-          </dd>
-          <dt>
-            <label htmlFor="nitcType" className="required">
-              NITC Type
-            </label>
-          </dt>
-          <dd>
-            <select name="nitcType" id="nitcType" required>
+          </FormField>
+          <FormField label={<label htmlFor="nitcType">NITC Type</label>}>
+            <Select name="nitcType" id="nitcType" required>
               <option value="">Select...</option>
               {[...data.ses_nonincident_types].sort().map((t) => (
                 <option key={t} value={t}>
                   {t}
                 </option>
               ))}
-            </select>
-          </dd>
-          <dt>SES Tags</dt>
-          <dd>
+            </Select>
+          </FormField>
+          <FormField label="SES Tags">
             {[...data.ses_nonincident_tags]
               .sort((a, b) => a.name.localeCompare(b.name))
               .map((tag) => (
@@ -106,14 +99,13 @@ export default function NitcGroupNew() {
                   </label>
                 </div>
               ))}
-          </dd>
-          <dt>&nbsp;</dt>
-          <dd>
-            <button type="submit" disabled={isMutationInFlight}>
+          </FormField>
+          <FormField>
+            <Button type="submit" disabled={isMutationInFlight}>
               Save
-            </button>
-          </dd>
-        </dl>
+            </Button>
+          </FormField>
+        </FieldList>
       </form>
     </>
   );

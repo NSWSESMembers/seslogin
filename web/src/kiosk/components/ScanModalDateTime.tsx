@@ -1,5 +1,10 @@
 import { useEffect, useState } from "react";
 
+const keypadDigitBase =
+  "m-[5px] inline-block w-[45px] rounded-lg border border-neutral-400 bg-white px-2.5 transition-colors duration-200";
+const keypadButtonBase =
+  "block w-40 cursor-pointer bg-neutral-100 px-2.5 py-[18px] text-[64px] text-black no-underline hover:bg-neutral-300 active:bg-neutral-400";
+
 export function Inner(props: {
   show: boolean;
   onSave: (field: string, value: string) => void;
@@ -44,75 +49,145 @@ export function Inner(props: {
 
   return (
     <div
-      className="modal-container"
+      className="fixed inset-0 z-2 items-center justify-center"
       style={{
         display: props.show ? "flex" : "none",
       }}
     >
-      <div className="modal">
-        <div id="keypad">
-          <table>
-            <tbody>
-              <tr>
-                <th colSpan={3}>
-                  <span className={current(0) ? "current" : ""}>{char(0)}</span>
-                  <span className={current(1) ? "current" : ""}>{char(1)}</span>
-                  :
-                  <span className={current(2) ? "current" : ""}>{char(2)}</span>
-                  <span className={current(3) ? "current" : ""}>{char(3)}</span>
-                </th>
-              </tr>
-              <tr>
-                <td>
-                  <button onClick={() => button("1")}>1</button>
-                </td>
-                <td>
-                  <button onClick={() => button("2")}>2</button>
-                </td>
-                <td>
-                  <button onClick={() => button("3")}>3</button>
-                </td>
-              </tr>
-              <tr>
-                <td>
-                  <button onClick={() => button("4")}>4</button>
-                </td>
-                <td>
-                  <button onClick={() => button("5")}>5</button>
-                </td>
-                <td>
-                  <button onClick={() => button("6")}>6</button>
-                </td>
-              </tr>
-              <tr>
-                <td>
-                  <button onClick={() => button("7")}>7</button>
-                </td>
-                <td>
-                  <button onClick={() => button("8")}>8</button>
-                </td>
-                <td>
-                  <button onClick={() => button("9")}>9</button>
-                </td>
-              </tr>
-              <tr>
-                <td>
-                  <button className="cancel" onClick={props.onClose}>
-                    &times;
-                  </button>
-                </td>
-                <td>
-                  <button onClick={() => button("0")}>0</button>
-                </td>
-                <td>
-                  <button className="delete" onClick={() => button("DEL")}>
-                    DEL
-                  </button>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+      <div className="rounded-xl bg-white shadow-2xl">
+        <table className="border-collapse">
+          <tbody>
+            <tr>
+              <th
+                colSpan={3}
+                className="border border-neutral-300 bg-neutral-200 p-2.5 text-[64px]"
+              >
+                <span
+                  className={`${keypadDigitBase} ${current(0) ? "m-px border-[5px] border-accent" : ""}`}
+                >
+                  {char(0)}
+                </span>
+                <span
+                  className={`${keypadDigitBase} ${current(1) ? "m-px border-[5px] border-accent" : ""}`}
+                >
+                  {char(1)}
+                </span>
+                :
+                <span
+                  className={`${keypadDigitBase} ${current(2) ? "m-px border-[5px] border-accent" : ""}`}
+                >
+                  {char(2)}
+                </span>
+                <span
+                  className={`${keypadDigitBase} ${current(3) ? "m-px border-[5px] border-accent" : ""}`}
+                >
+                  {char(3)}
+                </span>
+              </th>
+            </tr>
+            <tr>
+              <td className="border border-neutral-300 p-0">
+                <button
+                  className={keypadButtonBase}
+                  onClick={() => button("1")}
+                >
+                  1
+                </button>
+              </td>
+              <td className="border border-neutral-300 p-0">
+                <button
+                  className={keypadButtonBase}
+                  onClick={() => button("2")}
+                >
+                  2
+                </button>
+              </td>
+              <td className="border border-neutral-300 p-0">
+                <button
+                  className={keypadButtonBase}
+                  onClick={() => button("3")}
+                >
+                  3
+                </button>
+              </td>
+            </tr>
+            <tr>
+              <td className="border border-neutral-300 p-0">
+                <button
+                  className={keypadButtonBase}
+                  onClick={() => button("4")}
+                >
+                  4
+                </button>
+              </td>
+              <td className="border border-neutral-300 p-0">
+                <button
+                  className={keypadButtonBase}
+                  onClick={() => button("5")}
+                >
+                  5
+                </button>
+              </td>
+              <td className="border border-neutral-300 p-0">
+                <button
+                  className={keypadButtonBase}
+                  onClick={() => button("6")}
+                >
+                  6
+                </button>
+              </td>
+            </tr>
+            <tr>
+              <td className="border border-neutral-300 p-0">
+                <button
+                  className={keypadButtonBase}
+                  onClick={() => button("7")}
+                >
+                  7
+                </button>
+              </td>
+              <td className="border border-neutral-300 p-0">
+                <button
+                  className={keypadButtonBase}
+                  onClick={() => button("8")}
+                >
+                  8
+                </button>
+              </td>
+              <td className="border border-neutral-300 p-0">
+                <button
+                  className={keypadButtonBase}
+                  onClick={() => button("9")}
+                >
+                  9
+                </button>
+              </td>
+            </tr>
+            <tr>
+              <td className="border border-neutral-300 p-0">
+                <button className={keypadButtonBase} onClick={props.onClose}>
+                  &times;
+                </button>
+              </td>
+              <td className="border border-neutral-300 p-0">
+                <button
+                  className={keypadButtonBase}
+                  onClick={() => button("0")}
+                >
+                  0
+                </button>
+              </td>
+              <td className="border border-neutral-300 p-0">
+                <button
+                  className={keypadButtonBase}
+                  onClick={() => button("DEL")}
+                >
+                  DEL
+                </button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </div>
     </div>
   );
@@ -149,7 +224,7 @@ export default function ScanModalDateTime(props: {
   return (
     <>
       <div
-        className="modal-background"
+        className="fixed inset-0 z-1 bg-black transition-opacity duration-500"
         style={{
           display: shouldShow ? "block" : "none",
           opacity: shouldShow ? 0.5 : 0,

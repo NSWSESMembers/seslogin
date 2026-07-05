@@ -1,3 +1,5 @@
+import TextInput from "../../components/ui/TextInput";
+
 type Props = {
   startInput: string;
   endInput: string;
@@ -12,10 +14,10 @@ export default function ActivityTimeRange({
   onEndChange,
 }: Props) {
   return (
-    <div className="activity-totals-range">
+    <div className="mb-4 flex justify-center gap-5 max-md:flex-col max-md:items-center">
       <label>
         Start time:&nbsp;
-        <input
+        <TextInput
           type="datetime-local"
           value={startInput}
           onChange={(e) => onStartChange(e.target.value)}
@@ -23,7 +25,7 @@ export default function ActivityTimeRange({
       </label>
       <label>
         End time:&nbsp;
-        <input
+        <TextInput
           type="datetime-local"
           value={endInput}
           onChange={(e) => onEndChange(e.target.value)}

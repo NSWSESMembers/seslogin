@@ -5,6 +5,7 @@ import ActivityTimeRange from "../components/ActivityTimeRange";
 import useActivityTimeRange from "../components/useActivityTimeRange";
 import { useState } from "react";
 import type { ReportsQuery } from "./__generated__/ReportsQuery.graphql";
+import { Button } from "../../components/ui/Button";
 
 const REPORT_PAGE_SIZE = 1000;
 type ReportPeriodEdge = NonNullable<
@@ -284,24 +285,28 @@ export default function Reports() {
           onEndChange={setEndInput}
         />
         {!hasValidRange && (
-          <p className="error">Start time must be before end time.</p>
+          <p className="font-bold text-red-600">
+            Start time must be before end time.
+          </p>
         )}
-        {errorText && <p className="error">{errorText}</p>}
-        {successText && <p className="success">{successText}</p>}
-        <div className="reports-actions">
-          <button
+        {errorText && <p className="font-bold text-red-600">{errorText}</p>}
+        {successText && (
+          <p className="font-bold text-green-700">{successText}</p>
+        )}
+        <div className="flex justify-center gap-2.5 max-md:flex-col max-md:items-center">
+          <Button
             type="submit"
             disabled={exportingFormat !== null || !hasValidRange}
           >
             {exportingFormat === "csv" ? "Generating..." : "Download CSV"}
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
             disabled={exportingFormat !== null || !hasValidRange}
             onClick={() => void exportReport("xlsx")}
           >
             {exportingFormat === "xlsx" ? "Generating..." : "Download XLSX"}
-          </button>
+          </Button>
         </div>
       </form>
     </>

@@ -1,6 +1,7 @@
 import { graphql } from "relay-runtime";
 import { useLazyLoadQuery } from "react-relay";
 import type { ActivityCategorySelectorQuery } from "./__generated__/ActivityCategorySelectorQuery.graphql";
+import Select from "../../components/ui/Select";
 
 interface ActivityCategorySelectorProps {
   value: string;
@@ -24,9 +25,9 @@ export default function ActivityCategorySelector({
   );
 
   return (
-    <label className="activity-category-selector">
+    <label className="flex items-center justify-center gap-2">
       Category
-      <select value={value} onChange={(e) => onChange(e.target.value)}>
+      <Select value={value} onChange={(e) => onChange(e.target.value)}>
         <option value="">All categories</option>
         {data.categories
           .toSorted((a, b) => a.name.localeCompare(b.name))
@@ -35,7 +36,7 @@ export default function ActivityCategorySelector({
               {category.name}
             </option>
           ))}
-      </select>
+      </Select>
     </label>
   );
 }

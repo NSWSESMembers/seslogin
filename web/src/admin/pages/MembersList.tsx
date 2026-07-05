@@ -3,7 +3,6 @@ import type {
   MembersListQuery,
   MembersListQuery$data,
 } from "./__generated__/MembersListQuery.graphql";
-import { Link } from "react-router";
 import type { MembersListDeleteMutation } from "./__generated__/MembersListDeleteMutation.graphql";
 import type { MembersListSyncMutation } from "./__generated__/MembersListSyncMutation.graphql";
 import useSelectedLocation from "../components/useSelectedLocation";
@@ -12,6 +11,8 @@ import bulletGreen from "../../assets/bullet-green.svg";
 import { useState } from "react";
 import { useUserInfo } from "../components/useUserInfo";
 import { useNotify } from "../components/useNotify";
+import { AdminTable, Th, Td } from "../../components/ui/Table";
+import { Button, ButtonLink } from "../../components/ui/Button";
 
 type Person = MembersListQuery$data["location"]["people"][number];
 
@@ -63,8 +64,8 @@ function Row({
   const sesApiPersonId = person.sesApiPersonId;
 
   return (
-    <tr className={idx % 2 === 0 ? "odd" : "even"}>
-      <td className="center">
+    <tr className={idx % 2 === 0 ? "bg-neutral-50" : undefined}>
+      <Td center>
         {sesApiPersonId ? (
           <img
             src={bulletGreen}
@@ -72,35 +73,37 @@ function Row({
             title={sesApiPersonId}
             width={12}
             height={12}
-            style={{ verticalAlign: "middle" }}
+            className="max-w-none align-middle"
           />
         ) : null}
-      </td>
-      {isDev && (
-        <td style={{ fontFamily: "monospace", fontSize: "0.85em" }}>
-          {person.id}
-        </td>
-      )}
-      <td>{person.memberNumber}</td>
-      <td className="nowrap">
+      </Td>
+      {isDev && <Td className="font-mono text-[0.85em]">{person.id}</Td>}
+      <Td>{person.memberNumber}</Td>
+      <Td nowrap>
         {person.firstName} {person.lastName}
-      </td>
-      <td className="options">
-        <Link to={`/admin/members/activity/${person.id}`}>Activity</Link>
-        {!sesApiPersonId ? (
-          <>
-            &nbsp;
-            <Link to={`/admin/members/${person.id}`}>Edit</Link>&nbsp;
-            <button
-              className="delete"
-              onClick={deletePerson}
-              disabled={isMutationInFlight}
-            >
-              Delete
-            </button>
-          </>
-        ) : null}
-      </td>
+      </Td>
+      <Td options>
+        <div className="flex justify-end gap-1">
+          <ButtonLink size="row" to={`/admin/members/activity/${person.id}`}>
+            Activity
+          </ButtonLink>
+          {!sesApiPersonId ? (
+            <>
+              <ButtonLink size="row" to={`/admin/members/${person.id}`}>
+                Edit
+              </ButtonLink>
+              <Button
+                size="row"
+                variant="danger"
+                onClick={deletePerson}
+                disabled={isMutationInFlight}
+              >
+                Delete
+              </Button>
+            </>
+          ) : null}
+        </div>
+      </Td>
     </tr>
   );
 }
@@ -170,8 +173,8 @@ export default function MembersList() {
   return (
     <>
       {location.sesApiHeadquartersId ? (
-        <div style={{ marginBottom: 8 }}>
-          Last successful member sync: {lastSyncText}&nbsp;&nbsp;
+        <div className="mb-2">
+          Last successful member sync: {lastSyncText}{" "}
           {!syncedRecently && (
             <button onClick={triggerSync} disabled={isSyncInFlight}>
               Sync now
@@ -179,14 +182,14 @@ export default function MembersList() {
           )}
         </div>
       ) : null}
-      <table className="admin">
+      <AdminTable>
         <thead>
           <tr>
-            <th style={{ width: 20 }}></th>
-            {isDev && <th>ID</th>}
-            <th style={{ width: 100 }}>SES ID</th>
-            <th>Name</th>
-            <th style={{ width: 100 }}></th>
+            <Th style={{ width: 20 }}></Th>
+            {isDev && <Th>ID</Th>}
+            <Th style={{ width: 100 }}>SES ID</Th>
+            <Th>Name</Th>
+            <Th style={{ width: 100 }}></Th>
           </tr>
         </thead>
         <tbody>
@@ -194,7 +197,7 @@ export default function MembersList() {
             <Row key={person.id} person={person} idx={idx} isDev={isDev} />
           ))}
         </tbody>
-      </table>
+      </AdminTable>
     </>
   );
 }

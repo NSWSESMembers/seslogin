@@ -16,7 +16,6 @@ export default function ClientVersionLabel({ noLink }: { noLink?: boolean }) {
   if (!noLink && /^[0-9a-f]{40}$/i.test(normalized)) {
     return (
       <a
-        className="client-version"
         href={`${GITHUB_REPO_URL}/commit/${normalized}`}
         target="_blank"
         rel="noopener noreferrer"
@@ -26,5 +25,5 @@ export default function ClientVersionLabel({ noLink }: { noLink?: boolean }) {
     );
   }
 
-  return <span className="client-version">{displayVersion}</span>;
+  return <span>{displayVersion}</span>;
 }

@@ -41,16 +41,29 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     [notify, notifySuccess, notifyError, dismiss],
   );
 
+  const kindClasses: Record<ToastKind, string> = {
+    error: "border border-red-900/25 bg-red-50 text-red-900",
+    success: "border border-green-800/25 bg-green-50 text-green-900",
+  };
+
   return (
     <NotifyContext.Provider value={value}>
       {children}
-      <div className="toast-region" role="region" aria-label="Notifications">
+      <div
+        className="fixed top-4 right-4 z-1000 flex max-w-[min(420px,calc(100vw-32px))] flex-col gap-2.5"
+        role="region"
+        aria-label="Notifications"
+      >
         {toasts.map((t) => (
-          <div key={t.id} className={`toast toast--${t.kind}`} role="alert">
-            <span className="toast__message">{t.message}</span>
+          <div
+            key={t.id}
+            className={`flex items-start gap-3 rounded-xl px-3.5 py-3 text-[15px] leading-snug shadow-lg ${kindClasses[t.kind]}`}
+            role="alert"
+          >
+            <span className="flex-1 wrap-break-word">{t.message}</span>
             <button
               type="button"
-              className="toast__close"
+              className="flex-none cursor-pointer border-0 bg-transparent p-0 text-xl leading-none text-inherit"
               aria-label="Dismiss"
               onClick={() => dismiss(t.id)}
             >

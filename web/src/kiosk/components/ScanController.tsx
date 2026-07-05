@@ -22,6 +22,7 @@ import type {
 } from "./__generated__/ScanControllerRegister2Mutation.graphql";
 import type { ScanControllerSignOutMutation } from "./__generated__/ScanControllerSignOutMutation.graphql";
 import { useKioskSession } from "./useKioskSession";
+import type { ScreenPosition } from "../../styles";
 
 const PURGE_EXPIRED_TRANSACTIONS_INTERVAL_MS = 1_000;
 const SCAN_TRANSACTION_LOG_LEASE_ID = "scan:transaction-log";
@@ -222,12 +223,11 @@ export default function ScanController(props: {
     transactionUuidRef.current = transactionUuid;
   });
 
-  // -100% - offscreen to left
-  // 0 - on screen
-  // 100% - offscreen to right
-  const mainPos = needsCategory || needsAdjust ? "-100%" : "0%";
-  const categoriesPos = needsCategory ? "0%" : "100%";
-  const adjustPos = !needsCategory && needsAdjust ? "0%" : "100%";
+  const mainPos: ScreenPosition =
+    needsCategory || needsAdjust ? "offLeft" : "center";
+  const categoriesPos: ScreenPosition = needsCategory ? "center" : "offRight";
+  const adjustPos: ScreenPosition =
+    !needsCategory && needsAdjust ? "center" : "offRight";
 
   const onCancelSignOut = useCallback(() => {
     if (!transactionUuid) return;

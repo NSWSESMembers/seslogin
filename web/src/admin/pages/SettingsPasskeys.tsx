@@ -10,6 +10,9 @@ import {
   browserSupportsWebAuthn,
   markPasskeyEnrollPromptShown,
 } from "../../lib/passkey";
+import { PanelMessage } from "../../components/ui/Panel";
+import { AdminTable, Th, Td } from "../../components/ui/Table";
+import { Button } from "../../components/ui/Button";
 
 const MAX_PASSKEYS = 10;
 
@@ -121,69 +124,64 @@ export default function SettingsPasskeys() {
   }
 
   return (
-    <div className="passkeys-settings">
+    <div>
       <h2>Passkeys</h2>
       <p>
         Passkeys let you sign in with Face ID, Touch ID, or your device PIN
         instead of an email code. You can save up to {MAX_PASSKEYS}.
       </p>
       {!supported && (
-        <p className="action-panel__message action-panel__message--warning">
+        <PanelMessage variant="warning">
           This browser or device does not support passkeys.
-        </p>
+        </PanelMessage>
       )}
-      {error && (
-        <p className="action-panel__message action-panel__message--error">
-          {error}
-        </p>
-      )}
+      {error && <PanelMessage>{error}</PanelMessage>}
       {passkeys.length === 0 && <p>No passkeys saved yet.</p>}
       {passkeys.length > 0 && (
-        <table className="admin">
+        <AdminTable>
           <thead>
             <tr>
-              <th>Name</th>
-              <th>Added</th>
-              <th>Last used</th>
-              <th></th>
+              <Th>Name</Th>
+              <Th>Added</Th>
+              <Th>Last used</Th>
+              <Th></Th>
             </tr>
           </thead>
           <tbody>
             {passkeys.map((pk, idx) => (
-              <tr key={pk.id} className={idx % 2 === 0 ? "odd" : "even"}>
-                <td>{pk.name}</td>
-                <td>{formatDate(pk.createdAt)}</td>
-                <td>{pk.lastUsedAt ? formatDate(pk.lastUsedAt) : "Never"}</td>
-                <td className="options">
-                  <button
-                    type="button"
-                    onClick={() => handleRename(pk.id, pk.name)}
-                  >
-                    Rename
-                  </button>
-                  &nbsp;
-                  <button
-                    type="button"
-                    className="delete"
-                    onClick={() => handleDelete(pk.id, pk.name)}
-                  >
-                    Delete
-                  </button>
-                </td>
+              <tr
+                key={pk.id}
+                className={idx % 2 === 0 ? "bg-neutral-50" : undefined}
+              >
+                <Td>{pk.name}</Td>
+                <Td>{formatDate(pk.createdAt)}</Td>
+                <Td>{pk.lastUsedAt ? formatDate(pk.lastUsedAt) : "Never"}</Td>
+                <Td options>
+                  <div className="flex justify-end gap-1">
+                    <Button
+                      size="row"
+                      onClick={() => handleRename(pk.id, pk.name)}
+                    >
+                      Rename
+                    </Button>
+                    <Button
+                      size="row"
+                      variant="danger"
+                      onClick={() => handleDelete(pk.id, pk.name)}
+                    >
+                      Delete
+                    </Button>
+                  </div>
+                </Td>
               </tr>
             ))}
           </tbody>
-        </table>
+        </AdminTable>
       )}
       <p>
-        <button
-          type="button"
-          className="button"
-          onClick={handleAdd}
-          disabled={busy || atCap || !supported}
-        >
+        <Button onClick={handleAdd} disabled={busy || atCap || !supported}>
           {busy ? "Setting up…" : "Add a passkey"}
-        </button>
+        </Button>
         {atCap && (
           <span>&nbsp; You&apos;ve reached the maximum of {MAX_PASSKEYS}.</span>
         )}

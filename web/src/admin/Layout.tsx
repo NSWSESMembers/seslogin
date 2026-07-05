@@ -4,7 +4,6 @@ import AdminContent from "./components/AdminContent";
 import LoadingIndicator from "../components/LoadingIndicator";
 import PageErrorFallback from "../components/PageErrorFallback";
 import SettingsProvider from "./components/SettingsProvider";
-import "./style.css";
 import { UserInfoProvider } from "./components/UserInfoProvider";
 import { NotificationProvider } from "./components/Notifications";
 import AdminRelayEnvironment from "./components/AdminRelayEnvironment";
@@ -25,7 +24,7 @@ import {
 
 export default function Layout() {
   return (
-    <div id="admin">
+    <div>
       <ErrorBoundary FallbackComponent={PageErrorFallback}>
         <LoginRequired />
       </ErrorBoundary>

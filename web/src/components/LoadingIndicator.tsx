@@ -20,9 +20,9 @@ export default function LoadingIndicator() {
   }, []);
 
   return (
-    <div className="loading-container">
-      <div className="loading-spinner"></div>
-      <div className="loading-message">{messages[messageIndex]}</div>
+    <div className="flex flex-col items-center justify-center gap-4 px-6 py-12">
+      <div className="size-12 animate-spin rounded-full border-4 border-neutral-200 border-t-menu motion-reduce:animate-none"></div>
+      <div>{messages[messageIndex]}</div>
     </div>
   );
 }

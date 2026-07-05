@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { useSettings, useSettingsDispatch } from "../../lib/settings";
 import { useUserInfo } from "./useUserInfo";
 import { getLocationById, getSelectedLocationId } from "./useSelectedLocation";
-import "../style.css";
+import TextInput from "../../components/ui/TextInput";
 
 interface LocationSelectorProps {
   children?: ReactNode;
@@ -54,10 +54,12 @@ export default function LocationSelector({ children }: LocationSelectorProps) {
   }
 
   return (
-    <div id="location-selector">
-      <div className="selector-container">
-        <h1>Select Your Location</h1>
-        <p>
+    <div className="flex min-h-screen items-center justify-center bg-neutral-100">
+      <div className="w-full max-w-150 rounded-lg bg-white p-10 shadow-md">
+        <h1 className="mt-0 mb-2.5 font-title text-[28px] text-neutral-800">
+          Select Your Location
+        </h1>
+        <p className="mb-8 text-neutral-500">
           You are logging in for the first time or your location has been reset.
           Please select the unit you would like to administer. You can always
           swap to a different location by clicking the unit name in the menu
@@ -65,30 +67,34 @@ export default function LocationSelector({ children }: LocationSelectorProps) {
         </p>
 
         {enabledLocations.length === 0 ? (
-          <p className="error">
+          <p className="rounded bg-red-50 p-2.5 text-red-700">
             No locations available. Please contact an administrator.
           </p>
         ) : (
           <>
-            <input
+            <TextInput
               type="text"
-              className="location-filter"
+              className="mb-6 box-border p-4 font-title text-lg"
               placeholder="Filter locations…"
               value={filter}
               onChange={(e) => setFilter(e.target.value)}
               autoFocus
             />
             {filteredLocations.length === 0 ? (
-              <p className="no-results">No locations match “{filter}”.</p>
+              <p className="py-2 text-center text-neutral-500">
+                No locations match “{filter}”.
+              </p>
             ) : (
-              <ul className="location-list">
+              <ul className="m-0 list-none p-0">
                 {filteredLocations.map((location) => (
-                  <li key={location.id}>
+                  <li key={location.id} className="mb-3">
                     <button
                       onClick={() => handleSelectLocation(location.id)}
-                      className="location-button"
+                      className="w-full cursor-pointer rounded-md border-2 border-neutral-200 bg-neutral-50 p-4 text-left transition-colors hover:border-menu hover:bg-brand/5 focus:border-menu focus:ring-2 focus:ring-menu/25 focus:outline-none"
                     >
-                      <span className="location-name">{location.name}</span>
+                      <span className="font-title text-lg font-medium text-neutral-800">
+                        {location.name}
+                      </span>
                     </button>
                   </li>
                 ))}

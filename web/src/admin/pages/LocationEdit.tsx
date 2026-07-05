@@ -3,6 +3,9 @@ import { graphql, useLazyLoadQuery, useMutation } from "react-relay";
 import type { LocationEditQuery } from "./__generated__/LocationEditQuery.graphql";
 import type { LocationEditMutation } from "./__generated__/LocationEditMutation.graphql";
 import { useNotify } from "../components/useNotify";
+import { FieldList, FormField } from "../../components/ui/FormField";
+import TextInput from "../../components/ui/TextInput";
+import { Button } from "../../components/ui/Button";
 
 export default function EditLocation() {
   const params = useParams();
@@ -79,43 +82,35 @@ export default function EditLocation() {
   return (
     <>
       <p>Edit the location's details, then click Save.</p>
-      {/* {updateError && <p className="error">Error: {updateError.message}</p>} */}
+      {/* {updateError && <p className="font-bold text-red-600">Error: {updateError.message}</p>} */}
 
       <form action={handleSubmit}>
-        <dl>
-          <dt>
-            <label htmlFor="name" className="required">
-              Name
-            </label>
-          </dt>
-          <dd>
-            <input
+        <FieldList>
+          <FormField label={<label htmlFor="name">Name</label>}>
+            <TextInput
               type="text"
               name="name"
               id="name"
               defaultValue={location.name}
               required
             />
-          </dd>
-          <dt>
-            <label htmlFor="enabled">Enabled</label>
-          </dt>
-          <dd>
+          </FormField>
+          <FormField label={<label htmlFor="enabled">Enabled</label>}>
             <input
               type="checkbox"
               name="enabled"
               id="enabled"
               defaultChecked={location.enabled}
             />
-          </dd>
-          <dt>
-            <label htmlFor="nitcEnabled">NITC Export From</label>
-          </dt>
-          <dd>
-            <input
+          </FormField>
+          <FormField
+            label={<label htmlFor="nitcEnabled">NITC Export From</label>}
+          >
+            <TextInput
               type="date"
               name="nitcEnabled"
               id="nitcEnabled"
+              width="medium"
               defaultValue={
                 location.nitcEnabled
                   ? new Date(location.nitcEnabled * 1000)
@@ -124,14 +119,13 @@ export default function EditLocation() {
                   : ""
               }
             />
-          </dd>
-          <dt>&nbsp;</dt>
-          <dd>
-            <button type="submit" disabled={isMutationInFlight}>
+          </FormField>
+          <FormField>
+            <Button type="submit" disabled={isMutationInFlight}>
               Save
-            </button>
-          </dd>
-        </dl>
+            </Button>
+          </FormField>
+        </FieldList>
       </form>
     </>
   );

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { FallbackProps } from "react-error-boundary";
+import { Button } from "./ui/Button";
 
 export default function PageErrorFallback({
   error,
@@ -10,18 +11,13 @@ export default function PageErrorFallback({
   const message = error instanceof Error ? error.message : String(error);
 
   return (
-    <div role="alert">
+    <div role="alert" className="p-6 text-center">
       <p>Something went wrong</p>
-      {showDetails ? <pre style={{ color: "red" }}>{message}</pre> : null}
-      <button className="action-button" onClick={resetErrorBoundary}>
-        Try again
-      </button>
-      <button
-        className="action-button"
-        onClick={() => setShowDetails((prev) => !prev)}
-      >
+      {showDetails ? <pre className="text-red-600">{message}</pre> : null}
+      <Button onClick={resetErrorBoundary}>Try again</Button>
+      <Button className="ml-2" onClick={() => setShowDetails((prev) => !prev)}>
         {showDetails ? "Hide details" : "Show details"}
-      </button>
+      </Button>
     </div>
   );
 }

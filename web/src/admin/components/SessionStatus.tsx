@@ -31,5 +31,13 @@ export default function SessionStatus({
           ? bulletRed
           : bulletGray;
 
-  return <img src={iconSrc} alt="" />;
+  return (
+    <img
+      src={iconSrc}
+      alt=""
+      width={16}
+      height={16}
+      className="inline-block max-w-none align-middle"
+    />
+  );
 }

@@ -3,6 +3,9 @@ import { useNavigate } from "react-router";
 import useSelectedLocation from "../components/useSelectedLocation";
 import type { MembersNewMutation } from "./__generated__/MembersNewMutation.graphql";
 import { useNotify } from "../components/useNotify";
+import { FieldList, FormField } from "../../components/ui/FormField";
+import TextInput from "../../components/ui/TextInput";
+import { Button } from "../../components/ui/Button";
 
 export default function MembersNew() {
   const { notifyError, notifySuccess } = useNotify();
@@ -61,47 +64,31 @@ export default function MembersNew() {
   return (
     <>
       <p>Enter the details of the new member in the form below.</p>
-      {/* {error && <p className="error">Error: {error.message}</p>} */}
+      {/* {error && <p className="font-bold text-red-600">Error: {error.message}</p>} */}
 
       <form action={handleSubmit}>
-        <dl>
-          <dt>
-            <label htmlFor="givenname" className="required">
-              Given name
-            </label>
-          </dt>
-          <dd>
-            <input type="text" name="givenname" id="givenname" required />
-          </dd>
-          <dt>
-            <label htmlFor="surname" className="required">
-              Surname
-            </label>
-          </dt>
-          <dd>
-            <input type="text" name="surname" id="surname" required />
-          </dd>
-          <dt>
-            <label htmlFor="serialnumber" className="required">
-              SES ID
-            </label>
-          </dt>
-          <dd>
-            <input
+        <FieldList>
+          <FormField label={<label htmlFor="givenname">Given name</label>}>
+            <TextInput type="text" name="givenname" id="givenname" required />
+          </FormField>
+          <FormField label={<label htmlFor="surname">Surname</label>}>
+            <TextInput type="text" name="surname" id="surname" required />
+          </FormField>
+          <FormField label={<label htmlFor="serialnumber">SES ID</label>}>
+            <TextInput
               type="text"
               name="serialnumber"
               id="serialnumber"
-              className="medium"
+              width="medium"
               required
             />
-          </dd>
-          <dt>&nbsp;</dt>
-          <dd>
-            <button type="submit" disabled={isMutationInFlight}>
+          </FormField>
+          <FormField>
+            <Button type="submit" disabled={isMutationInFlight}>
               Save
-            </button>
-          </dd>
-        </dl>
+            </Button>
+          </FormField>
+        </FieldList>
       </form>
     </>
   );

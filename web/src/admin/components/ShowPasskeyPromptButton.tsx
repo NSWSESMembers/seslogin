@@ -1,12 +1,10 @@
 import { forcePasskeyEnrollPrompt } from "../../lib/passkey";
+import { Button } from "../../components/ui/Button";
 
 export default function ShowPasskeyPromptButton() {
   return (
-    <button
-      onClick={() => forcePasskeyEnrollPrompt()}
-      style={{ marginTop: "1rem", padding: "0.5rem 1rem" }}
-    >
+    <Button className="mt-4" onClick={() => forcePasskeyEnrollPrompt()}>
       [DEV] Show Passkey Interstitial
-    </button>
+    </Button>
   );
 }
