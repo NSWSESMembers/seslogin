@@ -1,5 +1,8 @@
 import { useMatch } from "react-router";
 import MenuLink from "../../components/ui/MenuLink";
+import { tw } from "../../lib/tw";
+
+const submenuBarClasses = tw`flex flex-wrap items-center gap-1 bg-submenu px-5 py-0.75 font-title lg:px-20`;
 
 interface SubmenuBarProps {
   isSuper: boolean;
@@ -17,7 +20,7 @@ export default function SubmenuBar({ isSuper }: SubmenuBarProps) {
   return (
     <>
       {isMembersSection && (
-        <div className="bg-submenu px-4 py-0.75 text-left font-title lg:px-20">
+        <div className={submenuBarClasses}>
           <MenuLink level="sub" to="/admin/members" end>
             List
           </MenuLink>
@@ -28,7 +31,7 @@ export default function SubmenuBar({ isSuper }: SubmenuBarProps) {
       )}
 
       {isActivitySection && (
-        <div className="bg-submenu px-4 py-0.75 text-left font-title lg:px-20">
+        <div className={submenuBarClasses}>
           <MenuLink level="sub" to="/admin/activity" end>
             Periods
           </MenuLink>
@@ -51,7 +54,7 @@ export default function SubmenuBar({ isSuper }: SubmenuBarProps) {
       )}
 
       {isSessionsSection && (
-        <div className="bg-submenu px-4 py-0.75 text-left font-title lg:px-20">
+        <div className={submenuBarClasses}>
           <MenuLink level="sub" to="/admin/sessions" end>
             List
           </MenuLink>
@@ -62,7 +65,7 @@ export default function SubmenuBar({ isSuper }: SubmenuBarProps) {
       )}
 
       {isSuper && isLocationsSection && (
-        <div className="bg-submenu px-4 py-0.75 text-left font-title lg:px-20">
+        <div className={submenuBarClasses}>
           <MenuLink level="sub" to="/admin/locations" end>
             List
           </MenuLink>
@@ -73,7 +76,7 @@ export default function SubmenuBar({ isSuper }: SubmenuBarProps) {
       )}
 
       {isSuper && isUsersSection && (
-        <div className="bg-submenu px-4 py-0.75 text-left font-title lg:px-20">
+        <div className={submenuBarClasses}>
           <MenuLink level="sub" to="/admin/users" end>
             List
           </MenuLink>
@@ -84,7 +87,7 @@ export default function SubmenuBar({ isSuper }: SubmenuBarProps) {
       )}
 
       {isSuper && isCategoriesSection && (
-        <div className="bg-submenu px-4 py-0.75 text-left font-title lg:px-20">
+        <div className={submenuBarClasses}>
           <MenuLink level="sub" to="/admin/categories" end>
             List Categories
           </MenuLink>
@@ -101,7 +104,7 @@ export default function SubmenuBar({ isSuper }: SubmenuBarProps) {
       )}
 
       {isSettingsSection && (
-        <div className="bg-submenu px-4 py-0.75 text-left font-title lg:px-20">
+        <div className={submenuBarClasses}>
           <MenuLink level="sub" to="/admin/settings" end>
             Passkeys
           </MenuLink>
