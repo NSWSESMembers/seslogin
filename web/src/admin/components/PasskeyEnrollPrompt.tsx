@@ -5,6 +5,7 @@ import {
   wasPasskeyLoginSession,
   passkeyEnrollPromptThrottled,
   markPasskeyEnrollPromptShown,
+  onForcePasskeyEnrollPrompt,
 } from "../../lib/passkey";
 import { usePasskeyRegistration } from "./usePasskeyRegistration";
 import { useNotify } from "./useNotify";
@@ -48,6 +49,8 @@ export default function PasskeyEnrollPrompt({
   useEffect(() => {
     if (show) markPasskeyEnrollPromptShown();
   }, [show]);
+
+  useEffect(() => onForcePasskeyEnrollPrompt(() => setShow(true)), []);
 
   if (!show) return <>{children}</>;
 

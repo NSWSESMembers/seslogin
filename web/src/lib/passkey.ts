@@ -39,6 +39,23 @@ export function markPasskeyEnrollPromptShown(): void {
   localStorage.setItem(ENROLL_PROMPT_TS, String(Date.now()));
 }
 
+const ENROLL_FORCE_SHOW_EVENT = "passkey-enroll-force-show";
+
+/**
+ * Dev-only escape hatch: force the enrollment interstitial to appear regardless
+ * of throttle, WebAuthn support, or whether a passkey already exists. Used by a
+ * dev-only button on the admin home screen to preview the interstitial.
+ */
+export function forcePasskeyEnrollPrompt(): void {
+  window.dispatchEvent(new Event(ENROLL_FORCE_SHOW_EVENT));
+}
+
+/** Subscribe to force-show requests; returns an unsubscribe function. */
+export function onForcePasskeyEnrollPrompt(handler: () => void): () => void {
+  window.addEventListener(ENROLL_FORCE_SHOW_EVENT, handler);
+  return () => window.removeEventListener(ENROLL_FORCE_SHOW_EVENT, handler);
+}
+
 async function rawGraphQL(
   query: string,
   variables: Record<string, unknown>,

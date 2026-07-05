@@ -1,4 +1,5 @@
 import ClearLocationButton from "../components/ClearLocationButton";
+import ShowPasskeyPromptButton from "../components/ShowPasskeyPromptButton";
 import DevOnly from "../components/DevOnly";
 
 export default function AdminHome() {
@@ -11,6 +12,7 @@ export default function AdminHome() {
 
       <DevOnly>
         <ClearLocationButton />
+        <ShowPasskeyPromptButton />
       </DevOnly>
     </div>
   );
