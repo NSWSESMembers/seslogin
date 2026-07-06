@@ -58,6 +58,12 @@ type DashboardDailyPeriodSummary {
 	totalTime: Int!
 }
 
+type DayCategoryPeriodSummary {
+	date: String!
+	totalTime: Int!
+	categories: [CategoryMemberPeriodSummary!]!
+}
+
 """
 A scalar that can represent any JSON value.
 """
@@ -78,6 +84,7 @@ type Location {
 	periodSummaryByCategory(startTime: Int!, endTime: Int!): [CategoryPeriodSummary!]!
 	periodSummaryByMemberByCategory(startTime: Int!, endTime: Int!): [MemberCategoryPeriodSummary!]!
 	periodSummaryByCategoryByMember(startTime: Int!, endTime: Int!): [CategoryMemberPeriodSummary!]!
+	periodSummaryByDayByCategoryByMember(startTime: Int!, endTime: Int!): [DayCategoryPeriodSummary!]!
 	sessions: [Session!]!
 	dashboardSummary(asOf: Int): LocationDashboardSummary!
 }

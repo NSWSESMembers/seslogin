@@ -33,19 +33,22 @@ export default function SubmenuBar({ isSuper }: SubmenuBarProps) {
       {isActivitySection && (
         <div className={submenuBarClasses}>
           <MenuLink level="sub" to="/admin/activity" end>
-            Periods
+            Previous Periods
           </MenuLink>
           <MenuLink level="sub" to="/admin/activity/new" end>
-            New
+            New Period
           </MenuLink>
           <MenuLink level="sub" to="/admin/activity/current" end>
-            Current
+            Incomplete Periods
           </MenuLink>
           <MenuLink level="sub" to="/admin/activity/totals" end>
             Totals
           </MenuLink>
           <MenuLink level="sub" to="/admin/activity/breakdown" end>
             Breakdown
+          </MenuLink>
+          <MenuLink level="sub" to="/admin/activity/daily-breakdown" end>
+            Daily Breakdown
           </MenuLink>
           <MenuLink level="sub" to="/admin/activity/last-seen" end>
             Last Seen

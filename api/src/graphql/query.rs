@@ -10,6 +10,7 @@ use async_graphql::Object;
 use async_graphql::SimpleObject;
 use async_graphql::connection::{Connection, EmptyFields};
 use async_graphql::dataloader::DataLoader;
+use chrono_tz::Australia::Sydney;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -756,10 +757,53 @@ impl<A: App + HasDb + Send + Sync + 'static> CategoryMemberPeriodSummary<A> {
     }
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct DayCategoryPeriodSummary<A: App + HasDb + Send + Sync> {
+    _marker: std::marker::PhantomData<A>,
+    date: String,
+    total_time: i64,
+    categories: Vec<CategoryMemberPeriodSummary<A>>,
+}
+
+impl<A: App + HasDb + Send + Sync> DayCategoryPeriodSummary<A> {
+    fn new(date: String, total_time: i64, categories: Vec<CategoryMemberPeriodSummary<A>>) -> Self {
+        Self {
+            _marker: Default::default(),
+            date,
+            total_time,
+            categories,
+        }
+    }
+}
+
+#[Object]
+impl<A: App + HasDb + Send + Sync + 'static> DayCategoryPeriodSummary<A> {
+    async fn date(&self) -> &str {
+        &self.date
+    }
+
+    async fn total_time(&self) -> i64 {
+        self.total_time
+    }
+
+    async fn categories(&self) -> &Vec<CategoryMemberPeriodSummary<A>> {
+        &self.categories
+    }
+}
+
 fn period_duration(period: &db::Period) -> Option<u64> {
     period
         .end_time
         .and_then(|end_time| end_time.checked_sub(period.start_time))
+}
+
+fn unix_to_sydney_date(unix: u64) -> String {
+    chrono::DateTime::from_timestamp(unix as i64, 0)
+        .unwrap_or(chrono::DateTime::UNIX_EPOCH)
+        .with_timezone(&Sydney)
+        .date_naive()
+        .format("%Y-%m-%d")
+        .to_string()
 }
 
 const DEFAULT_PERIOD_PAGE_SIZE: usize = 100;
@@ -1169,6 +1213,86 @@ impl<A: App + HasDb + Send + Sync> Location<A> {
             })
             .collect::<Vec<CategoryMemberPeriodSummary<A>>>();
         rows.sort_by_key(|b| std::cmp::Reverse(b.total_time));
+
+        Ok(rows)
+    }
+
+    async fn period_summary_by_day_by_category_by_member(
+        &self,
+        ctx: &Context<'_>,
+        start_time: i64,
+        end_time: i64,
+    ) -> Result<Vec<DayCategoryPeriodSummary<A>>> {
+        if start_time >= end_time {
+            return Err(anyhow!("start_time must be before end_time"));
+        }
+        let range_start = u64::try_from(start_time)
+            .map_err(|_| anyhow!("start_time must be a non-negative unix timestamp"))?;
+        let range_end = u64::try_from(end_time)
+            .map_err(|_| anyhow!("end_time must be a non-negative unix timestamp"))?;
+
+        let app = ctx.data_unchecked::<Arc<A>>();
+        let periods = app
+            .db()
+            .list_periods_for_location(
+                &self.rec.id,
+                false,
+                Some((range_start, range_end)),
+                db::ListPeriodsPage {
+                    after: None,
+                    before: None,
+                    limit: i32::MAX,
+                    descending: true,
+                },
+            )
+            .await
+            .map_err(|e| {
+                warn!("db error: {:?}", e);
+                e
+            })?;
+
+        let mut totals_by_day: HashMap<String, HashMap<String, HashMap<String, u64>>> =
+            HashMap::new();
+        for period in periods {
+            if let (Some(category_id), Some(duration)) =
+                (period.category_id.clone(), period_duration(&period))
+            {
+                let date = unix_to_sydney_date(period.start_time);
+                *totals_by_day
+                    .entry(date)
+                    .or_default()
+                    .entry(category_id)
+                    .or_default()
+                    .entry(period.person_id)
+                    .or_insert(0) += duration;
+            }
+        }
+
+        let mut rows = totals_by_day
+            .into_iter()
+            .map(|(date, totals_by_category)| {
+                let mut categories: Vec<CategoryMemberPeriodSummary<A>> = totals_by_category
+                    .into_iter()
+                    .map(|(category_id, totals_by_member)| {
+                        let mut members: Vec<MemberPeriodSummary<A>> = totals_by_member
+                            .into_iter()
+                            .map(|(person_id, total_time)| {
+                                MemberPeriodSummary::new(person_id, total_time as i64)
+                            })
+                            .collect();
+                        members.sort_by_key(|m| std::cmp::Reverse(m.total_time));
+                        let total_time = members.iter().map(|m| m.total_time).sum::<i64>();
+
+                        CategoryMemberPeriodSummary::new(category_id, total_time, members)
+                    })
+                    .collect();
+                categories.sort_by_key(|c| std::cmp::Reverse(c.total_time));
+                let total_time = categories.iter().map(|c| c.total_time).sum::<i64>();
+
+                DayCategoryPeriodSummary::new(date, total_time, categories)
+            })
+            .collect::<Vec<DayCategoryPeriodSummary<A>>>();
+        rows.sort_by(|a, b| b.date.cmp(&a.date));
 
         Ok(rows)
     }
