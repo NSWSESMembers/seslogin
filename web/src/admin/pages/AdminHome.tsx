@@ -147,7 +147,7 @@ export default function AdminHome() {
 
       <section className={CARD_CLASS}>
         <div className={SECTION_TITLE_CLASS}>Quick insights</div>
-        <ul className="m-0 grid gap-1.5 pl-[18px]">
+        <ul className="m-0 grid gap-1.5 pl-4.5">
           <li>
             Peak day this week: <strong>{peakDay.label}</strong> with{" "}
             <strong>{peakDay.periodCount}</strong> periods.
@@ -216,7 +216,7 @@ export default function AdminHome() {
                   className="grid gap-2 rounded-[10px] border border-[#e6e6e6] bg-white p-2.5"
                 >
                   <div className="grid grid-cols-[auto_1fr] items-center gap-2">
-                    <div className="inline-flex h-6 min-w-[34px] items-center justify-center rounded-full bg-[#f3ece8] text-xs font-bold text-[#aa4f1f]">
+                    <div className="inline-flex h-6 min-w-8.5 items-center justify-center rounded-full bg-[#f3ece8] text-xs font-bold text-[#aa4f1f]">
                       #{idx + 1}
                     </div>
                     <div className="min-w-0 leading-[1.3] font-semibold">
@@ -225,15 +225,15 @@ export default function AdminHome() {
                   </div>
                   <div className="h-2.5 overflow-hidden rounded-full bg-[#f0f0f0]">
                     <div
-                      className="h-full min-w-[2px] rounded-full bg-gradient-to-r from-[#c95522] to-[#e8945b]"
+                      className="h-full min-w-0.5 rounded-full bg-linear-to-r from-[#c95522] to-[#e8945b]"
                       style={{ width: barWidth }}
                     />
                   </div>
                   <div className="flex flex-wrap gap-1.5">
-                    <span className="inline-flex items-center rounded-full bg-[#f8eee9] px-[9px] py-[3px] text-xs font-semibold text-[#953f16]">
+                    <span className="inline-flex items-center rounded-full bg-[#f8eee9] px-2.25 py-0.75 text-xs font-semibold text-[#953f16]">
                       {entry.periodCount} periods
                     </span>
-                    <span className="inline-flex items-center rounded-full bg-[#f3f3f3] px-[9px] py-[3px] text-xs font-semibold text-[#545454]">
+                    <span className="inline-flex items-center rounded-full bg-[#f3f3f3] px-2.25 py-0.75 text-xs font-semibold text-[#545454]">
                       {formatSecondsCompact(entry.totalTime)}
                     </span>
                   </div>
