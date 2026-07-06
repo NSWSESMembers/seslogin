@@ -120,6 +120,16 @@ type MutationRoot {
 	deleteNitcGroup(id: ID!): Boolean!
 	scanRegister2(memberNumber: String!): RegisterResult!
 	scanSignOut(id: ID!, startTime: Int!, endTime: Int!, categoryId: ID!): Period!
+	"""
+	Public member self-service sign-out. Deliberately unguarded: for now the
+	person's own ID is the caller's "capability" (see the sign-out feature
+	plan) rather than a purpose-built token, so no AuthInfo is required. As
+	defense in depth, the period is re-checked against `person_id` here so a
+	guessed/leaked `period_id` can't be used to close any other member's
+	session. Like `scan_sign_out`, the member confirms/edits `start_time`
+	and `end_time` themselves, so both are accepted from the caller.
+	"""
+	memberSignOut(personId: ID!, periodId: ID!, categoryId: ID!, startTime: Int!, endTime: Int!): Period!
 	enqueueMemberSync(locationId: ID!): Boolean!
 	updateMyEmailConfig(dailyLocationIds: [String!]!): User!
 	"""
@@ -304,6 +314,19 @@ type PersonRef {
 	memberNumber: String!
 }
 
+type PersonSignoutSession {
+	firstName: String!
+	lastName: String!
+	"""
+	This member's periods that haven't been signed out of yet, most recent first.
+	"""
+	openPeriods: [Period!]!
+	"""
+	Enabled categories a member can pick from when signing out.
+	"""
+	categories: [Category!]!
+}
+
 type QueryRoot {
 	user(
 		"""
@@ -364,6 +387,20 @@ type QueryRoot {
 	ses_nonincident_types: [String!]!
 	ses_nonincident_tags: [SesNonIncidentTag!]!
 	ses_participant_types: [String!]!
+	"""
+	Public lookup backing the member self-service sign-out page. Deliberately
+	unguarded: for now the person's own ID is the page's "capability" rather
+	than a purpose-built token (see the sign-out feature plan for the
+	rationale and the follow-up to evolve this). Returns `None` for a missing,
+	invalid, or deleted person so bad links can't be distinguished from
+	deleted members from the outside.
+	"""
+	personSignoutSession(
+		"""
+		ID of the person requesting to view/sign out of their open sessions
+		"""
+		personId: ID!
+	): PersonSignoutSession
 }
 
 type RegisterResult {

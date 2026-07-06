@@ -1,0 +1,105 @@
+.signout-panel {
+  text-align: left;
+}
+
+.signout-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 14px;
+}
+
+.signout-list__item {
+  padding: 16px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid rgba(31, 61, 121, 0.12);
+}
+
+.signout-list__location {
+  font-family: TitilliumMapsTitle, Verdana, sans-serif;
+  font-size: 20px;
+  color: #1f3d79;
+}
+
+.signout-list__time {
+  margin: 4px 0 12px 0;
+  color: #40342d;
+}
+
+.signout-list__item .action-panel__button {
+  width: 100%;
+  min-width: unset;
+}
+
+.signout-list__categories {
+  margin-top: 8px;
+}
+
+.signout-list__prompt {
+  margin: 0 0 10px 0;
+  font-weight: bold;
+}
+
+.signout-list__category-options {
+  list-style: none;
+  margin: 0 0 12px 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.signout-list__category-option {
+  width: 100%;
+  min-width: unset;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-align: left;
+  background: #ffffff;
+  color: #1f3d79;
+  border: 1px solid rgba(31, 61, 121, 0.25);
+}
+
+.signout-list__category-icon {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+  flex: none;
+}
+
+.signout-list__confirm-times {
+  margin-top: 8px;
+  display: grid;
+  gap: 10px;
+}
+
+.signout-list__time-field {
+  display: grid;
+  gap: 4px;
+  font-weight: bold;
+  color: #40342d;
+}
+
+.signout-list__time-field .action-panel__input {
+  width: 100%;
+  margin: 0;
+  font-weight: normal;
+}
+
+@media (max-width: 480px) {
+  .action-panel {
+    padding: 20px 12px;
+  }
+
+  .action-panel__panel {
+    padding: 28px 20px;
+    border-radius: 22px;
+  }
+
+  .action-panel__button {
+    width: 100%;
+  }
+}
