@@ -21,6 +21,7 @@ pub struct SesPerson {
     pub last_name: Option<String>,
     #[serde(rename = "fullName")]
     pub full_name: Option<String>,
+    pub email: Option<String>,
     pub deleted: Option<bool>,
     pub headquarters: Option<SesPersonHeadquarters>,
 }

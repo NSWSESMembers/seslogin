@@ -279,6 +279,10 @@ type Person {
 	this can be null
 	"""
 	sesApiPersonId: String
+	"""
+	synced from the SES API; this can be null and is not user-editable
+	"""
+	email: String
 	deleted: Boolean!
 	createdAt: Int
 	updatedAt: Int

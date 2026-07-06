@@ -58,6 +58,7 @@ enum PlannedChange {
         registration_number: String,
         first_name: String,
         last_name: String,
+        email: Option<String>,
     },
     Update {
         person_id: String,
@@ -69,6 +70,8 @@ enum PlannedChange {
         current_first_name: String,
         last_name: String,
         current_last_name: String,
+        email: Option<String>,
+        current_email: Option<String>,
     },
     UndeleteAndUpdate {
         person_id: String,
@@ -80,6 +83,8 @@ enum PlannedChange {
         current_first_name: String,
         last_name: String,
         current_last_name: String,
+        email: Option<String>,
+        current_email: Option<String>,
     },
     SoftDelete {
         person_id: String,
@@ -146,10 +151,16 @@ fn print_planned_change(change: &PlannedChange, dry_run: bool) {
             registration_number,
             first_name,
             last_name,
+            email,
         } => {
             println!(
-                "[{mode}] create person location={} sesApiPersonId={} registrationNumber={} firstName='{}' lastName='{}'",
-                location_id, ses_api_person_id, registration_number, first_name, last_name
+                "[{mode}] create person location={} sesApiPersonId={} registrationNumber={} firstName='{}' lastName='{}' email='{}'",
+                location_id,
+                ses_api_person_id,
+                registration_number,
+                first_name,
+                last_name,
+                email.as_deref().unwrap_or("<null>")
             );
         }
         PlannedChange::Update {
@@ -162,9 +173,11 @@ fn print_planned_change(change: &PlannedChange, dry_run: bool) {
             current_first_name,
             last_name,
             current_last_name,
+            email,
+            current_email,
         } => {
             println!(
-                "[{mode}] update person id={} location={}=>{} sesApiPersonId={} registrationNumber={} firstName='{}'=>'{}' lastName='{}'=>'{}'",
+                "[{mode}] update person id={} location={}=>{} sesApiPersonId={} registrationNumber={} firstName='{}'=>'{}' lastName='{}'=>'{}' email='{}'=>'{}'",
                 person_id,
                 current_location_id,
                 location_id,
@@ -173,7 +186,9 @@ fn print_planned_change(change: &PlannedChange, dry_run: bool) {
                 current_first_name,
                 first_name,
                 current_last_name,
-                last_name
+                last_name,
+                current_email.as_deref().unwrap_or("<null>"),
+                email.as_deref().unwrap_or("<null>")
             );
         }
         PlannedChange::UndeleteAndUpdate {
@@ -186,9 +201,11 @@ fn print_planned_change(change: &PlannedChange, dry_run: bool) {
             current_first_name,
             last_name,
             current_last_name,
+            email,
+            current_email,
         } => {
             println!(
-                "[{mode}] undelete+update person id={} location={}=>{} sesApiPersonId={} registrationNumber={} firstName='{}'=>'{}' lastName='{}'=>'{}'",
+                "[{mode}] undelete+update person id={} location={}=>{} sesApiPersonId={} registrationNumber={} firstName='{}'=>'{}' lastName='{}'=>'{}' email='{}'=>'{}'",
                 person_id,
                 current_location_id,
                 location_id,
@@ -197,7 +214,9 @@ fn print_planned_change(change: &PlannedChange, dry_run: bool) {
                 current_first_name,
                 first_name,
                 current_last_name,
-                last_name
+                last_name,
+                current_email.as_deref().unwrap_or("<null>"),
+                email.as_deref().unwrap_or("<null>")
             );
         }
         PlannedChange::SoftDelete {
@@ -220,8 +239,18 @@ struct SesPersonWorkItem {
     registration_number: String,
     first_name: String,
     last_name: String,
+    email: Option<String>,
     is_deleted_in_ses: bool,
     unit_ses_id: Option<i64>,
+}
+
+fn normalize_email(person: &SesPerson) -> Option<String> {
+    person
+        .email
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
 }
 
 fn build_plans_for_location(
@@ -263,6 +292,7 @@ fn build_plans_for_location(
                 || existing.last_name != item.last_name
                 || existing.registration_number.as_deref()
                     != Some(item.registration_number.as_str())
+                || existing.email != item.email
                 || existing.location_id != location_id;
 
             if !needs_update {
@@ -281,6 +311,8 @@ fn build_plans_for_location(
                     current_first_name: existing.first_name.clone(),
                     last_name: item.last_name.clone(),
                     current_last_name: existing.last_name.clone(),
+                    email: item.email.clone(),
+                    current_email: existing.email.clone(),
                 });
             } else {
                 plans.push(PlannedChange::Update {
@@ -293,6 +325,8 @@ fn build_plans_for_location(
                     current_first_name: existing.first_name.clone(),
                     last_name: item.last_name.clone(),
                     current_last_name: existing.last_name.clone(),
+                    email: item.email.clone(),
+                    current_email: existing.email.clone(),
                 });
             }
             continue;
@@ -372,6 +406,7 @@ fn build_plans_for_location(
             registration_number: item.registration_number.clone(),
             first_name: item.first_name.clone(),
             last_name: item.last_name.clone(),
+            email: item.email.clone(),
         });
     }
 
@@ -416,6 +451,7 @@ async fn apply_changes<H: db::Handler>(
                 registration_number,
                 first_name,
                 last_name,
+                email,
             } => {
                 let person = db
                     .create_person(location_id, first_name, last_name, registration_number)
@@ -439,6 +475,14 @@ async fn apply_changes<H: db::Handler>(
                         person.id, ses_api_person_id
                     )
                 })?;
+                db.update_person(
+                    &person.id,
+                    db::PersonUpdateShape::Email {
+                        email: email.as_deref(),
+                    },
+                )
+                .await
+                .with_context(|| format!("Setting email for person id={}", person.id))?;
             }
             PlannedChange::Update {
                 person_id,
@@ -446,6 +490,7 @@ async fn apply_changes<H: db::Handler>(
                 registration_number,
                 first_name,
                 last_name,
+                email,
                 ..
             } => {
                 db.update_person(person_id, db::PersonUpdateShape::Location { location_id })
@@ -471,6 +516,14 @@ async fn apply_changes<H: db::Handler>(
                         person_id, registration_number
                     )
                 })?;
+                db.update_person(
+                    person_id,
+                    db::PersonUpdateShape::Email {
+                        email: email.as_deref(),
+                    },
+                )
+                .await
+                .with_context(|| format!("Updating email for person id={}", person_id))?;
             }
             PlannedChange::UndeleteAndUpdate {
                 person_id,
@@ -478,6 +531,7 @@ async fn apply_changes<H: db::Handler>(
                 registration_number,
                 first_name,
                 last_name,
+                email,
                 ..
             } => {
                 db.update_person(person_id, db::PersonUpdateShape::Undelete)
@@ -506,6 +560,14 @@ async fn apply_changes<H: db::Handler>(
                         person_id, registration_number
                     )
                 })?;
+                db.update_person(
+                    person_id,
+                    db::PersonUpdateShape::Email {
+                        email: email.as_deref(),
+                    },
+                )
+                .await
+                .with_context(|| format!("Updating email for person id={}", person_id))?;
             }
             PlannedChange::SoftDelete { person_id, .. } => {
                 db.update_person(person_id, db::PersonUpdateShape::Delete)
@@ -635,6 +697,7 @@ pub async fn run(config: SyncConfig) -> Result<RunStats> {
                 registration_number: registration_number.clone(),
                 first_name,
                 last_name,
+                email: normalize_email(ses_person),
                 is_deleted_in_ses,
                 unit_ses_id: ses_person.headquarters_id(),
             };

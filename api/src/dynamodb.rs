@@ -260,6 +260,7 @@ impl TryInto<Person> for Item {
             last_name: self.string_field("last_name")?.unwrap_or_default(),
             registration_number: self.string_field("registration_number")?,
             ses_api_person_id: self.string_field("ses_api_person_id")?,
+            email: self.string_field("email")?,
             deleted: self
                 .i64_field("deleted")?
                 .map(|i| i as u64)
@@ -1446,6 +1447,7 @@ impl db::Handler for Handler {
             last_name: last_name.to_string(),
             registration_number: Some(registration_number.to_string()),
             ses_api_person_id: None,
+            email: None,
             deleted: None,
             created_at: Some(now),
             updated_at: Some(now),
@@ -1524,6 +1526,33 @@ impl db::Handler for Handler {
                 } else {
                     request
                         .update_expression("SET updated_at = :updated_at REMOVE ses_api_person_id")
+                };
+
+                let resp = request
+                    .return_consumed_capacity(ReturnConsumedCapacity::Total)
+                    .send()
+                    .await
+                    .map_err(|e| map_update_err(e, format!("Person {}", id)))?;
+                record_capacity("update_person", resp.consumed_capacity(), CapKind::Write);
+            }
+            db::PersonUpdateShape::Email { email } => {
+                let mut request = self
+                    .client
+                    .update_item()
+                    .table_name(self.table_name("person"))
+                    .key("id", AttributeValue::S(id.to_string()))
+                    .condition_expression("attribute_exists(id)")
+                    .expression_attribute_values(
+                        ":updated_at",
+                        AttributeValue::N(crate::clock::now_sec().to_string()),
+                    );
+
+                request = if let Some(v) = email {
+                    request
+                        .update_expression("SET email = :email, updated_at = :updated_at")
+                        .expression_attribute_values(":email", AttributeValue::S(v.to_string()))
+                } else {
+                    request.update_expression("SET updated_at = :updated_at REMOVE email")
                 };
 
                 let resp = request
