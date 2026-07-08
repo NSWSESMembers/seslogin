@@ -195,7 +195,7 @@ export default function ScanController(props: {
       dispatchTransaction({
         type: "ERROR",
         uuid,
-        message: "Member ID must start with 400 and be at least 8 digits long",
+        message: "Member ID must be at least 8 digits long",
       });
       return false;
     }
