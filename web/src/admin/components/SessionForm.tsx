@@ -25,6 +25,8 @@ interface BasicSessionModeFieldsProps {
   onChange: (nextMode: SessionMode) => void;
   smallCategories: boolean;
   onSmallCategoriesChange: (next: boolean) => void;
+  easyTimeEntry: boolean;
+  onEasyTimeEntryChange: (next: boolean) => void;
   configJson: string;
 }
 
@@ -88,6 +90,23 @@ function getSmallCategoriesFromConfig(config: ConfigObject): boolean {
   return !!config.smallCategories;
 }
 
+function withEasyTimeEntry(
+  config: ConfigObject,
+  enabled: boolean,
+): ConfigObject {
+  const next = { ...config };
+  if (enabled) {
+    next.easyTimeEntry = true;
+  } else {
+    delete next.easyTimeEntry;
+  }
+  return next;
+}
+
+function getEasyTimeEntryFromConfig(config: ConfigObject): boolean {
+  return !!config.easyTimeEntry;
+}
+
 function initializeConfigState(initialConfig: string): InitialConfigState {
   const parsed = parseConfigObject(initialConfig);
   const sessionMode = getSessionModeFromConfig(parsed);
@@ -149,6 +168,8 @@ function BasicSessionModeFields({
   onChange,
   smallCategories,
   onSmallCategoriesChange,
+  easyTimeEntry,
+  onEasyTimeEntryChange,
   configJson,
 }: BasicSessionModeFieldsProps) {
   return (
@@ -191,19 +212,35 @@ function BasicSessionModeFields({
       </FormField>
       {sessionMode === "scan" && (
         <FormField label={<span>Options</span>}>
-          <label className="grid grid-cols-[auto_auto_1fr] items-start gap-x-2">
-            <input
-              type="checkbox"
-              checked={smallCategories}
-              onChange={(e) => onSmallCategoriesChange(e.target.checked)}
-              className="mt-1"
-            />
-            <span className="font-semibold">Small categories</span>
-            <span className="text-neutral-600">
-              use smaller category buttons to fit more on screen — useful on
-              smaller or lower-resolution displays
-            </span>
-          </label>
+          <div className="grid gap-2">
+            <label className="grid grid-cols-[auto_auto_1fr] items-start gap-x-2">
+              <input
+                type="checkbox"
+                checked={smallCategories}
+                onChange={(e) => onSmallCategoriesChange(e.target.checked)}
+                className="mt-1"
+              />
+              <span className="font-semibold">Small categories</span>
+              <span className="text-neutral-600">
+                use smaller category buttons to fit more on screen — useful on
+                smaller or lower-resolution displays
+              </span>
+            </label>
+            <label className="grid grid-cols-[auto_auto_1fr] items-start gap-x-2">
+              <input
+                type="checkbox"
+                checked={easyTimeEntry}
+                onChange={(e) => onEasyTimeEntryChange(e.target.checked)}
+                className="mt-1"
+              />
+              <span className="font-semibold">Easy time entry</span>
+              <span className="text-neutral-600">
+                use a touch-friendly 12-hour keypad with an explicit confirm
+                step and quick Yesterday/Today buttons on the sign-out Adjust
+                screen, instead of the default 24-hour numeric keypad
+              </span>
+            </label>
+          </div>
         </FormField>
       )}
     </>
@@ -291,6 +328,7 @@ export default function SessionForm({
   const parsedConfig = parseConfigObject(configJson);
   const sessionMode = getSessionModeFromConfig(parsedConfig);
   const smallCategories = getSmallCategoriesFromConfig(parsedConfig);
+  const easyTimeEntry = getEasyTimeEntryFromConfig(parsedConfig);
 
   function setEditorMode(nextEditorMode: ConfigEditorMode) {
     if (configEditorMode === nextEditorMode) {
@@ -306,6 +344,14 @@ export default function SessionForm({
 
   function handleSmallCategoriesChange(enabled: boolean) {
     const nextConfig = withSmallCategories(
+      parseConfigObject(configJson),
+      enabled,
+    );
+    setConfigJson(JSON.stringify(nextConfig, null, 2));
+  }
+
+  function handleEasyTimeEntryChange(enabled: boolean) {
+    const nextConfig = withEasyTimeEntry(
       parseConfigObject(configJson),
       enabled,
     );
@@ -331,6 +377,8 @@ export default function SessionForm({
             onChange={handleBasicSessionModeChange}
             smallCategories={smallCategories}
             onSmallCategoriesChange={handleSmallCategoriesChange}
+            easyTimeEntry={easyTimeEntry}
+            onEasyTimeEntryChange={handleEasyTimeEntryChange}
             configJson={configJson}
           />
         )}
