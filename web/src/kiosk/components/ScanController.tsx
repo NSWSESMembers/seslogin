@@ -189,13 +189,13 @@ export default function ScanController(props: {
     throw new Error("Unknown scan state");
   }
 
-  function handleValidateMemberId(id: { memberId: string }): boolean {
-    const { memberId } = id;
+  function handleValidateMemberId(memberId: string): boolean {
     if (!isValidMemberIdText(memberId)) {
       audioError.play();
       dispatchTransaction({
-        type: "ERROR",
+        type: "ABORT",
         message: "Member ID must be at least 8 digits long",
+        uuid: undefined,
       });
       return false;
     }
@@ -203,8 +203,8 @@ export default function ScanController(props: {
     return true;
   }
 
-  async function handleMemberIdEntered(ids: MemberIdWithUuid) {
-    const { uuid, memberId } = ids;
+  async function handleMemberIdEntered(memberId: string) {
+    const uuid = crypto.randomUUID();
 
     dispatchTransaction({ type: "LOAD_PERSON", uuid, memberId });
 

@@ -23,7 +23,13 @@ export type PersonResolvedAction = {
 
 export type ErrorAction = {
   type: "ERROR";
-  uuid?: string;
+  uuid: string;
+  message: string;
+};
+
+export type AbortAction = {
+  type: "ABORT";
+  uuid: undefined;
   message: string;
 };
 
@@ -61,6 +67,7 @@ export type TransactionAction =
   | LoadPersonAction
   | PersonResolvedAction
   | ErrorAction
+  | AbortAction
   | SetCategoryAction
   | ClearCategoryAction
   | AdjustPeriodAction
@@ -100,8 +107,15 @@ export type TransactionLoading = MemberIdWithUuid & {
   status: "LOADING";
 };
 
+export type TransactionAborted = {
+  uuid: undefined;
+  status: "ERROR";
+  finalizedTime: Date;
+  message: string;
+};
+
 export type TransactionError = {
-  uuid?: string;
+  uuid: string;
   status: "ERROR";
   finalizedTime: Date;
   message: string;
@@ -111,7 +125,8 @@ export type Transaction =
   | TransactionSignedIn
   | TransactionSignedOut
   | TransactionLoading
-  | TransactionError;
+  | TransactionError
+  | TransactionAborted;
 
 export type TransactionState = {
   transactions: Transaction[];
@@ -180,18 +195,12 @@ export function reducer(
         finalizedTime: new Date(),
         message: action.message,
       };
-      const idx =
-        action.uuid === undefined
-          ? -1
-          : state.transactions.findIndex((t) => t.uuid === action.uuid);
+
+      const idx = state.transactions.findIndex((t) => t.uuid === action.uuid);
       if (idx === -1) {
-        // No existing transaction to attach the error to (e.g. an error with
-        // no uuid); surface it as a new transaction.
-        return {
-          ...state,
-          transactions: [errorTransaction, ...state.transactions],
-        };
+        throw Error("Could not find transaction for error uuid " + action.uuid);
       }
+
       return {
         ...state,
         transactions: [
@@ -199,6 +208,18 @@ export function reducer(
           errorTransaction,
           ...state.transactions.slice(idx + 1),
         ],
+      };
+    }
+    case "ABORT": {
+      const transactionAborted: TransactionAborted = {
+        uuid: action.uuid,
+        status: "ERROR",
+        finalizedTime: new Date(),
+        message: action.message,
+      };
+      return {
+        ...state,
+        transactions: [transactionAborted, ...state.transactions],
       };
     }
     case "SET_CATEGORY": {
