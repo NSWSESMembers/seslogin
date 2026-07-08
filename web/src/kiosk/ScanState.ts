@@ -1,7 +1,10 @@
-export type LoadPersonAction = {
-  type: "LOAD_PERSON";
-  uuid: string;
+export type MemberIdWithUuid = {
   memberId: string;
+  uuid: string;
+};
+
+export type LoadPersonAction = MemberIdWithUuid & {
+  type: "LOAD_PERSON";
 };
 
 export type PersonResolvedAction = {
@@ -20,7 +23,7 @@ export type PersonResolvedAction = {
 
 export type ErrorAction = {
   type: "ERROR";
-  uuid: string;
+  uuid?: string;
   message: string;
 };
 
@@ -93,14 +96,12 @@ export type TransactionSignedOut = {
   adjusted: boolean;
 };
 
-export type TransactionLoading = {
-  uuid: string;
+export type TransactionLoading = MemberIdWithUuid & {
   status: "LOADING";
-  memberId: string;
 };
 
 export type TransactionError = {
-  uuid: string;
+  uuid?: string;
   status: "ERROR";
   finalizedTime: Date;
   message: string;
@@ -173,21 +174,29 @@ export function reducer(
       };
     }
     case "ERROR": {
-      const idx = state.transactions.findIndex((t) => t.uuid === action.uuid);
-      if (idx === -1) {
-        throw Error("Could not find transaction for error uuid " + action.uuid);
-      }
-      const updatedTransaction: TransactionError = {
+      const errorTransaction: TransactionError = {
         uuid: action.uuid,
         status: "ERROR",
         finalizedTime: new Date(),
         message: action.message,
       };
+      const idx =
+        action.uuid === undefined
+          ? -1
+          : state.transactions.findIndex((t) => t.uuid === action.uuid);
+      if (idx === -1) {
+        // No existing transaction to attach the error to (e.g. an error with
+        // no uuid); surface it as a new transaction.
+        return {
+          ...state,
+          transactions: [errorTransaction, ...state.transactions],
+        };
+      }
       return {
         ...state,
         transactions: [
           ...state.transactions.slice(0, idx),
-          updatedTransaction,
+          errorTransaction,
           ...state.transactions.slice(idx + 1),
         ],
       };

@@ -151,7 +151,7 @@ export default function SettingsPasskeys() {
             {passkeys.map((pk, idx) => (
               <tr
                 key={pk.id}
-                className={idx % 2 === 0 ? "bg-neutral-50" : undefined}
+                className={idx % 2 === 0 ? "bg-surface-raised" : undefined}
               >
                 <Td>{pk.name}</Td>
                 <Td>{formatDate(pk.createdAt)}</Td>

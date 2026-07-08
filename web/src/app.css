@@ -1,10 +1,24 @@
 @import "tailwindcss";
 
+/* Dark mode is driven by the OS setting (`prefers-color-scheme`) by default, and
+ * can be pinned explicitly within any `[data-theme="dark"]` / `[data-theme="light"]`
+ * subtree. The homepage and admin never set `data-theme`, so they follow the OS.
+ * The kiosk always sets an explicit `data-theme` (see KioskMain): it ignores the
+ * OS setting and only goes dark when its session `config.dark` flag is truthy. */
+@custom-variant dark {
+  @media (prefers-color-scheme: dark) {
+    @slot;
+  }
+  &:where([data-theme="dark"], [data-theme="dark"] *) {
+    @slot;
+  }
+}
+
 @theme {
   --font-sans: "TitilliumMaps", Verdana, sans-serif;
   --font-title: "TitilliumMapsTitle", Verdana, sans-serif;
 
-  /* brand/chrome colors (unchanged look) */
+  /* brand/chrome colors (unchanged look in both themes) */
   --color-accent: #fb6c0d;
   --color-accent-light: #efa670;
   --color-accent-dark: #c04f00;
@@ -16,6 +30,64 @@
   --color-submenu-active: #bf5a3b;
   --color-submenu-hover: #c66c51;
   --color-navy: #1f3d79; /* headings / segmented control */
+
+  /* Semantic surface/text/line tokens. Light values match the previous
+   * hard-coded colors, so light mode is unchanged; the dark values below flip
+   * automatically via `prefers-color-scheme` or a `[data-theme="dark"]` scope. */
+  --color-surface: #ffffff; /* base page / card background (was white) */
+  --color-surface-raised: #f5f5f5; /* panels, zebra rows (was neutral-50/100) */
+  --color-surface-sunken: #e5e5e5; /* wells, footer (was neutral-200 / #ddd) */
+  --color-ink: #262626; /* primary text (was neutral-800 / black) */
+  --color-ink-strong: #171717; /* headings (was neutral-900) */
+  --color-ink-muted: #5c5c5c; /* secondary text (was neutral-500/600, #666) */
+  --color-line: #d4d4d4; /* default borders (was neutral-300) */
+  --color-line-strong: #a3a3a3; /* emphasised borders (was neutral-400) */
+  --color-line-faint: #e8e8e8; /* faint dividers (was neutral-100/200) */
+}
+
+/* Dark palette. Duplicated across the OS-preference media query and the
+ * `[data-theme="dark"]` override so both entry points resolve the same values. */
+@layer base {
+  :root {
+    color-scheme: light;
+  }
+
+  /* Follow the OS only when the theme hasn't been pinned via `data-theme`. */
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme]) {
+      color-scheme: dark;
+      --color-navy: #93a9d6;
+      --color-surface: #17181a;
+      --color-surface-raised: #202225;
+      --color-surface-sunken: #2a2c30;
+      --color-ink: #e6e6e4;
+      --color-ink-strong: #f6f6f5;
+      --color-ink-muted: #9b9b9b;
+      --color-line: #34363b;
+      --color-line-strong: #494c52;
+      --color-line-faint: #2a2c31;
+    }
+  }
+
+  /* Explicitly pinned light: overrides the OS preference (used by the kiosk when
+   * `config.dark` is not set). Token values fall back to the light defaults above. */
+  [data-theme="light"] {
+    color-scheme: light;
+  }
+
+  [data-theme="dark"] {
+    color-scheme: dark;
+    --color-navy: #93a9d6;
+    --color-surface: #17181a;
+    --color-surface-raised: #202225;
+    --color-surface-sunken: #2a2c30;
+    --color-ink: #e6e6e4;
+    --color-ink-strong: #f6f6f5;
+    --color-ink-muted: #9b9b9b;
+    --color-line: #34363b;
+    --color-line-strong: #494c52;
+    --color-line-faint: #2a2c31;
+  }
 }
 
 @font-face {
@@ -37,6 +109,8 @@
   body {
     text-align: center;
     font-size: 16px;
+    background-color: var(--color-surface);
+    color: var(--color-ink);
   }
   h1,
   h2,

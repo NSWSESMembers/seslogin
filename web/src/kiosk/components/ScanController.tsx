@@ -1,5 +1,5 @@
 import { graphql, useMutation } from "react-relay";
-import type { TransactionSignedOut } from "../ScanState";
+import type { MemberIdWithUuid, TransactionSignedOut } from "../ScanState";
 import {
   useCallback,
   useEffect,
@@ -23,6 +23,7 @@ import type {
 import type { ScanControllerSignOutMutation } from "./__generated__/ScanControllerSignOutMutation.graphql";
 import { useKioskSession } from "./useKioskSession";
 import type { ScreenPosition } from "../../styles";
+import { isValidMemberIdText } from "../../lib/memberId";
 
 const PURGE_EXPIRED_TRANSACTIONS_INTERVAL_MS = 1_000;
 const SCAN_TRANSACTION_LOG_LEASE_ID = "scan:transaction-log";
@@ -123,7 +124,8 @@ export default function ScanController(props: {
       }
     `);
 
-  async function completeSubmit(memberId: string, uuid: string) {
+  async function completeSubmit(ids: MemberIdWithUuid) {
+    const { memberId, uuid } = ids;
     focusMainInputRef.current?.();
 
     let res: ScanControllerRegister2Mutation$data;
@@ -186,14 +188,28 @@ export default function ScanController(props: {
     throw new Error("Unknown scan state");
   }
 
-  async function handleMemberIdEntered(memberId: string) {
-    const uuid = crypto.randomUUID();
+  function handleValidateMemberId(id: { memberId: string }): boolean {
+    const { memberId } = id;
+    if (!isValidMemberIdText(memberId)) {
+      audioError.play();
+      dispatchTransaction({
+        type: "ERROR",
+        message: "Member ID must be at least 8 digits long",
+      });
+      return false;
+    }
+
+    return true;
+  }
+
+  async function handleMemberIdEntered(ids: MemberIdWithUuid) {
+    const { uuid, memberId } = ids;
 
     dispatchTransaction({ type: "LOAD_PERSON", uuid, memberId });
 
     // purposefully not awaited - we want the form submission to be considered complete
     // so we can re-render
-    completeSubmit(memberId, uuid);
+    completeSubmit({ memberId, uuid });
   }
 
   // most recent transaction
@@ -303,6 +319,7 @@ export default function ScanController(props: {
         screenPosition={mainPos}
         transactionState={transactionState}
         submitDisabled={!memberIdEnabled}
+        validateMemberId={handleValidateMemberId}
         onSubmit={handleMemberIdEntered}
         onFocusInputReady={(focusInput) => {
           focusMainInputRef.current = focusInput;

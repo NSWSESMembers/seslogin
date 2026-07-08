@@ -1,5 +1,6 @@
 import type {
   TransactionState,
+  MemberIdWithUuid,
   Transaction as TransactionType,
   TransactionLoading as TransactionLoadingType,
   TransactionSignedIn as TransactionSignedInType,
@@ -20,7 +21,7 @@ const SCAN_INPUT_TIMEOUT_MS = 10_000;
 const transactionBase =
   "inline-block w-[800px] max-w-full rounded-md p-2.5 text-[1.2em] transition-opacity duration-1000";
 const loadingSpinnerBase =
-  "-mt-1.5 ml-2 inline-block size-[18px] rounded-full border-2 border-neutral-300 border-t-menu align-middle opacity-0";
+  "-mt-1.5 ml-2 inline-block size-[18px] rounded-full border-2 border-line border-t-menu align-middle opacity-0";
 
 function TransactionList(props: { transactionState: TransactionState }) {
   const [now, setNow] = useState(() => Date.now());
@@ -182,10 +183,17 @@ export default function ScanScreenMain(props: {
   screenPosition: ScreenPosition;
   submitDisabled: boolean;
   transactionState: TransactionState;
-  onSubmit: (memberId: string) => Promise<void>;
+  onSubmit: (ids: MemberIdWithUuid) => Promise<void>;
+  validateMemberId: (id: { memberId: string }) => boolean;
   onFocusInputReady?: (focusInput: () => void) => void;
 }) {
-  const { onFocusInputReady, onSubmit, screenPosition, submitDisabled } = props;
+  const {
+    onFocusInputReady,
+    onSubmit,
+    screenPosition,
+    submitDisabled,
+    validateMemberId,
+  } = props;
   const inputRef = useRef<HTMLInputElement>(null);
   const refocusTimeoutIdRef = useRef<number | null>(null);
   const clearTimeoutIdRef = useRef<number | null>(null);
@@ -240,7 +248,15 @@ export default function ScanScreenMain(props: {
       focusInput();
       return;
     }
-    await onSubmit(memberId);
+
+    const ids = { memberId, uuid: crypto.randomUUID() };
+    const isValidMemberId = validateMemberId({ memberId });
+
+    if (!isValidMemberId) {
+      focusInput();
+      return;
+    }
+    await onSubmit(ids);
   }
 
   return (

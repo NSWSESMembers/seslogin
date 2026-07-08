@@ -14,8 +14,8 @@ type ThProps = ThHTMLAttributes<HTMLTableCellElement> & {
 
 export function Th({ section, className, ...props }: ThProps) {
   const base = section
-    ? "border-b border-neutral-300 px-2 pt-5 pb-1.5 font-title text-navy"
-    : "border-b-2 border-neutral-300 px-2 py-1.5 text-sm font-semibold text-neutral-900";
+    ? "border-b border-line px-2 pt-5 pb-1.5 font-title text-navy"
+    : "border-b-2 border-line px-2 py-1.5 text-sm font-semibold text-ink-strong";
   return (
     <th className={[base, className].filter(Boolean).join(" ")} {...props} />
   );
@@ -29,9 +29,9 @@ type TdProps = TdHTMLAttributes<HTMLTableCellElement> & {
 
 export function Td({ nowrap, center, options, className, ...props }: TdProps) {
   const classes = options
-    ? "w-px whitespace-nowrap border-b border-neutral-100 px-1 py-1 text-right"
+    ? "w-px whitespace-nowrap border-b border-line-faint px-1 py-1 text-right"
     : [
-        "border-b border-neutral-100 px-2 py-1.5",
+        "border-b border-line-faint px-2 py-1.5",
         nowrap && "whitespace-nowrap",
         center && "text-center align-middle",
       ]
