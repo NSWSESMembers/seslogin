@@ -23,7 +23,7 @@ jobs:
   pagination_check:
     uses: ./.github/workflows/_check-pagination.yml
 
-  deploy_lambdas:
+  deploy_api:
     needs: [api_check, web_check, pagination_check]
     runs-on: ubuntu-latest
     steps:
@@ -42,9 +42,9 @@ jobs:
       - name: Install cargo-lambda
         run: pip install cargo-lambda
 
-      - name: Build all lambdas
+      - name: Build API lambda
         working-directory: ./api
-        run: cargo lambda build --release --bin lambda --bin sync-members-lambda --bin dispatcher-lambda --bin checker-lambda --bin nitc-export-lambda --bin healthcheck-lambda --bin activity-summary-lambda --bin sync-locations-lambda
+        run: cargo lambda build --release --bin lambda
 
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
@@ -58,19 +58,8 @@ jobs:
         working-directory: ./api
         run: cargo lambda deploy --binary-name lambda seslogin-test-api
 
-      - name: Deploy worker lambdas
-        working-directory: ./api
-        run: |
-          cargo lambda deploy --binary-name sync-members-lambda     seslogin-sync-members
-          cargo lambda deploy --binary-name dispatcher-lambda       seslogin-dispatcher
-          cargo lambda deploy --binary-name checker-lambda          seslogin-checker
-          cargo lambda deploy --binary-name nitc-export-lambda      seslogin-nitc-export
-          cargo lambda deploy --binary-name healthcheck-lambda      seslogin-healthcheck
-          cargo lambda deploy --binary-name activity-summary-lambda seslogin-activity-summary
-          cargo lambda deploy --binary-name sync-locations-lambda   seslogin-sync-locations
-
   deploy_web:
-    needs: deploy_lambdas
+    needs: deploy_api
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5

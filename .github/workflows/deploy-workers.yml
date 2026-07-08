@@ -1,0 +1,63 @@
+name: Deploy (workers)
+
+on:
+  push:
+    branches:
+      - workers
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: ap-southeast-2
+  DEPLOY_ROLE_ARN: arn:aws:iam::641079927221:role/seslogin-github-deploy
+
+jobs:
+  api_check:
+    uses: ./.github/workflows/_check-api.yml
+
+  pagination_check:
+    uses: ./.github/workflows/_check-pagination.yml
+
+  deploy_workers:
+    needs: [api_check, pagination_check]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: api
+
+      - name: Install cargo-lambda
+        run: pip install cargo-lambda
+
+      - name: Build worker lambdas
+        working-directory: ./api
+        run: cargo lambda build --release --bin sync-members-lambda --bin dispatcher-lambda --bin checker-lambda --bin nitc-export-lambda --bin healthcheck-lambda --bin activity-summary-lambda --bin sync-locations-lambda
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # Functions exist (Terraform-managed with their execution roles); update
+      # code only — no --role (avoids needing iam:PassRole).
+      - name: Deploy worker lambdas
+        working-directory: ./api
+        run: |
+          cargo lambda deploy --binary-name sync-members-lambda     seslogin-sync-members
+          cargo lambda deploy --binary-name dispatcher-lambda       seslogin-dispatcher
+          cargo lambda deploy --binary-name checker-lambda          seslogin-checker
+          cargo lambda deploy --binary-name nitc-export-lambda      seslogin-nitc-export
+          cargo lambda deploy --binary-name healthcheck-lambda      seslogin-healthcheck
+          cargo lambda deploy --binary-name activity-summary-lambda seslogin-activity-summary
+          cargo lambda deploy --binary-name sync-locations-lambda   seslogin-sync-locations
