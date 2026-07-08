@@ -97,7 +97,7 @@ export default function PeriodsLineChart({
   const active = activeIndex != null ? plotted[activeIndex] : null;
 
   return (
-    <div className="relative aspect-[4/3] min-h-[170px] min-[781px]:aspect-[3/1]">
+    <div className="relative aspect-[3/2] min-h-[140px] min-[781px]:aspect-[7/2]">
       <svg
         ref={svgRef}
         viewBox={`0 0 ${VIEW_WIDTH} ${VIEW_HEIGHT}`}
@@ -134,12 +134,14 @@ export default function PeriodsLineChart({
           );
         })}
 
-        {plotted.map((p) => (
+        {plotted.map((p, i) => (
           <text
             key={p.key}
             x={p.x}
             y={VIEW_HEIGHT - 8}
-            textAnchor="middle"
+            textAnchor={
+              i === 0 ? "start" : i === plotted.length - 1 ? "end" : "middle"
+            }
             fill={AXIS_TEXT_COLOR}
             fontSize={11}
           >
