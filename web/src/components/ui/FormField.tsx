@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 
 export function FieldList({ children }: { children: ReactNode }) {
   return (
-    <dl className="mx-auto my-8 grid w-full max-w-[700px] grid-cols-1 border-y border-neutral-300 py-2.5 text-left md:grid-cols-[45%_1fr] md:text-right">
+    <dl className="mx-auto my-8 grid w-full max-w-[700px] grid-cols-1 border-y border-line py-2.5 text-left md:grid-cols-[45%_1fr] md:text-right">
       {children}
     </dl>
   );

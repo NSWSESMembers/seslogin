@@ -224,17 +224,17 @@ export default function PeriodsLineChart({
         <div
           id={tooltipId}
           role="tooltip"
-          className="pointer-events-none absolute -translate-x-1/2 -translate-y-[calc(100%+12px)] rounded-md border border-[#d4d4d4] bg-white px-2.5 py-2 text-sm whitespace-nowrap shadow-lg"
+          className="pointer-events-none absolute -translate-x-1/2 -translate-y-[calc(100%+12px)] rounded-md border border-line bg-surface px-2.5 py-2 text-sm whitespace-nowrap shadow-lg"
           style={{
             left: `${(active.x / VIEW_WIDTH) * 100}%`,
             top: `${(active.y / VIEW_HEIGHT) * 100}%`,
           }}
         >
-          <div className="mb-0.5 font-bold text-[#2f2f2f]">{active.label}</div>
-          <div className="text-[#2f2f2f]">
+          <div className="mb-0.5 font-bold text-ink">{active.label}</div>
+          <div className="text-ink">
             <strong>{active.periodCount}</strong> periods
           </div>
-          <div className="text-xs text-[#767676]">
+          <div className="text-xs text-ink-muted">
             {formatHours(active.totalSeconds)}
           </div>
         </div>

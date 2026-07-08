@@ -90,7 +90,7 @@ export default function ActivityLastSeen() {
             return (
               <tr
                 key={member.id}
-                className={idx % 2 === 0 ? "bg-neutral-50" : undefined}
+                className={idx % 2 === 0 ? "bg-surface-raised" : undefined}
               >
                 <Td>
                   {member.firstName} {member.lastName}
