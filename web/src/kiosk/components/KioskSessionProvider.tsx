@@ -36,9 +36,11 @@ function deepEqualSession(
  */
 export function KioskSessionProvider({
   setToken,
+  persistRefreshedToken = true,
   children,
 }: {
   setToken: (token: string) => void;
+  persistRefreshedToken?: boolean;
   children: ReactNode;
 }) {
   const environment = useRelayEnvironment();
@@ -62,8 +64,14 @@ export function KioskSessionProvider({
       environment,
       setToken,
       setSession: setSessionAndTrackInitialFetch,
+      persistRefreshedToken,
     });
-  }, [environment, setSessionAndTrackInitialFetch, setToken]);
+  }, [
+    environment,
+    setSessionAndTrackInitialFetch,
+    setToken,
+    persistRefreshedToken,
+  ]);
 
   const body = isInitialFetchComplete ? children : <LoadingIndicator />;
 

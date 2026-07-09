@@ -29,7 +29,7 @@ export function createAdminGraphQLEnvironment(
       throw new Error("Failed to get auth token", { cause: err });
     }
 
-    return await fetchGraphQL(authToken, request, variables, () => {
+    return await fetchGraphQL(`Bearer ${authToken}`, request, variables, () => {
       console.log("Unauthorized in admin section");
       onUnauthorized();
       throw new Error("Unauthorized from server");
@@ -59,11 +59,50 @@ export function createKioskGraphQLEnvironment(
       throw new Error("Failed to get auth token");
     }
 
-    return await fetchGraphQL(authToken, request, variables, () => {
+    return await fetchGraphQL(`Bearer ${authToken}`, request, variables, () => {
       console.log("Unauthorized in kiosk section");
       onUnauthorized();
       throw new Error("Unauthorized from server");
     });
+  };
+
+  const environment = new Environment({
+    network: Network.create(_fetchGraphQL),
+    store: new Store(new RecordSource(), { gcReleaseBufferSize: 0 }),
+  });
+
+  return environment;
+}
+
+/**
+ * Creates a Relay environment for a kiosk enrolled via public key. Each request is
+ * signed: `getAuthHeader` is called with the serialized body and returns a full
+ * `SLKey <fp>.<ts>.<sig>` Authorization header. A 401 (session disabled / key expired)
+ * triggers onUnauthorized, which reverts the kiosk to the enrollment screen.
+ */
+export function createKioskKeyGraphQLEnvironment(
+  getAuthHeader: (body: string) => Promise<string>,
+  onUnauthorized: () => void,
+): Environment {
+  const _fetchGraphQL: FetchFunction = async (request, variables) => {
+    return await fetchGraphQL(
+      async (body) => {
+        try {
+          return await getAuthHeader(body);
+        } catch (err) {
+          console.error("Failed to sign kiosk request:", err);
+          onUnauthorized();
+          throw new Error("Failed to sign kiosk request", { cause: err });
+        }
+      },
+      request,
+      variables,
+      () => {
+        console.log("Unauthorized in kiosk key section");
+        onUnauthorized();
+        throw new Error("Unauthorized from server");
+      },
+    );
   };
 
   const environment = new Environment({
