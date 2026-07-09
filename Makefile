@@ -18,6 +18,10 @@ format:
 	(cd web && npm run format)
 	(cd infra && terraform fmt -recursive)
 
+test:
+	(cd api && cargo test)
+	(cd web && npm run test:unit)
+
 check:	pre-commit-checks
 
 pre-commit-checks:
