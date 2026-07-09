@@ -16,7 +16,11 @@ const kioskSetupFormMutation = graphql`
   }
 `;
 
-export default function KioskSetupForm() {
+export default function KioskSetupForm({
+  onEnrollWithQr,
+}: {
+  onEnrollWithQr: () => void;
+}) {
   const { setToken } = useKioskEnvironment();
   const [commitMutation, isMutationInFlight] =
     useMutation<KioskSetupFormMutation>(kioskSetupFormMutation);
@@ -69,6 +73,14 @@ export default function KioskSetupForm() {
             {isMutationInFlight ? "Submitting..." : "Continue"}
           </Button>
         </form>
+
+        <button
+          type="button"
+          onClick={onEnrollWithQr}
+          className="mt-4 text-sm underline opacity-70 hover:opacity-100"
+        >
+          Enroll with QR code instead
+        </button>
       </PanelBox>
     </Panel>
   );
