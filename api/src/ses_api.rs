@@ -65,6 +65,52 @@ pub struct SesPersonHeadquarters {
     pub id: Option<i64>,
 }
 
+// ── SES intranet contact-directory search (member email lookup) ─────────────
+
+/// Response from the SES intranet contact-directory search endpoint (Azure Cognitive Search).
+#[derive(Debug, Clone, Deserialize)]
+pub struct SesSearchResponse {
+    #[serde(rename = "@odata.count")]
+    pub count: Option<i64>,
+    #[serde(default)]
+    pub value: Vec<SesSearchResult>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct SesSearchResult {
+    #[serde(rename = "Id")]
+    pub id: Option<String>,
+    #[serde(rename = "Type")]
+    pub result_type: Option<String>,
+    #[serde(rename = "ContactDetails", default)]
+    pub contact_details: Vec<SesContactDetail>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct SesContactDetail {
+    #[serde(rename = "Type")]
+    pub detail_type: Option<String>,
+    #[serde(rename = "Detail")]
+    pub detail: Option<String>,
+}
+
+impl SesSearchResult {
+    /// Preferred email: "Agency Email Address" first, falling back to
+    /// "Volunteers Primary E-Mail". Blank/whitespace-only values are skipped.
+    pub fn email(&self) -> Option<&str> {
+        let find_by_type = |wanted: &str| {
+            self.contact_details
+                .iter()
+                .find(|c| c.detail_type.as_deref() == Some(wanted))
+                .and_then(|c| c.detail.as_deref())
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+        };
+
+        find_by_type("Agency Email Address").or_else(|| find_by_type("Volunteers Primary E-Mail"))
+    }
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct SesHeadquarters {
     pub id: Option<i64>,
@@ -917,5 +963,215 @@ impl SesClient {
             fetched_at: Instant::now(),
         });
         Ok(value)
+    }
+}
+
+/// Client for the SES intranet contact-directory search API. This is a separate API surface
+/// from the main SES API (`SesClient`): different host/path, and authenticated with an
+/// `Ocp-Apim-Subscription-Key` header instead of `x-api-key`, so it gets its own client/credentials.
+pub struct SesSearchClient {
+    client: Client,
+    base_url: String,
+    api_key: String,
+    max_retries: usize,
+}
+
+impl SesSearchClient {
+    pub fn new(base_url: String, api_key: String, max_retries: usize) -> Result<Self> {
+        let client = Client::builder()
+            .timeout(Duration::from_secs(10))
+            .build()
+            .context("Building SES search HTTP client")?;
+
+        Ok(Self {
+            client,
+            base_url,
+            api_key,
+            max_retries,
+        })
+    }
+
+    /// Looks up all directory entries assigned to the given unit name (e.g. "Parramatta Unit"),
+    /// filtered down to `Type == "Person"` results.
+    pub async fn fetch_unit_members(&self, unit_name: &str) -> Result<Vec<SesSearchResult>> {
+        let search_expr = format!("(Assignments/EntityName:{})", unit_name);
+
+        for attempt in 0..=self.max_retries {
+            let response = self
+                .client
+                .get(&self.base_url)
+                .header("Ocp-Apim-Subscription-Key", &self.api_key)
+                .query(&[
+                    ("search", search_expr.as_str()),
+                    ("queryType", "full"),
+                    ("searchMode", "all"),
+                    ("$count", "true"),
+                    ("$skip", "0"),
+                    ("$top", "2000"),
+                    ("$orderby", "search.score() desc, Type asc, DisplayName asc"),
+                ])
+                .send()
+                .await;
+
+            match response {
+                Ok(resp) => {
+                    let status = resp.status();
+
+                    if status == StatusCode::NO_CONTENT {
+                        return Ok(Vec::new());
+                    }
+
+                    if status.is_success() {
+                        let parsed = resp.json::<SesSearchResponse>().await.with_context(|| {
+                            format!("Parsing SES search response for unit_name='{}'", unit_name)
+                        })?;
+
+                        if let Some(count) = parsed.count
+                            && count as usize > parsed.value.len()
+                        {
+                            warn!(
+                                "SES search for unit_name='{}' reported @odata.count={} but only {} rows returned; results may be truncated by $top",
+                                unit_name,
+                                count,
+                                parsed.value.len()
+                            );
+                        }
+
+                        let people = parsed
+                            .value
+                            .into_iter()
+                            .filter(|r| r.result_type.as_deref() == Some("Person"))
+                            .collect();
+                        return Ok(people);
+                    }
+
+                    if status.is_client_error() {
+                        let body = resp
+                            .text()
+                            .await
+                            .unwrap_or_else(|_| "<failed to read response body>".to_string());
+                        return Err(anyhow!(
+                            "SES search API client error {} for unit_name='{}': {}",
+                            status,
+                            unit_name,
+                            body
+                        ));
+                    }
+
+                    if status.is_server_error() && attempt < self.max_retries {
+                        let backoff_s = 1u64 << attempt;
+                        warn!(
+                            "SES search API server error {} for unit_name='{}', retrying in {}s (attempt {}/{})",
+                            status,
+                            unit_name,
+                            backoff_s,
+                            attempt + 1,
+                            self.max_retries + 1
+                        );
+                        tokio::time::sleep(Duration::from_secs(backoff_s)).await;
+                        continue;
+                    }
+
+                    return Err(anyhow!(
+                        "SES search API unexpected status {} for unit_name='{}'",
+                        status,
+                        unit_name
+                    ));
+                }
+                Err(err) => {
+                    if attempt < self.max_retries {
+                        let backoff_s = 1u64 << attempt;
+                        warn!(
+                            "SES search API request failed for unit_name='{}', retrying in {}s (attempt {}/{}): {}",
+                            unit_name,
+                            backoff_s,
+                            attempt + 1,
+                            self.max_retries + 1,
+                            err
+                        );
+                        tokio::time::sleep(Duration::from_secs(backoff_s)).await;
+                        continue;
+                    }
+
+                    return Err(anyhow!(
+                        "SES search API request failed for unit_name='{}': {}",
+                        unit_name,
+                        err
+                    ));
+                }
+            }
+        }
+
+        Err(anyhow!(
+            "SES search API retries exhausted for unit_name='{}'",
+            unit_name
+        ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn contact(detail_type: &str, detail: &str) -> SesContactDetail {
+        SesContactDetail {
+            detail_type: Some(detail_type.to_string()),
+            detail: Some(detail.to_string()),
+        }
+    }
+
+    #[test]
+    fn email_prefers_agency_address() {
+        let result = SesSearchResult {
+            id: Some("40043760".to_string()),
+            result_type: Some("Person".to_string()),
+            contact_details: vec![
+                contact(
+                    "Volunteers Primary E-Mail",
+                    "personal@member.ses.nsw.gov.au",
+                ),
+                contact("Agency Email Address", "agency@member.ses.nsw.gov.au"),
+            ],
+        };
+        assert_eq!(result.email(), Some("agency@member.ses.nsw.gov.au"));
+    }
+
+    #[test]
+    fn email_falls_back_to_volunteer_address() {
+        let result = SesSearchResult {
+            id: Some("40043760".to_string()),
+            result_type: Some("Person".to_string()),
+            contact_details: vec![contact(
+                "Volunteers Primary E-Mail",
+                "personal@member.ses.nsw.gov.au",
+            )],
+        };
+        assert_eq!(result.email(), Some("personal@member.ses.nsw.gov.au"));
+    }
+
+    #[test]
+    fn email_skips_blank_values() {
+        let result = SesSearchResult {
+            id: Some("40043760".to_string()),
+            result_type: Some("Person".to_string()),
+            contact_details: vec![
+                contact("Agency Email Address", "   "),
+                contact(
+                    "Volunteers Primary E-Mail",
+                    "personal@member.ses.nsw.gov.au",
+                ),
+            ],
+        };
+        assert_eq!(result.email(), Some("personal@member.ses.nsw.gov.au"));
+    }
+
+    #[test]
+    fn email_none_when_no_matching_contact_details() {
+        let result = SesSearchResult {
+            id: Some("40043760".to_string()),
+            result_type: Some("Person".to_string()),
+            contact_details: vec![contact("Primary Telephone", "+61405229810")],
+        };
+        assert_eq!(result.email(), None);
     }
 }

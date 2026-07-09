@@ -9,15 +9,17 @@ resource "aws_lambda_function" "sync_members" {
 
   environment {
     variables = {
-      SES_API_KEY            = var.ses_api_key
-      SES_API_BASE_URL       = var.ses_api_base_url
-      SES_SYNC_DRY_RUN       = "false"
-      SES_SYNC_ADOPT         = "false"
-      SES_PAGE_LIMIT         = "100"
-      SES_SYNC_MAX_RETRIES   = "3"
-      SES_SYNC_MAX_MUTATIONS = "100"
-      DB_BACKEND             = "dynamodb"
-      DB_PREFIX              = var.db_prefix
+      SES_API_KEY                      = var.ses_api_key
+      SES_API_BASE_URL                 = var.ses_api_base_url
+      SES_INTRANET_SEARCH_API_KEY      = var.ses_intranet_search_api_key
+      SES_INTRANET_SEARCH_API_BASE_URL = var.ses_intranet_search_api_base_url
+      SES_SYNC_DRY_RUN                 = "false"
+      SES_SYNC_ADOPT                   = "false"
+      SES_PAGE_LIMIT                   = "100"
+      SES_SYNC_MAX_RETRIES             = "3"
+      SES_SYNC_MAX_MUTATIONS           = "100"
+      DB_BACKEND                       = "dynamodb"
+      DB_PREFIX                        = var.db_prefix
     }
   }
 

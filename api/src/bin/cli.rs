@@ -488,6 +488,7 @@ async fn show_persons(db: &impl Handler, persons: &[Person]) {
                 decorate(&p.location_id, locs.get(&p.location_id)),
             ),
             ("ses_api_person_id", opt_str(&p.ses_api_person_id)),
+            ("email", opt_str(&p.email)),
             ("deleted", opt_ts(p.deleted)),
             ("created_at", opt_ts(p.created_at)),
             ("updated_at", opt_ts(p.updated_at)),

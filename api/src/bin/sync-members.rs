@@ -23,6 +23,14 @@ struct Cli {
     #[arg(long)]
     ses_api_key: Option<String>,
 
+    /// SES intranet contact-directory search API base URL (used for member email sync).
+    #[arg(long)]
+    ses_intranet_search_api_base_url: Option<String>,
+
+    /// SES intranet contact-directory search API key, sent as Ocp-Apim-Subscription-Key header.
+    #[arg(long)]
+    ses_intranet_search_api_key: Option<String>,
+
     /// DynamoDB table prefix (e.g. "seslogin-test-").
     #[arg(long)]
     db_prefix: Option<String>,
@@ -67,6 +75,16 @@ async fn main() -> Result<()> {
         .or_else(|| std::env::var("SES_API_KEY").ok())
         .ok_or_else(|| anyhow!("SES_API_KEY is required (flag or env var)"))?;
 
+    let ses_intranet_search_api_base_url = cli
+        .ses_intranet_search_api_base_url
+        .or_else(|| std::env::var("SES_INTRANET_SEARCH_API_BASE_URL").ok())
+        .ok_or_else(|| anyhow!("SES_INTRANET_SEARCH_API_BASE_URL is required (flag or env var)"))?;
+
+    let ses_intranet_search_api_key = cli
+        .ses_intranet_search_api_key
+        .or_else(|| std::env::var("SES_INTRANET_SEARCH_API_KEY").ok())
+        .ok_or_else(|| anyhow!("SES_INTRANET_SEARCH_API_KEY is required (flag or env var)"))?;
+
     let db_prefix = cli
         .db_prefix
         .or_else(|| std::env::var("DB_PREFIX").ok())
@@ -96,6 +114,8 @@ async fn main() -> Result<()> {
                 adopt: cli.adopt,
                 ses_api_base_url,
                 ses_api_key,
+                ses_intranet_search_api_base_url,
+                ses_intranet_search_api_key,
                 db_prefix,
                 page_limit,
                 max_retries,
@@ -112,7 +132,7 @@ async fn main() -> Result<()> {
     );
 
     println!(
-        "sync complete mode={} adopt={} processed_locations={} skipped_locations={} ses_people_seen={} adopts={} creates={} updates={} undeletes={} soft_deletes={} noops={} blocked_manual_conflicts={} total_mutations={}",
+        "sync complete mode={} adopt={} processed_locations={} skipped_locations={} ses_people_seen={} adopts={} creates={} updates={} undeletes={} soft_deletes={} noops={} blocked_manual_conflicts={} total_mutations={} emails_seen={} emails_updated={} emails_unmatched={} emails_noops={}",
         if cli.dry_run { "dry-run" } else { "apply" },
         cli.adopt,
         stats.processed_locations,
@@ -126,6 +146,10 @@ async fn main() -> Result<()> {
         stats.noops,
         stats.blocked_manual_conflicts,
         stats.total_mutations(),
+        stats.emails_seen,
+        stats.emails_updated,
+        stats.emails_unmatched,
+        stats.emails_noops,
     );
 
     Ok(())
