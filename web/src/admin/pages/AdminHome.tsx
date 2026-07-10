@@ -245,8 +245,10 @@ export default function AdminHome() {
       </section>
 
       <DevOnly>
-        <ClearLocationButton />
-        <ShowPasskeyPromptButton />
+        <div className="mt-4 flex flex-row flex-wrap items-center gap-3">
+          <ClearLocationButton />
+          <ShowPasskeyPromptButton />
+        </div>
       </DevOnly>
     </div>
   );
