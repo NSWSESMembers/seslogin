@@ -21,7 +21,7 @@ const SCAN_INPUT_TIMEOUT_MS = 10_000;
 const transactionBase =
   "inline-block w-[800px] max-w-full rounded-md p-2.5 text-[1.2em] transition-opacity duration-1000";
 const loadingSpinnerBase =
-  "-mt-1.5 ml-2 inline-block size-[18px] rounded-full border-2 border-neutral-300 border-t-menu align-middle opacity-0";
+  "-mt-1.5 ml-2 inline-block size-[18px] rounded-full border-2 border-line border-t-menu align-middle opacity-0";
 
 function TransactionList(props: { transactionState: TransactionState }) {
   const [now, setNow] = useState(() => Date.now());

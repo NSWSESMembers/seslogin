@@ -24,21 +24,24 @@ function to12HourDigits(hours24: number, minutes: number): string {
 }
 
 const dateBtnClasses =
-  "shrink-0 rounded-xl bg-neutral-800 px-4 py-2.5 text-2xl text-white shadow-md disabled:cursor-default disabled:opacity-30";
+  "shrink-0 rounded-xl bg-neutral-800 px-4 py-2.5 text-2xl text-white shadow-md disabled:cursor-default disabled:opacity-30 dark:bg-neutral-700";
 const dateChipBase = "flex-1 rounded-[10px] border-2 p-2.5 text-xl shadow-sm";
-const dateChipOff = "border-neutral-300 bg-white text-neutral-700";
+const dateChipOff =
+  "border-neutral-300 bg-white text-neutral-700 dark:border-line dark:bg-surface-raised dark:text-ink";
 const dateChipSelected = "border-accent bg-accent text-white";
+// digitSpanBase / ampmMini* sit on the always-dark time "screen" (the neutral-800
+// <th> below), so they stay light-on-dark in both themes — no dark: variants.
 const digitSpanBase =
   "mx-1 inline-block box-border w-[52px] rounded-[10px] border-4 border-transparent bg-white text-center text-neutral-800";
 const ampmMiniBase = "rounded-lg border-2 px-3 py-[3px] text-base shadow-none";
 const ampmMiniOff = "border-neutral-300 bg-white text-neutral-700";
 const ampmMiniSelected = "border-accent bg-accent text-white";
 const keyDigitBtn =
-  "block w-40 cursor-pointer rounded-[14px] bg-neutral-800 px-2.5 py-[18px] text-[64px] text-white no-underline shadow-md active:bg-neutral-600";
+  "block w-40 cursor-pointer rounded-[14px] bg-neutral-800 px-2.5 py-[18px] text-[64px] text-white no-underline shadow-md active:bg-neutral-600 dark:bg-neutral-700 dark:active:bg-neutral-500";
 const keyAuxBtn =
-  "block w-40 cursor-pointer rounded-[14px] bg-neutral-200 px-2.5 py-[18px] text-[32px] text-neutral-700 no-underline shadow-md active:bg-neutral-300";
+  "block w-40 cursor-pointer rounded-[14px] bg-neutral-200 px-2.5 py-[18px] text-[32px] text-neutral-700 no-underline shadow-md active:bg-neutral-300 dark:bg-neutral-800 dark:text-neutral-300 dark:active:bg-neutral-700";
 const keyConfirmBtn =
-  "block w-full cursor-pointer rounded-[14px] bg-[#2f7d4f] px-2.5 py-[18px] text-[40px] text-white no-underline shadow-md active:bg-[#276a43] disabled:cursor-default disabled:bg-neutral-300 disabled:text-neutral-500 disabled:shadow-none";
+  "block w-full cursor-pointer rounded-[14px] bg-[#2f7d4f] px-2.5 py-[18px] text-[40px] text-white no-underline shadow-md active:bg-[#276a43] disabled:cursor-default disabled:bg-neutral-300 disabled:text-neutral-500 disabled:shadow-none dark:disabled:bg-neutral-700 dark:disabled:text-neutral-500";
 
 export function Inner(props: {
   show: boolean;
@@ -138,14 +141,14 @@ export function Inner(props: {
         display: props.show ? "flex" : "none",
       }}
     >
-      <div className="rounded-[20px] bg-[#f4f4f4] p-5 shadow-[0_20px_50px_rgba(0,0,0,0.35)]">
+      <div className="rounded-[20px] bg-[#f4f4f4] p-5 shadow-[0_20px_50px_rgba(0,0,0,0.35)] dark:bg-neutral-900">
         <div>
           <div className="mb-3.5 w-full">
             <div className="mb-2 flex items-center gap-2">
               <button className={dateBtnClasses} onClick={() => changeDay(-1)}>
                 &#8592;
               </button>
-              <span className="flex-1 text-center text-[26px] font-bold text-neutral-800">
+              <span className="flex-1 text-center text-[26px] font-bold text-neutral-800 dark:text-neutral-100">
                 {formatDayDate(date)}
               </span>
               <button

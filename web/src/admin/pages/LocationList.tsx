@@ -123,7 +123,7 @@ function Row(props: {
     : "Never";
 
   return (
-    <tr className={idx % 2 === 0 ? "bg-neutral-50" : undefined}>
+    <tr className={idx % 2 === 0 ? "bg-surface-raised" : undefined}>
       {isDev && <Td className="font-mono text-[0.85em]">{location.id}</Td>}
       <Td nowrap>
         <div className={location.enabled ? undefined : "line-through"}>
