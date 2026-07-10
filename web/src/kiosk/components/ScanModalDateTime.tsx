@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 
 const keypadDigitBase =
-  "m-[5px] inline-block w-[45px] rounded-lg border border-neutral-400 bg-white px-2.5 transition-colors duration-200";
+  "m-[5px] inline-block w-[45px] rounded-lg border border-line-strong bg-surface px-2.5 transition-colors duration-200";
 const keypadButtonBase =
-  "block w-40 cursor-pointer bg-neutral-100 px-2.5 py-[18px] text-[64px] text-black no-underline hover:bg-neutral-300 active:bg-neutral-400";
+  "block w-40 cursor-pointer bg-surface-raised px-2.5 py-[18px] text-[64px] text-ink no-underline hover:bg-surface-sunken active:bg-line";
 
 export function Inner(props: {
   show: boolean;
@@ -54,13 +54,13 @@ export function Inner(props: {
         display: props.show ? "flex" : "none",
       }}
     >
-      <div className="rounded-xl bg-white shadow-2xl">
+      <div className="rounded-xl bg-surface shadow-2xl">
         <table className="border-collapse">
           <tbody>
             <tr>
               <th
                 colSpan={3}
-                className="border border-neutral-300 bg-neutral-200 p-2.5 text-[64px]"
+                className="border border-line bg-surface-sunken p-2.5 text-[64px]"
               >
                 <span
                   className={`${keypadDigitBase} ${current(0) ? "m-px border-[5px] border-accent" : ""}`}
@@ -86,7 +86,7 @@ export function Inner(props: {
               </th>
             </tr>
             <tr>
-              <td className="border border-neutral-300 p-0">
+              <td className="border border-line p-0">
                 <button
                   className={keypadButtonBase}
                   onClick={() => button("1")}
@@ -94,7 +94,7 @@ export function Inner(props: {
                   1
                 </button>
               </td>
-              <td className="border border-neutral-300 p-0">
+              <td className="border border-line p-0">
                 <button
                   className={keypadButtonBase}
                   onClick={() => button("2")}
@@ -102,7 +102,7 @@ export function Inner(props: {
                   2
                 </button>
               </td>
-              <td className="border border-neutral-300 p-0">
+              <td className="border border-line p-0">
                 <button
                   className={keypadButtonBase}
                   onClick={() => button("3")}
@@ -112,7 +112,7 @@ export function Inner(props: {
               </td>
             </tr>
             <tr>
-              <td className="border border-neutral-300 p-0">
+              <td className="border border-line p-0">
                 <button
                   className={keypadButtonBase}
                   onClick={() => button("4")}
@@ -120,7 +120,7 @@ export function Inner(props: {
                   4
                 </button>
               </td>
-              <td className="border border-neutral-300 p-0">
+              <td className="border border-line p-0">
                 <button
                   className={keypadButtonBase}
                   onClick={() => button("5")}
@@ -128,7 +128,7 @@ export function Inner(props: {
                   5
                 </button>
               </td>
-              <td className="border border-neutral-300 p-0">
+              <td className="border border-line p-0">
                 <button
                   className={keypadButtonBase}
                   onClick={() => button("6")}
@@ -138,7 +138,7 @@ export function Inner(props: {
               </td>
             </tr>
             <tr>
-              <td className="border border-neutral-300 p-0">
+              <td className="border border-line p-0">
                 <button
                   className={keypadButtonBase}
                   onClick={() => button("7")}
@@ -146,7 +146,7 @@ export function Inner(props: {
                   7
                 </button>
               </td>
-              <td className="border border-neutral-300 p-0">
+              <td className="border border-line p-0">
                 <button
                   className={keypadButtonBase}
                   onClick={() => button("8")}
@@ -154,7 +154,7 @@ export function Inner(props: {
                   8
                 </button>
               </td>
-              <td className="border border-neutral-300 p-0">
+              <td className="border border-line p-0">
                 <button
                   className={keypadButtonBase}
                   onClick={() => button("9")}
@@ -164,12 +164,12 @@ export function Inner(props: {
               </td>
             </tr>
             <tr>
-              <td className="border border-neutral-300 p-0">
+              <td className="border border-line p-0">
                 <button className={keypadButtonBase} onClick={props.onClose}>
                   &times;
                 </button>
               </td>
-              <td className="border border-neutral-300 p-0">
+              <td className="border border-line p-0">
                 <button
                   className={keypadButtonBase}
                   onClick={() => button("0")}
@@ -177,7 +177,7 @@ export function Inner(props: {
                   0
                 </button>
               </td>
-              <td className="border border-neutral-300 p-0">
+              <td className="border border-line p-0">
                 <button
                   className={keypadButtonBase}
                   onClick={() => button("DEL")}
