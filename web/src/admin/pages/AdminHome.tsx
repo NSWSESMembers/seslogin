@@ -203,7 +203,7 @@ export default function AdminHome() {
       <section className={CARD_CLASS}>
         <div className={SECTION_TITLE_CLASS}>Top categories (last 7 days)</div>
         {topCategories.length === 0 ? (
-          <p className="m-0 text-[#666666]">
+          <p className="m-0 text-ink-muted">
             No categorised periods in this window.
           </p>
         ) : (
@@ -213,27 +213,27 @@ export default function AdminHome() {
               return (
                 <article
                   key={entry.categoryId ?? "uncategorised"}
-                  className="grid gap-2 rounded-[10px] border border-[#e6e6e6] bg-white p-2.5"
+                  className="grid gap-2 rounded-[10px] border border-line-faint bg-surface p-2.5"
                 >
                   <div className="grid grid-cols-[auto_1fr] items-center gap-2">
-                    <div className="inline-flex h-6 min-w-8.5 items-center justify-center rounded-full bg-[#f3ece8] text-xs font-bold text-[#aa4f1f]">
+                    <div className="inline-flex h-6 min-w-8.5 items-center justify-center rounded-full bg-[#f3ece8] text-xs font-bold text-[#aa4f1f] dark:bg-accent/15 dark:text-accent-light">
                       #{idx + 1}
                     </div>
                     <div className="min-w-0 leading-[1.3] font-semibold">
                       {entry.categoryName}
                     </div>
                   </div>
-                  <div className="h-2.5 overflow-hidden rounded-full bg-[#f0f0f0]">
+                  <div className="h-2.5 overflow-hidden rounded-full bg-surface-sunken">
                     <div
                       className="h-full min-w-0.5 rounded-full bg-linear-to-r from-[#c95522] to-[#e8945b]"
                       style={{ width: barWidth }}
                     />
                   </div>
                   <div className="flex flex-wrap gap-1.5">
-                    <span className="inline-flex items-center rounded-full bg-[#f8eee9] px-2.25 py-0.75 text-xs font-semibold text-[#953f16]">
+                    <span className="inline-flex items-center rounded-full bg-[#f8eee9] px-2.25 py-0.75 text-xs font-semibold text-[#953f16] dark:bg-accent/15 dark:text-accent-light">
                       {entry.periodCount} periods
                     </span>
-                    <span className="inline-flex items-center rounded-full bg-[#f3f3f3] px-2.25 py-0.75 text-xs font-semibold text-[#545454]">
+                    <span className="inline-flex items-center rounded-full bg-surface-raised px-2.25 py-0.75 text-xs font-semibold text-ink-muted">
                       {formatSecondsCompact(entry.totalTime)}
                     </span>
                   </div>
@@ -253,7 +253,7 @@ export default function AdminHome() {
 }
 
 // Shared card chrome for the chart/insights sections and the stat cards.
-const CARD_CLASS = "rounded-lg border border-[#d4d4d4] bg-[#fcfcfc] p-3.5";
+const CARD_CLASS = "rounded-lg border border-line bg-surface p-3.5";
 const SECTION_TITLE_CLASS = "mb-3 text-lg font-bold text-navy";
 
 function StatCard({
@@ -267,11 +267,11 @@ function StatCard({
 }) {
   return (
     <article className={CARD_CLASS}>
-      <div className="mb-1.5 text-xs text-[#666666]">{label}</div>
+      <div className="mb-1.5 text-xs text-ink-muted">{label}</div>
       <div className="text-2xl leading-[1.1] font-bold text-navy min-[781px]:text-3xl">
         {value}
       </div>
-      <div className="mt-1.5 text-xs text-[#4f4f4f]">{subtle}</div>
+      <div className="mt-1.5 text-xs text-ink-muted">{subtle}</div>
     </article>
   );
 }

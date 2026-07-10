@@ -62,7 +62,7 @@ export default function ActivityDailyBreakdownTable({ days }: Props) {
             {day.categories.map((category) => (
               <details
                 key={category.id}
-                className="group/category border-t border-neutral-300"
+                className="group/category border-t border-line"
               >
                 <summary className="flex cursor-pointer list-none justify-between gap-3 px-1.5 py-2 [&::-webkit-details-marker]:hidden">
                   <span className="flex min-w-0 items-center gap-1">
@@ -83,7 +83,7 @@ export default function ActivityDailyBreakdownTable({ days }: Props) {
                   {category.members.map((member) => (
                     <div
                       key={member.id}
-                      className="flex justify-between gap-3 border-b border-neutral-200 p-1.5 text-neutral-500"
+                      className="flex justify-between gap-3 border-b border-line p-1.5 text-ink-muted"
                     >
                       <div className="min-w-0 pl-6">{member.name}</div>
                       <div className="whitespace-nowrap">

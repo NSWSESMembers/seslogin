@@ -16,11 +16,12 @@ export type StatusPeriod = {
 
 function getSignInColor(startTime: number): string {
   const elapsedSeconds = Date.now() / 1000 - startTime;
-  if (elapsedSeconds <= 60 * 60 * 6) return "text-green-700";
+  if (elapsedSeconds <= 60 * 60 * 6)
+    return "text-green-700 dark:text-green-400";
   if (elapsedSeconds <= 60 * 60 * 8) return "text-[#ffcc11]";
   if (elapsedSeconds <= 60 * 60 * 10) return "text-[#ff8000]";
   if (elapsedSeconds <= 60 * 60 * 12) return "text-[#ee4000]";
-  return "text-[#880000]";
+  return "text-[#880000] dark:text-red-500";
 }
 
 type Props = {
