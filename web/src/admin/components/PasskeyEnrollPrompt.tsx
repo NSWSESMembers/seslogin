@@ -95,12 +95,12 @@ function PasskeyInterstitial({ onDone }: { onDone: () => void }) {
         </PanelIntro>
 
         <ul className="mb-6 grid list-none gap-3.5 p-0">
-          <li className="rounded-2xl border border-navy/10 bg-white/80 px-4 py-3.5 text-left leading-snug text-neutral-800">
+          <li className="rounded-2xl border border-navy/10 bg-surface/80 px-4 py-3.5 text-left leading-snug text-ink">
             <strong>Faster than an email code.</strong> No waiting for a message
             to arrive — unlock with your face, fingerprint, or PIN and
             you&apos;re in.
           </li>
-          <li className="rounded-2xl border border-navy/10 bg-white/80 px-4 py-3.5 text-left leading-snug text-neutral-800">
+          <li className="rounded-2xl border border-navy/10 bg-surface/80 px-4 py-3.5 text-left leading-snug text-ink">
             <strong>More secure than a password.</strong> Passkeys can&apos;t be
             guessed, reused, or phished, and never leave your device.
           </li>
@@ -117,7 +117,7 @@ function PasskeyInterstitial({ onDone }: { onDone: () => void }) {
             type="button"
             onClick={onDone}
             disabled={busy}
-            className="cursor-pointer border-0 bg-transparent p-0 font-[inherit] text-[15px] text-[#7a6a5d] underline"
+            className="cursor-pointer border-0 bg-transparent p-0 font-[inherit] text-[15px] text-ink-muted underline"
           >
             Maybe later
           </button>

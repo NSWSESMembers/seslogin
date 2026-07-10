@@ -138,12 +138,12 @@ function ConfigEditorModeControl({
   return (
     <FormField label={<span>Config Editor</span>}>
       <div
-        className="inline-flex overflow-hidden rounded-lg border border-neutral-400"
+        className="inline-flex overflow-hidden rounded-lg border border-line-strong"
         role="group"
         aria-label="Config editor mode"
       >
         <button
-          className="m-0 min-w-23 cursor-pointer rounded-none border-0 bg-neutral-100 px-3 py-1.5 text-neutral-800 hover:bg-neutral-200 aria-pressed:bg-navy aria-pressed:text-white aria-pressed:hover:bg-[#2b4f97]"
+          className="m-0 min-w-23 cursor-pointer rounded-none border-0 bg-surface-raised px-3 py-1.5 text-ink hover:bg-surface-sunken aria-pressed:bg-navy aria-pressed:text-white aria-pressed:hover:bg-[#2b4f97]"
           type="button"
           onClick={() => onSetEditorMode("basic")}
           aria-pressed={configEditorMode === "basic"}
@@ -151,7 +151,7 @@ function ConfigEditorModeControl({
           Basic
         </button>
         <button
-          className="m-0 min-w-23 cursor-pointer rounded-none border-0 border-l border-neutral-400 bg-neutral-100 px-3 py-1.5 text-neutral-800 hover:bg-neutral-200 aria-pressed:bg-navy aria-pressed:text-white aria-pressed:hover:bg-[#2b4f97]"
+          className="m-0 min-w-23 cursor-pointer rounded-none border-0 border-l border-line-strong bg-surface-raised px-3 py-1.5 text-ink hover:bg-surface-sunken aria-pressed:bg-navy aria-pressed:text-white aria-pressed:hover:bg-[#2b4f97]"
           type="button"
           onClick={() => onSetEditorMode("advanced")}
           aria-pressed={configEditorMode === "advanced"}
@@ -186,7 +186,7 @@ function BasicSessionModeFields({
               className="mt-1"
             />
             <span className="font-semibold">Scan</span>
-            <span className="text-neutral-600">
+            <span className="text-ink-muted">
               allow members to sign in and out on this computer (touchscreen or
               mouse and keyboard required)
             </span>
@@ -201,7 +201,7 @@ function BasicSessionModeFields({
               className="mt-1"
             />
             <span className="font-semibold">Status</span>
-            <span className="text-neutral-600">
+            <span className="text-ink-muted">
               show a live-updating non-interactive list of who is currently
               signed in at the unit along with how long they've been signed in
               for
@@ -221,7 +221,7 @@ function BasicSessionModeFields({
                 className="mt-1"
               />
               <span className="font-semibold">Small categories</span>
-              <span className="text-neutral-600">
+              <span className="text-ink-muted">
                 use smaller category buttons to fit more on screen — useful on
                 smaller or lower-resolution displays
               </span>
@@ -234,7 +234,7 @@ function BasicSessionModeFields({
                 className="mt-1"
               />
               <span className="font-semibold">Easy time entry</span>
-              <span className="text-neutral-600">
+              <span className="text-ink-muted">
                 use a touch-friendly 12-hour keypad with an explicit confirm
                 step and quick Yesterday/Today buttons on the sign-out Adjust
                 screen, instead of the default 24-hour numeric keypad
@@ -265,7 +265,7 @@ function HealthcheckUrlField({
         autoComplete="url"
         inputMode="url"
       />
-      <p className="mt-1.5 mb-0 text-neutral-600">
+      <p className="mt-1.5 mb-0 text-ink-muted">
         Optional. SES Activity can ping this URL approximately every 5 minutes
         or so while the kiosk using this session remains connected to the
         system. Perfect for use with something like{" "}
@@ -296,7 +296,7 @@ function AdvancedConfigFields({
         value={configJson}
         onChange={onChange}
         spellCheck={false}
-        className="w-full rounded-md border border-neutral-300 p-2 font-mono text-sm"
+        className="w-full rounded-md border border-line p-2 font-mono text-sm"
       />
     </FormField>
   );

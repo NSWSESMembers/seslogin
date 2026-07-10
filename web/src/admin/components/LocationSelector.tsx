@@ -54,12 +54,12 @@ export default function LocationSelector({ children }: LocationSelectorProps) {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-neutral-100">
-      <div className="w-full max-w-150 rounded-lg bg-white p-10 shadow-md">
-        <h1 className="mt-0 mb-2.5 font-title text-[28px] text-neutral-800">
+    <div className="flex min-h-screen items-center justify-center bg-surface-raised">
+      <div className="w-full max-w-150 rounded-lg bg-surface p-10 shadow-md">
+        <h1 className="mt-0 mb-2.5 font-title text-[28px] text-ink">
           Select Your Location
         </h1>
-        <p className="mb-8 text-neutral-500">
+        <p className="mb-8 text-ink-muted">
           You are logging in for the first time or your location has been reset.
           Please select the unit you would like to administer. You can always
           swap to a different location by clicking the unit name in the menu
@@ -81,7 +81,7 @@ export default function LocationSelector({ children }: LocationSelectorProps) {
               autoFocus
             />
             {filteredLocations.length === 0 ? (
-              <p className="py-2 text-center text-neutral-500">
+              <p className="py-2 text-center text-ink-muted">
                 No locations match “{filter}”.
               </p>
             ) : (
@@ -90,9 +90,9 @@ export default function LocationSelector({ children }: LocationSelectorProps) {
                   <li key={location.id} className="mb-3">
                     <button
                       onClick={() => handleSelectLocation(location.id)}
-                      className="w-full cursor-pointer rounded-md border-2 border-neutral-200 bg-neutral-50 p-4 text-left transition-colors hover:border-menu hover:bg-brand/5 focus:border-menu focus:ring-2 focus:ring-menu/25 focus:outline-none"
+                      className="w-full cursor-pointer rounded-md border-2 border-line bg-surface-raised p-4 text-left transition-colors hover:border-menu hover:bg-brand/5 focus:border-menu focus:ring-2 focus:ring-menu/25 focus:outline-none"
                     >
-                      <span className="font-title text-lg font-medium text-neutral-800">
+                      <span className="font-title text-lg font-medium text-ink">
                         {location.name}
                       </span>
                     </button>

@@ -19,8 +19,8 @@ function CategoryButton(props: {
         onClick={onSelect}
         className={
           small
-            ? "m-2 box-content flex h-21 w-28.75 cursor-pointer flex-col content-start rounded-lg border-2 border-neutral-500 bg-neutral-100 p-1.75 text-sm wrap-break-word text-neutral-800 active:bg-menu"
-            : "m-3 box-content flex h-28.75 w-37.5 cursor-pointer flex-col content-start rounded-lg border-2 border-neutral-500 bg-neutral-100 p-2.5 text-lg wrap-break-word text-neutral-800 active:bg-menu"
+            ? "m-2 box-content flex h-21 w-28.75 cursor-pointer flex-col content-start rounded-lg border-2 border-line-strong bg-surface-raised p-1.75 text-sm wrap-break-word text-ink active:bg-menu"
+            : "m-3 box-content flex h-28.75 w-37.5 cursor-pointer flex-col content-start rounded-lg border-2 border-line-strong bg-surface-raised p-2.5 text-lg wrap-break-word text-ink active:bg-menu"
         }
       >
         <img
@@ -70,7 +70,7 @@ export function Inner(props: {
         <span className="align-middle">Categories</span>
         {selectedCategory && (
           <button
-            className="ml-12.5 inline-block cursor-pointer rounded-lg border-2 border-neutral-500 bg-neutral-100 p-2.5 align-middle text-neutral-800 active:bg-menu"
+            className="ml-12.5 inline-block cursor-pointer rounded-lg border-2 border-line-strong bg-surface-raised p-2.5 align-middle text-ink active:bg-menu"
             onClick={back}
           >
             Back
