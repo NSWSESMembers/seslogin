@@ -470,7 +470,7 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
         let rec = self.app.db().get_users(&[&id]).await?;
 
         Ok(User::new(rec.into_iter().next().flatten().ok_or_else(
-            || anyhow!("User with ID {:?} missing", &id),
+            || anyhow!("User with ID {:?} missing", id),
         )?))
     }
 
@@ -492,7 +492,7 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
             .into_iter()
             .next()
             .flatten()
-            .ok_or_else(|| anyhow!("Location {:?} not found", &location_id))?;
+            .ok_or_else(|| anyhow!("Location {:?} not found", location_id))?;
 
         self.ensure_registration_number_available(&registration_number, None)
             .await?;
@@ -524,7 +524,7 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
             .into_iter()
             .next()
             .flatten()
-            .ok_or_else(|| anyhow!("Person with ID {:?} missing", &id))?;
+            .ok_or_else(|| anyhow!("Person with ID {:?} missing", id))?;
         require_location_access(ctx, &existing.location_id)?;
 
         self.ensure_registration_number_available(&registration_number, Some(id.as_str()))
@@ -544,7 +544,7 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
 
         let mut rec = self.app.db().get_persons(&[&id]).await?;
         Ok(Person::new(rec.pop().flatten().ok_or_else(|| {
-            anyhow!("Person with ID {:?} missing", &id)
+            anyhow!("Person with ID {:?} missing", id)
         })?))
     }
 
@@ -559,7 +559,7 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
             .into_iter()
             .next()
             .flatten()
-            .ok_or_else(|| anyhow!("Person with ID {:?} missing", &id))?;
+            .ok_or_else(|| anyhow!("Person with ID {:?} missing", id))?;
         require_location_access(ctx, &existing.location_id)?;
 
         self.app
@@ -591,7 +591,7 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
             .into_iter()
             .next()
             .flatten()
-            .ok_or_else(|| anyhow!("Location {:?} not found", &location_id))?;
+            .ok_or_else(|| anyhow!("Location {:?} not found", location_id))?;
         self.app
             .db()
             .get_persons(&[&person_id])
@@ -599,7 +599,7 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
             .into_iter()
             .next()
             .flatten()
-            .ok_or_else(|| anyhow!("Person {:?} not found", &person_id))?;
+            .ok_or_else(|| anyhow!("Person {:?} not found", person_id))?;
         self.app
             .db()
             .get_categories(&[&category_id])
@@ -607,7 +607,7 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
             .into_iter()
             .next()
             .flatten()
-            .ok_or_else(|| anyhow!("Category {:?} not found", &category_id))?;
+            .ok_or_else(|| anyhow!("Category {:?} not found", category_id))?;
 
         let rec = self
             .app
@@ -649,7 +649,7 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
             .into_iter()
             .next()
             .flatten()
-            .ok_or_else(|| anyhow!("Period with ID {:?} missing", &id))?;
+            .ok_or_else(|| anyhow!("Period with ID {:?} missing", id))?;
         require_location_access(ctx, &existing.location_id)?;
         require_location_access(ctx, &location_id)?;
         self.app
@@ -659,7 +659,7 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
             .into_iter()
             .next()
             .flatten()
-            .ok_or_else(|| anyhow!("Location {:?} not found", &location_id))?;
+            .ok_or_else(|| anyhow!("Location {:?} not found", location_id))?;
         self.app
             .db()
             .get_persons(&[&person_id])
@@ -667,7 +667,7 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
             .into_iter()
             .next()
             .flatten()
-            .ok_or_else(|| anyhow!("Person {:?} not found", &person_id))?;
+            .ok_or_else(|| anyhow!("Person {:?} not found", person_id))?;
         self.app
             .db()
             .get_categories(&[&category_id])
@@ -675,7 +675,7 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
             .into_iter()
             .next()
             .flatten()
-            .ok_or_else(|| anyhow!("Category {:?} not found", &category_id))?;
+            .ok_or_else(|| anyhow!("Category {:?} not found", category_id))?;
 
         self.app
             .db()
@@ -696,7 +696,7 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
             .into_iter()
             .next()
             .flatten()
-            .ok_or_else(|| anyhow!("Period with ID {:?} missing", &id))?;
+            .ok_or_else(|| anyhow!("Period with ID {:?} missing", id))?;
 
         self.enqueue_nitc_export(&period.id, existing.nitc_event_id.as_deref())
             .await?;
@@ -724,7 +724,7 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
             .into_iter()
             .next()
             .flatten()
-            .ok_or_else(|| anyhow!("Period with ID {:?} missing", &id))?;
+            .ok_or_else(|| anyhow!("Period with ID {:?} missing", id))?;
         require_location_access(ctx, &existing.location_id)?;
         self.app
             .db()
@@ -733,7 +733,7 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
             .into_iter()
             .next()
             .flatten()
-            .ok_or_else(|| anyhow!("Category {:?} not found", &category_id))?;
+            .ok_or_else(|| anyhow!("Category {:?} not found", category_id))?;
 
         self.app
             .db()
@@ -754,7 +754,7 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
             .into_iter()
             .next()
             .flatten()
-            .ok_or_else(|| anyhow!("Period with ID {:?} missing", &id))?;
+            .ok_or_else(|| anyhow!("Period with ID {:?} missing", id))?;
 
         self.enqueue_nitc_export(&period.id, existing.nitc_event_id.as_deref())
             .await?;
@@ -772,7 +772,7 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
             .into_iter()
             .next()
             .flatten()
-            .ok_or_else(|| anyhow!("Period with ID {:?} missing", &id))?;
+            .ok_or_else(|| anyhow!("Period with ID {:?} missing", id))?;
         require_location_access(ctx, &existing.location_id)?;
 
         self.app
@@ -802,7 +802,7 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
             .into_iter()
             .next()
             .flatten()
-            .ok_or_else(|| anyhow!("Location {:?} not found", &location_id))?;
+            .ok_or_else(|| anyhow!("Location {:?} not found", location_id))?;
 
         let config = parse_session_config_json(config.as_deref())?;
         let healthcheck_url = normalize_healthcheck_url(healthcheck_url.as_deref())?;
@@ -916,7 +916,7 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
             .db()
             .get_api_token(&id)
             .await?
-            .ok_or_else(|| anyhow!("ApiToken with ID {:?} missing", &id))?;
+            .ok_or_else(|| anyhow!("ApiToken with ID {:?} missing", id))?;
         Ok(ApiToken::new(rec))
     }
 
@@ -948,7 +948,7 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
             .into_iter()
             .next()
             .flatten()
-            .ok_or_else(|| anyhow!("Session with ID {:?} missing", &id))?;
+            .ok_or_else(|| anyhow!("Session with ID {:?} missing", id))?;
         require_location_access(ctx, &existing.location_id)?;
 
         let config = parse_session_config_json(config.as_deref())?;
@@ -967,7 +967,7 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
 
         let rec = self.app.db().get_sessions(&[&id]).await?;
         Ok(Session::new(rec.into_iter().next().flatten().ok_or_else(
-            || anyhow!("Session with ID {:?} missing", &id),
+            || anyhow!("Session with ID {:?} missing", id),
         )?))
     }
 
@@ -982,7 +982,7 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
             .into_iter()
             .next()
             .flatten()
-            .ok_or_else(|| anyhow!("Session with ID {:?} missing", &id))?;
+            .ok_or_else(|| anyhow!("Session with ID {:?} missing", id))?;
         require_location_access(ctx, &existing.location_id)?;
 
         self.app
@@ -1038,7 +1038,7 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
             rec.into_iter()
                 .next()
                 .flatten()
-                .ok_or_else(|| anyhow!("Location with ID {:?} missing", &id))?,
+                .ok_or_else(|| anyhow!("Location with ID {:?} missing", id))?,
         ))
     }
 
@@ -1077,7 +1077,7 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
 
         let rec = self.app.db().get_categories(&[&id]).await?;
         Ok(Category::new(rec.into_iter().next().flatten().ok_or_else(
-            || anyhow!("Category with ID {:?} missing", &id),
+            || anyhow!("Category with ID {:?} missing", id),
         )?))
     }
 
@@ -1113,7 +1113,7 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
             .db()
             .get_nitc_group(&id)
             .await?
-            .ok_or_else(|| anyhow!("NitcGroup with ID {:?} missing", &id))?;
+            .ok_or_else(|| anyhow!("NitcGroup with ID {:?} missing", id))?;
         Ok(NitcGroup::new(rec))
     }
 
@@ -1222,7 +1222,7 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
             .into_iter()
             .next()
             .flatten()
-            .ok_or_else(|| anyhow!("Period with ID {:?} missing", &id))?;
+            .ok_or_else(|| anyhow!("Period with ID {:?} missing", id))?;
         require_location_access(ctx, &rec.location_id)?;
         self.app
             .db()
@@ -1231,7 +1231,7 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
             .into_iter()
             .next()
             .flatten()
-            .ok_or_else(|| anyhow!("Category {:?} not found", &category_id))?;
+            .ok_or_else(|| anyhow!("Category {:?} not found", category_id))?;
         self.app
             .db()
             .update_period(
@@ -1267,7 +1267,7 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
             .into_iter()
             .next()
             .flatten()
-            .ok_or_else(|| anyhow!("Location {:?} not found", &location_id))?;
+            .ok_or_else(|| anyhow!("Location {:?} not found", location_id))?;
         let sqs = &self.app.sqs().member_sync;
         crate::sqs_dispatch::enqueue_location_sync(&sqs.client, &sqs.queue_url, &location_id)
             .await?;
