@@ -286,7 +286,7 @@ function Inner(props: {
         disabled={props.isSubmitting}
       >
         {props.isSubmitting ? (
-          <span className="inline-block size-8 animate-spin rounded-full border-[3px] border-neutral-300 border-t-menu align-middle motion-reduce:animate-none" />
+          <span className="inline-block size-8 animate-spin rounded-full border-[3px] border-line border-t-menu align-middle motion-reduce:animate-none" />
         ) : (
           "Submit"
         )}

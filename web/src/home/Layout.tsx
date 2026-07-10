@@ -14,7 +14,7 @@ export default function Layout() {
     >
       <TopBar username="" />
       <Outlet />
-      <footer className="bg-[#dddddd] p-2.5 text-[12px] text-[#333333]">
+      <footer className="bg-surface-sunken p-2.5 text-[12px] text-ink-muted">
         NSW SES Volunteers &mdash; SES Activity v2 &mdash;{" "}
         <ClientVersionLabel />
       </footer>

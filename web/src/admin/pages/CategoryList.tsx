@@ -86,7 +86,7 @@ function Row({
   const tagNames = category.nitcGroup?.sesTags.map((t) => t.name).join(", ");
 
   return (
-    <tr className={idx % 2 === 0 ? "bg-neutral-50" : undefined}>
+    <tr className={idx % 2 === 0 ? "bg-surface-raised" : undefined}>
       {isDev && <Td className="font-mono text-[0.85em]">{category.id}</Td>}
       <Td nowrap>
         <div className={category.enabled ? undefined : "line-through"}>
@@ -152,10 +152,12 @@ export default function CategoryList() {
   return (
     <>
       <p>
-        <span style={{ fontWeight: "bold", color: "red" }}>Warning:</span> you
-        must manually sync changes here to the dump of JSON categories that gets
-        compiled into the JS frontend or else the listing of categories in the
-        scan interface will not be updated.
+        <span className="font-bold text-red-600 dark:text-red-400">
+          Warning:
+        </span>{" "}
+        you must manually sync changes here to the dump of JSON categories that
+        gets compiled into the JS frontend or else the listing of categories in
+        the scan interface will not be updated.
       </p>
       <p>
         <label>

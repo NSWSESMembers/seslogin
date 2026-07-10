@@ -3,8 +3,8 @@ import logo from "../assets/logo.svg";
 
 export default function Home() {
   return (
-    <div className="bg-white">
-      <div className="bg-white">
+    <div className="bg-surface">
+      <div className="bg-surface">
         <img className="mx-auto box-content pt-[60px] pb-5" src={logo} alt="" />
 
         <p className="mx-4 my-10 text-2xl md:mx-10">
@@ -15,7 +15,7 @@ export default function Home() {
           <li className="text-left">
             <Link
               to="/kiosk"
-              className="group mx-auto flex w-full max-w-150 items-center gap-4 border-t border-gray-500 px-5 py-1.25 text-black no-underline md:min-h-16.25"
+              className="group mx-auto flex w-full max-w-150 items-center gap-4 border-t border-line-strong px-5 py-1.25 text-ink no-underline md:min-h-16.25"
             >
               <span className="w-25 shrink-0 font-title text-4xl font-bold text-accent group-hover:text-accent-light">
                 Kiosk
@@ -34,7 +34,7 @@ export default function Home() {
           <li className="text-left">
             <Link
               to="/admin"
-              className="group mx-auto flex w-full max-w-150 items-center gap-4 border-t border-b border-gray-500 px-5 py-1.25 text-black no-underline md:min-h-16.25"
+              className="group mx-auto flex w-full max-w-150 items-center gap-4 border-t border-b border-line-strong px-5 py-1.25 text-ink no-underline md:min-h-16.25"
             >
               <span className="w-25 shrink-0 font-title text-4xl font-bold text-accent group-hover:text-accent-light">
                 Admin
