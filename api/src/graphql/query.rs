@@ -453,7 +453,7 @@ impl<A: App + HasDb + Send + Sync> Period<A> {
             .await
             .map_err(|e| anyhow!("Failed to load person via DataLoader: {}", e))?
             .flatten()
-            .ok_or_else(|| anyhow!("Person with ID {} missing", &self.rec.person_id))
+            .ok_or_else(|| anyhow!("Person with ID {} missing", self.rec.person_id))
     }
 
     async fn location_id(&self) -> ID {
@@ -467,7 +467,7 @@ impl<A: App + HasDb + Send + Sync> Period<A> {
             .await
             .map_err(|e| anyhow!("Failed to load location via DataLoader: {}", e))?
             .flatten()
-            .ok_or_else(|| anyhow!("Location with ID {} missing", &self.rec.location_id))
+            .ok_or_else(|| anyhow!("Location with ID {} missing", self.rec.location_id))
     }
 
     async fn category_id(&self) -> Option<ID> {
@@ -485,7 +485,7 @@ impl<A: App + HasDb + Send + Sync> Period<A> {
                         .await
                         .map_err(|e| anyhow!("Failed to load category via DataLoader: {}", e))?
                         .flatten()
-                        .ok_or_else(|| anyhow!("Category with ID {} missing", &category_id))?,
+                        .ok_or_else(|| anyhow!("Category with ID {} missing", category_id))?,
                 )
             }
         })
@@ -576,7 +576,7 @@ impl<A: App + HasDb + Send + Sync> Period<A> {
                 .await
                 .map_err(|e| anyhow!("Failed to load location via DataLoader: {}", e))?
                 .flatten()
-                .ok_or_else(|| anyhow!("Location with ID {} missing", &self.rec.location_id))?;
+                .ok_or_else(|| anyhow!("Location with ID {} missing", self.rec.location_id))?;
             match location.rec.nitc_enabled {
                 Some(cutover) if self.rec.start_time >= cutover => {
                     Ok(Some(NitcExportStatus::Pending))
@@ -623,7 +623,7 @@ impl<A: App + HasDb + Send + Sync + 'static> MemberPeriodSummary<A> {
             .await
             .map_err(|e| anyhow!("Failed to load person via DataLoader: {}", e))?
             .flatten()
-            .ok_or_else(|| anyhow!("Person with ID {} missing", &self.person_id))
+            .ok_or_else(|| anyhow!("Person with ID {} missing", self.person_id))
     }
 
     async fn total_time(&self) -> i64 {
@@ -661,7 +661,7 @@ impl<A: App + HasDb + Send + Sync + 'static> CategoryPeriodSummary<A> {
             .await
             .map_err(|e| anyhow!("Failed to load category via DataLoader: {}", e))?
             .flatten()
-            .ok_or_else(|| anyhow!("Category with ID {} missing", &self.category_id))
+            .ok_or_else(|| anyhow!("Category with ID {} missing", self.category_id))
     }
 
     async fn total_time(&self) -> i64 {
@@ -701,7 +701,7 @@ impl<A: App + HasDb + Send + Sync + 'static> MemberCategoryPeriodSummary<A> {
             .await
             .map_err(|e| anyhow!("Failed to load person via DataLoader: {}", e))?
             .flatten()
-            .ok_or_else(|| anyhow!("Person with ID {} missing", &self.person_id))
+            .ok_or_else(|| anyhow!("Person with ID {} missing", self.person_id))
     }
 
     async fn total_time(&self) -> i64 {
@@ -745,7 +745,7 @@ impl<A: App + HasDb + Send + Sync + 'static> CategoryMemberPeriodSummary<A> {
             .await
             .map_err(|e| anyhow!("Failed to load category via DataLoader: {}", e))?
             .flatten()
-            .ok_or_else(|| anyhow!("Category with ID {} missing", &self.category_id))
+            .ok_or_else(|| anyhow!("Category with ID {} missing", self.category_id))
     }
 
     async fn total_time(&self) -> i64 {
@@ -1577,7 +1577,7 @@ impl<A: App + HasDb + Send + Sync + 'static> Session<A> {
             .await
             .map_err(|e| anyhow!("Failed to load location via DataLoader: {}", e))?
             .flatten()
-            .ok_or_else(|| anyhow!("Location with ID {} missing", &self.rec.location_id))
+            .ok_or_else(|| anyhow!("Location with ID {} missing", self.rec.location_id))
     }
 
     async fn code(&self) -> &Option<String> {
@@ -1872,7 +1872,7 @@ impl<A: App + HasDb + Send + Sync + 'static> QueryRoot<A> {
             .await
             .map_err(|e| anyhow!("Failed to load user via DataLoader: {}", e))?
             .flatten()
-            .ok_or_else(|| anyhow!("User with ID {} missing", &user_id))?;
+            .ok_or_else(|| anyhow!("User with ID {} missing", user_id))?;
 
         Ok(rec)
     }
@@ -1893,7 +1893,7 @@ impl<A: App + HasDb + Send + Sync + 'static> QueryRoot<A> {
             .await
             .map_err(|e| anyhow!("Failed to load location via DataLoader: {}", e))?
             .flatten()
-            .ok_or_else(|| anyhow!("Location with ID {:?} missing", &id))?;
+            .ok_or_else(|| anyhow!("Location with ID {:?} missing", id))?;
 
         Ok(rec)
     }
@@ -1914,7 +1914,7 @@ impl<A: App + HasDb + Send + Sync + 'static> QueryRoot<A> {
             .await
             .map_err(|e| anyhow!("Failed to load person via DataLoader: {}", e))?
             .flatten()
-            .ok_or_else(|| anyhow!("Person with ID {:?} missing", &id))?;
+            .ok_or_else(|| anyhow!("Person with ID {:?} missing", id))?;
 
         Ok(rec)
     }
@@ -1966,7 +1966,7 @@ impl<A: App + HasDb + Send + Sync + 'static> QueryRoot<A> {
             .into_iter()
             .next()
             .flatten()
-            .ok_or_else(|| anyhow!("Period with ID {:?} missing", &id))?;
+            .ok_or_else(|| anyhow!("Period with ID {:?} missing", id))?;
         require_location_access(ctx, &rec.location_id)?;
         Ok(Period::new(rec))
     }
@@ -2002,7 +2002,7 @@ impl<A: App + HasDb + Send + Sync + 'static> QueryRoot<A> {
             .into_iter()
             .next()
             .flatten()
-            .ok_or_else(|| anyhow!("Session with ID {:?} missing", &session_id))?;
+            .ok_or_else(|| anyhow!("Session with ID {:?} missing", session_id))?;
         require_location_access(ctx, &rec.location_id)?;
         Ok(Session::new(rec))
     }
@@ -2033,7 +2033,7 @@ impl<A: App + HasDb + Send + Sync + 'static> QueryRoot<A> {
             .await
             .map_err(|e| anyhow!("Failed to load category via DataLoader: {}", e))?
             .flatten()
-            .ok_or_else(|| anyhow!("Category with ID {:?} missing", &id))?;
+            .ok_or_else(|| anyhow!("Category with ID {:?} missing", id))?;
 
         Ok(item)
     }
@@ -2080,7 +2080,7 @@ impl<A: App + HasDb + Send + Sync + 'static> QueryRoot<A> {
             .get_nitc_group(&id)
             .await?
             .map(NitcGroup::new)
-            .ok_or_else(|| anyhow!("NitcGroup with ID {:?} not found", &id))
+            .ok_or_else(|| anyhow!("NitcGroup with ID {:?} not found", id))
     }
 
     #[graphql(guard = "AuthGuard::new(AuthRequirement::SuperUser)")]
@@ -2097,7 +2097,7 @@ impl<A: App + HasDb + Send + Sync + 'static> QueryRoot<A> {
             .db()
             .get_api_token(&id)
             .await?
-            .ok_or_else(|| anyhow!("ApiToken with ID {:?} not found", &id))?;
+            .ok_or_else(|| anyhow!("ApiToken with ID {:?} not found", id))?;
         Ok(ApiToken::new(rec))
     }
 
