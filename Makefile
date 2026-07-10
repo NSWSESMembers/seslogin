@@ -32,10 +32,28 @@ pre-commit-checks:
 	@echo "Running infra checks..."
 	@cd infra && terraform fmt -recursive -check -diff
 	@echo "Running API checks..."
+	@$(MAKE) check-toolchain
 	@cd api && cargo fmt --check
 	@cd api && cargo run --locked --bin export-schema > /tmp/schema.generated.graphql
 	@cd api && diff -u schema.graphql /tmp/schema.generated.graphql
 	@cd api && RUSTFLAGS='-Dwarnings' cargo clippy --locked --all-targets --all-features
+
+check-toolchain:
+	@expected=$$(sed -nE 's/^channel *= *"(.*)"/\1/p' api/rust-toolchain.toml); \
+	case "$$expected" in \
+		stable|beta|nightly|"") \
+			echo "rust-toolchain.toml channel is '$$expected' (floating); skipping exact-version check."; \
+			exit 0;; \
+	esac; \
+	actual=$$(cd api && rustc --version | awk '{print $$2}'); \
+	if [ "$$expected" != "$$actual" ]; then \
+		echo "ERROR: Rust toolchain mismatch — CI may flag clippy lints that don't reproduce locally."; \
+		echo "  api/rust-toolchain.toml pins: $$expected"; \
+		echo "  active rustc:                 $$actual"; \
+		echo "  Fix: rustup toolchain install $$expected   (rustup normally auto-installs it; run this if it didn't)"; \
+		exit 1; \
+	fi; \
+	echo "Rust toolchain OK ($$actual)"
 
 install-githooks:
 	@git config core.hooksPath .githooks
