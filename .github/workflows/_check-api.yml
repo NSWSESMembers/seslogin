@@ -10,11 +10,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - name: Setup Rust toolchain
+      - name: Setup Rust toolchain (pinned by api/rust-toolchain.toml)
         run: |
-          rustup toolchain install stable --profile minimal
-          rustup default stable
-          rustup component add rustfmt clippy
+          channel=$(sed -nE 's/^channel *= *"(.*)"/\1/p' api/rust-toolchain.toml)
+          rustup toolchain install "$channel" --profile minimal --component rustfmt --component clippy
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
