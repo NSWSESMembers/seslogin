@@ -15,6 +15,18 @@ variable "ses_api_base_url" {
   type        = string
 }
 
+variable "ses_intranet_search_api_key" {
+  description = "Subscription key for the SES intranet contact-directory search API (used to sync member emails)"
+  type        = string
+  sensitive   = true
+}
+
+variable "ses_intranet_search_api_base_url" {
+  description = "Base URL for the SES intranet contact-directory search API"
+  type        = string
+  default     = "https://api.ses.nsw.gov.au/intranet/search"
+}
+
 variable "aws_account_id" {
   description = "AWS account ID for constructing ARNs (must be set explicitly)"
   type        = string

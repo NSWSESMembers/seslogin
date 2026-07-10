@@ -317,6 +317,10 @@ type Person {
 	this can be null
 	"""
 	sesApiPersonId: String
+	"""
+	this can be null
+	"""
+	email: String
 	deleted: Boolean!
 	createdAt: Int
 	updatedAt: Int

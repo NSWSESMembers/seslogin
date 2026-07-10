@@ -1,6 +1,6 @@
 use crate::db::{self, Handler as _};
 use crate::dynamodb;
-use crate::ses_api::{SesClient, SesPerson};
+use crate::ses_api::{SesClient, SesPerson, SesSearchClient};
 use anyhow::{Context, Result, anyhow};
 use std::collections::{HashMap, HashSet};
 use tracing::{info, warn};
@@ -17,6 +17,8 @@ pub struct SyncConfig {
     pub adopt: bool,
     pub ses_api_base_url: String,
     pub ses_api_key: String,
+    pub ses_intranet_search_api_base_url: String,
+    pub ses_intranet_search_api_key: String,
     pub db_prefix: String,
     pub page_limit: usize,
     pub max_retries: usize,
@@ -36,6 +38,10 @@ pub struct RunStats {
     pub soft_deletes: usize,
     pub noops: usize,
     pub blocked_manual_conflicts: usize,
+    pub emails_seen: usize,
+    pub emails_updated: usize,
+    pub emails_unmatched: usize,
+    pub emails_noops: usize,
 }
 
 impl RunStats {
@@ -518,6 +524,134 @@ async fn apply_changes<H: db::Handler>(
     Ok(())
 }
 
+#[derive(Debug)]
+struct PlannedEmailUpdate {
+    person_id: String,
+    registration_number: String,
+    current_email: Option<String>,
+    new_email: String,
+}
+
+/// Read-only: looks up member emails for a location's unit via the SES search API and diffs
+/// them against local `Person` rows by `registration_number`. Does not write anything.
+async fn plan_email_updates<H: db::Handler>(
+    db: &H,
+    search_client: &SesSearchClient,
+    location: &db::Location,
+    stats: &mut RunStats,
+) -> Result<Vec<PlannedEmailUpdate>> {
+    let results = search_client
+        .fetch_unit_members(&location.name)
+        .await
+        .with_context(|| {
+            format!(
+                "Fetching SES directory search results for location={} unit='{}'",
+                location.id, location.name
+            )
+        })?;
+
+    let mut updates = Vec::new();
+
+    for result in &results {
+        let Some(registration_number) = result
+            .id
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+        else {
+            continue;
+        };
+
+        let Some(new_email) = result.email() else {
+            continue;
+        };
+
+        stats.emails_seen += 1;
+
+        let matches = db
+            .get_person_id_by_registration_number(registration_number)
+            .await
+            .with_context(|| {
+                format!(
+                    "Lookup local person by registration number for email sync location={}",
+                    location.id
+                )
+            })?;
+        let Some(person_id) = db::at_most_one(matches, || {
+            format!(
+                "Multiple people share registration number {} (location={})",
+                registration_number, location.id
+            )
+        })?
+        else {
+            stats.emails_unmatched += 1;
+            continue;
+        };
+
+        let existing = db
+            .get_persons(&[person_id.as_str()])
+            .await
+            .with_context(|| format!("Fetching person id={} for email sync", person_id))?
+            .into_iter()
+            .flatten()
+            .next();
+
+        let Some(existing) = existing else {
+            stats.emails_unmatched += 1;
+            continue;
+        };
+
+        if existing.email.as_deref() == Some(new_email) {
+            stats.emails_noops += 1;
+            continue;
+        }
+
+        updates.push(PlannedEmailUpdate {
+            person_id,
+            registration_number: registration_number.to_string(),
+            current_email: existing.email.clone(),
+            new_email: new_email.to_string(),
+        });
+    }
+
+    Ok(updates)
+}
+
+async fn apply_email_updates<H: db::Handler>(
+    db: &H,
+    updates: &[PlannedEmailUpdate],
+    location_id: &str,
+    dry_run: bool,
+) -> Result<()> {
+    let mode = if dry_run { "DRY-RUN" } else { "APPLY" };
+
+    for update in updates {
+        println!(
+            "[{mode}] update person email id={} location={} registrationNumber={} email={:?}=>{:?}",
+            update.person_id,
+            location_id,
+            update.registration_number,
+            update.current_email,
+            update.new_email
+        );
+
+        if dry_run {
+            continue;
+        }
+
+        db.update_person(
+            &update.person_id,
+            db::PersonUpdateShape::Email {
+                email: Some(&update.new_email),
+            },
+        )
+        .await
+        .with_context(|| format!("Updating email for person id={}", update.person_id))?;
+    }
+
+    Ok(())
+}
+
 pub async fn run(config: SyncConfig) -> Result<RunStats> {
     if config.page_limit == 0 {
         return Err(anyhow!("SES_PAGE_LIMIT must be greater than 0"));
@@ -527,6 +661,12 @@ pub async fn run(config: SyncConfig) -> Result<RunStats> {
         config.ses_api_base_url,
         config.ses_api_key,
         config.page_limit,
+        config.max_retries,
+    )?;
+
+    let search_client = SesSearchClient::new(
+        config.ses_intranet_search_api_base_url,
+        config.ses_intranet_search_api_key,
         config.max_retries,
     )?;
 
@@ -784,7 +924,12 @@ pub async fn run(config: SyncConfig) -> Result<RunStats> {
             }
         }
 
-        let planned_mutations = adopts + creates + updates + undeletes + soft_deletes;
+        let email_updates = plan_email_updates(&db, &search_client, &location, &mut stats)
+            .await
+            .with_context(|| format!("Planning email sync for location={}", location.id))?;
+
+        let planned_mutations =
+            adopts + creates + updates + undeletes + soft_deletes + email_updates.len();
         if !config.dry_run && stats.total_mutations() + planned_mutations > config.max_mutations {
             return Err(anyhow!(
                 "Aborting sync: planned mutations exceed max_mutations (current_total={} planned_for_location={} max_mutations={})",
@@ -797,6 +942,10 @@ pub async fn run(config: SyncConfig) -> Result<RunStats> {
         apply_changes(&db, &plans, config.dry_run)
             .await
             .with_context(|| format!("Applying sync changes for location={}", location.id))?;
+
+        apply_email_updates(&db, &email_updates, &location.id, config.dry_run)
+            .await
+            .with_context(|| format!("Applying email sync for location={}", location.id))?;
 
         if !config.dry_run {
             db.update_location(
@@ -814,6 +963,7 @@ pub async fn run(config: SyncConfig) -> Result<RunStats> {
         stats.updates += updates;
         stats.undeletes += undeletes;
         stats.soft_deletes += soft_deletes;
+        stats.emails_updated += email_updates.len();
     }
 
     Ok(stats)

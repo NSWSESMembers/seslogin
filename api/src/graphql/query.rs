@@ -315,6 +315,11 @@ impl<A: App + HasDb + Send + Sync> Person<A> {
         &self.rec.ses_api_person_id
     }
 
+    /// this can be null
+    async fn email(&self) -> &Option<String> {
+        &self.rec.email
+    }
+
     async fn deleted(&self) -> bool {
         self.rec.deleted.is_some()
     }

@@ -136,6 +136,7 @@ pub struct Person {
     pub last_name: String,
     pub registration_number: Option<String>,
     pub ses_api_person_id: Option<String>,
+    pub email: Option<String>,
     pub deleted: Option<u64>,
     pub created_at: Option<u64>,
     pub updated_at: Option<u64>,
@@ -159,6 +160,9 @@ pub enum PersonUpdateShape<'a> {
     },
     SesApiPersonId {
         ses_api_person_id: Option<&'a str>,
+    },
+    Email {
+        email: Option<&'a str>,
     },
     Undelete,
     Delete,
