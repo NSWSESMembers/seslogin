@@ -203,7 +203,7 @@ export function Inner(props: {
                       </span>
                     </div>
                     {isUnambiguous24Hour ? (
-                      <span className="rounded-lg bg-white px-2.5 py-2 text-sm font-bold tracking-[0.05em] text-neutral-800">
+                      <span className="rounded-lg bg-white px-2.5 py-2 text-sm font-bold tracking-wider text-neutral-800">
                         24h
                       </span>
                     ) : (

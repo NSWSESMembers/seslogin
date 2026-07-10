@@ -267,11 +267,11 @@ function StatCard({
 }) {
   return (
     <article className={CARD_CLASS}>
-      <div className="mb-1.5 text-[13px] text-[#666666]">{label}</div>
-      <div className="text-[26px] leading-[1.1] font-bold text-navy min-[781px]:text-3xl">
+      <div className="mb-1.5 text-xs text-[#666666]">{label}</div>
+      <div className="text-2xl leading-[1.1] font-bold text-navy min-[781px]:text-3xl">
         {value}
       </div>
-      <div className="mt-1.5 text-[13px] text-[#4f4f4f]">{subtle}</div>
+      <div className="mt-1.5 text-xs text-[#4f4f4f]">{subtle}</div>
     </article>
   );
 }

@@ -5,7 +5,7 @@ import logoWhite from "../../assets/logo-white.svg";
  * provide the right-hand content (location link, breadcrumb, buttons) as children. */
 export default function TitleBarShell({ children }: { children: ReactNode }) {
   return (
-    <div className="flex items-center gap-5 bg-brand px-2 py-2 pl-5 text-left font-title text-[32px] text-white">
+    <div className="flex items-center gap-5 bg-brand p-2 pl-5 text-left font-title text-3xl text-white">
       <a href="/">
         <img src={logoWhite} alt="" className="block" />
       </a>

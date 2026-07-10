@@ -29,7 +29,7 @@ type TdProps = TdHTMLAttributes<HTMLTableCellElement> & {
 
 export function Td({ nowrap, center, options, className, ...props }: TdProps) {
   const classes = options
-    ? "w-px whitespace-nowrap border-b border-neutral-100 px-1 py-1 text-right"
+    ? "w-px border-b border-neutral-100 p-1 text-right whitespace-nowrap"
     : [
         "border-b border-neutral-100 px-2 py-1.5",
         nowrap && "whitespace-nowrap",

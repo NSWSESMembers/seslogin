@@ -10,7 +10,7 @@ export function Panel({ children }: { children: ReactNode }) {
 
 export function PanelBox({ children }: { children: ReactNode }) {
   return (
-    <div className="w-[min(640px,100%)] rounded-[28px] border border-[rgba(139,75,36,0.18)] bg-[rgba(255,252,248,0.94)] px-10 py-10 text-left shadow-[0_24px_80px_rgba(101,53,30,0.16)]">
+    <div className="w-[min(640px,100%)] rounded-[28px] border border-[rgba(139,75,36,0.18)] bg-[rgba(255,252,248,0.94)] p-10 text-left shadow-[0_24px_80px_rgba(101,53,30,0.16)]">
       {children}
     </div>
   );
@@ -18,7 +18,7 @@ export function PanelBox({ children }: { children: ReactNode }) {
 
 export function PanelTitle({ children }: { children: ReactNode }) {
   return (
-    <h1 className="m-0 font-title text-[clamp(34px,5vw,48px)] leading-none text-navy">
+    <h1 className="m-0 font-title text-4xl/none text-navy md:text-5xl/none">
       {children}
     </h1>
   );
@@ -26,7 +26,7 @@ export function PanelTitle({ children }: { children: ReactNode }) {
 
 export function PanelIntro({ children }: { children: ReactNode }) {
   return (
-    <p className="mt-4 mb-6 max-w-[34rem] text-xl leading-normal text-[#40342d]">
+    <p className="mt-4 mb-6 max-w-136 text-xl/normal text-[#40342d]">
       {children}
     </p>
   );

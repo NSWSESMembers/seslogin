@@ -26,7 +26,7 @@ export default function ActivityBreakdownTable({ title, rows }: Props) {
       <div className="border-t border-neutral-400">
         {rows.map((entry) => (
           <Fragment key={entry.id}>
-            <div className="flex justify-between gap-3 border-b border-neutral-200 px-1.5 py-1.5">
+            <div className="flex justify-between gap-3 border-b border-neutral-200 p-1.5">
               <div className="min-w-0">{entry.name}</div>
               <div className="whitespace-nowrap">
                 {formatSeconds(entry.totalTime)}
@@ -35,7 +35,7 @@ export default function ActivityBreakdownTable({ title, rows }: Props) {
             {entry.children.map((child) => (
               <div
                 key={`${entry.id}-${child.id}`}
-                className="flex justify-between gap-3 border-b border-neutral-200 px-1.5 py-1.5 text-neutral-500"
+                className="flex justify-between gap-3 border-b border-neutral-200 p-1.5 text-neutral-500"
               >
                 <div className="min-w-0 pl-6">{child.name}</div>
                 <div className="whitespace-nowrap">

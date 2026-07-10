@@ -19,7 +19,7 @@ export default function SessionCreatedInterstitial({
         module.
       </p>
 
-      <p className="my-6 text-center text-[64px] font-bold tracking-[0.08em]">
+      <p className="my-6 text-center text-6xl font-bold tracking-[0.08em]">
         {code || "Unavailable"}
       </p>
 

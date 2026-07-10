@@ -5,7 +5,7 @@ export default function Home() {
   return (
     <div className="bg-white">
       <div className="bg-white">
-        <img className="mx-auto box-content pt-[60px] pb-5" src={logo} alt="" />
+        <img className="mx-auto box-content pt-15 pb-5" src={logo} alt="" />
 
         <p className="mx-4 my-10 text-2xl md:mx-10">
           Welcome, please choose an option to continue...
@@ -26,7 +26,7 @@ export default function Home() {
               <img
                 src="/image/home-icons/scan.png"
                 alt="Kiosk"
-                className="box-content h-16.25 w-16.25 shrink-0 max-md:hidden"
+                className="box-content size-16.25 shrink-0 max-md:hidden"
               />
             </Link>
           </li>
@@ -34,7 +34,7 @@ export default function Home() {
           <li className="text-left">
             <Link
               to="/admin"
-              className="group mx-auto flex w-full max-w-150 items-center gap-4 border-t border-b border-gray-500 px-5 py-1.25 text-black no-underline md:min-h-16.25"
+              className="group mx-auto flex w-full max-w-150 items-center gap-4 border-y border-gray-500 px-5 py-1.25 text-black no-underline md:min-h-16.25"
             >
               <span className="w-25 shrink-0 font-title text-4xl font-bold text-accent group-hover:text-accent-light">
                 Admin
@@ -46,7 +46,7 @@ export default function Home() {
               <img
                 src="/image/home-icons/dash.png"
                 alt="Admin"
-                className="box-content h-16.25 w-16.25 shrink-0 max-md:hidden"
+                className="box-content size-16.25 shrink-0 max-md:hidden"
               />
             </Link>
           </li>

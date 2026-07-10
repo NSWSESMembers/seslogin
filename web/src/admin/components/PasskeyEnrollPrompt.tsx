@@ -117,7 +117,7 @@ function PasskeyInterstitial({ onDone }: { onDone: () => void }) {
             type="button"
             onClick={onDone}
             disabled={busy}
-            className="cursor-pointer border-0 bg-transparent p-0 font-[inherit] text-[15px] text-[#7a6a5d] underline"
+            className="cursor-pointer border-0 bg-transparent p-0 font-[inherit] text-sm text-[#7a6a5d] underline"
           >
             Maybe later
           </button>

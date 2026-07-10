@@ -57,7 +57,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         {toasts.map((t) => (
           <div
             key={t.id}
-            className={`flex items-start gap-3 rounded-xl px-3.5 py-3 text-[15px] leading-snug shadow-lg ${kindClasses[t.kind]}`}
+            className={`flex items-start gap-3 rounded-xl px-3.5 py-3 text-sm/snug shadow-lg ${kindClasses[t.kind]}`}
             role="alert"
           >
             <span className="flex-1 wrap-break-word">{t.message}</span>

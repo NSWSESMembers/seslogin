@@ -83,7 +83,7 @@ export default function ActivityDailyBreakdownTable({ days }: Props) {
                   {category.members.map((member) => (
                     <div
                       key={member.id}
-                      className="flex justify-between gap-3 border-b border-neutral-200 px-1.5 py-1.5 text-neutral-500"
+                      className="flex justify-between gap-3 border-b border-neutral-200 p-1.5 text-neutral-500"
                     >
                       <div className="min-w-0 pl-6">{member.name}</div>
                       <div className="whitespace-nowrap">

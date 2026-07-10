@@ -11,8 +11,8 @@ export const buttonVariants: Record<ButtonVariant, string> = {
 };
 
 export const buttonSizes: Record<ButtonSize, string> = {
-  normal: tw`rounded-md px-4 py-1.5 text-[15px] font-medium`,
+  normal: tw`rounded-md px-4 py-1.5 text-sm font-medium`,
   row: tw`rounded px-2 py-0.5 text-xs font-medium`,
-  panel: tw`min-w-[250px] rounded-md px-6 py-3 text-lg`,
+  panel: tw`min-w-62.5 rounded-md px-6 py-3 text-lg`,
   bare: tw`rounded-lg`,
 };

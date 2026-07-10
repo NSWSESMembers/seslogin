@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 
 export function FieldList({ children }: { children: ReactNode }) {
   return (
-    <dl className="mx-auto my-8 grid w-full max-w-[700px] grid-cols-1 border-y border-neutral-300 py-2.5 text-left md:grid-cols-[45%_1fr] md:text-right">
+    <dl className="mx-auto my-8 grid w-full max-w-175 grid-cols-1 border-y border-neutral-300 py-2.5 text-left md:grid-cols-[45%_1fr] md:text-right">
       {children}
     </dl>
   );
@@ -22,7 +22,7 @@ export function FormField({
   return (
     <>
       <dt className="mt-3.5 mr-2.5 font-title md:text-right">{label}</dt>
-      <dd className="my-2.5 min-h-[22px] text-left md:ml-2.5">{children}</dd>
+      <dd className="my-2.5 min-h-5.5 text-left md:ml-2.5">{children}</dd>
     </>
   );
 }

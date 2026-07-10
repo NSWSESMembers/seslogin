@@ -97,11 +97,11 @@ export default function PeriodsLineChart({
   const active = activeIndex != null ? plotted[activeIndex] : null;
 
   return (
-    <div className="relative aspect-[3/2] min-h-[140px] min-[781px]:aspect-[7/2]">
+    <div className="relative aspect-3/2 min-h-35 min-[781px]:aspect-7/2">
       <svg
         ref={svgRef}
         viewBox={`0 0 ${VIEW_WIDTH} ${VIEW_HEIGHT}`}
-        className="block h-full w-full touch-none"
+        className="block size-full touch-none"
         role="img"
         aria-label="Periods per day, last 7 days"
         onPointerMove={(event) => setActiveFromClientX(event.clientX)}

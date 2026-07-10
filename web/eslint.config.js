@@ -30,11 +30,21 @@ export default tseslint.config([
   },
   {
     // Mirror the Tailwind CSS IntelliSense extension's diagnostics headlessly so
-    // they fail CI (class conflicts + unknown/typo'd classes). The entry point
-    // teaches the plugin about the custom @theme colors defined in app.css.
+    // they fail CI: class conflicts + unknown/typo'd classes (correctness) plus
+    // ordering / duplicate / whitespace / shorthand cleanups (stylistic). The
+    // entry point teaches the plugin about the custom @theme colors in app.css.
     files: ["**/*.{ts,tsx}"],
     plugins: { "better-tailwindcss": betterTailwindcss },
-    rules: betterTailwindcss.configs["correctness-error"].rules,
+    rules: {
+      ...betterTailwindcss.configs["correctness-error"].rules,
+      ...betterTailwindcss.configs["stylistic-error"].rules,
+      // Mirror the extension's `recommendedVariantOrder` diagnostic (not part of
+      // any plugin preset) so out-of-order variants also fail CI.
+      "better-tailwindcss/enforce-consistent-variant-order": "error",
+      // Class-string line wrapping is left to prettier; this rule fights it and
+      // would reflow className strings app-wide.
+      "better-tailwindcss/enforce-consistent-line-wrapping": "off",
+    },
     settings: {
       "better-tailwindcss": {
         entryPoint: "src/app.css",

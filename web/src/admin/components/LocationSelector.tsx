@@ -56,7 +56,7 @@ export default function LocationSelector({ children }: LocationSelectorProps) {
   return (
     <div className="flex min-h-screen items-center justify-center bg-neutral-100">
       <div className="w-full max-w-150 rounded-lg bg-white p-10 shadow-md">
-        <h1 className="mt-0 mb-2.5 font-title text-[28px] text-neutral-800">
+        <h1 className="mt-0 mb-2.5 font-title text-3xl text-neutral-800">
           Select Your Location
         </h1>
         <p className="mb-8 text-neutral-500">
@@ -67,7 +67,7 @@ export default function LocationSelector({ children }: LocationSelectorProps) {
         </p>
 
         {enabledLocations.length === 0 ? (
-          <p className="rounded bg-red-50 p-2.5 text-red-700">
+          <p className="rounded-sm bg-red-50 p-2.5 text-red-700">
             No locations available. Please contact an administrator.
           </p>
         ) : (
