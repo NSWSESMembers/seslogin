@@ -16,6 +16,7 @@ pub mod nitc_export;
 pub mod nonce;
 pub mod request_metrics;
 pub mod ses_api;
+pub mod session_key;
 pub mod sqs_dispatch;
 pub mod turnstile;
 

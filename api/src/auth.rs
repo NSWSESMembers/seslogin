@@ -202,6 +202,66 @@ fn normalize_client_version(client_version: Option<&str>) -> Option<String> {
     Some(value.chars().take(MAX_CLIENT_VERSION_LEN).collect())
 }
 
+/// Throttled "touch" of a session on a successful authenticated request: refreshes
+/// `last_contact` (and enqueues a healthcheck) at most once per [`LAST_CONTACT_REFRESH_SECS`].
+/// When `extend_key` is set, the same write also slides `key_expires_at` forward to
+/// `now + KEY_LIFETIME_S` — this is how a key-enrolled kiosk keeps its 14-day window
+/// alive at no extra write cost.
+async fn touch_session<A: App + HasDb + HasSqs>(
+    app: &A,
+    session: &db::Session,
+    client_version: Option<&str>,
+    extend_key: bool,
+) -> Result<(), AuthError> {
+    // Only refresh last_contact if it's older than this window, to reduce DB
+    // write load. The admin UI only renders last_contact at minute+ granularity
+    // (the "online" status dot uses a 10-minute green band), so finer precision
+    // here just burns writes (each one also rewrites the ALL-projection GSI and
+    // adds PITR churn).
+    let now = crate::clock::now_sec();
+    if session
+        .last_contact
+        .is_none_or(|t| now > t + LAST_CONTACT_REFRESH_SECS)
+    {
+        let client_version = normalize_client_version(client_version);
+        let extend_key_expires_at = extend_key.then(|| now + crate::session_key::KEY_LIFETIME_S);
+        match app
+            .db()
+            .update_session(
+                &session.id,
+                db::SessionUpdateShape::Info {
+                    client_version: client_version.as_deref(),
+                    extend_key_expires_at,
+                },
+            )
+            .await
+        {
+            Ok(_) => {}
+            Err(db::Error::MutationDisabled) => {
+                warn!("update_session skipped: mutations disabled");
+            }
+            Err(e) => return Err(AuthError::Transient(e.to_string())),
+        }
+        if let Some(healthcheck_url) = &session.healthcheck_url {
+            let q = &app.sqs().healthcheck;
+            if let Err(e) = sqs_dispatch::enqueue_healthcheck(
+                &q.client,
+                &q.queue_url,
+                &session.id,
+                healthcheck_url,
+            )
+            .await
+            {
+                warn!(
+                    "Failed to enqueue healthcheck for session {}: {:?}",
+                    session.id, e
+                );
+            }
+        }
+    }
+    Ok(())
+}
+
 async fn fetch_update_session_auth_info<A: App + HasDb + HasSqs>(
     app: &A,
     session_id: String,
@@ -222,50 +282,79 @@ async fn fetch_update_session_auth_info<A: App + HasDb + HasSqs>(
         return Err(AuthError::Permanent("Session not found".into()));
     }
 
-    // Only refresh last_contact if it's older than this window, to reduce DB
-    // write load. The admin UI only renders last_contact at minute+ granularity
-    // (the "online" status dot uses a 10-minute green band), so finer precision
-    // here just burns writes (each one also rewrites the ALL-projection GSI and
-    // adds PITR churn).
+    touch_session(app, &session, client_version, false).await?;
+
+    Ok(AuthInfo::Session {
+        id: session.id,
+        location: session.location_id,
+    })
+}
+
+/// Authenticate a request signed with an enrolled kiosk key. `header_rest` is the
+/// Authorization value after the `SLKey ` scheme; `body_hash_hex` is the hex SHA-256 of
+/// the raw request body, which the signature binds along with a timestamp.
+///
+/// Every failure here is [`AuthError::Permanent`] (→ 401), so a kiosk whose session was
+/// disabled, whose key expired, or whose fingerprint no longer resolves falls back to
+/// the enrollment screen on its next request.
+pub async fn verify_signed_key<A: App + HasDb + HasSqs>(
+    app: &A,
+    header_rest: &str,
+    body_hash_hex: &str,
+    client_version: Option<&str>,
+) -> Result<AuthInfo, AuthError> {
+    let header = crate::session_key::parse_signed_key_header(header_rest)
+        .map_err(|e| AuthError::Permanent(format!("Invalid signed key header: {e:#}")))?;
+
     let now = crate::clock::now_sec();
-    if session
-        .last_contact
-        .is_none_or(|t| now > t + LAST_CONTACT_REFRESH_SECS)
-    {
-        let client_version = normalize_client_version(client_version);
-        match app
-            .db()
-            .update_session(
-                &session.id,
-                db::SessionUpdateShape::Info {
-                    client_version: client_version.as_deref(),
-                },
-            )
-            .await
-        {
-            Ok(_) => {}
-            Err(db::Error::MutationDisabled) => {
-                warn!("update_session skipped: mutations disabled");
-            }
-            Err(e) => return Err(AuthError::Transient(e.to_string())),
-        }
-        if let Some(healthcheck_url) = session.healthcheck_url {
-            let q = &app.sqs().healthcheck;
-            if let Err(e) = sqs_dispatch::enqueue_healthcheck(
-                &q.client,
-                &q.queue_url,
-                &session.id,
-                &healthcheck_url,
-            )
-            .await
-            {
-                warn!(
-                    "Failed to enqueue healthcheck for session {}: {:?}",
-                    session.id, e
-                );
-            }
-        }
+    crate::session_key::check_timestamp_window(header.timestamp, now)
+        .map_err(|e| AuthError::Permanent(format!("{e:#}")))?;
+
+    let ids = app
+        .db()
+        .get_session_id_by_key_fingerprint(&header.fingerprint)
+        .await
+        .map_err(|e| classify_db_err("look up session by key fingerprint", e))?;
+    let sessions = app
+        .db()
+        .get_sessions(&ids)
+        .await
+        .map_err(|e| classify_db_err("fetch sessions by key fingerprint", e))?;
+
+    // Only active sessions hold a fingerprint (Delete strips it), so at most one should
+    // match. Reject if none (disabled/re-enroll path) or, defensively, if more than one.
+    let mut active: Vec<db::Session> = sessions
+        .into_iter()
+        .flatten()
+        .filter(|s| s.active)
+        .collect();
+    if active.len() > 1 {
+        return Err(AuthError::Permanent(
+            "Multiple active sessions share this key fingerprint".into(),
+        ));
     }
+    let session = active
+        .pop()
+        .ok_or_else(|| AuthError::Permanent("Session not found".into()))?;
+
+    let public_key = session
+        .public_key
+        .as_deref()
+        .ok_or_else(|| AuthError::Permanent("Session has no enrolled key".into()))?;
+    if session.key_expires_at.is_none_or(|exp| now >= exp) {
+        return Err(AuthError::Permanent("Enrolled key has expired".into()));
+    }
+
+    crate::session_key::verify_signature(
+        public_key,
+        &header.fingerprint,
+        header.timestamp,
+        body_hash_hex,
+        &header.signature,
+    )
+    .map_err(|e| AuthError::Permanent(format!("{e:#}")))?;
+
+    touch_session(app, &session, client_version, true).await?;
 
     Ok(AuthInfo::Session {
         id: session.id,
@@ -413,6 +502,27 @@ pub async fn verify_token<A: App + HasDb + HasSqs>(
     }
 
     verify_token_with_jwt(app, token, client_version).await
+}
+
+/// Dispatch an `Authorization` header value to the right verifier by scheme:
+/// `Bearer <token>` → opaque/JWT tokens; `SLKey <fp>.<ts>.<sig>` → signed kiosk key
+/// (binds `body_hash_hex`). Returns `None` when there is no recognized header, so the
+/// request proceeds unauthenticated (the guards then reject anything that requires auth).
+/// Shared by the poem server and the Lambda handler.
+pub async fn verify_authorization_header<A: App + HasDb + HasSqs>(
+    app: &A,
+    auth_header: Option<&str>,
+    body_hash_hex: &str,
+    client_version: Option<&str>,
+) -> Option<Result<AuthInfo, AuthError>> {
+    let auth_header = auth_header?;
+    if let Some(token) = auth_header.strip_prefix("Bearer ") {
+        Some(verify_token(app, token, client_version).await)
+    } else if let Some(rest) = auth_header.strip_prefix(crate::session_key::SESSION_KEY_SCHEME) {
+        Some(verify_signed_key(app, rest, body_hash_hex, client_version).await)
+    } else {
+        None
+    }
 }
 
 /// Generate a new opaque api token secret. Returns (secret, sha256_hex_hash).
