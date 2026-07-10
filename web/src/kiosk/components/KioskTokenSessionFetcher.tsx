@@ -28,10 +28,14 @@ export default function startKioskTokenSessionFetcher({
   environment,
   setToken,
   setSession,
+  persistRefreshedToken = true,
 }: {
   environment: IEnvironment;
   setToken: (token: string) => void;
   setSession: (session: KioskSession | null) => void;
+  // Key-enrolled kiosks authenticate by signing each request, so the JWT that
+  // `refreshToken` still returns must not be persisted or used. Set false for them.
+  persistRefreshedToken?: boolean;
 }) {
   let timeoutId: number | null = null;
   let isCancelled = false;
@@ -83,7 +87,7 @@ export default function startKioskTokenSessionFetcher({
               },
             }
           : null;
-        if (refreshedToken) {
+        if (refreshedToken && persistRefreshedToken) {
           setToken(refreshedToken);
         }
         setSession(refreshedSession);

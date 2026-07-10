@@ -1,8 +1,10 @@
 import { useCallback, useMemo, useRef, useState, type ReactNode } from "react";
 import KioskRelayEnvironment from "./KioskRelayEnvironment";
+import KioskKeyRelayEnvironment from "./KioskKeyRelayEnvironment";
 import { KioskEnvironmentContext } from "./KioskEnvironmentContext";
 import { KioskSessionProvider } from "./KioskSessionProvider";
 import KioskSetup from "../pages/KioskSetup";
+import KioskEnrollment from "./KioskEnrollment";
 
 const OLD_SETTINGS_KEY = "appSettings";
 const SETTINGS_PREFIX = "kiosk_";
@@ -10,8 +12,18 @@ const SETTINGS_PREFIX = "kiosk_";
 type AppSettingsStorage = {
   scanAuthToken?: string | null;
   scanAuthTokenIssuedAt?: number | null;
+  /** Which auth flow this kiosk last used: legacy 6-digit JWT, or public-key signing. */
+  authMode?: "jwt" | "key" | null;
   [key: string]: unknown;
 };
+
+/**
+ * - `setup-code`: default; the 6-digit code entry screen (with a QR-enroll option).
+ * - `enrolling`: showing the QR code, waiting for an admin to enroll this key.
+ * - `authed-jwt`: authenticated via the legacy code→JWT flow.
+ * - `authed-key`: authenticated by signing each request with the enrolled key.
+ */
+type KioskAuthState = "setup-code" | "enrolling" | "authed-jwt" | "authed-key";
 
 function readAppSettings(profile: string): AppSettingsStorage {
   let settingsJson = localStorage.getItem(`${SETTINGS_PREFIX}${profile}`);
@@ -51,18 +63,23 @@ export default function KioskEnvironment({
   profile: string;
   children: ReactNode;
 }) {
-  // Lazy useState initializer: read the persisted token once on mount. Later
+  // Lazy useState initializer: read the persisted settings once on mount. Later
   // `profile` changes intentionally don't re-seed the ref/state below.
-  const [initialScanAuthToken] = useState<string | null>(() => {
-    const settings = readAppSettings(profile);
-    return typeof settings.scanAuthToken === "string"
-      ? settings.scanAuthToken
-      : null;
-  });
-  const scanAuthTokenRef = useRef<string | null>(initialScanAuthToken);
-  const [isUnauthorized, setIsUnauthorized] = useState(
-    initialScanAuthToken == null,
+  const [initialSettings] = useState<AppSettingsStorage>(() =>
+    readAppSettings(profile),
   );
+  const scanAuthTokenRef = useRef<string | null>(
+    typeof initialSettings.scanAuthToken === "string"
+      ? initialSettings.scanAuthToken
+      : null,
+  );
+  const [authState, setAuthState] = useState<KioskAuthState>(() => {
+    if (scanAuthTokenRef.current != null) return "authed-jwt";
+    // Optimistic: assume the enrolled key still works; the first request 401s into
+    // `enrolling` if the session was disabled.
+    if (initialSettings.authMode === "key") return "authed-key";
+    return "setup-code";
+  });
 
   const getToken = useCallback(() => scanAuthTokenRef.current, []);
 
@@ -75,10 +92,11 @@ export default function KioskEnvironment({
         ...currentSettings,
         scanAuthToken: token,
         scanAuthTokenIssuedAt: issuedAt,
+        authMode: "jwt",
       });
 
       scanAuthTokenRef.current = token;
-      setIsUnauthorized(false);
+      setAuthState("authed-jwt");
     },
     [profile],
   );
@@ -102,29 +120,78 @@ export default function KioskEnvironment({
     [setToken],
   );
 
-  const onUnauthorized = useCallback(() => {
+  const onJwtUnauthorized = useCallback(() => {
     clearToken();
-    setIsUnauthorized(true);
+    setAuthState("setup-code");
   }, [clearToken]);
 
-  if (isUnauthorized) {
-    return (
-      <KioskEnvironmentContext.Provider value={contextValue}>
-        <KioskSetup />
-      </KioskEnvironmentContext.Provider>
-    );
+  // Key mode 401: session was disabled. Revert to enrollment but keep the key — it
+  // re-submits the same public key so an admin can re-enroll it into a fresh session.
+  const onKeyUnauthorized = useCallback(() => {
+    setAuthState("enrolling");
+  }, []);
+
+  const onEnrolled = useCallback(() => {
+    const currentSettings = readAppSettings(profile);
+    writeAppSettings(profile, {
+      ...currentSettings,
+      authMode: "key",
+      scanAuthToken: null,
+      scanAuthTokenIssuedAt: null,
+    });
+    scanAuthTokenRef.current = null;
+    setAuthState("authed-key");
+  }, [profile]);
+
+  const startEnrollment = useCallback(() => setAuthState("enrolling"), []);
+  const useCodeInstead = useCallback(() => setAuthState("setup-code"), []);
+
+  let body: ReactNode;
+  switch (authState) {
+    case "setup-code":
+      body = <KioskSetup onEnrollWithQr={startEnrollment} />;
+      break;
+    case "enrolling":
+      body = (
+        <KioskEnrollment
+          profile={profile}
+          onEnrolled={onEnrolled}
+          onUseCodeInstead={useCodeInstead}
+        />
+      );
+      break;
+    case "authed-jwt":
+      body = (
+        <KioskRelayEnvironment
+          getToken={getToken}
+          onUnauthorized={onJwtUnauthorized}
+        >
+          <KioskSessionProvider setToken={setToken}>
+            {children}
+          </KioskSessionProvider>
+        </KioskRelayEnvironment>
+      );
+      break;
+    case "authed-key":
+      body = (
+        <KioskKeyRelayEnvironment
+          profile={profile}
+          onUnauthorized={onKeyUnauthorized}
+        >
+          <KioskSessionProvider
+            setToken={setToken}
+            persistRefreshedToken={false}
+          >
+            {children}
+          </KioskSessionProvider>
+        </KioskKeyRelayEnvironment>
+      );
+      break;
   }
 
   return (
     <KioskEnvironmentContext.Provider value={contextValue}>
-      <KioskRelayEnvironment
-        getToken={getToken}
-        onUnauthorized={onUnauthorized}
-      >
-        <KioskSessionProvider setToken={setToken}>
-          {children}
-        </KioskSessionProvider>
-      </KioskRelayEnvironment>
+      {body}
     </KioskEnvironmentContext.Provider>
   );
 }
