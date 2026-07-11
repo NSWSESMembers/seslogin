@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<b9d9a231f9715e71ee1bb792476a06fe>>
+ * @generated SignedSource<<822777cf90edf371550298cec34a3b23>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -22,7 +22,7 @@ export type ScanControllerRegister2Mutation$data = {
         readonly firstName: string;
         readonly id: string;
         readonly lastName: string;
-      };
+      } | null | undefined;
       readonly startTime: number;
     } | null | undefined;
     readonly state: RegisterState;

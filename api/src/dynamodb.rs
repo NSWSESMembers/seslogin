@@ -440,9 +440,9 @@ impl TryInto<Period> for Item {
     fn try_into(self) -> Result<Period, Self::Error> {
         Ok(Period {
             id: self.id(),
-            person_id: self
-                .string_field("person_id")?
-                .ok_or_else(|| anyhow!("Period missing person_id"))?,
+            person_id: self.string_field("person_id")?,
+            guest_name: self.string_field("guest_name")?,
+            comment: self.string_field("comment")?,
             location_id: self
                 .string_field("location_id")?
                 .ok_or_else(|| anyhow!("Period missing location_id"))?,
@@ -643,13 +643,6 @@ impl Handler {
                 && let Some(items) = responses.remove(&table_name)
             {
                 for item in items {
-                    // Skip guest period rows (no person_id) so a batch fetch that
-                    // happens to include one never fails to hydrate — see
-                    // `without_guest_periods`. Such an id resolves to `None`
-                    // (treated as not-found), exactly as if the row did not exist.
-                    if name == "period" && !item.contains_key("person_id") {
-                        continue;
-                    }
                     let res: Result<R, HydrationError> = Item(item).try_into();
                     let rec: R = res?;
                     results.insert(rec.id().to_string(), rec);
@@ -725,23 +718,6 @@ where
         .into_iter()
         .map(|i| Item(i).try_into())
         .collect()
-}
-
-/// Drop raw period items that carry no `person_id` attribute — i.e. guest
-/// periods, which the guest sign-in/out feature writes but this version of the
-/// API does not yet model. They are silently skipped on read (they will already
-/// be appearing in the shared database from the test/preprod environments) so
-/// that period reads never fail to hydrate. Guest support is added by the full
-/// feature; until then these rows are invisible to the API.
-fn without_guest_periods(
-    items: Option<Vec<HashMap<String, AttributeValue>>>,
-) -> Option<Vec<HashMap<String, AttributeValue>>> {
-    items.map(|items| {
-        items
-            .into_iter()
-            .filter(|item| item.contains_key("person_id"))
-            .collect()
-    })
 }
 
 impl db::Handler for Handler {
@@ -1289,7 +1265,7 @@ impl db::Handler for Handler {
                 resp.consumed_capacity(),
                 CapKind::Read,
             );
-            periods.extend(hydrate_items::<Period>(without_guest_periods(resp.items))?);
+            periods.extend(hydrate_items::<Period>(resp.items)?);
             exclusive_start_key = resp.last_evaluated_key;
 
             if periods.len() >= fetch_limit || exclusive_start_key.is_none() {
@@ -1394,32 +1370,55 @@ impl db::Handler for Handler {
         self.get_records("period", ids).await
     }
 
-    async fn end_period(&self, period: &Period) -> db::Result<Period> {
+    async fn end_period(
+        &self,
+        period: &Period,
+        signed_out_session_id: Option<&str>,
+    ) -> db::Result<Period> {
         if self.read_only {
             return Err(db::Error::MutationDisabled);
         }
         let unix_time = crate::clock::now_sec();
 
-        let resp = self
+        let update_expression = if signed_out_session_id.is_some() {
+            "SET end_time = :end_time, updated_at = :updated_at, signed_out_session_id = :sess REMOVE location_open ADD v :one"
+        } else {
+            "SET end_time = :end_time, updated_at = :updated_at REMOVE location_open ADD v :one"
+        };
+
+        let mut req = self
             .client
             .update_item()
             .table_name(self.table_name("period"))
             .key("id", AttributeValue::S(period.id.to_string()))
-            .update_expression(
-                "SET end_time = :end_time, updated_at = :updated_at REMOVE location_open ADD v :one",
-            )
+            .update_expression(update_expression)
+            // Fail cleanly on a double sign-out (two kiosks) instead of rewriting end_time.
+            .condition_expression("attribute_exists(id) AND attribute_not_exists(end_time)")
             .expression_attribute_values(":end_time", AttributeValue::N(unix_time.to_string()))
             .expression_attribute_values(":updated_at", AttributeValue::N(unix_time.to_string()))
-            .expression_attribute_values(":one", AttributeValue::N("1".to_string()))
+            .expression_attribute_values(":one", AttributeValue::N("1".to_string()));
+        if let Some(sess) = signed_out_session_id {
+            req = req.expression_attribute_values(":sess", AttributeValue::S(sess.to_string()));
+        }
+
+        let resp = req
             .return_consumed_capacity(ReturnConsumedCapacity::Total)
             .send()
             .await
-            .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
+            .map_err(|e| {
+                map_update_err(
+                    e,
+                    format!("Period {} not found or already ended", period.id),
+                )
+            })?;
         record_capacity("end_period", resp.consumed_capacity(), CapKind::Write);
 
         let mut updated = period.clone();
         updated.end_time = Some(unix_time);
         updated.updated_at = Some(unix_time);
+        if let Some(sess) = signed_out_session_id {
+            updated.signed_out_session_id = Some(sess.to_string());
+        }
         Ok(updated)
     }
 
@@ -1464,7 +1463,82 @@ impl db::Handler for Handler {
 
         Ok(Period {
             id,
-            person_id: person_id.to_string(),
+            person_id: Some(person_id.to_string()),
+            guest_name: None,
+            comment: None,
+            location_id: location_id.to_string(),
+            category_id: None,
+            start_time: unix_time,
+            end_time: None,
+            signed_in_session_id: Some(signed_in_session_id.to_string()),
+            signed_out_session_id: None,
+            version: 1,
+            nitc_event_id: None,
+            nitc_participant_id: None,
+            nitc_exported_version: None,
+            deleted: None,
+            created_at: Some(unix_time),
+            updated_at: Some(unix_time),
+        })
+    }
+
+    async fn start_guest_period(
+        &self,
+        location_id: &str,
+        guest_name: &str,
+        comment: Option<&str>,
+        signed_in_session_id: &str,
+    ) -> db::Result<Period> {
+        if self.read_only {
+            return Err(db::Error::MutationDisabled);
+        }
+        let id = new_id();
+        let unix_time = crate::clock::now_sec();
+
+        // Trim the comment on save; an empty (or whitespace-only) comment is
+        // omitted entirely rather than stored — never write a blank/Null value.
+        let comment = comment.map(str::trim).filter(|c| !c.is_empty());
+
+        let mut req = self
+            .client
+            .put_item()
+            .table_name(self.table_name("period"))
+            .item("id", AttributeValue::S(id.clone()))
+            // Deliberately no `person_id`: its absence keeps guests out of the
+            // sparse person GSI and thus out of all per-person views.
+            .item("location_id", AttributeValue::S(location_id.to_string()))
+            .item("start_time", AttributeValue::N(unix_time.to_string()))
+            .item(
+                "signed_in_session_id",
+                AttributeValue::S(signed_in_session_id.to_string()),
+            )
+            .item("location_open", AttributeValue::S(location_id.to_string()))
+            .item("location_live", AttributeValue::S(location_id.to_string()))
+            .item("v", AttributeValue::N("1".to_string()))
+            .item("created_at", AttributeValue::N(unix_time.to_string()))
+            .item("updated_at", AttributeValue::N(unix_time.to_string()))
+            .item("guest_name", AttributeValue::S(guest_name.to_string()));
+        // Omit the comment attribute entirely when absent — never write Null.
+        if let Some(comment) = comment {
+            req = req.item("comment", AttributeValue::S(comment.to_string()));
+        }
+
+        let resp = req
+            .return_consumed_capacity(ReturnConsumedCapacity::Total)
+            .send()
+            .await
+            .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
+        record_capacity(
+            "start_guest_period",
+            resp.consumed_capacity(),
+            CapKind::Write,
+        );
+
+        Ok(Period {
+            id,
+            person_id: None,
+            guest_name: Some(guest_name.to_string()),
+            comment: comment.map(|c| c.to_string()),
             location_id: location_id.to_string(),
             category_id: None,
             start_time: unix_time,
@@ -1717,7 +1791,9 @@ impl db::Handler for Handler {
 
         Ok(Period {
             id,
-            person_id: person_id.to_string(),
+            person_id: Some(person_id.to_string()),
+            guest_name: None,
+            comment: None,
             location_id: location_id.to_string(),
             category_id: Some(category_id.to_string()),
             start_time,

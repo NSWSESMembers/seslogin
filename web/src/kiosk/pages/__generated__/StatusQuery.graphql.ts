@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<bdd5e04c44d0404497565eb53db04999>>
+ * @generated SignedSource<<f4299118689dff6dfc44c6fb69509f75>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -23,7 +23,7 @@ export type StatusQuery$data = {
               readonly firstName: string;
               readonly id: string;
               readonly lastName: string;
-            };
+            } | null | undefined;
             readonly startTime: number;
           };
         }>;

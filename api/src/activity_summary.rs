@@ -102,7 +102,9 @@ pub async fn run(db: &impl db::Handler, args: SummaryArgs) -> Result<()> {
             let periods = fetch_all_periods_for_location(db, loc_id, start_ts, end_ts).await?;
 
             for p in &periods {
-                all_person_ids.push(p.person_id.clone());
+                if let Some(ref pid) = p.person_id {
+                    all_person_ids.push(pid.clone());
+                }
                 if let Some(ref cat_id) = p.category_id {
                     all_category_ids.push(cat_id.clone());
                 }
@@ -268,17 +270,21 @@ fn build_summary_html(
         ));
 
         for (i, period) in loc.periods.iter().enumerate() {
-            let person = persons.get(&period.person_id);
-            let person_name = person
-                .map(|p| format!("{} {}", p.first_name, p.last_name))
-                .unwrap_or_else(|| "Unknown".to_string());
-            let member_cell = match person.and_then(|p| p.registration_number.as_deref()) {
-                Some(reg) => format!(
-                    "{}<br><span style=\"font-size:11px;color:#6b7280\">{}</span>",
-                    escape_html(&person_name),
-                    escape_html(reg)
-                ),
-                None => escape_html(&person_name),
+            let person = period.person_id.as_ref().and_then(|id| persons.get(id));
+            let member_cell = if let Some(guest_name) = &period.guest_name {
+                escape_html(&format!("{guest_name} (Guest)"))
+            } else {
+                let person_name = person
+                    .map(|p| format!("{} {}", p.first_name, p.last_name))
+                    .unwrap_or_else(|| "Unknown".to_string());
+                match person.and_then(|p| p.registration_number.as_deref()) {
+                    Some(reg) => format!(
+                        "{}<br><span style=\"font-size:11px;color:#6b7280\">{}</span>",
+                        escape_html(&person_name),
+                        escape_html(reg)
+                    ),
+                    None => escape_html(&person_name),
+                }
             };
             let sign_in = format_time(period.start_time);
             let sign_out = match period.end_time {
@@ -349,15 +355,24 @@ fn build_summary_html(
                 continue;
             };
             let hours = duration_hours(period.start_time, end_time);
-            let entry = member_hours
-                .entry(period.person_id.clone())
-                .or_insert_with(|| {
-                    let name = persons
-                        .get(&period.person_id)
+            let key = match (&period.person_id, &period.guest_name) {
+                (Some(pid), _) => pid.clone(),
+                (None, Some(name)) => format!("guest:{name}"),
+                (None, None) => continue,
+            };
+            let entry = member_hours.entry(key).or_insert_with(|| {
+                let name = if let Some(guest_name) = &period.guest_name {
+                    format!("{guest_name} (Guest)")
+                } else {
+                    period
+                        .person_id
+                        .as_ref()
+                        .and_then(|id| persons.get(id))
                         .map(|p| format!("{} {}", p.first_name, p.last_name))
-                        .unwrap_or_else(|| "Unknown".to_string());
-                    (name, 0.0)
-                });
+                        .unwrap_or_else(|| "Unknown".to_string())
+                };
+                (name, 0.0)
+            });
             entry.1 += hours;
         }
         let mut member_rows: Vec<(String, f64)> = member_hours.into_values().collect();
