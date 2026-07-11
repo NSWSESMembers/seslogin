@@ -643,6 +643,13 @@ impl Handler {
                 && let Some(items) = responses.remove(&table_name)
             {
                 for item in items {
+                    // Skip guest period rows (no person_id) so a batch fetch that
+                    // happens to include one never fails to hydrate — see
+                    // `without_guest_periods`. Such an id resolves to `None`
+                    // (treated as not-found), exactly as if the row did not exist.
+                    if name == "period" && !item.contains_key("person_id") {
+                        continue;
+                    }
                     let res: Result<R, HydrationError> = Item(item).try_into();
                     let rec: R = res?;
                     results.insert(rec.id().to_string(), rec);
@@ -718,6 +725,23 @@ where
         .into_iter()
         .map(|i| Item(i).try_into())
         .collect()
+}
+
+/// Drop raw period items that carry no `person_id` attribute — i.e. guest
+/// periods, which the guest sign-in/out feature writes but this version of the
+/// API does not yet model. They are silently skipped on read (they will already
+/// be appearing in the shared database from the test/preprod environments) so
+/// that period reads never fail to hydrate. Guest support is added by the full
+/// feature; until then these rows are invisible to the API.
+fn without_guest_periods(
+    items: Option<Vec<HashMap<String, AttributeValue>>>,
+) -> Option<Vec<HashMap<String, AttributeValue>>> {
+    items.map(|items| {
+        items
+            .into_iter()
+            .filter(|item| item.contains_key("person_id"))
+            .collect()
+    })
 }
 
 impl db::Handler for Handler {
@@ -1265,7 +1289,7 @@ impl db::Handler for Handler {
                 resp.consumed_capacity(),
                 CapKind::Read,
             );
-            periods.extend(hydrate_items::<Period>(resp.items)?);
+            periods.extend(hydrate_items::<Period>(without_guest_periods(resp.items))?);
             exclusive_start_key = resp.last_evaluated_key;
 
             if periods.len() >= fetch_limit || exclusive_start_key.is_none() {
