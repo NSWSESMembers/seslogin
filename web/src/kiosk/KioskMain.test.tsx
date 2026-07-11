@@ -22,7 +22,7 @@ describe("KioskMain", () => {
       },
     };
 
-    const getItemSpy = vi.spyOn(Storage.prototype, "getItem");
+    const getItemSpy = vi.spyOn(localStorage, "getItem");
     getItemSpy.mockReturnValue(JSON.stringify(settings));
 
     const startKioskTokenSessionFetcherSpy = vi.spyOn(
