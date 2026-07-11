@@ -22,8 +22,20 @@ function nextRequestLeaseId(): string {
   return `graphql:${requestLeaseCounter}`;
 }
 
+/**
+ * Supplies the `Authorization` header value for a request. Either:
+ *  - a static full header value (e.g. `Bearer <jwt>`), or `null` for none, or
+ *  - an async producer called with the exact serialized request body — used by the
+ *    kiosk key flow, which signs the body hash. The same body string is then sent, so
+ *    the signature always matches what the server hashes.
+ */
+export type AuthHeaderProvider =
+  | string
+  | null
+  | ((body: string) => Promise<string | null>);
+
 export async function fetchGraphQL(
-  token: string | null | undefined,
+  authHeader: AuthHeaderProvider,
   request: RequestParameters,
   variables: Variables,
   onUnauthorized: () => void,
@@ -38,8 +50,12 @@ export async function fetchGraphQL(
     "Content-Type": "application/json",
     [CLIENT_VERSION_HEADER]: getCurrentClientVersion(),
   };
-  if (token) {
-    headers["Authorization"] = `Bearer ${token}`;
+  // Serialize the body once so the auth producer signs exactly what we send.
+  const body = JSON.stringify({ query: request.text, variables });
+  const authValue =
+    typeof authHeader === "function" ? await authHeader(body) : authHeader;
+  if (authValue) {
+    headers["Authorization"] = authValue;
   }
   const endpoint = getGraphQLEndpoint();
   let resp: Response;
@@ -52,7 +68,7 @@ export async function fetchGraphQL(
     resp = await fetch(endpoint, {
       method: "POST",
       headers,
-      body: JSON.stringify({ query: request.text, variables }),
+      body,
       cache: "no-store",
     });
   } catch (error) {
