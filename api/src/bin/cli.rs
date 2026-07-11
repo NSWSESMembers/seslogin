@@ -549,7 +549,7 @@ async fn show_sessions(db: &impl Handler, sessions: &[Session]) {
 }
 
 async fn show_periods(db: &impl Handler, periods: &[Period]) {
-    let person_ids: Vec<String> = periods.iter().map(|p| p.person_id.clone()).collect();
+    let person_ids: Vec<String> = periods.iter().filter_map(|p| p.person_id.clone()).collect();
     let person_map = person_names(db, &person_ids).await;
 
     let loc_ids: Vec<String> = periods.iter().map(|p| p.location_id.clone()).collect();
@@ -595,7 +595,10 @@ async fn show_periods(db: &impl Handler, periods: &[Period]) {
             ("id", p.id.clone()),
             (
                 "person_id",
-                decorate(&p.person_id, person_map.get(&p.person_id)),
+                match &p.person_id {
+                    Some(pid) => decorate(pid, person_map.get(pid)),
+                    None => format!("GUEST {}", p.guest_name.as_deref().unwrap_or("")),
+                },
             ),
             (
                 "location_id",
@@ -1433,7 +1436,7 @@ async fn list_sessions(db: &impl Handler, location: Option<String>) -> Result<Ve
 }
 
 async fn print_period_table(db: &impl Handler, periods: &[Period]) {
-    let person_ids: Vec<String> = periods.iter().map(|p| p.person_id.clone()).collect();
+    let person_ids: Vec<String> = periods.iter().filter_map(|p| p.person_id.clone()).collect();
     let person_map = person_names(db, &person_ids).await;
     let cat_ids: Vec<String> = periods
         .iter()
@@ -1446,10 +1449,10 @@ async fn print_period_table(db: &impl Handler, periods: &[Period]) {
         .map(|p| {
             vec![
                 p.id.clone(),
-                person_map
-                    .get(&p.person_id)
-                    .cloned()
-                    .unwrap_or_else(|| p.person_id.clone()),
+                match &p.person_id {
+                    Some(pid) => person_map.get(pid).cloned().unwrap_or_else(|| pid.clone()),
+                    None => format!("GUEST {}", p.guest_name.as_deref().unwrap_or("")),
+                },
                 relative(p.start_time),
                 p.end_time
                     .map(relative)
@@ -1534,8 +1537,10 @@ async fn list_active_locations(db: &impl Handler, days: u64, session_days: u64) 
         total_synced += synced;
 
         let periods = fetch_all_periods(db, &loc.id, period_cutoff, now).await?;
-        let distinct_members: HashSet<&str> =
-            periods.iter().map(|p| p.person_id.as_str()).collect();
+        let distinct_members: HashSet<&str> = periods
+            .iter()
+            .filter_map(|p| p.person_id.as_deref())
+            .collect();
 
         let sessions = db
             .list_sessions(ListSessionsQuery::ByLocation(loc.id.clone()))

@@ -178,6 +178,16 @@ type MutationRoot {
 	deleteNitcGroup(id: ID!): Boolean!
 	scanRegister2(memberNumber: String!): RegisterResult!
 	scanSignOut(id: ID!, startTime: Int!, endTime: Int!, categoryId: ID!): Period!
+	"""
+	Sign in a guest (non-member) at the kiosk. Creates an open period with no
+	person and no category, so it never enters per-person views or the NITC export.
+	"""
+	scanGuestSignIn(name: String!, reason: String): Period!
+	"""
+	Sign out a guest period from the kiosk. Only closes guest periods (no person,
+	no category), so it can never be used to close a member period.
+	"""
+	scanGuestSignOut(id: ID!): Period!
 	enqueueMemberSync(locationId: ID!): Boolean!
 	updateMyEmailConfig(dailyLocationIds: [String!]!): User!
 	"""
@@ -269,8 +279,10 @@ type PendingEnrollmentKey {
 
 type Period {
 	id: ID!
-	personId: ID!
-	person: Person!
+	personId: ID
+	person: Person
+	guestName: String
+	comment: String
 	locationId: ID!
 	location: Location!
 	categoryId: ID

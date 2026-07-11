@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<aeabc986a8141b1ecf2a6dae58ff9fb3>>
+ * @generated SignedSource<<4f2ecbc868f41c5b47a2e4ab2b342710>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -20,7 +20,7 @@ export type ActivityListTable_period$data = {
   readonly id: string;
   readonly nitcEventId: string | null | undefined;
   readonly nitcExportStatus: NitcExportStatus | null | undefined;
-  readonly personId: string;
+  readonly personId: string | null | undefined;
   readonly signedInSession: {
     readonly id: string;
     readonly name: string;

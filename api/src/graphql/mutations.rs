@@ -696,6 +696,9 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
             .next()
             .flatten()
             .ok_or_else(|| anyhow!("Period with ID {:?} missing", id))?;
+        if existing.guest_name.is_some() {
+            return Err(anyhow!("Cannot edit a guest period"));
+        }
         require_location_access(ctx, &existing.location_id)?;
         require_location_access(ctx, &location_id)?;
         self.app
@@ -771,6 +774,9 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
             .next()
             .flatten()
             .ok_or_else(|| anyhow!("Period with ID {:?} missing", id))?;
+        if existing.guest_name.is_some() {
+            return Err(anyhow!("Cannot edit a guest period"));
+        }
         require_location_access(ctx, &existing.location_id)?;
         self.app
             .db()
@@ -1400,6 +1406,88 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
         self.enqueue_nitc_export(&rec.id, rec.nitc_event_id.as_deref())
             .await?;
         Ok(Period::new(rec))
+    }
+
+    /// Sign in a guest (non-member) at the kiosk. Creates an open period with no
+    /// person and no category, so it never enters per-person views or the NITC export.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Session)")]
+    async fn scan_guest_sign_in(
+        &self,
+        ctx: &Context<'_>,
+        name: String,
+        reason: Option<String>,
+    ) -> Result<Period<A>> {
+        require_writable(ctx)?;
+
+        let (session_id, location_id) = match ctx.data_opt::<AuthInfo>() {
+            Some(AuthInfo::Session { id, location }) => (id, location),
+            _ => {
+                return Err(anyhow!(
+                    "Cannot call scan_guest_sign_in without session auth"
+                ));
+            }
+        };
+
+        let name = name.trim();
+        if name.is_empty() {
+            return Err(anyhow!("Guest name is required"));
+        }
+        if name.chars().count() > 100 {
+            return Err(anyhow!("Guest name is too long"));
+        }
+        let reason = reason.as_deref().map(str::trim).filter(|r| !r.is_empty());
+        if let Some(reason) = reason
+            && reason.chars().count() > 500
+        {
+            return Err(anyhow!("Reason is too long"));
+        }
+
+        let rec = self
+            .app
+            .db()
+            .start_guest_period(location_id, name, reason, session_id)
+            .await?;
+        Ok(Period::new(rec))
+    }
+
+    /// Sign out a guest period from the kiosk. Only closes guest periods (no person,
+    /// no category), so it can never be used to close a member period.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Session)")]
+    async fn scan_guest_sign_out(&self, ctx: &Context<'_>, id: ID) -> Result<Period<A>> {
+        require_writable(ctx)?;
+
+        let session_id = match ctx.data_opt::<AuthInfo>() {
+            Some(AuthInfo::Session { id, .. }) => id.clone(),
+            _ => {
+                return Err(anyhow!(
+                    "Cannot call scan_guest_sign_out without session auth"
+                ));
+            }
+        };
+
+        let rec = self
+            .app
+            .db()
+            .get_periods(&[&id])
+            .await?
+            .into_iter()
+            .next()
+            .flatten()
+            .ok_or_else(|| anyhow!("Period with ID {:?} missing", id))?;
+
+        require_location_access(ctx, &rec.location_id)?;
+        if rec.guest_name.is_none() {
+            return Err(anyhow!("Not a guest period"));
+        }
+        if rec.deleted.is_some() {
+            return Err(anyhow!("Guest period has been deleted"));
+        }
+        if rec.end_time.is_some() {
+            return Err(anyhow!("Guest already signed out"));
+        }
+
+        let updated = self.app.db().end_period(&rec, Some(&session_id)).await?;
+        Ok(Period::new(updated))
     }
 
     #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]

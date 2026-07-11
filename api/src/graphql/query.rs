@@ -455,18 +455,30 @@ impl<A: App + HasDb + Send + Sync> Period<A> {
         ID(self.rec.id.clone())
     }
 
-    async fn person_id(&self) -> ID {
-        ID(self.rec.person_id.clone())
+    async fn person_id(&self) -> Option<ID> {
+        self.rec.person_id.clone().map(ID)
     }
 
-    async fn person(&self, ctx: &Context<'_>) -> Result<Person<A>> {
+    async fn person(&self, ctx: &Context<'_>) -> Result<Option<Person<A>>> {
+        let Some(person_id) = self.rec.person_id.clone() else {
+            return Ok(None);
+        };
         let loader = ctx.data_unchecked::<DataLoader<DatabaseLoader<A>>>();
         loader
-            .load_one(PersonId(ID(self.rec.person_id.clone())))
+            .load_one(PersonId(ID(person_id.clone())))
             .await
             .map_err(|e| anyhow!("Failed to load person via DataLoader: {}", e))?
             .flatten()
-            .ok_or_else(|| anyhow!("Person with ID {} missing", self.rec.person_id))
+            .ok_or_else(|| anyhow!("Person with ID {} missing", person_id))
+            .map(Some)
+    }
+
+    async fn guest_name(&self) -> Option<String> {
+        self.rec.guest_name.clone()
+    }
+
+    async fn comment(&self) -> Option<String> {
+        self.rec.comment.clone()
     }
 
     async fn location_id(&self) -> ID {
@@ -1023,13 +1035,16 @@ impl<A: App + HasDb + Send + Sync> Location<A> {
 
         let mut totals_by_member: HashMap<String, u64> = HashMap::new();
         for period in periods {
+            let Some(person_id) = period.person_id.clone() else {
+                continue;
+            };
             if let Some(ref wanted) = category_filter
                 && period.category_id.as_deref() != Some(wanted.as_str())
             {
                 continue;
             }
             if let Some(duration) = period_duration(&period) {
-                *totals_by_member.entry(period.person_id).or_insert(0) += duration;
+                *totals_by_member.entry(person_id).or_insert(0) += duration;
             }
         }
 
@@ -1132,11 +1147,14 @@ impl<A: App + HasDb + Send + Sync> Location<A> {
 
         let mut totals_by_member: HashMap<String, HashMap<String, u64>> = HashMap::new();
         for period in periods {
+            let Some(person_id) = period.person_id.clone() else {
+                continue;
+            };
             if let (Some(category_id), Some(duration)) =
                 (period.category_id.clone(), period_duration(&period))
             {
                 *totals_by_member
-                    .entry(period.person_id)
+                    .entry(person_id)
                     .or_default()
                     .entry(category_id)
                     .or_insert(0) += duration;
@@ -1199,13 +1217,16 @@ impl<A: App + HasDb + Send + Sync> Location<A> {
 
         let mut totals_by_category: HashMap<String, HashMap<String, u64>> = HashMap::new();
         for period in periods {
+            let Some(person_id) = period.person_id.clone() else {
+                continue;
+            };
             if let (Some(category_id), Some(duration)) =
                 (period.category_id.clone(), period_duration(&period))
             {
                 *totals_by_category
                     .entry(category_id)
                     .or_default()
-                    .entry(period.person_id)
+                    .entry(person_id)
                     .or_insert(0) += duration;
             }
         }
@@ -1267,6 +1288,9 @@ impl<A: App + HasDb + Send + Sync> Location<A> {
         let mut totals_by_day: HashMap<String, HashMap<String, HashMap<String, u64>>> =
             HashMap::new();
         for period in periods {
+            let Some(person_id) = period.person_id.clone() else {
+                continue;
+            };
             if let (Some(category_id), Some(duration)) =
                 (period.category_id.clone(), period_duration(&period))
             {
@@ -1276,7 +1300,7 @@ impl<A: App + HasDb + Send + Sync> Location<A> {
                     .or_default()
                     .entry(category_id)
                     .or_default()
-                    .entry(period.person_id)
+                    .entry(person_id)
                     .or_insert(0) += duration;
             }
         }
@@ -1408,10 +1432,14 @@ impl<A: App + HasDb + Send + Sync> Location<A> {
         let mut category_totals_7d: HashMap<Option<String>, (i64, i64)> = HashMap::new();
 
         for period in periods_30d {
-            active_members_30d.insert(period.person_id.clone());
+            // Guests have no person_id — exclude them from all dashboard metrics.
+            let Some(person_id) = period.person_id.clone() else {
+                continue;
+            };
+            active_members_30d.insert(person_id.clone());
 
             if period.start_time >= range_24h_start {
-                active_members_24h.insert(period.person_id.clone());
+                active_members_24h.insert(person_id.clone());
                 check_ins_24h += 1;
             }
 

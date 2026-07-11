@@ -27,6 +27,7 @@ export default function Status() {
                 node {
                   id
                   startTime
+                  guestName
                   person {
                     id
                     firstName
@@ -50,11 +51,9 @@ export default function Status() {
     .map(({ node }) => ({
       id: node.id,
       startTime: node.startTime,
-      person: {
-        id: node.person.id,
-        firstName: node.person.firstName,
-        lastName: node.person.lastName,
-      },
+      name: node.person
+        ? `${node.person.firstName} ${node.person.lastName}`
+        : `${node.guestName ?? "Guest"} (Guest)`,
     }));
 
   return <StatusCurrentDisplay periods={periods} />;
