@@ -1,7 +1,7 @@
 use crate::db::{self, HasID};
 use crate::db::{
-    ApiToken, Category, Error, ListSessionsQuery, Location, LoginCode, Period, Person, Session,
-    User, UserToken, WebauthnCredential, WebauthnState,
+    ApiToken, Category, EphemeralState, Error, ListSessionsQuery, Location, LoginCode, Period,
+    Person, Session, User, UserToken, WebauthnCredential, WebauthnState,
 };
 use crate::nonce;
 use crate::request_metrics::METRICS;
@@ -294,6 +294,9 @@ impl TryInto<Session> for Item {
                 }
             },
             healthcheck_url: self.string_field("healthcheck_url")?,
+            public_key: self.string_field("public_key")?,
+            key_fingerprint: self.string_field("key_fingerprint")?,
+            key_expires_at: self.i64_field("key_expires_at")?.map(|i| i as u64),
             created_at: self.i64_field("created_at")?.map(|i| i as u64),
             updated_at: self.i64_field("updated_at")?.map(|i| i as u64),
         })
@@ -408,6 +411,25 @@ impl TryInto<WebauthnState> for Item {
             expires_at: self
                 .i64_field("expires_at")?
                 .ok_or_else(|| anyhow!("WebauthnState missing expires_at"))?
+                as u64,
+        })
+    }
+}
+
+impl TryInto<EphemeralState> for Item {
+    type Error = HydrationError;
+    fn try_into(self) -> Result<EphemeralState, Self::Error> {
+        Ok(EphemeralState {
+            id: self.id(),
+            kind: self
+                .string_field("kind")?
+                .ok_or_else(|| anyhow!("EphemeralState missing kind"))?,
+            payload: self
+                .string_field("payload")?
+                .ok_or_else(|| anyhow!("EphemeralState missing payload"))?,
+            expires_at: self
+                .i64_field("expires_at")?
+                .ok_or_else(|| anyhow!("EphemeralState missing expires_at"))?
                 as u64,
         })
     }
@@ -1013,6 +1035,35 @@ impl db::Handler for Handler {
             .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
         record_capacity(
             "get_session_id_by_code",
+            resp.consumed_capacity(),
+            CapKind::Read,
+        );
+
+        Ok(resp
+            .items
+            .unwrap_or_default()
+            .into_iter()
+            .map(|item| Item(item).id())
+            .collect())
+    }
+
+    async fn get_session_id_by_key_fingerprint(
+        &self,
+        fingerprint: &str,
+    ) -> db::Result<Vec<String>> {
+        let resp = self
+            .client
+            .query()
+            .table_name(self.table_name("session"))
+            .index_name("key_fingerprint-index")
+            .key_condition_expression("key_fingerprint = :fp")
+            .expression_attribute_values(":fp", AttributeValue::S(fingerprint.to_string()))
+            .return_consumed_capacity(ReturnConsumedCapacity::Total)
+            .send()
+            .await
+            .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
+        record_capacity(
+            "get_session_id_by_key_fingerprint",
             resp.consumed_capacity(),
             CapKind::Read,
         );
@@ -1770,6 +1821,7 @@ impl db::Handler for Handler {
         name: &str,
         config: &serde_json::Map<String, serde_json::Value>,
         healthcheck_url: Option<&str>,
+        key: Option<db::SessionKeyParams<'_>>,
     ) -> db::Result<Session> {
         if self.read_only {
             return Err(db::Error::MutationDisabled);
@@ -1779,8 +1831,6 @@ impl db::Handler for Handler {
         let serialized_config =
             serde_json::to_string(config).map_err(|e| Error::TypeConversion(e.to_string()))?;
 
-        let code = nonce::generate_code(6);
-
         let mut request = self
             .client
             .put_item()
@@ -1788,12 +1838,36 @@ impl db::Handler for Handler {
             .item("id", AttributeValue::S(id.clone()))
             .item("name", AttributeValue::S(name.to_string()))
             .item("location_id", AttributeValue::S(location_id.to_string()))
-            .item("code", AttributeValue::S(code.clone()))
             .item("last_contact", AttributeValue::N(unix_time.to_string()))
             .item("config", AttributeValue::S(serialized_config))
             .item("created_at", AttributeValue::N(unix_time.to_string()))
             .item("updated_at", AttributeValue::N(unix_time.to_string()))
             .item("active", AttributeValue::N("1".to_string()));
+
+        // A key-enrolled session (QR/public-key flow) authenticates by signature and
+        // has no 6-digit code; a code-enrolled session gets a code and no key. The two
+        // are mutually exclusive — `code` and `key_fingerprint` both back GSIs, so the
+        // unused one is omitted entirely (never written as Null).
+        let code = match key {
+            Some(k) => {
+                request = request
+                    .item("public_key", AttributeValue::S(k.public_key.to_string()))
+                    .item(
+                        "key_fingerprint",
+                        AttributeValue::S(k.fingerprint.to_string()),
+                    )
+                    .item(
+                        "key_expires_at",
+                        AttributeValue::N(k.expires_at.to_string()),
+                    );
+                None
+            }
+            None => {
+                let code = nonce::generate_code(6);
+                request = request.item("code", AttributeValue::S(code.clone()));
+                Some(code)
+            }
+        };
 
         if let Some(healthcheck_url) = healthcheck_url {
             request = request.item(
@@ -1816,9 +1890,12 @@ impl db::Handler for Handler {
             active: true,
             last_contact: Some(unix_time),
             client_version: None,
-            code: Some(code),
+            code,
             config: config.clone(),
             healthcheck_url: healthcheck_url.map(str::to_string),
+            public_key: key.map(|k| k.public_key.to_string()),
+            key_fingerprint: key.map(|k| k.fingerprint.to_string()),
+            key_expires_at: key.map(|k| k.expires_at),
             created_at: Some(unix_time),
             updated_at: Some(unix_time),
         })
@@ -1871,7 +1948,10 @@ impl db::Handler for Handler {
                     .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
                 record_capacity("update_session", resp.consumed_capacity(), CapKind::Write);
             }
-            db::SessionUpdateShape::Info { client_version } => {
+            db::SessionUpdateShape::Info {
+                client_version,
+                extend_key_expires_at,
+            } => {
                 let unix_time = crate::clock::now_sec();
 
                 let mut update = self
@@ -1880,17 +1960,28 @@ impl db::Handler for Handler {
                     .table_name(self.table_name("session"))
                     .key("id", AttributeValue::S(id.to_string()));
 
+                // Build the SET clause from whichever optional fields are present, always
+                // including last_contact.
+                let mut set_parts = vec!["last_contact = :last_contact"];
+                if client_version.is_some() {
+                    set_parts.push("client_version = :client_version");
+                }
+                if extend_key_expires_at.is_some() {
+                    set_parts.push("key_expires_at = :key_expires_at");
+                }
+                update = update.update_expression(format!("SET {}", set_parts.join(", ")));
+
                 if let Some(client_version) = client_version {
-                    update = update
-                        .update_expression(
-                            "SET last_contact = :last_contact, client_version = :client_version",
-                        )
-                        .expression_attribute_values(
-                            ":client_version",
-                            AttributeValue::S(client_version.to_string()),
-                        );
-                } else {
-                    update = update.update_expression("SET last_contact = :last_contact");
+                    update = update.expression_attribute_values(
+                        ":client_version",
+                        AttributeValue::S(client_version.to_string()),
+                    );
+                }
+                if let Some(key_expires_at) = extend_key_expires_at {
+                    update = update.expression_attribute_values(
+                        ":key_expires_at",
+                        AttributeValue::N(key_expires_at.to_string()),
+                    );
                 }
 
                 let resp = update
@@ -1905,12 +1996,18 @@ impl db::Handler for Handler {
                 record_capacity("update_session", resp.consumed_capacity(), CapKind::Write);
             }
             db::SessionUpdateShape::Delete => {
+                // Removing `active` soft-deletes the session. Also drop the key fields so
+                // a disabled key-enrolled session releases its fingerprint (the GSI row
+                // disappears): its next signed request 401s, and the same key is free to
+                // re-enroll into a fresh session.
                 let resp = self
                     .client
                     .update_item()
                     .table_name(self.table_name("session"))
                     .key("id", AttributeValue::S(id.to_string()))
-                    .update_expression("SET updated_at = :updated_at REMOVE active")
+                    .update_expression(
+                        "SET updated_at = :updated_at REMOVE active, key_fingerprint, public_key, key_expires_at",
+                    )
                     .expression_attribute_values(
                         ":updated_at",
                         AttributeValue::N(crate::clock::now_sec().to_string()),
@@ -3615,6 +3712,64 @@ impl db::Handler for Handler {
         self.client
             .delete_item()
             .table_name(self.table_name("webauthn_state"))
+            .key("id", AttributeValue::S(id.to_string()))
+            .send()
+            .await
+            .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
+        Ok(())
+    }
+
+    async fn put_ephemeral_state(
+        &self,
+        id: &str,
+        kind: &str,
+        payload: &str,
+        expires_at: u64,
+    ) -> db::Result<()> {
+        if self.read_only {
+            return Err(db::Error::MutationDisabled);
+        }
+        self.client
+            .put_item()
+            .table_name(self.table_name("ephemeral_state"))
+            .item("id", AttributeValue::S(id.to_string()))
+            .item("kind", AttributeValue::S(kind.to_string()))
+            .item("payload", AttributeValue::S(payload.to_string()))
+            .item("expires_at", AttributeValue::N(expires_at.to_string()))
+            .send()
+            .await
+            .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
+        Ok(())
+    }
+
+    async fn get_ephemeral_state(&self, id: &str) -> db::Result<Option<EphemeralState>> {
+        let resp = self
+            .client
+            .get_item()
+            .table_name(self.table_name("ephemeral_state"))
+            .key("id", AttributeValue::S(id.to_string()))
+            .return_consumed_capacity(ReturnConsumedCapacity::Total)
+            .send()
+            .await
+            .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
+        record_capacity(
+            "get_ephemeral_state",
+            resp.consumed_capacity(),
+            CapKind::Read,
+        );
+        match resp.item {
+            Some(item) => Ok(Some(Item(item).try_into()?)),
+            None => Ok(None),
+        }
+    }
+
+    async fn delete_ephemeral_state(&self, id: &str) -> db::Result<()> {
+        if self.read_only {
+            return Err(db::Error::MutationDisabled);
+        }
+        self.client
+            .delete_item()
+            .table_name(self.table_name("ephemeral_state"))
             .key("id", AttributeValue::S(id.to_string()))
             .send()
             .await

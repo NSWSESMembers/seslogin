@@ -122,6 +122,18 @@ type MemberPeriodSummary {
 type MutationRoot {
 	authSession(code: String!): String
 	"""
+	Publish a kiosk's public key as a pending enrollment (public-key/QR flow). The
+	kiosk re-submits every ~10 min while unenrolled; an admin then scans the kiosk's
+	QR code to complete enrollment via [`enroll_session`]. Returns the server-computed
+	key fingerprint (hex SHA-256 of the SPKI DER) that the QR code carries.
+	
+	Intentionally unauthenticated and cheap to serve: the input is strictly validated
+	(must be a well-formed P-256 SPKI ≤200 bytes) and writes are keyed by fingerprint,
+	so a flood from one key only ever touches one item. A short-lived record already
+	present is not rewritten (write-suppression below).
+	"""
+	submitEnrollmentKey(publicKey: String!): String!
+	"""
 	Request an email login code. Always returns true to avoid email enumeration.
 	Requires a valid Cloudflare Turnstile token.
 	"""
@@ -144,6 +156,14 @@ type MutationRoot {
 	updatePeriodTimeCategory(id: ID!, startTime: Int!, endTime: Int!, categoryId: ID!): Period!
 	deletePeriod(id: ID!): Boolean!
 	createSession(name: String!, locationId: ID!, config: String, healthcheckUrl: String): Session!
+	"""
+	Complete a public-key kiosk enrollment: create a session bound to the public key a
+	kiosk previously published via [`submit_enrollment_key`], identified by its
+	`key_fingerprint`. The kiosk then authenticates every request by signing it (no
+	6-digit code, no JWT). Reached from the admin SessionEnroll page after scanning
+	the kiosk's QR code.
+	"""
+	enrollSession(name: String!, locationId: ID!, config: String, healthcheckUrl: String, keyFingerprint: String!): Session!
 	createApiToken(name: String!, locationGrants: [String!]!, readOnly: Boolean!, expiresAt: Int): CreateApiTokenResult!
 	updateApiToken(id: ID!, name: String!, locationGrants: [String!]!, readOnly: Boolean!, expiresAt: Int): ApiToken!
 	revokeApiToken(id: ID!): Boolean!
@@ -236,6 +256,15 @@ type PasskeyInfo {
 	name: String!
 	createdAt: Int!
 	lastUsedAt: Int
+}
+
+"""
+A still-valid pending kiosk enrollment, surfaced to the admin SessionEnroll page so
+it can confirm the kiosk is still waiting before showing the enrollment form.
+"""
+type PendingEnrollmentKey {
+	fingerprint: String!
+	expiresAt: Int!
 }
 
 type Period {
@@ -384,6 +413,12 @@ type QueryRoot {
 		id: ID
 	): Session!
 	refreshToken: String!
+	"""
+	Look up a pending kiosk enrollment by its key fingerprint (from the QR code).
+	Returns `None` if it never existed or has expired — the admin SessionEnroll page
+	uses this to tell the operator to rescan.
+	"""
+	pendingEnrollmentKey(fingerprint: String!): PendingEnrollmentKey
 	category(
 		"""
 		ID for the category to look up

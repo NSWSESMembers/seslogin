@@ -3679,6 +3679,7 @@ dependencies = [
  "lambda_runtime",
  "nanoid",
  "openssl",
+ "p256",
  "poem",
  "rand 0.10.1",
  "reqwest",

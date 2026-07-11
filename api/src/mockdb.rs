@@ -74,6 +74,13 @@ impl db::Handler for Handler {
         Self::unsupported()
     }
 
+    async fn get_session_id_by_key_fingerprint(
+        &self,
+        _fingerprint: &str,
+    ) -> db::Result<Vec<String>> {
+        Self::unsupported()
+    }
+
     async fn wipe_session_code(&self, _id: &str) -> db::Result<()> {
         Self::unsupported()
     }
@@ -165,6 +172,7 @@ impl db::Handler for Handler {
         _name: &str,
         _config: &serde_json::Map<String, serde_json::Value>,
         _healthcheck_url: Option<&str>,
+        _key: Option<db::SessionKeyParams<'_>>,
     ) -> db::Result<Session> {
         Self::unsupported()
     }
@@ -503,6 +511,24 @@ impl db::Handler for Handler {
     }
 
     async fn delete_webauthn_state(&self, _id: &str) -> db::Result<()> {
+        Self::unsupported()
+    }
+
+    async fn put_ephemeral_state(
+        &self,
+        _id: &str,
+        _kind: &str,
+        _payload: &str,
+        _expires_at: u64,
+    ) -> db::Result<()> {
+        Self::unsupported()
+    }
+
+    async fn get_ephemeral_state(&self, _id: &str) -> db::Result<Option<db::EphemeralState>> {
+        Self::unsupported()
+    }
+
+    async fn delete_ephemeral_state(&self, _id: &str) -> db::Result<()> {
         Self::unsupported()
     }
 }

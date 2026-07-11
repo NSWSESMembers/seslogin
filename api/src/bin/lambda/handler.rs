@@ -44,12 +44,12 @@ impl<H: db::Handler + Send + Sync + 'static> Handler<H> {
         } else {
             Err(ClientError::MethodNotAllowed)
         };
-        let mut query = match query {
+        let (mut query, body_hash) = match query {
             Err(e) => return error_response(StatusCode::BAD_REQUEST, graphql_error(e)),
             Ok(q) => q,
         };
 
-        let auth_opt = match self.try_auth(&headers).await {
+        let auth_opt = match self.try_auth(&headers, &body_hash).await {
             Err(auth::AuthError::Permanent(ref msg)) => {
                 emit_auth_failure_telemetry(401, request_start, msg);
                 return error_response(
@@ -120,16 +120,24 @@ impl<H: db::Handler + Send + Sync + 'static> Handler<H> {
         }
     }
 
+    /// Parse a POST body into a GraphQL request, also returning the hex SHA-256 of the
+    /// raw body bytes so signed-key auth can bind it into the signature.
     async fn graphql_request_from_post(
         &self,
         request: Request,
-    ) -> Result<GraphQlRequest, ClientError> {
+    ) -> Result<(GraphQlRequest, String), ClientError> {
         match request.into_body() {
             Body::Text(text) => {
-                serde_json::from_str::<GraphQlRequest>(&text).map_err(ClientError::from)
+                let body_hash = seslogin::session_key::sha256_hex(text.as_bytes());
+                let req =
+                    serde_json::from_str::<GraphQlRequest>(&text).map_err(ClientError::from)?;
+                Ok((req, body_hash))
             }
             Body::Binary(binary) => {
-                serde_json::from_slice::<GraphQlRequest>(&binary).map_err(ClientError::from)
+                let body_hash = seslogin::session_key::sha256_hex(&binary);
+                let req =
+                    serde_json::from_slice::<GraphQlRequest>(&binary).map_err(ClientError::from)?;
+                Ok((req, body_hash))
             }
             _ => Err(ClientError::EmptyBody),
         }
@@ -138,6 +146,7 @@ impl<H: db::Handler + Send + Sync + 'static> Handler<H> {
     async fn try_auth(
         &self,
         headers: &headers::HeaderMap,
+        body_hash: &str,
     ) -> Result<Option<AuthInfo>, auth::AuthError> {
         let client_version = headers
             .get(auth::CLIENT_VERSION_HEADER)
@@ -145,16 +154,15 @@ impl<H: db::Handler + Send + Sync + 'static> Handler<H> {
             .map(str::trim)
             .filter(|value| !value.is_empty());
 
-        let opt = if let Some(auth_header) = headers.get("Authorization")
-            && let Ok(auth_str) = auth_header.to_str()
-            && auth_str.starts_with("Bearer ")
+        let auth_header = headers
+            .get("Authorization")
+            .and_then(|value| value.to_str().ok());
+        match auth::verify_authorization_header(&*self.app, auth_header, body_hash, client_version)
+            .await
         {
-            let token = &auth_str[7..];
-            Some(auth::verify_token(&*self.app, token, client_version).await?)
-        } else {
-            None
-        };
-        Ok(opt)
+            Some(res) => res.map(Some),
+            None => Ok(None),
+        }
     }
 }
 
