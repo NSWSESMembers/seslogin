@@ -202,7 +202,7 @@ export default function AdminLoginPage({
 
         {/* Divider — only when there's a button above it (passkey) */}
         {passkeySupported && (
-          <div className="my-6 text-center text-[#888]">— or —</div>
+          <div className="my-6 text-center text-ink-muted">— or —</div>
         )}
 
         {/* New email-code login */}

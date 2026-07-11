@@ -42,8 +42,10 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   );
 
   const kindClasses: Record<ToastKind, string> = {
-    error: "border border-red-900/25 bg-red-50 text-red-900",
-    success: "border border-green-800/25 bg-green-50 text-green-900",
+    error:
+      "border border-red-900/25 bg-red-50 text-red-900 dark:border-red-400/30 dark:bg-red-950 dark:text-red-200",
+    success:
+      "border border-green-800/25 bg-green-50 text-green-900 dark:border-green-400/30 dark:bg-green-950 dark:text-green-200",
   };
 
   return (

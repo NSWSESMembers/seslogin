@@ -72,7 +72,7 @@ function Row({
     : "-";
 
   return (
-    <tr className={idx % 2 === 0 ? "bg-neutral-50" : undefined}>
+    <tr className={idx % 2 === 0 ? "bg-surface-raised" : undefined}>
       <Td center>
         <SessionStatus lastContact={session.lastContact} />
       </Td>

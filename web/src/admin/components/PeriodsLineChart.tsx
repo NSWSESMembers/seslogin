@@ -22,9 +22,10 @@ const INNER_WIDTH = VIEW_WIDTH - MARGIN_LEFT - MARGIN_RIGHT;
 const INNER_HEIGHT = VIEW_HEIGHT - MARGIN_TOP - MARGIN_BOTTOM;
 
 const LINE_COLOR = "var(--color-menu)";
-const GRID_COLOR = "#e8e8e8";
-const AXIS_TEXT_COLOR = "#767676";
-const CROSSHAIR_COLOR = "#b7b7b7";
+// Semantic tokens so the chart chrome tracks light/dark (values in app.css).
+const GRID_COLOR = "var(--color-line-faint)";
+const AXIS_TEXT_COLOR = "var(--color-ink-muted)";
+const CROSSHAIR_COLOR = "var(--color-line-strong)";
 const ACTIVE_DOT_COLOR = "#a8451a";
 
 function niceScale(maxValue: number): { max: number; ticks: number[] } {
@@ -183,7 +184,7 @@ export default function PeriodsLineChart({
             cy={p.y}
             r={i === activeIndex ? 5 : 3}
             fill={i === activeIndex ? ACTIVE_DOT_COLOR : LINE_COLOR}
-            stroke="#fcfcfc"
+            stroke="var(--color-surface)"
             strokeWidth={2}
             vectorEffect="non-scaling-stroke"
           />
@@ -224,17 +225,17 @@ export default function PeriodsLineChart({
         <div
           id={tooltipId}
           role="tooltip"
-          className="pointer-events-none absolute -translate-x-1/2 -translate-y-[calc(100%+12px)] rounded-md border border-[#d4d4d4] bg-white px-2.5 py-2 text-sm whitespace-nowrap shadow-lg"
+          className="pointer-events-none absolute -translate-x-1/2 -translate-y-[calc(100%+12px)] rounded-md border border-line bg-surface px-2.5 py-2 text-sm whitespace-nowrap shadow-lg"
           style={{
             left: `${(active.x / VIEW_WIDTH) * 100}%`,
             top: `${(active.y / VIEW_HEIGHT) * 100}%`,
           }}
         >
-          <div className="mb-0.5 font-bold text-[#2f2f2f]">{active.label}</div>
-          <div className="text-[#2f2f2f]">
+          <div className="mb-0.5 font-bold text-ink">{active.label}</div>
+          <div className="text-ink">
             <strong>{active.periodCount}</strong> periods
           </div>
-          <div className="text-xs text-[#767676]">
+          <div className="text-xs text-ink-muted">
             {formatHours(active.totalSeconds)}
           </div>
         </div>

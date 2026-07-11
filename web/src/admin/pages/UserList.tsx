@@ -92,7 +92,7 @@ function Row(props: { user: UserList_user$key; idx: number; isDev: boolean }) {
   }
 
   return (
-    <tr className={props.idx % 2 === 0 ? "bg-neutral-50" : undefined}>
+    <tr className={props.idx % 2 === 0 ? "bg-surface-raised" : undefined}>
       {isDev && <Td className="font-mono text-[0.85em]">{user.id}</Td>}
       <Td>
         <span className={user.enabled ? undefined : "line-through"}>

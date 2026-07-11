@@ -15,10 +15,10 @@ export default function ActivityTotalsTable({ title, rows }: Props) {
   return (
     <div className="flex-1">
       <h2>{title}</h2>
-      <div className="border-t border-neutral-400">
+      <div className="border-t border-line-strong">
         {rows.map((entry) => (
           <div
-            className="flex justify-between gap-3 border-b border-neutral-200 p-1.5"
+            className="flex justify-between gap-3 border-b border-line p-1.5"
             key={entry.id}
           >
             <div className="min-w-0">{entry.name}</div>
