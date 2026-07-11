@@ -188,6 +188,7 @@ export default function AdminLoginPage({
         {passkeySupported && (
           <Button
             size="panel"
+            className="mt-6"
             onClick={handlePasskeyLogin}
             disabled={passkeySigningIn}
           >
@@ -268,28 +269,29 @@ export default function AdminLoginPage({
               required
               autoFocus
             />
-            <Button
-              type="submit"
-              size="panel"
-              variant="secondary"
-              disabled={code.length !== 6}
-            >
-              Verify code
-            </Button>
-            <Button
-              type="button"
-              size="panel"
-              variant="secondary"
-              className="mt-3"
-              onClick={() => {
-                setStep("idle");
-                setCode("");
-                setCodeError(null);
-                setTurnstileToken(null);
-              }}
-            >
-              Start over
-            </Button>
+            <div className="flex flex-row flex-wrap items-center gap-3">
+              <Button
+                type="submit"
+                size="panel"
+                variant="primary"
+                disabled={code.length !== 6}
+              >
+                Verify code
+              </Button>
+              <Button
+                type="button"
+                size="panel"
+                variant="secondary"
+                onClick={() => {
+                  setStep("idle");
+                  setCode("");
+                  setCodeError(null);
+                  setTurnstileToken(null);
+                }}
+              >
+                Start over
+              </Button>
+            </div>
           </form>
         )}
 

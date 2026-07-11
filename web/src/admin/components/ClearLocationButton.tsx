@@ -5,10 +5,7 @@ export default function ClearLocationButton() {
   const settingsDispatch = useSettingsDispatch();
 
   return (
-    <Button
-      className="mt-4"
-      onClick={() => settingsDispatch?.({ type: "clear_location" })}
-    >
+    <Button onClick={() => settingsDispatch?.({ type: "clear_location" })}>
       [DEV] Clear Location
     </Button>
   );
