@@ -11,7 +11,7 @@ function CategoryButton(props: {
   small?: boolean;
 }) {
   const { name, icon, onSelect, small } = props;
-  const iconSrc = `/image/categories-cas/${icon}.png`;
+  const iconSrc = `/image/categories-cas/${icon}.svg`;
 
   return (
     <li className="inline-block list-none align-bottom">

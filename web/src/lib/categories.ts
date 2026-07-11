@@ -75,7 +75,7 @@ export const categories: Category[] = [
       {
         id: "Na5anfu2SjxY",
         name: "Flood Operator L1",
-        icon: "69891c860c459e13c373a03d854e7bee",
+        icon: "f75090e6a94ab0d33ab6fe790eb9c6dd",
       },
       {
         id: "rohwW8dkppNz",
@@ -120,7 +120,7 @@ export const categories: Category[] = [
       {
         id: "OB9oatj3InVH",
         name: "PIARO",
-        icon: "34ff5a4cc21c55dfcd4ababde2e0182f",
+        icon: "962dc987905bc03f6eaed0bf85e3fe95",
       },
       {
         id: "mbkLfxuoDyzT",
@@ -257,7 +257,7 @@ export const categories: Category[] = [
       {
         id: "qgs9Xs1hSTDL",
         name: "PIARO",
-        icon: "34ff5a4cc21c55dfcd4ababde2e0182f",
+        icon: "962dc987905bc03f6eaed0bf85e3fe95",
       },
       {
         id: "SOiIjTV9Jmow",
@@ -476,7 +476,7 @@ export const categories: Category[] = [
       {
         id: "lrBgqf7hQxK4",
         name: "Flood Operator L1",
-        icon: "69891c860c459e13c373a03d854e7bee",
+        icon: "f75090e6a94ab0d33ab6fe790eb9c6dd",
       },
       {
         id: "nzB9BL6H2i4J",
@@ -521,7 +521,7 @@ export const categories: Category[] = [
       {
         id: "Mhs2RTTkKN2E",
         name: "PIARO",
-        icon: "34ff5a4cc21c55dfcd4ababde2e0182f",
+        icon: "962dc987905bc03f6eaed0bf85e3fe95",
       },
       {
         id: "4g7eGWgLgIZq",
@@ -603,7 +603,7 @@ export const categories: Category[] = [
       {
         id: "d51eXzmfIuXm",
         name: "Flood Operator L1",
-        icon: "69891c860c459e13c373a03d854e7bee",
+        icon: "f75090e6a94ab0d33ab6fe790eb9c6dd",
       },
       {
         id: "p0vRqFeoQ5uP",
@@ -648,7 +648,7 @@ export const categories: Category[] = [
       {
         id: "mjz48eIkDO3X",
         name: "PIARO",
-        icon: "34ff5a4cc21c55dfcd4ababde2e0182f",
+        icon: "962dc987905bc03f6eaed0bf85e3fe95",
       },
       {
         id: "dEfSFXJ3JZ8x",

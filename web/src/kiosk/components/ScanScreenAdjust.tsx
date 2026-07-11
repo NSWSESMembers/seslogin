@@ -259,7 +259,7 @@ function Inner(props: {
         <div className="flex items-center">
           <div className="min-w-48.75 p-2.5 text-right">Category:</div>
           <div className="flex flex-1 items-center justify-center gap-2.5 p-2.5">
-            <img src={`/image/categories-cas/${categoryIcon}.png`} />
+            <img src={`/image/categories-cas/${categoryIcon}.svg`} />
             <div className="pr-5 text-left text-xl whitespace-nowrap">
               <div>{categoryName}</div>
               <div>{subcategoryName}</div>
