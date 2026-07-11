@@ -215,6 +215,10 @@ resource "aws_dynamodb_table" "prod_session" {
     name = "active"
     type = "N"
   }
+  attribute {
+    name = "key_fingerprint"
+    type = "S"
+  }
 
   global_secondary_index {
     name            = "code-index"
@@ -226,6 +230,11 @@ resource "aws_dynamodb_table" "prod_session" {
     hash_key        = "active"
     range_key       = "location_id"
     projection_type = "ALL"
+  }
+  global_secondary_index {
+    name            = "key_fingerprint-index"
+    hash_key        = "key_fingerprint"
+    projection_type = "KEYS_ONLY"
   }
 }
 
@@ -435,6 +444,33 @@ resource "aws_dynamodb_table" "prod_webauthn_state" {
   }
 
   # Short-lived challenge state; TTL auto-deletes after expires_at.
+  ttl {
+    attribute_name = "expires_at"
+    enabled        = true
+  }
+}
+
+# Generic ephemeral key/value store with native TTL. Items are namespaced by a
+# `kind` discriminator and carry an opaque JSON `payload`; `expires_at` drives
+# DynamoDB TTL auto-deletion. Initially backs kiosk public-key enrollment; the
+# webauthn_state table is intended to migrate into this one later.
+resource "aws_dynamodb_table" "prod_ephemeral_state" {
+  name         = "${var.db_prefix}_ephemeral_state"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "id"
+
+  deletion_protection_enabled = true
+
+  point_in_time_recovery {
+    enabled                 = true
+    recovery_period_in_days = 35
+  }
+
+  attribute {
+    name = "id"
+    type = "S"
+  }
+
   ttl {
     attribute_name = "expires_at"
     enabled        = true
