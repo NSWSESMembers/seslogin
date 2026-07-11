@@ -208,9 +208,12 @@ function Row<T extends ActivityListTable_period$key>({
       <Td>{period.category?.name}</Td>
       <Td options>
         <div className="flex justify-end gap-1">
-          <ButtonLink size="row" to={`/admin/activity/${period.id}`}>
-            Edit
-          </ButtonLink>
+          {/* Guests have no category; ActivityEdit forces one, so hide Edit for them. */}
+          {period.personId != null && (
+            <ButtonLink size="row" to={`/admin/activity/${period.id}`}>
+              Edit
+            </ButtonLink>
+          )}
           <Button
             size="row"
             variant="danger"

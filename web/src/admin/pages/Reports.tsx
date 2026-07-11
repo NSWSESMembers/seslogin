@@ -19,10 +19,17 @@ type ReportPeriodsConnection = NonNullable<
 >["periods"];
 
 function csvEscape(value: string): string {
-  if (value.includes(",") || value.includes("\n") || value.includes('"')) {
-    return `"${value.replaceAll('"', '""')}"`;
+  // Guard against CSV formula injection: a cell starting with =, +, -, or @ can be
+  // interpreted as a formula by spreadsheet apps. Free-text guest names/reasons now
+  // enter the CSV, so prefix such cells with a single quote before quoting.
+  let cell = value;
+  if (/^[=+\-@]/.test(cell)) {
+    cell = `'${cell}`;
   }
-  return value;
+  if (cell.includes(",") || cell.includes("\n") || cell.includes('"')) {
+    return `"${cell.replaceAll('"', '""')}"`;
+  }
+  return cell;
 }
 
 function formatDuration(seconds: number): string {
@@ -95,6 +102,8 @@ export default function Reports() {
                       node {
                         id
                         personId
+                        guestName
+                        comment
                         startTime
                         endTime
                         signedInSession {
@@ -161,6 +170,7 @@ export default function Reports() {
         "End Time",
         "Sign-Out Kiosk",
         "Duration",
+        "Comment",
       ];
       const startPart = startInput.replaceAll(":", "-");
       const endPart = endInput.replaceAll(":", "-");
@@ -177,14 +187,19 @@ export default function Reports() {
             : 0;
           const row = [
             period.id,
-            period.person.memberNumber || period.personId,
-            `${period.person.firstName} ${period.person.lastName}`.trim(),
+            period.person
+              ? period.person.memberNumber || period.personId || ""
+              : "GUEST",
+            period.person
+              ? `${period.person.firstName} ${period.person.lastName}`.trim()
+              : (period.guestName ?? ""),
             period.category?.name || "",
             startDate.toISOString(),
             period.signedInSession?.name || "",
             endDate ? endDate.toISOString() : "",
             period.signedOutSession?.name || "",
             formatDuration(durationSeconds),
+            period.comment ?? "",
           ];
           lines.push(row.map(csvEscape).join(","));
         }
@@ -216,14 +231,19 @@ export default function Reports() {
 
             return [
               period.id,
-              period.person.memberNumber || period.personId,
-              `${period.person.firstName} ${period.person.lastName}`.trim(),
+              period.person
+                ? period.person.memberNumber || period.personId || ""
+                : "GUEST",
+              period.person
+                ? `${period.person.firstName} ${period.person.lastName}`.trim()
+                : (period.guestName ?? ""),
               period.category?.name || "",
               startDate,
               period.signedInSession?.name || "",
               endDate,
               period.signedOutSession?.name || "",
               durationDays,
+              period.comment ?? "",
             ];
           },
         );

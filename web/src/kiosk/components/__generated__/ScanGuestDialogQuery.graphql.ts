@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<f0851e423028f2a8ea1e7bc594c0be8f>>
+ * @generated SignedSource<<04719b97306acc2735f52a67cfecdcd6>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -9,10 +9,10 @@
 // @ts-nocheck
 
 import { ConcreteRequest } from 'relay-runtime';
-export type StatusQuery$variables = {
+export type ScanGuestDialogQuery$variables = {
   first: number;
 };
-export type StatusQuery$data = {
+export type ScanGuestDialogQuery$data = {
   readonly session: {
     readonly location: {
       readonly periods: {
@@ -20,11 +20,6 @@ export type StatusQuery$data = {
           readonly node: {
             readonly guestName: string | null | undefined;
             readonly id: string;
-            readonly person: {
-              readonly firstName: string;
-              readonly id: string;
-              readonly lastName: string;
-            } | null | undefined;
             readonly startTime: number;
           };
         }>;
@@ -32,9 +27,9 @@ export type StatusQuery$data = {
     };
   };
 };
-export type StatusQuery = {
-  response: StatusQuery$data;
-  variables: StatusQuery$variables;
+export type ScanGuestDialogQuery = {
+  response: ScanGuestDialogQuery$data;
+  variables: ScanGuestDialogQuery$variables;
 };
 
 const node: ConcreteRequest = (function(){
@@ -101,32 +96,6 @@ v2 = {
               "kind": "ScalarField",
               "name": "guestName",
               "storageKey": null
-            },
-            {
-              "alias": null,
-              "args": null,
-              "concreteType": "Person",
-              "kind": "LinkedField",
-              "name": "person",
-              "plural": false,
-              "selections": [
-                (v1/*: any*/),
-                {
-                  "alias": null,
-                  "args": null,
-                  "kind": "ScalarField",
-                  "name": "firstName",
-                  "storageKey": null
-                },
-                {
-                  "alias": null,
-                  "args": null,
-                  "kind": "ScalarField",
-                  "name": "lastName",
-                  "storageKey": null
-                }
-              ],
-              "storageKey": null
             }
           ],
           "storageKey": null
@@ -142,7 +111,7 @@ return {
     "argumentDefinitions": (v0/*: any*/),
     "kind": "Fragment",
     "metadata": null,
-    "name": "StatusQuery",
+    "name": "ScanGuestDialogQuery",
     "selections": [
       {
         "alias": null,
@@ -175,7 +144,7 @@ return {
   "operation": {
     "argumentDefinitions": (v0/*: any*/),
     "kind": "Operation",
-    "name": "StatusQuery",
+    "name": "ScanGuestDialogQuery",
     "selections": [
       {
         "alias": null,
@@ -205,16 +174,16 @@ return {
     ]
   },
   "params": {
-    "cacheID": "f5bac5ff7dba99f0505f31513d1e523b",
+    "cacheID": "6f04ba403bb59242cd9ad27b53592aaf",
     "id": null,
     "metadata": {},
-    "name": "StatusQuery",
+    "name": "ScanGuestDialogQuery",
     "operationKind": "query",
-    "text": "query StatusQuery(\n  $first: Int!\n) {\n  session {\n    location {\n      periods(onlyActive: true, first: $first) {\n        edges {\n          node {\n            id\n            startTime\n            guestName\n            person {\n              id\n              firstName\n              lastName\n            }\n          }\n        }\n      }\n      id\n    }\n    id\n  }\n}\n"
+    "text": "query ScanGuestDialogQuery(\n  $first: Int!\n) {\n  session {\n    location {\n      periods(onlyActive: true, first: $first) {\n        edges {\n          node {\n            id\n            startTime\n            guestName\n          }\n        }\n      }\n      id\n    }\n    id\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "82f5f0c148ec1230191bf13362ddfe66";
+(node as any).hash = "887e8cb163f9846e1aef9db95578f2bf";
 
 export default node;

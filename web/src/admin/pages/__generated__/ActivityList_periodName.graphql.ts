@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<3d9b2c05e845c1ea8664d65a8660c5eb>>
+ * @generated SignedSource<<761a8eeb60a45270ad69707ed6231b62>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -11,6 +11,7 @@
 import { ReaderInlineDataFragment } from 'relay-runtime';
 import { FragmentRefs } from "relay-runtime";
 export type ActivityList_periodName$data = {
+  readonly guestName: string | null | undefined;
   readonly person: {
     readonly firstName: string;
     readonly id: string;
@@ -28,6 +29,6 @@ const node: ReaderInlineDataFragment = {
   "name": "ActivityList_periodName"
 };
 
-(node as any).hash = "7f112403cf10080bc349d9c53364a50e";
+(node as any).hash = "2903d0da1af09a2c3fb6bbf5665426de";
 
 export default node;

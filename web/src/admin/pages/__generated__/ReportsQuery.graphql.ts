@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<5d6cf6bb996bd59cf3f5453f378b0c4d>>
+ * @generated SignedSource<<38ad635810139fbcfe2c3e13802846b8>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -26,7 +26,9 @@ export type ReportsQuery$data = {
             readonly id: string;
             readonly name: string;
           } | null | undefined;
+          readonly comment: string | null | undefined;
           readonly endTime: number | null | undefined;
+          readonly guestName: string | null | undefined;
           readonly id: string;
           readonly person: {
             readonly firstName: string;
@@ -129,27 +131,41 @@ v9 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
-  "name": "startTime",
+  "name": "guestName",
   "storageKey": null
 },
 v10 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
-  "name": "endTime",
+  "name": "comment",
   "storageKey": null
 },
 v11 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
+  "name": "startTime",
+  "storageKey": null
+},
+v12 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
+  "name": "endTime",
+  "storageKey": null
+},
+v13 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
   "name": "name",
   "storageKey": null
 },
-v12 = [
-  (v11/*: any*/)
+v14 = [
+  (v13/*: any*/)
 ],
-v13 = {
+v15 = {
   "alias": null,
   "args": null,
   "concreteType": "Category",
@@ -158,11 +174,11 @@ v13 = {
   "plural": false,
   "selections": [
     (v6/*: any*/),
-    (v11/*: any*/)
+    (v13/*: any*/)
   ],
   "storageKey": null
 },
-v14 = {
+v16 = {
   "alias": null,
   "args": null,
   "concreteType": "Person",
@@ -195,7 +211,7 @@ v14 = {
   ],
   "storageKey": null
 },
-v15 = {
+v17 = {
   "alias": null,
   "args": null,
   "concreteType": "PageInfo",
@@ -220,8 +236,8 @@ v15 = {
   ],
   "storageKey": null
 },
-v16 = [
-  (v11/*: any*/),
+v18 = [
+  (v13/*: any*/),
   (v6/*: any*/)
 ];
 return {
@@ -274,6 +290,8 @@ return {
                       (v8/*: any*/),
                       (v9/*: any*/),
                       (v10/*: any*/),
+                      (v11/*: any*/),
+                      (v12/*: any*/),
                       {
                         "alias": null,
                         "args": null,
@@ -281,7 +299,7 @@ return {
                         "kind": "LinkedField",
                         "name": "signedInSession",
                         "plural": false,
-                        "selections": (v12/*: any*/),
+                        "selections": (v14/*: any*/),
                         "storageKey": null
                       },
                       {
@@ -291,18 +309,18 @@ return {
                         "kind": "LinkedField",
                         "name": "signedOutSession",
                         "plural": false,
-                        "selections": (v12/*: any*/),
+                        "selections": (v14/*: any*/),
                         "storageKey": null
                       },
-                      (v13/*: any*/),
-                      (v14/*: any*/)
+                      (v15/*: any*/),
+                      (v16/*: any*/)
                     ],
                     "storageKey": null
                   }
                 ],
                 "storageKey": null
               },
-              (v15/*: any*/)
+              (v17/*: any*/)
             ],
             "storageKey": null
           }
@@ -362,6 +380,8 @@ return {
                       (v8/*: any*/),
                       (v9/*: any*/),
                       (v10/*: any*/),
+                      (v11/*: any*/),
+                      (v12/*: any*/),
                       {
                         "alias": null,
                         "args": null,
@@ -369,7 +389,7 @@ return {
                         "kind": "LinkedField",
                         "name": "signedInSession",
                         "plural": false,
-                        "selections": (v16/*: any*/),
+                        "selections": (v18/*: any*/),
                         "storageKey": null
                       },
                       {
@@ -379,18 +399,18 @@ return {
                         "kind": "LinkedField",
                         "name": "signedOutSession",
                         "plural": false,
-                        "selections": (v16/*: any*/),
+                        "selections": (v18/*: any*/),
                         "storageKey": null
                       },
-                      (v13/*: any*/),
-                      (v14/*: any*/)
+                      (v15/*: any*/),
+                      (v16/*: any*/)
                     ],
                     "storageKey": null
                   }
                 ],
                 "storageKey": null
               },
-              (v15/*: any*/)
+              (v17/*: any*/)
             ],
             "storageKey": null
           }
@@ -400,16 +420,16 @@ return {
     ]
   },
   "params": {
-    "cacheID": "22370a136470a5700216b65d770c462d",
+    "cacheID": "b62e61d7035e61ba1666ea0b3a069927",
     "id": null,
     "metadata": {},
     "name": "ReportsQuery",
     "operationKind": "query",
-    "text": "query ReportsQuery(\n  $location: ID!\n  $first: Int!\n  $after: String\n  $startTime: Int!\n  $endTime: Int!\n) {\n  location(id: $location) {\n    id\n    periods(first: $first, after: $after, startTime: $startTime, endTime: $endTime) {\n      edges {\n        node {\n          id\n          personId\n          startTime\n          endTime\n          signedInSession {\n            name\n            id\n          }\n          signedOutSession {\n            name\n            id\n          }\n          category {\n            id\n            name\n          }\n          person {\n            id\n            memberNumber\n            firstName\n            lastName\n          }\n        }\n      }\n      pageInfo {\n        hasNextPage\n        endCursor\n      }\n    }\n  }\n}\n"
+    "text": "query ReportsQuery(\n  $location: ID!\n  $first: Int!\n  $after: String\n  $startTime: Int!\n  $endTime: Int!\n) {\n  location(id: $location) {\n    id\n    periods(first: $first, after: $after, startTime: $startTime, endTime: $endTime) {\n      edges {\n        node {\n          id\n          personId\n          guestName\n          comment\n          startTime\n          endTime\n          signedInSession {\n            name\n            id\n          }\n          signedOutSession {\n            name\n            id\n          }\n          category {\n            id\n            name\n          }\n          person {\n            id\n            memberNumber\n            firstName\n            lastName\n          }\n        }\n      }\n      pageInfo {\n        hasNextPage\n        endCursor\n      }\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "865a3f2e4773d54eee5a5a3e9e2d9b6e";
+(node as any).hash = "76b34a0fd35ccc0c35d7095c02d8cf2c";
 
 export default node;
