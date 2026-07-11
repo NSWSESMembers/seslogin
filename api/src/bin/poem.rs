@@ -67,12 +67,29 @@ async fn index<H: db::Handler + Send + Sync + 'static>(
     app: Data<&Arc<app::MyApp<H>>>,
     dev_auth: Data<&Arc<Option<auth::DevAuthConfig>>>,
     headers: &HeaderMap,
-    req: GraphQLRequest,
+    body: Vec<u8>,
 ) -> impl IntoResponse {
     if app.response_lag > 0 {
         tokio::time::sleep(std::time::Duration::from_millis(app.response_lag)).await;
     }
-    let mut req = req.0;
+
+    // Read the raw body so its hash can be bound into signed-key auth, then parse it as
+    // a GraphQL request. This POST-only handler always receives a JSON body from the
+    // GraphQL client (GraphiQL is served separately on GET).
+    let body_hash = seslogin::session_key::sha256_hex(&body);
+    let mut req: async_graphql::Request = match serde_json::from_slice(&body) {
+        Ok(req) => req,
+        Err(e) => {
+            info!("Malformed GraphQL request body: {}", e);
+            let response = GraphQLResponse(async_graphql::Response::from_errors(vec![
+                ServerError::new("Malformed request body", None),
+            ]));
+            return response
+                .with_status(StatusCode::BAD_REQUEST)
+                .into_response();
+        }
+    };
+
     let client_version = headers
         .get(auth::CLIENT_VERSION_HEADER)
         .and_then(|value| value.to_str().ok())
@@ -97,12 +114,16 @@ async fn index<H: db::Handler + Send + Sync + 'static>(
                     .into_response();
             }
         }
-    } else if let Some(auth_header) = headers.get("Authorization")
-        && let Ok(auth_str) = auth_header.to_str()
-        && auth_str.starts_with("Bearer ")
+    } else if let Some(res) = auth::verify_authorization_header(
+        &***app,
+        headers
+            .get("Authorization")
+            .and_then(|value| value.to_str().ok()),
+        &body_hash,
+        client_version,
+    )
+    .await
     {
-        let token = &auth_str[7..];
-        let res = auth::verify_token(&***app, token, client_version).await;
         let auth_info = match res {
             Err(auth::AuthError::Permanent(ref msg)) => {
                 info!("Auth permanent failure: {}", msg);

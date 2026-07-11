@@ -180,8 +180,29 @@ pub struct Session {
     pub code: Option<String>,
     pub config: serde_json::Map<String, serde_json::Value>,
     pub healthcheck_url: Option<String>,
+    /// Base64 (standard) SPKI DER of the kiosk's enrolled ECDSA P-256 public key.
+    /// Present only for key-enrolled sessions (the QR/public-key flow); code-enrolled
+    /// sessions leave this unset.
+    pub public_key: Option<String>,
+    /// Hex SHA-256 of the SPKI DER above. Backs the `key_fingerprint-index` GSI, so it
+    /// must be omitted (never written as Null) when absent.
+    pub key_fingerprint: Option<String>,
+    /// Unix seconds after which the enrolled key no longer authenticates; extended on
+    /// each verified request. A kiosk offline past this must re-enroll.
+    pub key_expires_at: Option<u64>,
     pub created_at: Option<u64>,
     pub updated_at: Option<u64>,
+}
+
+/// Parameters for enrolling a public key onto a new session (the QR/public-key flow).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SessionKeyParams<'a> {
+    /// Base64 (standard) SPKI DER of the ECDSA P-256 public key.
+    pub public_key: &'a str,
+    /// Hex SHA-256 of the SPKI DER.
+    pub fingerprint: &'a str,
+    /// Unix seconds at which the key initially expires.
+    pub expires_at: u64,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -250,6 +271,10 @@ pub enum SessionUpdateShape<'a> {
     },
     Info {
         client_version: Option<&'a str>,
+        /// When set, also bump `key_expires_at` to this value (the sliding 14-day
+        /// window for key-enrolled sessions). Written in the same update as the
+        /// throttled `last_contact` refresh, so it costs no extra write.
+        extend_key_expires_at: Option<u64>,
     },
     Delete,
 }
@@ -425,6 +450,19 @@ pub struct WebauthnState {
     pub expires_at: u64,
 }
 
+/// Generic short-lived key/value record in the `ephemeral_state` table. Namespaced
+/// by `kind`, carries an opaque JSON `payload`, and is auto-deleted by DynamoDB TTL
+/// after `expires_at`. Currently backs kiosk public-key enrollment; `webauthn_state`
+/// is intended to migrate onto this shape later.
+#[derive(Clone, Debug, PartialEq)]
+pub struct EphemeralState {
+    pub id: String,
+    pub kind: String,
+    pub payload: String,
+    /// Unix timestamp; DynamoDB TTL auto-deletes after this.
+    pub expires_at: u64,
+}
+
 pub trait Handler {
     fn get_users<T: AsRef<str> + Sync>(
         &self,
@@ -540,12 +578,21 @@ pub trait Handler {
         id: &str,
         change: PeriodUpdateShape<'_>,
     ) -> impl Future<Output = Result<()>> + Send;
+    /// Returns the IDs of every session whose enrolled key fingerprint matches (from
+    /// the `key_fingerprint-index` GSI). Expected to be at most one active session;
+    /// callers should fetch each ID with [`get_sessions`](Self::get_sessions) to confirm
+    /// it exists and is active.
+    fn get_session_id_by_key_fingerprint(
+        &self,
+        fingerprint: &str,
+    ) -> impl Future<Output = Result<Vec<String>>> + Send;
     fn create_session(
         &self,
         location_id: &str,
         name: &str,
         config: &serde_json::Map<String, serde_json::Value>,
         healthcheck_url: Option<&str>,
+        key: Option<SessionKeyParams<'_>>,
     ) -> impl Future<Output = Result<Session>> + Send;
     fn update_session(
         &self,
@@ -811,4 +858,23 @@ pub trait Handler {
     ) -> impl Future<Output = Result<Option<WebauthnState>>> + Send;
 
     fn delete_webauthn_state(&self, id: &str) -> impl Future<Output = Result<()>> + Send;
+
+    // ── Generic ephemeral state ───────────────────────────────────────────────
+
+    /// Upsert a record into the `ephemeral_state` table (overwrites any existing
+    /// item with the same `id`).
+    fn put_ephemeral_state(
+        &self,
+        id: &str,
+        kind: &str,
+        payload: &str,
+        expires_at: u64,
+    ) -> impl Future<Output = Result<()>> + Send;
+
+    fn get_ephemeral_state(
+        &self,
+        id: &str,
+    ) -> impl Future<Output = Result<Option<EphemeralState>>> + Send;
+
+    fn delete_ephemeral_state(&self, id: &str) -> impl Future<Output = Result<()>> + Send;
 }

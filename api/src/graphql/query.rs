@@ -170,6 +170,14 @@ pub struct PasskeyInfo {
     pub last_used_at: Option<i64>,
 }
 
+/// A still-valid pending kiosk enrollment, surfaced to the admin SessionEnroll page so
+/// it can confirm the kiosk is still waiting before showing the enrollment form.
+#[derive(SimpleObject, Clone, Debug)]
+pub struct PendingEnrollmentKey {
+    pub fingerprint: String,
+    pub expires_at: i64,
+}
+
 #[derive(SimpleObject, Clone, Debug)]
 pub struct DashboardDailyPeriodSummary {
     pub day_start: i64,
@@ -2021,6 +2029,29 @@ impl<A: App + HasDb + Send + Sync + 'static> QueryRoot<A> {
 
         let app = ctx.data_unchecked::<Arc<A>>().clone();
         auth::issue_token_for_session_id(&*app, session_id)
+    }
+
+    /// Look up a pending kiosk enrollment by its key fingerprint (from the QR code).
+    /// Returns `None` if it never existed or has expired — the admin SessionEnroll page
+    /// uses this to tell the operator to rescan.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    async fn pending_enrollment_key(
+        &self,
+        ctx: &Context<'_>,
+        fingerprint: String,
+    ) -> Result<Option<PendingEnrollmentKey>> {
+        let app = ctx.data_unchecked::<Arc<A>>().clone();
+        let now = crate::clock::now_sec();
+        let state_id = crate::session_key::enroll_state_id(&fingerprint);
+        let pending = app
+            .db()
+            .get_ephemeral_state(&state_id)
+            .await?
+            .filter(|s| s.kind == crate::session_key::ENROLL_STATE_KIND && s.expires_at > now);
+        Ok(pending.map(|s| PendingEnrollmentKey {
+            fingerprint,
+            expires_at: s.expires_at as i64,
+        }))
     }
 
     #[graphql(guard = "AuthGuard::new(AuthRequirement::Authenticated)")]

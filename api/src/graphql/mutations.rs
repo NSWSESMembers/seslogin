@@ -191,6 +191,49 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
         }
     }
 
+    /// Publish a kiosk's public key as a pending enrollment (public-key/QR flow). The
+    /// kiosk re-submits every ~10 min while unenrolled; an admin then scans the kiosk's
+    /// QR code to complete enrollment via [`enroll_session`]. Returns the server-computed
+    /// key fingerprint (hex SHA-256 of the SPKI DER) that the QR code carries.
+    ///
+    /// Intentionally unauthenticated and cheap to serve: the input is strictly validated
+    /// (must be a well-formed P-256 SPKI ≤200 bytes) and writes are keyed by fingerprint,
+    /// so a flood from one key only ever touches one item. A short-lived record already
+    /// present is not rewritten (write-suppression below).
+    async fn submit_enrollment_key(&self, public_key: String) -> Result<String> {
+        let (_, fingerprint) = crate::session_key::validate_public_key_spki_b64(&public_key)
+            .map_err(|e| anyhow!("Invalid public key: {e:#}"))?;
+        let id = crate::session_key::enroll_state_id(&fingerprint);
+        let now = crate::clock::now_sec();
+
+        // Write-suppression: if a fresh record already exists (written in roughly the last
+        // 10 min, i.e. >20 min TTL remaining), skip the write. The kiosk polls every
+        // ~10 min, so steady state is about one write per 20 min per kiosk.
+        let fresh_threshold = now + crate::session_key::PENDING_ENROLLMENT_TTL_S - 10 * 60;
+        if let Some(existing) = self.app.db().get_ephemeral_state(&id).await?
+            && existing.kind == crate::session_key::ENROLL_STATE_KIND
+            && existing.expires_at > fresh_threshold
+        {
+            return Ok(fingerprint);
+        }
+
+        let payload = serde_json::to_string(&crate::session_key::EnrollPayload {
+            public_key,
+            submitted_at: now,
+        })?;
+        let expires_at = now + crate::session_key::PENDING_ENROLLMENT_TTL_S;
+        self.app
+            .db()
+            .put_ephemeral_state(
+                &id,
+                crate::session_key::ENROLL_STATE_KIND,
+                &payload,
+                expires_at,
+            )
+            .await?;
+        Ok(fingerprint)
+    }
+
     /// Request an email login code. Always returns true to avoid email enumeration.
     /// Requires a valid Cloudflare Turnstile token.
     async fn request_auth_code(&self, email: String, turnstile_token: String) -> bool {
@@ -812,8 +855,108 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
         let item = self
             .app
             .db()
-            .create_session(&location_id, &name, &config, healthcheck_url.as_deref())
+            .create_session(
+                &location_id,
+                &name,
+                &config,
+                healthcheck_url.as_deref(),
+                None,
+            )
             .await?;
+
+        Ok(Session::new(item))
+    }
+
+    /// Complete a public-key kiosk enrollment: create a session bound to the public key a
+    /// kiosk previously published via [`submit_enrollment_key`], identified by its
+    /// `key_fingerprint`. The kiosk then authenticates every request by signing it (no
+    /// 6-digit code, no JWT). Reached from the admin SessionEnroll page after scanning
+    /// the kiosk's QR code.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    async fn enroll_session(
+        &self,
+        ctx: &Context<'_>,
+        name: String,
+        location_id: ID,
+        config: Option<String>,
+        healthcheck_url: Option<String>,
+        key_fingerprint: String,
+    ) -> Result<Session<A>> {
+        require_writable(ctx)?;
+        require_location_access(ctx, &location_id)?;
+        self.app
+            .db()
+            .get_locations(&[&location_id])
+            .await?
+            .into_iter()
+            .next()
+            .flatten()
+            .ok_or_else(|| anyhow!("Location {:?} not found", location_id))?;
+
+        let config = parse_session_config_json(config.as_deref())?;
+        let healthcheck_url = normalize_healthcheck_url(healthcheck_url.as_deref())?;
+
+        // Look up the pending enrollment record the kiosk published (and is keeping alive
+        // by re-submitting while it displays the QR code).
+        let now = crate::clock::now_sec();
+        let state_id = crate::session_key::enroll_state_id(&key_fingerprint);
+        let pending = self
+            .app
+            .db()
+            .get_ephemeral_state(&state_id)
+            .await?
+            .filter(|s| s.kind == crate::session_key::ENROLL_STATE_KIND && s.expires_at > now)
+            .ok_or_else(|| {
+                anyhow!(
+                    "Enrollment request not found or expired — make sure the kiosk is still showing its QR code"
+                )
+            })?;
+        let payload: crate::session_key::EnrollPayload = serde_json::from_str(&pending.payload)
+            .map_err(|e| anyhow!("Corrupt enrollment record: {e}"))?;
+
+        // Refuse if an active session already holds this fingerprint. (Soft-deleted
+        // sessions release their fingerprint, so they won't appear here — checked
+        // defensively via `active`.)
+        let existing_ids = self
+            .app
+            .db()
+            .get_session_id_by_key_fingerprint(&key_fingerprint)
+            .await?;
+        let already_enrolled = self
+            .app
+            .db()
+            .get_sessions(&existing_ids)
+            .await?
+            .into_iter()
+            .flatten()
+            .any(|s| s.active);
+        if already_enrolled {
+            return Err(anyhow!("A kiosk is already enrolled with this key"));
+        }
+
+        let item = self
+            .app
+            .db()
+            .create_session(
+                &location_id,
+                &name,
+                &config,
+                healthcheck_url.as_deref(),
+                Some(db::SessionKeyParams {
+                    public_key: &payload.public_key,
+                    fingerprint: &key_fingerprint,
+                    expires_at: now + crate::session_key::KEY_LIFETIME_S,
+                }),
+            )
+            .await?;
+
+        // Best-effort cleanup; the record TTLs out anyway if this fails.
+        if let Err(e) = self.app.db().delete_ephemeral_state(&state_id).await {
+            warn!(
+                "Failed to delete pending enrollment record {}: {}",
+                state_id, e
+            );
+        }
 
         Ok(Session::new(item))
     }
