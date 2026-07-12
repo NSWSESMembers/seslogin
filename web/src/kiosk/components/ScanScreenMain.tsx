@@ -269,7 +269,7 @@ export default function ScanScreenMain(props: {
           type="text"
           name="id"
           maxLength={8}
-          className={`${inputBase} mr-3.75 w-62.5 text-center align-middle font-mono text-[3em] transition-colors duration-500`}
+          className={`${inputBase} mr-3.75 w-80 py-3 text-center align-middle font-mono text-[3em] leading-snug transition-colors duration-500`}
           onBlur={() => {
             clearRefocusTimeout();
             refocusTimeoutIdRef.current = window.setTimeout(() => {
@@ -293,10 +293,22 @@ export default function ScanScreenMain(props: {
           variant="kiosk"
           size="bare"
           type="submit"
-          className="h-16 w-17.5 text-[48px]"
+          className="inline-flex h-16 w-17.5 items-center justify-center"
           disabled={submitDisabled}
+          aria-label="Submit"
         >
-          &gt;
+          <svg
+            aria-hidden="true"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={3}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="size-8"
+          >
+            <path d="M9 5l7 7-7 7" />
+          </svg>
         </Button>
       </form>
 

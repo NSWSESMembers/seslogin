@@ -61,7 +61,12 @@ export default function KioskSetupForm({
 
         <form action={onSubmit}>
           <TextInput
-            className="mb-3 box-border block min-w-65 p-3 text-xl"
+            // px-3/py-3 (not the equivalent p-3): inputBase's own px-2 py-1 is
+            // emitted later than any plain p-* shorthand in Tailwind's
+            // generated CSS and would otherwise win, clipping this larger
+            // text-xl code.
+            // eslint-disable-next-line better-tailwindcss/enforce-canonical-classes
+            className="mb-3 box-border block min-w-65 px-3 py-3 text-xl"
             type="text"
             name="code"
             inputMode="numeric"
