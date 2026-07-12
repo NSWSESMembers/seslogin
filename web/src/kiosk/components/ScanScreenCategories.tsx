@@ -40,14 +40,12 @@ export function Inner(props: {
 }) {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
 
-  let categories;
-  if (selectedCategory) {
-    categories =
-      categoriesFixture.find((c: Category) => c.id === selectedCategory)
-        ?.subcategories || [];
-  } else {
-    categories = categoriesFixture;
-  }
+  const selectedCategoryData = selectedCategory
+    ? categoriesFixture.find((c: Category) => c.id === selectedCategory)
+    : null;
+  const categories = selectedCategoryData
+    ? selectedCategoryData.subcategories || []
+    : categoriesFixture;
 
   function back() {
     setSelectedCategory(null);
@@ -66,15 +64,22 @@ export function Inner(props: {
 
   return (
     <>
-      <div className="mt-5 text-[2em]">
-        <span className="align-middle">Categories</span>
-        {selectedCategory && (
-          <button
-            className="ml-12.5 inline-block cursor-pointer rounded-lg border-2 border-line-strong bg-surface-raised p-2.5 align-middle text-ink active:bg-menu"
-            onClick={back}
-          >
-            Back
-          </button>
+      <div className="mt-5 flex items-center justify-center gap-3.75 text-[2em]">
+        {selectedCategoryData ? (
+          <>
+            <button
+              className="inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border-2 border-line-strong bg-surface-raised px-3.5 py-1.5 align-middle text-ink active:bg-menu"
+              onClick={back}
+            >
+              <span aria-hidden="true">&#8592;</span> Categories
+            </button>
+            <span className="align-middle opacity-60" aria-hidden="true">
+              &gt;
+            </span>
+            <span className="align-middle">{selectedCategoryData.name}</span>
+          </>
+        ) : (
+          <span className="align-middle">Categories</span>
         )}
       </div>
       <ul className="pl-0">

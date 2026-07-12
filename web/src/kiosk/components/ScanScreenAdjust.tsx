@@ -192,7 +192,7 @@ function Inner(props: {
           onSave={uponModalSave}
         />
       )}
-      <h1 className="m-0 mb-6 text-[3em]">Adjust</h1>
+      <h1 className="m-0 mb-6 text-[3em]">Confirm</h1>
 
       <div className="mx-auto flex w-fit min-w-175 flex-col text-[2em]">
         {!props.easyTimeEntry && (
