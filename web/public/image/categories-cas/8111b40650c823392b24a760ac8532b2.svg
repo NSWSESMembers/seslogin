@@ -3,6 +3,6 @@
 
   <path d="M10 30 H38 L33 39 H15 Z" />
   <path d="M20 30 V14 L28 20 L20 24" />
-  <path d="M6 43 q4.5 -4 9 0 t9 0 t9 0 t9 0" stroke-width="1.8" />
+  <path d="M6 43 q4.5 -4 9 0 t9 0 t9 0 t9 0" stroke-width="1.8" stroke="#fb6c0d" />
 </g>
 </svg>

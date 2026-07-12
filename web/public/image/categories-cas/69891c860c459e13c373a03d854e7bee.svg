@@ -2,7 +2,7 @@
 <g stroke="#1f3d79" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" fill="none">
 
   <path d="M24 7 L34 39 H14 Z" />
-  <path d="M18.3 22 H29.7 M16.5 30 H31.5" />
+  <path d="M18.3 22 H29.7 M16.5 30 H31.5" stroke="#fb6c0d" />
   <rect x="9" y="39" width="30" height="4.5" rx="1.5" />
 </g>
 </svg>

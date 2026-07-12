@@ -7,6 +7,6 @@
   <path d="M12 30 H24" />
   <path d="M13.2 23 H25.2" />
   <path d="M14.3 16 H26.3" />
-  <path d="M15.5 9 H27.5" />
+  <path d="M15.5 9 H27.5" stroke="#fb6c0d" />
 </g>
 </svg>

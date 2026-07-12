@@ -1,10 +1,21 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="70" height="70" viewBox="0 0 48 48" fill="none">
 <g stroke="#1f3d79" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" fill="none">
 
-  <path d="M8 24 L22 11 L36 24" />
-  <path d="M11 22 V40 H33 V22" />
-  <path d="M20 40 V29 H26 V40" />
-  <circle cx="38" cy="34" r="5.5" stroke="#fb6c0d" />
-  <path d="M38 27.5 V29.5 M38 38.5 V40.5 M31.5 34 H33.5 M42.5 34 H44.5 M33.4 29.4 L34.8 30.8 M41.2 37.2 L42.6 38.6 M33.4 38.6 L34.8 37.2 M41.2 30.8 L42.6 29.4" stroke-width="1.6" stroke="#fb6c0d" />
+  
+  <circle cx="15" cy="24" r="9" />
+  <polygon points="12.75,13.52 17.25,13.52 17.25,18.46 12.75,18.46" fill="#1f3d79" stroke="none" /><polygon points="20.82,14.99 24.01,18.18 20.50,21.68 17.32,18.50" fill="#1f3d79" stroke="none" /><polygon points="25.48,21.75 25.48,26.25 20.54,26.25 20.54,21.75" fill="#1f3d79" stroke="none" /><polygon points="24.01,29.82 20.82,33.01 17.32,29.50 20.50,26.32" fill="#1f3d79" stroke="none" /><polygon points="17.25,34.48 12.75,34.48 12.75,29.54 17.25,29.54" fill="#1f3d79" stroke="none" /><polygon points="9.18,33.01 5.99,29.82 9.50,26.32 12.68,29.50" fill="#1f3d79" stroke="none" /><polygon points="4.52,26.25 4.52,21.75 9.46,21.75 9.46,26.25" fill="#1f3d79" stroke="none" /><polygon points="5.99,18.18 9.18,14.99 12.68,18.50 9.50,21.68" fill="#1f3d79" stroke="none" />
+  <circle cx="15" cy="24" r="3.6" fill="#ffffff" />
+  <circle cx="15" cy="24" r="3.6" />
+  
+  <circle cx="9.5" cy="37" r="5.2" />
+  <polygon points="8.20,30.94 10.80,30.94 10.80,33.80 8.20,33.80" fill="#fb6c0d" stroke="none" /><polygon points="14.10,32.85 15.40,35.10 12.92,36.53 11.62,34.28" fill="#fb6c0d" stroke="none" /><polygon points="15.40,38.90 14.10,41.15 11.62,39.72 12.92,37.47" fill="#fb6c0d" stroke="none" /><polygon points="10.80,43.06 8.20,43.06 8.20,40.20 10.80,40.20" fill="#fb6c0d" stroke="none" /><polygon points="4.90,41.15 3.60,38.90 6.08,37.47 7.38,39.72" fill="#fb6c0d" stroke="none" /><polygon points="3.60,35.10 4.90,32.85 7.38,34.28 6.08,36.53" fill="#fb6c0d" stroke="none" />
+  <circle cx="9.5" cy="37" r="2.08" fill="#ffffff" />
+  <circle cx="9.5" cy="37" r="2.08" />
+  <circle cx="32" cy="14" r="4" />
+  <path d="M32 18 L30 30" />
+  <path d="M31 20 L40 15" />
+  <path d="M31 22 L25 26" />
+  <path d="M30 30 L34 41" />
+  <path d="M30 30 L25 34 L28 41" />
 </g>
 </svg>

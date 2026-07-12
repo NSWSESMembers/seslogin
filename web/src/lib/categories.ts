@@ -78,11 +78,6 @@ export const categories: Category[] = [
         icon: "f75090e6a94ab0d33ab6fe790eb9c6dd",
       },
       {
-        id: "rohwW8dkppNz",
-        name: "Other",
-        icon: "18eb763ac6ebacf56a464bfb768b1d6b",
-      },
-      {
         id: "aW7d1yFParRV",
         name: "Chain Saw",
         icon: "403c20e2c9a49d4d9e6e47fead3628d8",
@@ -113,11 +108,6 @@ export const categories: Category[] = [
         icon: "e27a3a29c1d434a727e8559c47b66064",
       },
       {
-        id: "jZCZLNtgatH0",
-        name: "Fundamentals",
-        icon: "a8e7cdf44dbdb1dd4375542c36402379",
-      },
-      {
         id: "OB9oatj3InVH",
         name: "PIARO",
         icon: "962dc987905bc03f6eaed0bf85e3fe95",
@@ -142,6 +132,11 @@ export const categories: Category[] = [
         name: "Operate Comms. Equip.",
         icon: "3ab11eb94b0ddf1684bce631de019871",
       },
+      {
+        id: "rohwW8dkppNz",
+        name: "Other",
+        icon: "18eb763ac6ebacf56a464bfb768b1d6b",
+      },
     ],
   },
   {
@@ -150,9 +145,9 @@ export const categories: Category[] = [
     icon: "0db00e94369f7b8ebc8105d86414807f",
     subcategories: [
       {
-        id: "AKinZhtlbvL1",
-        name: "Flood Operator L1",
-        icon: "f75090e6a94ab0d33ab6fe790eb9c6dd",
+        id: "frU0zHKQm84n",
+        name: "AIIMS",
+        icon: "55842972f9bbc19ad21e63fcbcdbcc3c",
       },
       {
         id: "EXhm0fqWJCiF",
@@ -175,19 +170,9 @@ export const categories: Category[] = [
         icon: "dc3dd1bc1944090c22182e8596c64913",
       },
       {
-        id: "XPzg5TODlRd6",
-        name: "Drive Operational Vehicles",
-        icon: "d8fdcd573f6371374b45e31ea2db3c01",
-      },
-      {
         id: "ICKlc0A7MjB8",
         name: "Land Search",
         icon: "74e1af1fd58ad402a19b615a912ae8b3",
-      },
-      {
-        id: "LooCgpp67kFc",
-        name: "Other",
-        icon: "2690a123d3a3e2f7b025b34040644237",
       },
       {
         id: "xfqtWeU35pxp",
@@ -215,59 +200,24 @@ export const categories: Category[] = [
         icon: "9a9ade6fe575c36c5abd49a8400bf173",
       },
       {
+        id: "AKinZhtlbvL1",
+        name: "Flood Operator L1",
+        icon: "f75090e6a94ab0d33ab6fe790eb9c6dd",
+      },
+      {
+        id: "2K3cfNuoTBYB",
+        name: "Chain Saw",
+        icon: "403c20e2c9a49d4d9e6e47fead3628d8",
+      },
+      {
         id: "MiJ9l7SqCDr4",
         name: "VR",
         icon: "98b92bc33307ddb2de105fc7460bbcc4",
       },
       {
-        id: "1VRot6gzgW7c",
-        name: "Critical Incident Support",
-        icon: "99042fdd65e0cce5c34c5362a08aee84",
-      },
-      {
-        id: "frU0zHKQm84n",
-        name: "AIIMS",
-        icon: "55842972f9bbc19ad21e63fcbcdbcc3c",
-      },
-      {
-        id: "7gmFiRLfnB9k",
-        name: "First Aid",
-        icon: "6aaae711253118e841e1887110fc3037",
-      },
-      {
-        id: "Y5ZETL8ZvpPr",
-        name: "Fundamentals",
-        icon: "a8e7cdf44dbdb1dd4375542c36402379",
-      },
-      {
-        id: "nT68nwU6z9RO",
-        name: "Maintain Team Safety",
-        icon: "e26f29ab0ab96dda58792fd8d84a0fce",
-      },
-      {
-        id: "2hPheSGKMo0A",
-        name: "Operate Comms. Equip.",
-        icon: "3ab11eb94b0ddf1684bce631de019871",
-      },
-      {
-        id: "V3cOiC45Oist",
-        name: "Beacon",
-        icon: "be8e1e6d04fd6ae9b9589e0adf31d21f",
-      },
-      {
-        id: "qgs9Xs1hSTDL",
-        name: "PIARO",
-        icon: "962dc987905bc03f6eaed0bf85e3fe95",
-      },
-      {
-        id: "SOiIjTV9Jmow",
-        name: "RCR",
-        icon: "e27a3a29c1d434a727e8559c47b66064",
-      },
-      {
-        id: "iDmbliqZlKMw",
-        name: "Storm & Water",
-        icon: "3e933be45b7f7895f1ece1e116da6514",
+        id: "XPzg5TODlRd6",
+        name: "Drive Operational Vehicles",
+        icon: "d8fdcd573f6371374b45e31ea2db3c01",
       },
       {
         id: "B2nP2FfkxfIg",
@@ -275,9 +225,44 @@ export const categories: Category[] = [
         icon: "08d848f1cce06feb3a43453f3b7975ee",
       },
       {
-        id: "2K3cfNuoTBYB",
-        name: "Chain Saw",
-        icon: "403c20e2c9a49d4d9e6e47fead3628d8",
+        id: "iDmbliqZlKMw",
+        name: "Storm & Water",
+        icon: "3e933be45b7f7895f1ece1e116da6514",
+      },
+      {
+        id: "SOiIjTV9Jmow",
+        name: "RCR",
+        icon: "e27a3a29c1d434a727e8559c47b66064",
+      },
+      {
+        id: "qgs9Xs1hSTDL",
+        name: "PIARO",
+        icon: "962dc987905bc03f6eaed0bf85e3fe95",
+      },
+      {
+        id: "7gmFiRLfnB9k",
+        name: "First Aid",
+        icon: "6aaae711253118e841e1887110fc3037",
+      },
+      {
+        id: "V3cOiC45Oist",
+        name: "Beacon",
+        icon: "be8e1e6d04fd6ae9b9589e0adf31d21f",
+      },
+      {
+        id: "1VRot6gzgW7c",
+        name: "Critical Incident Support",
+        icon: "99042fdd65e0cce5c34c5362a08aee84",
+      },
+      {
+        id: "2hPheSGKMo0A",
+        name: "Operate Comms. Equip.",
+        icon: "3ab11eb94b0ddf1684bce631de019871",
+      },
+      {
+        id: "LooCgpp67kFc",
+        name: "Other",
+        icon: "2690a123d3a3e2f7b025b34040644237",
       },
     ],
   },
@@ -287,19 +272,19 @@ export const categories: Category[] = [
     icon: "3ede04e2f84a55565ea948cffa6261ec",
     subcategories: [
       {
-        id: "KWU2BCxSXms0",
-        name: "Land Search",
-        icon: "74e1af1fd58ad402a19b615a912ae8b3",
-      },
-      {
-        id: "lO7YmMpXj3Xu",
-        name: "Field Core Skills",
-        icon: "3137f463223d0cdeb9bd3f036f0509d0",
+        id: "FzHtdFLZy3Nl",
+        name: "AIIMS",
+        icon: "55842972f9bbc19ad21e63fcbcdbcc3c",
       },
       {
         id: "Iki2svFjFU48",
         name: "Fitness",
         icon: "e86bb64f7f270d7f319db912c5d2eb63",
+      },
+      {
+        id: "lO7YmMpXj3Xu",
+        name: "Field Core Skills",
+        icon: "3137f463223d0cdeb9bd3f036f0509d0",
       },
       {
         id: "5iKzI7fMcnCl",
@@ -312,14 +297,14 @@ export const categories: Category[] = [
         icon: "dc3dd1bc1944090c22182e8596c64913",
       },
       {
-        id: "YcW1zHz3dD79",
-        name: "Remote Search",
+        id: "KWU2BCxSXms0",
+        name: "Land Search",
         icon: "74e1af1fd58ad402a19b615a912ae8b3",
       },
       {
-        id: "UOEIfufGm0CW",
-        name: "PIARO",
-        icon: "962dc987905bc03f6eaed0bf85e3fe95",
+        id: "YcW1zHz3dD79",
+        name: "Remote Search",
+        icon: "74e1af1fd58ad402a19b615a912ae8b3",
       },
       {
         id: "6QFlxZROgoQl",
@@ -337,11 +322,6 @@ export const categories: Category[] = [
         icon: "a44579de3a6d1837feb2b322cbccce48",
       },
       {
-        id: "JwQIf2BsuSuW",
-        name: "Fundamentals",
-        icon: "a8e7cdf44dbdb1dd4375542c36402379",
-      },
-      {
         id: "KoF18gOkiFM3",
         name: "Flood Operator L3 (SWR)",
         icon: "f28fbb6de22a15126035f807d5d17ecd",
@@ -357,6 +337,11 @@ export const categories: Category[] = [
         icon: "7ee2053d00331bdba2ee7d1dbb61f727",
       },
       {
+        id: "1RwtdwX3JGc6",
+        name: "Chain Saw",
+        icon: "403c20e2c9a49d4d9e6e47fead3628d8",
+      },
+      {
         id: "Bsp6gvf5OMpL",
         name: "VR",
         icon: "98b92bc33307ddb2de105fc7460bbcc4",
@@ -367,39 +352,9 @@ export const categories: Category[] = [
         icon: "6a08a163008a9da3f1ab87f098cbf6f6",
       },
       {
-        id: "YjgiQmgP7IAx",
-        name: "Critical Incident Support",
-        icon: "99042fdd65e0cce5c34c5362a08aee84",
-      },
-      {
-        id: "FzHtdFLZy3Nl",
-        name: "AIIMS",
-        icon: "55842972f9bbc19ad21e63fcbcdbcc3c",
-      },
-      {
-        id: "obMaRo09LtmW",
-        name: "First Aid",
-        icon: "6aaae711253118e841e1887110fc3037",
-      },
-      {
-        id: "ODmjOAZANjlC",
-        name: "Maintain Team Safety",
-        icon: "e26f29ab0ab96dda58792fd8d84a0fce",
-      },
-      {
-        id: "Y5U7nkss3YAR",
-        name: "Operate Comms. Equip.",
-        icon: "3ab11eb94b0ddf1684bce631de019871",
-      },
-      {
-        id: "sM3Qi8VtInuL",
-        name: "Beacon",
-        icon: "be8e1e6d04fd6ae9b9589e0adf31d21f",
-      },
-      {
-        id: "8kJBD0LHgqFr",
-        name: "RCR",
-        icon: "e27a3a29c1d434a727e8559c47b66064",
+        id: "TiruXst14mbp",
+        name: "USAR",
+        icon: "08d848f1cce06feb3a43453f3b7975ee",
       },
       {
         id: "7OvMSXibYs3z",
@@ -407,14 +362,34 @@ export const categories: Category[] = [
         icon: "3e933be45b7f7895f1ece1e116da6514",
       },
       {
-        id: "TiruXst14mbp",
-        name: "USAR",
-        icon: "08d848f1cce06feb3a43453f3b7975ee",
+        id: "8kJBD0LHgqFr",
+        name: "RCR",
+        icon: "e27a3a29c1d434a727e8559c47b66064",
       },
       {
-        id: "1RwtdwX3JGc6",
-        name: "Chain Saw",
-        icon: "403c20e2c9a49d4d9e6e47fead3628d8",
+        id: "UOEIfufGm0CW",
+        name: "PIARO",
+        icon: "962dc987905bc03f6eaed0bf85e3fe95",
+      },
+      {
+        id: "obMaRo09LtmW",
+        name: "First Aid",
+        icon: "6aaae711253118e841e1887110fc3037",
+      },
+      {
+        id: "sM3Qi8VtInuL",
+        name: "Beacon",
+        icon: "be8e1e6d04fd6ae9b9589e0adf31d21f",
+      },
+      {
+        id: "YjgiQmgP7IAx",
+        name: "Critical Incident Support",
+        icon: "99042fdd65e0cce5c34c5362a08aee84",
+      },
+      {
+        id: "Y5U7nkss3YAR",
+        name: "Operate Comms. Equip.",
+        icon: "3ab11eb94b0ddf1684bce631de019871",
       },
     ],
   },
@@ -479,11 +454,6 @@ export const categories: Category[] = [
         icon: "f75090e6a94ab0d33ab6fe790eb9c6dd",
       },
       {
-        id: "nzB9BL6H2i4J",
-        name: "Other",
-        icon: "18eb763ac6ebacf56a464bfb768b1d6b",
-      },
-      {
         id: "Fu6jyPNi47VY",
         name: "Chain Saw",
         icon: "403c20e2c9a49d4d9e6e47fead3628d8",
@@ -514,11 +484,6 @@ export const categories: Category[] = [
         icon: "e27a3a29c1d434a727e8559c47b66064",
       },
       {
-        id: "ePXbmCmEqDcj",
-        name: "Fundamentals",
-        icon: "a8e7cdf44dbdb1dd4375542c36402379",
-      },
-      {
         id: "Mhs2RTTkKN2E",
         name: "PIARO",
         icon: "962dc987905bc03f6eaed0bf85e3fe95",
@@ -542,6 +507,11 @@ export const categories: Category[] = [
         id: "uG7rv8C5n5Uj",
         name: "Operate Comms. Equip.",
         icon: "3ab11eb94b0ddf1684bce631de019871",
+      },
+      {
+        id: "nzB9BL6H2i4J",
+        name: "Other",
+        icon: "18eb763ac6ebacf56a464bfb768b1d6b",
       },
     ],
   },
@@ -606,11 +576,6 @@ export const categories: Category[] = [
         icon: "f75090e6a94ab0d33ab6fe790eb9c6dd",
       },
       {
-        id: "p0vRqFeoQ5uP",
-        name: "Other",
-        icon: "18eb763ac6ebacf56a464bfb768b1d6b",
-      },
-      {
         id: "xIJbGAJvzkUF",
         name: "Chain Saw",
         icon: "403c20e2c9a49d4d9e6e47fead3628d8",
@@ -641,11 +606,6 @@ export const categories: Category[] = [
         icon: "e27a3a29c1d434a727e8559c47b66064",
       },
       {
-        id: "oJBfuHvRCuOa",
-        name: "Fundamentals",
-        icon: "a8e7cdf44dbdb1dd4375542c36402379",
-      },
-      {
         id: "mjz48eIkDO3X",
         name: "PIARO",
         icon: "962dc987905bc03f6eaed0bf85e3fe95",
@@ -669,6 +629,11 @@ export const categories: Category[] = [
         id: "hFQ3A4o2qFPq",
         name: "Operate Comms. Equip.",
         icon: "3ab11eb94b0ddf1684bce631de019871",
+      },
+      {
+        id: "p0vRqFeoQ5uP",
+        name: "Other",
+        icon: "18eb763ac6ebacf56a464bfb768b1d6b",
       },
     ],
   },
@@ -819,11 +784,6 @@ export const categories: Category[] = [
         icon: "29c27b98158e48faf02a44a9398815e4",
       },
       {
-        id: "hMmClDnyg0dv",
-        name: "Other",
-        icon: "2690a123d3a3e2f7b025b34040644237",
-      },
-      {
         id: "Ppuzi8VftNLX",
         name: "SES Role",
         icon: "34ff5a4cc21c55dfcd4ababde2e0182f",
@@ -838,6 +798,11 @@ export const categories: Category[] = [
         name: "Public Relations",
         icon: "a221db2d6f800f0feca19ffae792dd14",
       },
+      {
+        id: "hMmClDnyg0dv",
+        name: "Other",
+        icon: "2690a123d3a3e2f7b025b34040644237",
+      },
     ],
   },
   {
@@ -849,11 +814,6 @@ export const categories: Category[] = [
         id: "zn9RlBpyS1Ln",
         name: "Driver Reviver",
         icon: "ab6d3ee0fb6d8dfffb689a273708918b",
-      },
-      {
-        id: "KfSya4BaVcN5",
-        name: "Other",
-        icon: "2690a123d3a3e2f7b025b34040644237",
       },
       {
         id: "6uFM5NP8o1x8",
@@ -929,6 +889,11 @@ export const categories: Category[] = [
         id: "538VdyE6WRbU",
         name: "Assessment Supervision",
         icon: "2f202ae581ff23bd58de1957c5046ccd",
+      },
+      {
+        id: "KfSya4BaVcN5",
+        name: "Other",
+        icon: "2690a123d3a3e2f7b025b34040644237",
       },
     ],
   },

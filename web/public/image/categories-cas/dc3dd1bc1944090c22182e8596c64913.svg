@@ -4,6 +4,6 @@
   <path d="M18 18 V14 a4 4 0 0 1 4 -4 h4 a4 4 0 0 1 4 4 v4" />
   <rect x="7" y="18" width="34" height="21" rx="3" />
   <path d="M7 27 H41" />
-  <path d="M18 27 L22.5 32 L31 21" />
+  <path d="M18 27 L22.5 32 L31 21" stroke="#fb6c0d" />
 </g>
 </svg>

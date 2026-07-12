@@ -3,5 +3,6 @@
 
   <circle cx="27" cy="9" r="4" />
   <path d="M22 16 L27 22 L34 18 M27 22 L22 29 L27 41 M27 22 L33 26 L37 34 M22 29 L14 32 M22 29 L15 25" />
+  <path d="M9 33 H13 M8 37 H12" stroke="#fb6c0d" stroke-width="1.8" />
 </g>
 </svg>

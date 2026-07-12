@@ -4,6 +4,6 @@
   <path d="M6 18 L24 10 L42 18 L24 26 Z" />
   <path d="M14 21.5 V31 C14 34 18.5 37 24 37 C29.5 37 34 34 34 31 V21.5" />
   <path d="M42 18 V29" />
-  <circle cx="42" cy="31.5" r="1.6" fill="#1f3d79" stroke="none" />
+  <circle cx="42" cy="31.5" r="1.6" fill="#fb6c0d" stroke="none" />
 </g>
 </svg>
