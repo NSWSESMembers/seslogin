@@ -20,7 +20,7 @@ export default defineConfig({
     },
   },
   optimizeDeps: {
-    include: ["exceljs"],
+    include: ["exceljs", "qrcode"],
   },
   plugins: [
     relay,
