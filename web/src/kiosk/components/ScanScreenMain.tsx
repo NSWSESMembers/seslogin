@@ -55,7 +55,7 @@ function TransactionList(props: { transactionState: TransactionState }) {
           const elapsedMs = now - t.finalizedTime.getTime();
           return elapsedMs < FINALIZED_TRANSACTION_TIMEOUT_MS;
         })
-        .map((t) => {
+        .map((t, idx) => {
           let isFading = false;
           if (
             t.status === "SIGNED_IN" ||
@@ -72,7 +72,11 @@ function TransactionList(props: { transactionState: TransactionState }) {
           }
 
           return (
-            <Transaction key={t.uuid} transaction={t} isFading={isFading} />
+            <Transaction
+              key={t.uuid || idx}
+              transaction={t}
+              isFading={isFading}
+            />
           );
         })}
     </div>
@@ -263,7 +267,13 @@ export default function ScanScreenMain(props: {
     <div className={`${scanView} ${scanViewPosition[screenPosition]}`}>
       <p className="mt-25 text-[2em]">Please enter or scan your SES ID</p>
 
-      <form action={handleSubmit} autoComplete="off">
+      <form
+        autoComplete="off"
+        onSubmit={(submitEvent) => {
+          submitEvent.preventDefault();
+          handleSubmit(new FormData(submitEvent.target));
+        }}
+      >
         <input
           ref={inputRef}
           type="text"
