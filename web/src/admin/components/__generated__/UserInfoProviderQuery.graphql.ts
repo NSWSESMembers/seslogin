@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<73d9ec063f5a6b196421cf1ae581c655>>
+ * @generated SignedSource<<8de70c1aeb327196212794dbb73b80a9>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -12,6 +12,7 @@ import { ConcreteRequest } from 'relay-runtime';
 export type UserInfoProviderQuery$variables = Record<PropertyKey, never>;
 export type UserInfoProviderQuery$data = {
   readonly user: {
+    readonly disaggregateVirtualPeriods: boolean;
     readonly email: string;
     readonly id: string;
     readonly isDev: boolean;
@@ -70,6 +71,13 @@ v1 = [
       {
         "alias": null,
         "args": null,
+        "kind": "ScalarField",
+        "name": "disaggregateVirtualPeriods",
+        "storageKey": null
+      },
+      {
+        "alias": null,
+        "args": null,
         "concreteType": "Location",
         "kind": "LinkedField",
         "name": "locations",
@@ -115,16 +123,16 @@ return {
     "selections": (v1/*: any*/)
   },
   "params": {
-    "cacheID": "2fd93edaca32df1a110f3bd9f94ba1eb",
+    "cacheID": "d245a7590ce0fc5b8310ba5dc5b0a375",
     "id": null,
     "metadata": {},
     "name": "UserInfoProviderQuery",
     "operationKind": "query",
-    "text": "query UserInfoProviderQuery {\n  user {\n    id\n    email\n    isSuper\n    isDev\n    locations {\n      id\n      name\n      enabled\n    }\n  }\n}\n"
+    "text": "query UserInfoProviderQuery {\n  user {\n    id\n    email\n    isSuper\n    isDev\n    disaggregateVirtualPeriods\n    locations {\n      id\n      name\n      enabled\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "f1286e78b81fe912eb009d80e4d58383";
+(node as any).hash = "2ffc8a6965296feeece5ca1281649f6a";
 
 export default node;

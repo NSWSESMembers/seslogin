@@ -153,6 +153,7 @@ impl TryInto<Category> for Item {
                 .string_field("name")?
                 .unwrap_or(format!("Unnamed category {}", self.id())),
             enabled: self.bool_field("enabled")?.unwrap_or(false),
+            is_virtual: self.bool_field("virtual")?.unwrap_or(false),
             nitc_participant_type: self.string_field("nitc_participant_type")?,
             nitc_group_id: self.string_field("nitc_group_id")?,
             created_at: self
@@ -226,6 +227,9 @@ impl TryInto<User> for Item {
                 .ok_or_else(|| anyhow!("User missing email"))?,
             is_super: self.bool_field("super")?.unwrap_or(false),
             is_dev: self.bool_field("dev")?.unwrap_or(false),
+            disaggregate_virtual_periods: self
+                .bool_field("disaggregate_virtual_periods")?
+                .unwrap_or(false),
             location_grants: self.string_set_field("location_grants")?,
             enabled: self.i64_field("enabled")?.is_some(),
             access_time: self.i64_field("access_time")?.map(|i| i as u64),
@@ -823,6 +827,7 @@ impl db::Handler for Handler {
             enabled: true,
             access_time: None,
             email_config: serde_json::Map::new(),
+            disaggregate_virtual_periods: false,
             created_at: now,
             updated_at: now,
         })
@@ -929,6 +934,27 @@ impl db::Handler for Handler {
                     .condition_expression("attribute_exists(id)")
                     .update_expression("SET email_config = :cfg, updated_at = :updated_at")
                     .expression_attribute_values(":cfg", AttributeValue::S(serialized))
+                    .expression_attribute_values(
+                        ":updated_at",
+                        AttributeValue::N(crate::clock::now_sec().to_string()),
+                    )
+                    .return_consumed_capacity(ReturnConsumedCapacity::Total)
+                    .send()
+                    .await
+                    .map_err(|e| map_update_err(e, format!("User {}", id)))?;
+                record_capacity("update_user", resp.consumed_capacity(), CapKind::Write);
+            }
+            db::UserUpdateShape::DisaggregateVirtualPeriods { value } => {
+                let resp = self
+                    .client
+                    .update_item()
+                    .table_name(self.table_name("user"))
+                    .key("id", AttributeValue::S(id.to_string()))
+                    .condition_expression("attribute_exists(id)")
+                    .update_expression(
+                        "SET disaggregate_virtual_periods = :v, updated_at = :updated_at",
+                    )
+                    .expression_attribute_values(":v", AttributeValue::Bool(value))
                     .expression_attribute_values(
                         ":updated_at",
                         AttributeValue::N(crate::clock::now_sec().to_string()),
@@ -2455,6 +2481,7 @@ impl db::Handler for Handler {
     async fn create_category(
         &self,
         name: &str,
+        is_virtual: bool,
         nitc_group_id: Option<&str>,
         nitc_participant_type: Option<&str>,
     ) -> db::Result<Category> {
@@ -2471,6 +2498,7 @@ impl db::Handler for Handler {
             .item("id", AttributeValue::S(id.clone()))
             .item("name", AttributeValue::S(name.to_string()))
             .item("enabled", AttributeValue::Bool(true))
+            .item("virtual", AttributeValue::Bool(is_virtual))
             .item("created_at", AttributeValue::N(now.to_string()))
             .item("updated_at", AttributeValue::N(now.to_string()))
             .return_consumed_capacity(ReturnConsumedCapacity::Total);
@@ -2496,6 +2524,7 @@ impl db::Handler for Handler {
             id,
             name: name.to_string(),
             enabled: true,
+            is_virtual,
             nitc_participant_type: nitc_participant_type.map(str::to_string),
             nitc_group_id: nitc_group_id.map(str::to_string),
             created_at: now,
@@ -2508,6 +2537,7 @@ impl db::Handler for Handler {
         id: &str,
         name: &str,
         active: bool,
+        is_virtual: bool,
         nitc_group_id: Option<&str>,
         nitc_participant_type: Option<&str>,
     ) -> db::Result<()> {
@@ -2522,6 +2552,7 @@ impl db::Handler for Handler {
         let mut set_clauses = vec![
             "#name = :name",
             "enabled = :enabled",
+            "#virtual = :virtual",
             "updated_at = :updated_at",
         ];
         let mut remove_clauses = Vec::new();
@@ -2531,8 +2562,10 @@ impl db::Handler for Handler {
             .table_name(self.table_name("category"))
             .key("id", AttributeValue::S(id.to_string()))
             .expression_attribute_names("#name", "name")
+            .expression_attribute_names("#virtual", "virtual")
             .expression_attribute_values(":name", AttributeValue::S(name.to_string()))
             .expression_attribute_values(":enabled", AttributeValue::Bool(active))
+            .expression_attribute_values(":virtual", AttributeValue::Bool(is_virtual))
             .expression_attribute_values(
                 ":updated_at",
                 AttributeValue::N(crate::clock::now_sec().to_string()),

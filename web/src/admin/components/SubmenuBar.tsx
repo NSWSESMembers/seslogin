@@ -114,6 +114,9 @@ export default function SubmenuBar({ isSuper }: SubmenuBarProps) {
           <MenuLink level="sub" to="/admin/settings/daily-email" end>
             Daily Email Summary
           </MenuLink>
+          <MenuLink level="sub" to="/admin/settings/activity-display" end>
+            Activity Display
+          </MenuLink>
         </div>
       )}
     </>

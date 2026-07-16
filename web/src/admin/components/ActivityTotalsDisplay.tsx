@@ -4,6 +4,7 @@ import ActivityTotalsTable, {
   type ActivityTotalsRow,
 } from "./ActivityTotalsTable";
 import type { ActivityTotalsDisplayQuery } from "./__generated__/ActivityTotalsDisplayQuery.graphql";
+import { useUserInfo } from "./useUserInfo";
 
 interface ActivityTotalsDisplayProps {
   locationId: string;
@@ -18,6 +19,8 @@ export default function ActivityTotalsDisplay({
   endTime,
   category,
 }: ActivityTotalsDisplayProps) {
+  const { disaggregateVirtualPeriods } = useUserInfo();
+
   const data = useLazyLoadQuery<ActivityTotalsDisplayQuery>(
     graphql`
       query ActivityTotalsDisplayQuery(
@@ -39,11 +42,14 @@ export default function ActivityTotalsDisplay({
               lastName
             }
             totalTime
+            totalTimeVirtual
+            totalTimeNonVirtual
           }
           periodSummaryByCategory(startTime: $startTime, endTime: $endTime) {
             category {
               id
               name
+              isVirtual
             }
             totalTime
           }
@@ -63,6 +69,8 @@ export default function ActivityTotalsDisplay({
       id: entry.person.id,
       name: `${entry.person.firstName} ${entry.person.lastName}`,
       totalTime: entry.totalTime,
+      totalTimeVirtual: entry.totalTimeVirtual,
+      totalTimeNonVirtual: entry.totalTimeNonVirtual,
     }));
 
   const categoryRows: ReadonlyArray<ActivityTotalsRow> =
@@ -71,13 +79,45 @@ export default function ActivityTotalsDisplay({
       name: entry.category.name,
       totalTime: entry.totalTime,
     }));
+  const virtualCategoryRows: ReadonlyArray<ActivityTotalsRow> =
+    data.location.periodSummaryByCategory
+      .filter((entry) => entry.category.isVirtual)
+      .map((entry) => ({
+        id: entry.category.id,
+        name: entry.category.name,
+        totalTime: entry.totalTime,
+      }));
+  const nonVirtualCategoryRows: ReadonlyArray<ActivityTotalsRow> =
+    data.location.periodSummaryByCategory
+      .filter((entry) => !entry.category.isVirtual)
+      .map((entry) => ({
+        id: entry.category.id,
+        name: entry.category.name,
+        totalTime: entry.totalTime,
+      }));
 
   return (
     <div className="flex items-start gap-5 max-md:flex-col">
-      <ActivityTotalsTable title="Time per member" rows={memberRows} />
-      {!category && (
-        <ActivityTotalsTable title="Time per category" rows={categoryRows} />
-      )}
+      <ActivityTotalsTable
+        title="Time per member"
+        rows={memberRows}
+        showSplit={disaggregateVirtualPeriods}
+      />
+      {!category &&
+        (disaggregateVirtualPeriods ? (
+          <>
+            <ActivityTotalsTable
+              title="Time per category — Virtual"
+              rows={virtualCategoryRows}
+            />
+            <ActivityTotalsTable
+              title="Time per category — Non-virtual"
+              rows={nonVirtualCategoryRows}
+            />
+          </>
+        ) : (
+          <ActivityTotalsTable title="Time per category" rows={categoryRows} />
+        ))}
     </div>
   );
 }

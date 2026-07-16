@@ -11,6 +11,7 @@ type CategoryData = {
   id: string;
   name: string;
   enabled: boolean;
+  isVirtual: boolean;
   nitcGroupId: string | null | undefined;
   nitcParticipantType: string | null | undefined;
   nitcGroup:
@@ -38,6 +39,7 @@ function Row({
       mutation CategoryListDisableMutation(
         $id: ID!
         $name: String!
+        $isVirtual: Boolean!
         $nitcGroupId: String
         $nitcParticipantType: String
       ) {
@@ -45,6 +47,7 @@ function Row({
           id: $id
           name: $name
           enabled: false
+          isVirtual: $isVirtual
           nitcGroupId: $nitcGroupId
           nitcParticipantType: $nitcParticipantType
         ) {
@@ -66,6 +69,7 @@ function Row({
             variables: {
               id: category.id,
               name: category.name,
+              isVirtual: category.isVirtual,
               nitcGroupId: category.nitcGroupId ?? null,
               nitcParticipantType: category.nitcParticipantType ?? null,
             },
@@ -93,6 +97,7 @@ function Row({
           {category.name}
         </div>
       </Td>
+      <Td>{category.isVirtual ? "Yes" : ""}</Td>
       <Td>{category.nitcParticipantType ?? ""}</Td>
       <Td className="font-mono text-[0.85em]">{category.nitcGroupId ?? ""}</Td>
       <Td>{category.nitcGroup?.nitcType ?? ""}</Td>
@@ -129,6 +134,7 @@ export default function CategoryList() {
           id
           name
           enabled
+          isVirtual
           nitcGroupId
           nitcParticipantType
           nitcGroup {
@@ -174,6 +180,7 @@ export default function CategoryList() {
           <tr>
             {isDev && <Th>ID</Th>}
             <Th>Name</Th>
+            <Th>Virtual</Th>
             <Th>Participant Type</Th>
             <Th>NITC Group ID</Th>
             <Th>NITC Type</Th>

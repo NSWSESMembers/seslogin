@@ -1192,6 +1192,7 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
     async fn create_category(
         &self,
         name: String,
+        is_virtual: bool,
         nitc_group_id: Option<String>,
         nitc_participant_type: Option<String>,
     ) -> Result<Category<A>> {
@@ -1200,7 +1201,7 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
         let item = self
             .app
             .db()
-            .create_category(&name, nitc_group_id, nitc_participant_type)
+            .create_category(&name, is_virtual, nitc_group_id, nitc_participant_type)
             .await?;
         Ok(Category::new(item))
     }
@@ -1211,6 +1212,7 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
         id: ID,
         name: String,
         enabled: bool,
+        is_virtual: bool,
         nitc_group_id: Option<String>,
         nitc_participant_type: Option<String>,
     ) -> Result<Category<A>> {
@@ -1218,7 +1220,14 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
         let nitc_participant_type = nitc_participant_type.as_deref().filter(|s| !s.is_empty());
         self.app
             .db()
-            .update_category(&id, &name, enabled, nitc_group_id, nitc_participant_type)
+            .update_category(
+                &id,
+                &name,
+                enabled,
+                is_virtual,
+                nitc_group_id,
+                nitc_participant_type,
+            )
             .await?;
 
         let rec = self.app.db().get_categories(&[&id]).await?;
@@ -1448,6 +1457,38 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
         self.app
             .db()
             .update_user(&user_id, db::UserUpdateShape::EmailConfig { email_config })
+            .await?;
+
+        let rec = self
+            .app
+            .db()
+            .get_users(&[&user_id])
+            .await?
+            .into_iter()
+            .next()
+            .flatten()
+            .ok_or_else(|| anyhow!("User missing after update"))?;
+        Ok(User::new(rec))
+    }
+
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    async fn update_my_disaggregate_virtual_periods(
+        &self,
+        ctx: &Context<'_>,
+        value: bool,
+    ) -> Result<User<A>> {
+        require_writable(ctx)?;
+        let user_id = match ctx.data_opt::<AuthInfo>() {
+            Some(AuthInfo::User { id, .. }) => id.clone(),
+            _ => return Err(anyhow!("User auth required")),
+        };
+
+        self.app
+            .db()
+            .update_user(
+                &user_id,
+                db::UserUpdateShape::DisaggregateVirtualPeriods { value },
+            )
             .await?;
 
         let rec = self

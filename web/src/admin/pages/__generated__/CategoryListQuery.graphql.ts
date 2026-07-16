@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<f1735074d391d5ce48820b3c8c6c3659>>
+ * @generated SignedSource<<7ed12699802c609cc648b47e284c69c3>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -14,6 +14,7 @@ export type CategoryListQuery$data = {
   readonly categories: ReadonlyArray<{
     readonly enabled: boolean;
     readonly id: string;
+    readonly isVirtual: boolean;
     readonly name: string;
     readonly nitcGroup: {
       readonly id: string;
@@ -63,6 +64,13 @@ v2 = [
         "args": null,
         "kind": "ScalarField",
         "name": "enabled",
+        "storageKey": null
+      },
+      {
+        "alias": null,
+        "args": null,
+        "kind": "ScalarField",
+        "name": "isVirtual",
         "storageKey": null
       },
       {
@@ -133,16 +141,16 @@ return {
     "selections": (v2/*: any*/)
   },
   "params": {
-    "cacheID": "fbc46169630246abfede22088159750f",
+    "cacheID": "c80d6fb923b0f673592e455b27b66761",
     "id": null,
     "metadata": {},
     "name": "CategoryListQuery",
     "operationKind": "query",
-    "text": "query CategoryListQuery {\n  categories {\n    id\n    name\n    enabled\n    nitcGroupId\n    nitcParticipantType\n    nitcGroup {\n      id\n      nitcType\n      sesTags {\n        id\n        name\n      }\n    }\n  }\n}\n"
+    "text": "query CategoryListQuery {\n  categories {\n    id\n    name\n    enabled\n    isVirtual\n    nitcGroupId\n    nitcParticipantType\n    nitcGroup {\n      id\n      nitcType\n      sesTags {\n        id\n        name\n      }\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "da2effbb0f5dd391678eb86162ef9f13";
+(node as any).hash = "20ba02aa15bd5f2be1d41ffb1484cadb";
 
 export default node;
