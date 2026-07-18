@@ -1,11 +1,11 @@
 import type {
   TransactionState,
-  MemberIdWithUuid,
   Transaction as TransactionType,
   TransactionLoading as TransactionLoadingType,
   TransactionSignedIn as TransactionSignedInType,
   TransactionSignedOut as TransactionSignedOutType,
   TransactionError as TransactionErrorType,
+  TransactionAborted as TransactionAbortedType,
 } from "../ScanState";
 import { formatTime, formatDayDateTime } from "../../lib/time";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -144,7 +144,7 @@ function TransactionSignedOut(props: {
 }
 
 function TransactionError(props: {
-  transaction: TransactionErrorType;
+  transaction: TransactionErrorType | TransactionAbortedType;
   isFading: boolean;
 }) {
   const { transaction: txn, isFading } = props;
@@ -183,8 +183,8 @@ export default function ScanScreenMain(props: {
   screenPosition: ScreenPosition;
   submitDisabled: boolean;
   transactionState: TransactionState;
-  onSubmit: (ids: MemberIdWithUuid) => Promise<void>;
-  validateMemberId: (id: { memberId: string }) => boolean;
+  onSubmit: (memberId: string) => Promise<void>;
+  validateMemberId: (memberId: string) => boolean;
   onFocusInputReady?: (focusInput: () => void) => void;
 }) {
   const {
@@ -249,14 +249,14 @@ export default function ScanScreenMain(props: {
       return;
     }
 
-    const ids = { memberId, uuid: crypto.randomUUID() };
-    const isValidMemberId = validateMemberId({ memberId });
+    const isValidMemberId = validateMemberId(memberId);
 
     if (!isValidMemberId) {
       focusInput();
       return;
     }
-    await onSubmit(ids);
+
+    await onSubmit(memberId);
   }
 
   return (
