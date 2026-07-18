@@ -124,7 +124,11 @@ impl db::Handler for Handler {
         Self::unsupported()
     }
 
-    async fn end_period(&self, _period: &Period) -> db::Result<Period> {
+    async fn end_period(
+        &self,
+        _period: &Period,
+        _signed_out_session_id: Option<&str>,
+    ) -> db::Result<Period> {
         Self::unsupported()
     }
 
@@ -132,6 +136,16 @@ impl db::Handler for Handler {
         &self,
         _person_id: &str,
         _location_id: &str,
+        _signed_in_session_id: &str,
+    ) -> db::Result<Period> {
+        Self::unsupported()
+    }
+
+    async fn start_guest_period(
+        &self,
+        _location_id: &str,
+        _guest_name: &str,
+        _comment: Option<&str>,
         _signed_in_session_id: &str,
     ) -> db::Result<Period> {
         Self::unsupported()

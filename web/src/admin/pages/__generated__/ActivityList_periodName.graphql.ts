@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<4d9143c94ed3c322e2f6483db134fcf0>>
+ * @generated SignedSource<<3d9b2c05e845c1ea8664d65a8660c5eb>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -15,7 +15,7 @@ export type ActivityList_periodName$data = {
     readonly firstName: string;
     readonly id: string;
     readonly lastName: string;
-  };
+  } | null | undefined;
   readonly " $fragmentType": "ActivityList_periodName";
 };
 export type ActivityList_periodName$key = {

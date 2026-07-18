@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<ee1ac0f06574c51afdce8471ef054695>>
+ * @generated SignedSource<<5d6cf6bb996bd59cf3f5453f378b0c4d>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -33,8 +33,8 @@ export type ReportsQuery$data = {
             readonly id: string;
             readonly lastName: string;
             readonly memberNumber: string | null | undefined;
-          };
-          readonly personId: string;
+          } | null | undefined;
+          readonly personId: string | null | undefined;
           readonly signedInSession: {
             readonly name: string;
           } | null | undefined;

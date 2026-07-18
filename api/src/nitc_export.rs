@@ -542,7 +542,7 @@ pub async fn sync_nitc_event<D: db::Handler>(
         info!(
             "Period {} (person {}, category {:?}, start {}, end {:?}, deleted {})",
             period.id,
-            period.person_id,
+            period.person_id.as_deref().unwrap_or("guest"),
             period.category_id,
             unix_to_sydney_rfc3339(period.start_time),
             period.end_time.map(unix_to_sydney_rfc3339),
@@ -553,7 +553,7 @@ pub async fn sync_nitc_event<D: db::Handler>(
     // Batch-fetch persons and categories needed by the periods
     let person_ids: Vec<&str> = all_periods
         .iter()
-        .map(|p| p.person_id.as_str())
+        .filter_map(|p| p.person_id.as_deref())
         .collect::<std::collections::HashSet<_>>()
         .into_iter()
         .collect();
@@ -743,7 +743,7 @@ pub async fn sync_nitc_event<D: db::Handler>(
 
         // Resolve ses_person_id for each live period, skipping those we can't resolve
         for period in &live_periods {
-            let person = persons.get(&period.person_id);
+            let person = period.person_id.as_ref().and_then(|id| persons.get(id));
             let ses_api_person_id: Option<i64> = person
                 .and_then(|p| p.ses_api_person_id.as_deref())
                 .and_then(|s| s.parse().ok());

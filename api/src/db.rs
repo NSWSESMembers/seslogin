@@ -282,7 +282,11 @@ pub enum SessionUpdateShape<'a> {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Period {
     pub id: String,
-    pub person_id: String,
+    pub person_id: Option<String>,
+    pub guest_name: Option<String>,
+    /// Free-text comment on the period. Populated from the guest sign-in "reason"
+    /// today, but intended for general use on any period.
+    pub comment: Option<String>,
     pub location_id: String,
     pub category_id: Option<String>,
     pub start_time: u64,
@@ -545,12 +549,25 @@ pub trait Handler {
         ids: &[T],
     ) -> impl Future<Output = Result<Vec<Option<Period>>>> + Send;
     /// Ends the given period by setting its end_time to the current time
-    fn end_period(&self, period: &Period) -> impl Future<Output = Result<Period>> + Send;
+    fn end_period(
+        &self,
+        period: &Period,
+        signed_out_session_id: Option<&str>,
+    ) -> impl Future<Output = Result<Period>> + Send;
     /// Create a new period starting now for the given person at the given location
     fn start_period_for_person_location(
         &self,
         person_id: &str,
         location_id: &str,
+        signed_in_session_id: &str,
+    ) -> impl Future<Output = Result<Period>> + Send;
+    /// Create a new open guest period starting now at the given location.
+    /// Writes no person_id attribute (sparse person GSI) and no category.
+    fn start_guest_period(
+        &self,
+        location_id: &str,
+        guest_name: &str,
+        comment: Option<&str>,
         signed_in_session_id: &str,
     ) -> impl Future<Output = Result<Period>> + Send;
     fn create_person(

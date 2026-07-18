@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<060716c1f4349e98b063504c645efeeb>>
+ * @generated SignedSource<<e1571657c0e760f4c4cf854889f1861e>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -27,7 +27,7 @@ export type ScanControllerSignOutMutation$data = {
       readonly firstName: string;
       readonly id: string;
       readonly lastName: string;
-    };
+    } | null | undefined;
     readonly startTime: number;
   };
 };
