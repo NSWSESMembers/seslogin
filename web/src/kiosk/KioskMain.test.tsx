@@ -122,7 +122,10 @@ describe("KioskMain", () => {
 
   it("accepts a correctly entered member ID", async () => {
     const user = await setupTest();
-    await user.type(screen.getByRole("textbox"), FOUND_USER + "{enter}");
+    const textbox = screen.getByRole("textbox");
+    await user.type(textbox, FOUND_USER);
+    expect(textbox).toHaveValue(FOUND_USER);
+    await user.type(textbox, "{enter}");
     await waitFor(() =>
       expect(
         screen.getByText(
@@ -133,6 +136,7 @@ describe("KioskMain", () => {
       ).toBeInTheDocument(),
     );
     expect(audioPlaySpy).toHaveBeenCalledOnce();
+    expect(textbox).toHaveValue("");
   });
 
   it("returns an error for a member ID that does not exist", async () => {

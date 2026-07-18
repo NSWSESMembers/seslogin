@@ -221,15 +221,19 @@ export default function ScanScreenMain(props: {
     inputRef.current?.focus();
   }, [clearRefocusTimeout]);
 
+  const clearInput = useCallback(() => {
+    if (inputRef.current !== null) {
+      inputRef.current.value = "";
+    }
+  }, []);
+
   const scheduleInputClearTimeout = useCallback(() => {
     clearInputTimeout();
     clearTimeoutIdRef.current = window.setTimeout(() => {
-      if (inputRef.current !== null) {
-        inputRef.current.value = "";
-      }
+      clearInput();
       clearTimeoutIdRef.current = null;
     }, SCAN_INPUT_TIMEOUT_MS);
-  }, [clearInputTimeout]);
+  }, [clearInputTimeout, clearInput]);
 
   useEffect(() => {
     focusInput();
@@ -252,6 +256,8 @@ export default function ScanScreenMain(props: {
       focusInput();
       return;
     }
+
+    clearInput();
 
     const isValidMemberId = validateMemberId(memberId);
 
