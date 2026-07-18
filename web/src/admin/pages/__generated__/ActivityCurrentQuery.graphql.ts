@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<f63894e067665b0c3a3c845dc8037691>>
+ * @generated SignedSource<<d9cc7feb9907be1cbd46001a067c30e3>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -161,6 +161,13 @@ v14 = {
 v15 = {
   "alias": null,
   "args": null,
+  "kind": "ScalarField",
+  "name": "guestName",
+  "storageKey": null
+},
+v16 = {
+  "alias": null,
+  "args": null,
   "concreteType": "Person",
   "kind": "LinkedField",
   "name": "person",
@@ -184,7 +191,7 @@ v15 = {
   ],
   "storageKey": null
 },
-v16 = {
+v17 = {
   "alias": null,
   "args": null,
   "concreteType": "PageInfo",
@@ -274,7 +281,8 @@ return {
                         "kind": "InlineDataFragmentSpread",
                         "name": "ActivityCurrent_periodName",
                         "selections": [
-                          (v15/*: any*/)
+                          (v15/*: any*/),
+                          (v16/*: any*/)
                         ],
                         "args": null,
                         "argumentDefinitions": []
@@ -285,7 +293,7 @@ return {
                 ],
                 "storageKey": null
               },
-              (v16/*: any*/)
+              (v17/*: any*/)
             ],
             "storageKey": null
           }
@@ -348,14 +356,15 @@ return {
                       (v12/*: any*/),
                       (v13/*: any*/),
                       (v14/*: any*/),
-                      (v15/*: any*/)
+                      (v15/*: any*/),
+                      (v16/*: any*/)
                     ],
                     "storageKey": null
                   }
                 ],
                 "storageKey": null
               },
-              (v16/*: any*/)
+              (v17/*: any*/)
             ],
             "storageKey": null
           }
@@ -365,12 +374,12 @@ return {
     ]
   },
   "params": {
-    "cacheID": "f2b3be1f87a8367ae473a9e8a1493eed",
+    "cacheID": "6c4938f1a3ef93a3287877f4afb70f28",
     "id": null,
     "metadata": {},
     "name": "ActivityCurrentQuery",
     "operationKind": "query",
-    "text": "query ActivityCurrentQuery(\n  $location: ID!\n  $first: Int!\n  $after: String\n) {\n  location(id: $location) {\n    id\n    periods(onlyActive: true, first: $first, after: $after) {\n      edges {\n        node {\n          ...ActivityListTable_period\n          ...ActivityCurrent_periodName\n          id\n        }\n      }\n      pageInfo {\n        hasNextPage\n        endCursor\n      }\n    }\n  }\n}\n\nfragment ActivityCurrent_periodName on Period {\n  person {\n    id\n    firstName\n    lastName\n  }\n}\n\nfragment ActivityListTable_period on Period {\n  id\n  personId\n  startTime\n  endTime\n  nitcExportStatus\n  nitcEventId\n  signedInSession {\n    id\n    name\n  }\n  signedOutSession {\n    id\n    name\n  }\n  category {\n    id\n    name\n  }\n}\n"
+    "text": "query ActivityCurrentQuery(\n  $location: ID!\n  $first: Int!\n  $after: String\n) {\n  location(id: $location) {\n    id\n    periods(onlyActive: true, first: $first, after: $after) {\n      edges {\n        node {\n          ...ActivityListTable_period\n          ...ActivityCurrent_periodName\n          id\n        }\n      }\n      pageInfo {\n        hasNextPage\n        endCursor\n      }\n    }\n  }\n}\n\nfragment ActivityCurrent_periodName on Period {\n  guestName\n  person {\n    id\n    firstName\n    lastName\n  }\n}\n\nfragment ActivityListTable_period on Period {\n  id\n  personId\n  startTime\n  endTime\n  nitcExportStatus\n  nitcEventId\n  signedInSession {\n    id\n    name\n  }\n  signedOutSession {\n    id\n    name\n  }\n  category {\n    id\n    name\n  }\n}\n"
   }
 };
 })();
