@@ -21,3 +21,12 @@ const localStorageMock = (() => {
 })();
 
 vi.stubGlobal("localStorage", localStorageMock);
+
+if (typeof HTMLMediaElement !== "undefined") {
+  HTMLMediaElement.prototype.play = function () {
+    return Promise.resolve();
+  };
+
+  HTMLMediaElement.prototype.pause = function () {};
+  HTMLMediaElement.prototype.load = function () {};
+}

@@ -55,7 +55,7 @@ function TransactionList(props: { transactionState: TransactionState }) {
           const elapsedMs = now - t.finalizedTime.getTime();
           return elapsedMs < FINALIZED_TRANSACTION_TIMEOUT_MS;
         })
-        .map((t) => {
+        .map((t, idx) => {
           let isFading = false;
           if (
             t.status === "SIGNED_IN" ||
@@ -72,7 +72,11 @@ function TransactionList(props: { transactionState: TransactionState }) {
           }
 
           return (
-            <Transaction key={t.uuid} transaction={t} isFading={isFading} />
+            <Transaction
+              key={t.uuid || idx}
+              transaction={t}
+              isFading={isFading}
+            />
           );
         })}
     </div>
@@ -221,15 +225,19 @@ export default function ScanScreenMain(props: {
     inputRef.current?.focus();
   }, [clearRefocusTimeout]);
 
+  const clearInput = useCallback(() => {
+    if (inputRef.current !== null) {
+      inputRef.current.value = "";
+    }
+  }, []);
+
   const scheduleInputClearTimeout = useCallback(() => {
     clearInputTimeout();
     clearTimeoutIdRef.current = window.setTimeout(() => {
-      if (inputRef.current !== null) {
-        inputRef.current.value = "";
-      }
+      clearInput();
       clearTimeoutIdRef.current = null;
     }, SCAN_INPUT_TIMEOUT_MS);
-  }, [clearInputTimeout]);
+  }, [clearInputTimeout, clearInput]);
 
   useEffect(() => {
     focusInput();
@@ -253,6 +261,8 @@ export default function ScanScreenMain(props: {
       return;
     }
 
+    clearInput();
+
     const isValidMemberId = validateMemberId(memberId);
 
     if (!isValidMemberId) {
@@ -267,7 +277,13 @@ export default function ScanScreenMain(props: {
     <div className={`${scanView} ${scanViewPosition[screenPosition]}`}>
       <p className="mt-25 text-[2em]">Please enter or scan your SES ID</p>
 
-      <form action={handleSubmit} autoComplete="off">
+      <form
+        autoComplete="off"
+        onSubmit={(submitEvent) => {
+          submitEvent.preventDefault();
+          handleSubmit(new FormData(submitEvent.target));
+        }}
+      >
         <input
           ref={inputRef}
           type="text"
