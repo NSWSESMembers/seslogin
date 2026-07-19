@@ -5,8 +5,7 @@ export type Settings = {
 };
 
 type SettingsAction =
-  | { type: "set_location"; id: string }
-  | { type: "clear_location" };
+  { type: "set_location"; id: string } | { type: "clear_location" };
 
 export const SettingsContext = createContext<Settings | null>(null);
 
