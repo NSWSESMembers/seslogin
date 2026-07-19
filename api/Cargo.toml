@@ -52,10 +52,13 @@ anyhow = "1.0.99"
 async-graphql = { version = "7.0.17", features = ["dataloader"] }
 async-graphql-poem = "7.0.17"
 aws-config = { version = "1.8.5", features = ["credentials-login"] }
-aws-sdk-dynamodb = "1.89.0"
-aws-sdk-ses = "1.89.0"
-aws-sdk-sns = "1.89.0"
-aws-sdk-sqs = "1.89.0"
+# `default-features = false` drops the legacy `rustls` feature, which pulls in the
+# unmaintained rustls 0.21 / rustls-webpki 0.101 stack (RUSTSEC-2026-0098/0099/0104).
+# `default-https-client` is the modern replacement; `rt-tokio` is the other default we need.
+aws-sdk-dynamodb = { version = "1.89.0", default-features = false, features = ["default-https-client", "rt-tokio"] }
+aws-sdk-ses = { version = "1.89.0", default-features = false, features = ["default-https-client", "rt-tokio"] }
+aws-sdk-sns = { version = "1.89.0", default-features = false, features = ["default-https-client", "rt-tokio"] }
+aws-sdk-sqs = { version = "1.89.0", default-features = false, features = ["default-https-client", "rt-tokio"] }
 lambda_http = "1.2"
 lambda_runtime = "1.2"
 base64 = "0.22.1"
