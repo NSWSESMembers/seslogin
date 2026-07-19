@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<45d608d85d916e904951e8742284105f>>
+ * @generated SignedSource<<5421dd93004923f508650c2378961e97>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -113,47 +113,58 @@ v10 = {
   "name": "nitcEventId",
   "storageKey": null
 },
-v11 = [
+v11 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
+  "name": "name",
+  "storageKey": null
+},
+v12 = [
   (v4/*: any*/),
-  {
-    "alias": null,
-    "args": null,
-    "kind": "ScalarField",
-    "name": "name",
-    "storageKey": null
-  }
+  (v11/*: any*/)
 ],
-v12 = {
+v13 = {
   "alias": null,
   "args": null,
   "concreteType": "Session",
   "kind": "LinkedField",
   "name": "signedInSession",
   "plural": false,
-  "selections": (v11/*: any*/),
+  "selections": (v12/*: any*/),
   "storageKey": null
 },
-v13 = {
+v14 = {
   "alias": null,
   "args": null,
   "concreteType": "Session",
   "kind": "LinkedField",
   "name": "signedOutSession",
   "plural": false,
-  "selections": (v11/*: any*/),
+  "selections": (v12/*: any*/),
   "storageKey": null
 },
-v14 = {
+v15 = {
   "alias": null,
   "args": null,
   "concreteType": "Category",
   "kind": "LinkedField",
   "name": "category",
   "plural": false,
-  "selections": (v11/*: any*/),
+  "selections": [
+    (v4/*: any*/),
+    (v11/*: any*/),
+    {
+      "alias": null,
+      "args": null,
+      "kind": "ScalarField",
+      "name": "isVirtual",
+      "storageKey": null
+    }
+  ],
   "storageKey": null
 },
-v15 = {
+v16 = {
   "alias": null,
   "args": null,
   "concreteType": "Person",
@@ -179,7 +190,7 @@ v15 = {
   ],
   "storageKey": null
 },
-v16 = {
+v17 = {
   "alias": null,
   "args": null,
   "concreteType": "PageInfo",
@@ -258,9 +269,9 @@ return {
                           (v8/*: any*/),
                           (v9/*: any*/),
                           (v10/*: any*/),
-                          (v12/*: any*/),
                           (v13/*: any*/),
-                          (v14/*: any*/)
+                          (v14/*: any*/),
+                          (v15/*: any*/)
                         ],
                         "args": null,
                         "argumentDefinitions": []
@@ -269,7 +280,7 @@ return {
                         "kind": "InlineDataFragmentSpread",
                         "name": "ActivityList_periodName",
                         "selections": [
-                          (v15/*: any*/)
+                          (v16/*: any*/)
                         ],
                         "args": null,
                         "argumentDefinitions": []
@@ -280,7 +291,7 @@ return {
                 ],
                 "storageKey": null
               },
-              (v16/*: any*/)
+              (v17/*: any*/)
             ],
             "storageKey": null
           }
@@ -340,17 +351,17 @@ return {
                       (v8/*: any*/),
                       (v9/*: any*/),
                       (v10/*: any*/),
-                      (v12/*: any*/),
                       (v13/*: any*/),
                       (v14/*: any*/),
-                      (v15/*: any*/)
+                      (v15/*: any*/),
+                      (v16/*: any*/)
                     ],
                     "storageKey": null
                   }
                 ],
                 "storageKey": null
               },
-              (v16/*: any*/)
+              (v17/*: any*/)
             ],
             "storageKey": null
           }
@@ -360,12 +371,12 @@ return {
     ]
   },
   "params": {
-    "cacheID": "e737d266fd681ee5ba37b482fcdf084d",
+    "cacheID": "370c5ab8254660653b39b50dbe5c4269",
     "id": null,
     "metadata": {},
     "name": "ActivityListLoadMoreQuery",
     "operationKind": "query",
-    "text": "query ActivityListLoadMoreQuery(\n  $location: ID!\n  $first: Int!\n  $after: String\n) {\n  location(id: $location) {\n    id\n    periods(first: $first, after: $after) {\n      edges {\n        node {\n          ...ActivityListTable_period\n          ...ActivityList_periodName\n          id\n        }\n      }\n      pageInfo {\n        hasNextPage\n        endCursor\n      }\n    }\n  }\n}\n\nfragment ActivityListTable_period on Period {\n  id\n  personId\n  startTime\n  endTime\n  nitcExportStatus\n  nitcEventId\n  signedInSession {\n    id\n    name\n  }\n  signedOutSession {\n    id\n    name\n  }\n  category {\n    id\n    name\n  }\n}\n\nfragment ActivityList_periodName on Period {\n  person {\n    id\n    firstName\n    lastName\n  }\n}\n"
+    "text": "query ActivityListLoadMoreQuery(\n  $location: ID!\n  $first: Int!\n  $after: String\n) {\n  location(id: $location) {\n    id\n    periods(first: $first, after: $after) {\n      edges {\n        node {\n          ...ActivityListTable_period\n          ...ActivityList_periodName\n          id\n        }\n      }\n      pageInfo {\n        hasNextPage\n        endCursor\n      }\n    }\n  }\n}\n\nfragment ActivityListTable_period on Period {\n  id\n  personId\n  startTime\n  endTime\n  nitcExportStatus\n  nitcEventId\n  signedInSession {\n    id\n    name\n  }\n  signedOutSession {\n    id\n    name\n  }\n  category {\n    id\n    name\n    isVirtual\n  }\n}\n\nfragment ActivityList_periodName on Period {\n  person {\n    id\n    firstName\n    lastName\n  }\n}\n"
   }
 };
 })();

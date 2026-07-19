@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<d1be56be7b8a894180edeebb835af10e>>
+ * @generated SignedSource<<f4669b945c441cdaaa13e561ec3833af>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -16,6 +16,7 @@ export type CategoryEditQuery$data = {
   readonly category: {
     readonly enabled: boolean;
     readonly id: string;
+    readonly isVirtual: boolean;
     readonly name: string;
     readonly nitcGroupId: string | null | undefined;
     readonly nitcParticipantType: string | null | undefined;
@@ -80,6 +81,13 @@ v2 = [
         "alias": null,
         "args": null,
         "kind": "ScalarField",
+        "name": "isVirtual",
+        "storageKey": null
+      },
+      {
+        "alias": null,
+        "args": null,
+        "kind": "ScalarField",
         "name": "nitcGroupId",
         "storageKey": null
       },
@@ -138,16 +146,16 @@ return {
     "selections": (v2/*: any*/)
   },
   "params": {
-    "cacheID": "2dbf92f5ecdcf75ba1509cde79d76991",
+    "cacheID": "b565fa6d2cc107ec05a9028a04135ed7",
     "id": null,
     "metadata": {},
     "name": "CategoryEditQuery",
     "operationKind": "query",
-    "text": "query CategoryEditQuery(\n  $id: ID!\n) {\n  category(id: $id) {\n    id\n    name\n    enabled\n    nitcGroupId\n    nitcParticipantType\n  }\n  nitcGroups {\n    id\n    nitcType\n  }\n  ses_participant_types\n}\n"
+    "text": "query CategoryEditQuery(\n  $id: ID!\n) {\n  category(id: $id) {\n    id\n    name\n    enabled\n    isVirtual\n    nitcGroupId\n    nitcParticipantType\n  }\n  nitcGroups {\n    id\n    nitcType\n  }\n  ses_participant_types\n}\n"
   }
 };
 })();
 
-(node as any).hash = "8d222f93afb100e1de61e5d093e49337";
+(node as any).hash = "cc6a7f1b7f9745ac9069d62b0ef9192e";
 
 export default node;

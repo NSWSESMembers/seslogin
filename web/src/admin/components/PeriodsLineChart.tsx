@@ -7,9 +7,18 @@ export interface PeriodsLineChartPoint {
   totalSeconds: number;
 }
 
+export interface PeriodsLineChartSeries {
+  label: string;
+  points: ReadonlyArray<PeriodsLineChartPoint>;
+}
+
 interface PeriodsLineChartProps {
   points: ReadonlyArray<PeriodsLineChartPoint>;
   formatHours: (seconds: number) => string;
+  /** Label for the primary series, shown in the legend only when `secondarySeries` is present. */
+  primaryLabel?: string;
+  /** An optional second line (e.g. "Virtual") plotted alongside the primary series. */
+  secondarySeries?: PeriodsLineChartSeries;
 }
 
 const VIEW_WIDTH = 640;
@@ -22,11 +31,13 @@ const INNER_WIDTH = VIEW_WIDTH - MARGIN_LEFT - MARGIN_RIGHT;
 const INNER_HEIGHT = VIEW_HEIGHT - MARGIN_TOP - MARGIN_BOTTOM;
 
 const LINE_COLOR = "var(--color-menu)";
+const SECONDARY_LINE_COLOR = "#2563eb";
 // Semantic tokens so the chart chrome tracks light/dark (values in app.css).
 const GRID_COLOR = "var(--color-line-faint)";
 const AXIS_TEXT_COLOR = "var(--color-ink-muted)";
 const CROSSHAIR_COLOR = "var(--color-line-strong)";
 const ACTIVE_DOT_COLOR = "#a8451a";
+const SECONDARY_ACTIVE_DOT_COLOR = "#1d4ed8";
 
 function niceScale(maxValue: number): { max: number; ticks: number[] } {
   if (maxValue <= 0) {
@@ -49,12 +60,18 @@ function niceScale(maxValue: number): { max: number; ticks: number[] } {
 export default function PeriodsLineChart({
   points,
   formatHours,
+  primaryLabel = "Total",
+  secondarySeries,
 }: PeriodsLineChartProps) {
   const tooltipId = useId();
   const svgRef = useRef<SVGSVGElement>(null);
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
 
-  const maxCount = Math.max(1, ...points.map((p) => p.periodCount));
+  const maxCount = Math.max(
+    1,
+    ...points.map((p) => p.periodCount),
+    ...(secondarySeries?.points.map((p) => p.periodCount) ?? []),
+  );
   const { max: yMax, ticks } = niceScale(maxCount);
   const stepX =
     points.length > 1 ? INNER_WIDTH / (points.length - 1) : INNER_WIDTH;
@@ -65,8 +82,19 @@ export default function PeriodsLineChart({
     y: MARGIN_TOP + INNER_HEIGHT * (1 - point.periodCount / yMax),
   }));
 
+  const secondaryPlotted = secondarySeries?.points.map((point, index) => ({
+    ...point,
+    x: MARGIN_LEFT + index * stepX,
+    y: MARGIN_TOP + INNER_HEIGHT * (1 - point.periodCount / yMax),
+  }));
+
   const linePath = plotted
     .map((p, i) => `${i === 0 ? "M" : "L"} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`)
+    .join(" ");
+  const secondaryLinePath = secondaryPlotted
+    ?.map(
+      (p, i) => `${i === 0 ? "M" : "L"} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`,
+    )
     .join(" ");
   const baselineY = MARGIN_TOP + INNER_HEIGHT;
   const areaPath =
@@ -75,6 +103,7 @@ export default function PeriodsLineChart({
       : "";
 
   const lastPoint = plotted[plotted.length - 1];
+  const secondaryLastPoint = secondaryPlotted?.[secondaryPlotted.length - 1];
 
   function setActiveFromClientX(clientX: number) {
     const svg = svgRef.current;
@@ -96,9 +125,29 @@ export default function PeriodsLineChart({
   }
 
   const active = activeIndex != null ? plotted[activeIndex] : null;
+  const secondaryActive =
+    activeIndex != null ? secondaryPlotted?.[activeIndex] : null;
 
   return (
     <div className="relative aspect-3/2 min-h-35 min-[781px]:aspect-7/2">
+      {secondarySeries ? (
+        <div className="mb-2 flex items-center gap-4 text-xs text-ink-muted">
+          <span className="inline-flex items-center gap-1.5">
+            <span
+              className="inline-block size-2.5 rounded-full"
+              style={{ backgroundColor: LINE_COLOR }}
+            />
+            {primaryLabel}
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <span
+              className="inline-block size-2.5 rounded-full"
+              style={{ backgroundColor: SECONDARY_LINE_COLOR }}
+            />
+            {secondarySeries.label}
+          </span>
+        </div>
+      ) : null}
       <svg
         ref={svgRef}
         viewBox={`0 0 ${VIEW_WIDTH} ${VIEW_HEIGHT}`}
@@ -164,6 +213,18 @@ export default function PeriodsLineChart({
             vectorEffect="non-scaling-stroke"
           />
         ) : null}
+        {secondaryLinePath ? (
+          <path
+            d={secondaryLinePath}
+            fill="none"
+            stroke={SECONDARY_LINE_COLOR}
+            strokeWidth={2}
+            strokeDasharray="5 3"
+            strokeLinejoin="round"
+            strokeLinecap="round"
+            vectorEffect="non-scaling-stroke"
+          />
+        ) : null}
 
         {active ? (
           <line
@@ -189,6 +250,22 @@ export default function PeriodsLineChart({
             vectorEffect="non-scaling-stroke"
           />
         ))}
+        {secondaryPlotted?.map((p, i) => (
+          <circle
+            key={`secondary-${p.key}`}
+            cx={p.x}
+            cy={p.y}
+            r={i === activeIndex ? 5 : 3}
+            fill={
+              i === activeIndex
+                ? SECONDARY_ACTIVE_DOT_COLOR
+                : SECONDARY_LINE_COLOR
+            }
+            stroke="var(--color-surface)"
+            strokeWidth={2}
+            vectorEffect="non-scaling-stroke"
+          />
+        ))}
 
         {lastPoint ? (
           <text
@@ -200,6 +277,18 @@ export default function PeriodsLineChart({
             fill="var(--color-navy)"
           >
             {lastPoint.periodCount}
+          </text>
+        ) : null}
+        {secondaryLastPoint ? (
+          <text
+            x={secondaryLastPoint.x}
+            y={secondaryLastPoint.y - 10}
+            textAnchor="end"
+            fontSize={12}
+            fontWeight={700}
+            fill={SECONDARY_LINE_COLOR}
+          >
+            {secondaryLastPoint.periodCount}
           </text>
         ) : null}
 
@@ -233,11 +322,26 @@ export default function PeriodsLineChart({
         >
           <div className="mb-0.5 font-bold text-ink">{active.label}</div>
           <div className="text-ink">
-            <strong>{active.periodCount}</strong> periods
+            <strong>{active.periodCount}</strong>{" "}
+            {secondarySeries ? primaryLabel.toLowerCase() : "periods"}
           </div>
           <div className="text-xs text-ink-muted">
             {formatHours(active.totalSeconds)}
           </div>
+          {secondarySeries && secondaryActive ? (
+            <>
+              <div
+                className="mt-1 text-ink"
+                style={{ color: SECONDARY_LINE_COLOR }}
+              >
+                <strong>{secondaryActive.periodCount}</strong>{" "}
+                {secondarySeries.label.toLowerCase()}
+              </div>
+              <div className="text-xs text-ink-muted">
+                {formatHours(secondaryActive.totalSeconds)}
+              </div>
+            </>
+          ) : null}
         </div>
       ) : null}
 
@@ -246,16 +350,30 @@ export default function PeriodsLineChart({
         <thead>
           <tr>
             <th scope="col">Day</th>
-            <th scope="col">Periods</th>
+            <th scope="col">{secondarySeries ? primaryLabel : "Periods"}</th>
             <th scope="col">Activity time</th>
+            {secondarySeries ? (
+              <>
+                <th scope="col">{secondarySeries.label}</th>
+                <th scope="col">Activity time ({secondarySeries.label})</th>
+              </>
+            ) : null}
           </tr>
         </thead>
         <tbody>
-          {points.map((point) => (
+          {points.map((point, i) => (
             <tr key={point.key}>
               <td>{point.label}</td>
               <td>{point.periodCount}</td>
               <td>{formatHours(point.totalSeconds)}</td>
+              {secondarySeries ? (
+                <>
+                  <td>{secondarySeries.points[i]?.periodCount ?? 0}</td>
+                  <td>
+                    {formatHours(secondarySeries.points[i]?.totalSeconds ?? 0)}
+                  </td>
+                </>
+              ) : null}
             </tr>
           ))}
         </tbody>

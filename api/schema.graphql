@@ -14,6 +14,7 @@ type Category {
 	id: ID!
 	name: String!
 	enabled: Boolean!
+	isVirtual: Boolean!
 	nitcGroupId: String
 	nitcParticipantType: String
 	nitcGroup: NitcGroup
@@ -50,12 +51,17 @@ type DashboardCategoryPeriodSummary {
 	categoryName: String!
 	periodCount: Int!
 	totalTime: Int!
+	isVirtual: Boolean!
 }
 
 type DashboardDailyPeriodSummary {
 	dayStart: Int!
 	periodCount: Int!
 	totalTime: Int!
+	periodCountVirtual: Int!
+	periodCountNonVirtual: Int!
+	totalTimeVirtual: Int!
+	totalTimeNonVirtual: Int!
 }
 
 type DayCategoryPeriodSummary {
@@ -93,11 +99,21 @@ type LocationDashboardSummary {
 	asOf: Int!
 	totalMembers: Int!
 	activeMembers24H: Int!
+	activeMembers24HVirtual: Int!
+	activeMembers24HNonVirtual: Int!
 	activeMembers30D: Int!
 	checkIns24H: Int!
+	checkIns24HVirtual: Int!
+	checkIns24HNonVirtual: Int!
 	checkIns7D: Int!
+	checkIns7DVirtual: Int!
+	checkIns7DNonVirtual: Int!
 	totalTime7D: Int!
+	totalTime7DVirtual: Int!
+	totalTime7DNonVirtual: Int!
 	avgCompletedDuration7D: Int!
+	avgCompletedDuration7DVirtual: Int!
+	avgCompletedDuration7DNonVirtual: Int!
 	totalKiosks: Int!
 	onlineKiosks: Int!
 	recentlyActiveKiosks: Int!
@@ -117,6 +133,8 @@ type MemberPeriodSummary {
 	personId: ID!
 	person: Person!
 	totalTime: Int!
+	totalTimeVirtual: Int!
+	totalTimeNonVirtual: Int!
 }
 
 type MutationRoot {
@@ -171,8 +189,8 @@ type MutationRoot {
 	deleteSession(id: ID!): Boolean!
 	createLocation(name: String!, nitcEnabled: Int): Location!
 	updateLocation(id: ID!, name: String!, enabled: Boolean!, nitcEnabled: Int): Location!
-	createCategory(name: String!, nitcGroupId: String, nitcParticipantType: String): Category!
-	updateCategory(id: ID!, name: String!, enabled: Boolean!, nitcGroupId: String, nitcParticipantType: String): Category!
+	createCategory(name: String!, isVirtual: Boolean!, nitcGroupId: String, nitcParticipantType: String): Category!
+	updateCategory(id: ID!, name: String!, enabled: Boolean!, isVirtual: Boolean!, nitcGroupId: String, nitcParticipantType: String): Category!
 	createNitcGroup(id: String, nitcType: String!, nitcTagIds: [Int!]!): NitcGroup!
 	updateNitcGroup(id: ID!, nitcType: String!, nitcTagIds: [Int!]!): NitcGroup!
 	deleteNitcGroup(id: ID!): Boolean!
@@ -180,6 +198,7 @@ type MutationRoot {
 	scanSignOut(id: ID!, startTime: Int!, endTime: Int!, categoryId: ID!): Period!
 	enqueueMemberSync(locationId: ID!): Boolean!
 	updateMyEmailConfig(dailyLocationIds: [String!]!): User!
+	updateMyDisaggregateVirtualPeriods(value: Boolean!): User!
 	"""
 	Start passkey registration for the authenticated user.
 	Returns a JSON challenge to pass to the browser's WebAuthn API.
@@ -495,6 +514,7 @@ type User {
 	isSuper: Boolean!
 	isDev: Boolean!
 	enabled: Boolean!
+	disaggregateVirtualPeriods: Boolean!
 	accessTime: Int
 	createdAt: Int!
 	updatedAt: Int!

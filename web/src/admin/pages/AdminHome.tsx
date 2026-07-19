@@ -7,6 +7,7 @@ import ShowPasskeyPromptButton from "../components/ShowPasskeyPromptButton";
 import DevOnly from "../components/DevOnly";
 import PeriodsLineChart from "../components/PeriodsLineChart";
 import useSelectedLocation from "../components/useSelectedLocation";
+import { useUserInfo } from "../components/useUserInfo";
 import { formatFullDateTime } from "../../lib/time";
 
 interface DayBucket {
@@ -53,6 +54,7 @@ function formatDayLabel(date: Date): string {
 
 export default function AdminHome() {
   const selectedLocation = useSelectedLocation();
+  const { disaggregateVirtualPeriods } = useUserInfo();
   const [now] = useState(() => Math.floor(Date.now() / 1000));
 
   const data = useLazyLoadQuery<AdminHomeQuery>(
@@ -64,10 +66,16 @@ export default function AdminHome() {
           dashboardSummary(asOf: $now) {
             totalMembers
             activeMembers24H
+            activeMembers24HVirtual
+            activeMembers24HNonVirtual
             activeMembers30D
             checkIns24H
             checkIns7D
+            checkIns7DVirtual
+            checkIns7DNonVirtual
             totalTime7D
+            totalTime7DVirtual
+            totalTime7DNonVirtual
             avgCompletedDuration7D
             totalKiosks
             onlineKiosks
@@ -77,12 +85,15 @@ export default function AdminHome() {
               dayStart
               periodCount
               totalTime
+              periodCountVirtual
+              totalTimeVirtual
             }
             topCategories7D {
               categoryId
               categoryName
               periodCount
               totalTime
+              isVirtual
             }
           }
         }
@@ -117,6 +128,15 @@ export default function AdminHome() {
       label: formatDayLabel(day),
       periodCount: entry.periodCount,
       totalSeconds: entry.totalTime,
+    };
+  });
+  const virtualDayBuckets: DayBucket[] = summary.dailyPeriods7D.map((entry) => {
+    const day = new Date(entry.dayStart * 1000);
+    return {
+      key: toDayKey(day),
+      label: formatDayLabel(day),
+      periodCount: entry.periodCountVirtual,
+      totalSeconds: entry.totalTimeVirtual,
     };
   });
 
@@ -177,6 +197,11 @@ export default function AdminHome() {
           label="Active members (24h)"
           value={activeMembers24h}
           subtle={`${checkIns24h} periods in 24h`}
+          splitLine={
+            disaggregateVirtualPeriods
+              ? `${summary.activeMembers24HVirtual} virtual · ${summary.activeMembers24HNonVirtual} non-virtual`
+              : undefined
+          }
         />
         <StatCard
           label="Kiosks online now"
@@ -187,17 +212,36 @@ export default function AdminHome() {
           label="Periods (7d)"
           value={checkIns7d}
           subtle={`${averageDailyCheckIns.toFixed(1)} per day avg`}
+          splitLine={
+            disaggregateVirtualPeriods
+              ? `${summary.checkIns7DVirtual} virtual · ${summary.checkIns7DNonVirtual} non-virtual`
+              : undefined
+          }
         />
         <StatCard
           label="Activity time (7d)"
           value={formatHours(totalSeconds7d)}
           subtle={`Avg completed period ${formatHours(avgCompletedDurationSeconds)}`}
+          splitLine={
+            disaggregateVirtualPeriods
+              ? `${formatHours(summary.totalTime7DVirtual)} virtual · ${formatHours(summary.totalTime7DNonVirtual)} non-virtual`
+              : undefined
+          }
         />
       </div>
 
       <section className={CARD_CLASS}>
         <div className={SECTION_TITLE_CLASS}>Periods per day (last 7 days)</div>
-        <PeriodsLineChart points={dayBuckets} formatHours={formatHours} />
+        <PeriodsLineChart
+          points={dayBuckets}
+          formatHours={formatHours}
+          primaryLabel="Total"
+          secondarySeries={
+            disaggregateVirtualPeriods
+              ? { label: "Virtual", points: virtualDayBuckets }
+              : undefined
+          }
+        />
       </section>
 
       <section className={CARD_CLASS}>
@@ -236,6 +280,11 @@ export default function AdminHome() {
                     <span className="inline-flex items-center rounded-full bg-surface-raised px-2.25 py-0.75 text-xs font-semibold text-ink-muted">
                       {formatSecondsCompact(entry.totalTime)}
                     </span>
+                    {disaggregateVirtualPeriods && entry.isVirtual && (
+                      <span className="inline-flex items-center rounded-full bg-blue-100 px-2.25 py-0.75 text-xs font-semibold text-blue-700 dark:bg-blue-500/15 dark:text-blue-300">
+                        Virtual
+                      </span>
+                    )}
                   </div>
                 </article>
               );
@@ -262,10 +311,12 @@ function StatCard({
   label,
   value,
   subtle,
+  splitLine,
 }: {
   label: string;
   value: string | number;
   subtle: string;
+  splitLine?: string;
 }) {
   return (
     <article className={CARD_CLASS}>
@@ -274,6 +325,9 @@ function StatCard({
         {value}
       </div>
       <div className="mt-1.5 text-xs text-ink-muted">{subtle}</div>
+      {splitLine ? (
+        <div className="mt-0.5 text-xs text-ink-muted">{splitLine}</div>
+      ) : null}
     </article>
   );
 }

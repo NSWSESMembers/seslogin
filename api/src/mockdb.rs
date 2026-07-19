@@ -259,6 +259,7 @@ impl db::Handler for Handler {
     async fn create_category(
         &self,
         _name: &str,
+        _is_virtual: bool,
         _nitc_group_id: Option<&str>,
         _nitc_participant_type: Option<&str>,
     ) -> db::Result<Category> {
@@ -270,6 +271,7 @@ impl db::Handler for Handler {
         _id: &str,
         _name: &str,
         _active: bool,
+        _is_virtual: bool,
         _nitc_group_id: Option<&str>,
         _nitc_participant_type: Option<&str>,
     ) -> db::Result<()> {

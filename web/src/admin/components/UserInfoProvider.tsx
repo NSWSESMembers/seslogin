@@ -20,6 +20,7 @@ const userInfoQuery = graphql`
       email
       isSuper
       isDev
+      disaggregateVirtualPeriods
       locations {
         id
         name

@@ -103,6 +103,7 @@ pub struct User {
     pub location_grants: Vec<String>,
     pub access_time: Option<u64>,
     pub email_config: serde_json::Map<String, serde_json::Value>,
+    pub disaggregate_virtual_periods: bool,
     pub created_at: u64,
     pub updated_at: u64,
 }
@@ -125,6 +126,9 @@ pub enum UserUpdateShape<'a> {
     AccessTime,
     EmailConfig {
         email_config: serde_json::Map<String, serde_json::Value>,
+    },
+    DisaggregateVirtualPeriods {
+        value: bool,
     },
 }
 
@@ -381,6 +385,7 @@ pub struct Category {
     pub id: String,
     pub name: String,
     pub enabled: bool,
+    pub is_virtual: bool,
     pub nitc_participant_type: Option<String>,
     pub nitc_group_id: Option<String>,
     pub created_at: u64,
@@ -648,6 +653,7 @@ pub trait Handler {
     fn create_category(
         &self,
         name: &str,
+        is_virtual: bool,
         nitc_group_id: Option<&str>,
         nitc_participant_type: Option<&str>,
     ) -> impl Future<Output = Result<Category>> + Send;
@@ -656,6 +662,7 @@ pub trait Handler {
         id: &str,
         name: &str,
         active: bool,
+        is_virtual: bool,
         nitc_group_id: Option<&str>,
         nitc_participant_type: Option<&str>,
     ) -> impl Future<Output = Result<()>> + Send;

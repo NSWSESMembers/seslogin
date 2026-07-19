@@ -40,6 +40,7 @@ const activityListTablePeriod = graphql`
     category {
       id
       name
+      isVirtual
     }
   }
 `;
@@ -61,11 +62,13 @@ function Section<T extends ActivityListTable_period$key>({
   entries,
   getRowLabel,
   isDev,
+  disaggregateVirtualPeriods,
 }: {
   day: string;
   entries: ReadonlyArray<Entry<T>>;
   getRowLabel: (p: T) => string;
   isDev: boolean;
+  disaggregateVirtualPeriods: boolean;
 }) {
   const colSpan = isDev ? 8 : 7;
   const periodCount = entries.length;
@@ -74,13 +77,23 @@ function Section<T extends ActivityListTable_period$key>({
   ).size;
   const periodLabel = periodCount === 1 ? "period" : "periods";
   const memberLabel = uniqueMemberCount === 1 ? "member" : "members";
+  const virtualCount = entries.filter(
+    (entry) => entry.data.category?.isVirtual,
+  ).length;
+  const nonVirtualCount = periodCount - virtualCount;
 
   return (
     <>
       <tr>
         <Th section colSpan={colSpan}>
-          {day} ({periodCount} {periodLabel}, {uniqueMemberCount} unique{" "}
-          {memberLabel})
+          <div>{day}</div>
+          <div className="font-normal text-ink-muted">
+            {periodCount} {periodLabel}
+            {disaggregateVirtualPeriods
+              ? ` — ${virtualCount} virtual / ${nonVirtualCount} non-virtual`
+              : ""}
+            , {uniqueMemberCount} unique {memberLabel}
+          </div>
         </Th>
       </tr>
       <tr>
@@ -242,7 +255,7 @@ export default function ActivityListTable<
   isLoadingMore?: boolean;
   onLoadMore?: () => void;
 }) {
-  const { isDev } = useUserInfo();
+  const { isDev, disaggregateVirtualPeriods } = useUserInfo();
   const dayGroupedRows = new Map<string, Array<Entry<T>>>();
   const dateOptions: Intl.DateTimeFormatOptions = {
     weekday: "long",
@@ -285,6 +298,7 @@ export default function ActivityListTable<
               entries={entries}
               getRowLabel={getRowLabel}
               isDev={isDev}
+              disaggregateVirtualPeriods={disaggregateVirtualPeriods}
             />
           ))}
         </tbody>

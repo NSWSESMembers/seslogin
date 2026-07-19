@@ -33,6 +33,7 @@ import ActivityLastSeen from "./pages/ActivityLastSeen";
 import Reports from "./pages/Reports";
 import SettingsPasskeys from "./pages/SettingsPasskeys";
 import SettingsDailyEmail from "./pages/SettingsDailyEmail";
+import SettingsActivityDisplay from "./pages/SettingsActivityDisplay";
 
 // Mounted at /admin/* — paths here are relative to /admin.
 export default function AdminApp() {
@@ -88,6 +89,10 @@ export default function AdminApp() {
         <Route path="settings">
           <Route index element={<SettingsPasskeys />} />
           <Route path="daily-email" element={<SettingsDailyEmail />} />
+          <Route
+            path="activity-display"
+            element={<SettingsActivityDisplay />}
+          />
         </Route>
         <Route path="*" element={<h1>Not Found</h1>} />
       </Route>

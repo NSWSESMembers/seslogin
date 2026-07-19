@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<b278e33c643c8e8d0e05dc1c8b17ac73>>
+ * @generated SignedSource<<224ab985a05ff36fb1c4cca17486dff3>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -11,6 +11,7 @@
 import { ConcreteRequest } from 'relay-runtime';
 export type CategoryListDisableMutation$variables = {
   id: string;
+  isVirtual: boolean;
   name: string;
   nitcGroupId?: string | null | undefined;
   nitcParticipantType?: string | null | undefined;
@@ -28,29 +29,32 @@ export type CategoryListDisableMutation = {
 };
 
 const node: ConcreteRequest = (function(){
-var v0 = [
-  {
-    "defaultValue": null,
-    "kind": "LocalArgument",
-    "name": "id"
-  },
-  {
-    "defaultValue": null,
-    "kind": "LocalArgument",
-    "name": "name"
-  },
-  {
-    "defaultValue": null,
-    "kind": "LocalArgument",
-    "name": "nitcGroupId"
-  },
-  {
-    "defaultValue": null,
-    "kind": "LocalArgument",
-    "name": "nitcParticipantType"
-  }
-],
-v1 = [
+var v0 = {
+  "defaultValue": null,
+  "kind": "LocalArgument",
+  "name": "id"
+},
+v1 = {
+  "defaultValue": null,
+  "kind": "LocalArgument",
+  "name": "isVirtual"
+},
+v2 = {
+  "defaultValue": null,
+  "kind": "LocalArgument",
+  "name": "name"
+},
+v3 = {
+  "defaultValue": null,
+  "kind": "LocalArgument",
+  "name": "nitcGroupId"
+},
+v4 = {
+  "defaultValue": null,
+  "kind": "LocalArgument",
+  "name": "nitcParticipantType"
+},
+v5 = [
   {
     "alias": null,
     "args": [
@@ -63,6 +67,11 @@ v1 = [
         "kind": "Variable",
         "name": "id",
         "variableName": "id"
+      },
+      {
+        "kind": "Variable",
+        "name": "isVirtual",
+        "variableName": "isVirtual"
       },
       {
         "kind": "Variable",
@@ -112,32 +121,44 @@ v1 = [
 ];
 return {
   "fragment": {
-    "argumentDefinitions": (v0/*: any*/),
+    "argumentDefinitions": [
+      (v0/*: any*/),
+      (v1/*: any*/),
+      (v2/*: any*/),
+      (v3/*: any*/),
+      (v4/*: any*/)
+    ],
     "kind": "Fragment",
     "metadata": null,
     "name": "CategoryListDisableMutation",
-    "selections": (v1/*: any*/),
+    "selections": (v5/*: any*/),
     "type": "MutationRoot",
     "abstractKey": null
   },
   "kind": "Request",
   "operation": {
-    "argumentDefinitions": (v0/*: any*/),
+    "argumentDefinitions": [
+      (v0/*: any*/),
+      (v2/*: any*/),
+      (v1/*: any*/),
+      (v3/*: any*/),
+      (v4/*: any*/)
+    ],
     "kind": "Operation",
     "name": "CategoryListDisableMutation",
-    "selections": (v1/*: any*/)
+    "selections": (v5/*: any*/)
   },
   "params": {
-    "cacheID": "350b5e9eef26a932666d27684811ac48",
+    "cacheID": "e9c03c330c7c42ebe9823ab298340351",
     "id": null,
     "metadata": {},
     "name": "CategoryListDisableMutation",
     "operationKind": "mutation",
-    "text": "mutation CategoryListDisableMutation(\n  $id: ID!\n  $name: String!\n  $nitcGroupId: String\n  $nitcParticipantType: String\n) {\n  updateCategory(id: $id, name: $name, enabled: false, nitcGroupId: $nitcGroupId, nitcParticipantType: $nitcParticipantType) {\n    id\n    name\n    enabled\n  }\n}\n"
+    "text": "mutation CategoryListDisableMutation(\n  $id: ID!\n  $name: String!\n  $isVirtual: Boolean!\n  $nitcGroupId: String\n  $nitcParticipantType: String\n) {\n  updateCategory(id: $id, name: $name, enabled: false, isVirtual: $isVirtual, nitcGroupId: $nitcGroupId, nitcParticipantType: $nitcParticipantType) {\n    id\n    name\n    enabled\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "dfb48106740e4e7a85650c1d6baca887";
+(node as any).hash = "a574248c7ecc5b3533596bbaf084c5d1";
 
 export default node;

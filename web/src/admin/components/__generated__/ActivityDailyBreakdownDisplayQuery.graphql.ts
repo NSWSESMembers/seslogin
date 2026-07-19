@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<16fce9fd5fb232fac7ec5daaacb4c1e9>>
+ * @generated SignedSource<<41b281ee233a788a0f4a3cf072c18b60>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -21,6 +21,7 @@ export type ActivityDailyBreakdownDisplayQuery$data = {
       readonly categories: ReadonlyArray<{
         readonly category: {
           readonly id: string;
+          readonly isVirtual: boolean;
           readonly name: string;
         };
         readonly members: ReadonlyArray<{
@@ -139,6 +140,13 @@ v5 = [
                     "kind": "ScalarField",
                     "name": "name",
                     "storageKey": null
+                  },
+                  {
+                    "alias": null,
+                    "args": null,
+                    "kind": "ScalarField",
+                    "name": "isVirtual",
+                    "storageKey": null
                   }
                 ],
                 "storageKey": null
@@ -218,16 +226,16 @@ return {
     "selections": (v5/*: any*/)
   },
   "params": {
-    "cacheID": "e10f7414998bfbe6c51f29d1d74c65f7",
+    "cacheID": "b18974865e8dfd8184a24ac7653e97c0",
     "id": null,
     "metadata": {},
     "name": "ActivityDailyBreakdownDisplayQuery",
     "operationKind": "query",
-    "text": "query ActivityDailyBreakdownDisplayQuery(\n  $location: ID!\n  $startTime: Int!\n  $endTime: Int!\n) {\n  location(id: $location) {\n    id\n    periodSummaryByDayByCategoryByMember(startTime: $startTime, endTime: $endTime) {\n      date\n      totalTime\n      categories {\n        category {\n          id\n          name\n        }\n        totalTime\n        members {\n          person {\n            id\n            firstName\n            lastName\n          }\n          totalTime\n        }\n      }\n    }\n  }\n}\n"
+    "text": "query ActivityDailyBreakdownDisplayQuery(\n  $location: ID!\n  $startTime: Int!\n  $endTime: Int!\n) {\n  location(id: $location) {\n    id\n    periodSummaryByDayByCategoryByMember(startTime: $startTime, endTime: $endTime) {\n      date\n      totalTime\n      categories {\n        category {\n          id\n          name\n          isVirtual\n        }\n        totalTime\n        members {\n          person {\n            id\n            firstName\n            lastName\n          }\n          totalTime\n        }\n      }\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "ed0f3b315ac1c40a7e4a5e2d581072bd";
+(node as any).hash = "ac65deffcf2ebc7dcea41480d4c8048b";
 
 export default node;

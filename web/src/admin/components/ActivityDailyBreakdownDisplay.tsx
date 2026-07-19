@@ -4,6 +4,8 @@ import ActivityDailyBreakdownTable, {
   type ActivityDailyBreakdownDayRow,
 } from "./ActivityDailyBreakdownTable";
 import type { ActivityDailyBreakdownDisplayQuery } from "./__generated__/ActivityDailyBreakdownDisplayQuery.graphql";
+import { useUserInfo } from "./useUserInfo";
+import { formatSeconds } from "../../lib/time";
 
 interface ActivityDailyBreakdownDisplayProps {
   locationId: string;
@@ -16,6 +18,8 @@ export default function ActivityDailyBreakdownDisplay({
   startTime,
   endTime,
 }: ActivityDailyBreakdownDisplayProps) {
+  const { disaggregateVirtualPeriods } = useUserInfo();
+
   const data = useLazyLoadQuery<ActivityDailyBreakdownDisplayQuery>(
     graphql`
       query ActivityDailyBreakdownDisplayQuery(
@@ -35,6 +39,7 @@ export default function ActivityDailyBreakdownDisplay({
               category {
                 id
                 name
+                isVirtual
               }
               totalTime
               members {
@@ -58,20 +63,32 @@ export default function ActivityDailyBreakdownDisplay({
   );
 
   const days: ReadonlyArray<ActivityDailyBreakdownDayRow> =
-    data.location.periodSummaryByDayByCategoryByMember.map((day) => ({
-      date: day.date,
-      totalTime: day.totalTime,
-      categories: day.categories.map((category) => ({
-        id: category.category.id,
-        name: category.category.name,
-        totalTime: category.totalTime,
-        members: category.members.map((member) => ({
-          id: member.person.id,
-          name: `${member.person.firstName} ${member.person.lastName}`,
-          totalTime: member.totalTime,
+    data.location.periodSummaryByDayByCategoryByMember.map((day) => {
+      const virtualTime = day.categories
+        .filter((c) => c.category.isVirtual)
+        .reduce((sum, c) => sum + c.totalTime, 0);
+      const nonVirtualTime = day.totalTime - virtualTime;
+      return {
+        date: day.date,
+        totalTime: day.totalTime,
+        splitLine: disaggregateVirtualPeriods
+          ? `${formatSeconds(virtualTime)} virtual · ${formatSeconds(nonVirtualTime)} non-virtual`
+          : undefined,
+        categories: day.categories.map((category) => ({
+          id: category.category.id,
+          name: category.category.name,
+          totalTime: category.totalTime,
+          isVirtual: disaggregateVirtualPeriods
+            ? category.category.isVirtual
+            : undefined,
+          members: category.members.map((member) => ({
+            id: member.person.id,
+            name: `${member.person.firstName} ${member.person.lastName}`,
+            totalTime: member.totalTime,
+          })),
         })),
-      })),
-    }));
+      };
+    });
 
   return <ActivityDailyBreakdownTable days={days} />;
 }
