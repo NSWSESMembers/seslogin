@@ -1402,6 +1402,74 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
         Ok(Period::new(rec))
     }
 
+    /// Public member self-service sign-out. Deliberately unguarded: for now the
+    /// person's own ID is the caller's "capability" (see the sign-out feature
+    /// plan) rather than a purpose-built token, so no AuthInfo is required. As
+    /// defense in depth, the period is re-checked against `person_id` here so a
+    /// guessed/leaked `period_id` can't be used to close any other member's
+    /// session. Like `scan_sign_out`, the member confirms/edits `start_time`
+    /// and `end_time` themselves, so both are accepted from the caller.
+    async fn member_sign_out(
+        &self,
+        person_id: ID,
+        period_id: ID,
+        category_id: ID,
+        start_time: i64,
+        end_time: i64,
+    ) -> Result<Period<A>> {
+        if start_time >= end_time {
+            return Err(anyhow!("start_time must be before end_time"));
+        }
+        let rec = self
+            .app
+            .db()
+            .get_periods(&[&period_id])
+            .await?
+            .into_iter()
+            .next()
+            .flatten()
+            .ok_or_else(|| anyhow!("Period with ID {:?} missing", &period_id))?;
+        if rec.person_id != person_id.as_str() {
+            return Err(anyhow!("Period with ID {:?} missing", &period_id));
+        }
+        if rec.end_time.is_some() {
+            return Err(anyhow!("This session has already been signed out of"));
+        }
+        self.app
+            .db()
+            .get_categories(&[&category_id])
+            .await?
+            .into_iter()
+            .next()
+            .flatten()
+            .ok_or_else(|| anyhow!("Category {:?} not found", &category_id))?;
+
+        self.app
+            .db()
+            .update_period(
+                &rec.id,
+                db::PeriodUpdateShape::TimeCategory {
+                    start_time,
+                    end_time,
+                    category_id: &category_id,
+                    signed_out_session_id: None,
+                },
+            )
+            .await?;
+
+        let mut rec = rec;
+        rec.start_time = start_time as u64;
+        rec.end_time = Some(end_time as u64);
+        rec.category_id = Some(category_id.to_string());
+        rec.signed_out_session_id = None;
+
+        // rec is the pre-update record (only local field copies were changed above), so
+        // rec.nitc_event_id is still the event the period was assigned to before this sign-out.
+        self.enqueue_nitc_export(&rec.id, rec.nitc_event_id.as_deref())
+            .await?;
+        Ok(Period::new(rec))
+    }
+
     #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
     async fn enqueue_member_sync(&self, ctx: &Context<'_>, location_id: ID) -> Result<bool> {
         require_writable(ctx)?;

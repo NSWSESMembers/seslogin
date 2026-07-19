@@ -414,6 +414,69 @@ impl<A: App + HasDb + Send + Sync> Person<A> {
     }
 }
 
+/// Backing data for the public member self-service sign-out page. See
+/// `QueryRoot::person_signout_session` for the auth rationale.
+#[derive(Debug, PartialEq)]
+pub struct PersonSignoutSession<A: App + HasDb + 'static> {
+    _marker: std::marker::PhantomData<A>,
+    rec: db::Person,
+}
+
+impl<A: App + HasDb + Send + Sync> PersonSignoutSession<A> {
+    fn new(rec: db::Person) -> Self {
+        Self {
+            _marker: Default::default(),
+            rec,
+        }
+    }
+}
+
+#[Object]
+impl<A: App + HasDb + Send + Sync + 'static> PersonSignoutSession<A> {
+    async fn first_name(&self) -> &String {
+        &self.rec.first_name
+    }
+
+    async fn last_name(&self) -> &String {
+        &self.rec.last_name
+    }
+
+    /// This member's periods that haven't been signed out of yet, most recent first.
+    async fn open_periods(&self, ctx: &Context<'_>) -> Result<Vec<Period<A>>> {
+        let app = ctx.data_unchecked::<Arc<A>>();
+        let items = app
+            .db()
+            .list_periods_for_person(
+                &self.rec.id,
+                None,
+                Some(true),
+                db::ListPeriodsPage {
+                    after: None,
+                    before: None,
+                    limit: 50,
+                    descending: true,
+                },
+            )
+            .await
+            .map_err(|e| {
+                warn!("db error: {:?}", e);
+                e
+            })?;
+        Ok(items.into_iter().map(Period::new).collect())
+    }
+
+    /// Enabled categories a member can pick from when signing out.
+    async fn categories(&self, ctx: &Context<'_>) -> Result<Vec<Category<A>>> {
+        let app = ctx.data_unchecked::<Arc<A>>();
+        let items = app.db().list_categories().await?;
+        Ok(items
+            .into_iter()
+            .filter(|c| c.enabled)
+            .map(Category::new)
+            .collect())
+    }
+}
+
 #[derive(Debug, PartialEq)]
 pub struct Period<A: App + HasDb + 'static> {
     _marker: std::marker::PhantomData<A>,
@@ -2193,5 +2256,32 @@ impl<A: App + HasDb + Send + Sync + 'static> QueryRoot<A> {
         let ses_client = make_ses_client()?;
         let types = ses_client.fetch_participant_types_cached().await?;
         Ok((*types).clone())
+    }
+
+    /// Public lookup backing the member self-service sign-out page. Deliberately
+    /// unguarded: for now the person's own ID is the page's "capability" rather
+    /// than a purpose-built token (see the sign-out feature plan for the
+    /// rationale and the follow-up to evolve this). Returns `None` for a missing,
+    /// invalid, or deleted person so bad links can't be distinguished from
+    /// deleted members from the outside.
+    async fn person_signout_session(
+        &self,
+        ctx: &Context<'_>,
+        #[graphql(desc = "ID of the person requesting to view/sign out of their open sessions")]
+        person_id: ID,
+    ) -> Result<Option<PersonSignoutSession<A>>> {
+        if person_id.is_empty() {
+            return Ok(None);
+        }
+        let loader = ctx.data_unchecked::<DataLoader<DatabaseLoader<A>>>();
+        let person = loader
+            .load_one(PersonId(person_id.clone()))
+            .await
+            .map_err(|e| anyhow!("Failed to load person via DataLoader: {}", e))?
+            .flatten();
+        Ok(match person {
+            Some(p) if p.rec.deleted.is_none() => Some(PersonSignoutSession::new(p.rec)),
+            _ => None,
+        })
     }
 }

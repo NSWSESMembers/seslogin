@@ -7,6 +7,7 @@ import LoadingIndicator from "./components/LoadingIndicator";
 // Home is the landing page — keep it eager for fast first paint.
 import HomeLayout from "./home/Layout";
 import Home from "./home/Home";
+import SignOutPage from "./signout/SignOutPage";
 
 // Admin and kiosk are mutually-exclusive areas, lazily loaded as separate chunks.
 const AdminApp = lazyWithReload("admin", () => import("./admin/AdminApp"));
@@ -25,6 +26,9 @@ export default function Router() {
           <Route path="/" element={<HomeLayout />}>
             <Route index element={<Home />} />
           </Route>
+
+          {/* Member self-service sign-out - no auth required */}
+          <Route path="/signout/:personId" element={<SignOutPage />} />
 
           {/* Admin routes - auth required at /admin/* */}
           <Route path="/admin/*" element={<AdminApp />} />
