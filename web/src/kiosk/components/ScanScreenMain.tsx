@@ -190,6 +190,8 @@ export default function ScanScreenMain(props: {
   onSubmit: (memberId: string) => Promise<void>;
   validateMemberId: (memberId: string) => boolean;
   onFocusInputReady?: (focusInput: () => void) => void;
+  guestsEnabled?: boolean;
+  onOpenGuestDialog?: () => void;
 }) {
   const {
     onFocusInputReady,
@@ -197,6 +199,8 @@ export default function ScanScreenMain(props: {
     screenPosition,
     submitDisabled,
     validateMemberId,
+    guestsEnabled,
+    onOpenGuestDialog,
   } = props;
   const inputRef = useRef<HTMLInputElement>(null);
   const refocusTimeoutIdRef = useRef<number | null>(null);
@@ -327,6 +331,14 @@ export default function ScanScreenMain(props: {
           </svg>
         </Button>
       </form>
+
+      {guestsEnabled && onOpenGuestDialog && (
+        <div className="mt-6">
+          <Button variant="kiosk" type="button" onClick={onOpenGuestDialog}>
+            Guest sign in / out
+          </Button>
+        </div>
+      )}
 
       <TransactionList transactionState={props.transactionState} />
     </div>

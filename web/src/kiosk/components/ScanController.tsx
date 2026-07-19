@@ -7,11 +7,13 @@ import {
   useMemo,
   useReducer,
   useRef,
+  useState,
 } from "react";
 import { reducer } from "../ScanState";
 import ScanScreenCategories from "./ScanScreenCategories";
 import ScanScreenMain from "./ScanScreenMain";
 import ScanScreenAdjust from "./ScanScreenAdjust";
+import ScanGuestDialog from "./ScanGuestDialog";
 import {
   blockClientUpdates,
   clearBlockClientUpdates,
@@ -36,11 +38,13 @@ export default function ScanController(props: {
   const smallCategories = !!session?.config?.smallCategories;
   const easyTimeEntry = !!session?.config?.easyTimeEntry;
   const newCategories = !!session?.config?.newCategories;
+  const guestsEnabled = !!session?.config?.guests;
 
   const [transactionState, dispatchTransaction] = useReducer(reducer, {
     transactions: [],
   });
   const focusMainInputRef = useRef<(() => void) | null>(null);
+  const [guestDialogOpen, setGuestDialogOpen] = useState(false);
 
   // start periodically clearing old transactions
   useEffect(() => {
@@ -326,6 +330,8 @@ export default function ScanController(props: {
         onFocusInputReady={(focusInput) => {
           focusMainInputRef.current = focusInput;
         }}
+        guestsEnabled={guestsEnabled}
+        onOpenGuestDialog={() => setGuestDialogOpen(true)}
       />
       <ScanScreenCategories
         screenPosition={categoriesPos}
@@ -344,6 +350,14 @@ export default function ScanController(props: {
         easyTimeEntry={easyTimeEntry}
         newCategories={newCategories}
       />
+      {guestDialogOpen && (
+        <ScanGuestDialog
+          onClose={() => {
+            setGuestDialogOpen(false);
+            focusMainInputRef.current?.();
+          }}
+        />
+      )}
     </>
   );
 }

@@ -7,11 +7,7 @@ import ClientVersionLabel from "../../components/ClientVersionLabel";
 export type StatusPeriod = {
   id: string;
   startTime: number;
-  person: {
-    id: string;
-    firstName: string;
-    lastName: string;
-  };
+  name: string;
 };
 
 function getSignInColor(startTime: number): string {
@@ -40,9 +36,7 @@ export default function StatusCurrentDisplay({ periods }: Props) {
               key={period.id}
               className="flex break-inside-avoid items-baseline justify-between gap-4 py-[0.2rem] font-title text-2xl"
             >
-              <span className="min-w-0 text-left">
-                {period.person.firstName} {period.person.lastName}
-              </span>
+              <span className="min-w-0 text-left">{period.name}</span>
               <span
                 className={`shrink-0 text-right ${getSignInColor(period.startTime)}`}
               >

@@ -21,6 +21,7 @@ type PeriodRef = NonNullable<
 // that data dependency here, read inside getRowLabel from the same period ref.
 const activityCurrentPeriodName = graphql`
   fragment ActivityCurrent_periodName on Period @inline {
+    guestName
     person {
       id
       firstName
@@ -81,11 +82,14 @@ export default function ActivityCurrent() {
   ]);
 
   function getRowLabel(periodRef: PeriodRef) {
-    const { person } = readInlineData<ActivityCurrent_periodName$key>(
-      activityCurrentPeriodName,
-      periodRef,
-    );
-    return `${person.firstName} ${person.lastName}`;
+    const { person, guestName } =
+      readInlineData<ActivityCurrent_periodName$key>(
+        activityCurrentPeriodName,
+        periodRef,
+      );
+    return person
+      ? `${person.firstName} ${person.lastName}`
+      : `${guestName ?? "Guest"} (Guest)`;
   }
 
   async function onLoadMore() {
