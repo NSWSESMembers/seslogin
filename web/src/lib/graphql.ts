@@ -30,9 +30,7 @@ function nextRequestLeaseId(): string {
  *    the signature always matches what the server hashes.
  */
 export type AuthHeaderProvider =
-  | string
-  | null
-  | ((body: string) => Promise<string | null>);
+  string | null | ((body: string) => Promise<string | null>);
 
 export async function fetchGraphQL(
   authHeader: AuthHeaderProvider,
