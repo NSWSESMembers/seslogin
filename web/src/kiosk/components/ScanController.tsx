@@ -12,6 +12,7 @@ import { reducer } from "../ScanState";
 import ScanScreenCategories from "./ScanScreenCategories";
 import ScanScreenMain from "./ScanScreenMain";
 import ScanScreenAdjust from "./ScanScreenAdjust";
+import ScanScreenQuickPick from "./ScanScreenQuickPick";
 import {
   blockClientUpdates,
   clearBlockClientUpdates,
@@ -36,6 +37,7 @@ export default function ScanController(props: {
   const smallCategories = !!session?.config?.smallCategories;
   const easyTimeEntry = !!session?.config?.easyTimeEntry;
   const newCategories = !!session?.config?.newCategories;
+  const quickPickCategories = !!session?.config?.quickPickCategories;
 
   const [transactionState, dispatchTransaction] = useReducer(reducer, {
     transactions: [],
@@ -217,10 +219,17 @@ export default function ScanController(props: {
   // most recent transaction
   const newTransaction = transactionState.transactions[0];
   const memberIdEnabled = newTransaction?.status != "LOADING";
+  const needsQuickPick =
+    quickPickCategories &&
+    typeof newTransaction !== "undefined" &&
+    newTransaction.status == "SIGNED_OUT" &&
+    typeof newTransaction.categoryId === "undefined" &&
+    !newTransaction.quickPickSkipped;
   const needsCategory =
     typeof newTransaction !== "undefined" &&
     newTransaction.status == "SIGNED_OUT" &&
-    typeof newTransaction.categoryId === "undefined";
+    typeof newTransaction.categoryId === "undefined" &&
+    !needsQuickPick;
   const needsAdjust =
     typeof newTransaction !== "undefined" &&
     newTransaction.status == "SIGNED_OUT" &&
@@ -228,9 +237,9 @@ export default function ScanController(props: {
   const signedOutTransaction: TransactionSignedOut | null =
     newTransaction?.status === "SIGNED_OUT" ? newTransaction : null;
 
-  // we use this as a key to ensure ScanCategories clears state for each transaction
+  // we use this as a key to ensure ScanCategories/ScanQuickPick clear state for each transaction
   const transactionUuid =
-    needsCategory || needsAdjust ? newTransaction.uuid : null;
+    needsQuickPick || needsCategory || needsAdjust ? newTransaction.uuid : null;
 
   // Refs so onSubmitAdjust always reads latest values at call time regardless of memoization.
   // Synced in useLayoutEffect (not during render) to be safe under concurrent rendering.
@@ -242,10 +251,11 @@ export default function ScanController(props: {
   });
 
   const mainPos: ScreenPosition =
-    needsCategory || needsAdjust ? "offLeft" : "center";
+    needsQuickPick || needsCategory || needsAdjust ? "offLeft" : "center";
+  const quickPickPos: ScreenPosition = needsQuickPick ? "center" : "offRight";
   const categoriesPos: ScreenPosition = needsCategory ? "center" : "offRight";
   const adjustPos: ScreenPosition =
-    !needsCategory && needsAdjust ? "center" : "offRight";
+    !needsQuickPick && !needsCategory && needsAdjust ? "center" : "offRight";
 
   const onCancelSignOut = useCallback(() => {
     if (!transactionUuid) return;
@@ -253,14 +263,14 @@ export default function ScanController(props: {
     focusMainInputRef.current?.();
   }, [transactionUuid]);
 
-  const canCancelSignOut = needsCategory || needsAdjust;
+  const canCancelSignOut = needsQuickPick || needsCategory || needsAdjust;
   const { onCancelSignOutChange } = props;
   useEffect(() => {
     onCancelSignOutChange?.(canCancelSignOut ? onCancelSignOut : null);
   }, [canCancelSignOut, onCancelSignOut, onCancelSignOutChange]);
 
   const signingOutName =
-    (needsCategory || needsAdjust) && signedOutTransaction
+    (needsQuickPick || needsCategory || needsAdjust) && signedOutTransaction
       ? `${signedOutTransaction.person.firstName} ${signedOutTransaction.person.lastName}`
       : null;
   const { onSigningOutNameChange } = props;
@@ -271,6 +281,16 @@ export default function ScanController(props: {
   function onSelectCategory(uuid: string, categoryId: string) {
     dispatchTransaction({ type: "SET_CATEGORY", uuid, categoryId });
   }
+
+  // Memoized: passed down into ScanScreenQuickPick's suspended query tree, where
+  // an unstable reference would retrigger its "no recent categories" auto-skip effect.
+  const onSkipQuickPick = useCallback(() => {
+    if (!transactionUuidRef.current) return;
+    dispatchTransaction({
+      type: "SKIP_QUICK_PICK",
+      uuid: transactionUuidRef.current,
+    });
+  }, []);
 
   function onEditCategory() {
     dispatchTransaction({
@@ -326,6 +346,15 @@ export default function ScanController(props: {
         onFocusInputReady={(focusInput) => {
           focusMainInputRef.current = focusInput;
         }}
+      />
+      <ScanScreenQuickPick
+        screenPosition={quickPickPos}
+        onSelectCategory={onSelectCategory}
+        onSkip={onSkipQuickPick}
+        uuid={needsQuickPick ? transactionUuid : null}
+        personId={signedOutTransaction?.person.id ?? null}
+        smallCategories={smallCategories}
+        newCategories={newCategories}
       />
       <ScanScreenCategories
         screenPosition={categoriesPos}

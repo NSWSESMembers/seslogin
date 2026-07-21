@@ -269,6 +269,107 @@ impl<A: App + HasDb + Send + Sync + 'static> Category<A> {
     }
 }
 
+/// A category recently used at a location, ranked by frequency, along with the
+/// people who most recently picked it — powers the kiosk sign-out quick-pick.
+pub struct LocationRecentCategory<A: App + HasDb + 'static> {
+    _marker: std::marker::PhantomData<A>,
+    agg: RecentCategoryAgg,
+}
+
+impl<A: App + HasDb + Send + Sync> LocationRecentCategory<A> {
+    fn new(agg: RecentCategoryAgg) -> Self {
+        Self {
+            _marker: Default::default(),
+            agg,
+        }
+    }
+}
+
+#[Object]
+impl<A: App + HasDb + Send + Sync + 'static> LocationRecentCategory<A> {
+    async fn category(&self, ctx: &Context<'_>) -> Result<Category<A>> {
+        let loader = ctx.data_unchecked::<DataLoader<DatabaseLoader<A>>>();
+        loader
+            .load_one(CategoryId(ID(self.agg.category_id.clone())))
+            .await
+            .map_err(|e| anyhow!("Failed to load category via DataLoader: {}", e))?
+            .flatten()
+            .ok_or_else(|| anyhow!("Category with ID {} missing", self.agg.category_id))
+    }
+
+    async fn period_count(&self) -> i64 {
+        self.agg.period_count
+    }
+
+    async fn last_used_at(&self) -> i64 {
+        self.agg.last_used_at as i64
+    }
+
+    /// Up to 3 people who most recently used this category at this location,
+    /// most-recent first.
+    async fn recent_people(&self, ctx: &Context<'_>) -> Result<Vec<Person<A>>> {
+        let loader = ctx.data_unchecked::<DataLoader<DatabaseLoader<A>>>();
+        let loaded = loader
+            .load_many(
+                self.agg
+                    .recent_person_ids
+                    .iter()
+                    .map(|id| PersonId(ID(id.clone())))
+                    .collect::<Vec<PersonId>>(),
+            )
+            .await
+            .map_err(|e| anyhow!("Failed to load people via DataLoader: {}", e))?;
+        self.agg
+            .recent_person_ids
+            .iter()
+            .map(|id| {
+                loaded
+                    .get(&PersonId(ID(id.clone())))
+                    .cloned()
+                    .flatten()
+                    .ok_or_else(|| anyhow!("Person with ID {} missing", id))
+            })
+            .collect()
+    }
+}
+
+/// A category recently used by a person, ranked by frequency — powers the kiosk
+/// sign-out quick-pick.
+pub struct PersonRecentCategory<A: App + HasDb + 'static> {
+    _marker: std::marker::PhantomData<A>,
+    agg: RecentCategoryAgg,
+}
+
+impl<A: App + HasDb + Send + Sync> PersonRecentCategory<A> {
+    fn new(agg: RecentCategoryAgg) -> Self {
+        Self {
+            _marker: Default::default(),
+            agg,
+        }
+    }
+}
+
+#[Object]
+impl<A: App + HasDb + Send + Sync + 'static> PersonRecentCategory<A> {
+    async fn category(&self, ctx: &Context<'_>) -> Result<Category<A>> {
+        let loader = ctx.data_unchecked::<DataLoader<DatabaseLoader<A>>>();
+        loader
+            .load_one(CategoryId(ID(self.agg.category_id.clone())))
+            .await
+            .map_err(|e| anyhow!("Failed to load category via DataLoader: {}", e))?
+            .flatten()
+            .ok_or_else(|| anyhow!("Category with ID {} missing", self.agg.category_id))
+    }
+
+    async fn period_count(&self) -> i64 {
+        self.agg.period_count
+    }
+
+    async fn last_used_at(&self) -> i64 {
+        self.agg.last_used_at as i64
+    }
+}
+
 #[derive(Debug, PartialEq)]
 pub struct Person<A: App + HasDb + 'static> {
     _marker: std::marker::PhantomData<A>,
@@ -411,6 +512,58 @@ impl<A: App + HasDb + Send + Sync> Person<A> {
                 e
             })?;
         Ok(items.drain(..).next().map(Period::new))
+    }
+
+    /// This person's most-frequently-used categories recently, ranked by
+    /// frequency then recency. Powers the kiosk sign-out quick-pick.
+    async fn recent_categories(
+        &self,
+        ctx: &Context<'_>,
+        limit: Option<i32>,
+    ) -> Result<Vec<PersonRecentCategory<A>>> {
+        require_location_access(ctx, &self.rec.location_id)?;
+        let app = ctx.data_unchecked::<Arc<A>>();
+
+        let periods = app
+            .db()
+            .list_periods_for_person(
+                &self.rec.id,
+                None,
+                None,
+                db::ListPeriodsPage {
+                    after: None,
+                    before: None,
+                    limit: RECENT_CATEGORIES_PERSON_SCAN_LIMIT,
+                    descending: true,
+                },
+            )
+            .await
+            .map_err(|e| {
+                warn!("db error: {:?}", e);
+                e
+            })?;
+
+        let enabled_category_ids: HashSet<String> = app
+            .db()
+            .list_categories()
+            .await
+            .map_err(|e| {
+                warn!("db error: {:?}", e);
+                e
+            })?
+            .into_iter()
+            .filter(|cat| cat.enabled)
+            .map(|cat| cat.id)
+            .collect();
+
+        let ranked = rank_recent_categories(
+            periods.iter(),
+            &enabled_category_ids,
+            clamp_recent_categories_limit(limit),
+            0,
+        );
+
+        Ok(ranked.into_iter().map(PersonRecentCategory::new).collect())
     }
 }
 
@@ -826,6 +979,227 @@ const THIRTY_DAYS_SECONDS: u64 = 30 * DAY_SECONDS;
 const SEVEN_DAYS_SECONDS: u64 = 7 * DAY_SECONDS;
 const ONLINE_SESSION_SECONDS: u64 = 15 * 60;
 
+// How many of the most recent periods to pull (via the cheap start_time-sorted
+// GSIs) as the candidate pool for the kiosk "recent categories" quick-pick.
+const RECENT_CATEGORIES_LOCATION_SCAN_LIMIT: i32 = 100;
+const RECENT_CATEGORIES_PERSON_SCAN_LIMIT: i32 = 20;
+const RECENT_CATEGORIES_DEFAULT_LIMIT: usize = 6;
+const RECENT_CATEGORIES_MAX_LIMIT: usize = 10;
+const RECENT_CATEGORIES_PEOPLE_CAP: usize = 3;
+
+#[derive(Debug, Clone, PartialEq)]
+struct RecentCategoryAgg {
+    category_id: String,
+    period_count: i64,
+    last_used_at: u64,
+    recent_person_ids: Vec<String>,
+}
+
+/// Rank categories by how often they appear in `periods`, tie-broken by recency.
+///
+/// `periods` MUST already be sorted newest-first (descending by `start_time`) — that
+/// ordering is what lets a single pass both capture the true `last_used_at` for each
+/// category (the first period seen for it) and collect up to `people_cap` of the most
+/// recently *distinct* people who used it, without a second sort. Periods whose
+/// category isn't in `enabled_category_ids` (deleted/never-created/disabled) are
+/// skipped so a retired category is never suggested as a shortcut.
+fn rank_recent_categories<'a>(
+    periods: impl Iterator<Item = &'a db::Period>,
+    enabled_category_ids: &HashSet<String>,
+    limit: usize,
+    people_cap: usize,
+) -> Vec<RecentCategoryAgg> {
+    let mut by_category: HashMap<String, RecentCategoryAgg> = HashMap::new();
+
+    for period in periods {
+        let Some(category_id) = period.category_id.as_ref() else {
+            continue;
+        };
+        if !enabled_category_ids.contains(category_id) {
+            continue;
+        }
+
+        let entry = by_category
+            .entry(category_id.clone())
+            .or_insert_with(|| RecentCategoryAgg {
+                category_id: category_id.clone(),
+                period_count: 0,
+                last_used_at: period.start_time,
+                recent_person_ids: Vec::new(),
+            });
+        entry.period_count += 1;
+        if people_cap > 0
+            && entry.recent_person_ids.len() < people_cap
+            && !entry.recent_person_ids.contains(&period.person_id)
+        {
+            entry.recent_person_ids.push(period.person_id.clone());
+        }
+    }
+
+    let mut items: Vec<RecentCategoryAgg> = by_category.into_values().collect();
+    items.sort_by(|a, b| {
+        b.period_count
+            .cmp(&a.period_count)
+            .then_with(|| b.last_used_at.cmp(&a.last_used_at))
+    });
+    items.truncate(limit);
+    items
+}
+
+fn clamp_recent_categories_limit(limit: Option<i32>) -> usize {
+    limit
+        .and_then(|l| usize::try_from(l).ok())
+        .filter(|l| *l > 0)
+        .unwrap_or(RECENT_CATEGORIES_DEFAULT_LIMIT)
+        .min(RECENT_CATEGORIES_MAX_LIMIT)
+}
+
+#[cfg(test)]
+mod recent_categories_tests {
+    use super::*;
+
+    fn period(id: &str, person_id: &str, category_id: Option<&str>, start_time: u64) -> db::Period {
+        db::Period {
+            id: id.to_string(),
+            person_id: person_id.to_string(),
+            location_id: "loc-1".to_string(),
+            category_id: category_id.map(|s| s.to_string()),
+            start_time,
+            end_time: Some(start_time + 3600),
+            signed_in_session_id: None,
+            signed_out_session_id: None,
+            version: 1,
+            nitc_event_id: None,
+            nitc_participant_id: None,
+            nitc_exported_version: None,
+            deleted: None,
+            created_at: None,
+            updated_at: None,
+        }
+    }
+
+    #[test]
+    fn ranks_by_frequency_then_recency() {
+        // "cat-a" used twice (older), "cat-b" used once (more recent) — frequency wins.
+        let periods = [
+            period("p3", "person-1", Some("cat-b"), 300),
+            period("p2", "person-1", Some("cat-a"), 200),
+            period("p1", "person-1", Some("cat-a"), 100),
+        ];
+        let enabled: HashSet<String> = ["cat-a", "cat-b"].iter().map(|s| s.to_string()).collect();
+
+        let ranked = rank_recent_categories(periods.iter(), &enabled, 10, 3);
+
+        assert_eq!(ranked.len(), 2);
+        assert_eq!(ranked[0].category_id, "cat-a");
+        assert_eq!(ranked[0].period_count, 2);
+        assert_eq!(ranked[0].last_used_at, 200);
+        assert_eq!(ranked[1].category_id, "cat-b");
+        assert_eq!(ranked[1].period_count, 1);
+    }
+
+    #[test]
+    fn breaks_frequency_ties_by_recency() {
+        let periods = [
+            period("p2", "person-1", Some("cat-recent"), 200),
+            period("p1", "person-1", Some("cat-old"), 100),
+        ];
+        let enabled: HashSet<String> = ["cat-recent", "cat-old"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+
+        let ranked = rank_recent_categories(periods.iter(), &enabled, 10, 3);
+
+        assert_eq!(ranked[0].category_id, "cat-recent");
+        assert_eq!(ranked[1].category_id, "cat-old");
+    }
+
+    #[test]
+    fn skips_uncategorised_and_disabled_categories() {
+        let periods = [
+            period("p3", "person-1", None, 300),
+            period("p2", "person-1", Some("cat-disabled"), 200),
+            period("p1", "person-1", Some("cat-a"), 100),
+        ];
+        let enabled: HashSet<String> = ["cat-a"].iter().map(|s| s.to_string()).collect();
+
+        let ranked = rank_recent_categories(periods.iter(), &enabled, 10, 3);
+
+        assert_eq!(ranked.len(), 1);
+        assert_eq!(ranked[0].category_id, "cat-a");
+    }
+
+    #[test]
+    fn caps_and_dedupes_recent_people_in_time_order() {
+        // p3 is a repeat visit by person-1, shouldn't duplicate them in the result
+        let periods = [
+            period("p4", "person-2", Some("cat-a"), 400),
+            period("p3", "person-1", Some("cat-a"), 300),
+            period("p2", "person-3", Some("cat-a"), 200),
+            period("p1", "person-1", Some("cat-a"), 100),
+        ];
+        let enabled: HashSet<String> = ["cat-a"].iter().map(|s| s.to_string()).collect();
+
+        let ranked = rank_recent_categories(periods.iter(), &enabled, 10, 3);
+
+        assert_eq!(ranked[0].period_count, 4);
+        // capped at 3, most-recently-distinct people first, no duplicate of person-1
+        assert_eq!(
+            ranked[0].recent_person_ids,
+            vec!["person-2", "person-1", "person-3"]
+        );
+    }
+
+    #[test]
+    fn people_cap_zero_collects_no_people() {
+        let periods = [period("p1", "person-1", Some("cat-a"), 100)];
+        let enabled: HashSet<String> = ["cat-a"].iter().map(|s| s.to_string()).collect();
+
+        let ranked = rank_recent_categories(periods.iter(), &enabled, 10, 0);
+
+        assert!(ranked[0].recent_person_ids.is_empty());
+    }
+
+    #[test]
+    fn truncates_to_limit() {
+        let periods = [
+            period("p3", "person-1", Some("cat-c"), 300),
+            period("p2", "person-1", Some("cat-b"), 200),
+            period("p1", "person-1", Some("cat-a"), 100),
+        ];
+        let enabled: HashSet<String> = ["cat-a", "cat-b", "cat-c"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+
+        let ranked = rank_recent_categories(periods.iter(), &enabled, 2, 3);
+
+        assert_eq!(ranked.len(), 2);
+    }
+
+    #[test]
+    fn clamps_requested_limit() {
+        assert_eq!(
+            clamp_recent_categories_limit(None),
+            RECENT_CATEGORIES_DEFAULT_LIMIT
+        );
+        assert_eq!(
+            clamp_recent_categories_limit(Some(0)),
+            RECENT_CATEGORIES_DEFAULT_LIMIT
+        );
+        assert_eq!(
+            clamp_recent_categories_limit(Some(-5)),
+            RECENT_CATEGORIES_DEFAULT_LIMIT
+        );
+        assert_eq!(
+            clamp_recent_categories_limit(Some(1000)),
+            RECENT_CATEGORIES_MAX_LIMIT
+        );
+        assert_eq!(clamp_recent_categories_limit(Some(3)), 3);
+    }
+}
+
 fn encode_period_cursor(period: &db::Period) -> String {
     format!("{}:{}", period.start_time, period.id)
 }
@@ -915,6 +1289,62 @@ impl<A: App + HasDb + Send + Sync> Location<A> {
             })?;
 
         Ok(items.into_iter().map(|p| Person::new(p)).collect())
+    }
+
+    /// This location's most-frequently-used categories recently, ranked by
+    /// frequency then recency, with the people who most recently used each one.
+    /// Powers the kiosk sign-out quick-pick.
+    async fn recent_categories(
+        &self,
+        ctx: &Context<'_>,
+        limit: Option<i32>,
+    ) -> Result<Vec<LocationRecentCategory<A>>> {
+        require_location_access(ctx, &self.rec.id)?;
+        let app = ctx.data_unchecked::<Arc<A>>();
+
+        let periods = app
+            .db()
+            .list_periods_for_location(
+                &self.rec.id,
+                false,
+                None,
+                db::ListPeriodsPage {
+                    after: None,
+                    before: None,
+                    limit: RECENT_CATEGORIES_LOCATION_SCAN_LIMIT,
+                    descending: true,
+                },
+            )
+            .await
+            .map_err(|e| {
+                warn!("db error: {:?}", e);
+                e
+            })?;
+
+        let enabled_category_ids: HashSet<String> = app
+            .db()
+            .list_categories()
+            .await
+            .map_err(|e| {
+                warn!("db error: {:?}", e);
+                e
+            })?
+            .into_iter()
+            .filter(|cat| cat.enabled)
+            .map(|cat| cat.id)
+            .collect();
+
+        let ranked = rank_recent_categories(
+            periods.iter(),
+            &enabled_category_ids,
+            clamp_recent_categories_limit(limit),
+            RECENT_CATEGORIES_PEOPLE_CAP,
+        );
+
+        Ok(ranked
+            .into_iter()
+            .map(LocationRecentCategory::new)
+            .collect())
     }
 
     async fn periods(
