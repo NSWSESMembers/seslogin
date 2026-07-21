@@ -1,5 +1,6 @@
 import { useState, type ChangeEvent } from "react";
 import { FieldList, FormField } from "../../components/ui/FormField";
+import { OptionList, OptionRow } from "../../components/ui/OptionList";
 import TextInput from "../../components/ui/TextInput";
 import { Button } from "../../components/ui/Button";
 
@@ -196,92 +197,78 @@ function BasicSessionModeFields({
   return (
     <>
       <FormField label={<span>Mode</span>}>
-        <div className="grid gap-2" role="radiogroup" aria-label="Mode">
-          <label className="grid grid-cols-[auto_auto_1fr] items-start gap-x-2">
-            <input
-              type="radio"
-              name="sessionMode"
-              value="scan"
-              checked={sessionMode === "scan"}
-              onChange={() => onChange("scan")}
-              className="mt-1"
-            />
-            <span className="font-semibold">Scan</span>
-            <span className="text-ink-muted">
-              allow members to sign in and out on this computer (touchscreen or
-              mouse and keyboard required)
-            </span>
-          </label>
-          <label className="grid grid-cols-[auto_auto_1fr] items-start gap-x-2">
-            <input
-              type="radio"
-              name="sessionMode"
-              value="status"
-              checked={sessionMode === "status"}
-              onChange={() => onChange("status")}
-              className="mt-1"
-            />
-            <span className="font-semibold">Status</span>
-            <span className="text-ink-muted">
-              show a live-updating non-interactive list of who is currently
-              signed in at the unit along with how long they've been signed in
-              for
-            </span>
-          </label>
-        </div>
+        <OptionList role="radiogroup" aria-label="Mode">
+          <OptionRow
+            input={
+              <input
+                type="radio"
+                name="sessionMode"
+                value="scan"
+                checked={sessionMode === "scan"}
+                onChange={() => onChange("scan")}
+                className="mt-0.5"
+              />
+            }
+            title="Scan"
+            description="allow members to sign in and out on this computer (touchscreen or mouse and keyboard required)"
+          />
+          <OptionRow
+            input={
+              <input
+                type="radio"
+                name="sessionMode"
+                value="status"
+                checked={sessionMode === "status"}
+                onChange={() => onChange("status")}
+                className="mt-0.5"
+              />
+            }
+            title="Status"
+            description="show a live-updating non-interactive list of who is currently signed in at the unit along with how long they've been signed in for"
+          />
+        </OptionList>
         <input type="hidden" name="config" value={configJson} />
       </FormField>
       {sessionMode === "scan" && (
         <FormField label={<span>Options</span>}>
-          <div className="divide-y divide-line rounded-lg border border-line">
-            <label className="flex cursor-pointer items-start gap-3 p-3 hover:bg-surface-sunken">
-              <input
-                type="checkbox"
-                checked={smallCategories}
-                onChange={(e) => onSmallCategoriesChange(e.target.checked)}
-                className="mt-0.5"
-              />
-              <span className="flex flex-col gap-0.5">
-                <span className="font-semibold">Small categories</span>
-                <span className="text-ink-muted">
-                  use smaller category buttons to fit more on screen — useful
-                  on smaller or lower-resolution displays
-                </span>
-              </span>
-            </label>
-            <label className="flex cursor-pointer items-start gap-3 p-3 hover:bg-surface-sunken">
-              <input
-                type="checkbox"
-                checked={easyTimeEntry}
-                onChange={(e) => onEasyTimeEntryChange(e.target.checked)}
-                className="mt-0.5"
-              />
-              <span className="flex flex-col gap-0.5">
-                <span className="font-semibold">Easy time entry</span>
-                <span className="text-ink-muted">
-                  use a touch-friendly 12-hour keypad with an explicit confirm
-                  step and quick Yesterday/Today buttons on the sign-out
-                  Adjust screen, instead of the default 24-hour numeric keypad
-                </span>
-              </span>
-            </label>
-            <label className="flex cursor-pointer items-start gap-3 p-3 hover:bg-surface-sunken">
-              <input
-                type="checkbox"
-                checked={newCategories}
-                onChange={(e) => onNewCategoriesChange(e.target.checked)}
-                className="mt-0.5"
-              />
-              <span className="flex flex-col gap-0.5">
-                <span className="font-semibold">New categories</span>
-                <span className="text-ink-muted">
-                  use the reworked category list on the sign-out screens — new
-                  icon artwork, with several retired subcategories removed and
-                  others reordered
-                </span>
-              </span>
-            </label>
-          </div>
+          <OptionList>
+            <OptionRow
+              input={
+                <input
+                  type="checkbox"
+                  checked={smallCategories}
+                  onChange={(e) => onSmallCategoriesChange(e.target.checked)}
+                  className="mt-0.5"
+                />
+              }
+              title="Small categories"
+              description="use smaller category buttons to fit more on screen — useful on smaller or lower-resolution displays"
+            />
+            <OptionRow
+              input={
+                <input
+                  type="checkbox"
+                  checked={easyTimeEntry}
+                  onChange={(e) => onEasyTimeEntryChange(e.target.checked)}
+                  className="mt-0.5"
+                />
+              }
+              title="Easy time entry"
+              description="use a touch-friendly 12-hour keypad with an explicit confirm step and quick Yesterday/Today buttons on the sign-out Adjust screen, instead of the default 24-hour numeric keypad"
+            />
+            <OptionRow
+              input={
+                <input
+                  type="checkbox"
+                  checked={newCategories}
+                  onChange={(e) => onNewCategoriesChange(e.target.checked)}
+                  className="mt-0.5"
+                />
+              }
+              title="New categories"
+              description="use the reworked category list on the sign-out screens — new icon artwork, with several retired subcategories removed and others reordered"
+            />
+          </OptionList>
         </FormField>
       )}
     </>
