@@ -8,6 +8,8 @@ import type {
   TransactionAborted as TransactionAbortedType,
 } from "../ScanState";
 import { formatTime, formatDayDateTime } from "../../lib/time";
+import { BadgeIcon } from "../../lib/badgeIcons";
+import type { CSSProperties } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { scanView, scanViewPosition, type ScreenPosition } from "../../styles";
 import { inputBase } from "../../components/ui/inputStyles";
@@ -17,6 +19,14 @@ import { Button } from "../../components/ui/Button";
 const FINALIZED_TRANSACTION_TIMEOUT_MS = 10_000;
 const FINALIZED_TRANSACTION_FADE_MS = 1_000;
 const SCAN_INPUT_TIMEOUT_MS = 10_000;
+const CONFETTI_COLORS = [
+  "#ff5f6d",
+  "#ffd166",
+  "#4ecdc4",
+  "#5c7cfa",
+  "#f8961e",
+  "#ffffff",
+] as const;
 
 const transactionBase =
   "inline-block w-[800px] max-w-full rounded-md p-2.5 text-[1.2em] transition-opacity duration-1000";
@@ -110,6 +120,7 @@ function TransactionSignedIn(props: {
           {txn.person.firstName} {txn.person.lastName}
         </span>{" "}
         signed in at {formatTime(txn.startTime)}
+        <BadgeCelebration badges={txn.awardedBadges} />
       </span>
       <span className={loadingSpinnerBase}></span>
     </p>
@@ -141,9 +152,160 @@ function TransactionSignedOut(props: {
           {txn.person.firstName} {txn.person.lastName}
         </span>{" "}
         signed out: {startTimeStr} &ndash; {endTimeStr}
+        <BadgeCelebration badges={txn.awardedBadges} />
       </span>
       <span className={loadingSpinnerBase}></span>
     </p>
+  );
+}
+
+function BadgeCelebration(props: {
+  badges:
+    | ReadonlyArray<{
+        id: string;
+        name: string;
+        description: string;
+        tier: string;
+      }>
+    | null
+    | undefined;
+}) {
+  type ConfettiPiece = {
+    id: number;
+    style: CSSProperties;
+  };
+
+  const [confettiPieces, setConfettiPieces] = useState<ConfettiPiece[]>([]);
+  const [dismissedBadgeSignature, setDismissedBadgeSignature] = useState<
+    string | null
+  >(null);
+  const audioFanfairRef = useRef<HTMLAudioElement | null>(null);
+  const lastBadgeSignatureRef = useRef<string | null>(null);
+  const badgeCount = props.badges?.length ?? 0;
+  const badgeSignature =
+    props.badges?.map((badge) => badge.id).join("|") ?? null;
+
+  useEffect(() => {
+    audioFanfairRef.current = new Audio("/audio/fanfair.mp3");
+  }, []);
+
+  useEffect(() => {
+    if (!props.badges || props.badges.length === 0) {
+      lastBadgeSignatureRef.current = null;
+      return;
+    }
+
+    if (lastBadgeSignatureRef.current === badgeSignature) {
+      return;
+    }
+
+    lastBadgeSignatureRef.current = badgeSignature;
+    const audioFanfair = audioFanfairRef.current;
+    if (audioFanfair) {
+      audioFanfair.currentTime = 0;
+      void audioFanfair.play().catch(() => undefined);
+    }
+
+    const burstCount = Math.max(24, props.badges.length * 16);
+    setConfettiPieces(
+      Array.from({ length: burstCount }, (_, id) => {
+        const launchFromRight = id % 2 === 1;
+        const horizontalOffset = 10 + Math.random() * 28;
+
+        return {
+          id,
+          style: {
+            "--confetti-origin-left": launchFromRight ? "auto" : "28px",
+            "--confetti-origin-right": launchFromRight ? "28px" : "auto",
+            "--confetti-x": `${launchFromRight ? -horizontalOffset : horizontalOffset}vw`,
+            "--confetti-y": `${-22 - Math.random() * 42}vh`,
+            "--confetti-rotation": `${-720 + Math.random() * 1440}deg`,
+            "--confetti-delay": `${Math.random() * 160}ms`,
+            "--confetti-duration": `${1200 + Math.random() * 900}ms`,
+            "--confetti-size": `${6 + Math.random() * 8}px`,
+            "--confetti-color": CONFETTI_COLORS[id % CONFETTI_COLORS.length],
+          } as CSSProperties,
+        };
+      }),
+    );
+
+    const timeoutId = window.setTimeout(() => {
+      setConfettiPieces([]);
+    }, 2_600);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [badgeSignature, props.badges]);
+
+  if (
+    !props.badges ||
+    props.badges.length === 0 ||
+    badgeSignature === dismissedBadgeSignature
+  ) {
+    return null;
+  }
+
+  return (
+    <span
+      className="fixed inset-0 isolate z-[80] overflow-hidden"
+      aria-live="polite"
+    >
+      <span
+        className="fixed inset-0 z-0 cursor-pointer bg-[radial-gradient(circle_at_center,rgba(255,239,191,0.24)_0%,rgba(0,0,0,0.45)_65%,rgba(0,0,0,0.62)_100%)] backdrop-blur-[3px]"
+        aria-hidden="true"
+        onClick={() => {
+          setDismissedBadgeSignature(badgeSignature);
+        }}
+      />
+      <span
+        className="pointer-events-none fixed inset-0 z-[1] overflow-visible"
+        aria-hidden="true"
+      >
+        {confettiPieces.map((piece) => (
+          <span
+            key={piece.id}
+            className="absolute right-[var(--confetti-origin-right,auto)] bottom-6.5 left-[var(--confetti-origin-left,28px)] h-[calc(var(--confetti-size)*0.55)] w-[var(--confetti-size)] origin-center animate-[badge-confetti-burst_var(--confetti-duration)_cubic-bezier(0.12,0.72,0.22,1)_var(--confetti-delay)_forwards] rounded-full bg-[var(--confetti-color)] opacity-0 shadow-[0_0_10px_rgba(255,255,255,0.22)] motion-reduce:animate-none motion-reduce:opacity-0"
+            style={piece.style}
+          />
+        ))}
+      </span>
+      <span className="fixed top-1/2 left-1/2 z-[3] flex max-h-[calc(100vh-40px)] w-[min(880px,calc(100vw-32px))] -translate-x-1/2 -translate-y-1/2 flex-col items-stretch gap-3.5 overflow-auto rounded-3xl border-2 border-[rgba(255,228,170,0.45)] bg-linear-to-b from-[rgba(255,251,238,0.98)] to-[rgba(255,240,209,0.98)] px-6.5 pt-6 pb-5.5 shadow-[0_30px_80px_rgba(0,0,0,0.38),0_0_0_1px_rgba(255,255,255,0.5)_inset]">
+        <span className="font-title text-[0.88rem] font-bold tracking-[0.14em] text-[#8c5300] uppercase">
+          Badge awarded
+        </span>
+        <span className="font-title text-[clamp(2rem,4vw,3.6rem)] leading-[1.02] font-bold text-[#7f3f11] [text-shadow:0_1px_0_rgba(255,255,255,0.7)]">
+          {badgeCount} {badgeCount === 1 ? "badge" : "badges"} unlocked
+        </span>
+        <span className="grid grid-cols-[repeat(auto-fit,minmax(260px,1fr))] gap-3">
+          {props.badges.map((badge) => (
+            <span
+              key={badge.id}
+              className="grid animate-[badge-pop_0.42s_ease-out] grid-cols-[54px_1fr] items-center gap-x-2.5 rounded-[18px] border-2 border-[#d57c2f] bg-linear-[120deg] from-[#fff3d8] via-[#ffe7c6] via-60% to-[#ffd59e] px-4 py-3.5 shadow-[0_10px_24px_rgba(212,124,47,0.22)] motion-reduce:animate-none"
+            >
+              <span className="inline-flex size-13 items-center justify-center">
+                <BadgeIcon
+                  badgeId={badge.id}
+                  badgeName={badge.name}
+                  tier={badge.tier.toLowerCase()}
+                  className="block size-12"
+                />
+              </span>
+              <span className="min-w-0">
+                <span className="block text-[1.05rem] font-bold text-[#8a3f10]">
+                  New badge: {badge.name}
+                </span>
+                <span className="block text-[0.98rem] leading-[1.35] text-[#6c2e09]">
+                  {badge.description
+                    ? `${badge.tier} tier - ${badge.description}`
+                    : `${badge.tier} tier`}
+                </span>
+              </span>
+            </span>
+          ))}
+        </span>
+      </span>
+    </span>
   );
 }
 

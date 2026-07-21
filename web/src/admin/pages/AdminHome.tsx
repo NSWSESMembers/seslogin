@@ -51,13 +51,26 @@ function formatDayLabel(date: Date): string {
   });
 }
 
+function formatRelativeHours(tsSeconds: number): string {
+  const deltaSeconds = Math.max(0, Math.floor(Date.now() / 1000) - tsSeconds);
+  const hours = Math.floor(deltaSeconds / 3600);
+  if (hours < 1) {
+    return "<1h ago";
+  }
+  return `${hours}h ago`;
+}
+
 export default function AdminHome() {
   const selectedLocation = useSelectedLocation();
   const [now] = useState(() => Math.floor(Date.now() / 1000));
 
   const data = useLazyLoadQuery<AdminHomeQuery>(
     graphql`
-      query AdminHomeQuery($location: ID!, $now: Int!) {
+      query AdminHomeQuery(
+        $location: ID!
+        $now: Int!
+        $includeBadgeLeaderboard: Boolean!
+      ) {
         location(id: $location) {
           id
           name
@@ -85,12 +98,24 @@ export default function AdminHome() {
               totalTime
             }
           }
+          badgeLeaderboard(limit: 8) @include(if: $includeBadgeLeaderboard) {
+            person {
+              id
+              firstName
+              lastName
+              memberNumber
+            }
+            badgeCount
+            recentBadgeCount7D
+            latestBadgeAwardAt
+          }
         }
       }
     `,
     {
       location: selectedLocation.id,
       now,
+      includeBadgeLeaderboard: selectedLocation.gamificationEnabled,
     },
     { fetchKey: `${selectedLocation.id}-${now}` },
   );
@@ -128,6 +153,7 @@ export default function AdminHome() {
 
   const avgCompletedDurationSeconds = summary.avgCompletedDuration7D;
   const topCategories = summary.topCategories7D;
+  const badgeLeaders = location.badgeLeaderboard ?? [];
   const maxCategoryPeriods = Math.max(
     1,
     ...topCategories.map((entry) => entry.periodCount),
@@ -243,6 +269,49 @@ export default function AdminHome() {
           </div>
         )}
       </section>
+
+      {selectedLocation.gamificationEnabled && (
+        <section className={CARD_CLASS}>
+          <div className={SECTION_TITLE_CLASS}>Badge leaderboard</div>
+          {badgeLeaders.length === 0 ? (
+            <p className="m-0 text-[#666666]">
+              No badges have been earned at this location yet.
+            </p>
+          ) : (
+            <div className="grid grid-cols-1 gap-2.5 min-[781px]:grid-cols-[repeat(auto-fit,minmax(220px,1fr))]">
+              {badgeLeaders.map((entry, idx) => (
+                <article
+                  key={entry.person.id}
+                  className="grid gap-2 rounded-[10px] border border-[#e6e6e6] bg-white p-2.5"
+                >
+                  <div className="grid grid-cols-[auto_1fr] items-center gap-2">
+                    <span className="inline-flex h-6 min-w-8.5 items-center justify-center rounded-full bg-[#f3ece8] text-xs font-bold text-[#aa4f1f]">
+                      #{idx + 1}
+                    </span>
+                    <span className="min-w-0 font-bold text-[#2f2f2f]">
+                      {entry.person.firstName} {entry.person.lastName}
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    <span className="inline-flex items-center rounded-full bg-[#f8eee9] px-2.25 py-0.75 text-xs font-semibold text-[#953f16]">
+                      {entry.badgeCount} total
+                    </span>
+                    <span className="inline-flex items-center rounded-full bg-[#f3f3f3] px-2.25 py-0.75 text-xs font-semibold text-[#545454]">
+                      {entry.recentBadgeCount7D} in 7d
+                    </span>
+                    <span className="inline-flex items-center rounded-full bg-[#f3f3f3] px-2.25 py-0.75 text-xs font-semibold text-[#545454]">
+                      {formatRelativeHours(entry.latestBadgeAwardAt)}
+                    </span>
+                  </div>
+                  <div className="text-xs text-[#5a5a5a]">
+                    SES ID: {entry.person.memberNumber || "-"}
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
 
       <DevOnly>
         <div className="mt-4 flex flex-row flex-wrap items-center gap-3">

@@ -3,3 +3,4 @@
 infra/terraform.tfvars
 infra/.terraform/
 infra/.terraform.lock.hcl
+.vscode/settings.json
