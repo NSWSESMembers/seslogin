@@ -816,6 +816,225 @@ impl<A: App + HasDb + Send + Sync + 'static> DayCategoryPeriodSummary<A> {
     }
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct MemberDayPeriodSummary<A: App + HasDb + Send + Sync> {
+    _marker: std::marker::PhantomData<A>,
+    person_id: String,
+    total_time: i64,
+    period_count: i32,
+}
+
+impl<A: App + HasDb + Send + Sync> MemberDayPeriodSummary<A> {
+    fn new(person_id: String, total_time: i64, period_count: i32) -> Self {
+        Self {
+            _marker: Default::default(),
+            person_id,
+            total_time,
+            period_count,
+        }
+    }
+}
+
+#[Object]
+impl<A: App + HasDb + Send + Sync + 'static> MemberDayPeriodSummary<A> {
+    async fn person_id(&self) -> ID {
+        ID(self.person_id.clone())
+    }
+
+    async fn person(&self, ctx: &Context<'_>) -> Result<Person<A>> {
+        let loader = ctx.data_unchecked::<DataLoader<DatabaseLoader<A>>>();
+        loader
+            .load_one(PersonId(ID(self.person_id.clone())))
+            .await
+            .map_err(|e| anyhow!("Failed to load person via DataLoader: {}", e))?
+            .flatten()
+            .ok_or_else(|| anyhow!("Person with ID {} missing", self.person_id))
+    }
+
+    async fn total_time(&self) -> i64 {
+        self.total_time
+    }
+
+    async fn period_count(&self) -> i32 {
+        self.period_count
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct DayMemberPeriodSummary<A: App + HasDb + Send + Sync> {
+    _marker: std::marker::PhantomData<A>,
+    date: String,
+    members: Vec<MemberDayPeriodSummary<A>>,
+}
+
+impl<A: App + HasDb + Send + Sync> DayMemberPeriodSummary<A> {
+    fn new(date: String, members: Vec<MemberDayPeriodSummary<A>>) -> Self {
+        Self {
+            _marker: Default::default(),
+            date,
+            members,
+        }
+    }
+}
+
+#[Object]
+impl<A: App + HasDb + Send + Sync + 'static> DayMemberPeriodSummary<A> {
+    async fn date(&self) -> &str {
+        &self.date
+    }
+
+    async fn members(&self) -> &Vec<MemberDayPeriodSummary<A>> {
+        &self.members
+    }
+}
+
+/// Pure aggregation for `period_summary_by_day_by_member`: buckets periods by
+/// (Sydney-local date, person), tracking `period_count` for every matching
+/// period (including still-open ones, so an in-progress check-in still lights
+/// up today's cell) alongside `total_time` (only from periods with a known
+/// duration — same convention as every other `period_summary_by_*` resolver).
+/// Unlike `period_summary_by_day_by_category_by_member`, periods with no
+/// category are still counted (unless a specific `category_filter` is given).
+/// (person_id, total_time, period_count)
+type MemberDayBucket = (String, i64, i32);
+/// (date, members)
+type DayBucket = (String, Vec<MemberDayBucket>);
+
+fn bucket_periods_by_day_and_member(
+    periods: &[db::Period],
+    category_filter: Option<&str>,
+) -> Vec<DayBucket> {
+    let mut totals_by_day: HashMap<String, HashMap<String, (u64, i32)>> = HashMap::new();
+    for period in periods {
+        if let Some(wanted) = category_filter
+            && period.category_id.as_deref() != Some(wanted)
+        {
+            continue;
+        }
+        let date = unix_to_sydney_date(period.start_time);
+        let entry = totals_by_day
+            .entry(date)
+            .or_default()
+            .entry(period.person_id.clone())
+            .or_insert((0, 0));
+        entry.1 += 1;
+        if let Some(duration) = period_duration(period) {
+            entry.0 += duration;
+        }
+    }
+
+    let mut rows: Vec<DayBucket> = totals_by_day
+        .into_iter()
+        .map(|(date, totals_by_member)| {
+            let mut members: Vec<MemberDayBucket> = totals_by_member
+                .into_iter()
+                .map(|(person_id, (total_time, period_count))| {
+                    (person_id, total_time as i64, period_count)
+                })
+                .collect();
+            members.sort_by_key(|(_, total_time, _)| std::cmp::Reverse(*total_time));
+            (date, members)
+        })
+        .collect();
+    rows.sort_by(|(a, _), (b, _)| a.cmp(b));
+
+    rows
+}
+
+#[cfg(test)]
+mod period_summary_by_day_by_member_tests {
+    use super::*;
+
+    fn period(
+        id: &str,
+        person_id: &str,
+        category_id: Option<&str>,
+        start_time: u64,
+        end_time: Option<u64>,
+    ) -> db::Period {
+        db::Period {
+            id: id.to_string(),
+            person_id: person_id.to_string(),
+            location_id: "loc-1".to_string(),
+            category_id: category_id.map(|s| s.to_string()),
+            start_time,
+            end_time,
+            signed_in_session_id: None,
+            signed_out_session_id: None,
+            version: 1,
+            nitc_event_id: None,
+            nitc_participant_id: None,
+            nitc_exported_version: None,
+            deleted: None,
+            created_at: None,
+            updated_at: None,
+        }
+    }
+
+    #[test]
+    fn counts_uncategorised_periods() {
+        // period_summary_by_day_by_category_by_member would drop this entirely
+        // since it has no category — this resolver must still count it.
+        let periods = [period("p1", "person-1", None, 100, Some(3700))];
+
+        let rows = bucket_periods_by_day_and_member(&periods, None);
+
+        assert_eq!(rows.len(), 1);
+        let (date, members) = &rows[0];
+        assert_eq!(date, "1970-01-01");
+        assert_eq!(members, &[("person-1".to_string(), 3600, 1)]);
+    }
+
+    #[test]
+    fn open_period_counts_but_contributes_no_time() {
+        let periods = [period("p1", "person-1", None, 100, None)];
+
+        let rows = bucket_periods_by_day_and_member(&periods, None);
+
+        let (_, members) = &rows[0];
+        assert_eq!(members, &[("person-1".to_string(), 0, 1)]);
+    }
+
+    #[test]
+    fn category_filter_excludes_non_matching_periods() {
+        let periods = [
+            period("p1", "person-1", Some("cat-a"), 100, Some(3700)),
+            period("p2", "person-1", Some("cat-b"), 200, Some(3800)),
+        ];
+
+        let rows = bucket_periods_by_day_and_member(&periods, Some("cat-a"));
+
+        let (_, members) = &rows[0];
+        assert_eq!(members, &[("person-1".to_string(), 3600, 1)]);
+    }
+
+    #[test]
+    fn buckets_multiple_days_and_members_separately() {
+        let one_day = 86_400;
+        let periods = [
+            period("p1", "person-1", None, 100, Some(200)),
+            period("p2", "person-2", None, 300, Some(500)),
+            period("p3", "person-1", None, one_day + 100, Some(one_day + 400)),
+        ];
+
+        let rows = bucket_periods_by_day_and_member(&periods, None);
+
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].0, "1970-01-01");
+        assert_eq!(rows[1].0, "1970-01-02");
+        let mut day_one_members = rows[0].1.clone();
+        day_one_members.sort_by(|a, b| a.0.cmp(&b.0));
+        assert_eq!(
+            day_one_members,
+            vec![
+                ("person-1".to_string(), 100, 1),
+                ("person-2".to_string(), 200, 1)
+            ]
+        );
+        assert_eq!(rows[1].1, vec![("person-1".to_string(), 300, 1)]);
+    }
+}
+
 fn period_duration(period: &db::Period) -> Option<u64> {
     period
         .end_time
@@ -1330,6 +1549,66 @@ impl<A: App + HasDb + Send + Sync> Location<A> {
             })
             .collect::<Vec<DayCategoryPeriodSummary<A>>>();
         rows.sort_by(|a, b| b.date.cmp(&a.date));
+
+        Ok(rows)
+    }
+
+    /// Per-day, per-member activity for this location, used to power the
+    /// attendance heatmap. Unlike `period_summary_by_day_by_category_by_member`,
+    /// this counts every period regardless of whether it has a category, and
+    /// counts still-open periods towards `period_count` (though not
+    /// `total_time`) so an in-progress check-in still shows up as activity
+    /// for today. Days are returned in ascending order (the natural order for
+    /// a left-to-right time series), unlike the descending order used by the
+    /// other day-bucketed resolver.
+    async fn period_summary_by_day_by_member(
+        &self,
+        ctx: &Context<'_>,
+        start_time: i64,
+        end_time: i64,
+        category: Option<ID>,
+    ) -> Result<Vec<DayMemberPeriodSummary<A>>> {
+        if start_time >= end_time {
+            return Err(anyhow!("start_time must be before end_time"));
+        }
+        let range_start = u64::try_from(start_time)
+            .map_err(|_| anyhow!("start_time must be a non-negative unix timestamp"))?;
+        let range_end = u64::try_from(end_time)
+            .map_err(|_| anyhow!("end_time must be a non-negative unix timestamp"))?;
+        let category_filter = category.map(|c| c.0);
+
+        let app = ctx.data_unchecked::<Arc<A>>();
+        let periods = app
+            .db()
+            .list_periods_for_location(
+                &self.rec.id,
+                false,
+                Some((range_start, range_end)),
+                db::ListPeriodsPage {
+                    after: None,
+                    before: None,
+                    limit: i32::MAX,
+                    descending: true,
+                },
+            )
+            .await
+            .map_err(|e| {
+                warn!("db error: {:?}", e);
+                e
+            })?;
+
+        let rows = bucket_periods_by_day_and_member(&periods, category_filter.as_deref())
+            .into_iter()
+            .map(|(date, members)| {
+                let members = members
+                    .into_iter()
+                    .map(|(person_id, total_time, period_count)| {
+                        MemberDayPeriodSummary::new(person_id, total_time, period_count)
+                    })
+                    .collect();
+                DayMemberPeriodSummary::new(date, members)
+            })
+            .collect();
 
         Ok(rows)
     }

@@ -29,6 +29,7 @@ import ActivityCurrent from "./pages/ActivityCurrent";
 import ActivityTotals from "./pages/ActivityTotals";
 import ActivityBreakdown from "./pages/ActivityBreakdown";
 import ActivityDailyBreakdown from "./pages/ActivityDailyBreakdown";
+import ActivityHeatmap from "./pages/ActivityHeatmap";
 import ActivityLastSeen from "./pages/ActivityLastSeen";
 import Reports from "./pages/Reports";
 import SettingsPasskeys from "./pages/SettingsPasskeys";
@@ -79,6 +80,7 @@ export default function AdminApp() {
           <Route path="totals" element={<ActivityTotals />} />
           <Route path="breakdown" element={<ActivityBreakdown />} />
           <Route path="daily-breakdown" element={<ActivityDailyBreakdown />} />
+          <Route path="heatmap" element={<ActivityHeatmap />} />
           <Route path="last-seen" element={<ActivityLastSeen />} />
           <Route path=":periodId" element={<ActivityEdit />} />
         </Route>
