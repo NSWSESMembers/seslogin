@@ -10,6 +10,7 @@ export interface KioskSession {
   location: {
     id: string;
     name: string;
+    gamificationEnabled: boolean;
   };
 }
 

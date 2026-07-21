@@ -40,3 +40,9 @@ deploy-sync-locations-lambda:
 	cargo lambda build --release --bin sync-locations-lambda
 	cargo lambda deploy --binary-name sync-locations-lambda --role arn:aws:iam::641079927221:role/seslogin-sync-locations-lambda-role seslogin-sync-locations
 
+test-badge-nightly:
+	RUST_LOG=info cargo run --bin badge-nightly -- --dry-run true
+
+test-badge-digest:
+	RUST_LOG=info cargo run --bin badge-digest -- --dry-run true
+

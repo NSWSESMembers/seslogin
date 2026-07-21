@@ -17,6 +17,7 @@ import NitcGroupEdit from "./pages/NitcGroupEdit";
 import MembersList from "./pages/MembersList";
 import MembersNew from "./pages/MembersNew";
 import MembersEdit from "./pages/MembersEdit";
+import MembersBadges from "./pages/MembersBadges";
 import SessionsList from "./pages/SessionsList";
 import SessionsNew from "./pages/SessionsNew";
 import SessionsEdit from "./pages/SessionsEdit";
@@ -31,8 +32,10 @@ import ActivityBreakdown from "./pages/ActivityBreakdown";
 import ActivityDailyBreakdown from "./pages/ActivityDailyBreakdown";
 import ActivityLastSeen from "./pages/ActivityLastSeen";
 import Reports from "./pages/Reports";
+import ReportsBadges from "./pages/ReportsBadges";
 import SettingsPasskeys from "./pages/SettingsPasskeys";
 import SettingsDailyEmail from "./pages/SettingsDailyEmail";
+import SettingsWeeklyBadgeDigest from "./pages/SettingsWeeklyBadgeDigest";
 
 // Mounted at /admin/* — paths here are relative to /admin.
 export default function AdminApp() {
@@ -64,6 +67,7 @@ export default function AdminApp() {
           <Route index element={<MembersList />} />
           <Route path="new" element={<MembersNew />} />
           <Route path="activity/:memberId" element={<ActivityListMember />} />
+          <Route path="badges/:memberId" element={<MembersBadges />} />
           <Route path=":memberId" element={<MembersEdit />} />
         </Route>
         <Route path="sessions">
@@ -84,10 +88,15 @@ export default function AdminApp() {
         </Route>
         <Route path="reports">
           <Route index element={<Reports />} />
+          <Route path="badges" element={<ReportsBadges />} />
         </Route>
         <Route path="settings">
           <Route index element={<SettingsPasskeys />} />
           <Route path="daily-email" element={<SettingsDailyEmail />} />
+          <Route
+            path="weekly-badge-digest"
+            element={<SettingsWeeklyBadgeDigest />}
+          />
         </Route>
         <Route path="*" element={<h1>Not Found</h1>} />
       </Route>

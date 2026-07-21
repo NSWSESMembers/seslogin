@@ -1,6 +1,7 @@
 import { useMatch } from "react-router";
 import MenuLink from "../../components/ui/MenuLink";
 import { tw } from "../../lib/tw";
+import useSelectedLocation from "./useSelectedLocation";
 
 const submenuBarClasses = tw`flex flex-wrap items-center gap-1 bg-submenu px-5 py-0.75 font-title lg:px-20`;
 
@@ -9,12 +10,14 @@ interface SubmenuBarProps {
 }
 
 export default function SubmenuBar({ isSuper }: SubmenuBarProps) {
+  const selectedLocation = useSelectedLocation();
   const isMembersSection = useMatch("/admin/members/*");
   const isActivitySection = useMatch("/admin/activity/*");
   const isSessionsSection = useMatch("/admin/sessions/*");
   const isLocationsSection = useMatch("/admin/locations/*");
   const isUsersSection = useMatch("/admin/users/*");
   const isCategoriesSection = useMatch("/admin/categories/*");
+  const isReportsSection = useMatch("/admin/reports/*");
   const isSettingsSection = useMatch("/admin/settings/*");
 
   return (
@@ -106,6 +109,19 @@ export default function SubmenuBar({ isSuper }: SubmenuBarProps) {
         </div>
       )}
 
+      {isReportsSection && (
+        <div className={submenuBarClasses}>
+          <MenuLink level="sub" to="/admin/reports" end>
+            Activity Export
+          </MenuLink>
+          {selectedLocation.gamificationEnabled && (
+            <MenuLink level="sub" to="/admin/reports/badges" end>
+              Badge Report
+            </MenuLink>
+          )}
+        </div>
+      )}
+
       {isSettingsSection && (
         <div className={submenuBarClasses}>
           <MenuLink level="sub" to="/admin/settings" end>
@@ -113,6 +129,9 @@ export default function SubmenuBar({ isSuper }: SubmenuBarProps) {
           </MenuLink>
           <MenuLink level="sub" to="/admin/settings/daily-email" end>
             Daily Email Summary
+          </MenuLink>
+          <MenuLink level="sub" to="/admin/settings/weekly-badge-digest" end>
+            Weekly Badge Digest
           </MenuLink>
         </div>
       )}

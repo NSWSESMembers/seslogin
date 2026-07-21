@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<a8a965d0d7a2adc61ae383ac7a7825be>>
+ * @generated SignedSource<<8d4c37232a2c793d206132763f1a6589>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -10,11 +10,23 @@
 
 import { ConcreteRequest } from 'relay-runtime';
 export type AdminHomeQuery$variables = {
+  includeBadgeLeaderboard: boolean;
   location: string;
   now: number;
 };
 export type AdminHomeQuery$data = {
   readonly location: {
+    readonly badgeLeaderboard?: ReadonlyArray<{
+      readonly badgeCount: number;
+      readonly latestBadgeAwardAt: number;
+      readonly person: {
+        readonly firstName: string;
+        readonly id: string;
+        readonly lastName: string;
+        readonly memberNumber: string | null | undefined;
+      };
+      readonly recentBadgeCount7D: number;
+    }>;
     readonly dashboardSummary: {
       readonly activeMembers24H: number;
       readonly activeMembers30D: number;
@@ -49,33 +61,43 @@ export type AdminHomeQuery = {
 };
 
 const node: ConcreteRequest = (function(){
-var v0 = [
-  {
-    "defaultValue": null,
-    "kind": "LocalArgument",
-    "name": "location"
-  },
-  {
-    "defaultValue": null,
-    "kind": "LocalArgument",
-    "name": "now"
-  }
-],
+var v0 = {
+  "defaultValue": null,
+  "kind": "LocalArgument",
+  "name": "includeBadgeLeaderboard"
+},
 v1 = {
+  "defaultValue": null,
+  "kind": "LocalArgument",
+  "name": "location"
+},
+v2 = {
+  "defaultValue": null,
+  "kind": "LocalArgument",
+  "name": "now"
+},
+v3 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
+  "name": "id",
+  "storageKey": null
+},
+v4 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
   "name": "periodCount",
   "storageKey": null
 },
-v2 = {
+v5 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
   "name": "totalTime",
   "storageKey": null
 },
-v3 = [
+v6 = [
   {
     "alias": null,
     "args": [
@@ -90,13 +112,7 @@ v3 = [
     "name": "location",
     "plural": false,
     "selections": [
-      {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "id",
-        "storageKey": null
-      },
+      (v3/*: any*/),
       {
         "alias": null,
         "args": null,
@@ -210,8 +226,8 @@ v3 = [
                 "name": "dayStart",
                 "storageKey": null
               },
-              (v1/*: any*/),
-              (v2/*: any*/)
+              (v4/*: any*/),
+              (v5/*: any*/)
             ],
             "storageKey": null
           },
@@ -237,13 +253,91 @@ v3 = [
                 "name": "categoryName",
                 "storageKey": null
               },
-              (v1/*: any*/),
-              (v2/*: any*/)
+              (v4/*: any*/),
+              (v5/*: any*/)
             ],
             "storageKey": null
           }
         ],
         "storageKey": null
+      },
+      {
+        "condition": "includeBadgeLeaderboard",
+        "kind": "Condition",
+        "passingValue": true,
+        "selections": [
+          {
+            "alias": null,
+            "args": [
+              {
+                "kind": "Literal",
+                "name": "limit",
+                "value": 8
+              }
+            ],
+            "concreteType": "LocationBadgeLeaderboardEntry",
+            "kind": "LinkedField",
+            "name": "badgeLeaderboard",
+            "plural": true,
+            "selections": [
+              {
+                "alias": null,
+                "args": null,
+                "concreteType": "Person",
+                "kind": "LinkedField",
+                "name": "person",
+                "plural": false,
+                "selections": [
+                  (v3/*: any*/),
+                  {
+                    "alias": null,
+                    "args": null,
+                    "kind": "ScalarField",
+                    "name": "firstName",
+                    "storageKey": null
+                  },
+                  {
+                    "alias": null,
+                    "args": null,
+                    "kind": "ScalarField",
+                    "name": "lastName",
+                    "storageKey": null
+                  },
+                  {
+                    "alias": null,
+                    "args": null,
+                    "kind": "ScalarField",
+                    "name": "memberNumber",
+                    "storageKey": null
+                  }
+                ],
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "badgeCount",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "recentBadgeCount7D",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "latestBadgeAwardAt",
+                "storageKey": null
+              }
+            ],
+            "storageKey": "badgeLeaderboard(limit:8)"
+          }
+        ]
       }
     ],
     "storageKey": null
@@ -251,32 +345,40 @@ v3 = [
 ];
 return {
   "fragment": {
-    "argumentDefinitions": (v0/*: any*/),
+    "argumentDefinitions": [
+      (v0/*: any*/),
+      (v1/*: any*/),
+      (v2/*: any*/)
+    ],
     "kind": "Fragment",
     "metadata": null,
     "name": "AdminHomeQuery",
-    "selections": (v3/*: any*/),
+    "selections": (v6/*: any*/),
     "type": "QueryRoot",
     "abstractKey": null
   },
   "kind": "Request",
   "operation": {
-    "argumentDefinitions": (v0/*: any*/),
+    "argumentDefinitions": [
+      (v1/*: any*/),
+      (v2/*: any*/),
+      (v0/*: any*/)
+    ],
     "kind": "Operation",
     "name": "AdminHomeQuery",
-    "selections": (v3/*: any*/)
+    "selections": (v6/*: any*/)
   },
   "params": {
-    "cacheID": "12571430015fa565ba0c59bd789a7ae5",
+    "cacheID": "d3a22bc3698beece40a08982faec9fa6",
     "id": null,
     "metadata": {},
     "name": "AdminHomeQuery",
     "operationKind": "query",
-    "text": "query AdminHomeQuery(\n  $location: ID!\n  $now: Int!\n) {\n  location(id: $location) {\n    id\n    name\n    dashboardSummary(asOf: $now) {\n      totalMembers\n      activeMembers24H\n      activeMembers30D\n      checkIns24H\n      checkIns7D\n      totalTime7D\n      avgCompletedDuration7D\n      totalKiosks\n      onlineKiosks\n      recentlyActiveKiosks\n      lastSuccessfulMemberSync\n      dailyPeriods7D {\n        dayStart\n        periodCount\n        totalTime\n      }\n      topCategories7D {\n        categoryId\n        categoryName\n        periodCount\n        totalTime\n      }\n    }\n  }\n}\n"
+    "text": "query AdminHomeQuery(\n  $location: ID!\n  $now: Int!\n  $includeBadgeLeaderboard: Boolean!\n) {\n  location(id: $location) {\n    id\n    name\n    dashboardSummary(asOf: $now) {\n      totalMembers\n      activeMembers24H\n      activeMembers30D\n      checkIns24H\n      checkIns7D\n      totalTime7D\n      avgCompletedDuration7D\n      totalKiosks\n      onlineKiosks\n      recentlyActiveKiosks\n      lastSuccessfulMemberSync\n      dailyPeriods7D {\n        dayStart\n        periodCount\n        totalTime\n      }\n      topCategories7D {\n        categoryId\n        categoryName\n        periodCount\n        totalTime\n      }\n    }\n    badgeLeaderboard(limit: 8) @include(if: $includeBadgeLeaderboard) {\n      person {\n        id\n        firstName\n        lastName\n        memberNumber\n      }\n      badgeCount\n      recentBadgeCount7D\n      latestBadgeAwardAt\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "3032b8791ed5cce9d7f2e57d3aeb43af";
+(node as any).hash = "2071ca9f8db90a42ab12849b0a4e931e";
 
 export default node;

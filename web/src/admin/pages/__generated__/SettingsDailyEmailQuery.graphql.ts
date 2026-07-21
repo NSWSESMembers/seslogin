@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<3100977cd6c6206a5da8d439dc8bdf75>>
+ * @generated SignedSource<<5fe80ed998dc3f1d106e885214e8436a>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -12,6 +12,7 @@ import { ConcreteRequest } from 'relay-runtime';
 export type SettingsDailyEmailQuery$variables = Record<PropertyKey, never>;
 export type SettingsDailyEmailQuery$data = {
   readonly user: {
+    readonly badgeWeeklyDigestLocationIds: ReadonlyArray<string>;
     readonly emailSummaryLocationIds: ReadonlyArray<string>;
     readonly id: string;
     readonly locations: ReadonlyArray<{
@@ -48,6 +49,13 @@ v1 = [
         "args": null,
         "kind": "ScalarField",
         "name": "emailSummaryLocationIds",
+        "storageKey": null
+      },
+      {
+        "alias": null,
+        "args": null,
+        "kind": "ScalarField",
+        "name": "badgeWeeklyDigestLocationIds",
         "storageKey": null
       },
       {
@@ -91,16 +99,16 @@ return {
     "selections": (v1/*: any*/)
   },
   "params": {
-    "cacheID": "ca98825c98b88e318a2162f605f3d0ef",
+    "cacheID": "1b921a992ac435c8c51f6f00cd1efce2",
     "id": null,
     "metadata": {},
     "name": "SettingsDailyEmailQuery",
     "operationKind": "query",
-    "text": "query SettingsDailyEmailQuery {\n  user {\n    id\n    emailSummaryLocationIds\n    locations {\n      id\n      name\n    }\n  }\n}\n"
+    "text": "query SettingsDailyEmailQuery {\n  user {\n    id\n    emailSummaryLocationIds\n    badgeWeeklyDigestLocationIds\n    locations {\n      id\n      name\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "231e6ab2cfbe92a6ca89624f17f30777";
+(node as any).hash = "ce010fcf237fd9f86c80bf64de6a4f0a";
 
 export default node;

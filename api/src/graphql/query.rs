@@ -21,6 +21,7 @@ use crate::app::App;
 use crate::app::HasDb;
 use crate::auth;
 use crate::auth::AuthInfo;
+use crate::badges;
 use crate::db;
 use crate::db::Handler;
 use crate::db::ListSessionsQuery;
@@ -29,6 +30,23 @@ use crate::ses_api;
 use super::auth::{AuthGuard, AuthRequirement, require_location_access};
 use super::dataloader::DatabaseLoader;
 use super::{CategoryId, LocationId, NitcEventId, PersonId, SessionId, UserId};
+
+async fn location_name_by_id_for_badges<A: App + HasDb + Send + Sync>(
+    app: &Arc<A>,
+    state: &badges::BadgeState,
+) -> Result<HashMap<String, String>> {
+    let location_ids: Vec<&str> = state.locations.keys().map(String::as_str).collect();
+    if location_ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    let locations = app.db().get_locations(&location_ids).await?;
+    Ok(locations
+        .into_iter()
+        .flatten()
+        .map(|location| (location.id, location.name))
+        .collect())
+}
 
 #[derive(Debug, PartialEq)]
 pub struct User<A: App + HasDb + Send + Sync> {
@@ -92,6 +110,18 @@ impl<A: App + HasDb + Send + Sync + 'static> User<A> {
             .filter_map(|(loc_id, val)| {
                 val.as_object()
                     .filter(|m| m.contains_key("daily"))
+                    .map(|_| loc_id.clone())
+            })
+            .collect()
+    }
+
+    async fn badge_weekly_digest_location_ids(&self) -> Vec<String> {
+        self.rec
+            .email_config
+            .iter()
+            .filter_map(|(loc_id, val)| {
+                val.as_object()
+                    .filter(|m| m.contains_key("weekly_badge"))
                     .map(|_| loc_id.clone())
             })
             .collect()
@@ -211,6 +241,74 @@ pub struct LocationDashboardSummary {
     pub top_categories_7d: Vec<DashboardCategoryPeriodSummary>,
 }
 
+#[derive(Clone, Debug, PartialEq, SimpleObject)]
+pub struct BadgeTierCount {
+    pub tier: String,
+    pub count: i64,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct LocationBadgeLeaderboardEntry<A: App + HasDb + Send + Sync> {
+    _marker: std::marker::PhantomData<A>,
+    person_id: String,
+    badge_count: i64,
+    recent_badge_count_7d: i64,
+    latest_badge_award_at: i64,
+    tier_counts: Vec<BadgeTierCount>,
+}
+
+impl<A: App + HasDb + Send + Sync> LocationBadgeLeaderboardEntry<A> {
+    fn new(
+        person_id: String,
+        badge_count: i64,
+        recent_badge_count_7d: i64,
+        latest_badge_award_at: i64,
+        tier_counts: Vec<BadgeTierCount>,
+    ) -> Self {
+        Self {
+            _marker: Default::default(),
+            person_id,
+            badge_count,
+            recent_badge_count_7d,
+            latest_badge_award_at,
+            tier_counts,
+        }
+    }
+}
+
+#[Object]
+impl<A: App + HasDb + Send + Sync + 'static> LocationBadgeLeaderboardEntry<A> {
+    async fn person_id(&self) -> ID {
+        ID(self.person_id.clone())
+    }
+
+    async fn person(&self, ctx: &Context<'_>) -> Result<Person<A>> {
+        let loader = ctx.data_unchecked::<DataLoader<DatabaseLoader<A>>>();
+        loader
+            .load_one(PersonId(ID(self.person_id.clone())))
+            .await
+            .map_err(|e| anyhow!("Failed to load person via DataLoader: {}", e))?
+            .flatten()
+            .ok_or_else(|| anyhow!("Person with ID {} missing", self.person_id))
+    }
+
+    async fn badge_count(&self) -> i64 {
+        self.badge_count
+    }
+
+    async fn recent_badge_count_7d(&self) -> i64 {
+        self.recent_badge_count_7d
+    }
+
+    async fn latest_badge_award_at(&self) -> i64 {
+        self.latest_badge_award_at
+    }
+
+    async fn tier_counts(&self) -> Vec<BadgeTierCount> {
+        self.tier_counts.clone()
+    }
+}
+
 #[derive(Debug, PartialEq)]
 pub struct Category<A: App + HasDb + 'static> {
     _marker: std::marker::PhantomData<A>,
@@ -293,6 +391,38 @@ impl<A: App + HasDb + Send + Sync> Clone for Person<A> {
     }
 }
 
+#[derive(SimpleObject, Clone, Debug)]
+pub struct PersonBadge {
+    /// Globally unique per (person, badge) pair; use `badge_id` for the badge type.
+    pub id: String,
+    pub badge_id: String,
+    pub name: String,
+    pub description: String,
+    pub tier: String,
+    pub icon: String,
+    pub awarded_at: i64,
+}
+
+#[derive(SimpleObject, Clone, Debug)]
+pub struct PersonBadgeProgress {
+    /// Globally unique per (person, badge) pair; use `badge_id` for the badge type.
+    pub id: String,
+    pub badge_id: String,
+    pub name: String,
+    pub description: String,
+    pub tier: String,
+    pub icon: String,
+    pub source: String,
+    pub earned: bool,
+    pub awarded_at: Option<i64>,
+    /// Current progress toward `target`, when this badge's rule tracks a
+    /// countable metric. Null when the badge has no meaningful running total
+    /// (e.g. manual/nightly-awarded and fixed-date badges) — the client
+    /// should show a plain locked/earned state instead of a progress bar.
+    pub current: Option<i64>,
+    pub target: Option<i64>,
+}
+
 #[Object]
 impl<A: App + HasDb + Send + Sync> Person<A> {
     async fn id(&self) -> ID {
@@ -338,6 +468,90 @@ impl<A: App + HasDb + Send + Sync> Person<A> {
 
     async fn updated_at(&self) -> Option<i64> {
         self.rec.updated_at.map(|t| t as i64)
+    }
+
+    /// Earned badges for this person across all locations.
+    ///
+    /// `location_id` is used only for access control.
+    async fn badges(&self, ctx: &Context<'_>, location_id: ID) -> Result<Vec<PersonBadge>> {
+        require_location_access(ctx, &location_id)?;
+        let app = ctx.data_unchecked::<Arc<A>>();
+        let state = badges::state_from_map(&self.rec.badge_state);
+        let location_name_by_id = location_name_by_id_for_badges(app, &state).await?;
+        let awards = badges::awards_all_locations(&state);
+        Ok(awards
+            .into_iter()
+            .map(|a| {
+                let badge_id = a.badge.id.clone();
+                let (name, description) = if let Some(dynamic_location_id) =
+                    badges::first_signin_badge_location_id(&badge_id)
+                {
+                    if let Some(location_name) = location_name_by_id.get(dynamic_location_id) {
+                        (location_name.clone(), format!("Visited {}", location_name))
+                    } else {
+                        (a.badge.name, a.badge.description)
+                    }
+                } else {
+                    (a.badge.name, a.badge.description)
+                };
+
+                PersonBadge {
+                    id: format!("PersonBadge:{}:{}", self.rec.id, badge_id),
+                    badge_id,
+                    name,
+                    description,
+                    tier: a.badge.tier,
+                    icon: a.badge.icon,
+                    awarded_at: a.awarded_at as i64,
+                }
+            })
+            .collect())
+    }
+
+    /// Full badge catalog with earned status for this person across all
+    /// locations.
+    ///
+    /// `location_id` is used only for access control.
+    async fn badge_progress(
+        &self,
+        ctx: &Context<'_>,
+        location_id: ID,
+    ) -> Result<Vec<PersonBadgeProgress>> {
+        require_location_access(ctx, &location_id)?;
+        let app = ctx.data_unchecked::<Arc<A>>();
+        let state = badges::state_from_map(&self.rec.badge_state);
+        let location_name_by_id = location_name_by_id_for_badges(app, &state).await?;
+        Ok(badges::progress_all_locations(&state)
+            .into_iter()
+            .map(|progress| {
+                let badge_id = progress.badge.id.clone();
+                let (name, description) = if let Some(dynamic_location_id) =
+                    badges::first_signin_badge_location_id(&badge_id)
+                {
+                    if let Some(location_name) = location_name_by_id.get(dynamic_location_id) {
+                        (location_name.clone(), format!("Visited {}", location_name))
+                    } else {
+                        (progress.badge.name, progress.badge.description)
+                    }
+                } else {
+                    (progress.badge.name, progress.badge.description)
+                };
+
+                PersonBadgeProgress {
+                    id: format!("PersonBadgeProgress:{}:{}", self.rec.id, badge_id),
+                    badge_id,
+                    name,
+                    description,
+                    tier: progress.badge.tier,
+                    icon: progress.badge.icon,
+                    source: progress.source,
+                    earned: progress.earned,
+                    awarded_at: progress.awarded_at.map(|t| t as i64),
+                    current: progress.current.map(|c| c as i64),
+                    target: progress.target.map(|t| t as i64),
+                }
+            })
+            .collect())
     }
 
     async fn periods<'ctx>(
@@ -885,6 +1099,10 @@ impl<A: App + HasDb + Send + Sync> Location<A> {
 
     async fn nitc_enabled(&self) -> Option<i64> {
         self.rec.nitc_enabled.map(|ts| ts as i64)
+    }
+
+    async fn gamification_enabled(&self) -> bool {
+        self.rec.gamification_enabled
     }
 
     async fn ses_api_headquarters_id(&self) -> Option<String> {
@@ -1534,6 +1752,93 @@ impl<A: App + HasDb + Send + Sync> Location<A> {
             daily_periods_7d,
             top_categories_7d,
         })
+    }
+
+    async fn badge_leaderboard(
+        &self,
+        ctx: &Context<'_>,
+        limit: Option<i32>,
+    ) -> Result<Vec<LocationBadgeLeaderboardEntry<A>>> {
+        require_location_access(ctx, &self.rec.id)?;
+
+        let as_of_ts = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|_| anyhow!("system clock is before unix epoch"))?
+            .as_secs();
+        let recent_cutoff = as_of_ts.saturating_sub(SEVEN_DAYS_SECONDS);
+
+        let requested_limit = limit.unwrap_or(10);
+        if requested_limit <= 0 {
+            return Err(anyhow!("limit must be positive"));
+        }
+        let limit_usize = usize::try_from(requested_limit)
+            .map_err(|_| anyhow!("limit must be a positive integer"))?;
+
+        let app = ctx.data_unchecked::<Arc<A>>();
+        let people = app
+            .db()
+            .list_people_for_location(&self.rec.id, true)
+            .await
+            .map_err(|e| {
+                warn!("db error: {:?}", e);
+                e
+            })?;
+
+        let mut leaderboard: Vec<LocationBadgeLeaderboardEntry<A>> = people
+            .into_iter()
+            .filter_map(|person| {
+                let state = badges::state_from_map(&person.badge_state);
+                let awards = badges::awards_in_range(&state, &self.rec.id, 0, as_of_ts);
+                if awards.is_empty() {
+                    return None;
+                }
+
+                let badge_count = i64::try_from(awards.len()).ok()?;
+                let recent_badge_count_7d = i64::try_from(
+                    awards
+                        .iter()
+                        .filter(|award| award.awarded_at >= recent_cutoff)
+                        .count(),
+                )
+                .ok()?;
+                let latest_badge_award_at = i64::try_from(
+                    awards
+                        .iter()
+                        .map(|award| award.awarded_at)
+                        .max()
+                        .unwrap_or(0),
+                )
+                .ok()?;
+
+                let mut tier_totals: HashMap<String, i64> = HashMap::new();
+                for award in &awards {
+                    *tier_totals.entry(award.badge.tier.clone()).or_insert(0) += 1;
+                }
+                let tier_counts = tier_totals
+                    .into_iter()
+                    .map(|(tier, count)| BadgeTierCount { tier, count })
+                    .collect();
+
+                Some(LocationBadgeLeaderboardEntry::new(
+                    person.id,
+                    badge_count,
+                    recent_badge_count_7d,
+                    latest_badge_award_at,
+                    tier_counts,
+                ))
+            })
+            .collect();
+
+        leaderboard.sort_by(|a, b| {
+            b.badge_count
+                .cmp(&a.badge_count)
+                .then_with(|| b.recent_badge_count_7d.cmp(&a.recent_badge_count_7d))
+                .then_with(|| b.latest_badge_award_at.cmp(&a.latest_badge_award_at))
+                .then_with(|| a.person_id.cmp(&b.person_id))
+        });
+        leaderboard.truncate(limit_usize.min(100));
+
+        Ok(leaderboard)
     }
 }
 

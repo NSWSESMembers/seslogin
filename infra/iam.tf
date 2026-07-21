@@ -294,6 +294,72 @@ resource "aws_iam_role_policy" "scheduler_invoke_activity_summary" {
   })
 }
 
+# ── Badge digest lambda role ─────────────────────────────────────────────────
+
+resource "aws_iam_role" "badge_digest_lambda" {
+  name               = "seslogin-badge-digest-lambda-role"
+  assume_role_policy = data.aws_iam_policy_document.lambda_assume_role.json
+}
+
+resource "aws_iam_role_policy_attachment" "badge_digest_lambda_logs" {
+  role       = aws_iam_role.badge_digest_lambda.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+}
+
+resource "aws_iam_role_policy" "badge_digest_lambda_ses" {
+  name = "ses-send"
+  role = aws_iam_role.badge_digest_lambda.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["ses:SendEmail", "ses:SendRawEmail"]
+      Resource = "*"
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "scheduler_invoke_badge_digest" {
+  name = "invoke-badge-digest"
+  role = aws_iam_role.scheduler.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["lambda:InvokeFunction"]
+      Resource = aws_lambda_function.badge_digest.arn
+    }]
+  })
+}
+
+# ── Badge nightly lambda role ────────────────────────────────────────────────
+
+resource "aws_iam_role" "badge_nightly_lambda" {
+  name               = "seslogin-badge-nightly-lambda-role"
+  assume_role_policy = data.aws_iam_policy_document.lambda_assume_role.json
+}
+
+resource "aws_iam_role_policy_attachment" "badge_nightly_lambda_logs" {
+  role       = aws_iam_role.badge_nightly_lambda.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+}
+
+resource "aws_iam_role_policy" "scheduler_invoke_badge_nightly" {
+  name = "invoke-badge-nightly"
+  role = aws_iam_role.scheduler.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["lambda:InvokeFunction"]
+      Resource = aws_lambda_function.badge_nightly.arn
+    }]
+  })
+}
+
 # ── Sync locations lambda role ─────────────────────────────────────────────────
 
 resource "aws_iam_role" "sync_locations_lambda" {

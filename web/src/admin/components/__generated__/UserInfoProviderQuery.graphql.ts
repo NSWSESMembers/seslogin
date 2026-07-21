@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<73d9ec063f5a6b196421cf1ae581c655>>
+ * @generated SignedSource<<4522a638aeed677949d1cc6086ace5fa>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -18,6 +18,7 @@ export type UserInfoProviderQuery$data = {
     readonly isSuper: boolean;
     readonly locations: ReadonlyArray<{
       readonly enabled: boolean;
+      readonly gamificationEnabled: boolean;
       readonly id: string;
       readonly name: string;
     }>;
@@ -89,6 +90,13 @@ v1 = [
             "kind": "ScalarField",
             "name": "enabled",
             "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "gamificationEnabled",
+            "storageKey": null
           }
         ],
         "storageKey": null
@@ -115,16 +123,16 @@ return {
     "selections": (v1/*: any*/)
   },
   "params": {
-    "cacheID": "2fd93edaca32df1a110f3bd9f94ba1eb",
+    "cacheID": "357a59faede1a43fd940da8a2d264dd0",
     "id": null,
     "metadata": {},
     "name": "UserInfoProviderQuery",
     "operationKind": "query",
-    "text": "query UserInfoProviderQuery {\n  user {\n    id\n    email\n    isSuper\n    isDev\n    locations {\n      id\n      name\n      enabled\n    }\n  }\n}\n"
+    "text": "query UserInfoProviderQuery {\n  user {\n    id\n    email\n    isSuper\n    isDev\n    locations {\n      id\n      name\n      enabled\n      gamificationEnabled\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "f1286e78b81fe912eb009d80e4d58383";
+(node as any).hash = "fb3104f35bafbabf683a8fc443dfc29e";
 
 export default node;

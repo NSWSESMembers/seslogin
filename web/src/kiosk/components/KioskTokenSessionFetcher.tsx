@@ -19,6 +19,7 @@ const kioskRefreshQuery = graphql`
       location {
         id
         name
+        gamificationEnabled
       }
     }
   }
@@ -84,6 +85,8 @@ export default function startKioskTokenSessionFetcher({
               location: {
                 id: response.session.location.id,
                 name: response.session.location.name,
+                gamificationEnabled:
+                  response.session.location.gamificationEnabled,
               },
             }
           : null;

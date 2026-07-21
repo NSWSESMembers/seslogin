@@ -10,6 +10,19 @@ type ApiToken {
 	lastUsedAt: Int
 }
 
+type BadgeAward {
+	id: String!
+	name: String!
+	description: String!
+	tier: String!
+	icon: String!
+}
+
+type BadgeTierCount {
+	tier: String!
+	count: Int!
+}
+
 type Category {
 	id: ID!
 	name: String!
@@ -74,6 +87,7 @@ type Location {
 	name: String!
 	enabled: Boolean!
 	nitcEnabled: Int
+	gamificationEnabled: Boolean!
 	sesApiHeadquartersId: String
 	lastSuccessfulMemberSync: Int
 	createdAt: Int!
@@ -87,6 +101,16 @@ type Location {
 	periodSummaryByDayByCategoryByMember(startTime: Int!, endTime: Int!): [DayCategoryPeriodSummary!]!
 	sessions: [Session!]!
 	dashboardSummary(asOf: Int): LocationDashboardSummary!
+	badgeLeaderboard(limit: Int): [LocationBadgeLeaderboardEntry!]!
+}
+
+type LocationBadgeLeaderboardEntry {
+	personId: ID!
+	person: Person!
+	badgeCount: Int!
+	recentBadgeCount7D: Int!
+	latestBadgeAwardAt: Int!
+	tierCounts: [BadgeTierCount!]!
 }
 
 type LocationDashboardSummary {
@@ -170,16 +194,16 @@ type MutationRoot {
 	updateSession(id: ID!, name: String!, config: String, healthcheckUrl: String): Session!
 	deleteSession(id: ID!): Boolean!
 	createLocation(name: String!, nitcEnabled: Int): Location!
-	updateLocation(id: ID!, name: String!, enabled: Boolean!, nitcEnabled: Int): Location!
+	updateLocation(id: ID!, name: String!, enabled: Boolean!, nitcEnabled: Int, gamificationEnabled: Boolean): Location!
 	createCategory(name: String!, nitcGroupId: String, nitcParticipantType: String): Category!
 	updateCategory(id: ID!, name: String!, enabled: Boolean!, nitcGroupId: String, nitcParticipantType: String): Category!
 	createNitcGroup(id: String, nitcType: String!, nitcTagIds: [Int!]!): NitcGroup!
 	updateNitcGroup(id: ID!, nitcType: String!, nitcTagIds: [Int!]!): NitcGroup!
 	deleteNitcGroup(id: ID!): Boolean!
 	scanRegister2(memberNumber: String!): RegisterResult!
-	scanSignOut(id: ID!, startTime: Int!, endTime: Int!, categoryId: ID!): Period!
+	scanSignOut(id: ID!, startTime: Int!, endTime: Int!, categoryId: ID!): ScanSignOutResult!
 	enqueueMemberSync(locationId: ID!): Boolean!
-	updateMyEmailConfig(dailyLocationIds: [String!]!): User!
+	updateMyEmailConfig(dailyLocationIds: [String!]!, weeklyBadgeLocationIds: [String!]!): User!
 	"""
 	Start passkey registration for the authenticated user.
 	Returns a JSON challenge to pass to the browser's WebAuthn API.
@@ -353,11 +377,60 @@ type Person {
 	deleted: Boolean!
 	createdAt: Int
 	updatedAt: Int
+	"""
+	Earned badges for this person across all locations.
+	
+	`location_id` is used only for access control.
+	"""
+	badges(locationId: ID!): [PersonBadge!]!
+	"""
+	Full badge catalog with earned status for this person across all
+	locations.
+	
+	`location_id` is used only for access control.
+	"""
+	badgeProgress(locationId: ID!): [PersonBadgeProgress!]!
 	periods(after: String, before: String, first: Int, last: Int): PeriodConnection!
 	"""
 	The person's most recent period (by start time), or null if they have none.
 	"""
 	lastPeriod: Period
+}
+
+type PersonBadge {
+	"""
+	Globally unique per (person, badge) pair; use `badge_id` for the badge type.
+	"""
+	id: String!
+	badgeId: String!
+	name: String!
+	description: String!
+	tier: String!
+	icon: String!
+	awardedAt: Int!
+}
+
+type PersonBadgeProgress {
+	"""
+	Globally unique per (person, badge) pair; use `badge_id` for the badge type.
+	"""
+	id: String!
+	badgeId: String!
+	name: String!
+	description: String!
+	tier: String!
+	icon: String!
+	source: String!
+	earned: Boolean!
+	awardedAt: Int
+	"""
+	Current progress toward `target`, when this badge's rule tracks a
+	countable metric. Null when the badge has no meaningful running total
+	(e.g. manual/nightly-awarded and fixed-date badges) — the client
+	should show a plain locked/earned state instead of a progress bar.
+	"""
+	current: Int
+	target: Int
 }
 
 """
@@ -446,12 +519,18 @@ type QueryRoot {
 type RegisterResult {
 	state: RegisterState!
 	period: Period
+	awardedBadges: [BadgeAward!]!
 }
 
 enum RegisterState {
 	NOT_FOUND
 	SIGNED_IN
 	SIGN_OUT_PENDING
+}
+
+type ScanSignOutResult {
+	period: Period!
+	awardedBadges: [BadgeAward!]!
 }
 
 type SesHeadquarters {
@@ -499,6 +578,7 @@ type User {
 	createdAt: Int!
 	updatedAt: Int!
 	emailSummaryLocationIds: [String!]!
+	badgeWeeklyDigestLocationIds: [String!]!
 	locationGrantIds: [ID!]!
 	locations: [Location!]!
 	passkeys: [PasskeyInfo!]!

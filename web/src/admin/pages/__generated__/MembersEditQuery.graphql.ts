@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<de38d0e13c87986ee6474f66da88110f>>
+ * @generated SignedSource<<457323ec1d1c6e3c06689bf156d6661c>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -11,9 +11,22 @@
 import { ConcreteRequest } from 'relay-runtime';
 export type MembersEditQuery$variables = {
   id: string;
+  locationId: string;
 };
 export type MembersEditQuery$data = {
   readonly person: {
+    readonly badgeProgress: ReadonlyArray<{
+      readonly awardedAt: number | null | undefined;
+      readonly badgeId: string;
+      readonly current: number | null | undefined;
+      readonly description: string;
+      readonly earned: boolean;
+      readonly id: string;
+      readonly name: string;
+      readonly source: string;
+      readonly target: number | null | undefined;
+      readonly tier: string;
+    }>;
     readonly firstName: string;
     readonly id: string;
     readonly lastName: string;
@@ -31,9 +44,21 @@ var v0 = [
     "defaultValue": null,
     "kind": "LocalArgument",
     "name": "id"
+  },
+  {
+    "defaultValue": null,
+    "kind": "LocalArgument",
+    "name": "locationId"
   }
 ],
-v1 = [
+v1 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
+  "name": "id",
+  "storageKey": null
+},
+v2 = [
   {
     "alias": null,
     "args": [
@@ -48,13 +73,7 @@ v1 = [
     "name": "person",
     "plural": false,
     "selections": [
-      {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "id",
-        "storageKey": null
-      },
+      (v1/*: any*/),
       {
         "alias": null,
         "args": null,
@@ -75,6 +94,87 @@ v1 = [
         "kind": "ScalarField",
         "name": "memberNumber",
         "storageKey": null
+      },
+      {
+        "alias": null,
+        "args": [
+          {
+            "kind": "Variable",
+            "name": "locationId",
+            "variableName": "locationId"
+          }
+        ],
+        "concreteType": "PersonBadgeProgress",
+        "kind": "LinkedField",
+        "name": "badgeProgress",
+        "plural": true,
+        "selections": [
+          (v1/*: any*/),
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "badgeId",
+            "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "name",
+            "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "description",
+            "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "tier",
+            "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "source",
+            "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "earned",
+            "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "awardedAt",
+            "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "current",
+            "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "target",
+            "storageKey": null
+          }
+        ],
+        "storageKey": null
       }
     ],
     "storageKey": null
@@ -86,7 +186,7 @@ return {
     "kind": "Fragment",
     "metadata": null,
     "name": "MembersEditQuery",
-    "selections": (v1/*: any*/),
+    "selections": (v2/*: any*/),
     "type": "QueryRoot",
     "abstractKey": null
   },
@@ -95,19 +195,19 @@ return {
     "argumentDefinitions": (v0/*: any*/),
     "kind": "Operation",
     "name": "MembersEditQuery",
-    "selections": (v1/*: any*/)
+    "selections": (v2/*: any*/)
   },
   "params": {
-    "cacheID": "bbadf1b6170b7ac1f1c459a666a5e986",
+    "cacheID": "e36fdf41d5c3ec250f5adf88bd6e7960",
     "id": null,
     "metadata": {},
     "name": "MembersEditQuery",
     "operationKind": "query",
-    "text": "query MembersEditQuery(\n  $id: ID!\n) {\n  person(id: $id) {\n    id\n    firstName\n    lastName\n    memberNumber\n  }\n}\n"
+    "text": "query MembersEditQuery(\n  $id: ID!\n  $locationId: ID!\n) {\n  person(id: $id) {\n    id\n    firstName\n    lastName\n    memberNumber\n    badgeProgress(locationId: $locationId) {\n      id\n      badgeId\n      name\n      description\n      tier\n      source\n      earned\n      awardedAt\n      current\n      target\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "a60f75541008ef2100d2a2c765a883e4";
+(node as any).hash = "1b11f18442c457b4b2577abbeb98dd84";
 
 export default node;

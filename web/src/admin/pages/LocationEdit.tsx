@@ -21,6 +21,7 @@ export default function EditLocation() {
           name
           enabled
           nitcEnabled
+          gamificationEnabled
         }
       }
     `,
@@ -34,17 +35,20 @@ export default function EditLocation() {
         $name: String!
         $enabled: Boolean!
         $nitcEnabled: Int
+        $gamificationEnabled: Boolean
       ) {
         updateLocation(
           id: $id
           name: $name
           enabled: $enabled
           nitcEnabled: $nitcEnabled
+          gamificationEnabled: $gamificationEnabled
         ) {
           id
           name
           enabled
           nitcEnabled
+          gamificationEnabled
         }
       }
     `);
@@ -54,6 +58,7 @@ export default function EditLocation() {
   async function handleSubmit(formData: FormData) {
     const name = formData.get("name")?.toString() || "";
     const enabled = formData.get("enabled") === "on";
+    const gamificationEnabled = formData.get("gamificationEnabled") === "on";
     const nitcEnabledDate = formData.get("nitcEnabled")?.toString() || "";
     const nitcEnabled = nitcEnabledDate
       ? Math.floor(new Date(nitcEnabledDate + "T00:00:00Z").getTime() / 1000)
@@ -62,7 +67,13 @@ export default function EditLocation() {
     try {
       await new Promise((resolve, reject) => {
         commitMutation({
-          variables: { id: location.id, name, enabled, nitcEnabled },
+          variables: {
+            id: location.id,
+            name,
+            enabled,
+            nitcEnabled,
+            gamificationEnabled,
+          },
           onCompleted: resolve,
           onError: reject,
           updater: (store) => {
@@ -101,6 +112,18 @@ export default function EditLocation() {
               name="enabled"
               id="enabled"
               defaultChecked={location.enabled}
+            />
+          </FormField>
+          <FormField
+            label={
+              <label htmlFor="gamificationEnabled">Gamification Enabled</label>
+            }
+          >
+            <input
+              type="checkbox"
+              name="gamificationEnabled"
+              id="gamificationEnabled"
+              defaultChecked={location.gamificationEnabled}
             />
           </FormField>
           <FormField
