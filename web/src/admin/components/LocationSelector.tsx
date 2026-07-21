@@ -4,6 +4,7 @@ import { useSettings, useSettingsDispatch } from "../../lib/settings";
 import { useUserInfo } from "./useUserInfo";
 import { getLocationById, getSelectedLocationId } from "./useSelectedLocation";
 import TextInput from "../../components/ui/TextInput";
+import { OptionList, OptionButtonRow } from "../../components/ui/OptionList";
 
 interface LocationSelectorProps {
   children?: ReactNode;
@@ -85,20 +86,18 @@ export default function LocationSelector({ children }: LocationSelectorProps) {
                 No locations match “{filter}”.
               </p>
             ) : (
-              <ul className="m-0 list-none p-0">
+              <OptionList>
                 {filteredLocations.map((location) => (
-                  <li key={location.id} className="mb-3">
-                    <button
-                      onClick={() => handleSelectLocation(location.id)}
-                      className="w-full cursor-pointer rounded-md border-2 border-line bg-surface-raised p-4 text-left transition-colors hover:border-menu hover:bg-brand/5 focus:border-menu focus:ring-2 focus:ring-menu/25 focus:outline-none"
-                    >
-                      <span className="font-title text-lg font-medium text-ink">
-                        {location.name}
-                      </span>
-                    </button>
-                  </li>
+                  <OptionButtonRow
+                    key={location.id}
+                    onClick={() => handleSelectLocation(location.id)}
+                  >
+                    <span className="font-title text-lg font-medium text-ink">
+                      {location.name}
+                    </span>
+                  </OptionButtonRow>
                 ))}
-              </ul>
+              </OptionList>
             )}
           </>
         )}
