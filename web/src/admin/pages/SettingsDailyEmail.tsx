@@ -13,6 +13,7 @@ export default function SettingsDailyEmail() {
         user {
           id
           emailSummaryLocationIds
+          badgeWeeklyDigestLocationIds
           locations {
             id
             name
@@ -26,10 +27,17 @@ export default function SettingsDailyEmail() {
 
   const [commitMutation, isMutationInFlight] =
     useMutation<SettingsDailyEmailMutation>(graphql`
-      mutation SettingsDailyEmailMutation($dailyLocationIds: [String!]!) {
-        updateMyEmailConfig(dailyLocationIds: $dailyLocationIds) {
+      mutation SettingsDailyEmailMutation(
+        $dailyLocationIds: [String!]!
+        $weeklyBadgeLocationIds: [String!]!
+      ) {
+        updateMyEmailConfig(
+          dailyLocationIds: $dailyLocationIds
+          weeklyBadgeLocationIds: $weeklyBadgeLocationIds
+        ) {
           id
           emailSummaryLocationIds
+          badgeWeeklyDigestLocationIds
         }
       }
     `);
@@ -49,7 +57,10 @@ export default function SettingsDailyEmail() {
     try {
       await new Promise<void>((resolve, reject) => {
         commitMutation({
-          variables: { dailyLocationIds: Array.from(selectedLocations) },
+          variables: {
+            dailyLocationIds: Array.from(selectedLocations),
+            weeklyBadgeLocationIds: user.badgeWeeklyDigestLocationIds,
+          },
           onCompleted: () => resolve(),
           onError: reject,
           updater: (store) => {

@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<8fd8db583fb2a15163d40714d10d9c80>>
+ * @generated SignedSource<<9de89a479679248f866881251420b483>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -11,9 +11,11 @@
 import { ConcreteRequest } from 'relay-runtime';
 export type SettingsDailyEmailMutation$variables = {
   dailyLocationIds: ReadonlyArray<string>;
+  weeklyBadgeLocationIds: ReadonlyArray<string>;
 };
 export type SettingsDailyEmailMutation$data = {
   readonly updateMyEmailConfig: {
+    readonly badgeWeeklyDigestLocationIds: ReadonlyArray<string>;
     readonly emailSummaryLocationIds: ReadonlyArray<string>;
     readonly id: string;
   };
@@ -29,6 +31,11 @@ var v0 = [
     "defaultValue": null,
     "kind": "LocalArgument",
     "name": "dailyLocationIds"
+  },
+  {
+    "defaultValue": null,
+    "kind": "LocalArgument",
+    "name": "weeklyBadgeLocationIds"
   }
 ],
 v1 = [
@@ -39,6 +46,11 @@ v1 = [
         "kind": "Variable",
         "name": "dailyLocationIds",
         "variableName": "dailyLocationIds"
+      },
+      {
+        "kind": "Variable",
+        "name": "weeklyBadgeLocationIds",
+        "variableName": "weeklyBadgeLocationIds"
       }
     ],
     "concreteType": "User",
@@ -58,6 +70,13 @@ v1 = [
         "args": null,
         "kind": "ScalarField",
         "name": "emailSummaryLocationIds",
+        "storageKey": null
+      },
+      {
+        "alias": null,
+        "args": null,
+        "kind": "ScalarField",
+        "name": "badgeWeeklyDigestLocationIds",
         "storageKey": null
       }
     ],
@@ -82,16 +101,16 @@ return {
     "selections": (v1/*: any*/)
   },
   "params": {
-    "cacheID": "d462b0b2a92bdf79f4ae8dc1b127fe0f",
+    "cacheID": "8ef519ae8f3766f6514ffe5b025763a2",
     "id": null,
     "metadata": {},
     "name": "SettingsDailyEmailMutation",
     "operationKind": "mutation",
-    "text": "mutation SettingsDailyEmailMutation(\n  $dailyLocationIds: [String!]!\n) {\n  updateMyEmailConfig(dailyLocationIds: $dailyLocationIds) {\n    id\n    emailSummaryLocationIds\n  }\n}\n"
+    "text": "mutation SettingsDailyEmailMutation(\n  $dailyLocationIds: [String!]!\n  $weeklyBadgeLocationIds: [String!]!\n) {\n  updateMyEmailConfig(dailyLocationIds: $dailyLocationIds, weeklyBadgeLocationIds: $weeklyBadgeLocationIds) {\n    id\n    emailSummaryLocationIds\n    badgeWeeklyDigestLocationIds\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "101b3c960ec9c355e04d7bee7e49ae6c";
+(node as any).hash = "7bdd87c6ea0cae4e43b35a3c3d8b38fe";
 
 export default node;

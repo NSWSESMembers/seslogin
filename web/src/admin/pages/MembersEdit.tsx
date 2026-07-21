@@ -7,6 +7,34 @@ import { useNotify } from "../components/useNotify";
 import { FieldList, FormField } from "../../components/ui/FormField";
 import TextInput from "../../components/ui/TextInput";
 import { Button } from "../../components/ui/Button";
+import MemberBadgeProgressPanel from "../components/MemberBadgeProgressPanel";
+
+// badgeProgress is rendered by MemberBadgeProgressPanel, which is outside this
+// query file, so Relay cannot see the field usage here.
+/* eslint-disable relay/unused-fields */
+const membersEditQuery = graphql`
+  query MembersEditQuery($id: ID!, $locationId: ID!) {
+    person(id: $id) {
+      id
+      firstName
+      lastName
+      memberNumber
+      badgeProgress(locationId: $locationId) {
+        id
+        badgeId
+        name
+        description
+        tier
+        source
+        earned
+        awardedAt
+        current
+        target
+      }
+    }
+  }
+`;
+/* eslint-enable relay/unused-fields */
 
 export default function MembersEdit() {
   const params = useParams();
@@ -14,19 +42,10 @@ export default function MembersEdit() {
   const { notifyError, notifySuccess } = useNotify();
   const selectedLocation = useSelectedLocation();
   const locationId = selectedLocation.id;
-  const data = useLazyLoadQuery<MembersEditQuery>(
-    graphql`
-      query MembersEditQuery($id: ID!) {
-        person(id: $id) {
-          id
-          firstName
-          lastName
-          memberNumber
-        }
-      }
-    `,
-    { id: params.memberId! },
-  );
+  const data = useLazyLoadQuery<MembersEditQuery>(membersEditQuery, {
+    id: params.memberId!,
+    locationId,
+  });
 
   const [commitMutation, isMutationInFlight] = useMutation<MembersEditMutation>(
     graphql`
@@ -119,6 +138,11 @@ export default function MembersEdit() {
           </FormField>
         </FieldList>
       </form>
+
+      <MemberBadgeProgressPanel
+        heading="Badge Progress"
+        badgeProgress={person.badgeProgress}
+      />
     </>
   );
 }

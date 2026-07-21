@@ -1,22 +1,28 @@
 {
-  "editor.detectIndentation": false,
-  "[javascript][typescript][javascriptreact][typescriptreact]": {
-    "editor.tabSize": 2,
-    "editor.defaultFormatter": "esbenp.prettier-vscode"
-  },
-  "editor.formatOnSave": true,
-  "[python]": {
-    "editor.defaultFormatter": "ms-python.black-formatter",
+    "editor.detectIndentation": false,
+    "[javascript][typescript][javascriptreact][typescriptreact]": {
+        "editor.tabSize": 2,
+        "editor.defaultFormatter": "esbenp.prettier-vscode"
+    },
     "editor.formatOnSave": true,
-    "editor.codeActionsOnSave": {
-      "source.organizeImports": "explicit"
+    "[python]": {
+        "editor.defaultFormatter": "ms-python.black-formatter",
+        "editor.formatOnSave": true,
+        "editor.codeActionsOnSave": {
+            "source.organizeImports": "explicit"
+        }
+    },
+    "isort.args": [
+        "--profile",
+        "black"
+    ],
+    "rust-analyzer.check.command": "clippy",
+    "makefile.configureOnOpen": false,
+    "chat.tools.terminal.autoApprove": {
+        "cargo build": true,
+        "cargo test": true,
+        "npm run build": true,
+        "npm run relay": true,
+        "make": true
     }
-  },
-  "isort.args": ["--profile", "black"],
-  "rust-analyzer.check.command": "clippy",
-  "makefile.configureOnOpen": false,
-  "chat.tools.terminal.autoApprove": {
-    "cargo build": true,
-    "cargo test": true
-  }
 }

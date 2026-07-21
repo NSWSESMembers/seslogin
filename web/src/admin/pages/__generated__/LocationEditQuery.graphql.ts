@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<b530efff062b8f2985540b4d19fd74c2>>
+ * @generated SignedSource<<d7c8248d6f1e386b4a769e93c34424f3>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -15,6 +15,7 @@ export type LocationEditQuery$variables = {
 export type LocationEditQuery$data = {
   readonly location: {
     readonly enabled: boolean;
+    readonly gamificationEnabled: boolean;
     readonly id: string;
     readonly name: string;
     readonly nitcEnabled: number | null | undefined;
@@ -75,6 +76,13 @@ v1 = [
         "kind": "ScalarField",
         "name": "nitcEnabled",
         "storageKey": null
+      },
+      {
+        "alias": null,
+        "args": null,
+        "kind": "ScalarField",
+        "name": "gamificationEnabled",
+        "storageKey": null
       }
     ],
     "storageKey": null
@@ -98,16 +106,16 @@ return {
     "selections": (v1/*: any*/)
   },
   "params": {
-    "cacheID": "d8474176f6cb8dd463207e59da472e44",
+    "cacheID": "e3226633d4dd8367639a74b5fe011fdc",
     "id": null,
     "metadata": {},
     "name": "LocationEditQuery",
     "operationKind": "query",
-    "text": "query LocationEditQuery(\n  $id: ID!\n) {\n  location(id: $id) {\n    id\n    name\n    enabled\n    nitcEnabled\n  }\n}\n"
+    "text": "query LocationEditQuery(\n  $id: ID!\n) {\n  location(id: $id) {\n    id\n    name\n    enabled\n    nitcEnabled\n    gamificationEnabled\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "03ac8efb742dbf778d80e2057ee8f057";
+(node as any).hash = "ac36e942e7ac7792e3dee0b805b02b6b";
 
 export default node;

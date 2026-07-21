@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<194484e1dc00f6ef8294a3090a61954d>>
+ * @generated SignedSource<<980f7fc178c8244b78824ea123ada794>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -16,6 +16,7 @@ export type KioskTokenSessionFetcherQuery$data = {
     readonly config: any;
     readonly id: string;
     readonly location: {
+      readonly gamificationEnabled: boolean;
       readonly id: string;
       readonly name: string;
     };
@@ -76,7 +77,14 @@ v2 = [
         "plural": false,
         "selections": [
           (v0/*: any*/),
-          (v1/*: any*/)
+          (v1/*: any*/),
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "gamificationEnabled",
+            "storageKey": null
+          }
         ],
         "storageKey": null
       }
@@ -102,16 +110,16 @@ return {
     "selections": (v2/*: any*/)
   },
   "params": {
-    "cacheID": "204b0d5e568541166a5e28dcd48eb4aa",
+    "cacheID": "b4d7a1ea970ad27b3152d13a24622c7a",
     "id": null,
     "metadata": {},
     "name": "KioskTokenSessionFetcherQuery",
     "operationKind": "query",
-    "text": "query KioskTokenSessionFetcherQuery {\n  refresh_token: refreshToken\n  session {\n    id\n    name\n    config\n    location {\n      id\n      name\n    }\n  }\n}\n"
+    "text": "query KioskTokenSessionFetcherQuery {\n  refresh_token: refreshToken\n  session {\n    id\n    name\n    config\n    location {\n      id\n      name\n      gamificationEnabled\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "28bbd044c6bf003381fc547d57d33d11";
+(node as any).hash = "33a077fdddf73afed3f91c6655c7e0b0";
 
 export default node;

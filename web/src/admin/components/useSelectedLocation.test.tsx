@@ -25,7 +25,14 @@ describe("useSelectedLocation", () => {
       email: "tester@example.com",
       isSuper: false,
       isDev: false,
-      locations: [{ id: "loc-1", name: "HQ", enabled: true }],
+      locations: [
+        {
+          id: "loc-1",
+          name: "HQ",
+          enabled: true,
+          gamificationEnabled: true,
+        },
+      ],
     });
 
     expect(() => renderHook(() => useSelectedLocation())).toThrow(
@@ -42,7 +49,14 @@ describe("useSelectedLocation", () => {
       email: "tester@example.com",
       isSuper: false,
       isDev: false,
-      locations: [{ id: "loc-1", name: "HQ", enabled: true }],
+      locations: [
+        {
+          id: "loc-1",
+          name: "HQ",
+          enabled: true,
+          gamificationEnabled: true,
+        },
+      ],
     });
 
     expect(() => renderHook(() => useSelectedLocation())).toThrow(
@@ -60,8 +74,18 @@ describe("useSelectedLocation", () => {
       isSuper: false,
       isDev: false,
       locations: [
-        { id: "loc-1", name: "HQ", enabled: true },
-        { id: "loc-2", name: "Downtown", enabled: true },
+        {
+          id: "loc-1",
+          name: "HQ",
+          enabled: true,
+          gamificationEnabled: true,
+        },
+        {
+          id: "loc-2",
+          name: "Downtown",
+          enabled: true,
+          gamificationEnabled: false,
+        },
       ],
     });
 
@@ -71,6 +95,7 @@ describe("useSelectedLocation", () => {
       id: "loc-2",
       name: "Downtown",
       enabled: true,
+      gamificationEnabled: false,
     });
   });
 });

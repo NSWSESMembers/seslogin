@@ -24,6 +24,7 @@ const userInfoQuery = graphql`
         id
         name
         enabled
+        gamificationEnabled
       }
     }
   }
