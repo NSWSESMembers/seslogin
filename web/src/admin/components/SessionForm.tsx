@@ -233,46 +233,52 @@ function BasicSessionModeFields({
       </FormField>
       {sessionMode === "scan" && (
         <FormField label={<span>Options</span>}>
-          <div className="grid gap-2">
-            <label className="grid grid-cols-[auto_auto_1fr] items-start gap-x-2">
+          <div className="divide-y divide-line rounded-lg border border-line">
+            <label className="flex cursor-pointer items-start gap-3 p-3 hover:bg-surface-sunken">
               <input
                 type="checkbox"
                 checked={smallCategories}
                 onChange={(e) => onSmallCategoriesChange(e.target.checked)}
-                className="mt-1"
+                className="mt-0.5"
               />
-              <span className="font-semibold">Small categories</span>
-              <span className="text-ink-muted">
-                use smaller category buttons to fit more on screen — useful on
-                smaller or lower-resolution displays
+              <span className="flex flex-col gap-0.5">
+                <span className="font-semibold">Small categories</span>
+                <span className="text-ink-muted">
+                  use smaller category buttons to fit more on screen — useful
+                  on smaller or lower-resolution displays
+                </span>
               </span>
             </label>
-            <label className="grid grid-cols-[auto_auto_1fr] items-start gap-x-2">
+            <label className="flex cursor-pointer items-start gap-3 p-3 hover:bg-surface-sunken">
               <input
                 type="checkbox"
                 checked={easyTimeEntry}
                 onChange={(e) => onEasyTimeEntryChange(e.target.checked)}
-                className="mt-1"
+                className="mt-0.5"
               />
-              <span className="font-semibold">Easy time entry</span>
-              <span className="text-ink-muted">
-                use a touch-friendly 12-hour keypad with an explicit confirm
-                step and quick Yesterday/Today buttons on the sign-out Adjust
-                screen, instead of the default 24-hour numeric keypad
+              <span className="flex flex-col gap-0.5">
+                <span className="font-semibold">Easy time entry</span>
+                <span className="text-ink-muted">
+                  use a touch-friendly 12-hour keypad with an explicit confirm
+                  step and quick Yesterday/Today buttons on the sign-out
+                  Adjust screen, instead of the default 24-hour numeric keypad
+                </span>
               </span>
             </label>
-            <label className="grid grid-cols-[auto_auto_1fr] items-start gap-x-2">
+            <label className="flex cursor-pointer items-start gap-3 p-3 hover:bg-surface-sunken">
               <input
                 type="checkbox"
                 checked={newCategories}
                 onChange={(e) => onNewCategoriesChange(e.target.checked)}
-                className="mt-1"
+                className="mt-0.5"
               />
-              <span className="font-semibold">New categories</span>
-              <span className="text-neutral-600">
-                use the reworked category list on the sign-out screens — new
-                icon artwork, with several retired subcategories removed and
-                others reordered
+              <span className="flex flex-col gap-0.5">
+                <span className="font-semibold">New categories</span>
+                <span className="text-ink-muted">
+                  use the reworked category list on the sign-out screens — new
+                  icon artwork, with several retired subcategories removed and
+                  others reordered
+                </span>
               </span>
             </label>
           </div>
