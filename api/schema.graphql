@@ -79,6 +79,12 @@ type Location {
 	createdAt: Int!
 	updatedAt: Int!
 	people: [Person!]!
+	"""
+	This location's most-frequently-used categories recently, ranked by
+	frequency then recency, with the people who most recently used each one.
+	Powers the kiosk sign-out quick-pick.
+	"""
+	recentCategories(limit: Int): [LocationRecentCategory!]!
 	periods(onlyActive: Boolean, startTime: Int, endTime: Int, after: String, before: String, first: Int, last: Int): PeriodConnection!
 	periodSummaryByMember(startTime: Int!, endTime: Int!, category: ID): [MemberPeriodSummary!]!
 	periodSummaryByCategory(startTime: Int!, endTime: Int!): [CategoryPeriodSummary!]!
@@ -104,6 +110,17 @@ type LocationDashboardSummary {
 	lastSuccessfulMemberSync: Int
 	dailyPeriods7D: [DashboardDailyPeriodSummary!]!
 	topCategories7D: [DashboardCategoryPeriodSummary!]!
+}
+
+type LocationRecentCategory {
+	category: Category!
+	periodCount: Int!
+	lastUsedAt: Int!
+	"""
+	Up to 3 people who most recently used this category at this location,
+	most-recent first.
+	"""
+	recentPeople: [Person!]!
 }
 
 type MemberCategoryPeriodSummary {
@@ -358,6 +375,17 @@ type Person {
 	The person's most recent period (by start time), or null if they have none.
 	"""
 	lastPeriod: Period
+	"""
+	This person's most-frequently-used categories recently, ranked by
+	frequency then recency. Powers the kiosk sign-out quick-pick.
+	"""
+	recentCategories(limit: Int): [PersonRecentCategory!]!
+}
+
+type PersonRecentCategory {
+	category: Category!
+	periodCount: Int!
+	lastUsedAt: Int!
 }
 
 """

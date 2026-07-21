@@ -30,6 +30,8 @@ interface BasicSessionModeFieldsProps {
   onEasyTimeEntryChange: (next: boolean) => void;
   newCategories: boolean;
   onNewCategoriesChange: (next: boolean) => void;
+  quickPickCategories: boolean;
+  onQuickPickCategoriesChange: (next: boolean) => void;
   configJson: string;
 }
 
@@ -127,6 +129,23 @@ function getNewCategoriesFromConfig(config: ConfigObject): boolean {
   return !!config.newCategories;
 }
 
+function withQuickPickCategories(
+  config: ConfigObject,
+  enabled: boolean,
+): ConfigObject {
+  const next = { ...config };
+  if (enabled) {
+    next.quickPickCategories = true;
+  } else {
+    delete next.quickPickCategories;
+  }
+  return next;
+}
+
+function getQuickPickCategoriesFromConfig(config: ConfigObject): boolean {
+  return !!config.quickPickCategories;
+}
+
 function initializeConfigState(initialConfig: string): InitialConfigState {
   const parsed = parseConfigObject(initialConfig);
   const sessionMode = getSessionModeFromConfig(parsed);
@@ -192,6 +211,8 @@ function BasicSessionModeFields({
   onEasyTimeEntryChange,
   newCategories,
   onNewCategoriesChange,
+  quickPickCategories,
+  onQuickPickCategoriesChange,
   configJson,
 }: BasicSessionModeFieldsProps) {
   return (
@@ -267,6 +288,20 @@ function BasicSessionModeFields({
               }
               title="New categories"
               description="use the reworked category list on the sign-out screens — new icon artwork, with several retired subcategories removed and others reordered"
+            />
+            <OptionRow
+              input={
+                <input
+                  type="checkbox"
+                  checked={quickPickCategories}
+                  onChange={(e) =>
+                    onQuickPickCategoriesChange(e.target.checked)
+                  }
+                  className="mt-0.5"
+                />
+              }
+              title="Quick pick categories"
+              description="on the sign-out screen, show quick-pick buttons for the location's and the member's own recently-used categories before the full category list, so people converge on the same categories instead of picking slightly different ones each time"
             />
           </OptionList>
         </FormField>
@@ -358,6 +393,7 @@ export default function SessionForm({
   const smallCategories = getSmallCategoriesFromConfig(parsedConfig);
   const easyTimeEntry = getEasyTimeEntryFromConfig(parsedConfig);
   const newCategories = getNewCategoriesFromConfig(parsedConfig);
+  const quickPickCategories = getQuickPickCategoriesFromConfig(parsedConfig);
 
   function setEditorMode(nextEditorMode: ConfigEditorMode) {
     if (configEditorMode === nextEditorMode) {
@@ -395,6 +431,14 @@ export default function SessionForm({
     setConfigJson(JSON.stringify(nextConfig, null, 2));
   }
 
+  function handleQuickPickCategoriesChange(enabled: boolean) {
+    const nextConfig = withQuickPickCategories(
+      parseConfigObject(configJson),
+      enabled,
+    );
+    setConfigJson(JSON.stringify(nextConfig, null, 2));
+  }
+
   function handleAdvancedConfigChange(event: ChangeEvent<HTMLTextAreaElement>) {
     const nextConfigText = event.target.value;
     setConfigJson(nextConfigText);
@@ -418,6 +462,8 @@ export default function SessionForm({
             onEasyTimeEntryChange={handleEasyTimeEntryChange}
             newCategories={newCategories}
             onNewCategoriesChange={handleNewCategoriesChange}
+            quickPickCategories={quickPickCategories}
+            onQuickPickCategoriesChange={handleQuickPickCategoriesChange}
             configJson={configJson}
           />
         )}
