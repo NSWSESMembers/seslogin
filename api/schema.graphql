@@ -64,6 +64,11 @@ type DayCategoryPeriodSummary {
 	categories: [CategoryMemberPeriodSummary!]!
 }
 
+type DayMemberPeriodSummary {
+	date: String!
+	members: [MemberDayPeriodSummary!]!
+}
+
 """
 A scalar that can represent any JSON value.
 """
@@ -91,6 +96,17 @@ type Location {
 	periodSummaryByMemberByCategory(startTime: Int!, endTime: Int!): [MemberCategoryPeriodSummary!]!
 	periodSummaryByCategoryByMember(startTime: Int!, endTime: Int!): [CategoryMemberPeriodSummary!]!
 	periodSummaryByDayByCategoryByMember(startTime: Int!, endTime: Int!): [DayCategoryPeriodSummary!]!
+	"""
+	Per-day, per-member activity for this location, used to power the
+	attendance heatmap. Unlike `period_summary_by_day_by_category_by_member`,
+	this counts every period regardless of whether it has a category, and
+	counts still-open periods towards `period_count` (though not
+	`total_time`) so an in-progress check-in still shows up as activity
+	for today. Days are returned in ascending order (the natural order for
+	a left-to-right time series), unlike the descending order used by the
+	other day-bucketed resolver.
+	"""
+	periodSummaryByDayByMember(startTime: Int!, endTime: Int!, category: ID): [DayMemberPeriodSummary!]!
 	sessions: [Session!]!
 	dashboardSummary(asOf: Int): LocationDashboardSummary!
 }
@@ -128,6 +144,13 @@ type MemberCategoryPeriodSummary {
 	person: Person!
 	totalTime: Int!
 	categories: [CategoryPeriodSummary!]!
+}
+
+type MemberDayPeriodSummary {
+	personId: ID!
+	person: Person!
+	totalTime: Int!
+	periodCount: Int!
 }
 
 type MemberPeriodSummary {
