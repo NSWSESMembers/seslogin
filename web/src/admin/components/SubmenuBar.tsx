@@ -50,6 +50,9 @@ export default function SubmenuBar({ isSuper }: SubmenuBarProps) {
           <MenuLink level="sub" to="/admin/activity/daily-breakdown" end>
             Daily Breakdown
           </MenuLink>
+          <MenuLink level="sub" to="/admin/activity/heatmap" end>
+            Heatmap
+          </MenuLink>
           <MenuLink level="sub" to="/admin/activity/last-seen" end>
             Last Seen
           </MenuLink>
