@@ -906,6 +906,11 @@ fn bucket_periods_by_day_and_member(
 ) -> Vec<DayBucket> {
     let mut totals_by_day: HashMap<String, HashMap<String, (u64, i32)>> = HashMap::new();
     for period in periods {
+        // Guests have no person_id — exclude them, same as every other
+        // period_summary_by_* resolver.
+        let Some(person_id) = period.person_id.clone() else {
+            continue;
+        };
         if let Some(wanted) = category_filter
             && period.category_id.as_deref() != Some(wanted)
         {
@@ -915,7 +920,7 @@ fn bucket_periods_by_day_and_member(
         let entry = totals_by_day
             .entry(date)
             .or_default()
-            .entry(period.person_id.clone())
+            .entry(person_id)
             .or_insert((0, 0));
         entry.1 += 1;
         if let Some(duration) = period_duration(period) {
@@ -954,7 +959,9 @@ mod period_summary_by_day_by_member_tests {
     ) -> db::Period {
         db::Period {
             id: id.to_string(),
-            person_id: person_id.to_string(),
+            person_id: Some(person_id.to_string()),
+            guest_name: None,
+            comment: None,
             location_id: "loc-1".to_string(),
             category_id: category_id.map(|s| s.to_string()),
             start_time,
