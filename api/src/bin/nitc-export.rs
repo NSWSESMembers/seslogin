@@ -20,6 +20,11 @@ struct Cli {
     #[arg(long, default_value_t = false, global = true)]
     force: bool,
 
+    /// Perform DB writes but do not enqueue SQS messages. Lets Phase 1 update the DB
+    /// without triggering a queued Phase 2, so you can run Phase 2 locally afterwards.
+    #[arg(long, default_value_t = false, global = true)]
+    skip_queue: bool,
+
     #[arg(long, global = true)]
     ses_api_base_url: Option<String>,
 
@@ -42,6 +47,13 @@ enum Command {
     AssignPeriod {
         /// The period ID to assign.
         period_id: String,
+    },
+
+    /// Assign every period belonging to a NITC event (Phase 1 only). Looks up all
+    /// periods currently attached to the event and runs assign_period on each locally.
+    AssignEventPeriods {
+        /// The NITC event ID whose periods to (re-)assign.
+        event_id: String,
     },
 
     /// Run Phase 2 sync on a single NITC event (uses its current DB version).
@@ -104,6 +116,7 @@ fn build_config(cli: &Cli) -> Result<(NitcConfig, String)> {
         NitcConfig {
             dry_run: cli.dry_run,
             force: cli.force,
+            skip_queue: cli.skip_queue,
             ses_api_base_url,
             ses_api_key,
             nitc_queue_url,
@@ -113,12 +126,40 @@ fn build_config(cli: &Cli) -> Result<(NitcConfig, String)> {
     ))
 }
 
+fn print_assign_outcome(period_id: &str, outcome: &nitc_export::PeriodAssignOutcome) {
+    match outcome {
+        nitc_export::PeriodAssignOutcome::Assigned(event_id) => {
+            println!("period {} → assigned to event {}", period_id, event_id)
+        }
+        nitc_export::PeriodAssignOutcome::Detached(event_id) => {
+            println!("period {} → detached from event {}", period_id, event_id)
+        }
+        nitc_export::PeriodAssignOutcome::AlreadySynced => {
+            println!("period {} → already synced", period_id)
+        }
+        nitc_export::PeriodAssignOutcome::Skipped(reason) => {
+            println!("period {} → skipped ({})", period_id, reason)
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     tracing_subscriber::fmt::init();
     seslogin::load_cli_env();
 
     let cli = Cli::parse();
+
+    // bump-period / bump-event exist purely to bump a version and enqueue the follow-up
+    // SQS message, so --skip-queue would leave them with nothing to do. Reject it rather
+    // than silently ignoring the flag.
+    if cli.skip_queue && matches!(cli.command, Command::BumpPeriod { .. } | Command::BumpEvent { .. })
+    {
+        return Err(anyhow!(
+            "--skip-queue is not supported for bump-period/bump-event: their only purpose is to enqueue an SQS message"
+        ));
+    }
+
     let (config, db_prefix) = build_config(&cli)?;
     let clients = nitc_export::make_dynamodb_clients(&config, db_prefix).await?;
 
@@ -128,19 +169,20 @@ async fn main() -> Result<()> {
             match &cli.command {
                 Command::AssignPeriod { period_id } => {
                     let result = nitc_export::assign_period(period_id, &config, &clients).await?;
-                    match result {
-                        nitc_export::PeriodAssignOutcome::Assigned(event_id) => {
-                            println!("period {} → assigned to event {}", period_id, event_id)
-                        }
-                        nitc_export::PeriodAssignOutcome::Detached(event_id) => {
-                            println!("period {} → detached from event {}", period_id, event_id)
-                        }
-                        nitc_export::PeriodAssignOutcome::AlreadySynced => {
-                            println!("period {} → already synced", period_id)
-                        }
-                        nitc_export::PeriodAssignOutcome::Skipped(reason) => {
-                            println!("period {} → skipped ({})", period_id, reason)
-                        }
+                    print_assign_outcome(period_id, &result);
+                }
+
+                Command::AssignEventPeriods { event_id } => {
+                    let period_ids = clients.db.list_period_ids_for_nitc_event(event_id).await?;
+                    println!(
+                        "event {} → {} period(s) to assign",
+                        event_id,
+                        period_ids.len()
+                    );
+                    for period_id in &period_ids {
+                        let result =
+                            nitc_export::assign_period(period_id, &config, &clients).await?;
+                        print_assign_outcome(period_id, &result);
                     }
                 }
 
