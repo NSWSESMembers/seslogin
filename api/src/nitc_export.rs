@@ -16,6 +16,10 @@ pub struct NitcConfig {
     pub dry_run: bool,
     /// Re-sync even when the period/event is already at the exported version.
     pub force: bool,
+    /// Perform DB writes but skip enqueuing SQS messages. Lets you update the DB in
+    /// Phase 1 and run Phase 2 locally instead of via the queue. Phase 2 does not enqueue
+    /// anything, so this flag has no effect there.
+    pub skip_queue: bool,
     pub ses_api_base_url: String,
     pub ses_api_key: String,
     pub nitc_queue_url: String,
@@ -206,13 +210,20 @@ async fn skip_or_detach<D: db::Handler>(
     // period, then clear the period's pointers so it drops off the event's period index. The
     // event_export is delayed, so the clear lands well before Phase 2 reads the list.
     let new_version = clients.db.bump_nitc_event_version(old_event_id).await?;
-    sqs_dispatch::enqueue_nitc_event_export(
-        &clients.sqs.client,
-        &clients.sqs.queue_url,
-        old_event_id,
-        new_version,
-    )
-    .await?;
+    if config.skip_queue {
+        info!(
+            "[skip-queue] Not enqueuing Phase 2 export for detached event {} (version {}); run it locally",
+            old_event_id, new_version
+        );
+    } else {
+        sqs_dispatch::enqueue_nitc_event_export(
+            &clients.sqs.client,
+            &clients.sqs.queue_url,
+            old_event_id,
+            new_version,
+        )
+        .await?;
+    }
     clients
         .db
         .clear_period_nitc_participant(&period.id, period.version)
@@ -388,6 +399,13 @@ pub async fn assign_period<D: db::Handler>(
     events_to_sync.push((desired_event.id.clone(), new_version));
 
     for (event_id, version) in events_to_sync {
+        if config.skip_queue {
+            info!(
+                "[skip-queue] Not enqueuing Phase 2 export for event {} (version {}); run it locally",
+                event_id, version
+            );
+            continue;
+        }
         sqs_dispatch::enqueue_nitc_event_export(
             &clients.sqs.client,
             &clients.sqs.queue_url,

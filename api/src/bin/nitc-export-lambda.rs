@@ -30,6 +30,7 @@ fn build_config() -> Result<(NitcConfig, String)> {
         NitcConfig {
             dry_run: false,
             force: false,
+            skip_queue: false,
             ses_api_base_url: std::env::var("SES_API_BASE_URL")
                 .map_err(|_| anyhow!("SES_API_BASE_URL must be set"))?,
             ses_api_key: std::env::var("SES_API_KEY")
