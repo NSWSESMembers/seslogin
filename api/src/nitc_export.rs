@@ -16,6 +16,10 @@ pub struct NitcConfig {
     pub dry_run: bool,
     /// Re-sync even when the period/event is already at the exported version.
     pub force: bool,
+    /// Perform DB writes but skip enqueuing SQS messages. Lets you update the DB in
+    /// Phase 1 and run Phase 2 locally instead of via the queue. Phase 2 does not enqueue
+    /// anything, so this flag has no effect there.
+    pub skip_queue: bool,
     pub ses_api_base_url: String,
     pub ses_api_key: String,
     pub nitc_queue_url: String,
@@ -54,6 +58,10 @@ pub enum SkipReason {
     BeforeCutover,
     /// The period is still open and has no participant to clean up.
     OpenNoParticipant,
+    /// The period's start time is not before its end time.
+    StartNotBeforeEnd,
+    /// The period's duration exceeds the maximum allowed length.
+    DurationTooLong,
 }
 
 impl std::fmt::Display for SkipReason {
@@ -67,6 +75,8 @@ impl std::fmt::Display for SkipReason {
             SkipReason::LocationNoHeadquartersId => "location has no ses_api_headquarters_id",
             SkipReason::BeforeCutover => "period started before the location's NITC cutover",
             SkipReason::OpenNoParticipant => "period is open with no participant",
+            SkipReason::StartNotBeforeEnd => "period start time is not before its end time",
+            SkipReason::DurationTooLong => "period duration exceeds the maximum allowed length",
         };
         f.write_str(msg)
     }
@@ -108,6 +118,9 @@ impl std::fmt::Display for EventSkipReason {
 
 /// SES rejects event names longer than this many characters.
 const MAX_EVENT_NAME_LEN: usize = 50;
+
+/// Periods longer than this (96 hours, in seconds) are treated as bad data and skipped.
+const MAX_PERIOD_DURATION_SECS: u64 = 96 * 60 * 60;
 
 fn make_event_name(category_name: Option<&str>) -> String {
     let name = category_name.unwrap_or("unknown");
@@ -197,13 +210,20 @@ async fn skip_or_detach<D: db::Handler>(
     // period, then clear the period's pointers so it drops off the event's period index. The
     // event_export is delayed, so the clear lands well before Phase 2 reads the list.
     let new_version = clients.db.bump_nitc_event_version(old_event_id).await?;
-    sqs_dispatch::enqueue_nitc_event_export(
-        &clients.sqs.client,
-        &clients.sqs.queue_url,
-        old_event_id,
-        new_version,
-    )
-    .await?;
+    if config.skip_queue {
+        info!(
+            "[skip-queue] Not enqueuing Phase 2 export for detached event {} (version {}); run it locally",
+            old_event_id, new_version
+        );
+    } else {
+        sqs_dispatch::enqueue_nitc_event_export(
+            &clients.sqs.client,
+            &clients.sqs.queue_url,
+            old_event_id,
+            new_version,
+        )
+        .await?;
+    }
     clients
         .db
         .clear_period_nitc_participant(&period.id, period.version)
@@ -276,6 +296,17 @@ pub async fn assign_period<D: db::Handler>(
     }
     if period.start_time < nitc_cutover {
         return skip_or_detach(&period, SkipReason::BeforeCutover, config, clients).await;
+    }
+
+    // Validate the period's bounds. These only apply to closed periods (those with an
+    // end_time); open periods are handled below.
+    if let Some(end_time) = period.end_time {
+        if period.start_time >= end_time {
+            return skip_or_detach(&period, SkipReason::StartNotBeforeEnd, config, clients).await;
+        }
+        if end_time - period.start_time > MAX_PERIOD_DURATION_SECS {
+            return skip_or_detach(&period, SkipReason::DurationTooLong, config, clients).await;
+        }
     }
 
     // Skip open periods that have no participant to clean up
@@ -368,6 +399,13 @@ pub async fn assign_period<D: db::Handler>(
     events_to_sync.push((desired_event.id.clone(), new_version));
 
     for (event_id, version) in events_to_sync {
+        if config.skip_queue {
+            info!(
+                "[skip-queue] Not enqueuing Phase 2 export for event {} (version {}); run it locally",
+                event_id, version
+            );
+            continue;
+        }
         sqs_dispatch::enqueue_nitc_event_export(
             &clients.sqs.client,
             &clients.sqs.queue_url,
