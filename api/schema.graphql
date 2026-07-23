@@ -151,9 +151,9 @@ type MutationRoot {
 	createPerson(locationId: ID!, firstName: String!, lastName: String!, memberNumber: String!): Person!
 	updatePerson(id: ID!, firstName: String!, lastName: String!, memberNumber: String!): Person!
 	deletePerson(id: ID!): Boolean!
-	createPeriod(personId: ID!, locationId: ID!, categoryId: ID!, startTime: Int!, endTime: Int!): Period!
-	updatePeriod(id: ID!, personId: ID!, locationId: ID!, categoryId: ID!, startTime: Int!, endTime: Int!): Period!
-	updatePeriodTimeCategory(id: ID!, startTime: Int!, endTime: Int!, categoryId: ID!): Period!
+	createPeriod(personId: ID!, locationId: ID!, categoryId: ID!, startTime: Int!, endTime: Int!, comment: String): Period!
+	updatePeriod(id: ID!, personId: ID!, locationId: ID!, categoryId: ID!, startTime: Int!, endTime: Int!, comment: String): Period!
+	updatePeriodTimeCategory(id: ID!, startTime: Int!, endTime: Int!, categoryId: ID!, comment: String): Period!
 	deletePeriod(id: ID!): Boolean!
 	createSession(name: String!, locationId: ID!, config: String, healthcheckUrl: String): Session!
 	"""
