@@ -8,6 +8,7 @@ import type { ActivityNewQuery } from "./__generated__/ActivityNewQuery.graphql"
 import { useNotify } from "../components/useNotify";
 import { FieldList, FormField } from "../../components/ui/FormField";
 import TextInput from "../../components/ui/TextInput";
+import Textarea from "../../components/ui/Textarea";
 import Select from "../../components/ui/Select";
 import { Button } from "../../components/ui/Button";
 
@@ -47,6 +48,7 @@ export default function ActivityNew() {
         $startTime: Int!
         $endTime: Int!
         $categoryId: ID!
+        $comment: String
       ) {
         createPeriod(
           personId: $personId
@@ -54,6 +56,7 @@ export default function ActivityNew() {
           categoryId: $categoryId
           startTime: $startTime
           endTime: $endTime
+          comment: $comment
         ) {
           id
         }
@@ -81,6 +84,7 @@ export default function ActivityNew() {
     const categoryId = formData.get("category")?.toString() || "";
     const start = formData.get("start")?.toString();
     const end = formData.get("end")?.toString();
+    const comment = formData.get("comment")?.toString().trim() || null;
     if (!start) {
       notifyError("Start time is required");
       return;
@@ -94,7 +98,14 @@ export default function ActivityNew() {
     try {
       await new Promise((resolve, reject) => {
         commitMutation({
-          variables: { personId, categoryId, startTime, endTime, locationId },
+          variables: {
+            personId,
+            categoryId,
+            startTime,
+            endTime,
+            locationId,
+            comment,
+          },
           onCompleted: resolve,
           onError: reject,
           updater: (store) => {
@@ -166,6 +177,9 @@ export default function ActivityNew() {
             />
             {error && <p className="font-bold text-red-600">{error}</p>}
             {warning && <p className="font-bold text-orange-600">{warning}</p>}
+          </FormField>
+          <FormField label={<label htmlFor="comment">Comment</label>}>
+            <Textarea name="comment" id="comment" rows={3} />
           </FormField>
           <FormField>
             <Button type="submit" disabled={isMutationInFlight || !!error}>
