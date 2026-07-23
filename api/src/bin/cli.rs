@@ -86,6 +86,12 @@ enum Object {
         #[command(subcommand)]
         cmd: ActivitySummaryCmd,
     },
+    /// Issue a secure single-period edit-link token. Unlike the read-only
+    /// inspectors, this WRITES a hashed record to the `ephemeral_state` table.
+    PeriodLink {
+        #[command(subcommand)]
+        cmd: PeriodLinkCmd,
+    },
     /// Generate a signed JWT for a session or user (does not touch the DB).
     Jwt {
         /// JWT secret (overrides JWT_SECRET env var).
@@ -96,6 +102,16 @@ enum Object {
         expire_s: Option<u64>,
         #[command(subcommand)]
         cmd: JwtCmd,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+enum PeriodLinkCmd {
+    /// Issue a link token granting view/edit access to one period. Writes a hashed
+    /// record to `ephemeral_state` and prints the raw token (shown only once).
+    Issue {
+        /// The period ID to grant access to.
+        period_id: String,
     },
 }
 
@@ -769,6 +785,12 @@ async fn main() -> Result<()> {
         .or_else(|| std::env::var("DB_PREFIX").ok())
         .ok_or_else(|| anyhow!("DB_PREFIX is required (flag or env var)"))?;
 
+    // Issuing a period-link token is the one write path here, so it needs its own
+    // writable handler rather than the read-only one the inspectors share.
+    if let Object::PeriodLink { cmd } = &cli.object {
+        return run_period_link(&db_prefix, cmd).await;
+    }
+
     let db = dynamodb::Handler::new(&db_prefix, true).await;
 
     let metrics = Arc::new(RequestMetrics::default());
@@ -808,6 +830,25 @@ fn run_jwt(jwt_secret: Option<String>, expire_s: Option<u64>, cmd: &JwtCmd) -> R
 
     println!("{token}");
 
+    Ok(())
+}
+
+/// Issue a period-link token. Opens a WRITABLE DB handler (unlike the read-only
+/// inspectors) because issuing persists a hashed record to `ephemeral_state`. The
+/// raw token is printed to stdout; a human-readable summary goes to stderr.
+async fn run_period_link(db_prefix: &str, cmd: &PeriodLinkCmd) -> Result<()> {
+    let db = dynamodb::Handler::new(db_prefix, false).await;
+    match cmd {
+        PeriodLinkCmd::Issue { period_id } => {
+            let token = seslogin::period_link::issue_period_link_token(&db, period_id).await?;
+            println!("{token}");
+            eprintln!(
+                "Issued link token for period {period_id} (valid {}h; row TTL {}d).",
+                seslogin::period_link::TOKEN_LIFETIME_S / 3600,
+                seslogin::period_link::STATE_TTL_S / 86400,
+            );
+        }
+    }
     Ok(())
 }
 
@@ -1359,8 +1400,11 @@ async fn run(db: &impl Handler, object: Object) -> Result<()> {
             }
         },
 
-        // Handled in `main` before the DB is opened.
+        // Handled in `main` before the shared read-only DB is opened.
         Object::Jwt { .. } => unreachable!("jwt is handled before DB setup"),
+        Object::PeriodLink { .. } => {
+            unreachable!("period-link is handled before the read-only DB is opened")
+        }
     }
     Ok(())
 }
