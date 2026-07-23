@@ -396,26 +396,6 @@ impl TryInto<WebauthnCredential> for Item {
     }
 }
 
-impl TryInto<WebauthnState> for Item {
-    type Error = HydrationError;
-    fn try_into(self) -> Result<WebauthnState, Self::Error> {
-        Ok(WebauthnState {
-            id: self.id(),
-            kind: self
-                .string_field("kind")?
-                .ok_or_else(|| anyhow!("WebauthnState missing kind"))?,
-            user_id: self.string_field("user_id")?,
-            state_json: self
-                .string_field("state_json")?
-                .ok_or_else(|| anyhow!("WebauthnState missing state_json"))?,
-            expires_at: self
-                .i64_field("expires_at")?
-                .ok_or_else(|| anyhow!("WebauthnState missing expires_at"))?
-                as u64,
-        })
-    }
-}
-
 impl TryInto<EphemeralState> for Item {
     type Error = HydrationError;
     fn try_into(self) -> Result<EphemeralState, Self::Error> {
@@ -3756,6 +3736,9 @@ impl db::Handler for Handler {
         Ok(())
     }
 
+    // WebAuthn challenge state is stored in the generic `ephemeral_state` table: `kind`
+    // ("reg"/"auth") passes through, and `user_id` + `state_json` are folded into the
+    // JSON `payload`. These methods are a thin view over put/get/delete_ephemeral_state.
     async fn put_webauthn_state(
         &self,
         id: &str,
@@ -3764,59 +3747,41 @@ impl db::Handler for Handler {
         state_json: &str,
         expires_at: u64,
     ) -> db::Result<()> {
-        if self.read_only {
-            return Err(db::Error::MutationDisabled);
-        }
-        let mut req = self
-            .client
-            .put_item()
-            .table_name(self.table_name("webauthn_state"))
-            .item("id", AttributeValue::S(id.to_string()))
-            .item("kind", AttributeValue::S(kind.to_string()))
-            .item("state_json", AttributeValue::S(state_json.to_string()))
-            .item("expires_at", AttributeValue::N(expires_at.to_string()));
-        if let Some(uid) = user_id {
-            req = req.item("user_id", AttributeValue::S(uid.to_string()));
-        }
-        req.send()
+        let payload = serde_json::json!({
+            "user_id": user_id,
+            "state_json": state_json,
+        })
+        .to_string();
+        self.put_ephemeral_state(id, kind, &payload, expires_at)
             .await
-            .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
-        Ok(())
     }
 
     async fn get_webauthn_state(&self, id: &str) -> db::Result<Option<WebauthnState>> {
-        let resp = self
-            .client
-            .get_item()
-            .table_name(self.table_name("webauthn_state"))
-            .key("id", AttributeValue::S(id.to_string()))
-            .return_consumed_capacity(ReturnConsumedCapacity::Total)
-            .send()
-            .await
-            .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
-        record_capacity(
-            "get_webauthn_state",
-            resp.consumed_capacity(),
-            CapKind::Read,
-        );
-        match resp.item {
-            Some(item) => Ok(Some(Item(item).try_into()?)),
-            None => Ok(None),
-        }
+        let Some(state) = self.get_ephemeral_state(id).await? else {
+            return Ok(None);
+        };
+        let payload: serde_json::Value = serde_json::from_str(&state.payload)
+            .map_err(|e| Error::Hydration(format!("WebauthnState payload: {e}")))?;
+        let state_json = payload
+            .get("state_json")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| Error::Hydration("WebauthnState payload missing state_json".into()))?
+            .to_string();
+        let user_id = payload
+            .get("user_id")
+            .and_then(|v| v.as_str())
+            .map(str::to_string);
+        Ok(Some(WebauthnState {
+            id: state.id,
+            kind: state.kind,
+            user_id,
+            state_json,
+            expires_at: state.expires_at,
+        }))
     }
 
     async fn delete_webauthn_state(&self, id: &str) -> db::Result<()> {
-        if self.read_only {
-            return Err(db::Error::MutationDisabled);
-        }
-        self.client
-            .delete_item()
-            .table_name(self.table_name("webauthn_state"))
-            .key("id", AttributeValue::S(id.to_string()))
-            .send()
-            .await
-            .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
-        Ok(())
+        self.delete_ephemeral_state(id).await
     }
 
     async fn put_ephemeral_state(
