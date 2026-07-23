@@ -8,6 +8,7 @@ import type { ActivityEditMutation } from "./__generated__/ActivityEditMutation.
 import { useNotify } from "../components/useNotify";
 import { FieldList, FormField } from "../../components/ui/FormField";
 import TextInput from "../../components/ui/TextInput";
+import Textarea from "../../components/ui/Textarea";
 import Select from "../../components/ui/Select";
 import { Button } from "../../components/ui/Button";
 
@@ -24,6 +25,7 @@ export default function ActivityEdit() {
           id
           startTime
           endTime
+          comment
           category {
             id
             name
@@ -46,16 +48,19 @@ export default function ActivityEdit() {
         $startTime: Int!
         $endTime: Int!
         $categoryId: ID!
+        $comment: String
       ) {
         updatePeriodTimeCategory(
           id: $id
           startTime: $startTime
           endTime: $endTime
           categoryId: $categoryId
+          comment: $comment
         ) {
           id
           startTime
           endTime
+          comment
           category {
             id
             name
@@ -72,6 +77,7 @@ export default function ActivityEdit() {
       ? dateToInputDateTimeLocal(new Date(data.period.endTime * 1000))
       : "",
   );
+  const [commentValue, setCommentValue] = useState(data.period.comment ?? "");
 
   const startMs = startValue ? new Date(startValue).getTime() : null;
   const endMs = endValue ? new Date(endValue).getTime() : null;
@@ -102,11 +108,19 @@ export default function ActivityEdit() {
     }
     const startTime = Math.floor(new Date(start).getTime() / 1000);
     const endTime = Math.floor(new Date(end).getTime() / 1000);
+    // Send null to clear the comment when the field is emptied.
+    const comment = formData.get("comment")?.toString().trim() || null;
 
     try {
       await new Promise((resolve, reject) => {
         commitMutation({
-          variables: { id: data.period.id, startTime, endTime, categoryId },
+          variables: {
+            id: data.period.id,
+            startTime,
+            endTime,
+            categoryId,
+            comment,
+          },
           onCompleted: resolve,
           onError: reject,
           updater: (store) => {
@@ -172,6 +186,15 @@ export default function ActivityEdit() {
             />
             {error && <p className="font-bold text-red-600">{error}</p>}
             {warning && <p className="font-bold text-orange-600">{warning}</p>}
+          </FormField>
+          <FormField label={<label htmlFor="comment">Comment</label>}>
+            <Textarea
+              name="comment"
+              id="comment"
+              rows={3}
+              value={commentValue}
+              onChange={(e) => setCommentValue(e.target.value)}
+            />
           </FormField>
           <FormField>
             <Button type="submit" disabled={isMutationInFlight || !!error}>

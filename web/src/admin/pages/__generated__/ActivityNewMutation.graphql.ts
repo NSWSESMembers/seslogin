@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<31f53f6b8972285f75d464c939f0ba67>>
+ * @generated SignedSource<<b41a1aa5b0ad8265df90c7cfe1adb9aa>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -11,6 +11,7 @@
 import { ConcreteRequest } from 'relay-runtime';
 export type ActivityNewMutation$variables = {
   categoryId: string;
+  comment?: string | null | undefined;
   endTime: number;
   locationId: string;
   personId: string;
@@ -35,24 +36,29 @@ var v0 = {
 v1 = {
   "defaultValue": null,
   "kind": "LocalArgument",
-  "name": "endTime"
+  "name": "comment"
 },
 v2 = {
   "defaultValue": null,
   "kind": "LocalArgument",
-  "name": "locationId"
+  "name": "endTime"
 },
 v3 = {
   "defaultValue": null,
   "kind": "LocalArgument",
-  "name": "personId"
+  "name": "locationId"
 },
 v4 = {
   "defaultValue": null,
   "kind": "LocalArgument",
+  "name": "personId"
+},
+v5 = {
+  "defaultValue": null,
+  "kind": "LocalArgument",
   "name": "startTime"
 },
-v5 = [
+v6 = [
   {
     "alias": null,
     "args": [
@@ -60,6 +66,11 @@ v5 = [
         "kind": "Variable",
         "name": "categoryId",
         "variableName": "categoryId"
+      },
+      {
+        "kind": "Variable",
+        "name": "comment",
+        "variableName": "comment"
       },
       {
         "kind": "Variable",
@@ -105,39 +116,41 @@ return {
       (v1/*: any*/),
       (v2/*: any*/),
       (v3/*: any*/),
-      (v4/*: any*/)
+      (v4/*: any*/),
+      (v5/*: any*/)
     ],
     "kind": "Fragment",
     "metadata": null,
     "name": "ActivityNewMutation",
-    "selections": (v5/*: any*/),
+    "selections": (v6/*: any*/),
     "type": "MutationRoot",
     "abstractKey": null
   },
   "kind": "Request",
   "operation": {
     "argumentDefinitions": [
-      (v3/*: any*/),
-      (v2/*: any*/),
       (v4/*: any*/),
-      (v1/*: any*/),
-      (v0/*: any*/)
+      (v3/*: any*/),
+      (v5/*: any*/),
+      (v2/*: any*/),
+      (v0/*: any*/),
+      (v1/*: any*/)
     ],
     "kind": "Operation",
     "name": "ActivityNewMutation",
-    "selections": (v5/*: any*/)
+    "selections": (v6/*: any*/)
   },
   "params": {
-    "cacheID": "a5513616aadd98fc8cac8368d0704750",
+    "cacheID": "be679e82f5e29e2b64338ce130f9adee",
     "id": null,
     "metadata": {},
     "name": "ActivityNewMutation",
     "operationKind": "mutation",
-    "text": "mutation ActivityNewMutation(\n  $personId: ID!\n  $locationId: ID!\n  $startTime: Int!\n  $endTime: Int!\n  $categoryId: ID!\n) {\n  createPeriod(personId: $personId, locationId: $locationId, categoryId: $categoryId, startTime: $startTime, endTime: $endTime) {\n    id\n  }\n}\n"
+    "text": "mutation ActivityNewMutation(\n  $personId: ID!\n  $locationId: ID!\n  $startTime: Int!\n  $endTime: Int!\n  $categoryId: ID!\n  $comment: String\n) {\n  createPeriod(personId: $personId, locationId: $locationId, categoryId: $categoryId, startTime: $startTime, endTime: $endTime, comment: $comment) {\n    id\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "eb8fdd1c740976438c57b3674e17bb9f";
+(node as any).hash = "cbd668d7f00e576e64bc96850a4cee53";
 
 export default node;
