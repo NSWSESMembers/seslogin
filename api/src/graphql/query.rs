@@ -2012,6 +2012,33 @@ impl<A: App + HasDb + Send + Sync + 'static> QueryRoot<A> {
         Ok(Period::new(rec))
     }
 
+    /// Look up the single period that a secure edit-link token grants access to.
+    ///
+    /// This is the entry point for member-facing edit links delivered by SMS/email:
+    /// it authenticates purely on the opaque token — no session, user, or API token —
+    /// and is therefore deliberately *unguarded*. The token grants access to exactly
+    /// one period; any unknown, malformed, or expired token yields a uniform error so
+    /// it can't be used as an oracle.
+    async fn period_by_link_token(
+        &self,
+        ctx: &Context<'_>,
+        #[graphql(desc = "Opaque period-link token from an SMS/email edit link")] token: String,
+    ) -> Result<Period<A>> {
+        let app = ctx.data_unchecked::<Arc<A>>().clone();
+        let period_id = crate::period_link::resolve_period_link_token(app.db(), &token).await?;
+        let rec = app
+            .db()
+            .get_periods(&[&period_id])
+            .await?
+            .into_iter()
+            .next()
+            .flatten()
+            // A token is only issued for an existing period, so a miss here means the
+            // period was since hard-deleted; keep the error uniform regardless.
+            .ok_or_else(|| anyhow!("Invalid or expired token"))?;
+        Ok(Period::new(rec))
+    }
+
     #[graphql(guard = "AuthGuard::new(AuthRequirement::Authenticated)")]
     async fn session(
         &self,

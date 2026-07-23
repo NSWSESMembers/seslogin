@@ -467,7 +467,11 @@ pub struct EphemeralState {
     pub expires_at: u64,
 }
 
-pub trait Handler {
+/// `Sync` is required so a `&impl Handler` (including the erased handle returned by
+/// [`crate::app::HasDb::db`]) can be held across `.await` inside the `Send` futures the
+/// GraphQL/Poem stack builds. Both implementors (`dynamodb::Handler`, `mockdb::Handler`)
+/// are already `Sync`.
+pub trait Handler: Sync {
     fn get_users<T: AsRef<str> + Sync>(
         &self,
         ids: &[T],
