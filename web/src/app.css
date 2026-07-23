@@ -15,8 +15,8 @@
 }
 
 @theme {
-  --font-sans: "TitilliumMaps", Verdana, sans-serif;
-  --font-title: "TitilliumMapsTitle", Verdana, sans-serif;
+  --font-sans: "AtkinsonHyperlegible", Verdana, sans-serif;
+  --font-title: "AtkinsonHyperlegible", Verdana, sans-serif;
 
   /* brand/chrome colors (unchanged look in both themes) */
   --color-accent: #fb6c0d;
@@ -91,17 +91,13 @@
 }
 
 @font-face {
-  font-family: TitilliumMaps;
-  src: url("/fonts/titilliummaps-normal.otf");
+  font-family: AtkinsonHyperlegible;
+  src: url("/fonts/atkinson-hyperlegible-regular.woff2");
 }
 @font-face {
-  font-family: TitilliumMaps;
+  font-family: AtkinsonHyperlegible;
   font-weight: bold;
-  src: url("/fonts/titilliummaps-bold.otf");
-}
-@font-face {
-  font-family: TitilliumMapsTitle;
-  src: url("/fonts/titilliummaps-title.otf");
+  src: url("/fonts/atkinson-hyperlegible-bold.woff2");
 }
 
 /* Legacy global typography the whole app was built around; Preflight zeroes these. */
