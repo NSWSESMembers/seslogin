@@ -1762,6 +1762,7 @@ impl db::Handler for Handler {
         category_id: &str,
         start_time: u64,
         end_time: u64,
+        comment: Option<&str>,
     ) -> db::Result<Period> {
         if self.read_only {
             return Err(db::Error::MutationDisabled);
@@ -1769,7 +1770,7 @@ impl db::Handler for Handler {
         let id = new_id();
         let now = crate::clock::now_sec();
 
-        let resp = self
+        let mut put = self
             .client
             .put_item()
             .table_name(self.table_name("period"))
@@ -1783,7 +1784,15 @@ impl db::Handler for Handler {
             .item("v", AttributeValue::N("1".to_string()))
             .item("created_at", AttributeValue::N(now.to_string()))
             .item("updated_at", AttributeValue::N(now.to_string()))
-            .return_consumed_capacity(ReturnConsumedCapacity::Total)
+            .return_consumed_capacity(ReturnConsumedCapacity::Total);
+
+        // Omit the attribute entirely when there's no comment rather than storing
+        // Null (see the omit-over-Null note in CLAUDE.md).
+        if let Some(comment) = comment {
+            put = put.item("comment", AttributeValue::S(comment.to_string()));
+        }
+
+        let resp = put
             .send()
             .await
             .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
@@ -1793,7 +1802,7 @@ impl db::Handler for Handler {
             id,
             person_id: Some(person_id.to_string()),
             guest_name: None,
-            comment: None,
+            comment: comment.map(|c| c.to_string()),
             location_id: location_id.to_string(),
             category_id: Some(category_id.to_string()),
             start_time,
@@ -1821,20 +1830,66 @@ impl db::Handler for Handler {
                 category_id,
                 start_time,
                 end_time,
+                comment,
             } => {
-                let resp = self.client
+                // The comment is a three-state update: leave it untouched, clear
+                // it, or set it. `comment` is a DynamoDB reserved word, so when we
+                // touch it we reference it via the `#comment` expression attribute
+                // name (omit-over-Null on clear, see CLAUDE.md).
+                let update_expr = match comment {
+                    None => {
+                        "SET person_id = :person_id, location_id = :location_id, start_time = :start_time, end_time = :end_time, category_id = :category_id, location_live = :location_id, updated_at = :updated_at REMOVE location_open ADD v :one"
+                    }
+                    Some(Some(_)) => {
+                        "SET person_id = :person_id, location_id = :location_id, start_time = :start_time, end_time = :end_time, category_id = :category_id, location_live = :location_id, #comment = :comment, updated_at = :updated_at REMOVE location_open ADD v :one"
+                    }
+                    Some(None) => {
+                        "SET person_id = :person_id, location_id = :location_id, start_time = :start_time, end_time = :end_time, category_id = :category_id, location_live = :location_id, updated_at = :updated_at REMOVE location_open, #comment ADD v :one"
+                    }
+                };
+                let mut update = self
+                    .client
                     .update_item()
                     .table_name(self.table_name("period"))
                     .key("id", AttributeValue::S(id.to_string()))
                     .condition_expression("attribute_exists(id)")
-                    .update_expression("SET person_id = :person_id, location_id = :location_id, start_time = :start_time, end_time = :end_time, category_id = :category_id, location_live = :location_id, updated_at = :updated_at REMOVE location_open ADD v :one")
-                    .expression_attribute_values(":person_id", AttributeValue::S(person_id.to_string()))
-                    .expression_attribute_values(":location_id", AttributeValue::S(location_id.to_string()))
-                    .expression_attribute_values(":start_time", AttributeValue::N(start_time.to_string()))
-                    .expression_attribute_values(":end_time", AttributeValue::N(end_time.to_string()))
-                    .expression_attribute_values(":category_id", AttributeValue::S(category_id.to_string()))
+                    .update_expression(update_expr)
+                    .expression_attribute_values(
+                        ":person_id",
+                        AttributeValue::S(person_id.to_string()),
+                    )
+                    .expression_attribute_values(
+                        ":location_id",
+                        AttributeValue::S(location_id.to_string()),
+                    )
+                    .expression_attribute_values(
+                        ":start_time",
+                        AttributeValue::N(start_time.to_string()),
+                    )
+                    .expression_attribute_values(
+                        ":end_time",
+                        AttributeValue::N(end_time.to_string()),
+                    )
+                    .expression_attribute_values(
+                        ":category_id",
+                        AttributeValue::S(category_id.to_string()),
+                    )
                     .expression_attribute_values(":one", AttributeValue::N("1".to_string()))
-                    .expression_attribute_values(":updated_at", AttributeValue::N(crate::clock::now_sec().to_string()))
+                    .expression_attribute_values(
+                        ":updated_at",
+                        AttributeValue::N(crate::clock::now_sec().to_string()),
+                    );
+                // Only reference `#comment` when we're actually setting or clearing it.
+                if comment.is_some() {
+                    update = update.expression_attribute_names("#comment", "comment");
+                }
+                if let Some(Some(comment)) = comment {
+                    update = update.expression_attribute_values(
+                        ":comment",
+                        AttributeValue::S(comment.to_string()),
+                    );
+                }
+                let resp = update
                     .return_consumed_capacity(ReturnConsumedCapacity::Total)
                     .send()
                     .await

@@ -352,6 +352,10 @@ pub enum PeriodUpdateShape<'a> {
         category_id: &'a str,
         start_time: i64,
         end_time: i64,
+        /// Three-state update for the free-text comment: `None` leaves the
+        /// existing comment untouched, `Some(None)` clears it, and
+        /// `Some(Some(_))` sets it.
+        comment: Option<Option<&'a str>>,
     },
     TimeCategory {
         start_time: i64,
@@ -589,6 +593,7 @@ pub trait Handler {
         category_id: &str,
         start_time: u64,
         end_time: u64,
+        comment: Option<&str>,
     ) -> impl Future<Output = Result<Period>> + Send;
     fn update_period(
         &self,

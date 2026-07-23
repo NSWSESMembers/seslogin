@@ -5,6 +5,7 @@ use anyhow::anyhow;
 use async_graphql::Context;
 use async_graphql::Enum;
 use async_graphql::ID;
+use async_graphql::MaybeUndefined;
 use async_graphql::Object;
 use async_graphql::SimpleObject;
 use std::sync::Arc;
@@ -624,6 +625,7 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
         category_id: ID,
         start_time: i64,
         end_time: i64,
+        comment: Option<String>,
     ) -> Result<Period<A>> {
         require_writable(ctx)?;
         if start_time >= end_time {
@@ -664,6 +666,7 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
                 &category_id,
                 start_time as u64,
                 end_time as u64,
+                comment.as_deref(),
             )
             .await?;
 
@@ -682,6 +685,9 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
         category_id: ID,
         start_time: i64,
         end_time: i64,
+        // Three-state: omit to leave the comment unchanged, pass `null` to clear
+        // it, or pass a string to set it. Omitting keeps existing callers working.
+        comment: MaybeUndefined<String>,
     ) -> Result<Period<A>> {
         require_writable(ctx)?;
         if start_time >= end_time {
@@ -726,6 +732,11 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
             .flatten()
             .ok_or_else(|| anyhow!("Category {:?} not found", category_id))?;
 
+        let comment = match &comment {
+            MaybeUndefined::Undefined => None,
+            MaybeUndefined::Null => Some(None),
+            MaybeUndefined::Value(comment) => Some(Some(comment.as_str())),
+        };
         self.app
             .db()
             .update_period(
@@ -736,6 +747,7 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
                     category_id: &category_id,
                     start_time,
                     end_time,
+                    comment,
                 },
             )
             .await?;

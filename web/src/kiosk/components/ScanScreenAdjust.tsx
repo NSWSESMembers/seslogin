@@ -1,11 +1,18 @@
 import { useRef, useState } from "react";
 import ScanModalDateTime from "./ScanModalDateTime";
 import ScanModalDateTimeV2 from "./ScanModalDateTimeV2";
-import { formatDayDate, formatTimeOfDay, isSameDay } from "../../lib/time";
+import {
+  formatDayDate,
+  formatTimeDiff,
+  formatTimeOfDay,
+  isSameDay,
+} from "../../lib/time";
 import type { TransactionSignedOut } from "../ScanState";
 import { categoriesFor, categoryIconSrc } from "../../lib/categories";
 import { scanView, scanViewPosition, type ScreenPosition } from "../../styles";
 import { Button } from "../../components/ui/Button";
+
+const LONG_PERIOD_CONFIRM_THRESHOLD_MS = 12 * 60 * 60 * 1000;
 
 type TimeOfDay = { hours: number; minutes: number };
 
@@ -59,6 +66,7 @@ function Inner(props: {
   const [endDate, setEndDate] = useState<Date>(() =>
     dateOnly(defaultEndDateTime(transaction)),
   );
+  const [confirmingLongPeriod, setConfirmingLongPeriod] = useState(false);
   const showDateTimeModal = useRef<(field: string) => void | null>(null);
   const showDateTimeModalV2 = useRef<
     | ((
@@ -173,6 +181,17 @@ function Inner(props: {
   }
 
   function onSubmit() {
+    const start = buildStartDate();
+    const end = buildEndDate();
+    if (end.getTime() - start.getTime() > LONG_PERIOD_CONFIRM_THRESHOLD_MS) {
+      setConfirmingLongPeriod(true);
+      return;
+    }
+    props.onSubmit(start, end);
+  }
+
+  function onConfirmLongPeriod() {
+    setConfirmingLongPeriod(false);
     props.onSubmit(buildStartDate(), buildEndDate());
   }
 
@@ -292,6 +311,37 @@ function Inner(props: {
           "Submit"
         )}
       </Button>
+
+      {confirmingLongPeriod && (
+        <div className="fixed inset-0 z-10 flex items-center justify-center">
+          <div
+            className="absolute inset-0 bg-black opacity-50"
+            onClick={() => setConfirmingLongPeriod(false)}
+          ></div>
+          <div className="relative z-10 flex w-150 max-w-[90vw] flex-col gap-4 rounded-xl bg-surface p-6 text-base shadow-2xl">
+            <h2 className="m-0 text-2xl font-bold">Long session</h2>
+            <p className="m-0">
+              This period is {formatTimeDiff(buildStartDate(), buildEndDate())}{" "}
+              long. Are you sure this is correct?
+            </p>
+            <div className="flex justify-end gap-3">
+              <Button
+                variant="secondary"
+                onClick={() => setConfirmingLongPeriod(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="kiosk"
+                onClick={onConfirmLongPeriod}
+                disabled={props.isSubmitting}
+              >
+                Confirm
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
