@@ -418,6 +418,21 @@ type QueryRoot {
 		"""
 		id: ID!
 	): Period!
+	"""
+	Look up the single period that a secure edit-link token grants access to.
+	
+	This is the entry point for member-facing edit links delivered by SMS/email:
+	it authenticates purely on the opaque token — no session, user, or API token —
+	and is therefore deliberately *unguarded*. The token grants access to exactly
+	one period; any unknown, malformed, or expired token yields a uniform error so
+	it can't be used as an oracle.
+	"""
+	periodByLinkToken(
+		"""
+		Opaque period-link token from an SMS/email edit link
+		"""
+		token: String!
+	): Period!
 	session(
 		"""
 		ID for the session to look up
