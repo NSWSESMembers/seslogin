@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<20102eaabf24b52f9aff4c6748631c3b>>
+ * @generated SignedSource<<f34185f05d2858b43d626da670220a34>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -23,6 +23,7 @@ export type ActivityEditQuery$data = {
       readonly id: string;
       readonly name: string;
     } | null | undefined;
+    readonly comment: string | null | undefined;
     readonly endTime: number | null | undefined;
     readonly id: string;
     readonly startTime: number;
@@ -88,6 +89,13 @@ v3 = [
       {
         "alias": null,
         "args": null,
+        "kind": "ScalarField",
+        "name": "comment",
+        "storageKey": null
+      },
+      {
+        "alias": null,
+        "args": null,
         "concreteType": "Category",
         "kind": "LinkedField",
         "name": "category",
@@ -140,16 +148,16 @@ return {
     "selections": (v3/*: any*/)
   },
   "params": {
-    "cacheID": "205cd2072655830750369170b7175610",
+    "cacheID": "2b1cd8825e996f7e5bd2e6ce996ca617",
     "id": null,
     "metadata": {},
     "name": "ActivityEditQuery",
     "operationKind": "query",
-    "text": "query ActivityEditQuery(\n  $id: ID!\n) {\n  period(id: $id) {\n    id\n    startTime\n    endTime\n    category {\n      id\n      name\n    }\n  }\n  categories {\n    id\n    name\n    enabled\n  }\n}\n"
+    "text": "query ActivityEditQuery(\n  $id: ID!\n) {\n  period(id: $id) {\n    id\n    startTime\n    endTime\n    comment\n    category {\n      id\n      name\n    }\n  }\n  categories {\n    id\n    name\n    enabled\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "05fa2a419ec0be1c3b3547165158e7f4";
+(node as any).hash = "ec1b7038c8658849ae9b9063e771ba90";
 
 export default node;
