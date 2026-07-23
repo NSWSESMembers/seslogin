@@ -37,7 +37,10 @@ function niceScale(maxValue: number): { max: number; ticks: number[] } {
   const residual = roughStep / magnitude;
   const niceStep =
     residual <= 1 ? 1 : residual <= 2 ? 2 : residual <= 5 ? 5 : 10;
-  const step = niceStep * magnitude;
+  // Period counts are integers, so never use a sub-1 step: a fractional step
+  // (e.g. 0.5 when maxValue is 1) rounds to duplicate integer ticks, which
+  // collide as React keys and repeat labels on the axis.
+  const step = Math.max(1, niceStep * magnitude);
   const max = Math.ceil(maxValue / step) * step;
   const ticks: number[] = [];
   for (let t = 0; t <= max + step / 2; t += step) {
