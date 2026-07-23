@@ -86,7 +86,9 @@ function TransactionList(props: { transactionState: TransactionState }) {
 function TransactionLoading(props: { transaction: TransactionLoadingType }) {
   return (
     <p>
-      <span className={`${transactionBase} bg-yellow-300`}>
+      <span
+        className={`${transactionBase} bg-yellow-300 dark:bg-yellow-700 dark:text-white`}
+      >
         Fetching information for {props.transaction.memberId}
       </span>
       <span
@@ -104,7 +106,7 @@ function TransactionSignedIn(props: {
   return (
     <p>
       <span
-        className={`${transactionBase} bg-green-300 ${isFading ? "opacity-0" : ""}`}
+        className={`${transactionBase} bg-green-300 dark:bg-green-700 dark:text-white ${isFading ? "opacity-0" : ""}`}
       >
         <span className="font-bold">
           {txn.person.firstName} {txn.person.lastName}
@@ -135,7 +137,7 @@ function TransactionSignedOut(props: {
   return (
     <p>
       <span
-        className={`${transactionBase} bg-green-300 ${isFading ? "opacity-0" : ""}`}
+        className={`${transactionBase} bg-green-300 dark:bg-green-700 dark:text-white ${isFading ? "opacity-0" : ""}`}
       >
         <span className="font-bold">
           {txn.person.firstName} {txn.person.lastName}
@@ -155,7 +157,7 @@ function TransactionError(props: {
   return (
     <p>
       <span
-        className={`${transactionBase} bg-red-300 ${isFading ? "opacity-0" : ""}`}
+        className={`${transactionBase} bg-red-300 dark:bg-red-700 dark:text-white ${isFading ? "opacity-0" : ""}`}
       >
         <span className="font-bold">Error:</span> {txn.message}
       </span>
