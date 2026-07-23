@@ -172,6 +172,7 @@ impl db::Handler for Handler {
         _category_id: &str,
         _start_time: u64,
         _end_time: u64,
+        _comment: Option<&str>,
     ) -> db::Result<Period> {
         Self::unsupported()
     }
