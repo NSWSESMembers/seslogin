@@ -18,7 +18,7 @@ export default function ScanTitleBar(props: {
       {props.onCancelSignOut && (
         <button
           onClick={props.onCancelSignOut}
-          className="ml-auto shrink-0 cursor-pointer rounded-lg border-2 border-white bg-transparent px-4 py-2.5 font-title text-[0.6em] text-white active:bg-white/20"
+          className="ml-auto shrink-0 cursor-pointer rounded-lg border-2 border-white bg-transparent px-4 py-2 font-title text-[0.6em] leading-none text-white active:bg-white/20"
         >
           Cancel sign out
         </button>
