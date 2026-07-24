@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<a8a965d0d7a2adc61ae383ac7a7825be>>
+ * @generated SignedSource<<ed42df57bfd409332261499fdadcadf8>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -17,14 +17,19 @@ export type AdminHomeQuery$data = {
   readonly location: {
     readonly dashboardSummary: {
       readonly activeMembers24H: number;
+      readonly activeMembers24HNonVirtual: number;
+      readonly activeMembers24HVirtual: number;
       readonly activeMembers30D: number;
       readonly avgCompletedDuration7D: number;
       readonly checkIns24H: number;
       readonly checkIns7D: number;
+      readonly checkIns7DVirtual: number;
       readonly dailyPeriods7D: ReadonlyArray<{
         readonly dayStart: number;
         readonly periodCount: number;
+        readonly periodCountVirtual: number;
         readonly totalTime: number;
+        readonly totalTimeVirtual: number;
       }>;
       readonly lastSuccessfulMemberSync: number | null | undefined;
       readonly onlineKiosks: number;
@@ -32,12 +37,14 @@ export type AdminHomeQuery$data = {
       readonly topCategories7D: ReadonlyArray<{
         readonly categoryId: string | null | undefined;
         readonly categoryName: string;
+        readonly isVirtual: boolean;
         readonly periodCount: number;
         readonly totalTime: number;
       }>;
       readonly totalKiosks: number;
       readonly totalMembers: number;
       readonly totalTime7D: number;
+      readonly totalTime7DVirtual: number;
     };
     readonly id: string;
     readonly name: string;
@@ -136,6 +143,20 @@ v3 = [
             "alias": null,
             "args": null,
             "kind": "ScalarField",
+            "name": "activeMembers24HVirtual",
+            "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "activeMembers24HNonVirtual",
+            "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
             "name": "activeMembers30D",
             "storageKey": null
           },
@@ -157,7 +178,21 @@ v3 = [
             "alias": null,
             "args": null,
             "kind": "ScalarField",
+            "name": "checkIns7DVirtual",
+            "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
             "name": "totalTime7D",
+            "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "totalTime7DVirtual",
             "storageKey": null
           },
           {
@@ -211,7 +246,21 @@ v3 = [
                 "storageKey": null
               },
               (v1/*: any*/),
-              (v2/*: any*/)
+              (v2/*: any*/),
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "periodCountVirtual",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "totalTimeVirtual",
+                "storageKey": null
+              }
             ],
             "storageKey": null
           },
@@ -238,7 +287,14 @@ v3 = [
                 "storageKey": null
               },
               (v1/*: any*/),
-              (v2/*: any*/)
+              (v2/*: any*/),
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "isVirtual",
+                "storageKey": null
+              }
             ],
             "storageKey": null
           }
@@ -267,16 +323,16 @@ return {
     "selections": (v3/*: any*/)
   },
   "params": {
-    "cacheID": "12571430015fa565ba0c59bd789a7ae5",
+    "cacheID": "311329fb6f365fd832684d60f20dc2d4",
     "id": null,
     "metadata": {},
     "name": "AdminHomeQuery",
     "operationKind": "query",
-    "text": "query AdminHomeQuery(\n  $location: ID!\n  $now: Int!\n) {\n  location(id: $location) {\n    id\n    name\n    dashboardSummary(asOf: $now) {\n      totalMembers\n      activeMembers24H\n      activeMembers30D\n      checkIns24H\n      checkIns7D\n      totalTime7D\n      avgCompletedDuration7D\n      totalKiosks\n      onlineKiosks\n      recentlyActiveKiosks\n      lastSuccessfulMemberSync\n      dailyPeriods7D {\n        dayStart\n        periodCount\n        totalTime\n      }\n      topCategories7D {\n        categoryId\n        categoryName\n        periodCount\n        totalTime\n      }\n    }\n  }\n}\n"
+    "text": "query AdminHomeQuery(\n  $location: ID!\n  $now: Int!\n) {\n  location(id: $location) {\n    id\n    name\n    dashboardSummary(asOf: $now) {\n      totalMembers\n      activeMembers24H\n      activeMembers24HVirtual\n      activeMembers24HNonVirtual\n      activeMembers30D\n      checkIns24H\n      checkIns7D\n      checkIns7DVirtual\n      totalTime7D\n      totalTime7DVirtual\n      avgCompletedDuration7D\n      totalKiosks\n      onlineKiosks\n      recentlyActiveKiosks\n      lastSuccessfulMemberSync\n      dailyPeriods7D {\n        dayStart\n        periodCount\n        totalTime\n        periodCountVirtual\n        totalTimeVirtual\n      }\n      topCategories7D {\n        categoryId\n        categoryName\n        periodCount\n        totalTime\n        isVirtual\n      }\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "3032b8791ed5cce9d7f2e57d3aeb43af";
+(node as any).hash = "e7571deb1a9507c99ca3aaf35cf0ef3d";
 
 export default node;
