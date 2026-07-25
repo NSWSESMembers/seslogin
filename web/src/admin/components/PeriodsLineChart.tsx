@@ -98,7 +98,7 @@ export default function PeriodsLineChart({
   const active = activeIndex != null ? plotted[activeIndex] : null;
 
   return (
-    <div className="relative aspect-3/2 min-h-35 min-[781px]:aspect-7/2">
+    <div className="relative aspect-3/2 min-h-35 min-[781px]:mx-auto min-[781px]:aspect-7/2 min-[781px]:max-w-300">
       <svg
         ref={svgRef}
         viewBox={`0 0 ${VIEW_WIDTH} ${VIEW_HEIGHT}`}
