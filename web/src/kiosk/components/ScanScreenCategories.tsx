@@ -51,6 +51,10 @@ export function Inner(props: {
     ? selectedCategoryData.subcategories || []
     : categoriesFixture;
 
+  const sortedCategories = categories.sort((a, b) =>
+    a.name.localeCompare(b.name),
+  );
+
   function back() {
     setSelectedCategory(null);
   }
@@ -87,7 +91,7 @@ export function Inner(props: {
         )}
       </div>
       <ul className="pl-0">
-        {categories.map((category) => (
+        {sortedCategories.map((category) => (
           <CategoryButton
             key={category.id}
             id={category.id}
