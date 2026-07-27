@@ -8,14 +8,21 @@ seslogin v2 is a member attendance tracking system for managing check-in/check-o
 
 ## Commands
 
-> ⚠️ **Almost everything points at the production database.** `var.db_prefix` defaults to
-> `seslogin_prod`, and nearly every environment uses it: prod, preprod, the `seslogin-test-api`
-> (deployed from `main`), all the sync/utility Lambdas, **and local dev** (`.env` sets
-> `DB_PREFIX=seslogin_prod`). The `seslogin_test_*` tables exist but are not wired into any
-> running environment yet. This means `make dev`, `make do-sync`, the dev-auth bypass below, and
-> any script you run locally are operating on **live production member data**. Be extremely
-> careful: prefer dry-runs, avoid destructive mutations, and double-check `DB_PREFIX` before
-> running anything that writes.
+> **Full local setup guide: [DEVELOPMENT.md](DEVELOPMENT.md)** — AWS access, secrets,
+> toolchain, and troubleshooting.
+
+> ⚠️ **Databases: local dev is on the dev tables; every deployed environment is on prod.**
+> `.env` sets `DB_PREFIX=seslogin_test`, so `make dev` and locally-run scripts hit the
+> `seslogin_test_*` tables — a manually refreshed, **out-of-date partial snapshot** of
+> production. Expect missing or stale records; that's the snapshot, not a bug.
+>
+> All *deployed* environments use `seslogin_prod`: prod, preprod, `seslogin-test-api`, and
+> all sync/utility Lambdas (`var.db_prefix` defaults to `seslogin_prod`). Anything you push
+> to a deployment branch runs against **live production member data** with mutations enabled.
+>
+> Local dev can also be pointed at prod by setting `DB_PREFIX=seslogin_prod`. If you do:
+> prefer read-only work, use dry-runs, avoid destructive mutations, and double-check
+> `DB_PREFIX` before running anything that writes.
 
 ### Development
 
@@ -46,9 +53,10 @@ The impersonated caller keeps its real permissions, so authorization still appli
 is dev-only (not present in the deployed Lambda) and logs a warning at startup; a missing
 or inactive record yields `401`. See `api/README.md` for details.
 
-> ⚠️ Combined with the default `DB_PREFIX=seslogin_prod`, this bypass acts as a real user or
-> kiosk against **live production data**. If you add `--enable-mutations`, writes hit prod. Only
-> impersonate records you own, and prefer read-only testing.
+> ⚠️ Under the default `DB_PREFIX=seslogin_test` this impersonates a caller in the dev
+> snapshot, which is safe. If you have switched to `DB_PREFIX=seslogin_prod`, it acts as a
+> **real** user or kiosk against live production data, and `--enable-mutations` means writes
+> hit prod. Only impersonate records you own, and prefer read-only testing.
 
 ### After GraphQL Schema Changes
 
@@ -67,19 +75,34 @@ The `make pre-commit-checks` target runs a schema diff and Relay compilation, so
 cd api && cargo test                  # Run all Rust tests
 cd api && cargo clippy                # Lint Rust code
 cd web && npm run test:unit           # Web unit tests
-make pre-commit-checks                # Full CI suite: relay, prettier, eslint, build, cargo fmt --check, schema diff, clippy
+make test                             # cargo test + web unit tests
+make check                            # Full CI suite (alias for pre-commit-checks)
+make format                           # Auto-fix formatting: cargo fmt, prettier, terraform fmt
 ```
+
+`make check` runs: actionlint, Relay compile, Prettier check, ESLint, TS typecheck, web
+production build, `terraform fmt -check`, Rust toolchain version check, `cargo fmt --check`,
+GraphQL schema diff, and Clippy with `-Dwarnings`. It needs `actionlint` and Terraform on
+PATH. When it fails on formatting, run `make format` rather than fixing by hand.
 
 ### Data Sync (local)
 
 ```bash
-make sync      # Dry-run SES API sync (print changes only)
-make do-sync   # Apply SES API sync to database
+make member-sync         # SES API member sync — dry-run by default (prints changes only)
+make sync-locations      # Location sync — dry-run
+make do-sync-locations   # Location sync — apply
+make load-nitc-tags      # Load NITC tags
 ```
 
-> ⚠️ With the default `DB_PREFIX=seslogin_prod`, `make do-sync` writes to the **production**
-> database. Always run `make sync` (dry-run) first and review the planned changes before
-> applying.
+`sync-members` and `sync-locations` both take `--dry-run` (defaulting to `true`), so to
+apply a member sync you pass it explicitly:
+
+```bash
+cd api && RUST_LOG=info cargo run --bin sync-members -- --dry-run false
+```
+
+> ⚠️ Always review the dry-run output before applying. If you have switched to
+> `DB_PREFIX=seslogin_prod`, an apply writes to the **production** database.
 
 ### Lambda Deployment
 
@@ -167,10 +190,14 @@ All entities use soft deletes (`deleted` flag).
 
 ### Configuration
 
-Environment variables (loaded from `.env` and `.env.secret`):
-- `DB_PREFIX` — DynamoDB table name prefix
+Environment variables (loaded from `.env` and `.env.secret`; see
+[.env.secret.example](.env.secret.example) for the full secret list):
+- `DB_PREFIX` — DynamoDB table name prefix. `.env` sets `seslogin_test` (dev snapshot); deployed envs use `seslogin_prod`.
 - `JWT_SECRET` — JWT signing key
 - `SES_API_BASE_URL` / `SES_API_KEY` — External member sync API
-- `MEMBER_SYNC_QUEUE_URL` — SQS queue URL used by the dispatcher Lambda
+- `SES_INTRANET_SEARCH_API_BASE_URL` / `SES_INTRANET_SEARCH_API_KEY` — SES intranet contact-directory search, used to sync member emails. Separate credential from `SES_API_KEY` (uses the `Ocp-Apim-Subscription-Key` header).
+- `MEMBER_SYNC_QUEUE_URL` / `NITC_EXPORT_QUEUE_URL` / `HEALTHCHECK_QUEUE_URL` — SQS queue URLs
+- `TURNSTILE_SECRET_KEY` — Cloudflare Turnstile secret for verifying login CAPTCHA tokens
+- `TURNSTILE_DISABLED` — Set to `1` locally to bypass Turnstile (it can't work in local dev). Pair with `VITE_TURNSTILE_DISABLED=1` in `web/.env.local`.
 - `RUST_LOG` — Log level (e.g., `info`, `debug`)
 - `WEBAUTHN_RP_ID` / `WEBAUTHN_RP_ORIGIN` — Passkey relying-party ID and origin. Local dev defaults to `localhost` / `http://localhost:5173`; deployed envs use `seslogin.com` / the site origin (e.g. `https://new.seslogin.com`). A passkey is bound to the RP ID it was registered under, so local-dev passkeys won't work in prod.
