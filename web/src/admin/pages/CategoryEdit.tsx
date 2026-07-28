@@ -20,6 +20,7 @@ export default function CategoryEdit() {
           id
           name
           enabled
+          isVirtual
           nitcGroupId
           nitcParticipantType
         }
@@ -39,6 +40,7 @@ export default function CategoryEdit() {
         $id: ID!
         $name: String!
         $enabled: Boolean!
+        $isVirtual: Boolean!
         $nitcGroupId: String
         $nitcParticipantType: String
       ) {
@@ -46,12 +48,14 @@ export default function CategoryEdit() {
           id: $id
           name: $name
           enabled: $enabled
+          isVirtual: $isVirtual
           nitcGroupId: $nitcGroupId
           nitcParticipantType: $nitcParticipantType
         ) {
           id
           name
           enabled
+          isVirtual
           nitcGroupId
           nitcParticipantType
         }
@@ -61,6 +65,7 @@ export default function CategoryEdit() {
   async function handleSubmit(formData: FormData) {
     const name = formData.get("name")?.toString() || "";
     const enabled = formData.get("enabled") === "on";
+    const isVirtual = formData.get("isVirtual") === "on";
     const nitcGroupId = formData.get("nitcGroupId")?.toString() || null;
     const nitcParticipantType =
       formData.get("nitcParticipantType")?.toString() || null;
@@ -68,7 +73,14 @@ export default function CategoryEdit() {
     try {
       await new Promise((resolve, reject) => {
         commitMutation({
-          variables: { id, name, enabled, nitcGroupId, nitcParticipantType },
+          variables: {
+            id,
+            name,
+            enabled,
+            isVirtual,
+            nitcGroupId,
+            nitcParticipantType,
+          },
           onCompleted: resolve,
           onError: reject,
           updater: (store) => {
@@ -109,6 +121,14 @@ export default function CategoryEdit() {
               name="enabled"
               id="enabled"
               defaultChecked={category.enabled}
+            />
+          </FormField>
+          <FormField label={<label htmlFor="isVirtual">Virtual</label>}>
+            <input
+              type="checkbox"
+              name="isVirtual"
+              id="isVirtual"
+              defaultChecked={category.isVirtual}
             />
           </FormField>
           <FormField label={<label htmlFor="nitcGroupId">NITC Group</label>}>

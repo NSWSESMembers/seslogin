@@ -25,6 +25,7 @@ describe("useSelectedLocation", () => {
       email: "tester@example.com",
       isSuper: false,
       isDev: false,
+      disaggregateVirtualPeriods: false,
       locations: [{ id: "loc-1", name: "HQ", enabled: true }],
     });
 
@@ -42,6 +43,7 @@ describe("useSelectedLocation", () => {
       email: "tester@example.com",
       isSuper: false,
       isDev: false,
+      disaggregateVirtualPeriods: false,
       locations: [{ id: "loc-1", name: "HQ", enabled: true }],
     });
 
@@ -59,6 +61,7 @@ describe("useSelectedLocation", () => {
       email: "tester@example.com",
       isSuper: false,
       isDev: false,
+      disaggregateVirtualPeriods: false,
       locations: [
         { id: "loc-1", name: "HQ", enabled: true },
         { id: "loc-2", name: "Downtown", enabled: true },
