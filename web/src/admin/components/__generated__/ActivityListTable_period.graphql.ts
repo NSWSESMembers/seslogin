@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<8aabd7d051930594bcf238240ec7a29a>>
+ * @generated SignedSource<<ca6c01ec0f038289c07c4d690d28e5b3>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -17,6 +17,7 @@ export type ActivityListTable_period$data = {
     readonly isVirtual: boolean;
     readonly name: string;
   } | null | undefined;
+  readonly comment: string | null | undefined;
   readonly endTime: number | null | undefined;
   readonly id: string;
   readonly nitcEventId: string | null | undefined;
@@ -43,6 +44,6 @@ const node: ReaderInlineDataFragment = {
   "name": "ActivityListTable_period"
 };
 
-(node as any).hash = "fae39eed8e70c88d590e40eea41a6b01";
+(node as any).hash = "167489a9d7fb4c58145139c92d5d2b86";
 
 export default node;
