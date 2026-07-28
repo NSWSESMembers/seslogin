@@ -30,6 +30,8 @@ interface BasicSessionModeFieldsProps {
   onEasyTimeEntryChange: (next: boolean) => void;
   newCategories: boolean;
   onNewCategoriesChange: (next: boolean) => void;
+  guests: boolean;
+  onGuestsChange: (next: boolean) => void;
   configJson: string;
 }
 
@@ -127,6 +129,20 @@ function getNewCategoriesFromConfig(config: ConfigObject): boolean {
   return !!config.newCategories;
 }
 
+function withGuests(config: ConfigObject, enabled: boolean): ConfigObject {
+  const next = { ...config };
+  if (enabled) {
+    next.guests = true;
+  } else {
+    delete next.guests;
+  }
+  return next;
+}
+
+function getGuestsFromConfig(config: ConfigObject): boolean {
+  return !!config.guests;
+}
+
 function initializeConfigState(initialConfig: string): InitialConfigState {
   const parsed = parseConfigObject(initialConfig);
   const sessionMode = getSessionModeFromConfig(parsed);
@@ -192,6 +208,8 @@ function BasicSessionModeFields({
   onEasyTimeEntryChange,
   newCategories,
   onNewCategoriesChange,
+  guests,
+  onGuestsChange,
   configJson,
 }: BasicSessionModeFieldsProps) {
   return (
@@ -267,6 +285,25 @@ function BasicSessionModeFields({
               }
               title="New categories"
               description="use the reworked category list on the sign-out screens — new icon artwork, with several retired subcategories removed and others reordered"
+            />
+            <OptionRow
+              input={
+                <input
+                  type="checkbox"
+                  checked={guests}
+                  onChange={(e) => onGuestsChange(e.target.checked)}
+                  className="mt-0.5"
+                />
+              }
+              title={
+                <span className="inline-flex items-center gap-2">
+                  Guests
+                  <span className="rounded-full bg-blue-600 px-1.5 py-0.5 text-[0.625rem] font-semibold tracking-wide text-white uppercase dark:bg-blue-500">
+                    Beta
+                  </span>
+                </span>
+              }
+              description="show a Guest button so non-members can be signed in and out by name without a membership record"
             />
           </OptionList>
         </FormField>
@@ -358,6 +395,7 @@ export default function SessionForm({
   const smallCategories = getSmallCategoriesFromConfig(parsedConfig);
   const easyTimeEntry = getEasyTimeEntryFromConfig(parsedConfig);
   const newCategories = getNewCategoriesFromConfig(parsedConfig);
+  const guests = getGuestsFromConfig(parsedConfig);
 
   function setEditorMode(nextEditorMode: ConfigEditorMode) {
     if (configEditorMode === nextEditorMode) {
@@ -395,6 +433,11 @@ export default function SessionForm({
     setConfigJson(JSON.stringify(nextConfig, null, 2));
   }
 
+  function handleGuestsChange(enabled: boolean) {
+    const nextConfig = withGuests(parseConfigObject(configJson), enabled);
+    setConfigJson(JSON.stringify(nextConfig, null, 2));
+  }
+
   function handleAdvancedConfigChange(event: ChangeEvent<HTMLTextAreaElement>) {
     const nextConfigText = event.target.value;
     setConfigJson(nextConfigText);
@@ -418,6 +461,8 @@ export default function SessionForm({
             onEasyTimeEntryChange={handleEasyTimeEntryChange}
             newCategories={newCategories}
             onNewCategoriesChange={handleNewCategoriesChange}
+            guests={guests}
+            onGuestsChange={handleGuestsChange}
             configJson={configJson}
           />
         )}
