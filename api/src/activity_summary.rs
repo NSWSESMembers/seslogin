@@ -348,39 +348,46 @@ fn build_summary_html(
         }
 
         if disaggregate_virtual {
-            let mut virtual_rows: Vec<(String, f64)> = cat_hours
+            let mut virtual_rows: Vec<(String, Vec<f64>)> = cat_hours
                 .iter()
                 .filter(|(_, hours)| hours.0 > 0.0)
-                .map(|(label, hours)| (label.clone(), hours.0))
+                .map(|(label, hours)| (label.clone(), vec![hours.0]))
                 .collect();
             virtual_rows.sort_by(|a, b| a.0.cmp(&b.0));
-            let mut non_virtual_rows: Vec<(String, f64)> = cat_hours
+            let mut non_virtual_rows: Vec<(String, Vec<f64>)> = cat_hours
                 .iter()
                 .filter(|(_, hours)| hours.1 > 0.0)
-                .map(|(label, hours)| (label.clone(), hours.1))
+                .map(|(label, hours)| (label.clone(), vec![hours.1]))
                 .collect();
             non_virtual_rows.sort_by(|a, b| a.0.cmp(&b.0));
 
-            html.push_str(&render_hours_table(
+            html.push_str(&render_summary_table(
                 "By category — Virtual",
                 "Category",
+                &["Total hours"],
                 &virtual_rows,
             ));
-            html.push_str(&render_hours_table(
+            html.push_str(&render_summary_table(
                 "By category — Non-virtual",
                 "Category",
+                &["Total hours"],
                 &non_virtual_rows,
             ));
         } else {
-            let mut cat_rows: Vec<(String, f64)> = cat_hours
+            let mut cat_rows: Vec<(String, Vec<f64>)> = cat_hours
                 .into_iter()
                 .map(|(label, (virtual_hours, non_virtual_hours))| {
-                    (label, virtual_hours + non_virtual_hours)
+                    (label, vec![virtual_hours + non_virtual_hours])
                 })
                 .collect();
             cat_rows.sort_by(|a, b| a.0.cmp(&b.0));
 
-            html.push_str(&render_hours_table("By category", "Category", &cat_rows));
+            html.push_str(&render_summary_table(
+                "By category",
+                "Category",
+                &["Total hours"],
+                &cat_rows,
+            ));
         }
 
         // --- Member summary ---
@@ -414,20 +421,35 @@ fn build_summary_html(
         }
 
         if disaggregate_virtual {
-            let mut member_rows: Vec<(String, f64, f64)> = member_hours.into_values().collect();
-            member_rows.sort_by(|a, b| a.0.cmp(&b.0));
-
-            html.push_str(&render_member_split_hours_table(&member_rows));
-        } else {
-            let mut member_rows: Vec<(String, f64)> = member_hours
+            let mut member_rows: Vec<(String, Vec<f64>)> = member_hours
                 .into_values()
                 .map(|(name, virtual_hours, non_virtual_hours)| {
-                    (name, virtual_hours + non_virtual_hours)
+                    (name, vec![virtual_hours, non_virtual_hours])
                 })
                 .collect();
             member_rows.sort_by(|a, b| a.0.cmp(&b.0));
 
-            html.push_str(&render_hours_table("By member", "Member", &member_rows));
+            html.push_str(&render_summary_table(
+                "By member",
+                "Member",
+                &["Virtual hours", "Non-virtual hours"],
+                &member_rows,
+            ));
+        } else {
+            let mut member_rows: Vec<(String, Vec<f64>)> = member_hours
+                .into_values()
+                .map(|(name, virtual_hours, non_virtual_hours)| {
+                    (name, vec![virtual_hours + non_virtual_hours])
+                })
+                .collect();
+            member_rows.sort_by(|a, b| a.0.cmp(&b.0));
+
+            html.push_str(&render_summary_table(
+                "By member",
+                "Member",
+                &["Total hours"],
+                &member_rows,
+            ));
         }
     }
 
@@ -479,48 +501,37 @@ fn escape_html(s: &str) -> String {
         .replace('"', "&quot;")
 }
 
-/// Renders a two-column "name | total hours" summary table with a heading.
-fn render_hours_table(heading: &str, name_header: &str, rows: &[(String, f64)]) -> String {
+/// Renders a summary table with a heading: a left-aligned name column plus one
+/// right-aligned hours column per `value_headers` entry. Each row supplies a
+/// name and one value per column (formatted to one decimal place); rows are
+/// zebra-striped. Every row is expected to hold `value_headers.len()` values.
+fn render_summary_table(
+    heading: &str,
+    name_header: &str,
+    value_headers: &[&str],
+    rows: &[(String, Vec<f64>)],
+) -> String {
     let mut html = format!(
         "<h4 style=\"margin-bottom:4px;margin-top:16px\">{}</h4>\n",
         escape_html(heading)
     );
     html.push_str(TABLE_HEADER);
+    let value_ths: String = value_headers.iter().map(|h| th_right(h)).collect();
     html.push_str(&format!(
         "<thead><tr style=\"background:#f3f4f6\">{}{}</tr></thead><tbody>\n",
         th(name_header),
-        th_right("Total hours"),
+        value_ths,
     ));
-    for (i, (label, hours)) in rows.iter().enumerate() {
+    for (i, (label, values)) in rows.iter().enumerate() {
         let row_bg = if i % 2 == 0 { "#fff" } else { "#f9fafb" };
+        let value_tds: String = values
+            .iter()
+            .map(|v| td_right(&format!("{:.1}", v)))
+            .collect();
         html.push_str(&format!(
             "<tr style=\"background:{bg}\">{}{}</tr>\n",
             td(&escape_html(label)),
-            td_right(&format!("{:.1}", hours)),
-            bg = row_bg,
-        ));
-    }
-    html.push_str("</tbody></table>\n");
-    html
-}
-
-/// Renders the "By member" table split into virtual/non-virtual hour columns.
-fn render_member_split_hours_table(rows: &[(String, f64, f64)]) -> String {
-    let mut html = String::from("<h4 style=\"margin-bottom:4px;margin-top:16px\">By member</h4>\n");
-    html.push_str(TABLE_HEADER);
-    html.push_str(&format!(
-        "<thead><tr style=\"background:#f3f4f6\">{}{}{}</tr></thead><tbody>\n",
-        th("Member"),
-        th_right("Virtual hours"),
-        th_right("Non-virtual hours"),
-    ));
-    for (i, (name, virtual_hours, non_virtual_hours)) in rows.iter().enumerate() {
-        let row_bg = if i % 2 == 0 { "#fff" } else { "#f9fafb" };
-        html.push_str(&format!(
-            "<tr style=\"background:{bg}\">{}{}{}</tr>\n",
-            td(&escape_html(name)),
-            td_right(&format!("{:.1}", virtual_hours)),
-            td_right(&format!("{:.1}", non_virtual_hours)),
+            value_tds,
             bg = row_bg,
         ));
     }
