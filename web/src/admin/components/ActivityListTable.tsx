@@ -13,6 +13,7 @@ import { useUserInfo } from "./useUserInfo";
 import { useNotify } from "./useNotify";
 import { AdminTable, Th, Td } from "../../components/ui/Table";
 import { Button, ButtonLink } from "../../components/ui/Button";
+import CommentIndicator from "./CommentIndicator";
 
 type Firstcol = "location" | "person";
 
@@ -27,6 +28,7 @@ const activityListTablePeriod = graphql`
     personId
     startTime
     endTime
+    comment
     nitcExportStatus
     nitcEventId
     signedInSession {
@@ -205,7 +207,12 @@ function Row<T extends ActivityListTable_period$key>({
         {end ? formatTime(end) : ""}
       </Td>
       <Td>{timeDiff}</Td>
-      <Td>{period.category?.name}</Td>
+      <Td>
+        <span className="inline-flex items-center gap-1.5">
+          {period.category?.name}
+          {period.comment && <CommentIndicator comment={period.comment} />}
+        </span>
+      </Td>
       <Td options>
         <div className="flex justify-end gap-1">
           {/* Guests have no category; ActivityEdit forces one, so hide Edit for them. */}
