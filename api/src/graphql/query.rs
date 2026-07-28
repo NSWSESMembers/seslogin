@@ -72,6 +72,9 @@ impl<A: App + HasDb + Send + Sync + 'static> User<A> {
     async fn enabled(&self) -> bool {
         self.rec.enabled
     }
+    async fn disaggregate_virtual_periods(&self) -> bool {
+        self.rec.disaggregate_virtual_periods
+    }
 
     async fn access_time(&self) -> Option<i64> {
         self.rec.access_time.map(|t| t as i64)
@@ -183,6 +186,10 @@ pub struct DashboardDailyPeriodSummary {
     pub day_start: i64,
     pub period_count: i64,
     pub total_time: i64,
+    // Only the virtual portion is sent; clients derive the non-virtual portion
+    // as `period_count - period_count_virtual` (period counts/times are additive).
+    pub period_count_virtual: i64,
+    pub total_time_virtual: i64,
 }
 
 #[derive(SimpleObject, Clone, Debug)]
@@ -191,6 +198,7 @@ pub struct DashboardCategoryPeriodSummary {
     pub category_name: String,
     pub period_count: i64,
     pub total_time: i64,
+    pub is_virtual: bool,
 }
 
 #[derive(SimpleObject, Clone, Debug)]
@@ -198,11 +206,25 @@ pub struct LocationDashboardSummary {
     pub as_of: i64,
     pub total_members: i64,
     pub active_members_24h: i64,
+    // Active-member counts are set cardinalities: a member can be active both
+    // virtually and non-virtually in the same window, so total != virtual +
+    // non_virtual and neither split is derivable from the other. Send both.
+    pub active_members_24h_virtual: i64,
+    pub active_members_24h_non_virtual: i64,
     pub active_members_30d: i64,
+    // Check-in counts and total time are additive, so only the virtual portion
+    // is sent; clients derive non-virtual by subtracting from the total.
     pub check_ins_24h: i64,
+    pub check_ins_24h_virtual: i64,
     pub check_ins_7d: i64,
+    pub check_ins_7d_virtual: i64,
     pub total_time_7d: i64,
+    pub total_time_7d_virtual: i64,
+    // Average duration is not additive (avg_total != avg_virtual + avg_non_virtual
+    // and is not recoverable by subtraction), so both splits are sent explicitly.
     pub avg_completed_duration_7d: i64,
+    pub avg_completed_duration_7d_virtual: i64,
+    pub avg_completed_duration_7d_non_virtual: i64,
     pub total_kiosks: i64,
     pub online_kiosks: i64,
     pub recently_active_kiosks: i64,
@@ -245,6 +267,9 @@ impl<A: App + HasDb + Send + Sync + 'static> Category<A> {
     }
     async fn enabled(&self) -> bool {
         self.rec.enabled
+    }
+    async fn is_virtual(&self) -> bool {
+        self.rec.is_virtual
     }
     async fn nitc_group_id(&self) -> Option<&String> {
         self.rec.nitc_group_id.as_ref()
@@ -623,14 +648,21 @@ pub struct MemberPeriodSummary<A: App + HasDb + Send + Sync> {
     _marker: std::marker::PhantomData<A>,
     person_id: String,
     total_time: i64,
+    // The virtual portion of `total_time`. Only populated where a member can
+    // mix virtual and non-virtual categories (the flat by-member summary);
+    // `None` in per-category contexts, where virtuality is a property of the
+    // enclosing category rather than the member. Clients derive the
+    // non-virtual portion as `total_time - total_time_virtual`.
+    total_time_virtual: Option<i64>,
 }
 
 impl<A: App + HasDb + Send + Sync> MemberPeriodSummary<A> {
-    fn new(person_id: String, total_time: i64) -> Self {
+    fn new(person_id: String, total_time: i64, total_time_virtual: Option<i64>) -> Self {
         Self {
             _marker: Default::default(),
             person_id,
             total_time,
+            total_time_virtual,
         }
     }
 }
@@ -653,6 +685,10 @@ impl<A: App + HasDb + Send + Sync + 'static> MemberPeriodSummary<A> {
 
     async fn total_time(&self) -> i64 {
         self.total_time
+    }
+
+    async fn total_time_virtual(&self) -> Option<i64> {
+        self.total_time_virtual
     }
 }
 
@@ -820,6 +856,32 @@ fn period_duration(period: &db::Period) -> Option<u64> {
     period
         .end_time
         .and_then(|end_time| end_time.checked_sub(period.start_time))
+}
+
+/// Loads `category_id -> is_virtual` for the given category ids via the
+/// request-scoped category DataLoader (BatchGetItem + per-request cache, shared
+/// with any row-level `category` field resolution). Avoids a full-table scan of
+/// the category table. Unknown ids are simply absent from the returned map, so
+/// callers treat missing lookups as non-virtual.
+async fn load_category_virtual_map<A: App + HasDb + Send + Sync + 'static>(
+    ctx: &Context<'_>,
+    category_ids: impl IntoIterator<Item = String>,
+) -> Result<HashMap<String, bool>> {
+    let distinct: HashSet<String> = category_ids.into_iter().collect();
+    if distinct.is_empty() {
+        return Ok(HashMap::new());
+    }
+    let loader = ctx.data_unchecked::<DataLoader<DatabaseLoader<A>>>();
+    let keys: Vec<CategoryId> = distinct.into_iter().map(|id| CategoryId(ID(id))).collect();
+    let loaded = loader
+        .load_many(keys)
+        .await
+        .map_err(|e| anyhow!("Failed to load categories via DataLoader: {}", e))?;
+    Ok(loaded
+        .into_values()
+        .flatten()
+        .map(|cat| (cat.rec.id.clone(), cat.rec.is_virtual))
+        .collect())
 }
 
 fn unix_to_sydney_date(unix: u64) -> String {
@@ -1033,7 +1095,15 @@ impl<A: App + HasDb + Send + Sync> Location<A> {
                 e
             })?;
 
-        let mut totals_by_member: HashMap<String, u64> = HashMap::new();
+        let category_virtual_by_id = load_category_virtual_map::<A>(
+            ctx,
+            periods.iter().filter_map(|p| p.category_id.clone()),
+        )
+        .await?;
+
+        // (total_time, total_time_virtual) per member. A member can mix virtual
+        // and non-virtual categories, so the virtual split is tracked here.
+        let mut totals_by_member: HashMap<String, (u64, u64)> = HashMap::new();
         for period in periods {
             let Some(person_id) = period.person_id.clone() else {
                 continue;
@@ -1044,13 +1114,29 @@ impl<A: App + HasDb + Send + Sync> Location<A> {
                 continue;
             }
             if let Some(duration) = period_duration(&period) {
-                *totals_by_member.entry(person_id).or_insert(0) += duration;
+                let is_virtual = period
+                    .category_id
+                    .as_deref()
+                    .and_then(|id| category_virtual_by_id.get(id))
+                    .copied()
+                    .unwrap_or(false);
+                let entry = totals_by_member.entry(person_id).or_insert((0, 0));
+                entry.0 += duration;
+                if is_virtual {
+                    entry.1 += duration;
+                }
             }
         }
 
         let mut rows: Vec<MemberPeriodSummary<A>> = totals_by_member
             .into_iter()
-            .map(|(person_id, total_time)| MemberPeriodSummary::new(person_id, total_time as i64))
+            .map(|(person_id, (total_time, total_time_virtual))| {
+                MemberPeriodSummary::new(
+                    person_id,
+                    total_time as i64,
+                    Some(total_time_virtual as i64),
+                )
+            })
             .collect();
         rows.sort_by_key(|b| std::cmp::Reverse(b.total_time));
 
@@ -1215,6 +1301,8 @@ impl<A: App + HasDb + Send + Sync> Location<A> {
                 e
             })?;
 
+        // Virtuality is a property of the category, exposed via each row's
+        // `category { isVirtual }` field, so no per-member split is computed here.
         let mut totals_by_category: HashMap<String, HashMap<String, u64>> = HashMap::new();
         for period in periods {
             let Some(person_id) = period.person_id.clone() else {
@@ -1237,7 +1325,7 @@ impl<A: App + HasDb + Send + Sync> Location<A> {
                 let mut members: Vec<MemberPeriodSummary<A>> = totals_by_member
                     .into_iter()
                     .map(|(person_id, total_time)| {
-                        MemberPeriodSummary::new(person_id, total_time as i64)
+                        MemberPeriodSummary::new(person_id, total_time as i64, None)
                     })
                     .collect();
                 members.sort_by_key(|b| std::cmp::Reverse(b.total_time));
@@ -1285,6 +1373,8 @@ impl<A: App + HasDb + Send + Sync> Location<A> {
                 e
             })?;
 
+        // Virtuality is a property of the category, exposed via each row's
+        // `category { isVirtual }` field, so no per-member split is computed here.
         let mut totals_by_day: HashMap<String, HashMap<String, HashMap<String, u64>>> =
             HashMap::new();
         for period in periods {
@@ -1314,7 +1404,7 @@ impl<A: App + HasDb + Send + Sync> Location<A> {
                         let mut members: Vec<MemberPeriodSummary<A>> = totals_by_member
                             .into_iter()
                             .map(|(person_id, total_time)| {
-                                MemberPeriodSummary::new(person_id, total_time as i64)
+                                MemberPeriodSummary::new(person_id, total_time as i64, None)
                             })
                             .collect();
                         members.sort_by_key(|m| std::cmp::Reverse(m.total_time));
@@ -1389,8 +1479,12 @@ impl<A: App + HasDb + Send + Sync> Location<A> {
             e
         })?;
         let category_name_by_id: HashMap<String, String> = categories
-            .into_iter()
-            .map(|cat| (cat.id, cat.name))
+            .iter()
+            .map(|cat| (cat.id.clone(), cat.name.clone()))
+            .collect();
+        let category_virtual_by_id: HashMap<String, bool> = categories
+            .iter()
+            .map(|cat| (cat.id.clone(), cat.is_virtual))
             .collect();
 
         let periods_30d = app
@@ -1421,14 +1515,35 @@ impl<A: App + HasDb + Send + Sync> Location<A> {
                 e
             })?;
 
+        // Only totals and the virtual portion are tracked for additive metrics
+        // (counts/time); clients derive the non-virtual portion by subtraction.
+        // Active-member counts and average durations are not additive, so their
+        // non-virtual splits are tracked and sent explicitly.
+        #[derive(Default, Clone, Copy)]
+        struct DailyBucket {
+            count: i64,
+            time: i64,
+            count_virtual: i64,
+            time_virtual: i64,
+        }
+
         let mut active_members_30d: HashSet<String> = HashSet::new();
         let mut active_members_24h: HashSet<String> = HashSet::new();
+        let mut active_members_24h_virtual: HashSet<String> = HashSet::new();
+        let mut active_members_24h_non_virtual: HashSet<String> = HashSet::new();
         let mut check_ins_24h: i64 = 0;
+        let mut check_ins_24h_virtual: i64 = 0;
         let mut check_ins_7d: i64 = 0;
+        let mut check_ins_7d_virtual: i64 = 0;
         let mut total_time_7d: i64 = 0;
+        let mut total_time_7d_virtual: i64 = 0;
         let mut completed_total_time_7d: i64 = 0;
         let mut completed_count_7d: i64 = 0;
-        let mut daily_counts: HashMap<u64, (i64, i64)> = HashMap::new();
+        let mut completed_total_time_7d_virtual: i64 = 0;
+        let mut completed_count_7d_virtual: i64 = 0;
+        let mut completed_total_time_7d_non_virtual: i64 = 0;
+        let mut completed_count_7d_non_virtual: i64 = 0;
+        let mut daily_counts: HashMap<u64, DailyBucket> = HashMap::new();
         let mut category_totals_7d: HashMap<Option<String>, (i64, i64)> = HashMap::new();
 
         for period in periods_30d {
@@ -1436,27 +1551,48 @@ impl<A: App + HasDb + Send + Sync> Location<A> {
             let Some(person_id) = period.person_id.clone() else {
                 continue;
             };
+            let period_is_virtual = period
+                .category_id
+                .as_deref()
+                .and_then(|id| category_virtual_by_id.get(id))
+                .copied()
+                .unwrap_or(false);
+
             active_members_30d.insert(person_id.clone());
 
             if period.start_time >= range_24h_start {
                 active_members_24h.insert(person_id.clone());
                 check_ins_24h += 1;
+                if period_is_virtual {
+                    active_members_24h_virtual.insert(person_id.clone());
+                    check_ins_24h_virtual += 1;
+                } else {
+                    active_members_24h_non_virtual.insert(person_id.clone());
+                }
             }
 
             if period.start_time >= range_7d_start {
                 check_ins_7d += 1;
+                if period_is_virtual {
+                    check_ins_7d_virtual += 1;
+                }
 
                 let day = period.start_time / DAY_SECONDS;
                 if day >= day_start_floor && day <= day_floor {
-                    let bucket = daily_counts.entry(day).or_insert((0, 0));
-                    bucket.0 += 1;
+                    let bucket = daily_counts.entry(day).or_default();
+                    bucket.count += 1;
 
                     let bounded_end = std::cmp::min(period.end_time.unwrap_or(as_of_ts), as_of_ts);
                     let duration = bounded_end.saturating_sub(period.start_time);
                     let duration_i64 =
                         i64::try_from(duration).map_err(|_| anyhow!("period duration overflow"))?;
-                    bucket.1 += duration_i64;
+                    bucket.time += duration_i64;
                     total_time_7d += duration_i64;
+                    if period_is_virtual {
+                        bucket.count_virtual += 1;
+                        bucket.time_virtual += duration_i64;
+                        total_time_7d_virtual += duration_i64;
+                    }
 
                     let category_bucket = category_totals_7d
                         .entry(period.category_id.clone())
@@ -1472,6 +1608,13 @@ impl<A: App + HasDb + Send + Sync> Location<A> {
                             .map_err(|_| anyhow!("period duration overflow"))?;
                         completed_total_time_7d += completed_duration_i64;
                         completed_count_7d += 1;
+                        if period_is_virtual {
+                            completed_total_time_7d_virtual += completed_duration_i64;
+                            completed_count_7d_virtual += 1;
+                        } else {
+                            completed_total_time_7d_non_virtual += completed_duration_i64;
+                            completed_count_7d_non_virtual += 1;
+                        }
                     }
                 }
             }
@@ -1479,6 +1622,16 @@ impl<A: App + HasDb + Send + Sync> Location<A> {
 
         let avg_completed_duration_7d = if completed_count_7d > 0 {
             completed_total_time_7d / completed_count_7d
+        } else {
+            0
+        };
+        let avg_completed_duration_7d_virtual = if completed_count_7d_virtual > 0 {
+            completed_total_time_7d_virtual / completed_count_7d_virtual
+        } else {
+            0
+        };
+        let avg_completed_duration_7d_non_virtual = if completed_count_7d_non_virtual > 0 {
+            completed_total_time_7d_non_virtual / completed_count_7d_non_virtual
         } else {
             0
         };
@@ -1510,11 +1663,13 @@ impl<A: App + HasDb + Send + Sync> Location<A> {
         let mut daily_periods_7d: Vec<DashboardDailyPeriodSummary> = Vec::new();
         for day in day_start_floor..=day_floor {
             let day_start = day.saturating_mul(DAY_SECONDS);
-            let (period_count, total_time) = daily_counts.get(&day).copied().unwrap_or((0, 0));
+            let bucket = daily_counts.get(&day).copied().unwrap_or_default();
             daily_periods_7d.push(DashboardDailyPeriodSummary {
                 day_start: i64::try_from(day_start).map_err(|_| anyhow!("timestamp overflow"))?,
-                period_count,
-                total_time,
+                period_count: bucket.count,
+                total_time: bucket.time,
+                period_count_virtual: bucket.count_virtual,
+                total_time_virtual: bucket.time_virtual,
             });
         }
 
@@ -1528,12 +1683,18 @@ impl<A: App + HasDb + Send + Sync> Location<A> {
                         .unwrap_or_else(|| "Unknown category".to_string()),
                     None => "Uncategorised".to_string(),
                 };
+                let is_virtual = category_id
+                    .as_ref()
+                    .and_then(|id| category_virtual_by_id.get(id))
+                    .copied()
+                    .unwrap_or(false);
 
                 DashboardCategoryPeriodSummary {
                     category_id,
                     category_name,
                     period_count,
                     total_time,
+                    is_virtual,
                 }
             })
             .collect();
@@ -1549,12 +1710,21 @@ impl<A: App + HasDb + Send + Sync> Location<A> {
             total_members: i64::try_from(members.len()).map_err(|_| anyhow!("too many members"))?,
             active_members_24h: i64::try_from(active_members_24h.len())
                 .map_err(|_| anyhow!("too many members"))?,
+            active_members_24h_virtual: i64::try_from(active_members_24h_virtual.len())
+                .map_err(|_| anyhow!("too many members"))?,
+            active_members_24h_non_virtual: i64::try_from(active_members_24h_non_virtual.len())
+                .map_err(|_| anyhow!("too many members"))?,
             active_members_30d: i64::try_from(active_members_30d.len())
                 .map_err(|_| anyhow!("too many members"))?,
             check_ins_24h,
+            check_ins_24h_virtual,
             check_ins_7d,
+            check_ins_7d_virtual,
             total_time_7d,
+            total_time_7d_virtual,
             avg_completed_duration_7d,
+            avg_completed_duration_7d_virtual,
+            avg_completed_duration_7d_non_virtual,
             total_kiosks,
             online_kiosks,
             recently_active_kiosks,

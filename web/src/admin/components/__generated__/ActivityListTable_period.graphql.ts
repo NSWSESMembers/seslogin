@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<4f2ecbc868f41c5b47a2e4ab2b342710>>
+ * @generated SignedSource<<8aabd7d051930594bcf238240ec7a29a>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -14,6 +14,7 @@ import { FragmentRefs } from "relay-runtime";
 export type ActivityListTable_period$data = {
   readonly category: {
     readonly id: string;
+    readonly isVirtual: boolean;
     readonly name: string;
   } | null | undefined;
   readonly endTime: number | null | undefined;
@@ -42,6 +43,6 @@ const node: ReaderInlineDataFragment = {
   "name": "ActivityListTable_period"
 };
 
-(node as any).hash = "b79b672645ea43f1e35417abedd99311";
+(node as any).hash = "fae39eed8e70c88d590e40eea41a6b01";
 
 export default node;

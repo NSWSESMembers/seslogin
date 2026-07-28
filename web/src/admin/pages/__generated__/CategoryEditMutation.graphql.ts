@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<a0caa638dbd6d462e41d616bcd453340>>
+ * @generated SignedSource<<7158f39b40b29a992412854c18e5a73d>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -12,6 +12,7 @@ import { ConcreteRequest } from 'relay-runtime';
 export type CategoryEditMutation$variables = {
   enabled: boolean;
   id: string;
+  isVirtual: boolean;
   name: string;
   nitcGroupId?: string | null | undefined;
   nitcParticipantType?: string | null | undefined;
@@ -20,6 +21,7 @@ export type CategoryEditMutation$data = {
   readonly updateCategory: {
     readonly enabled: boolean;
     readonly id: string;
+    readonly isVirtual: boolean;
     readonly name: string;
     readonly nitcGroupId: string | null | undefined;
     readonly nitcParticipantType: string | null | undefined;
@@ -44,19 +46,24 @@ v1 = {
 v2 = {
   "defaultValue": null,
   "kind": "LocalArgument",
-  "name": "name"
+  "name": "isVirtual"
 },
 v3 = {
   "defaultValue": null,
   "kind": "LocalArgument",
-  "name": "nitcGroupId"
+  "name": "name"
 },
 v4 = {
   "defaultValue": null,
   "kind": "LocalArgument",
+  "name": "nitcGroupId"
+},
+v5 = {
+  "defaultValue": null,
+  "kind": "LocalArgument",
   "name": "nitcParticipantType"
 },
-v5 = [
+v6 = [
   {
     "alias": null,
     "args": [
@@ -69,6 +76,11 @@ v5 = [
         "kind": "Variable",
         "name": "id",
         "variableName": "id"
+      },
+      {
+        "kind": "Variable",
+        "name": "isVirtual",
+        "variableName": "isVirtual"
       },
       {
         "kind": "Variable",
@@ -116,6 +128,13 @@ v5 = [
         "alias": null,
         "args": null,
         "kind": "ScalarField",
+        "name": "isVirtual",
+        "storageKey": null
+      },
+      {
+        "alias": null,
+        "args": null,
+        "kind": "ScalarField",
         "name": "nitcGroupId",
         "storageKey": null
       },
@@ -137,12 +156,13 @@ return {
       (v1/*: any*/),
       (v2/*: any*/),
       (v3/*: any*/),
-      (v4/*: any*/)
+      (v4/*: any*/),
+      (v5/*: any*/)
     ],
     "kind": "Fragment",
     "metadata": null,
     "name": "CategoryEditMutation",
-    "selections": (v5/*: any*/),
+    "selections": (v6/*: any*/),
     "type": "MutationRoot",
     "abstractKey": null
   },
@@ -150,26 +170,27 @@ return {
   "operation": {
     "argumentDefinitions": [
       (v1/*: any*/),
-      (v2/*: any*/),
-      (v0/*: any*/),
       (v3/*: any*/),
-      (v4/*: any*/)
+      (v0/*: any*/),
+      (v2/*: any*/),
+      (v4/*: any*/),
+      (v5/*: any*/)
     ],
     "kind": "Operation",
     "name": "CategoryEditMutation",
-    "selections": (v5/*: any*/)
+    "selections": (v6/*: any*/)
   },
   "params": {
-    "cacheID": "521c91f0c9898d7f354e0c77fc9157de",
+    "cacheID": "8d0e818fa183703bcb07096dc6179cbb",
     "id": null,
     "metadata": {},
     "name": "CategoryEditMutation",
     "operationKind": "mutation",
-    "text": "mutation CategoryEditMutation(\n  $id: ID!\n  $name: String!\n  $enabled: Boolean!\n  $nitcGroupId: String\n  $nitcParticipantType: String\n) {\n  updateCategory(id: $id, name: $name, enabled: $enabled, nitcGroupId: $nitcGroupId, nitcParticipantType: $nitcParticipantType) {\n    id\n    name\n    enabled\n    nitcGroupId\n    nitcParticipantType\n  }\n}\n"
+    "text": "mutation CategoryEditMutation(\n  $id: ID!\n  $name: String!\n  $enabled: Boolean!\n  $isVirtual: Boolean!\n  $nitcGroupId: String\n  $nitcParticipantType: String\n) {\n  updateCategory(id: $id, name: $name, enabled: $enabled, isVirtual: $isVirtual, nitcGroupId: $nitcGroupId, nitcParticipantType: $nitcParticipantType) {\n    id\n    name\n    enabled\n    isVirtual\n    nitcGroupId\n    nitcParticipantType\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "d29077404ae530c4e5ba09c9790e7dcb";
+(node as any).hash = "44d1196493bd40842cc46ceaac4c2cb3";
 
 export default node;

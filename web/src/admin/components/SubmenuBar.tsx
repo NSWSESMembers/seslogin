@@ -152,6 +152,7 @@ export default function SubmenuBar({ isSuper }: SubmenuBarProps) {
         items={[
           { to: "/admin/settings", label: "Passkeys" },
           { to: "/admin/settings/daily-email", label: "Daily Email Summary" },
+          { to: "/admin/settings/activity-display", label: "Activity Display" },
         ]}
       />
     );
