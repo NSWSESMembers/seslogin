@@ -11,12 +11,15 @@ export type ActivityDailyBreakdownCategoryRow = {
   name: string;
   totalTime: number;
   members: ReadonlyArray<ActivityDailyBreakdownMemberRow>;
+  isVirtual?: boolean;
 };
 
 export type ActivityDailyBreakdownDayRow = {
   date: string;
   totalTime: number;
   categories: ReadonlyArray<ActivityDailyBreakdownCategoryRow>;
+  /** Optional "X virtual · Y non-virtual" line shown under the day's total. */
+  splitLine?: string;
 };
 
 type Props = {
@@ -53,8 +56,15 @@ export default function ActivityDailyBreakdownTable({ days }: Props) {
               </span>
               {formatBreakdownDate(day.date)}
             </span>
-            <span className="whitespace-nowrap">
-              {formatSeconds(day.totalTime)}
+            <span className="text-right">
+              <span className="whitespace-nowrap">
+                {formatSeconds(day.totalTime)}
+              </span>
+              {day.splitLine ? (
+                <span className="block text-xs font-normal text-ink-muted">
+                  {day.splitLine}
+                </span>
+              ) : null}
             </span>
           </summary>
 
@@ -73,6 +83,11 @@ export default function ActivityDailyBreakdownTable({ days }: Props) {
                       ▸
                     </span>
                     {category.name}
+                    {category.isVirtual && (
+                      <span className="ml-1.5 inline-flex items-center rounded-full bg-blue-100 px-1.5 py-0.25 text-[0.7em] font-semibold text-blue-700 dark:bg-blue-500/15 dark:text-blue-300">
+                        Virtual
+                      </span>
+                    )}
                   </span>
                   <span className="whitespace-nowrap">
                     {formatSeconds(category.totalTime)}

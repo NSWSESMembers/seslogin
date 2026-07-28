@@ -34,7 +34,6 @@ pub async fn run(db: &impl db::Handler, args: SummaryArgs) -> Result<()> {
 
     let start_ts = start_sydney.timestamp() as u64;
     let end_ts = end_sydney.timestamp() as u64;
-    let report_ts = chrono::Utc::now().timestamp() as u64;
 
     let date_label = date.format("%d %B %Y").to_string();
 
@@ -158,9 +157,7 @@ pub async fn run(db: &impl db::Handler, args: SummaryArgs) -> Result<()> {
                 .collect::<Vec<_>>(),
             &persons,
             &categories,
-            start_ts,
-            end_ts,
-            report_ts,
+            user.disaggregate_virtual_periods,
         );
 
         let effective_to = args.override_to.as_deref().unwrap_or(&to_email);
@@ -229,14 +226,28 @@ fn duration_hours(start: u64, end: u64) -> f64 {
     (end.saturating_sub(start)) as f64 / 3600.0
 }
 
+/// Display name for a period's member: the guest name tagged "(Guest)",
+/// otherwise "First Last", or "Unknown" when the person can't be resolved.
+/// Guest naming takes precedence over `person_id`.
+fn member_display_name(period: &db::Period, persons: &HashMap<String, db::Person>) -> String {
+    if let Some(guest_name) = &period.guest_name {
+        format!("{guest_name} (Guest)")
+    } else {
+        period
+            .person_id
+            .as_ref()
+            .and_then(|id| persons.get(id))
+            .map(|p| format!("{} {}", p.first_name, p.last_name))
+            .unwrap_or_else(|| "Unknown".to_string())
+    }
+}
+
 fn build_summary_html(
     date_label: &str,
     locations: &[LocationSummaryInput<'_>],
     persons: &HashMap<String, db::Person>,
     categories: &HashMap<String, db::Category>,
-    _start_ts: u64,
-    _end_ts: u64,
-    _report_ts: u64,
+    disaggregate_virtual: bool,
 ) -> String {
     let mut html = format!(
         r#"<!DOCTYPE html>
@@ -270,21 +281,21 @@ fn build_summary_html(
         ));
 
         for (i, period) in loc.periods.iter().enumerate() {
-            let person = period.person_id.as_ref().and_then(|id| persons.get(id));
-            let member_cell = if let Some(guest_name) = &period.guest_name {
-                escape_html(&format!("{guest_name} (Guest)"))
+            // Only resolve a person (and its registration sub-line) for
+            // non-guest periods, matching how `member_display_name` names them.
+            let person = if period.guest_name.is_some() {
+                None
             } else {
-                let person_name = person
-                    .map(|p| format!("{} {}", p.first_name, p.last_name))
-                    .unwrap_or_else(|| "Unknown".to_string());
-                match person.and_then(|p| p.registration_number.as_deref()) {
-                    Some(reg) => format!(
-                        "{}<br><span style=\"font-size:11px;color:#6b7280\">{}</span>",
-                        escape_html(&person_name),
-                        escape_html(reg)
-                    ),
-                    None => escape_html(&person_name),
-                }
+                period.person_id.as_ref().and_then(|id| persons.get(id))
+            };
+            let name = member_display_name(period, persons);
+            let member_cell = match person.and_then(|p| p.registration_number.as_deref()) {
+                Some(reg) => format!(
+                    "{}<br><span style=\"font-size:11px;color:#6b7280\">{}</span>",
+                    escape_html(&name),
+                    escape_html(reg)
+                ),
+                None => escape_html(&name),
             };
             let sign_in = format_time(period.start_time);
             let sign_out = match period.end_time {
@@ -311,90 +322,113 @@ fn build_summary_html(
         html.push_str("</tbody></table>\n");
 
         // --- Category summary ---
-        let mut cat_hours: HashMap<String, f64> = HashMap::new();
+        // One pass accumulates each category label's (virtual, non-virtual)
+        // hours (a category is wholly one or the other; uncategorised counts as
+        // non-virtual). The flag then only chooses how those totals are rendered.
+        let mut cat_hours: HashMap<String, (f64, f64)> = HashMap::new();
         for period in loc.periods {
             // Only count periods that have been signed out.
             let Some(end_time) = period.end_time else {
                 continue;
             };
             let hours = duration_hours(period.start_time, end_time);
-            let label = period
+            let category = period
+                .category_id
+                .as_ref()
+                .and_then(|id| categories.get(id));
+            let label = category
+                .map(|c| c.name.clone())
+                .unwrap_or_else(|| "Uncategorised".to_string());
+            let entry = cat_hours.entry(label).or_insert((0.0, 0.0));
+            if category.is_some_and(|c| c.is_virtual) {
+                entry.0 += hours;
+            } else {
+                entry.1 += hours;
+            }
+        }
+
+        if disaggregate_virtual {
+            let mut virtual_rows: Vec<(String, f64)> = cat_hours
+                .iter()
+                .filter(|(_, hours)| hours.0 > 0.0)
+                .map(|(label, hours)| (label.clone(), hours.0))
+                .collect();
+            virtual_rows.sort_by(|a, b| a.0.cmp(&b.0));
+            let mut non_virtual_rows: Vec<(String, f64)> = cat_hours
+                .iter()
+                .filter(|(_, hours)| hours.1 > 0.0)
+                .map(|(label, hours)| (label.clone(), hours.1))
+                .collect();
+            non_virtual_rows.sort_by(|a, b| a.0.cmp(&b.0));
+
+            html.push_str(&render_hours_table(
+                "By category — Virtual",
+                "Category",
+                &virtual_rows,
+            ));
+            html.push_str(&render_hours_table(
+                "By category — Non-virtual",
+                "Category",
+                &non_virtual_rows,
+            ));
+        } else {
+            let mut cat_rows: Vec<(String, f64)> = cat_hours
+                .into_iter()
+                .map(|(label, (virtual_hours, non_virtual_hours))| {
+                    (label, virtual_hours + non_virtual_hours)
+                })
+                .collect();
+            cat_rows.sort_by(|a, b| a.0.cmp(&b.0));
+
+            html.push_str(&render_hours_table("By category", "Category", &cat_rows));
+        }
+
+        // --- Member summary ---
+        // One pass accumulates each member's (virtual, non-virtual) hours; the
+        // flag only chooses whether to render the split or the combined total.
+        let mut member_hours: HashMap<String, (String, f64, f64)> = HashMap::new();
+        for period in loc.periods {
+            // Only count periods that have been signed out.
+            let Some(end_time) = period.end_time else {
+                continue;
+            };
+            let hours = duration_hours(period.start_time, end_time);
+            let is_virtual = period
                 .category_id
                 .as_ref()
                 .and_then(|id| categories.get(id))
-                .map(|c| c.name.clone())
-                .unwrap_or_else(|| "Uncategorised".to_string());
-            *cat_hours.entry(label).or_default() += hours;
-        }
-        let mut cat_rows: Vec<(String, f64)> = cat_hours.into_iter().collect();
-        cat_rows.sort_by(|a, b| a.0.cmp(&b.0));
-
-        html.push_str("<h4 style=\"margin-bottom:4px;margin-top:16px\">By category</h4>\n");
-        html.push_str(TABLE_HEADER);
-        html.push_str(&format!(
-            "<thead><tr style=\"background:#f3f4f6\">{}{}</tr></thead><tbody>\n",
-            th("Category"),
-            th_right("Total hours"),
-        ));
-        for (i, (label, hours)) in cat_rows.iter().enumerate() {
-            let row_bg = if i % 2 == 0 { "#fff" } else { "#f9fafb" };
-            html.push_str(&format!(
-                "<tr style=\"background:{bg}\">{}{}</tr>\n",
-                td(&escape_html(label)),
-                td_right(&format!("{:.1}", hours)),
-                bg = row_bg,
-            ));
-        }
-        html.push_str("</tbody></table>\n");
-
-        // --- Member summary ---
-        let mut member_hours: HashMap<String, (String, f64)> = HashMap::new();
-        for period in loc.periods {
-            // Only count periods that have been signed out.
-            let Some(end_time) = period.end_time else {
-                continue;
-            };
-            let hours = duration_hours(period.start_time, end_time);
+                .is_some_and(|c| c.is_virtual);
             let key = match (&period.person_id, &period.guest_name) {
                 (Some(pid), _) => pid.clone(),
                 (None, Some(name)) => format!("guest:{name}"),
                 (None, None) => continue,
             };
-            let entry = member_hours.entry(key).or_insert_with(|| {
-                let name = if let Some(guest_name) = &period.guest_name {
-                    format!("{guest_name} (Guest)")
-                } else {
-                    period
-                        .person_id
-                        .as_ref()
-                        .and_then(|id| persons.get(id))
-                        .map(|p| format!("{} {}", p.first_name, p.last_name))
-                        .unwrap_or_else(|| "Unknown".to_string())
-                };
-                (name, 0.0)
-            });
-            entry.1 += hours;
+            let entry = member_hours
+                .entry(key)
+                .or_insert_with(|| (member_display_name(period, persons), 0.0, 0.0));
+            if is_virtual {
+                entry.1 += hours;
+            } else {
+                entry.2 += hours;
+            }
         }
-        let mut member_rows: Vec<(String, f64)> = member_hours.into_values().collect();
-        member_rows.sort_by(|a, b| a.0.cmp(&b.0));
 
-        html.push_str("<h4 style=\"margin-bottom:4px;margin-top:16px\">By member</h4>\n");
-        html.push_str(TABLE_HEADER);
-        html.push_str(&format!(
-            "<thead><tr style=\"background:#f3f4f6\">{}{}</tr></thead><tbody>\n",
-            th("Member"),
-            th_right("Total hours"),
-        ));
-        for (i, (name, hours)) in member_rows.iter().enumerate() {
-            let row_bg = if i % 2 == 0 { "#fff" } else { "#f9fafb" };
-            html.push_str(&format!(
-                "<tr style=\"background:{bg}\">{}{}</tr>\n",
-                td(&escape_html(name)),
-                td_right(&format!("{:.1}", hours)),
-                bg = row_bg,
-            ));
+        if disaggregate_virtual {
+            let mut member_rows: Vec<(String, f64, f64)> = member_hours.into_values().collect();
+            member_rows.sort_by(|a, b| a.0.cmp(&b.0));
+
+            html.push_str(&render_member_split_hours_table(&member_rows));
+        } else {
+            let mut member_rows: Vec<(String, f64)> = member_hours
+                .into_values()
+                .map(|(name, virtual_hours, non_virtual_hours)| {
+                    (name, virtual_hours + non_virtual_hours)
+                })
+                .collect();
+            member_rows.sort_by(|a, b| a.0.cmp(&b.0));
+
+            html.push_str(&render_hours_table("By member", "Member", &member_rows));
         }
-        html.push_str("</tbody></table>\n");
     }
 
     html.push_str(
@@ -443,4 +477,53 @@ fn escape_html(s: &str) -> String {
         .replace('<', "&lt;")
         .replace('>', "&gt;")
         .replace('"', "&quot;")
+}
+
+/// Renders a two-column "name | total hours" summary table with a heading.
+fn render_hours_table(heading: &str, name_header: &str, rows: &[(String, f64)]) -> String {
+    let mut html = format!(
+        "<h4 style=\"margin-bottom:4px;margin-top:16px\">{}</h4>\n",
+        escape_html(heading)
+    );
+    html.push_str(TABLE_HEADER);
+    html.push_str(&format!(
+        "<thead><tr style=\"background:#f3f4f6\">{}{}</tr></thead><tbody>\n",
+        th(name_header),
+        th_right("Total hours"),
+    ));
+    for (i, (label, hours)) in rows.iter().enumerate() {
+        let row_bg = if i % 2 == 0 { "#fff" } else { "#f9fafb" };
+        html.push_str(&format!(
+            "<tr style=\"background:{bg}\">{}{}</tr>\n",
+            td(&escape_html(label)),
+            td_right(&format!("{:.1}", hours)),
+            bg = row_bg,
+        ));
+    }
+    html.push_str("</tbody></table>\n");
+    html
+}
+
+/// Renders the "By member" table split into virtual/non-virtual hour columns.
+fn render_member_split_hours_table(rows: &[(String, f64, f64)]) -> String {
+    let mut html = String::from("<h4 style=\"margin-bottom:4px;margin-top:16px\">By member</h4>\n");
+    html.push_str(TABLE_HEADER);
+    html.push_str(&format!(
+        "<thead><tr style=\"background:#f3f4f6\">{}{}{}</tr></thead><tbody>\n",
+        th("Member"),
+        th_right("Virtual hours"),
+        th_right("Non-virtual hours"),
+    ));
+    for (i, (name, virtual_hours, non_virtual_hours)) in rows.iter().enumerate() {
+        let row_bg = if i % 2 == 0 { "#fff" } else { "#f9fafb" };
+        html.push_str(&format!(
+            "<tr style=\"background:{bg}\">{}{}{}</tr>\n",
+            td(&escape_html(name)),
+            td_right(&format!("{:.1}", virtual_hours)),
+            td_right(&format!("{:.1}", non_virtual_hours)),
+            bg = row_bg,
+        ));
+    }
+    html.push_str("</tbody></table>\n");
+    html
 }

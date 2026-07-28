@@ -14,11 +14,13 @@ export default function CategoryNew() {
     graphql`
       mutation CategoryNewMutation(
         $name: String!
+        $isVirtual: Boolean!
         $nitcGroupId: String
         $nitcParticipantType: String
       ) {
         createCategory(
           name: $name
+          isVirtual: $isVirtual
           nitcGroupId: $nitcGroupId
           nitcParticipantType: $nitcParticipantType
         ) {
@@ -45,6 +47,7 @@ export default function CategoryNew() {
 
   async function handleSubmit(formData: FormData) {
     const name = formData.get("name")?.toString() || "";
+    const isVirtual = formData.get("isVirtual") === "on";
     const nitcGroupId = formData.get("nitcGroupId")?.toString() || null;
     const nitcParticipantType =
       formData.get("nitcParticipantType")?.toString() || null;
@@ -52,7 +55,7 @@ export default function CategoryNew() {
     try {
       await new Promise((resolve, reject) => {
         commitMutation({
-          variables: { name, nitcGroupId, nitcParticipantType },
+          variables: { name, isVirtual, nitcGroupId, nitcParticipantType },
           onCompleted: resolve,
           onError: reject,
           updater: (store) => {
@@ -80,6 +83,9 @@ export default function CategoryNew() {
         <FieldList>
           <FormField label={<label htmlFor="name">Name</label>}>
             <TextInput type="text" name="name" id="name" required />
+          </FormField>
+          <FormField label={<label htmlFor="isVirtual">Virtual</label>}>
+            <input type="checkbox" name="isVirtual" id="isVirtual" />
           </FormField>
           <FormField label={<label htmlFor="nitcGroupId">NITC Group</label>}>
             <Select name="nitcGroupId" id="nitcGroupId">

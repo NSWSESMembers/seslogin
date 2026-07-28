@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<c31c4456f3a45dc342baa1ac95d14ae4>>
+ * @generated SignedSource<<bbe34cfaa1dd500790ac14b73116d851>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -21,6 +21,7 @@ export type ActivityTotalsDisplayQuery$data = {
     readonly periodSummaryByCategory: ReadonlyArray<{
       readonly category: {
         readonly id: string;
+        readonly isVirtual: boolean;
         readonly name: string;
       };
       readonly totalTime: number;
@@ -32,6 +33,7 @@ export type ActivityTotalsDisplayQuery$data = {
         readonly lastName: string;
       };
       readonly totalTime: number;
+      readonly totalTimeVirtual: number | null | undefined;
     }>;
   };
 };
@@ -143,7 +145,14 @@ v8 = [
             ],
             "storageKey": null
           },
-          (v7/*: any*/)
+          (v7/*: any*/),
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "totalTimeVirtual",
+            "storageKey": null
+          }
         ],
         "storageKey": null
       },
@@ -172,6 +181,13 @@ v8 = [
                 "args": null,
                 "kind": "ScalarField",
                 "name": "name",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "isVirtual",
                 "storageKey": null
               }
             ],
@@ -213,16 +229,16 @@ return {
     "selections": (v8/*: any*/)
   },
   "params": {
-    "cacheID": "b35ad60995354dc632fdbf7e175dd548",
+    "cacheID": "1c98d5208616db10412f08326cc9ef06",
     "id": null,
     "metadata": {},
     "name": "ActivityTotalsDisplayQuery",
     "operationKind": "query",
-    "text": "query ActivityTotalsDisplayQuery(\n  $location: ID!\n  $startTime: Int!\n  $endTime: Int!\n  $category: ID\n) {\n  location(id: $location) {\n    id\n    periodSummaryByMember(startTime: $startTime, endTime: $endTime, category: $category) {\n      person {\n        id\n        firstName\n        lastName\n      }\n      totalTime\n    }\n    periodSummaryByCategory(startTime: $startTime, endTime: $endTime) {\n      category {\n        id\n        name\n      }\n      totalTime\n    }\n  }\n}\n"
+    "text": "query ActivityTotalsDisplayQuery(\n  $location: ID!\n  $startTime: Int!\n  $endTime: Int!\n  $category: ID\n) {\n  location(id: $location) {\n    id\n    periodSummaryByMember(startTime: $startTime, endTime: $endTime, category: $category) {\n      person {\n        id\n        firstName\n        lastName\n      }\n      totalTime\n      totalTimeVirtual\n    }\n    periodSummaryByCategory(startTime: $startTime, endTime: $endTime) {\n      category {\n        id\n        name\n        isVirtual\n      }\n      totalTime\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "6fa73a68c7ff2230ddb758171cf20565";
+(node as any).hash = "2939adeabb2a78feeca4904fb0cfad17";
 
 export default node;
