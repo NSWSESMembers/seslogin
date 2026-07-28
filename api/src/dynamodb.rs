@@ -8,6 +8,8 @@ use crate::request_metrics::METRICS;
 use anyhow::anyhow;
 use aws_config::meta::region::RegionProviderChain;
 use aws_sdk_dynamodb::error::{ProvideErrorMetadata, SdkError};
+use aws_sdk_dynamodb::operation::query::builders::QueryFluentBuilder;
+use aws_sdk_dynamodb::operation::scan::builders::ScanFluentBuilder;
 use aws_sdk_dynamodb::operation::update_item::UpdateItemError;
 use aws_sdk_dynamodb::types::{
     ConsumedCapacity, KeysAndAttributes, ReturnConsumedCapacity, ReturnValue,
@@ -704,6 +706,90 @@ where
         .collect()
 }
 
+/// Run a query to exhaustion, following DynamoDB's 1MB-per-page continuation key.
+///
+/// `build` is invoked once per page because the SDK's fluent builders are not `Clone`;
+/// it must produce an identically-configured request every time. `ExclusiveStartKey` and
+/// `ReturnConsumedCapacity` are applied by this helper, and capacity is recorded per page
+/// so the metrics reflect the real cost of the full walk.
+///
+/// The loop breaks only when DynamoDB reports no continuation key. With a
+/// `FilterExpression` a page can come back with zero items and still have more to read,
+/// so breaking on an empty item list would silently truncate.
+async fn query_all_items(
+    op: &'static str,
+    build: impl Fn() -> QueryFluentBuilder,
+) -> db::Result<Vec<HashMap<String, AttributeValue>>> {
+    let mut items: Vec<HashMap<String, AttributeValue>> = Vec::new();
+    let mut exclusive_start_key: Option<HashMap<String, AttributeValue>> = None;
+
+    loop {
+        let mut builder = build().return_consumed_capacity(ReturnConsumedCapacity::Total);
+        if let Some(esk) = exclusive_start_key.take() {
+            builder = builder.set_exclusive_start_key(Some(esk));
+        }
+
+        let resp = builder
+            .send()
+            .await
+            .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
+        record_capacity(op, resp.consumed_capacity(), CapKind::Read);
+
+        items.extend(resp.items.unwrap_or_default());
+        exclusive_start_key = resp.last_evaluated_key;
+        if exclusive_start_key.is_none() {
+            return Ok(items);
+        }
+    }
+}
+
+/// `query_all_items`, hydrated into typed records.
+async fn query_all<T>(
+    op: &'static str,
+    build: impl Fn() -> QueryFluentBuilder,
+) -> db::Result<Vec<T>>
+where
+    Item: TryInto<T, Error = HydrationError>,
+{
+    Ok(hydrate_items(Some(query_all_items(op, build).await?))?)
+}
+
+/// Scan equivalent of [`query_all_items`]. Same 1MB paging rules apply.
+async fn scan_all_items(
+    op: &'static str,
+    build: impl Fn() -> ScanFluentBuilder,
+) -> db::Result<Vec<HashMap<String, AttributeValue>>> {
+    let mut items: Vec<HashMap<String, AttributeValue>> = Vec::new();
+    let mut exclusive_start_key: Option<HashMap<String, AttributeValue>> = None;
+
+    loop {
+        let mut builder = build().return_consumed_capacity(ReturnConsumedCapacity::Total);
+        if let Some(esk) = exclusive_start_key.take() {
+            builder = builder.set_exclusive_start_key(Some(esk));
+        }
+
+        let resp = builder
+            .send()
+            .await
+            .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
+        record_capacity(op, resp.consumed_capacity(), CapKind::Read);
+
+        items.extend(resp.items.unwrap_or_default());
+        exclusive_start_key = resp.last_evaluated_key;
+        if exclusive_start_key.is_none() {
+            return Ok(items);
+        }
+    }
+}
+
+/// `scan_all_items`, hydrated into typed records.
+async fn scan_all<T>(op: &'static str, build: impl Fn() -> ScanFluentBuilder) -> db::Result<Vec<T>>
+where
+    Item: TryInto<T, Error = HydrationError>,
+{
+    Ok(hydrate_items(Some(scan_all_items(op, build).await?))?)
+}
+
 impl db::Handler for Handler {
     async fn get_users<T: AsRef<str> + Sync>(&self, ids: &[T]) -> db::Result<Vec<Option<User>>> {
         self.get_records("user", ids).await
@@ -737,25 +823,10 @@ impl db::Handler for Handler {
 
     async fn list_users(&self) -> db::Result<Vec<User>> {
         // WARNING: using scan - fine while table remains small
-        let resp = self
-            .client
-            .scan()
-            .table_name(self.table_name("user"))
-            .return_consumed_capacity(ReturnConsumedCapacity::Total)
-            .send()
-            .await
-            .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
-        record_capacity("list_users", resp.consumed_capacity(), CapKind::Read);
-
-        let users = if let Some(items) = resp.items {
-            items
-                .into_iter()
-                .map(|i| -> HydrationResult<User> { Item(i).try_into() })
-                .collect::<HydrationResult<Vec<User>>>()?
-        } else {
-            vec![]
-        };
-        Ok(users)
+        scan_all("list_users", || {
+            self.client.scan().table_name(self.table_name("user"))
+        })
+        .await
     }
 
     async fn create_user(
@@ -1111,36 +1182,23 @@ impl db::Handler for Handler {
     }
 
     async fn list_sessions(&self, query: ListSessionsQuery) -> db::Result<Vec<Session>> {
-        let builder = self
-            .client
-            .query()
-            .table_name(self.table_name("session"))
-            .expression_attribute_values(":active", AttributeValue::N("1".to_string()))
-            .return_consumed_capacity(ReturnConsumedCapacity::Total);
-        let builder = match query {
-            ListSessionsQuery::ByLocation(location_id) => builder
-                .index_name("active-location_id-index")
-                .key_condition_expression("active = :active AND location_id = :location_id")
-                .expression_attribute_values(
-                    ":location_id",
-                    AttributeValue::S(location_id.to_string()),
-                ),
-        };
-        let resp = builder
-            .send()
-            .await
-            .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
-
-        record_capacity("list_sessions", resp.consumed_capacity(), CapKind::Read);
-        let sessions = if let Some(items) = resp.items {
-            items
-                .into_iter()
-                .map(|i| -> HydrationResult<Session> { Item(i).try_into() })
-                .collect::<HydrationResult<Vec<Session>>>()?
-        } else {
-            vec![]
-        };
-        Ok(sessions)
+        query_all("list_sessions", || {
+            let builder = self
+                .client
+                .query()
+                .table_name(self.table_name("session"))
+                .expression_attribute_values(":active", AttributeValue::N("1".to_string()));
+            match &query {
+                ListSessionsQuery::ByLocation(location_id) => builder
+                    .index_name("active-location_id-index")
+                    .key_condition_expression("active = :active AND location_id = :location_id")
+                    .expression_attribute_values(
+                        ":location_id",
+                        AttributeValue::S(location_id.to_string()),
+                    ),
+            }
+        })
+        .await
     }
 
     async fn list_people_for_location(
@@ -1148,42 +1206,27 @@ impl db::Handler for Handler {
         location_id: &str,
         skip_deleted: bool,
     ) -> db::Result<Vec<Person>> {
-        let mut query = self
-            .client
-            .query()
-            .table_name(self.table_name("person"))
-            .index_name("location_id-index")
-            .key_condition_expression("location_id = :location_id")
-            .expression_attribute_values(
-                ":location_id",
-                AttributeValue::S(location_id.to_string()),
-            );
+        query_all("list_people_for_location", || {
+            let query = self
+                .client
+                .query()
+                .table_name(self.table_name("person"))
+                .index_name("location_id-index")
+                .key_condition_expression("location_id = :location_id")
+                .expression_attribute_values(
+                    ":location_id",
+                    AttributeValue::S(location_id.to_string()),
+                );
 
-        if skip_deleted {
-            query = query
-                .filter_expression("attribute_not_exists(deleted) OR deleted = :false")
-                .expression_attribute_values(":false", AttributeValue::N("0".to_string()));
-        }
-
-        let resp = query
-            .return_consumed_capacity(ReturnConsumedCapacity::Total)
-            .send()
-            .await
-            .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
-        record_capacity(
-            "list_people_for_location",
-            resp.consumed_capacity(),
-            CapKind::Read,
-        );
-        let people = if let Some(items) = resp.items {
-            items
-                .into_iter()
-                .map(|i| -> HydrationResult<Person> { Item(i).try_into() })
-                .collect::<HydrationResult<Vec<Person>>>()?
-        } else {
-            vec![]
-        };
-        Ok(people)
+            if skip_deleted {
+                query
+                    .filter_expression("attribute_not_exists(deleted) OR deleted = :false")
+                    .expression_attribute_values(":false", AttributeValue::N("0".to_string()))
+            } else {
+                query
+            }
+        })
+        .await
     }
 
     async fn list_periods_for_location(
@@ -2269,28 +2312,15 @@ impl db::Handler for Handler {
     }
 
     async fn list_api_tokens(&self) -> db::Result<Vec<ApiToken>> {
-        let resp = self
-            .client
-            .query()
-            .table_name(self.table_name("api_token"))
-            .index_name("active-index")
-            .key_condition_expression("active = :active")
-            .expression_attribute_values(":active", AttributeValue::N("1".to_string()))
-            .return_consumed_capacity(ReturnConsumedCapacity::Total)
-            .send()
-            .await
-            .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
-        record_capacity("list_api_tokens", resp.consumed_capacity(), CapKind::Read);
-
-        let tokens = if let Some(items) = resp.items {
-            items
-                .into_iter()
-                .map(|i| -> HydrationResult<ApiToken> { Item(i).try_into() })
-                .collect::<HydrationResult<Vec<ApiToken>>>()?
-        } else {
-            vec![]
-        };
-        Ok(tokens)
+        query_all("list_api_tokens", || {
+            self.client
+                .query()
+                .table_name(self.table_name("api_token"))
+                .index_name("active-index")
+                .key_condition_expression("active = :active")
+                .expression_attribute_values(":active", AttributeValue::N("1".to_string()))
+        })
+        .await
     }
 
     async fn create_api_token(
@@ -2523,33 +2553,17 @@ impl db::Handler for Handler {
 
     async fn list_locations(&self, filter: db::ListLocationsFilter) -> db::Result<Vec<Location>> {
         // WARNING: using scan - fine while table remains small
-        let mut req = self
-            .client
-            .scan()
-            .table_name(self.table_name("location"))
-            .return_consumed_capacity(ReturnConsumedCapacity::Total);
+        scan_all("list_locations", || {
+            let req = self.client.scan().table_name(self.table_name("location"));
 
-        if let db::ListLocationsFilter::EnabledOnly = filter {
-            req = req
-                .filter_expression("enabled = :enabled")
-                .expression_attribute_values(":enabled", AttributeValue::Bool(true));
-        }
-
-        let resp = req
-            .send()
-            .await
-            .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
-        record_capacity("list_locations", resp.consumed_capacity(), CapKind::Read);
-
-        let locations = if let Some(items) = resp.items {
-            items
-                .into_iter()
-                .map(|i| -> HydrationResult<Location> { Item(i).try_into() })
-                .collect::<HydrationResult<Vec<Location>>>()?
-        } else {
-            vec![]
-        };
-        Ok(locations)
+            if let db::ListLocationsFilter::EnabledOnly = filter {
+                req.filter_expression("enabled = :enabled")
+                    .expression_attribute_values(":enabled", AttributeValue::Bool(true))
+            } else {
+                req
+            }
+        })
+        .await
     }
 
     async fn update_location(
@@ -2613,26 +2627,10 @@ impl db::Handler for Handler {
 
     async fn list_categories(&self) -> db::Result<Vec<Category>> {
         // WARNING: using scan - use only in admin interface while table remains small
-        let resp = self
-            .client
-            .scan()
-            .table_name(self.table_name("category"))
-            .return_consumed_capacity(ReturnConsumedCapacity::Total)
-            .send()
-            .await
-            .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
-        record_capacity("list_categories", resp.consumed_capacity(), CapKind::Read);
-
-        let categories = if let Some(items) = resp.items {
-            items
-                .into_iter()
-                .map(|i| -> HydrationResult<Category> { Item(i).try_into() })
-                .collect::<HydrationResult<Vec<Category>>>()?
-        } else {
-            vec![]
-        };
-
-        Ok(categories)
+        scan_all("list_categories", || {
+            self.client.scan().table_name(self.table_name("category"))
+        })
+        .await
     }
 
     async fn get_categories<T: AsRef<str> + Sync>(
@@ -2774,33 +2772,19 @@ impl db::Handler for Handler {
         nitc_group_id: &str,
         date: chrono::NaiveDate,
     ) -> db::Result<Vec<db::NitcEvent>> {
-        let resp = self
-            .client
-            .query()
-            .table_name(self.table_name("nitc_event"))
-            .index_name("location_id-topic_date-index")
-            .key_condition_expression("location_id = :loc AND topic_date = :td")
-            .expression_attribute_values(":loc", AttributeValue::S(location_id.to_string()))
-            .expression_attribute_values(
-                ":td",
-                AttributeValue::S(topic_date_key(nitc_group_id, date)),
-            )
-            .return_consumed_capacity(ReturnConsumedCapacity::Total)
-            .send()
-            .await
-            .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
-        record_capacity(
-            "list_nitc_events_for_day",
-            resp.consumed_capacity(),
-            CapKind::Read,
-        );
-
-        resp.items
-            .unwrap_or_default()
-            .into_iter()
-            .map(|i| -> HydrationResult<db::NitcEvent> { Item(i).try_into() })
-            .collect::<HydrationResult<Vec<_>>>()
-            .map_err(db::Error::from)
+        query_all("list_nitc_events_for_day", || {
+            self.client
+                .query()
+                .table_name(self.table_name("nitc_event"))
+                .index_name("location_id-topic_date-index")
+                .key_condition_expression("location_id = :loc AND topic_date = :td")
+                .expression_attribute_values(":loc", AttributeValue::S(location_id.to_string()))
+                .expression_attribute_values(
+                    ":td",
+                    AttributeValue::S(topic_date_key(nitc_group_id, date)),
+                )
+        })
+        .await
     }
 
     async fn get_or_create_nitc_event_for_day(
@@ -2968,24 +2952,10 @@ impl db::Handler for Handler {
     }
 
     async fn list_nitc_groups(&self) -> db::Result<Vec<db::NitcGroup>> {
-        let resp = self
-            .client
-            .scan()
-            .table_name(self.table_name("nitc_group"))
-            .return_consumed_capacity(ReturnConsumedCapacity::Total)
-            .send()
-            .await
-            .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
-        record_capacity("list_nitc_groups", resp.consumed_capacity(), CapKind::Read);
-        if let Some(items) = resp.items {
-            items
-                .into_iter()
-                .map(|i| -> HydrationResult<db::NitcGroup> { Item(i).try_into() })
-                .collect::<HydrationResult<Vec<db::NitcGroup>>>()
-                .map_err(db::Error::from)
-        } else {
-            Ok(vec![])
-        }
+        scan_all("list_nitc_groups", || {
+            self.client.scan().table_name(self.table_name("nitc_group"))
+        })
+        .await
     }
 
     async fn create_nitc_group(
@@ -3115,24 +3085,10 @@ impl db::Handler for Handler {
     }
 
     async fn list_nitc_tags(&self) -> db::Result<Vec<db::NitcTag>> {
-        let resp = self
-            .client
-            .scan()
-            .table_name(self.table_name("nitc_tag"))
-            .return_consumed_capacity(ReturnConsumedCapacity::Total)
-            .send()
-            .await
-            .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
-        record_capacity("list_nitc_tags", resp.consumed_capacity(), CapKind::Read);
-        if let Some(items) = resp.items {
-            items
-                .into_iter()
-                .map(|i| -> HydrationResult<db::NitcTag> { Item(i).try_into() })
-                .collect::<HydrationResult<Vec<db::NitcTag>>>()
-                .map_err(db::Error::from)
-        } else {
-            Ok(vec![])
-        }
+        scan_all("list_nitc_tags", || {
+            self.client.scan().table_name(self.table_name("nitc_tag"))
+        })
+        .await
     }
 
     async fn put_nitc_tag(&self, tag: &db::NitcTag) -> db::Result<()> {
@@ -3240,30 +3196,21 @@ impl db::Handler for Handler {
     }
 
     async fn list_period_ids_for_nitc_event(&self, event_id: &str) -> db::Result<Vec<String>> {
-        let resp = self
-            .client
-            .query()
-            .table_name(self.table_name("period"))
-            .index_name("nitc_event_id-index")
-            .key_condition_expression("nitc_event_id = :eid")
-            .filter_expression(
-                "attribute_not_exists(deleted) OR deleted = :false OR attribute_exists(nitc_participant_id)",
-            )
-            .expression_attribute_values(":eid", AttributeValue::S(event_id.to_string()))
-            .expression_attribute_values(":false", AttributeValue::N("0".to_string()))
-            .return_consumed_capacity(ReturnConsumedCapacity::Total)
-            .send()
-            .await
-            .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
-        record_capacity(
-            "list_period_ids_for_nitc_event",
-            resp.consumed_capacity(),
-            CapKind::Read,
-        );
+        let items = query_all_items("list_period_ids_for_nitc_event", || {
+            self.client
+                .query()
+                .table_name(self.table_name("period"))
+                .index_name("nitc_event_id-index")
+                .key_condition_expression("nitc_event_id = :eid")
+                .filter_expression(
+                    "attribute_not_exists(deleted) OR deleted = :false OR attribute_exists(nitc_participant_id)",
+                )
+                .expression_attribute_values(":eid", AttributeValue::S(event_id.to_string()))
+                .expression_attribute_values(":false", AttributeValue::N("0".to_string()))
+        })
+        .await?;
 
-        Ok(resp
-            .items
-            .unwrap_or_default()
+        Ok(items
             .into_iter()
             .filter_map(|mut item| item.remove("id").and_then(|v| v.as_s().ok().cloned()))
             .collect())
@@ -3742,52 +3689,53 @@ impl db::Handler for Handler {
         &self,
         user_id: &str,
     ) -> db::Result<Vec<WebauthnCredential>> {
-        let resp = self
-            .client
-            .query()
-            .table_name(self.table_name("webauthn_credential"))
-            .index_name("user_id-index")
-            .key_condition_expression("user_id = :user_id")
-            .expression_attribute_values(":user_id", AttributeValue::S(user_id.to_string()))
-            .return_consumed_capacity(ReturnConsumedCapacity::Total)
-            .send()
-            .await
-            .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
-        record_capacity(
-            "list_webauthn_credentials_by_user",
-            resp.consumed_capacity(),
-            CapKind::Read,
-        );
-        resp.items
-            .unwrap_or_default()
-            .into_iter()
-            .map(|item| {
-                Item(item)
-                    .try_into()
-                    .map_err(|e: HydrationError| Error::Infrastructure(e.to_string()))
-            })
-            .collect()
+        query_all("list_webauthn_credentials_by_user", || {
+            self.client
+                .query()
+                .table_name(self.table_name("webauthn_credential"))
+                .index_name("user_id-index")
+                .key_condition_expression("user_id = :user_id")
+                .expression_attribute_values(":user_id", AttributeValue::S(user_id.to_string()))
+        })
+        .await
     }
 
     async fn count_webauthn_credentials_by_user(&self, user_id: &str) -> db::Result<usize> {
-        let resp = self
-            .client
-            .query()
-            .table_name(self.table_name("webauthn_credential"))
-            .index_name("user_id-index")
-            .key_condition_expression("user_id = :user_id")
-            .expression_attribute_values(":user_id", AttributeValue::S(user_id.to_string()))
-            .select(aws_sdk_dynamodb::types::Select::Count)
-            .return_consumed_capacity(ReturnConsumedCapacity::Total)
-            .send()
-            .await
-            .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
-        record_capacity(
-            "count_webauthn_credentials_by_user",
-            resp.consumed_capacity(),
-            CapKind::Read,
-        );
-        Ok(resp.count.max(0) as usize)
+        // `Select::Count` still reports a per-page count alongside a continuation key, so
+        // sum across pages rather than trusting the first response.
+        let mut total: usize = 0;
+        let mut exclusive_start_key: Option<HashMap<String, AttributeValue>> = None;
+
+        loop {
+            let mut builder = self
+                .client
+                .query()
+                .table_name(self.table_name("webauthn_credential"))
+                .index_name("user_id-index")
+                .key_condition_expression("user_id = :user_id")
+                .expression_attribute_values(":user_id", AttributeValue::S(user_id.to_string()))
+                .select(aws_sdk_dynamodb::types::Select::Count)
+                .return_consumed_capacity(ReturnConsumedCapacity::Total);
+            if let Some(esk) = exclusive_start_key.take() {
+                builder = builder.set_exclusive_start_key(Some(esk));
+            }
+
+            let resp = builder
+                .send()
+                .await
+                .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
+            record_capacity(
+                "count_webauthn_credentials_by_user",
+                resp.consumed_capacity(),
+                CapKind::Read,
+            );
+
+            total += resp.count.max(0) as usize;
+            exclusive_start_key = resp.last_evaluated_key;
+            if exclusive_start_key.is_none() {
+                return Ok(total);
+            }
+        }
     }
 
     async fn update_webauthn_credential(
