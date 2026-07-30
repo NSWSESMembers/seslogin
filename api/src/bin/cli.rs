@@ -490,6 +490,7 @@ async fn show_persons(db: &impl Handler, persons: &[Person]) {
             ("ses_api_person_id", opt_str(&p.ses_api_person_id)),
             ("email", opt_str(&p.email)),
             ("deleted", opt_ts(p.deleted)),
+            ("missing_since", opt_ts(p.missing_since)),
             ("created_at", opt_ts(p.created_at)),
             ("updated_at", opt_ts(p.updated_at)),
         ]);
@@ -900,10 +901,14 @@ async fn run(db: &impl Handler, object: Object) -> Result<()> {
                             p.first_name.clone(),
                             p.last_name.clone(),
                             if p.deleted.is_some() { "yes" } else { "" }.to_string(),
+                            if p.missing_since.is_some() { "yes" } else { "" }.to_string(),
                         ]
                     })
                     .collect();
-                print_table(&["id", "rego", "first", "last", "deleted"], &rows);
+                print_table(
+                    &["id", "rego", "first", "last", "deleted", "missing"],
+                    &rows,
+                );
             }
         },
 

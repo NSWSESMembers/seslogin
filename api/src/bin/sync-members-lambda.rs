@@ -28,6 +28,10 @@ fn parse_env_usize(key: &str) -> Option<usize> {
         .and_then(|v| v.parse::<usize>().ok())
 }
 
+fn parse_env_u64(key: &str) -> Option<u64> {
+    std::env::var(key).ok().and_then(|v| v.parse::<u64>().ok())
+}
+
 fn parse_env_bool(key: &str, default: bool) -> bool {
     std::env::var(key)
         .ok()
@@ -62,7 +66,21 @@ fn build_config(location_id: String) -> Result<SyncConfig> {
         max_retries: parse_env_usize("SES_SYNC_MAX_RETRIES").unwrap_or(3),
         location_ids: vec![location_id],
         max_mutations: parse_env_usize("SES_SYNC_MAX_MUTATIONS").unwrap_or(100),
+        absence: build_absence_policy(),
     })
+}
+
+fn build_absence_policy() -> member_sync::AbsencePolicy {
+    let defaults = member_sync::AbsencePolicy::default();
+    member_sync::AbsencePolicy {
+        enabled: parse_env_bool("SES_SYNC_ABSENCE_ENABLED", defaults.enabled),
+        grace_secs: parse_env_u64("SES_SYNC_ABSENCE_GRACE_SECS").unwrap_or(defaults.grace_secs),
+        min_candidates: parse_env_usize("SES_SYNC_ABSENCE_MIN").unwrap_or(defaults.min_candidates),
+        max_candidate_percent: parse_env_usize("SES_SYNC_ABSENCE_PERCENT")
+            .unwrap_or(defaults.max_candidate_percent),
+        max_sync_staleness_secs: parse_env_u64("SES_SYNC_MAX_SYNC_STALENESS_SECS")
+            .unwrap_or(defaults.max_sync_staleness_secs),
+    }
 }
 
 async fn handler(event: LambdaEvent<Value>) -> Result<Value, LambdaError> {
@@ -106,6 +124,12 @@ async fn handler(event: LambdaEvent<Value>) -> Result<Value, LambdaError> {
             emails_seen = stats.emails_seen,
             emails_updated = stats.emails_updated,
             emails_unmatched = stats.emails_unmatched,
+            ses_deleted_flags_seen = stats.ses_deleted_flags_seen,
+            missing_marked = stats.missing_marked,
+            missing_cleared = stats.missing_cleared,
+            missing_waiting = stats.missing_waiting,
+            absence_deletes_suppressed = stats.absence_deletes_suppressed,
+            absence_skipped_locations = stats.absence_skipped_locations,
             rru = metrics.read_units(),
             wru = metrics.write_units(),
             ddb_calls = metrics.ddb_calls(),
@@ -144,6 +168,12 @@ async fn handler(event: LambdaEvent<Value>) -> Result<Value, LambdaError> {
         "emails_updated": stats.emails_updated,
         "emails_unmatched": stats.emails_unmatched,
         "emails_noops": stats.emails_noops,
+        "ses_deleted_flags_seen": stats.ses_deleted_flags_seen,
+        "missing_marked": stats.missing_marked,
+        "missing_cleared": stats.missing_cleared,
+        "missing_waiting": stats.missing_waiting,
+        "absence_deletes_suppressed": stats.absence_deletes_suppressed,
+        "absence_skipped_locations": stats.absence_skipped_locations,
     }))
 }
 

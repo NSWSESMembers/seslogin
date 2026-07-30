@@ -139,6 +139,13 @@ The `start_time` sort key across the location/person GSIs means DynamoDB returns
 - `registration_number` (S) — the SES member registration number (zero-padded)
 - `ses_api_person_id` (S) — absent until member sync links the record
 - `deleted` (Bool)
+- `missing_since` (N) — unix seconds at which member sync first saw this person absent from
+  their location's SES payload. Absent on a healthy record; cleared by any sync that sees
+  them again, and removed on soft-delete so a marker only ever exists on a live row. Once
+  it ages past the grace window (default 7 days) the person is soft-deleted. Note the
+  absence pass reads the roster through `location_id-index`, which is `ALL`-projected — a
+  `KEYS_ONLY` projection there would hydrate every row with `missing_since: None` and
+  silently prevent all deletions.
 
 ---
 

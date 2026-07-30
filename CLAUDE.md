@@ -150,6 +150,14 @@ Authorization uses an `AuthRequirement` guard enum per field: `Session`, `UserOr
 
 **Member sync**: `api/src/member_sync.rs` — Fetches paginated member list from SES API, diffs against local DB, plans and optionally applies changes (adopt IDs, create, update, soft-delete). In production, sync runs as two Lambdas: `dispatcher-lambda` (triggered by EventBridge every hour, `cron(0 * * * ? *)` UTC) hashes each location ID into one of 24 hour buckets and enqueues only the locations whose bucket matches the current UTC hour; `sync-members-lambda` consumes each SQS message and runs the sync for that location. Net effect: each location is synced once per 24-hour cycle at a consistent but distributed UTC hour. The SQS queue has a DLQ with 3 retries.
 
+**Deleting departed members (the "absence pass")**: SES signals a departure by dropping the person from the unit's payload, not by a `deleted` flag — a `deleted: true` row is unexpected and only logs a warning. Deletion is therefore two-phase, so that a member who transfers to a *different* unit is never deleted:
+
+1. A member absent from their location's payload gets `Person.missing_since` stamped, not deleted.
+2. Any sync at any location that sees them again clears the marker. A transferring member is marked by the old unit, then matched by `ses_api_person_id` at the new unit within the same 24-hour cycle, moved by the normal update path, and cleared.
+3. Only once the marker is older than `SES_SYNC_ABSENCE_GRACE_SECS` (default 7 days) is the member soft-deleted.
+
+**Off by default** — set `SES_SYNC_ABSENCE_ENABLED=true` per environment after reviewing a dry run. Guards, all per-location so one bad unit cannot abort a run: an empty SES payload skips the pass entirely; candidates are capped at `max(SES_SYNC_ABSENCE_MIN, SES_SYNC_ABSENCE_PERCENT% of the synced roster)`; and deletions are suppressed unless the location's previous successful sync is within `SES_SYNC_MAX_SYNC_STALENESS_SECS` (default 36h), so a location recovering from a DLQ outage cannot delete its roster on a single sighting. Absence writes are deliberately excluded from `max_mutations` — that abort would DLQ the location and stop its legitimate creates and updates too.
+
 **SES API client**: `api/src/ses_api.rs` — HTTP client with retry logic for the external headquarters system.
 
 **JWT**: `api/src/jwt.rs` — HMAC-SHA256 tokens with claims `{ user_id, exp }` or `{ session_id, exp }`.

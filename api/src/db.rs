@@ -142,6 +142,11 @@ pub struct Person {
     pub ses_api_person_id: Option<String>,
     pub email: Option<String>,
     pub deleted: Option<u64>,
+    /// Unix seconds at which member sync first observed this person missing from their
+    /// location's SES payload. Cleared by any sync that sees them again, and on
+    /// soft-delete — so a marker only ever exists on a live row. Once it is older than
+    /// the configured grace window the person is soft-deleted.
+    pub missing_since: Option<u64>,
     pub created_at: Option<u64>,
     pub updated_at: Option<u64>,
 }
@@ -167,6 +172,10 @@ pub enum PersonUpdateShape<'a> {
     },
     Email {
         email: Option<&'a str>,
+    },
+    /// `Some` stamps the missing marker, `None` removes it.
+    MissingSince {
+        missing_since: Option<u64>,
     },
     Undelete,
     Delete,
