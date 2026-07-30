@@ -426,34 +426,11 @@ resource "aws_dynamodb_table" "prod_webauthn_credential" {
   }
 }
 
-resource "aws_dynamodb_table" "prod_webauthn_state" {
-  name         = "${var.db_prefix}_webauthn_state"
-  billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "id"
-
-  deletion_protection_enabled = true
-
-  point_in_time_recovery {
-    enabled                 = true
-    recovery_period_in_days = 35
-  }
-
-  attribute {
-    name = "id"
-    type = "S"
-  }
-
-  # Short-lived challenge state; TTL auto-deletes after expires_at.
-  ttl {
-    attribute_name = "expires_at"
-    enabled        = true
-  }
-}
-
 # Generic ephemeral key/value store with native TTL. Items are namespaced by a
 # `kind` discriminator and carry an opaque JSON `payload`; `expires_at` drives
-# DynamoDB TTL auto-deletion. Initially backs kiosk public-key enrollment; the
-# webauthn_state table is intended to migrate into this one later.
+# DynamoDB TTL auto-deletion. Backs kiosk public-key enrollment (kind
+# "kiosk_enroll") and WebAuthn challenge state (kind "reg"/"auth"), the latter
+# migrated off the former prod_webauthn_state table.
 resource "aws_dynamodb_table" "prod_ephemeral_state" {
   name         = "${var.db_prefix}_ephemeral_state"
   billing_mode = "PAY_PER_REQUEST"
