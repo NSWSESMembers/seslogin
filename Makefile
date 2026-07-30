@@ -5,7 +5,7 @@ dev:
 	(cd web && npm run relay -- --watch) & \
 	(cd web && npm run dev)
 
-lint:	gh-lint
+lint:	gha-lint
 	(cd api && cargo clippy)
 	(cd web && npm run lint)
 
@@ -22,9 +22,7 @@ test:
 	(cd api && cargo test)
 	(cd web && npm run test:unit)
 
-check:	pre-commit-checks
-
-pre-commit-checks:
+check:
 	@echo "Running workflow checks..."
 	@$(MAKE) gha-lint
 	@echo "Running web checks..."
@@ -58,20 +56,3 @@ check-toolchain:
 		exit 1; \
 	fi; \
 	echo "Rust toolchain OK ($$actual)"
-
-install-githooks:
-	@git config core.hooksPath .githooks
-	@chmod +x .githooks/pre-commit
-	@echo "Git hooks installed (core.hooksPath=.githooks)"
-
-member-sync:
-	cd api && RUST_LOG=info cargo run --bin sync-members --
-
-sync-locations:
-	cd api && RUST_LOG=info cargo run --bin sync-locations --
-
-do-sync-locations:
-	cd api && RUST_LOG=info cargo run --bin sync-locations -- --dry-run false
-
-load-nitc-tags:
-	cd api && RUST_LOG=info cargo run --bin load-nitc-tags --
