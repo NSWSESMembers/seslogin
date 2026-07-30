@@ -14,6 +14,7 @@ function makeTransaction(hoursAgo: number): TransactionSignedOut {
     startTime: new Date(Date.now() - hoursAgo * 60 * 60 * 1000),
     categoryId: "RX2bfpU6ppvV",
     adjusted: false,
+    quickPickSkipped: false,
   };
 }
 
