@@ -1,3 +1,5 @@
+stacking!
+
 # SES Activity
 
 SES Activity is a web app for tracking volunteer attendance with as little friction as possible. Members check in and out at a kiosk, sessions are recorded with activity categories, and reports are available for coordinators.
