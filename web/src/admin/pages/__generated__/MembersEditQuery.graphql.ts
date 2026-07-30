@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<de38d0e13c87986ee6474f66da88110f>>
+ * @generated SignedSource<<79fb3c71d04fe60742fddd13f29769de>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -18,6 +18,7 @@ export type MembersEditQuery$data = {
     readonly id: string;
     readonly lastName: string;
     readonly memberNumber: string | null | undefined;
+    readonly missingSince: number | null | undefined;
   };
 };
 export type MembersEditQuery = {
@@ -75,6 +76,13 @@ v1 = [
         "kind": "ScalarField",
         "name": "memberNumber",
         "storageKey": null
+      },
+      {
+        "alias": null,
+        "args": null,
+        "kind": "ScalarField",
+        "name": "missingSince",
+        "storageKey": null
       }
     ],
     "storageKey": null
@@ -98,16 +106,16 @@ return {
     "selections": (v1/*: any*/)
   },
   "params": {
-    "cacheID": "bbadf1b6170b7ac1f1c459a666a5e986",
+    "cacheID": "3f7b9c5569adfd0cdd7e78cd958ee287",
     "id": null,
     "metadata": {},
     "name": "MembersEditQuery",
     "operationKind": "query",
-    "text": "query MembersEditQuery(\n  $id: ID!\n) {\n  person(id: $id) {\n    id\n    firstName\n    lastName\n    memberNumber\n  }\n}\n"
+    "text": "query MembersEditQuery(\n  $id: ID!\n) {\n  person(id: $id) {\n    id\n    firstName\n    lastName\n    memberNumber\n    missingSince\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "a60f75541008ef2100d2a2c765a883e4";
+(node as any).hash = "2b4d521f17ea9444b2b9607e8700a48f";
 
 export default node;

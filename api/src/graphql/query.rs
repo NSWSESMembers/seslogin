@@ -357,6 +357,13 @@ impl<A: App + HasDb + Send + Sync> Person<A> {
         self.rec.deleted.is_some()
     }
 
+    /// Set when member sync has observed this person missing from their location's SES
+    /// payload. They are soft-deleted once the marker ages past the grace window, unless
+    /// a later sync sees them again and clears it.
+    async fn missing_since(&self) -> Option<i64> {
+        self.rec.missing_since.map(|t| t as i64)
+    }
+
     async fn created_at(&self) -> Option<i64> {
         self.rec.created_at.map(|t| t as i64)
     }
