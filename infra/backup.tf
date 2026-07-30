@@ -13,7 +13,7 @@
 
 # ── Tables to back up ─────────────────────────────────────────────────────────
 # Durable business + auth data only. The two short-lived TTL'd tables
-# (prod_login_code, prod_webauthn_state) are intentionally excluded — they hold
+# (prod_login_code, prod_ephemeral_state) are intentionally excluded — they hold
 # only ephemeral challenge/code state, so backing them up adds cost with no
 # value. They keep PITR regardless.
 
