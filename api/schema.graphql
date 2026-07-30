@@ -376,6 +376,12 @@ type Person {
 	"""
 	email: String
 	deleted: Boolean!
+	"""
+	Set when member sync has observed this person missing from their location's SES
+	payload. They are soft-deleted once the marker ages past the grace window, unless
+	a later sync sees them again and clears it.
+	"""
+	missingSince: Int
 	createdAt: Int
 	updatedAt: Int
 	periods(after: String, before: String, first: Int, last: Int): PeriodConnection!
