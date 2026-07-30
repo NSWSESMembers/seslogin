@@ -271,6 +271,10 @@ impl TryInto<Person> for Item {
                 .i64_field("deleted")?
                 .map(|i| i as u64)
                 .filter(|&i| i != 0),
+            missing_since: self
+                .i64_field("missing_since")?
+                .map(|i| i as u64)
+                .filter(|&i| i != 0),
             created_at: self.i64_field("created_at")?.map(|i| i as u64),
             updated_at: self.i64_field("updated_at")?.map(|i| i as u64),
         })
@@ -1647,6 +1651,7 @@ impl db::Handler for Handler {
             ses_api_person_id: None,
             email: None,
             deleted: None,
+            missing_since: None,
             created_at: Some(now),
             updated_at: Some(now),
         })
@@ -1760,6 +1765,38 @@ impl db::Handler for Handler {
                     .map_err(|e| map_update_err(e, format!("Person {}", id)))?;
                 record_capacity("update_person", resp.consumed_capacity(), CapKind::Write);
             }
+            db::PersonUpdateShape::MissingSince { missing_since } => {
+                let mut request = self
+                    .client
+                    .update_item()
+                    .table_name(self.table_name("person"))
+                    .key("id", AttributeValue::S(id.to_string()))
+                    .condition_expression("attribute_exists(id)")
+                    .expression_attribute_values(
+                        ":updated_at",
+                        AttributeValue::N(crate::clock::now_sec().to_string()),
+                    );
+
+                request = if let Some(v) = missing_since {
+                    request
+                        .update_expression(
+                            "SET missing_since = :missing_since, updated_at = :updated_at",
+                        )
+                        .expression_attribute_values(
+                            ":missing_since",
+                            AttributeValue::N(v.to_string()),
+                        )
+                } else {
+                    request.update_expression("SET updated_at = :updated_at REMOVE missing_since")
+                };
+
+                let resp = request
+                    .return_consumed_capacity(ReturnConsumedCapacity::Total)
+                    .send()
+                    .await
+                    .map_err(|e| map_update_err(e, format!("Person {}", id)))?;
+                record_capacity("update_person", resp.consumed_capacity(), CapKind::Write);
+            }
             db::PersonUpdateShape::Undelete => {
                 let resp = self
                     .client
@@ -1767,7 +1804,10 @@ impl db::Handler for Handler {
                     .table_name(self.table_name("person"))
                     .key("id", AttributeValue::S(id.to_string()))
                     .condition_expression("attribute_exists(id)")
-                    .update_expression("SET deleted = :deleted, updated_at = :updated_at")
+                    // Drop any missing marker: it only ever applies to a live row.
+                    .update_expression(
+                        "SET deleted = :deleted, updated_at = :updated_at REMOVE missing_since",
+                    )
                     .expression_attribute_values(":deleted", AttributeValue::N("0".to_string()))
                     .expression_attribute_values(
                         ":updated_at",
@@ -1787,7 +1827,11 @@ impl db::Handler for Handler {
                     .table_name(self.table_name("person"))
                     .key("id", AttributeValue::S(id.to_string()))
                     .condition_expression("attribute_exists(id)")
-                    .update_expression("SET deleted = :deleted, updated_at = :updated_at")
+                    // Drop any missing marker so it can never outlive the live row —
+                    // roster reads skip deleted people and could never clear it later.
+                    .update_expression(
+                        "SET deleted = :deleted, updated_at = :updated_at REMOVE missing_since",
+                    )
                     .expression_attribute_values(
                         ":deleted",
                         AttributeValue::N(deleted_time.clone()),

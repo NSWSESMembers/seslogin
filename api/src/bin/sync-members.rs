@@ -47,15 +47,48 @@ struct Cli {
     #[arg(long = "location-id")]
     location_ids: Vec<String>,
 
-    /// Abort apply mode when planned creates+updates+undeletes+deletes exceed this total.
+    /// Abort apply mode when planned adopts+creates+updates+undeletes exceed this total.
+    /// Absence marks and deletions are governed by the --absence-* caps instead.
     #[arg(long)]
     max_mutations: Option<usize>,
+
+    /// Enable soft-deleting members who have stopped appearing in their location's SES
+    /// payload. Off by default.
+    #[arg(long, action = clap::ArgAction::Set)]
+    absence_enabled: Option<bool>,
+
+    /// Seconds a member must be continuously absent from SES before being soft-deleted.
+    #[arg(long)]
+    absence_grace_secs: Option<u64>,
+
+    /// Always allow at least this many absence candidates per location.
+    #[arg(long)]
+    absence_min: Option<usize>,
+
+    /// Above the floor, cap absence candidates at this percentage of the synced roster.
+    #[arg(long)]
+    absence_percent: Option<usize>,
+
+    /// Suppress absence deletions when the location's previous successful sync is older
+    /// than this many seconds.
+    #[arg(long)]
+    absence_max_sync_staleness_secs: Option<u64>,
 }
 
 fn parse_env_usize(key: &str) -> Option<usize> {
     std::env::var(key)
         .ok()
         .and_then(|v| v.parse::<usize>().ok())
+}
+
+fn parse_env_u64(key: &str) -> Option<u64> {
+    std::env::var(key).ok().and_then(|v| v.parse::<u64>().ok())
+}
+
+fn parse_env_bool(key: &str) -> Option<bool> {
+    std::env::var(key)
+        .ok()
+        .map(|v| matches!(v.trim().to_ascii_lowercase().as_str(), "1" | "true" | "yes"))
 }
 
 #[tokio::main]
@@ -105,6 +138,30 @@ async fn main() -> Result<()> {
         .or_else(|| parse_env_usize("SES_SYNC_MAX_MUTATIONS"))
         .unwrap_or(10);
 
+    let defaults = member_sync::AbsencePolicy::default();
+    let absence = member_sync::AbsencePolicy {
+        enabled: cli
+            .absence_enabled
+            .or_else(|| parse_env_bool("SES_SYNC_ABSENCE_ENABLED"))
+            .unwrap_or(defaults.enabled),
+        grace_secs: cli
+            .absence_grace_secs
+            .or_else(|| parse_env_u64("SES_SYNC_ABSENCE_GRACE_SECS"))
+            .unwrap_or(defaults.grace_secs),
+        min_candidates: cli
+            .absence_min
+            .or_else(|| parse_env_usize("SES_SYNC_ABSENCE_MIN"))
+            .unwrap_or(defaults.min_candidates),
+        max_candidate_percent: cli
+            .absence_percent
+            .or_else(|| parse_env_usize("SES_SYNC_ABSENCE_PERCENT"))
+            .unwrap_or(defaults.max_candidate_percent),
+        max_sync_staleness_secs: cli
+            .absence_max_sync_staleness_secs
+            .or_else(|| parse_env_u64("SES_SYNC_MAX_SYNC_STALENESS_SECS"))
+            .unwrap_or(defaults.max_sync_staleness_secs),
+    };
+
     let metrics = Arc::new(RequestMetrics::default());
     let stats = request_metrics::METRICS
         .scope(
@@ -121,6 +178,7 @@ async fn main() -> Result<()> {
                 max_retries,
                 location_ids: cli.location_ids,
                 max_mutations,
+                absence,
             }),
         )
         .await?;
@@ -132,9 +190,10 @@ async fn main() -> Result<()> {
     );
 
     println!(
-        "sync complete mode={} adopt={} processed_locations={} skipped_locations={} ses_people_seen={} adopts={} creates={} updates={} undeletes={} soft_deletes={} noops={} blocked_manual_conflicts={} total_mutations={} emails_seen={} emails_updated={} emails_unmatched={} emails_noops={}",
+        "sync complete mode={} adopt={} absence={} processed_locations={} skipped_locations={} ses_people_seen={} adopts={} creates={} updates={} undeletes={} soft_deletes={} noops={} blocked_manual_conflicts={} total_mutations={} emails_seen={} emails_updated={} emails_unmatched={} emails_noops={} ses_deleted_flags_seen={} missing_marked={} missing_cleared={} missing_waiting={} absence_deletes_suppressed={} absence_skipped_locations={}",
         if cli.dry_run { "dry-run" } else { "apply" },
         cli.adopt,
+        absence.enabled,
         stats.processed_locations,
         stats.skipped_locations,
         stats.ses_people_seen,
@@ -150,6 +209,12 @@ async fn main() -> Result<()> {
         stats.emails_updated,
         stats.emails_unmatched,
         stats.emails_noops,
+        stats.ses_deleted_flags_seen,
+        stats.missing_marked,
+        stats.missing_cleared,
+        stats.missing_waiting,
+        stats.absence_deletes_suppressed,
+        stats.absence_skipped_locations,
     );
 
     Ok(())

@@ -8,6 +8,7 @@ import type { MembersListSyncMutation } from "./__generated__/MembersListSyncMut
 import useSelectedLocation from "../components/useSelectedLocation";
 import { formatFullDateTime } from "../../lib/time";
 import bulletGreen from "../../assets/bullet-green.svg";
+import bulletOrange from "../../assets/bullet-orange.svg";
 import { useState } from "react";
 import { useUserInfo } from "../components/useUserInfo";
 import { useNotify } from "../components/useNotify";
@@ -62,11 +63,25 @@ function Row({
   }
 
   const sesApiPersonId = person.sesApiPersonId;
+  // Member sync has stopped seeing this person in SES. They are soft-deleted once the
+  // marker ages past the grace window, unless a later sync finds them again.
+  const missingSince = person.missingSince;
 
   return (
     <tr className={idx % 2 === 0 ? "bg-surface-raised" : undefined}>
       <Td center>
-        {sesApiPersonId ? (
+        {missingSince ? (
+          <img
+            src={bulletOrange}
+            alt="Pending deletion"
+            title={`Missing from SES since ${formatFullDateTime(
+              new Date(missingSince * 1000),
+            )} — pending deletion`}
+            width={12}
+            height={12}
+            className="max-w-none align-middle"
+          />
+        ) : sesApiPersonId ? (
           <img
             src={bulletGreen}
             alt=""
@@ -125,6 +140,7 @@ export default function MembersList() {
             lastName
             memberNumber
             sesApiPersonId
+            missingSince
           }
         }
       }

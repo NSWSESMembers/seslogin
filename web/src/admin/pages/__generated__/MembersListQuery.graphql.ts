@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<60d1e9c9755f9fd9766f8932e6913b25>>
+ * @generated SignedSource<<7e338066900f9909227969383d0d9b24>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -21,6 +21,7 @@ export type MembersListQuery$data = {
       readonly id: string;
       readonly lastName: string;
       readonly memberNumber: string | null | undefined;
+      readonly missingSince: number | null | undefined;
       readonly sesApiPersonId: string | null | undefined;
     }>;
     readonly sesApiHeadquartersId: string | null | undefined;
@@ -112,6 +113,13 @@ v2 = [
             "kind": "ScalarField",
             "name": "sesApiPersonId",
             "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "missingSince",
+            "storageKey": null
           }
         ],
         "storageKey": null
@@ -138,16 +146,16 @@ return {
     "selections": (v2/*: any*/)
   },
   "params": {
-    "cacheID": "d87bebb350363ebef658f704d0829007",
+    "cacheID": "af553320c4193d43740cf973dd2ffbda",
     "id": null,
     "metadata": {},
     "name": "MembersListQuery",
     "operationKind": "query",
-    "text": "query MembersListQuery(\n  $location: ID!\n) {\n  location(id: $location) {\n    id\n    sesApiHeadquartersId\n    lastSuccessfulMemberSync\n    people {\n      id\n      firstName\n      lastName\n      memberNumber\n      sesApiPersonId\n    }\n  }\n}\n"
+    "text": "query MembersListQuery(\n  $location: ID!\n) {\n  location(id: $location) {\n    id\n    sesApiHeadquartersId\n    lastSuccessfulMemberSync\n    people {\n      id\n      firstName\n      lastName\n      memberNumber\n      sesApiPersonId\n      missingSince\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "d0cd7a45b1753a6c3df6338ceaed1a59";
+(node as any).hash = "efd1fcc42b21f08ed61a31a3469f04cb";
 
 export default node;
