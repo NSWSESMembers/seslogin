@@ -64,16 +64,7 @@ return `401`.
 
 Set `ses_api_headquarters_id` per location via the admin UI before syncing.
 
-Run sync in dry-run mode (prints planned changes only):
-
-```bash
-SES_API_BASE_URL=https://your-ses-api.example.com \
-SES_API_KEY=your-static-token \
-DB_PREFIX=seslogin_test \
-cargo run --bin sync-members -- --dry-run
-```
-
-Run sync in apply mode:
+Sync defaults to dry-run mode (prints planned changes only):
 
 ```bash
 SES_API_BASE_URL=https://your-ses-api.example.com \
@@ -82,13 +73,16 @@ DB_PREFIX=seslogin_test \
 cargo run --bin sync-members --
 ```
 
-SQS Lambda binary (invoked per location by the dispatcher; reads config from env vars):
+Run sync in apply mode by passing `--dry-run false`:
 
 ```bash
-cargo run --bin sync-members-sqs-lambda
+SES_API_BASE_URL=https://your-ses-api.example.com \
+SES_API_KEY=your-static-token \
+DB_PREFIX=seslogin_test \
+cargo run --bin sync-members -- --dry-run false
 ```
 
-Standalone Lambda binary (reads config from env vars and executes one sync run directly):
+Lambda binary (consumes one SQS message per location from the dispatcher; reads config from env vars):
 
 ```bash
 cargo run --bin sync-members-lambda

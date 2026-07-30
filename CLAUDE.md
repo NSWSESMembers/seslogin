@@ -12,7 +12,7 @@ seslogin v2 is a member attendance tracking system for managing check-in/check-o
 > `seslogin_prod`, and nearly every environment uses it: prod, preprod, the `seslogin-test-api`
 > (deployed from `main`), all the sync/utility Lambdas, **and local dev** (`.env` sets
 > `DB_PREFIX=seslogin_prod`). The `seslogin_test_*` tables exist but are not wired into any
-> running environment yet. This means `make dev`, `make do-sync`, the dev-auth bypass below, and
+> running environment yet. This means `make dev`, the sync binaries, the dev-auth bypass below, and
 > any script you run locally are operating on **live production member data**. Be extremely
 > careful: prefer dry-runs, avoid destructive mutations, and double-check `DB_PREFIX` before
 > running anything that writes.
@@ -59,7 +59,7 @@ cd api && cargo run --locked --bin export-schema > schema.graphql   # regenerate
 cd web && npm run relay                                               # regenerate Relay TS types
 ```
 
-The `make pre-commit-checks` target runs a schema diff and Relay compilation, so it will catch this if skipped.
+The `make check` target runs a schema diff and Relay compilation, so it will catch this if skipped.
 
 ### Testing & Linting
 
@@ -67,27 +67,29 @@ The `make pre-commit-checks` target runs a schema diff and Relay compilation, so
 cd api && cargo test                  # Run all Rust tests
 cd api && cargo clippy                # Lint Rust code
 cd web && npm run test:unit           # Web unit tests
-make pre-commit-checks                # Full CI suite: relay, prettier, eslint, build, cargo fmt --check, schema diff, clippy
+make check                            # Full CI suite: relay, prettier, eslint, build, cargo fmt --check, schema diff, clippy
 ```
 
 ### Data Sync (local)
 
+Run the binaries directly with `cargo run`. All of them default to `--dry-run true`; pass
+`--dry-run false` to actually write.
+
 ```bash
-make sync      # Dry-run SES API sync (print changes only)
-make do-sync   # Apply SES API sync to database
+cd api && RUST_LOG=info cargo run --bin sync-members --                     # Dry-run SES API member sync (print changes only)
+cd api && RUST_LOG=info cargo run --bin sync-members -- --dry-run false     # Apply member sync to database
+cd api && RUST_LOG=info cargo run --bin sync-locations --                   # Dry-run location sync
+cd api && RUST_LOG=info cargo run --bin sync-locations -- --dry-run false   # Apply location sync
+cd api && RUST_LOG=info cargo run --bin load-nitc-tags --                   # Load NITC tags
 ```
 
-> ⚠️ With the default `DB_PREFIX=seslogin_prod`, `make do-sync` writes to the **production**
-> database. Always run `make sync` (dry-run) first and review the planned changes before
-> applying.
+> ⚠️ With the default `DB_PREFIX=seslogin_prod`, `--dry-run false` writes to the **production**
+> database. Always run the dry-run first and review the planned changes before applying.
 
 ### Lambda Deployment
 
-```bash
-cd api && make deploy                   # Build & deploy API Lambda (seslogin-api)
-cd api && make deploy-sync-lambda       # Build & deploy per-location sync Lambda
-cd api && make deploy-dispatcher-lambda # Build & deploy SQS dispatcher Lambda
-```
+Deployment is automated via GitHub Actions; there is no supported manual/local deploy path.
+Push to the relevant branch below rather than running `cargo lambda deploy` by hand.
 
 Auto-deployment is split by branch, one workflow per branch under `.github/workflows/` (`deploy-prod.yml`, `deploy-preprod.yml`, `deploy-test.yml`, `deploy-workers.yml`):
 
