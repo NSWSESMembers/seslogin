@@ -66,9 +66,28 @@ The `make check` target runs a schema diff and Relay compilation, so it will cat
 ```bash
 cd api && cargo test                  # Run all Rust tests
 cd api && cargo clippy                # Lint Rust code
-cd web && npm run test:unit           # Web unit tests
-make check                            # Full CI suite: relay, prettier, eslint, build, cargo fmt --check, schema diff, clippy
+cd web && npm run test:unit           # Web unit tests (type-checks first, then runs vitest)
+make test                             # Both test suites: cargo test + web unit tests
+make check                            # Static checks — see below. Does NOT run tests.
 ```
+
+**`make check` does not run any tests.** It is the static-analysis half of CI only:
+
+| | |
+|---|---|
+| workflows | `actionlint` |
+| web | relay compile, `prettier --check`, eslint, `tsc -b`, vite build |
+| infra | `terraform fmt -check` |
+| api | toolchain version check, `cargo fmt --check`, `export-schema` diff against `schema.graphql`, `clippy -Dwarnings` |
+
+CI additionally runs `npm test` and `cargo test --locked` (`.github/workflows/_check-web.yml`,
+`_check-api.yml`). So **a green `make check` does not mean CI is green** — run `make test` too
+before pushing, or `make check && make test` for the full equivalent.
+
+Type-checking covers test files: `web/tsconfig.app.json` includes `src` (so every `*.test.tsx`)
+plus `setupTests.ts`. Vitest itself only strips types via esbuild and never checks them, which is
+why `test:unit` runs `tsc -b` first. The bare `npm test` script stays type-check-free because CI
+already runs `npm run typecheck` as its own step.
 
 ### Data Sync (local)
 
