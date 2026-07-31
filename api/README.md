@@ -1,22 +1,20 @@
 # GraphQL API server for seslogin
 
-> ⚠️ **This connects to the production database by default.** `DB_PREFIX` defaults to
-> `seslogin_prod` (that's what `.env` ships with), so running the dev server, sync commands,
-> or any script locally operates on **live production member data** — there is currently no
-> separate test database wired up. Be very careful: prefer dry-runs, avoid destructive
-> mutations, and double-check `DB_PREFIX` before running anything that writes.
+> **First-time setup — including AWS access and secrets — is in
+> [DEVELOPMENT.md](../DEVELOPMENT.md).** This file covers API-specific details.
 
-1. Install rust via [rustup](https://rustup.rs)
-2. Setup AWS credentials such as: ~/.aws/credentials
+> ⚠️ **Check which database you're on.** `.env` sets `DB_PREFIX=seslogin_test`, so by default
+> the dev server and local scripts use the `seslogin_test_*` tables — an out-of-date partial
+> snapshot of production. If you have switched to `DB_PREFIX=seslogin_prod` you are operating
+> on **live production member data**: prefer dry-runs, avoid destructive mutations, and
+> double-check `DB_PREFIX` before running anything that writes.
 
-```
-[default]
-aws_access_key_id = ...
-aws_secret_access_key = ...
-region = ap-southeast-2
-```
+Prerequisites: Rust via [rustup](https://rustup.rs) (the exact version is pinned in
+`rust-toolchain.toml`) and AWS credentials via the `seslogin` SSO profile —
+`aws sso login --profile seslogin`. See [DEVELOPMENT.md](../DEVELOPMENT.md) for how to set
+that profile up.
 
-3. `RUST_LOG=info cargo run --bin poem`
+Then: `RUST_LOG=info cargo run --bin poem`
 
 ## Run tests
 
@@ -56,9 +54,10 @@ return `401`.
 
 > ⚠️ Dev only. This lives solely in the `poem` binary — it is **not** available in
 > the deployed Lambda — and the server logs a loud warning at startup when it's
-> enabled. Note that with the default `DB_PREFIX=seslogin_prod` you are impersonating a
-> caller against **live production data**; if you also pass `--enable-mutations`, writes
-> hit prod. Only impersonate records you own, and prefer read-only testing.
+> enabled. Under the default `DB_PREFIX=seslogin_test` you are impersonating a caller in the
+> dev snapshot; if you have switched to `DB_PREFIX=seslogin_prod` you are impersonating a
+> **real** caller against live production data, and `--enable-mutations` means writes hit
+> prod. Only impersonate records you own, and prefer read-only testing.
 
 ## SES member sync
 

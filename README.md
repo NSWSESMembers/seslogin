@@ -15,47 +15,27 @@ SES Activity is a web app for tracking volunteer attendance with as little frict
 
 ## Getting started
 
-### Prerequisites
+**→ See [DEVELOPMENT.md](DEVELOPMENT.md) for the full setup guide.** It covers getting AWS
+access, obtaining secrets, installing the toolchain, and running the stack.
 
-- Rust (stable, via [rustup](https://rustup.rs))
-- Node.js >= 22
-- AWS credentials configured (for DynamoDB). The deployment/Terraform account (`641079927221`) is the `seslogin` profile — an IAM Identity Center (SSO) profile; run `aws sso login --profile seslogin`.
-
-### 1. Configure secrets
-
-Non-secret config lives in `.env` at the repo root (checked in). Create `.env.secret` for secrets (gitignored):
-
-```
-JWT_SECRET=...
-SES_API_BASE_URL=...
-SES_API_KEY=...
-```
-
-### 2. Configure the frontend
-
-Copy the example env file and fill it in:
-
-```
-cp web/.env.local.example web/.env.local
-```
-
-| Variable | Description |
-| --- | --- |
-| `VITE_BEACON_URL` | Base URL for the Beacon system, used to link NITC event IDs. For deployed builds, set the `BEACON_URL` repo variable in GitHub Actions Settings → Variables. |
-
-### 3. Run locally
-
-```
-make dev
-```
-
-This starts the API server, Relay compiler (watch mode), and the Vite dev server together. Or run them individually:
+The short version, once you have AWS credentials and a `.env.secret`:
 
 ```bash
-cd api && RUST_LOG=info cargo run --bin poem -- --enable-mutations  # API on port 8000
-cd web && npm run relay -- --watch                                   # Relay compiler
-cd web && npm run dev                                                 # Web dev server
+cp web/.env.local.example web/.env.local
+cd web && npm i
+make dev        # API :8000 + Relay watch + web dev server :5173
 ```
+
+Prerequisites are Rust (via [rustup](https://rustup.rs)), Node.js >= 22, and AWS
+credentials for DynamoDB — there is no offline mode.
+
+> Local dev defaults to the **dev** database tables (`DB_PREFIX=seslogin_test`), which hold
+> an out-of-date partial snapshot of production. See
+> [Which database am I using?](DEVELOPMENT.md#3-which-database-am-i-using) before pointing
+> anything at prod.
+
+For deployed builds, `VITE_BEACON_URL` comes from the `BEACON_URL` repo variable in GitHub
+Actions Settings → Variables.
 
 ---
 
@@ -69,7 +49,7 @@ infra/  Terraform for AWS infrastructure
 
 > **Note:** `infra/` is published as a reference for the canonical seslogin.com deployment — it hardcodes the production AWS account, DNS zone, and ACM records, so `terraform apply` from a fork will not work without adapting bucket names, domains, and IAM resources. Use it as a worked example, not a turnkey deploy.
 
-See [SCHEMA.md](SCHEMA.md) for the data model and [MANUAL.md](MANUAL.md) for operator documentation.
+See [DEVELOPMENT.md](DEVELOPMENT.md) for local setup, [SCHEMA.md](SCHEMA.md) for the data model, and [MANUAL.md](MANUAL.md) for operator documentation.
 
 ---
 
