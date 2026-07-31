@@ -1,8 +1,11 @@
 # seslogin web UI
 
+> **First-time setup is in [DEVELOPMENT.md](../DEVELOPMENT.md)** — AWS access, secrets, and
+> running the full stack with `make dev`. This file covers web-specific commands.
+
 Requires Node.js >= 22.
 
-- Install dependencies: `npm install`
+- Install dependencies: `npm i`
 - Start Relay compiler in watch mode: `npm run relay -- --watch`
 - Run the dev server with hot module reloading: `npm run dev` (or `npm run start`)
 - Build production assets: `npm run build`
