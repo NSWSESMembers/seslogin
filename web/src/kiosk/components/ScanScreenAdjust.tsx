@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import ScanModalDateTime from "./ScanModalDateTime";
 import ScanModalDateTimeV2 from "./ScanModalDateTimeV2";
 import {
@@ -77,6 +77,14 @@ function Inner(props: {
       ) => void)
     | null
   >(null);
+
+  const [endTimeBeforeStartTime, setEndTimeBeforeStartTime] = useState(false);
+
+  useEffect(() => {
+    window.setTimeout(() => {
+      setEndTimeBeforeStartTime(false);
+    }, 5000);
+  }, [endTimeBeforeStartTime, setEndTimeBeforeStartTime]);
 
   const startTimeStr = formatTimeOfDay(startTime.hours, startTime.minutes);
   const endTimeStr = formatTimeOfDay(endTime.hours, endTime.minutes);
@@ -183,7 +191,16 @@ function Inner(props: {
   function onSubmit() {
     const start = buildStartDate();
     const end = buildEndDate();
-    if (end.getTime() - start.getTime() > LONG_PERIOD_CONFIRM_THRESHOLD_MS) {
+
+    const startTime = start.getTime();
+    const endTime = end.getTime();
+
+    if (endTime < startTime) {
+      setEndTimeBeforeStartTime(true);
+      return;
+    }
+
+    if (endTime - startTime > LONG_PERIOD_CONFIRM_THRESHOLD_MS) {
       setConfirmingLongPeriod(true);
       return;
     }
@@ -213,7 +230,6 @@ function Inner(props: {
         />
       )}
       <h1 className="m-0 mb-6 text-[3em]">Confirm</h1>
-
       <div className="mx-auto flex w-fit min-w-175 flex-col text-[2em]">
         {!props.easyTimeEntry && (
           <div className="flex items-center">
@@ -311,6 +327,20 @@ function Inner(props: {
           "Submit"
         )}
       </Button>
+
+      <div className={"mt-2 min-h-18"}>
+        {endTimeBeforeStartTime && (
+          <span
+            className={
+              "inline-block w-200 max-w-full rounded-md bg-red-300 p-2.5 text-[1.2em] transition-opacity duration-1000 dark:bg-red-700 dark:text-white"
+            }
+          >
+            <span className="font-bold">
+              Error: End time cannot be before start time.
+            </span>
+          </span>
+        )}
+      </div>
 
       {confirmingLongPeriod && (
         <div className="fixed inset-0 z-10 flex items-center justify-center">
