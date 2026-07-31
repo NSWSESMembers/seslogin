@@ -63,6 +63,11 @@ export type CancelTransactionAction = {
   uuid: string;
 };
 
+export type SkipQuickPickAction = {
+  type: "SKIP_QUICK_PICK";
+  uuid: string;
+};
+
 export type TransactionAction =
   | LoadPersonAction
   | PersonResolvedAction
@@ -72,7 +77,8 @@ export type TransactionAction =
   | ClearCategoryAction
   | AdjustPeriodAction
   | PurgeExpiredTransactionsAction
-  | CancelTransactionAction;
+  | CancelTransactionAction
+  | SkipQuickPickAction;
 
 export type TransactionSignedIn = {
   uuid: string;
@@ -101,6 +107,7 @@ export type TransactionSignedOut = {
   endTime?: Date;
   categoryId?: string;
   adjusted: boolean;
+  quickPickSkipped: boolean;
 };
 
 export type TransactionLoading = MemberIdWithUuid & {
@@ -174,6 +181,7 @@ export function reducer(
           endTime: action.endTime!,
           status: "SIGNED_OUT",
           adjusted: false,
+          quickPickSkipped: false,
           periodId: action.periodId,
         };
       } else {
@@ -265,6 +273,32 @@ export function reducer(
         ...oldTransaction,
       };
       delete updatedTransaction.categoryId;
+      return {
+        ...state,
+        transactions: [
+          ...state.transactions.slice(0, idx),
+          updatedTransaction,
+          ...state.transactions.slice(idx + 1),
+        ],
+      };
+    }
+    case "SKIP_QUICK_PICK": {
+      const idx = state.transactions.findIndex((t) => t.uuid === action.uuid);
+      if (idx === -1) {
+        throw Error(
+          "Could not find transaction while resolving uuid " + action.uuid,
+        );
+      }
+      const oldTransaction = state.transactions[idx];
+      if (oldTransaction.status != "SIGNED_OUT") {
+        throw Error(
+          "Doesn't make sense to skip quick pick for transaction not in SIGNED_OUT state",
+        );
+      }
+      const updatedTransaction: TransactionSignedOut = {
+        ...oldTransaction,
+        quickPickSkipped: true,
+      };
       return {
         ...state,
         transactions: [
