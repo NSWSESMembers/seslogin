@@ -32,6 +32,8 @@ interface BasicSessionModeFieldsProps {
   onNewCategoriesChange: (next: boolean) => void;
   guests: boolean;
   onGuestsChange: (next: boolean) => void;
+  quickPickCategories: boolean;
+  onQuickPickCategoriesChange: (next: boolean) => void;
   configJson: string;
 }
 
@@ -143,6 +145,23 @@ function getGuestsFromConfig(config: ConfigObject): boolean {
   return !!config.guests;
 }
 
+function withQuickPickCategories(
+  config: ConfigObject,
+  enabled: boolean,
+): ConfigObject {
+  const next = { ...config };
+  if (enabled) {
+    next.quickPickCategories = true;
+  } else {
+    delete next.quickPickCategories;
+  }
+  return next;
+}
+
+function getQuickPickCategoriesFromConfig(config: ConfigObject): boolean {
+  return !!config.quickPickCategories;
+}
+
 function initializeConfigState(initialConfig: string): InitialConfigState {
   const parsed = parseConfigObject(initialConfig);
   const sessionMode = getSessionModeFromConfig(parsed);
@@ -210,6 +229,8 @@ function BasicSessionModeFields({
   onNewCategoriesChange,
   guests,
   onGuestsChange,
+  quickPickCategories,
+  onQuickPickCategoriesChange,
   configJson,
 }: BasicSessionModeFieldsProps) {
   return (
@@ -305,6 +326,20 @@ function BasicSessionModeFields({
               }
               description="show a Guest button so non-members can be signed in and out by name without a membership record"
             />
+            <OptionRow
+              input={
+                <input
+                  type="checkbox"
+                  checked={quickPickCategories}
+                  onChange={(e) =>
+                    onQuickPickCategoriesChange(e.target.checked)
+                  }
+                  className="mt-0.5"
+                />
+              }
+              title="Quick pick categories"
+              description="on the sign-out screen, show quick-pick buttons for the location's and the member's own recently-used categories before the full category list, so people converge on the same categories instead of picking slightly different ones each time"
+            />
           </OptionList>
         </FormField>
       )}
@@ -396,6 +431,7 @@ export default function SessionForm({
   const easyTimeEntry = getEasyTimeEntryFromConfig(parsedConfig);
   const newCategories = getNewCategoriesFromConfig(parsedConfig);
   const guests = getGuestsFromConfig(parsedConfig);
+  const quickPickCategories = getQuickPickCategoriesFromConfig(parsedConfig);
 
   function setEditorMode(nextEditorMode: ConfigEditorMode) {
     if (configEditorMode === nextEditorMode) {
@@ -438,6 +474,14 @@ export default function SessionForm({
     setConfigJson(JSON.stringify(nextConfig, null, 2));
   }
 
+  function handleQuickPickCategoriesChange(enabled: boolean) {
+    const nextConfig = withQuickPickCategories(
+      parseConfigObject(configJson),
+      enabled,
+    );
+    setConfigJson(JSON.stringify(nextConfig, null, 2));
+  }
+
   function handleAdvancedConfigChange(event: ChangeEvent<HTMLTextAreaElement>) {
     const nextConfigText = event.target.value;
     setConfigJson(nextConfigText);
@@ -463,6 +507,8 @@ export default function SessionForm({
             onNewCategoriesChange={handleNewCategoriesChange}
             guests={guests}
             onGuestsChange={handleGuestsChange}
+            quickPickCategories={quickPickCategories}
+            onQuickPickCategoriesChange={handleQuickPickCategoriesChange}
             configJson={configJson}
           />
         )}
