@@ -50,6 +50,13 @@ pub enum AuthInfo {
         location_grants: Vec<String>,
         read_only: bool,
     },
+    /// A single-period edit link (`slp_`), sent to a member by SMS/email so they can
+    /// correct one of their own time entries. Deliberately carries no location grants
+    /// and no user identity: it authorises exactly one period and nothing else, so
+    /// every resolver that serves period-specific data must check the id matches.
+    PeriodLink {
+        period_id: String,
+    },
 }
 
 pub const API_TOKEN_PREFIX: &str = "slgn_";
@@ -110,13 +117,16 @@ pub async fn resolve_dev_auth<A: App + HasDb>(
 }
 
 /// Maps an optional [`AuthInfo`] to `(caller_type, caller_id)` for telemetry/logging.
-/// `caller_type` is one of "user", "session", "api_token", or "unauthenticated".
+/// `caller_type` is one of "user", "session", "api_token", "period_link", or
+/// "unauthenticated".
 pub fn caller_info(auth: Option<&AuthInfo>) -> (&'static str, String) {
     match auth {
         None => ("unauthenticated", "unknown".to_owned()),
         Some(AuthInfo::User { id, .. }) => ("user", id.clone()),
         Some(AuthInfo::Session { id, .. }) => ("session", id.clone()),
         Some(AuthInfo::ApiToken { id, .. }) => ("api_token", id.clone()),
+        // The token itself is never logged; the period it grants is the useful id.
+        Some(AuthInfo::PeriodLink { period_id }) => ("period_link", period_id.clone()),
     }
 }
 
@@ -488,6 +498,25 @@ pub async fn issue_user_token<A: App + HasDb>(app: &A, user_id: &str) -> Result<
     Ok(secret)
 }
 
+/// Verify an `slp_` single-period edit link. Unlike the other token types this
+/// resolves to a capability rather than an identity — there is no record to touch
+/// and no `last_used_at` to refresh, so the link stays valid for its full window
+/// however often it is used.
+async fn verify_token_with_period_link<A: App + HasDb>(
+    app: &A,
+    token: &str,
+) -> Result<AuthInfo, AuthError> {
+    match crate::period_link::resolve_period_link_token(app.db(), token).await {
+        Ok(period_id) => Ok(AuthInfo::PeriodLink { period_id }),
+        Err(e @ crate::period_link::ResolveError::Invalid) => {
+            Err(AuthError::Permanent(e.to_string()))
+        }
+        Err(crate::period_link::ResolveError::Db(e)) => {
+            Err(classify_db_err("resolve period link token", e))
+        }
+    }
+}
+
 pub async fn verify_token<A: App + HasDb + HasSqs>(
     app: &A,
     token: &str,
@@ -499,6 +528,10 @@ pub async fn verify_token<A: App + HasDb + HasSqs>(
 
     if token.starts_with(USER_TOKEN_PREFIX) {
         return verify_token_with_user_token(app, token).await;
+    }
+
+    if token.starts_with(crate::period_link::TOKEN_PREFIX) {
+        return verify_token_with_period_link(app, token).await;
     }
 
     verify_token_with_jwt(app, token, client_version).await

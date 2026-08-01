@@ -15,6 +15,10 @@ const StatusDemo = lazyWithReload(
   "kiosk",
   () => import("./kiosk/pages/StatusDemo"),
 );
+const PeriodEdit = lazyWithReload(
+  "period",
+  () => import("./period/PeriodEdit"),
+);
 
 export default function Router() {
   return (
@@ -34,6 +38,10 @@ export default function Router() {
           <Route path="/kiosk/status-demo" element={<StatusDemo />} />
           <Route path="/kiosk" element={<KioskMain />} />
           <Route path="/kiosk/:profile" element={<KioskMain />} />
+
+          {/* Member edit link - authenticated by the slp_ token in the URL
+              fragment, which browsers never send to the server */}
+          <Route path="/period" element={<PeriodEdit />} />
 
           {/* Catch all */}
           <Route path="*" element={<h1>Not Found</h1>} />

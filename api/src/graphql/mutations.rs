@@ -22,8 +22,78 @@ use crate::db::Handler;
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use hex;
 
-use super::auth::{AuthGuard, AuthRequirement, require_location_access, require_writable};
+use super::auth::{
+    AuthGuard, AuthRequirement, require_location_access, require_period_access, require_writable,
+};
 use super::{ApiToken, Category, Location, NitcGroup, PasskeyInfo, Period, Person, Session, User};
+
+/// Longest entry a member-facing edit link may set. The admin form only *warns*
+/// past 24h, but an admin can be trusted to mean it; a link holder correcting
+/// their own attendance cannot plausibly need longer, so this is a hard stop.
+const LINK_EDIT_MAX_DURATION_S: i64 = 24 * 60 * 60;
+
+/// Bound the span an edit link may set. Callers check `start_time < end_time`
+/// first, so this only has to catch the upper end.
+fn validate_link_edit_duration(start_time: i64, end_time: i64) -> Result<()> {
+    if end_time - start_time > LINK_EDIT_MAX_DURATION_S {
+        return Err(anyhow!("A time entry cannot be longer than 24 hours"));
+    }
+    Ok(())
+}
+
+pub(crate) const PERIOD_REMINDER_SUBJECT: &str = "Please check your SES activity time entry";
+
+/// Render a timestamp in Sydney local time, matching the activity summary email.
+fn format_reminder_datetime(ts: u64) -> String {
+    chrono::DateTime::from_timestamp(ts as i64, 0)
+        .unwrap_or_default()
+        .with_timezone(&chrono_tz::Australia::Sydney)
+        .format("%a %-d %b %Y, %H:%M")
+        .to_string()
+}
+
+/// Body of the "please check your time entry" email.
+///
+/// Plain text on purpose: it renders identically everywhere, and a bare URL is
+/// easier to trust than a styled button in a message asking someone to click a
+/// link. Kept as a pure function so the wording and the still-signed-in case are
+/// unit-testable without SES.
+fn build_period_reminder_email(
+    first_name: &str,
+    location_name: &str,
+    category_name: Option<&str>,
+    start_time: u64,
+    end_time: Option<u64>,
+    url: &str,
+) -> String {
+    let greeting = if first_name.trim().is_empty() {
+        "Hello,".to_string()
+    } else {
+        format!("Hi {},", first_name.trim())
+    };
+    let end_line = match end_time {
+        Some(end) => format!("  Finished: {}\n", format_reminder_datetime(end)),
+        // An entry with no end time is someone still signed in; say so rather
+        // than printing a blank field they can't explain.
+        None => "  Finished: still signed in\n".to_string(),
+    };
+
+    format!(
+        "{greeting}\n\n\
+         Please check the following activity recorded for you at {location_name}:\n\n\
+         {}  Started:  {}\n{end_line}\n\
+         If that isn't right, you can correct the times and the activity here:\n\n\
+         {url}\n\n\
+         This link works for the next 48 hours and only opens this one entry. \
+         If the details above are already correct, you don't need to do anything.\n\n\
+         Thanks,\n\
+         NSW SES\n",
+        category_name
+            .map(|c| format!("  Activity: {c}\n"))
+            .unwrap_or_default(),
+        format_reminder_datetime(start_time),
+    )
+}
 
 fn parse_session_config_json(
     config: Option<&str>,
@@ -764,7 +834,12 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
         Ok(Period::new(period))
     }
 
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    // Also reachable with an `slp_` edit link, which authorises exactly one period.
+    // Ordered `PeriodLink` first only so the failure message for everyone else stays
+    // the familiar "Must provide user token".
+    #[graphql(
+        guard = "AuthGuard::new(AuthRequirement::PeriodLink).or(AuthGuard::new(AuthRequirement::User))"
+    )]
     async fn update_period_time_category(
         &self,
         ctx: &Context<'_>,
@@ -792,8 +867,23 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
         if existing.guest_name.is_some() {
             return Err(anyhow!("Cannot edit a guest period"));
         }
-        require_location_access(ctx, &existing.location_id)?;
-        self.app
+        require_period_access(ctx, &existing)?;
+
+        // A member-facing edit link is deliberately narrower than an admin edit: it
+        // corrects the times and category of its own entry, nothing else.
+        let via_link = matches!(
+            ctx.data_opt::<AuthInfo>(),
+            Some(AuthInfo::PeriodLink { .. })
+        );
+        if via_link {
+            if !matches!(comment, MaybeUndefined::Undefined) {
+                return Err(anyhow!("An edit link cannot change the comment"));
+            }
+            validate_link_edit_duration(start_time, end_time)?;
+        }
+
+        let category = self
+            .app
             .db()
             .get_categories(&[&category_id])
             .await?
@@ -801,6 +891,11 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
             .next()
             .flatten()
             .ok_or_else(|| anyhow!("Category {:?} not found", category_id))?;
+        // Admins may keep a retired category (it may already be the period's own);
+        // a member picking from the link's list may only choose a current one.
+        if via_link && !category.enabled {
+            return Err(anyhow!("Category {:?} is not available", category_id));
+        }
 
         let comment = match &comment {
             MaybeUndefined::Undefined => None,
@@ -832,6 +927,112 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
         self.enqueue_nitc_export(&period.id, existing.nitc_event_id.as_deref())
             .await?;
         Ok(Period::new(period))
+    }
+
+    /// Email the member a reminder to check one of their time entries, with a
+    /// short-lived link that lets them correct it themselves.
+    ///
+    /// Issues a fresh `slp_` token each time, so a member who lost or expired an
+    /// earlier link just needs another press. Returns the address it was sent to
+    /// (useful confirmation for the admin who pressed the button).
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    async fn send_period_edit_link(&self, ctx: &Context<'_>, id: ID) -> Result<String> {
+        require_writable(ctx)?;
+        let period = self
+            .app
+            .db()
+            .get_periods(&[&id])
+            .await?
+            .into_iter()
+            .next()
+            .flatten()
+            .ok_or_else(|| anyhow!("Period with ID {:?} missing", id))?;
+        require_location_access(ctx, &period.location_id)?;
+        // Checked before anything else costly, and before a token is minted, so a
+        // rejected press leaves no trace.
+        crate::period_link::check_reminder_cooldown(self.app.db(), &id).await?;
+
+        let Some(person_id) = period.person_id.clone() else {
+            return Err(anyhow!(
+                "This entry belongs to a guest, who has no member record to email"
+            ));
+        };
+        let person = self
+            .app
+            .db()
+            .get_persons(&[&person_id])
+            .await?
+            .into_iter()
+            .next()
+            .flatten()
+            .ok_or_else(|| anyhow!("Person with ID {person_id} missing"))?;
+        let email = person
+            .email
+            .as_deref()
+            .map(str::trim)
+            .filter(|e| !e.is_empty())
+            .ok_or_else(|| {
+                anyhow!(
+                    "{} {} has no email address on record",
+                    person.first_name,
+                    person.last_name
+                )
+            })?
+            .to_string();
+
+        let location = self
+            .app
+            .db()
+            .get_locations(&[&period.location_id])
+            .await?
+            .into_iter()
+            .next()
+            .flatten();
+        let location_name = location
+            .as_ref()
+            .map(|l| l.name.as_str())
+            .unwrap_or("your unit");
+
+        let category = match &period.category_id {
+            Some(category_id) => self
+                .app
+                .db()
+                .get_categories(&[category_id])
+                .await?
+                .into_iter()
+                .next()
+                .flatten(),
+            None => None,
+        };
+
+        let token = crate::period_link::issue_period_link_token(self.app.db(), &id).await?;
+        let url = crate::period_link::edit_link_url(&token);
+        let body = build_period_reminder_email(
+            &person.first_name,
+            location_name,
+            category.as_ref().map(|c| c.name.as_str()),
+            period.start_time,
+            period.end_time,
+            &url,
+        );
+
+        info!(period_id = %id.as_str(), "Sending period edit link to {}", email);
+        crate::mail::send_plain_text(&email, PERIOD_REMINDER_SUBJECT, &body)
+            .await
+            .map_err(|e| anyhow!("Couldn't send the email: {e:#}"))?;
+
+        // The email has already gone, so a failure to stamp the cooldown must not
+        // fail the mutation — that would tell the admin it didn't send and invite a
+        // second one. Worst case the cooldown doesn't apply to this send.
+        if let Err(e) = crate::period_link::record_reminder_sent(self.app.db(), &id).await {
+            warn!(
+                "Failed to record reminder cooldown for period {}: {:#}",
+                id.as_str(),
+                e
+            );
+        }
+
+        Ok(email)
     }
 
     #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
@@ -2051,5 +2252,86 @@ mod tests {
             reserialized, rereserialized,
             "passkey JSON must be stable across serde round trips"
         );
+    }
+
+    mod link_edit_duration {
+        use super::super::{LINK_EDIT_MAX_DURATION_S, validate_link_edit_duration};
+
+        #[test]
+        fn accepts_a_normal_shift() {
+            assert!(validate_link_edit_duration(1_000, 1_000 + 3 * 3600).is_ok());
+        }
+
+        #[test]
+        fn accepts_exactly_the_limit() {
+            assert!(validate_link_edit_duration(1_000, 1_000 + LINK_EDIT_MAX_DURATION_S).is_ok());
+        }
+
+        #[test]
+        fn rejects_one_second_over_the_limit() {
+            assert!(
+                validate_link_edit_duration(1_000, 1_000 + LINK_EDIT_MAX_DURATION_S + 1).is_err()
+            );
+        }
+
+        #[test]
+        fn rejects_a_wildly_long_entry() {
+            // A member dragging the end date out by a year is the case this exists for.
+            assert!(validate_link_edit_duration(0, 365 * 24 * 3600).is_err());
+        }
+    }
+
+    mod period_reminder_email {
+        use super::super::build_period_reminder_email;
+
+        // 2026-07-24 09:53 and 09:55 Sydney time.
+        const START: u64 = 1784850780;
+        const END: u64 = 1784850959;
+
+        fn body(first_name: &str, category: Option<&str>, end: Option<u64>) -> String {
+            build_period_reminder_email(
+                first_name,
+                "Test Unit",
+                category,
+                START,
+                end,
+                "https://new.seslogin.com/period#slp_abc",
+            )
+        }
+
+        #[test]
+        fn includes_the_link_and_the_entry_details() {
+            let out = body("Sam", Some("Training"), Some(END));
+            assert!(out.contains("Hi Sam,"));
+            assert!(out.contains("Test Unit"));
+            assert!(out.contains("Activity: Training"));
+            assert!(out.contains("https://new.seslogin.com/period#slp_abc"));
+            assert!(out.contains("48 hours"));
+        }
+
+        #[test]
+        fn formats_times_in_sydney_local_time() {
+            let out = body("Sam", None, Some(END));
+            assert!(out.contains("Fri 24 Jul 2026, 09:53"), "got: {out}");
+            assert!(out.contains("Fri 24 Jul 2026, 09:55"), "got: {out}");
+        }
+
+        #[test]
+        fn falls_back_to_a_neutral_greeting_without_a_name() {
+            // Person.first_name is `""` rather than null when missing.
+            assert!(body("", None, Some(END)).starts_with("Hello,"));
+            assert!(body("   ", None, Some(END)).starts_with("Hello,"));
+        }
+
+        #[test]
+        fn omits_the_activity_line_when_uncategorised() {
+            assert!(!body("Sam", None, Some(END)).contains("Activity:"));
+        }
+
+        #[test]
+        fn explains_an_entry_that_is_still_open() {
+            let out = body("Sam", None, None);
+            assert!(out.contains("Finished: still signed in"), "got: {out}");
+        }
     }
 }
