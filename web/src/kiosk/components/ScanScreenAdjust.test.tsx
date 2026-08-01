@@ -22,6 +22,7 @@ function makeTransaction(hoursAgo: number): TransactionSignedOut {
 function renderAdjust(
   transaction: TransactionSignedOut,
   onSubmit: () => void,
+  onError: () => void,
   easyTimeEntry: boolean = false,
 ) {
   return render(
@@ -31,6 +32,7 @@ function renderAdjust(
       transaction={transaction}
       onEditCategory={() => {}}
       onSubmit={onSubmit}
+      onError={onError}
       isSubmitting={false}
       easyTimeEntry={easyTimeEntry}
       newCategories={false}
@@ -62,12 +64,14 @@ async function enterTime(
 describe("ScanScreenAdjust", () => {
   it("submits immediately for a period under 12 hours", async () => {
     const onSubmit = vi.fn();
+    const onError = vi.fn();
     const user = UserEvent.setup();
-    renderAdjust(makeTransaction(1), onSubmit);
+    renderAdjust(makeTransaction(1), onSubmit, onError);
 
     await user.click(screen.getByRole("button", { name: "Submit" }));
 
     expect(onSubmit).toHaveBeenCalledOnce();
+    expect(onError).not.toHaveBeenCalled();
     expect(
       screen.queryByRole("heading", { name: "Long session" }),
     ).not.toBeInTheDocument();
@@ -75,8 +79,9 @@ describe("ScanScreenAdjust", () => {
 
   it("asks for confirmation before submitting a period over 12 hours", async () => {
     const onSubmit = vi.fn();
+    const onError = vi.fn();
     const user = UserEvent.setup();
-    renderAdjust(makeTransaction(13), onSubmit);
+    renderAdjust(makeTransaction(13), onSubmit, onError);
 
     await user.click(screen.getByRole("button", { name: "Submit" }));
 
@@ -84,6 +89,7 @@ describe("ScanScreenAdjust", () => {
       screen.getByRole("heading", { name: "Long session" }),
     ).toBeInTheDocument();
     expect(onSubmit).not.toHaveBeenCalled();
+    expect(onError).not.toHaveBeenCalled();
 
     await user.click(screen.getByRole("button", { name: "Confirm" }));
 
@@ -92,8 +98,9 @@ describe("ScanScreenAdjust", () => {
 
   it("does not submit if the long-period confirmation is cancelled", async () => {
     const onSubmit = vi.fn();
+    const onError = vi.fn();
     const user = UserEvent.setup();
-    renderAdjust(makeTransaction(13), onSubmit);
+    renderAdjust(makeTransaction(13), onSubmit, onError);
 
     await user.click(screen.getByRole("button", { name: "Submit" }));
     await user.click(screen.getByRole("button", { name: "Cancel" }));
@@ -102,12 +109,14 @@ describe("ScanScreenAdjust", () => {
       screen.queryByRole("heading", { name: "Long session" }),
     ).not.toBeInTheDocument();
     expect(onSubmit).not.toHaveBeenCalled();
+    expect(onError).not.toHaveBeenCalled();
   });
 
   it("does not submit if the end time is before the start time", async () => {
     const onSubmit = vi.fn();
+    const onError = vi.fn();
     const user = UserEvent.setup();
-    renderAdjust(makeTransaction(0), onSubmit, true);
+    renderAdjust(makeTransaction(0), onSubmit, onError, true);
 
     const [startTimeEdit, endTimeEdit] = screen.getAllByRole("button", {
       name: "Edit",
@@ -127,5 +136,6 @@ describe("ScanScreenAdjust", () => {
       ).toBeInTheDocument(),
     );
     expect(onSubmit).not.toHaveBeenCalled();
+    expect(onError).toHaveBeenCalledOnce();
   });
 });

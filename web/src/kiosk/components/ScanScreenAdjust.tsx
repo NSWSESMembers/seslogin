@@ -43,6 +43,7 @@ function defaultEndDateTime(transaction: TransactionSignedOut): Date {
 function Inner(props: {
   transaction: TransactionSignedOut;
   onSubmit: (startTime: Date, endTime: Date) => void;
+  onError: () => void;
   onEditCategory: () => void;
   isSubmitting: boolean;
   easyTimeEntry: boolean;
@@ -79,12 +80,26 @@ function Inner(props: {
   >(null);
 
   const [endTimeBeforeStartTime, setEndTimeBeforeStartTime] = useState(false);
+  const [isErrorFading, setIsErrorFading] = useState(false);
 
   useEffect(() => {
-    window.setTimeout(() => {
-      setEndTimeBeforeStartTime(false);
-    }, 5000);
-  }, [endTimeBeforeStartTime, setEndTimeBeforeStartTime]);
+    if (endTimeBeforeStartTime) {
+      window.setTimeout(() => {
+        setEndTimeBeforeStartTime(false);
+      }, 4000);
+      window.setTimeout(() => {
+        setIsErrorFading(true);
+      }, 3000);
+    }
+  }, [endTimeBeforeStartTime, setEndTimeBeforeStartTime, setIsErrorFading]);
+
+  useEffect(() => {
+    if (isErrorFading) {
+      window.setTimeout(() => {
+        setIsErrorFading(false);
+      }, 1000);
+    }
+  }, [isErrorFading, setIsErrorFading]);
 
   const startTimeStr = formatTimeOfDay(startTime.hours, startTime.minutes);
   const endTimeStr = formatTimeOfDay(endTime.hours, endTime.minutes);
@@ -197,6 +212,7 @@ function Inner(props: {
 
     if (endTime < startTime) {
       setEndTimeBeforeStartTime(true);
+      props.onError();
       return;
     }
 
@@ -331,9 +347,7 @@ function Inner(props: {
       <div className={"mt-2 min-h-18"}>
         {endTimeBeforeStartTime && (
           <span
-            className={
-              "inline-block w-200 max-w-full rounded-md bg-red-300 p-2.5 text-[1.2em] transition-opacity duration-1000 dark:bg-red-700 dark:text-white"
-            }
+            className={`inline-block w-200 max-w-full rounded-md bg-red-300 p-2.5 text-[1.2em] transition-opacity duration-1000 dark:bg-red-700 dark:text-white ${isErrorFading ? "opacity-0" : ""}`}
           >
             <span className="font-bold">
               Error: End time cannot be before start time.
@@ -384,6 +398,7 @@ export default function ScanScreenAdjust(props: {
   screenPosition: ScreenPosition;
   onEditCategory: () => void;
   onSubmit: (startTime: Date, endTime: Date) => void;
+  onError: () => void;
   isSubmitting: boolean;
   easyTimeEntry: boolean;
   newCategories: boolean;
@@ -398,6 +413,7 @@ export default function ScanScreenAdjust(props: {
           transaction={props.transaction}
           onEditCategory={props.onEditCategory}
           onSubmit={props.onSubmit}
+          onError={props.onError}
           isSubmitting={props.isSubmitting}
           easyTimeEntry={props.easyTimeEntry}
           newCategories={props.newCategories}
