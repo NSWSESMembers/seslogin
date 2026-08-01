@@ -80,26 +80,30 @@ function Inner(props: {
   >(null);
 
   const [endTimeBeforeStartTime, setEndTimeBeforeStartTime] = useState(false);
+  const [restartErrorTimer, setRestartErrorTimer] = useState(false);
   const [isErrorFading, setIsErrorFading] = useState(false);
 
   useEffect(() => {
     if (endTimeBeforeStartTime) {
-      window.setTimeout(() => {
+      const clearErrorTimer = window.setTimeout(() => {
         setEndTimeBeforeStartTime(false);
       }, 4000);
-      window.setTimeout(() => {
+      const startFadoutTimer = window.setTimeout(() => {
         setIsErrorFading(true);
       }, 3000);
-    }
-  }, [endTimeBeforeStartTime, setEndTimeBeforeStartTime, setIsErrorFading]);
 
-  useEffect(() => {
-    if (isErrorFading) {
-      window.setTimeout(() => {
-        setIsErrorFading(false);
-      }, 1000);
+      return () => {
+        clearTimeout(clearErrorTimer);
+        clearTimeout(startFadoutTimer);
+      };
     }
-  }, [isErrorFading, setIsErrorFading]);
+  }, [
+    endTimeBeforeStartTime,
+    setEndTimeBeforeStartTime,
+    isErrorFading,
+    setIsErrorFading,
+    restartErrorTimer,
+  ]);
 
   const startTimeStr = formatTimeOfDay(startTime.hours, startTime.minutes);
   const endTimeStr = formatTimeOfDay(endTime.hours, endTime.minutes);
@@ -211,6 +215,8 @@ function Inner(props: {
     const endTime = end.getTime();
 
     if (endTime < startTime) {
+      setIsErrorFading(false);
+      setRestartErrorTimer(!restartErrorTimer);
       setEndTimeBeforeStartTime(true);
       props.onError();
       return;
