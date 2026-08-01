@@ -113,6 +113,31 @@ export function createKioskKeyGraphQLEnvironment(
   return environment;
 }
 
+/**
+ * Creates a Relay environment for a member-facing period edit link.
+ *
+ * The `slp_` token comes from the URL fragment and is a capability, not an
+ * identity: it authorises exactly one period, so there is nothing to refresh and
+ * the token is fixed for the life of the page. A 401 means the link expired.
+ */
+export function createPeriodLinkGraphQLEnvironment(
+  token: string,
+  onUnauthorized: () => void,
+): Environment {
+  const _fetchGraphQL: FetchFunction = async (request, variables) => {
+    return await fetchGraphQL(`Bearer ${token}`, request, variables, () => {
+      console.log("Unauthorized period edit link");
+      onUnauthorized();
+      throw new Error("Unauthorized from server");
+    });
+  };
+
+  return new Environment({
+    network: Network.create(_fetchGraphQL),
+    store: new Store(new RecordSource()),
+  });
+}
+
 export function createUnauthenticatedGraphQLEnvironment(): Environment {
   const _fetchGraphQL: FetchFunction = async (request, variables) => {
     return await fetchGraphQL(null, request, variables, () => {
