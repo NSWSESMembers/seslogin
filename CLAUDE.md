@@ -218,4 +218,6 @@ Environment variables (loaded from `.env` and `.env.secret`; see
 - `TURNSTILE_SECRET_KEY` — Cloudflare Turnstile secret for verifying login CAPTCHA tokens
 - `TURNSTILE_DISABLED` — Set to `1` locally to bypass Turnstile (it can't work in local dev). Pair with `VITE_TURNSTILE_DISABLED=1` in `web/.env.local`.
 - `RUST_LOG` — Log level (e.g., `info`, `debug`)
+- `MAIL_OVERRIDE_TO` — Redirect **all** outgoing email to this address instead of its real recipient, logging a warning each time. Set it locally before touching anything that mails a member: `seslogin_test` is a snapshot of production and carries real member addresses, so the admin "Remind" button would otherwise email a real volunteer from your laptop. Never set in a deployed environment.
+- `WEB_BASE_URL` — Public site origin used to build member-facing period edit links (`<base>/period#<token>`). Optional: falls back to the first `WEBAUTHN_RP_ORIGIN`, which is already the site origin in every environment, so no infra change is needed to deploy.
 - `WEBAUTHN_RP_ID` / `WEBAUTHN_RP_ORIGIN` — Passkey relying-party ID and origin. Local dev defaults to `localhost` / `http://localhost:5173`; deployed envs use `seslogin.com` / the site origin (e.g. `https://new.seslogin.com`). A passkey is bound to the RP ID it was registered under, so local-dev passkeys won't work in prod.

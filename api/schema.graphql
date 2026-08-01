@@ -183,6 +183,15 @@ type MutationRoot {
 	createPeriod(personId: ID!, locationId: ID!, categoryId: ID!, startTime: Int!, endTime: Int!, comment: String): Period!
 	updatePeriod(id: ID!, personId: ID!, locationId: ID!, categoryId: ID!, startTime: Int!, endTime: Int!, comment: String): Period!
 	updatePeriodTimeCategory(id: ID!, startTime: Int!, endTime: Int!, categoryId: ID!, comment: String): Period!
+	"""
+	Email the member a reminder to check one of their time entries, with a
+	short-lived link that lets them correct it themselves.
+	
+	Issues a fresh `slp_` token each time, so a member who lost or expired an
+	earlier link just needs another press. Returns the address it was sent to
+	(useful confirmation for the admin who pressed the button).
+	"""
+	sendPeriodEditLink(id: ID!): String!
 	deletePeriod(id: ID!): Boolean!
 	createSession(name: String!, locationId: ID!, config: String, healthcheckUrl: String): Session!
 	"""
