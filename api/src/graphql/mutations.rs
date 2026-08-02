@@ -1434,7 +1434,8 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
     ) -> Result<Period<A>> {
         require_writable(ctx)?;
         if start_time >= end_time {
-            return Err(anyhow!("start_time must be before end_time"));
+            // Surfaced verbatim on the kiosk transaction log, so keep it readable.
+            return Err(anyhow!("start time must be before end time"));
         }
         let session_id = match ctx.data_opt::<AuthInfo>() {
             Some(AuthInfo::Session { id, .. }) => id.clone(),
