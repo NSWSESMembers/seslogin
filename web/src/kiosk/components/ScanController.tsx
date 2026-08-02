@@ -27,6 +27,7 @@ import type { ScanControllerSignOutMutation } from "./__generated__/ScanControll
 import { useKioskSession } from "./useKioskSession";
 import type { ScreenPosition } from "../../styles";
 import { isValidMemberIdText } from "../../lib/memberId";
+import { getServerErrorMessage } from "../../lib/relayErrors";
 
 const PURGE_EXPIRED_TRANSACTIONS_INTERVAL_MS = 1_000;
 const SCAN_TRANSACTION_LOG_LEASE_ID = "scan:transaction-log";
@@ -148,10 +149,16 @@ export default function ScanController(props: {
     } catch (err) {
       console.error("Error during register2 mutation:", err);
       audioError.play();
+      // An unknown member ID comes back as a NOT_FOUND state, not an error, so a
+      // rejection here is something the operator needs the detail of — e.g. two
+      // people sharing a registration number.
+      const serverMessage = getServerErrorMessage(err);
       dispatchTransaction({
         type: "ERROR",
         uuid,
-        message: "network issue while looking up member ID: " + memberId,
+        message: serverMessage
+          ? `could not look up member ID ${memberId}: ${serverMessage}`
+          : "network issue while looking up member ID: " + memberId,
       });
       return;
     }
@@ -326,14 +333,16 @@ export default function ScanController(props: {
     const onError = (err: Error) => {
       console.error("Error during adjust mutation:", err);
       audioError.play();
+      const name = tx.person.firstName + " " + tx.person.lastName;
+      // A rejected mutation (e.g. start time after end time) carries the server's
+      // message; only a genuine transport failure gets the generic network wording.
+      const serverMessage = getServerErrorMessage(err);
       dispatchTransaction({
         type: "ERROR",
         uuid,
-        message:
-          "network issue while adjusting record for " +
-          tx.person.firstName +
-          " " +
-          tx.person.lastName,
+        message: serverMessage
+          ? `could not sign out ${name}: ${serverMessage}`
+          : "network issue while adjusting record for " + name,
       });
     };
     commitSignOutMutation({ variables, onCompleted, onError });
