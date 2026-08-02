@@ -1,7 +1,8 @@
 import "@testing-library/jest-dom/vitest";
 import { describe, it, expect, vi } from "vitest";
 import UserEvent from "@testing-library/user-event";
-import { render, screen } from "@testing-library/react";
+import type { UserEvent as UserEventType } from "@testing-library/user-event";
+import { render, screen, waitFor } from "@testing-library/react";
 import ScanScreenAdjust from "./ScanScreenAdjust";
 import type { TransactionSignedOut } from "../ScanState";
 
@@ -18,7 +19,12 @@ function makeTransaction(hoursAgo: number): TransactionSignedOut {
   };
 }
 
-function renderAdjust(transaction: TransactionSignedOut, onSubmit: () => void) {
+function renderAdjust(
+  transaction: TransactionSignedOut,
+  onSubmit: () => void,
+  onError: () => void,
+  easyTimeEntry: boolean = false,
+) {
   return render(
     <ScanScreenAdjust
       screenPosition="center"
@@ -26,22 +32,46 @@ function renderAdjust(transaction: TransactionSignedOut, onSubmit: () => void) {
       transaction={transaction}
       onEditCategory={() => {}}
       onSubmit={onSubmit}
+      onError={onError}
       isSubmitting={false}
-      easyTimeEntry={false}
+      easyTimeEntry={easyTimeEntry}
       newCategories={false}
     />,
   );
 }
 
+async function enterTime(
+  user: UserEventType,
+  time: string,
+  am: boolean = true,
+) {
+  if (time.length !== 5 || !time.includes(":")) {
+    throw new Error("Time must be in HH:MM format");
+  }
+
+  await user.click(screen.getByRole("button", { name: am ? "AM" : "PM" }));
+
+  for (const char of time) {
+    if (char === ":") {
+      continue;
+    }
+    const button = screen.getByRole("button", { name: char });
+    await user.click(button);
+  }
+  await user.click(screen.getByRole("button", { name: "Confirm" }));
+}
+
 describe("ScanScreenAdjust", () => {
   it("submits immediately for a period under 12 hours", async () => {
     const onSubmit = vi.fn();
+    const onError = vi.fn();
     const user = UserEvent.setup();
-    renderAdjust(makeTransaction(1), onSubmit);
+    renderAdjust(makeTransaction(1), onSubmit, onError);
 
     await user.click(screen.getByRole("button", { name: "Submit" }));
 
     expect(onSubmit).toHaveBeenCalledOnce();
+    expect(onError).not.toHaveBeenCalled();
     expect(
       screen.queryByRole("heading", { name: "Long session" }),
     ).not.toBeInTheDocument();
@@ -49,8 +79,9 @@ describe("ScanScreenAdjust", () => {
 
   it("asks for confirmation before submitting a period over 12 hours", async () => {
     const onSubmit = vi.fn();
+    const onError = vi.fn();
     const user = UserEvent.setup();
-    renderAdjust(makeTransaction(13), onSubmit);
+    renderAdjust(makeTransaction(13), onSubmit, onError);
 
     await user.click(screen.getByRole("button", { name: "Submit" }));
 
@@ -58,6 +89,7 @@ describe("ScanScreenAdjust", () => {
       screen.getByRole("heading", { name: "Long session" }),
     ).toBeInTheDocument();
     expect(onSubmit).not.toHaveBeenCalled();
+    expect(onError).not.toHaveBeenCalled();
 
     await user.click(screen.getByRole("button", { name: "Confirm" }));
 
@@ -66,8 +98,9 @@ describe("ScanScreenAdjust", () => {
 
   it("does not submit if the long-period confirmation is cancelled", async () => {
     const onSubmit = vi.fn();
+    const onError = vi.fn();
     const user = UserEvent.setup();
-    renderAdjust(makeTransaction(13), onSubmit);
+    renderAdjust(makeTransaction(13), onSubmit, onError);
 
     await user.click(screen.getByRole("button", { name: "Submit" }));
     await user.click(screen.getByRole("button", { name: "Cancel" }));
@@ -76,5 +109,33 @@ describe("ScanScreenAdjust", () => {
       screen.queryByRole("heading", { name: "Long session" }),
     ).not.toBeInTheDocument();
     expect(onSubmit).not.toHaveBeenCalled();
+    expect(onError).not.toHaveBeenCalled();
+  });
+
+  it("does not submit if the end time is before the start time", async () => {
+    const onSubmit = vi.fn();
+    const onError = vi.fn();
+    const user = UserEvent.setup();
+    renderAdjust(makeTransaction(0), onSubmit, onError, true);
+
+    const [startTimeEdit, endTimeEdit] = screen.getAllByRole("button", {
+      name: "Edit",
+    });
+
+    await user.click(startTimeEdit);
+    await enterTime(user, "11:11");
+
+    await user.click(endTimeEdit);
+    await enterTime(user, "11:10");
+
+    await user.click(screen.getByRole("button", { name: "Submit" }));
+
+    await waitFor(() =>
+      expect(
+        screen.getByText("Error: End time cannot be before start time."),
+      ).toBeInTheDocument(),
+    );
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(onError).toHaveBeenCalledOnce();
   });
 });

@@ -372,6 +372,7 @@ export default function ScanController(props: {
       <ScanScreenAdjust
         screenPosition={adjustPos}
         onSubmit={onSubmitAdjust}
+        onError={() => audioError.play()}
         uuid={transactionUuid}
         transaction={signedOutTransaction}
         onEditCategory={onEditCategory}
