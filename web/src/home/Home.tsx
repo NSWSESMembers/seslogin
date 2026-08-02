@@ -17,7 +17,7 @@ export default function Home() {
               to="/kiosk"
               className="group mx-auto flex w-full max-w-150 items-center gap-4 border-t border-line-strong px-5 py-1.25 text-ink no-underline md:min-h-16.25"
             >
-              <span className="w-25 shrink-0 font-title text-4xl font-bold text-accent group-hover:text-accent-light">
+              <span className="shrink-0 font-title text-4xl font-bold whitespace-nowrap text-accent group-hover:text-accent-light">
                 Kiosk
               </span>
               <p className="flex-1 text-navy group-hover:text-[#6c81c1]">
@@ -36,7 +36,7 @@ export default function Home() {
               to="/admin"
               className="group mx-auto flex w-full max-w-150 items-center gap-4 border-y border-line-strong px-5 py-1.25 text-ink no-underline md:min-h-16.25"
             >
-              <span className="w-25 shrink-0 font-title text-4xl font-bold text-accent group-hover:text-accent-light">
+              <span className="shrink-0 font-title text-4xl font-bold whitespace-nowrap text-accent group-hover:text-accent-light">
                 Admin
               </span>
               <p className="flex-1 text-navy group-hover:text-[#6c81c1]">
