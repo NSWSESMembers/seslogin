@@ -43,6 +43,15 @@
   --color-line: #d4d4d4; /* default borders (was neutral-300) */
   --color-line-strong: #a3a3a3; /* emphasised borders (was neutral-400) */
   --color-line-faint: #e8e8e8; /* faint dividers (was neutral-100/200) */
+
+  /* Sequential activity-intensity ramp (heatmap cells): one hue, light->dark,
+   * validated with the dataviz skill's palette validator (--ordinal) against
+   * this theme's surfaces. Dark values below flip automatically. */
+  --color-heat-1: #f19f7a;
+  --color-heat-2: #d87e54;
+  --color-heat-3: #be5d2b;
+  --color-heat-4: #a43a00;
+  --color-heat-5: #8a0c00;
 }
 
 /* Dark palette. Duplicated across the OS-preference media query and the
@@ -66,6 +75,11 @@
       --color-line: #34363b;
       --color-line-strong: #494c52;
       --color-line-faint: #2a2c31;
+      --color-heat-1: #863100;
+      --color-heat-2: #a24613;
+      --color-heat-3: #bd5c2b;
+      --color-heat-4: #da7240;
+      --color-heat-5: #f78955;
     }
   }
 
@@ -87,6 +101,11 @@
     --color-line: #34363b;
     --color-line-strong: #494c52;
     --color-line-faint: #2a2c31;
+    --color-heat-1: #863100;
+    --color-heat-2: #a24613;
+    --color-heat-3: #bd5c2b;
+    --color-heat-4: #da7240;
+    --color-heat-5: #f78955;
   }
 }
 
