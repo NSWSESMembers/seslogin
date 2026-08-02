@@ -3,6 +3,7 @@ import { graphql, useLazyLoadQuery, useMutation } from "react-relay";
 import { inputBase } from "../../components/ui/inputStyles";
 import { Button } from "../../components/ui/Button";
 import { formatTime } from "../../lib/time";
+import { getServerErrorMessage } from "../../lib/relayErrors";
 import type { ScanGuestDialogQuery } from "./__generated__/ScanGuestDialogQuery.graphql";
 import type { ScanGuestDialogSignInMutation } from "./__generated__/ScanGuestDialogSignInMutation.graphql";
 import type { ScanGuestDialogSignOutMutation } from "./__generated__/ScanGuestDialogSignOutMutation.graphql";
@@ -116,7 +117,12 @@ export default function ScanGuestDialog(props: { onClose: () => void }) {
       onCompleted: () => onClose(),
       onError: (err) => {
         console.error("Guest sign-in failed:", err);
-        setError("Couldn't sign in the guest. Please try again.");
+        const serverMessage = getServerErrorMessage(err);
+        setError(
+          serverMessage
+            ? `Couldn't sign in the guest: ${serverMessage}`
+            : "Couldn't sign in the guest. Please try again.",
+        );
       },
     });
   }
@@ -133,7 +139,12 @@ export default function ScanGuestDialog(props: { onClose: () => void }) {
       onError: (err) => {
         console.error("Guest sign-out failed:", err);
         setSignOutInFlightId(null);
-        setError("Couldn't sign out the guest. Please try again.");
+        const serverMessage = getServerErrorMessage(err);
+        setError(
+          serverMessage
+            ? `Couldn't sign out the guest: ${serverMessage}`
+            : "Couldn't sign out the guest. Please try again.",
+        );
       },
     });
   }

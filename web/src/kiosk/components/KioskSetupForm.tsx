@@ -9,6 +9,7 @@ import {
 } from "../../components/ui/Panel";
 import { Button } from "../../components/ui/Button";
 import TextInput from "../../components/ui/TextInput";
+import { getErrorMessage } from "../../lib/relayErrors";
 
 const kioskSetupFormMutation = graphql`
   mutation KioskSetupFormMutation($code: String!) {
@@ -41,7 +42,9 @@ export default function KioskSetupForm({
         },
         onError: (error: Error) => {
           console.log(error);
-          alert("Login failed: " + error.message);
+          // error.message is Relay's multi-line "No data returned for operation…"
+          // wrapper; getErrorMessage unwraps it to just the server's message.
+          alert("Login failed: " + getErrorMessage(error));
           resolve();
         },
       }),

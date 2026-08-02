@@ -1,14 +1,15 @@
 /**
- * Extracts a human-readable message from an error thrown by a Relay mutation's
- * `onError` callback (or any rejected promise).
+ * Extracts the server-reported GraphQL error message(s) from an error thrown by a
+ * Relay mutation's `onError` callback, or `null` if this isn't a GraphQL error.
  *
  * Our GraphQL network layer returns the raw `{ data, errors }` payload, so when
  * the server reports a GraphQL error Relay surfaces a network error that carries
- * the original response (with its `errors` array) on `.source`. We prefer those
- * server-provided messages, falling back to the Error's own message.
+ * the original response (with its `errors` array) on `.source`. A genuine network
+ * failure (fetch rejected, non-200 response) has no `.source`, so `null` here
+ * distinguishes "the server said no" from "we couldn't reach the server".
  */
-export function getErrorMessage(err: unknown): string {
-  if (err == null) return "Unknown error";
+export function getServerErrorMessage(err: unknown): string | null {
+  if (err == null) return null;
 
   // Relay attaches the raw GraphQL response to network errors as `.source`.
   const source = (
@@ -22,6 +23,19 @@ export function getErrorMessage(err: unknown): string {
   if (gqlMessages && gqlMessages.length > 0) {
     return gqlMessages.join("; ");
   }
+  return null;
+}
+
+/**
+ * Extracts a human-readable message from an error thrown by a Relay mutation's
+ * `onError` callback (or any rejected promise). Prefers the server-provided
+ * GraphQL message, falling back to the Error's own message.
+ */
+export function getErrorMessage(err: unknown): string {
+  if (err == null) return "Unknown error";
+
+  const serverMessage = getServerErrorMessage(err);
+  if (serverMessage != null) return serverMessage;
 
   if (err instanceof Error && err.message) return err.message;
   if (typeof err === "string") return err;
