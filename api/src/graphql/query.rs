@@ -2527,7 +2527,9 @@ impl<A: App + HasDb + Send + Sync + 'static> QueryRoot<A> {
             Some(id) => id.to_string(),
             None => match auth {
                 Some(AuthInfo::User { id, .. }) => id.to_string(),
-                Some(AuthInfo::Session { .. }) | Some(AuthInfo::ApiToken { .. }) => {
+                Some(AuthInfo::Session { .. })
+                | Some(AuthInfo::ApiToken { .. })
+                | Some(AuthInfo::PeriodLink { .. }) => {
                     return Err(anyhow!("Sessions cannot query without user ID"));
                 }
                 None => {
@@ -2540,15 +2542,17 @@ impl<A: App + HasDb + Send + Sync + 'static> QueryRoot<A> {
             return Err(anyhow!("User ID cannot be empty"));
         }
 
-        // Non-super users may only query their own record. Sessions and API
-        // tokens have no associated user record, so they may not query users.
+        // Non-super users may only query their own record. Sessions, API tokens and
+        // edit links have no associated user record, so they may not query users.
         match auth {
             Some(AuthInfo::User { id, is_super, .. }) => {
                 if !is_super && *id != user_id {
                     return Err(anyhow!("Not authorized to query other users"));
                 }
             }
-            Some(AuthInfo::Session { .. }) | Some(AuthInfo::ApiToken { .. }) => {
+            Some(AuthInfo::Session { .. })
+            | Some(AuthInfo::ApiToken { .. })
+            | Some(AuthInfo::PeriodLink { .. }) => {
                 return Err(anyhow!("Not authorized to query users"));
             }
             None => return Err(anyhow!("Cannot query users if not logged in")),
@@ -2659,6 +2663,31 @@ impl<A: App + HasDb + Send + Sync + 'static> QueryRoot<A> {
         Ok(Period::new(rec))
     }
 
+    /// The single period the caller's edit-link token grants access to.
+    ///
+    /// This is the entry point for member-facing edit links delivered by SMS/email.
+    /// The `slp_` token in the `Authorization` header *is* the scope, so there is no
+    /// id argument and no other period is reachable — the caller only ever learns
+    /// about the one period their link was issued for.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::PeriodLink)")]
+    async fn linked_period(&self, ctx: &Context<'_>) -> Result<Period<A>> {
+        let Some(AuthInfo::PeriodLink { period_id }) = ctx.data_opt::<AuthInfo>() else {
+            // Unreachable behind the guard, but fail closed rather than assume.
+            return Err(anyhow!("Must provide a period edit-link token"));
+        };
+        let app = ctx.data_unchecked::<Arc<A>>().clone();
+        app.db()
+            .get_periods(&[period_id])
+            .await?
+            .into_iter()
+            .next()
+            .flatten()
+            // A token is only issued for an existing period, so a miss here means the
+            // period was since hard-deleted; keep the error uniform regardless.
+            .ok_or_else(|| anyhow!("Invalid or expired token"))
+            .map(Period::new)
+    }
+
     #[graphql(guard = "AuthGuard::new(AuthRequirement::Authenticated)")]
     async fn session(
         &self,
@@ -2670,7 +2699,9 @@ impl<A: App + HasDb + Send + Sync + 'static> QueryRoot<A> {
             Some(id) => id.to_string(),
             None => match auth {
                 Some(AuthInfo::Session { id, .. }) => id.to_string(),
-                Some(AuthInfo::User { .. }) | Some(AuthInfo::ApiToken { .. }) => {
+                Some(AuthInfo::User { .. })
+                | Some(AuthInfo::ApiToken { .. })
+                | Some(AuthInfo::PeriodLink { .. }) => {
                     return Err(anyhow!("Cannot query without session ID"));
                 }
                 None => {
@@ -2766,7 +2797,13 @@ impl<A: App + HasDb + Send + Sync + 'static> QueryRoot<A> {
         Ok(items.into_iter().map(|rec| User::new(rec)).collect())
     }
 
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::Authenticated)")]
+    // Edit links need this to populate their category picker. The list is global
+    // and carries no location scoping, so widening it to link tokens leaks nothing
+    // about the period, the member, or their unit. Ordered `PeriodLink` first only
+    // so an unauthenticated caller gets the clearer "Must be authenticated".
+    #[graphql(
+        guard = "AuthGuard::new(AuthRequirement::PeriodLink).or(AuthGuard::new(AuthRequirement::Authenticated))"
+    )]
     async fn categories(&self, ctx: &Context<'_>) -> Result<Vec<Category<A>>> {
         let app = ctx.data_unchecked::<Arc<A>>();
         let items = app.db().list_categories().await?;

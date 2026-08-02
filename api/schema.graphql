@@ -465,6 +465,15 @@ type QueryRoot {
 		"""
 		id: ID!
 	): Period!
+	"""
+	The single period the caller's edit-link token grants access to.
+	
+	This is the entry point for member-facing edit links delivered by SMS/email.
+	The `slp_` token in the `Authorization` header *is* the scope, so there is no
+	id argument and no other period is reachable — the caller only ever learns
+	about the one period their link was issued for.
+	"""
+	linkedPeriod: Period!
 	session(
 		"""
 		ID for the session to look up

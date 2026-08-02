@@ -22,8 +22,24 @@ use crate::db::Handler;
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use hex;
 
-use super::auth::{AuthGuard, AuthRequirement, require_location_access, require_writable};
+use super::auth::{
+    AuthGuard, AuthRequirement, require_location_access, require_period_access, require_writable,
+};
 use super::{ApiToken, Category, Location, NitcGroup, PasskeyInfo, Period, Person, Session, User};
+
+/// Longest entry a member-facing edit link may set. The admin form only *warns*
+/// past 24h, but an admin can be trusted to mean it; a link holder correcting
+/// their own attendance cannot plausibly need longer, so this is a hard stop.
+const LINK_EDIT_MAX_DURATION_S: i64 = 24 * 60 * 60;
+
+/// Bound the span an edit link may set. Callers check `start_time < end_time`
+/// first, so this only has to catch the upper end.
+fn validate_link_edit_duration(start_time: i64, end_time: i64) -> Result<()> {
+    if end_time - start_time > LINK_EDIT_MAX_DURATION_S {
+        return Err(anyhow!("A time entry cannot be longer than 24 hours"));
+    }
+    Ok(())
+}
 
 fn parse_session_config_json(
     config: Option<&str>,
@@ -764,7 +780,12 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
         Ok(Period::new(period))
     }
 
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    // Also reachable with an `slp_` edit link, which authorises exactly one period.
+    // Ordered `PeriodLink` first only so the failure message for everyone else stays
+    // the familiar "Must provide user token".
+    #[graphql(
+        guard = "AuthGuard::new(AuthRequirement::PeriodLink).or(AuthGuard::new(AuthRequirement::User))"
+    )]
     async fn update_period_time_category(
         &self,
         ctx: &Context<'_>,
@@ -792,8 +813,23 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
         if existing.guest_name.is_some() {
             return Err(anyhow!("Cannot edit a guest period"));
         }
-        require_location_access(ctx, &existing.location_id)?;
-        self.app
+        require_period_access(ctx, &existing)?;
+
+        // A member-facing edit link is deliberately narrower than an admin edit: it
+        // corrects the times and category of its own entry, nothing else.
+        let via_link = matches!(
+            ctx.data_opt::<AuthInfo>(),
+            Some(AuthInfo::PeriodLink { .. })
+        );
+        if via_link {
+            if !matches!(comment, MaybeUndefined::Undefined) {
+                return Err(anyhow!("An edit link cannot change the comment"));
+            }
+            validate_link_edit_duration(start_time, end_time)?;
+        }
+
+        let category = self
+            .app
             .db()
             .get_categories(&[&category_id])
             .await?
@@ -801,6 +837,11 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
             .next()
             .flatten()
             .ok_or_else(|| anyhow!("Category {:?} not found", category_id))?;
+        // Admins may keep a retired category (it may already be the period's own);
+        // a member picking from the link's list may only choose a current one.
+        if via_link && !category.enabled {
+            return Err(anyhow!("Category {:?} is not available", category_id));
+        }
 
         let comment = match &comment {
             MaybeUndefined::Undefined => None,
@@ -2051,5 +2092,32 @@ mod tests {
             reserialized, rereserialized,
             "passkey JSON must be stable across serde round trips"
         );
+    }
+
+    mod link_edit_duration {
+        use super::super::{LINK_EDIT_MAX_DURATION_S, validate_link_edit_duration};
+
+        #[test]
+        fn accepts_a_normal_shift() {
+            assert!(validate_link_edit_duration(1_000, 1_000 + 3 * 3600).is_ok());
+        }
+
+        #[test]
+        fn accepts_exactly_the_limit() {
+            assert!(validate_link_edit_duration(1_000, 1_000 + LINK_EDIT_MAX_DURATION_S).is_ok());
+        }
+
+        #[test]
+        fn rejects_one_second_over_the_limit() {
+            assert!(
+                validate_link_edit_duration(1_000, 1_000 + LINK_EDIT_MAX_DURATION_S + 1).is_err()
+            );
+        }
+
+        #[test]
+        fn rejects_a_wildly_long_entry() {
+            // A member dragging the end date out by a year is the case this exists for.
+            assert!(validate_link_edit_duration(0, 365 * 24 * 3600).is_err());
+        }
     }
 }
