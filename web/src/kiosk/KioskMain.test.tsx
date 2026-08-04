@@ -224,6 +224,29 @@ describe("KioskMain", () => {
   });
 });
 
+describe("KioskMain theme", () => {
+  afterEach(() => {
+    document.documentElement.removeAttribute("data-theme");
+  });
+
+  it("pins light when no dark flag is set", async () => {
+    await setupTest();
+    expect(document.documentElement).toHaveAttribute("data-theme", "light");
+  });
+
+  it("pins dark when the dark flag is truthy", async () => {
+    server.use(sessionConfigHandler({ dark: true }));
+    await setupTest();
+    expect(document.documentElement).toHaveAttribute("data-theme", "dark");
+  });
+
+  it("leaves the theme unpinned when dark is 'auto'", async () => {
+    server.use(sessionConfigHandler({ dark: "auto" }));
+    await setupTest();
+    expect(document.documentElement).not.toHaveAttribute("data-theme");
+  });
+});
+
 describe("KioskMain quick pick categories", () => {
   async function setupQuickPickTest(
     quickPickHandler: ReturnType<typeof relayEndpoint.query>,

@@ -5,6 +5,7 @@ import PageErrorFallback from "../components/PageErrorFallback";
 import { Suspense, useEffect } from "react";
 import { ErrorBoundary } from "react-error-boundary";
 import { useKioskSession } from "./components/useKioskSession";
+import type { JsonValue } from "./components/KioskSessionContext";
 import Status from "./pages/Status";
 import { useParams } from "react-router";
 
@@ -25,18 +26,36 @@ export default function KioskMain() {
   );
 }
 
+/**
+ * Maps the session config's `dark` key to the `data-theme` value to pin on
+ * <html>, or `null` to leave it unpinned and follow the browser's
+ * `prefers-color-scheme`.
+ */
+function themeFromConfig(dark: JsonValue | undefined): "dark" | "light" | null {
+  if (dark === "auto") {
+    return null;
+  }
+  return dark ? "dark" : "light";
+}
+
 function Router() {
   const session = useKioskSession();
 
-  // The kiosk pins its theme explicitly and ignores the device's OS setting: it
-  // is light by default and only goes dark when a truthy `dark` key is set in its
-  // session config. We stamp `data-theme` on <html> so the tokens in app.css take
-  // over the whole document, including the body background behind the kiosk view.
-  const wantsDark = !!session?.config?.dark;
+  // The kiosk normally pins its theme explicitly and ignores the device's OS
+  // setting: it is light by default and goes dark when a truthy `dark` key is set
+  // in its session config. The exception is `dark: "auto"`, which leaves the theme
+  // unpinned so the browser's `prefers-color-scheme` decides. We stamp
+  // `data-theme` on <html> so the tokens in app.css take over the whole document,
+  // including the body background behind the kiosk view.
+  const theme = themeFromConfig(session?.config?.dark);
   useEffect(() => {
     const root = document.documentElement;
     const previous = root.getAttribute("data-theme");
-    root.setAttribute("data-theme", wantsDark ? "dark" : "light");
+    if (theme === null) {
+      root.removeAttribute("data-theme");
+    } else {
+      root.setAttribute("data-theme", theme);
+    }
     return () => {
       if (previous === null) {
         root.removeAttribute("data-theme");
@@ -44,7 +63,7 @@ function Router() {
         root.setAttribute("data-theme", previous);
       }
     };
-  }, [wantsDark]);
+  }, [theme]);
 
   if (session?.config?.status) {
     return <Status />;
