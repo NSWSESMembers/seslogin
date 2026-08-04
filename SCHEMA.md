@@ -14,22 +14,23 @@ All IDs are exposed to the API layer as opaque UUID strings. Conversion happens 
 
 ### `{prefix}user`
 
-| Attribute | Type | Role |
-|-----------|------|------|
-| `id` | S | Hash key (PK) — UUID |
-| `email` | S | GSI hash key |
+| Attribute | Type | Role                 |
+| --------- | ---- | -------------------- |
+| `id`      | S    | Hash key (PK) — UUID |
+| `email`   | S    | GSI hash key         |
 
 **GSIs:**
 
-| GSI | Hash key | Sort key | Projection | Purpose |
-|-----|----------|----------|------------|---------|
-| `email-index` | `email` | — | KEYS_ONLY | Email-code login: resolve email → user ID without reading the full item |
+| GSI           | Hash key | Sort key | Projection | Purpose                                                                 |
+| ------------- | -------- | -------- | ---------- | ----------------------------------------------------------------------- |
+| `email-index` | `email`  | —        | KEYS_ONLY  | Email-code login: resolve email → user ID without reading the full item |
 
 `username-index` is intentionally absent — username login is not supported in v2.
 
 `KEYS_ONLY` projection is deliberately minimal: the login path only needs the user ID; fetching the full user record happens in a separate `GetItem` call, so paying to replicate all attributes into the index is wasteful.
 
 **Non-obvious attributes (not in table definition):**
+
 - `is_super` (Bool) — superuser flag
 - `location_grants` (SS) — string set of location UUIDs this user can access
 - `deleted` (Bool)
@@ -39,18 +40,19 @@ All IDs are exposed to the API layer as opaque UUID strings. Conversion happens 
 
 ### `{prefix}category`
 
-| Attribute | Type | Role |
-|-----------|------|------|
-| `id` | S | Hash key (PK) — UUID |
-| `nitc_group_id` | S | GSI hash key |
+| Attribute       | Type | Role                 |
+| --------------- | ---- | -------------------- |
+| `id`            | S    | Hash key (PK) — UUID |
+| `nitc_group_id` | S    | GSI hash key         |
 
 **GSIs:**
 
-| GSI | Hash key | Sort key | Projection | Purpose |
-|-----|----------|----------|------------|---------|
-| `nitc_group_id-index` | `nitc_group_id` | — | ALL | `get_nitc_group`: find all categories sharing a topic group without scanning the table |
+| GSI                   | Hash key        | Sort key | Projection | Purpose                                                                                |
+| --------------------- | --------------- | -------- | ---------- | -------------------------------------------------------------------------------------- |
+| `nitc_group_id-index` | `nitc_group_id` | —        | ALL        | `get_nitc_group`: find all categories sharing a topic group without scanning the table |
 
 **Non-obvious attributes:**
+
 - `parent_name` (S) — the parent category's display name, denormalized into each item during data import. No join is needed to build the full display name; the item already contains `"{parent_name} - {name}"` or equivalent.
 - `nitc_enabled` (Bool)
 - `nitc_type` (S) — `'Training'`, `'Other'`, or `'Community Engagement'`
@@ -62,13 +64,14 @@ All IDs are exposed to the API layer as opaque UUID strings. Conversion happens 
 
 ### `{prefix}location`
 
-| Attribute | Type | Role |
-|-----------|------|------|
-| `id` | S | Hash key (PK) — UUID |
+| Attribute | Type | Role                 |
+| --------- | ---- | -------------------- |
+| `id`      | S    | Hash key (PK) — UUID |
 
-No GSIs. Locations are always fetched by ID or via a full-table Scan (the table has ~45 items; a Scan is acceptable at this scale and avoids the cost of maintaining a GSI).
+No GSIs. Locations are always fetched by ID or via a full-table Scan (the table has ~279 items; a Scan is acceptable at this scale and avoids the cost of maintaining a GSI).
 
 **Non-obvious attributes:**
+
 - `ses_api_headquarters_id` (S) — the HQ system ID; absent means not linked
 - `last_successful_member_sync` (N) — Unix timestamp
 - `nitc_enabled` (Bool)
@@ -78,24 +81,24 @@ No GSIs. Locations are always fetched by ID or via a full-table Scan (the table 
 
 ### `{prefix}period`
 
-| Attribute | Type | Role |
-|-----------|------|------|
-| `id` | S | Hash key (PK) — UUID |
-| `location_id` | S | Item data only (not a GSI key) |
-| `person_id` | S | GSI hash key |
-| `start_time` | N | GSI sort key |
-| `nitc_event_id` | S | GSI hash key |
-| `location_open` | S | Sparse GSI hash key — present only on open (no `end_time`), non-deleted periods; absent otherwise |
-| `location_live` | S | Sparse GSI hash key — present only on non-deleted periods; absent on deleted periods |
+| Attribute       | Type | Role                                                                                              |
+| --------------- | ---- | ------------------------------------------------------------------------------------------------- |
+| `id`            | S    | Hash key (PK) — UUID                                                                              |
+| `location_id`   | S    | Item data only (not a GSI key)                                                                    |
+| `person_id`     | S    | GSI hash key                                                                                      |
+| `start_time`    | N    | GSI sort key                                                                                      |
+| `nitc_event_id` | S    | GSI hash key                                                                                      |
+| `location_open` | S    | Sparse GSI hash key — present only on open (no `end_time`), non-deleted periods; absent otherwise |
+| `location_live` | S    | Sparse GSI hash key — present only on non-deleted periods; absent on deleted periods              |
 
 **GSIs:**
 
-| GSI | Hash key | Sort key | Projection | Purpose |
-|-----|----------|----------|------------|---------|
-| `location_open-start_time-index` | `location_open` | `start_time` | ALL | List open non-deleted periods for a location (`onlyActive=true`). Sparse — only open periods are indexed |
-| `location_live-start_time-index` | `location_live` | `start_time` | ALL | List all non-deleted periods for a location (`onlyActive=false`). Sparse — deleted periods are excluded |
-| `person_id-start_time-index` | `person_id` | `start_time` | ALL | List periods for a person, ordered by time |
-| `nitc_event_id-index` | `nitc_event_id` | — | ALL | List all periods assigned to a given NITC event |
+| GSI                              | Hash key        | Sort key     | Projection | Purpose                                                                                                  |
+| -------------------------------- | --------------- | ------------ | ---------- | -------------------------------------------------------------------------------------------------------- |
+| `location_open-start_time-index` | `location_open` | `start_time` | ALL        | List open non-deleted periods for a location (`onlyActive=true`). Sparse — only open periods are indexed |
+| `location_live-start_time-index` | `location_live` | `start_time` | ALL        | List all non-deleted periods for a location (`onlyActive=false`). Sparse — deleted periods are excluded  |
+| `person_id-start_time-index`     | `person_id`     | `start_time` | ALL        | List periods for a person, ordered by time                                                               |
+| `nitc_event_id-index`            | `nitc_event_id` | —            | ALL        | List all periods assigned to a given NITC event                                                          |
 
 The sparse location indexes (`location_open`, `location_live`) equal `location_id` when present and are REMOVED (not nulled) when a period closes or is deleted. DynamoDB only indexes items where the GSI hash key attribute exists, so the index contains exactly the periods of interest — no filter expression required. Both attributes are maintained by every write path (`start_period_for_person_location`, `create_period`, `end_period`, and all `update_period` variants).
 
@@ -104,6 +107,7 @@ The `start_time` sort key across the location/person GSIs means DynamoDB returns
 `ALL` projection is used on every period GSI because period rows are frequently read in full (the calling resolver needs all fields). A `KEYS_ONLY` or custom projection would require a second `BatchGetItem` per result, trading read capacity for storage savings — not worthwhile given the access pattern.
 
 **Non-obvious attributes:**
+
 - `version` (N) — optimistic concurrency counter for NITC export
 - `nitc_event_id` (S) — absent until Phase 1 assigns the period
 - `nitc_participant_id` (N) — absent until Phase 2 exports the period
@@ -116,26 +120,27 @@ The `start_time` sort key across the location/person GSIs means DynamoDB returns
 
 ### `{prefix}person`
 
-| Attribute | Type | Role |
-|-----------|------|------|
-| `id` | S | Hash key (PK) — UUID |
-| `location_id` | S | GSI hash key |
-| `registration_number` | S | GSI hash key |
-| `ses_api_person_id` | S | GSI hash key |
+| Attribute             | Type | Role                 |
+| --------------------- | ---- | -------------------- |
+| `id`                  | S    | Hash key (PK) — UUID |
+| `location_id`         | S    | GSI hash key         |
+| `registration_number` | S    | GSI hash key         |
+| `ses_api_person_id`   | S    | GSI hash key         |
 
 **GSIs:**
 
-| GSI | Hash key | Sort key | Projection | Purpose |
-|-----|----------|----------|------------|---------|
-| `location_id-index` | `location_id` | — | ALL | List all members at a location for admin views and member sync |
-| `registration_number-index` | `registration_number` | — | KEYS_ONLY | Batch lookup during kiosk scan-in: registration number → person ID |
-| `ses_api_person_id-index` | `ses_api_person_id` | — | KEYS_ONLY | Member sync reconciliation: HQ person ID → local person ID |
+| GSI                         | Hash key              | Sort key | Projection | Purpose                                                            |
+| --------------------------- | --------------------- | -------- | ---------- | ------------------------------------------------------------------ |
+| `location_id-index`         | `location_id`         | —        | ALL        | List all members at a location for admin views and member sync     |
+| `registration_number-index` | `registration_number` | —        | KEYS_ONLY  | Batch lookup during kiosk scan-in: registration number → person ID |
+| `ses_api_person_id-index`   | `ses_api_person_id`   | —        | KEYS_ONLY  | Member sync reconciliation: HQ person ID → local person ID         |
 
 `KEYS_ONLY` on the scan-in and sync indexes avoids storing a full copy of each person item per index, since these lookups only need the primary key to drive a subsequent `BatchGetItem` or direct update.
 
 `ses_api_person_id-index` is defined in Terraform. DynamoDB supports adding a GSI to an existing table online via `UpdateTable`; it backfills from existing items automatically while the table stays live, so `terraform apply` will add it in-place with no table recreation required — queries against the GSI will fail only during the brief `CREATING` backfill window.
 
 **Non-obvious attributes:**
+
 - `registration_number` (S) — the SES member registration number (zero-padded)
 - `ses_api_person_id` (S) — absent until member sync links the record
 - `deleted` (Bool)
@@ -151,23 +156,23 @@ The `start_time` sort key across the location/person GSIs means DynamoDB returns
 
 ### `{prefix}session`
 
-| Attribute | Type | Role |
-|-----------|------|------|
-| `id` | S | Hash key (PK) — UUID |
-| `code` | S | GSI hash key |
-| `location_id` | S | GSI sort key |
-| `super` | S | GSI sort key |
-| `active` | N | GSI hash key — present (`1`) on live sessions, absent on deleted ones |
-| `legacy_id` | S | GSI hash key |
+| Attribute     | Type | Role                                                                  |
+| ------------- | ---- | --------------------------------------------------------------------- |
+| `id`          | S    | Hash key (PK) — UUID                                                  |
+| `code`        | S    | GSI hash key                                                          |
+| `location_id` | S    | GSI sort key                                                          |
+| `super`       | S    | GSI sort key                                                          |
+| `active`      | N    | GSI hash key — present (`1`) on live sessions, absent on deleted ones |
+| `legacy_id`   | S    | GSI hash key                                                          |
 
 **GSIs:**
 
-| GSI | Hash key | Sort key | Projection | Purpose |
-|-----|----------|----------|------------|---------|
-| `code-index` | `code` | — | KEYS_ONLY | Kiosk login: look up session by 6-digit code |
-| `active-location_id-index` | `active` | `location_id` | ALL | Admin UI: list all live sessions at a location |
-| `active-super-index` | `active` | `super` | ALL | Admin UI: list all live super-sessions |
-| `legacy_id-index` | `legacy_id` | — | KEYS_ONLY | Migration: look up session by v1 legacy ID |
+| GSI                        | Hash key    | Sort key      | Projection | Purpose                                        |
+| -------------------------- | ----------- | ------------- | ---------- | ---------------------------------------------- |
+| `code-index`               | `code`      | —             | KEYS_ONLY  | Kiosk login: look up session by 6-digit code   |
+| `active-location_id-index` | `active`    | `location_id` | ALL        | Admin UI: list all live sessions at a location |
+| `active-super-index`       | `active`    | `super`       | ALL        | Admin UI: list all live super-sessions         |
+| `legacy_id-index`          | `legacy_id` | —             | KEYS_ONLY  | Migration: look up session by v1 legacy ID     |
 
 The `active` attribute is set to `1` on creation and **removed** on soft-delete. Because DynamoDB GSIs only project items that have the GSI hash key attribute, deleted sessions automatically disappear from `active-location_id-index` and `active-super-index` without any filter expression.
 
@@ -176,6 +181,7 @@ The `super` attribute is a sentinel string `"1"` on super-sessions and is **abse
 `code-index` uses `KEYS_ONLY` because the login flow only needs the session ID; the code is then wiped and a full `GetItem` fetches the session. Deleted sessions may still appear in `code-index` and `legacy_id-index` (the `active` attribute is not their hash key), so lookups against those indexes check for the presence of `active` on the returned item before returning a result.
 
 **Non-obvious attributes:**
+
 - `active` (N) — absent on deleted sessions; `1` on live ones
 - `code` (S) — absent after first use (wiped by `wipe_session_code`)
 - `super` (S) — present only on super-sessions, value `"1"`
@@ -187,19 +193,20 @@ The `super` attribute is a sentinel string `"1"` on super-sessions and is **abse
 
 ### `{prefix}nitc_event`
 
-| Attribute | Type | Role |
-|-----------|------|------|
-| `id` | S | Hash key (PK) — UUID |
-| `location_id` | S | GSI hash key |
-| `topic_date` | S | GSI sort key |
+| Attribute     | Type | Role                 |
+| ------------- | ---- | -------------------- |
+| `id`          | S    | Hash key (PK) — UUID |
+| `location_id` | S    | GSI hash key         |
+| `topic_date`  | S    | GSI sort key         |
 
 **GSIs:**
 
-| GSI | Hash key | Sort key | Projection | Purpose |
-|-----|----------|----------|------------|---------|
-| `location_id-topic_date-index` | `location_id` | `topic_date` | ALL | Find or create the event for a given location, topic group, and date |
+| GSI                            | Hash key      | Sort key     | Projection | Purpose                                                              |
+| ------------------------------ | ------------- | ------------ | ---------- | -------------------------------------------------------------------- |
+| `location_id-topic_date-index` | `location_id` | `topic_date` | ALL        | Find or create the event for a given location, topic group, and date |
 
 `topic_date` is a composite sort key: `"{nitc_group_id}#{event_date}"` — for example `"42#2026-05-01"`. This design allows:
+
 - **Exact match** (`topic_date = "42#2026-05-01"`) — used by `get_nitc_event_for_day`
 - **Prefix query** (`begins_with(topic_date, "42#")`) — potential future use to list all events for a topic group at a location
 
@@ -208,6 +215,7 @@ Encoding both dimensions into a single string sort key avoids the need for a com
 `ALL` projection is used because Phase 2 always needs the full event record (version, ses_api_nitc_id, etc.) immediately after the lookup.
 
 **Non-obvious attributes:**
+
 - `nitc_group_id` (S) — the NITC topic group ID; same value as the prefix of `topic_date`
 - `ses_api_nitc_id` (N) — absent until Phase 2 creates the event in the SES API
 - `version` (N)
@@ -217,11 +225,11 @@ Encoding both dimensions into a single string sort key avoids the need for a com
 
 ### `{prefix}nitc_group`
 
-| Attribute | Type | Role |
-|-----------|------|------|
-| `id` | S | Hash key (PK) |
-| `nitc_type` | S | The NITC role this group represents (e.g. attendee, trainer, assessor) |
-| `nitc_tag_ids` | SS | String set of integer tag ID strings — the SES API tags applied when exporting a participant of this type |
+| Attribute      | Type | Role                                                                                                      |
+| -------------- | ---- | --------------------------------------------------------------------------------------------------------- |
+| `id`           | S    | Hash key (PK)                                                                                             |
+| `nitc_type`    | S    | The NITC role this group represents (e.g. attendee, trainer, assessor)                                    |
+| `nitc_tag_ids` | SS   | String set of integer tag ID strings — the SES API tags applied when exporting a participant of this type |
 
 No GSIs. The only access pattern is `GetItem` by `id` (called from `get_nitc_group`). This is a reference/lookup table; the application never writes to it. Data is imported once at table creation time.
 
@@ -307,7 +315,7 @@ Was: `REMOVE nitc_participant_id SET nitc_exported_version = :v`. Now: `REMOVE n
 
 #### `list_unsynced_nitc_period_ids_for_location` — full table Scan
 
-The NITC export loop calls this once per location, and it issues a full `Scan` on the `period` table, applying `location_id = :loc ...` as a `FilterExpression`. DynamoDB's filter expression executes *after* reading every page of items — the consumed capacity and latency scale with the total number of periods in the table, not with the number of periods for that location. A table with 500k periods will read all 500k, discard most, and return the relevant handful.
+The NITC export loop calls this once per location, and it issues a full `Scan` on the `period` table, applying `location_id = :loc ...` as a `FilterExpression`. DynamoDB's filter expression executes _after_ reading every page of items — the consumed capacity and latency scale with the total number of periods in the table, not with the number of periods for that location. A table with 500k periods will read all 500k, discard most, and return the relevant handful.
 
 The fix is to use the `location_live-start_time-index` GSI with `KeyConditionExpression("location_live = :loc AND start_time >= :cutoff")`, then apply the remaining filters (`nitc_exported_version`, `end_time`) as a `FilterExpression` on the GSI query. This reduces the read to only the location's recent non-deleted periods (deleted periods are absent from the sparse index).
 
@@ -348,4 +356,3 @@ All GSI-based lookups use DynamoDB's default eventually-consistent reads. Strong
 - **NITC event duplicate detection** (`location_id-topic_date-index` in `get_nitc_event_for_day`): Already called out under race conditions, but eventual consistency makes the window wider — the GSI entry for a newly created nitc_event may not be visible to a second worker for up to ~1 second after creation.
 
 There is no mitigation for GSI eventual consistency in the current implementation. The primary table reads (`GetItem`, `BatchGetItem`) use strongly consistent reads by default when accessing the base table, so entity fetches by UUID are reliable.
-
