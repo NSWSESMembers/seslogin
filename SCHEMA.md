@@ -66,7 +66,7 @@ All IDs are exposed to the API layer as opaque UUID strings. Conversion happens 
 |-----------|------|------|
 | `id` | S | Hash key (PK) — UUID |
 
-No GSIs. Locations are always fetched by ID or via a full-table Scan (the table has ~45 items; a Scan is acceptable at this scale and avoids the cost of maintaining a GSI).
+No GSIs. Locations are always fetched by ID or via a full-table Scan (the table has ~279 items, comfortably inside a single 1MB Scan page; a Scan is acceptable at this scale and avoids the cost of maintaining a GSI).
 
 **Non-obvious attributes:**
 - `ses_api_headquarters_id` (S) — the HQ system ID; absent means not linked
