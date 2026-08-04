@@ -4,8 +4,8 @@
  * can be pinned explicitly within any `[data-theme="dark"]` / `[data-theme="light"]`
  * subtree. The homepage and admin never set `data-theme`, so they follow the OS.
  * The kiosk normally sets an explicit `data-theme` (see KioskMain): it ignores the
- * OS setting and only goes dark when its session `config.dark` flag is truthy.
- * `config.dark: "auto"` is the exception — the kiosk leaves `data-theme` off and
+ * OS setting and only goes dark when its session `config.theme` is `"dark"`.
+ * `config.theme: "auto"` is the exception — the kiosk leaves `data-theme` off and
  * follows the OS like the rest of the app. */
 @custom-variant dark {
   @media (prefers-color-scheme: dark) {
@@ -72,8 +72,8 @@
   }
 
   /* Explicitly pinned light: overrides the OS preference (used by the kiosk when
-   * `config.dark` is unset or false). Token values fall back to the light defaults
-   * above. */
+   * `config.theme` is `"light"` or omitted). Token values fall back to the light
+   * defaults above. */
   [data-theme="light"] {
     color-scheme: light;
   }
