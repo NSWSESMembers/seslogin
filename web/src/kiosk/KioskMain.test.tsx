@@ -229,21 +229,33 @@ describe("KioskMain theme", () => {
     document.documentElement.removeAttribute("data-theme");
   });
 
-  it("pins light when no dark flag is set", async () => {
+  it("pins light when no theme is set", async () => {
     await setupTest();
     expect(document.documentElement).toHaveAttribute("data-theme", "light");
   });
 
-  it("pins dark when the dark flag is truthy", async () => {
-    server.use(sessionConfigHandler({ dark: true }));
+  it("pins light when the theme is 'light'", async () => {
+    server.use(sessionConfigHandler({ theme: "light" }));
+    await setupTest();
+    expect(document.documentElement).toHaveAttribute("data-theme", "light");
+  });
+
+  it("pins dark when the theme is 'dark'", async () => {
+    server.use(sessionConfigHandler({ theme: "dark" }));
     await setupTest();
     expect(document.documentElement).toHaveAttribute("data-theme", "dark");
   });
 
-  it("leaves the theme unpinned when dark is 'auto'", async () => {
-    server.use(sessionConfigHandler({ dark: "auto" }));
+  it("leaves the theme unpinned when the theme is 'auto'", async () => {
+    server.use(sessionConfigHandler({ theme: "auto" }));
     await setupTest();
     expect(document.documentElement).not.toHaveAttribute("data-theme");
+  });
+
+  it("pins light for an unrecognised theme value", async () => {
+    server.use(sessionConfigHandler({ theme: "solarized" }));
+    await setupTest();
+    expect(document.documentElement).toHaveAttribute("data-theme", "light");
   });
 });
 
