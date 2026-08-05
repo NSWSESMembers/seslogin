@@ -4,14 +4,57 @@ use async_graphql::Request;
 use async_graphql::parser::types::{DocumentOperations, OperationType};
 use serde::Serialize;
 
-/// Placeholder used for both telemetry dimensions when the operation can't be identified.
+use crate::auth::CallerType;
+use crate::request_metrics::RequestMetrics;
+
+/// Placeholder used for telemetry dimensions with no known value.
 const UNKNOWN: &str = "unknown";
+
+/// The kind of GraphQL operation a request is executing, used as a telemetry dimension.
+///
+/// The string forms are a stable log contract: CloudWatch Logs Insights queries and metric
+/// filters match on them, so renaming a variant's string changes what those queries return.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum OperationKind {
+    Query,
+    Mutation,
+    Subscription,
+    /// The operation couldn't be identified — see [`extract_operation_context`].
+    #[default]
+    Unknown,
+}
+
+impl OperationKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Query => "query",
+            Self::Mutation => "mutation",
+            Self::Subscription => "subscription",
+            Self::Unknown => UNKNOWN,
+        }
+    }
+}
+
+impl std::fmt::Display for OperationKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl From<OperationType> for OperationKind {
+    fn from(ty: OperationType) -> Self {
+        match ty {
+            OperationType::Query => Self::Query,
+            OperationType::Mutation => Self::Mutation,
+            OperationType::Subscription => Self::Subscription,
+        }
+    }
+}
 
 /// Which GraphQL operation a request is executing, used as telemetry dimensions.
 #[derive(Debug, PartialEq, Eq)]
 pub struct OperationContext {
-    /// `"query"`, `"mutation"`, `"subscription"`, or `"unknown"`.
-    pub operation_type: &'static str,
+    pub operation_type: OperationKind,
     /// `None` for an anonymous operation, or when the operation can't be identified.
     pub operation_name: Option<String>,
 }
@@ -25,7 +68,7 @@ impl OperationContext {
 
     fn unidentified(operation_name: Option<String>) -> Self {
         Self {
-            operation_type: UNKNOWN,
+            operation_type: OperationKind::Unknown,
             operation_name,
         }
     }
@@ -52,7 +95,7 @@ pub fn extract_operation_context(req: &mut Request) -> OperationContext {
         // Exactly one anonymous operation: `query { .. }`, `mutation { .. }`, or the shorthand
         // selection set `{ .. }`, which is implicitly a query.
         (DocumentOperations::Single(operation), None) => OperationContext {
-            operation_type: operation_type_name(operation.node.ty),
+            operation_type: operation.node.ty.into(),
             operation_name: None,
         },
         // Naming an operation in a document whose only operation is anonymous is an error
@@ -62,7 +105,7 @@ pub fn extract_operation_context(req: &mut Request) -> OperationContext {
         (DocumentOperations::Multiple(operations), Some(name)) => {
             match operations.get(name.as_str()) {
                 Some(operation) => OperationContext {
-                    operation_type: operation_type_name(operation.node.ty),
+                    operation_type: operation.node.ty.into(),
                     operation_name: Some(name),
                 },
                 None => OperationContext::unidentified(Some(name)),
@@ -72,20 +115,12 @@ pub fn extract_operation_context(req: &mut Request) -> OperationContext {
         (DocumentOperations::Multiple(operations), None) if operations.len() == 1 => {
             let (name, operation) = operations.iter().next().expect("length checked above");
             OperationContext {
-                operation_type: operation_type_name(operation.node.ty),
+                operation_type: operation.node.ty.into(),
                 operation_name: Some(name.to_string()),
             }
         }
         // Several operations and no choice; execution fails with "Operation name required".
         (DocumentOperations::Multiple(_), None) => OperationContext::unidentified(None),
-    }
-}
-
-fn operation_type_name(ty: OperationType) -> &'static str {
-    match ty {
-        OperationType::Query => "query",
-        OperationType::Mutation => "mutation",
-        OperationType::Subscription => "subscription",
     }
 }
 
@@ -98,10 +133,9 @@ fn operation_type_name(ty: OperationType) -> &'static str {
 pub struct RequestTelemetry<'a> {
     /// Final HTTP status code; `>= 500` counts as a request failure.
     pub status: u16,
-    pub operation_type: &'a str,
+    pub operation_type: OperationKind,
     pub operation_name: &'a str,
-    /// "user", "session", "api_token", or "unauthenticated"
-    pub caller_type: &'a str,
+    pub caller_type: CallerType,
     pub caller_id: &'a str,
     pub latency_ms: f64,
     pub graphql_error_count: usize,
@@ -114,7 +148,41 @@ pub struct RequestTelemetry<'a> {
     pub auth_error: &'a str,
 }
 
+impl Default for RequestTelemetry<'_> {
+    fn default() -> Self {
+        Self {
+            // A line built without an explicit status is a bug. Default to a failure so it
+            // surfaces in the metric rather than silently inflating the success count.
+            status: 500,
+            operation_type: OperationKind::Unknown,
+            operation_name: UNKNOWN,
+            caller_type: CallerType::Unauthenticated,
+            caller_id: UNKNOWN,
+            latency_ms: 0.0,
+            graphql_error_count: 0,
+            query_failures: 0,
+            mutation_failures: 0,
+            rru: 0.0,
+            wru: 0.0,
+            ddb_calls: 0,
+            auth_error: "",
+        }
+    }
+}
+
 impl RequestTelemetry<'_> {
+    /// Records the DynamoDB usage and per-operation failure counts gathered during execution.
+    /// These five always travel together, so they're filled in as a group.
+    #[must_use]
+    pub fn with_metrics(mut self, metrics: &RequestMetrics) -> Self {
+        self.query_failures = metrics.query_failures();
+        self.mutation_failures = metrics.mutation_failures();
+        self.rru = metrics.read_units();
+        self.wru = metrics.write_units();
+        self.ddb_calls = metrics.ddb_calls();
+        self
+    }
+
     pub fn emit(&self) {
         let ts = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -129,9 +197,9 @@ impl RequestTelemetry<'_> {
         // Detailed structured log for Logs Insights (queryable fields under Lambda JSON log format).
         tracing::info!(
             log_type = "api_request",
-            operation_type = self.operation_type,
+            operation_type = self.operation_type.as_str(),
             operation_name = self.operation_name,
-            caller_type = self.caller_type,
+            caller_type = self.caller_type.as_str(),
             caller_id = self.caller_id,
             status = self.status,
             latency_ms = self.latency_ms,
@@ -219,75 +287,80 @@ struct MetricDefinition {
     unit: &'static str,
 }
 
-/// Structured log emitted when a top-level GraphQL query/mutation field fails. The `field` and
-/// `parent_type` together identify the GraphQL node; `caller_type` is the request kind
-/// (user / session / api_token / unauthenticated).
-pub fn emit_graphql_error_log(
-    operation_type: &str,
-    field: &str,
-    parent_type: &str,
-    caller_type: &str,
-    caller_id: &str,
-    error: &str,
-) {
-    tracing::warn!(
-        log_type = "graphql_error",
-        operation_type = operation_type,
-        field = field,
-        parent_type = parent_type,
-        caller_type = caller_type,
-        caller_id = caller_id,
-        error = error,
-        "graphql field error",
-    );
+/// A failure of a top-level GraphQL query/mutation field. `emit()` writes it as a structured
+/// `graphql_error` log line.
+pub struct GraphQlFieldError<'a> {
+    pub operation_type: OperationKind,
+    /// `field` and `parent_type` together identify the GraphQL node that failed.
+    pub field: &'a str,
+    pub parent_type: &'a str,
+    pub caller_type: CallerType,
+    pub caller_id: &'a str,
+    pub error: &'a str,
+}
+
+impl GraphQlFieldError<'_> {
+    pub fn emit(&self) {
+        tracing::warn!(
+            log_type = "graphql_error",
+            operation_type = self.operation_type.as_str(),
+            field = self.field,
+            parent_type = self.parent_type,
+            caller_type = self.caller_type.as_str(),
+            caller_id = self.caller_id,
+            error = self.error,
+            "graphql field error",
+        );
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    use OperationKind::{Mutation, Query, Subscription, Unknown};
+
+    type Identified = (OperationKind, Option<String>);
+
     /// `(operation_type, operation_name)` for a query with no explicit `operationName`.
-    fn context_of(query: &str) -> (&'static str, Option<String>) {
+    fn context_of(query: &str) -> Identified {
         let mut req = Request::new(query);
         let context = extract_operation_context(&mut req);
         (context.operation_type, context.operation_name)
     }
 
     /// As [`context_of`], for a request that names the operation to run.
-    fn context_of_named(query: &str, operation_name: &str) -> (&'static str, Option<String>) {
+    fn context_of_named(query: &str, operation_name: &str) -> Identified {
         let mut req = Request::new(query).operation_name(operation_name);
         let context = extract_operation_context(&mut req);
         (context.operation_type, context.operation_name)
     }
 
-    fn named(operation_type: &'static str, name: &str) -> (&'static str, Option<String>) {
+    fn named(operation_type: OperationKind, name: &str) -> Identified {
         (operation_type, Some(name.to_owned()))
     }
 
     #[test]
     fn identifies_anonymous_operations() {
         // A shorthand selection set is implicitly a query.
-        assert_eq!(context_of("{ viewer { id } }"), ("query", None));
-        assert_eq!(context_of("query { viewer { id } }"), ("query", None));
-        assert_eq!(
-            context_of("mutation { checkIn { id } }"),
-            ("mutation", None)
-        );
+        assert_eq!(context_of("{ viewer { id } }"), (Query, None));
+        assert_eq!(context_of("query { viewer { id } }"), (Query, None));
+        assert_eq!(context_of("mutation { checkIn { id } }"), (Mutation, None));
     }
 
     #[test]
     fn identifies_named_operations() {
         assert_eq!(
             context_of("query Viewer { viewer { id } }"),
-            named("query", "Viewer")
+            named(Query, "Viewer")
         );
         assert_eq!(
             context_of("mutation CheckIn { checkIn { id } }"),
-            named("mutation", "CheckIn")
+            named(Mutation, "CheckIn")
         );
         assert_eq!(
             context_of("subscription Ticks { ticks { at } }"),
-            named("subscription", "Ticks")
+            named(Subscription, "Ticks")
         );
     }
 
@@ -296,24 +369,24 @@ mod tests {
     fn variable_definitions_are_not_part_of_the_name() {
         assert_eq!(
             context_of("query Viewer($id: ID!) { viewer(id: $id) { id } }"),
-            named("query", "Viewer")
+            named(Query, "Viewer")
         );
         assert_eq!(
             context_of("query Viewer($id:ID!,$n:Int){ viewer { id } }"),
-            named("query", "Viewer")
+            named(Query, "Viewer")
         );
         // No space between the name and its selection set.
         assert_eq!(
             context_of("query Viewer{ viewer { id } }"),
-            named("query", "Viewer")
+            named(Query, "Viewer")
         );
     }
 
     /// Whitespace-splitting saw `"mutation{"` as a single unrecognised token.
     #[test]
     fn identifies_operations_without_separating_whitespace() {
-        assert_eq!(context_of("mutation{ checkIn { id } }"), ("mutation", None));
-        assert_eq!(context_of("query{ viewer { id } }"), ("query", None));
+        assert_eq!(context_of("mutation{ checkIn { id } }"), (Mutation, None));
+        assert_eq!(context_of("query{ viewer { id } }"), (Query, None));
     }
 
     /// A leading comment or a leading fragment used to make the whole document unrecognisable.
@@ -321,23 +394,23 @@ mod tests {
     fn identifies_operations_after_leading_comments_and_fragments() {
         assert_eq!(
             context_of("# fetch the viewer\nquery Viewer { viewer { id } }"),
-            named("query", "Viewer")
+            named(Query, "Viewer")
         );
         assert_eq!(
             context_of("fragment F on Person { id }\nquery Viewer { viewer { ...F } }"),
-            named("query", "Viewer")
+            named(Query, "Viewer")
         );
         assert_eq!(
             context_of("\n\n  \tquery Viewer { viewer { id } }"),
-            named("query", "Viewer")
+            named(Query, "Viewer")
         );
     }
 
     #[test]
     fn explicit_operation_name_selects_from_a_multi_operation_document() {
         let document = "query A { a } mutation B { b }";
-        assert_eq!(context_of_named(document, "A"), named("query", "A"));
-        assert_eq!(context_of_named(document, "B"), named("mutation", "B"));
+        assert_eq!(context_of_named(document, "A"), named(Query, "A"));
+        assert_eq!(context_of_named(document, "B"), named(Mutation, "B"));
     }
 
     /// The name the client asked for wins over the sole operation's own name, matching the
@@ -346,12 +419,12 @@ mod tests {
     fn unknown_operation_name_is_not_identified() {
         assert_eq!(
             context_of_named("query A { a } mutation B { b }", "C"),
-            named(UNKNOWN, "C")
+            named(Unknown, "C")
         );
         // The document's only operation is anonymous, so no name can match it.
         assert_eq!(
             context_of_named("query { viewer { id } }", "A"),
-            named(UNKNOWN, "A")
+            named(Unknown, "A")
         );
     }
 
@@ -360,25 +433,25 @@ mod tests {
     fn a_lone_named_operation_needs_no_explicit_choice() {
         assert_eq!(
             context_of("query Viewer { viewer { id } }"),
-            named("query", "Viewer")
+            named(Query, "Viewer")
         );
     }
 
     /// Several operations and no choice: the executor fails with "Operation name required".
     #[test]
     fn an_ambiguous_document_is_not_identified() {
-        assert_eq!(context_of("query A { a } query B { b }"), (UNKNOWN, None));
+        assert_eq!(context_of("query A { a } query B { b }"), (Unknown, None));
     }
 
     #[test]
     fn unparseable_documents_are_not_identified() {
-        assert_eq!(context_of("query Viewer { viewer {"), (UNKNOWN, None));
-        assert_eq!(context_of(""), (UNKNOWN, None));
-        assert_eq!(context_of("not graphql at all"), (UNKNOWN, None));
+        assert_eq!(context_of("query Viewer { viewer {"), (Unknown, None));
+        assert_eq!(context_of(""), (Unknown, None));
+        assert_eq!(context_of("not graphql at all"), (Unknown, None));
         // A claimed name is still worth recording when the document won't parse.
         assert_eq!(
             context_of_named("query Viewer { viewer {", "Viewer"),
-            named(UNKNOWN, "Viewer")
+            named(Unknown, "Viewer")
         );
     }
 
@@ -412,9 +485,9 @@ mod tests {
     ) -> RequestTelemetry<'static> {
         RequestTelemetry {
             status,
-            operation_type: "query",
+            operation_type: Query,
             operation_name: "Viewer",
-            caller_type: "user",
+            caller_type: CallerType::User,
             caller_id: "u1",
             latency_ms: 12.5,
             graphql_error_count: 0,
@@ -430,6 +503,48 @@ mod tests {
     fn emf_json(status: u16, query_failures: u64, mutation_failures: u64) -> String {
         let telemetry = telemetry(status, query_failures, mutation_failures);
         serde_json::to_string(&telemetry.emf_line(1_700_000_000_000)).unwrap()
+    }
+
+    /// The auth-failure path relies on `Default` for every field it doesn't set, so these
+    /// defaults are what that log line actually reports.
+    #[test]
+    fn defaults_describe_an_unidentified_unauthenticated_caller() {
+        let default = RequestTelemetry::default();
+        assert_eq!(default.operation_type, Unknown);
+        assert_eq!(default.operation_name, "unknown");
+        assert_eq!(default.caller_type, CallerType::Unauthenticated);
+        assert_eq!(default.caller_id, "unknown");
+        assert_eq!(default.graphql_error_count, 0);
+        assert_eq!(default.auth_error, "");
+        assert_eq!((default.query_failures, default.mutation_failures), (0, 0));
+        assert_eq!((default.rru, default.wru, default.ddb_calls), (0.0, 0.0, 0));
+    }
+
+    /// A telemetry line whose status was never set is a bug; it must not read as a success.
+    #[test]
+    fn default_status_is_a_failure() {
+        let line: serde_json::Value = serde_json::from_str(
+            &serde_json::to_string(&RequestTelemetry::default().emf_line(0)).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(line["RequestSuccess"], 0);
+        assert_eq!(line["RequestFailure"], 1);
+    }
+
+    #[test]
+    fn with_metrics_copies_every_execution_counter() {
+        let metrics = RequestMetrics::default();
+        metrics.record("get", 2.5, 1.5);
+        metrics.incr_query_failure();
+        metrics.incr_mutation_failure();
+        metrics.incr_mutation_failure();
+
+        let telemetry = RequestTelemetry::default().with_metrics(&metrics);
+        assert_eq!(telemetry.query_failures, 1);
+        assert_eq!(telemetry.mutation_failures, 2);
+        assert_eq!(telemetry.rru, 2.5);
+        assert_eq!(telemetry.wru, 1.5);
+        assert_eq!(telemetry.ddb_calls, 1);
     }
 
     /// Pins the exact wire format the CloudWatch log agent parses. Byte-for-byte identical to
