@@ -7,6 +7,9 @@ import { getServerErrorMessage } from "../../lib/relayErrors";
 import type { ScanGuestDialogQuery } from "./__generated__/ScanGuestDialogQuery.graphql";
 import type { ScanGuestDialogSignInMutation } from "./__generated__/ScanGuestDialogSignInMutation.graphql";
 import type { ScanGuestDialogSignOutMutation } from "./__generated__/ScanGuestDialogSignOutMutation.graphql";
+import { useSuspendScanFocus } from "../lib/scanFocusLeases";
+
+const GUEST_DIALOG_FOCUS_LEASE_ID = "scan:guest-dialog";
 
 // Currently-signed-in guests, fetched fresh each time the list is shown. Rendered
 // inside <Suspense> so the surrounding dialog stays interactive while it loads.
@@ -73,6 +76,9 @@ function GuestList(props: {
 
 export default function ScanGuestDialog(props: { onClose: () => void }) {
   const { onClose } = props;
+
+  // Only mounted while the dialog is open, so the lease lasts exactly that long.
+  useSuspendScanFocus(GUEST_DIALOG_FOCUS_LEASE_ID);
 
   const [name, setName] = useState("");
   const [reason, setReason] = useState("");
