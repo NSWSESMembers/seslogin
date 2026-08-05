@@ -8,8 +8,8 @@ use async_graphql::{
 use http::{Method, StatusCode};
 use lambda_http::{Body, Error, Request, Response};
 use poem::web::headers;
-use seslogin::emf::{self, RequestTelemetry};
 use seslogin::request_metrics::{self, RequestMetrics};
+use seslogin::telemetry::{self, RequestTelemetry};
 
 use crate::app;
 use crate::auth::{self, AuthInfo};
@@ -76,7 +76,7 @@ impl<H: db::Handler + Send + Sync + 'static> Handler<H> {
             .data(self.app.clone())
             .data(graphql::get_dataloader(self.app.clone()));
 
-        let operation_context = emf::extract_operation_context(&query);
+        let operation_context = telemetry::extract_operation_context(&query);
         let metrics = Arc::new(RequestMetrics::default());
         let gql_response = request_metrics::METRICS
             .scope(metrics.clone(), self.schema.execute(query))

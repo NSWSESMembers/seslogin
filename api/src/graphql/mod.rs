@@ -10,8 +10,8 @@ use crate::app::App;
 use crate::app::HasDb;
 use crate::app::HasSqs;
 use crate::auth::AuthInfo;
-use crate::emf;
 use crate::request_metrics;
+use crate::telemetry;
 
 pub mod auth;
 pub mod dataloader;
@@ -126,7 +126,7 @@ impl Extension for RequestMetricsExtImpl {
                 _ => m.incr_query_failure(),
             });
             let (caller_type, caller_id) = crate::auth::caller_info(ctx.data_opt::<AuthInfo>());
-            emf::emit_graphql_error_log(
+            telemetry::emit_graphql_error_log(
                 operation_type,
                 field,
                 parent_type,
