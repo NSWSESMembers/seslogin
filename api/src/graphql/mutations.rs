@@ -1206,6 +1206,75 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
         Ok(true)
     }
 
+    /// Bring back a QR-enrolled kiosk that expired after two weeks offline, without
+    /// deleting and re-enrolling it — it keeps its name, config and healthcheck URL.
+    /// Kiosks set up with a 6-digit code cannot be reactivated.
+    ///
+    /// Only succeeds while the kiosk is switched on and showing its enrollment QR screen,
+    /// and only grants a short window: the kiosk must come back with one signed request,
+    /// which restores its normal two-week window. Otherwise the grant simply lapses.
+    // Implementation: the "switched on" test is a live pending-enrollment record (the
+    // kiosk republishes its key every 10 min), and the short window is
+    // session_key::REACTIVATE_GRACE_S, widened back to KEY_LIFETIME_S by
+    // auth::touch_session on the redeeming request.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    async fn reactivate_session(&self, ctx: &Context<'_>, id: ID) -> Result<Session<A>> {
+        require_writable(ctx)?;
+        let existing = self
+            .app
+            .db()
+            .get_sessions(&[&id])
+            .await?
+            .into_iter()
+            .next()
+            .flatten()
+            .ok_or_else(|| anyhow!("Session with ID {:?} missing", id))?;
+        require_location_access(ctx, &existing.location_id)?;
+
+        if !existing.active {
+            return Err(anyhow!("This kiosk has been deleted."));
+        }
+        // Code-enrolled kiosks have nothing to revive: their single-use code was wiped the
+        // first time it was entered.
+        let (Some(key_fingerprint), Some(_)) = (
+            existing.key_fingerprint.as_deref(),
+            existing.public_key.as_deref(),
+        ) else {
+            return Err(anyhow!(
+                "This kiosk was set up with a setup code, so it can't be reactivated — delete it and set it up again."
+            ));
+        };
+
+        // The kiosk republishes its key every 10 minutes while it sits on the enrollment
+        // screen, so a live record means the device is switched on and asking to come back.
+        let now = crate::clock::now_sec();
+        self.app
+            .db()
+            .get_ephemeral_state(&crate::session_key::enroll_state_id(key_fingerprint))
+            .await?
+            .filter(|s| s.kind == crate::session_key::ENROLL_STATE_KIND && s.expires_at > now)
+            .ok_or_else(|| {
+                anyhow!(
+                    "The kiosk isn't currently asking to be re-enrolled — switch it on, wait for the QR code screen, then try again."
+                )
+            })?;
+
+        let expires_at = crate::session_key::reactivated_key_expiry(existing.key_expires_at, now);
+        self.app
+            .db()
+            .update_session(&id, db::SessionUpdateShape::ExtendKey { expires_at })
+            .await?;
+        info!(
+            "Reactivated kiosk session {} at location {} until {}",
+            existing.id, existing.location_id, expires_at
+        );
+
+        let rec = self.app.db().get_sessions(&[&id]).await?;
+        Ok(Session::new(rec.into_iter().next().flatten().ok_or_else(
+            || anyhow!("Session with ID {:?} missing", id),
+        )?))
+    }
+
     #[graphql(guard = "AuthGuard::new(AuthRequirement::SuperUser)")]
     async fn create_location(
         &self,

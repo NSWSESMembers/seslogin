@@ -228,10 +228,19 @@ async fn touch_session<A: App + HasDb + HasSqs>(
     // (the "online" status dot uses a 10-minute green band), so finer precision
     // here just burns writes (each one also rewrites the ALL-projection GSI and
     // adds PITR churn).
+    //
+    // One exception overrides the throttle: a key-enrolled kiosk inside the short window
+    // granted by a reactivation. That grant only becomes a real 14-day window once this
+    // write lands, so skipping it here would let the kiosk lapse straight back.
     let now = crate::clock::now_sec();
-    if session
-        .last_contact
-        .is_none_or(|t| now > t + LAST_CONTACT_REFRESH_SECS)
+    let redeeming_reactivation = extend_key
+        && session
+            .key_expires_at
+            .is_none_or(|exp| exp.saturating_sub(now) <= crate::session_key::REACTIVATE_GRACE_S);
+    if redeeming_reactivation
+        || session
+            .last_contact
+            .is_none_or(|t| now > t + LAST_CONTACT_REFRESH_SECS)
     {
         let client_version = normalize_client_version(client_version);
         let extend_key_expires_at = extend_key.then(|| now + crate::session_key::KEY_LIFETIME_S);
@@ -351,7 +360,7 @@ pub async fn verify_signed_key<A: App + HasDb + HasSqs>(
         .public_key
         .as_deref()
         .ok_or_else(|| AuthError::Permanent("Session has no enrolled key".into()))?;
-    if session.key_expires_at.is_none_or(|exp| now >= exp) {
+    if crate::session_key::key_expired(session.key_expires_at, now) {
         return Err(AuthError::Permanent("Enrolled key has expired".into()));
     }
 
