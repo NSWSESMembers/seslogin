@@ -2,6 +2,7 @@ import { Suspense, useState } from "react";
 import { graphql, useLazyLoadQuery, useMutation } from "react-relay";
 import { inputBase } from "../../components/ui/inputStyles";
 import { Button } from "../../components/ui/Button";
+import { Dialog, DialogActions, DialogTitle } from "../../components/ui/Dialog";
 import { formatTime } from "../../lib/time";
 import { getServerErrorMessage } from "../../lib/relayErrors";
 import type { ScanGuestDialogQuery } from "./__generated__/ScanGuestDialogQuery.graphql";
@@ -150,64 +151,58 @@ export default function ScanGuestDialog(props: { onClose: () => void }) {
   }
 
   return (
-    <div className="fixed inset-0 z-10 flex items-center justify-center">
-      <div
-        className="absolute inset-0 bg-black opacity-50"
-        onClick={onClose}
-      ></div>
-      <div className="relative z-10 flex w-150 max-w-[90vw] flex-col gap-4 rounded-xl bg-surface p-6 shadow-2xl">
-        <h2 className="m-0 text-2xl font-bold">Guest sign in / out</h2>
+    <Dialog onDismiss={onClose}>
+      <DialogTitle>Guest sign in / out</DialogTitle>
 
-        {error && <p className="m-0 font-bold text-red-600">{error}</p>}
+      {error && <p className="m-0 font-bold text-red-600">{error}</p>}
 
-        <div className="flex flex-col gap-3">
-          <label className="flex flex-col gap-1">
-            <span>Name</span>
-            <input
-              type="text"
-              className={inputBase}
-              value={name}
-              maxLength={100}
-              required
-              autoFocus
-              onChange={(e) => setName(e.target.value)}
-            />
-          </label>
-          <label className="flex flex-col gap-1">
-            <span>Reason for visit (optional)</span>
-            <input
-              type="text"
-              className={inputBase}
-              value={reason}
-              maxLength={500}
-              onChange={(e) => setReason(e.target.value)}
-            />
-          </label>
-          <Button
-            variant="kiosk"
-            onClick={handleSignIn}
-            disabled={trimmedName === "" || signInInFlight}
-          >
-            {signInInFlight ? "Signing in…" : "Sign in"}
-          </Button>
-        </div>
-
-        <div className="flex flex-col gap-2">
-          <h3 className="m-0 text-lg font-bold">Currently signed in guests</h3>
-          <Suspense fallback={<p className="text-ink-muted">Loading…</p>}>
-            <GuestList
-              onSignOut={handleSignOut}
-              signOutInFlightId={signOutInFlightId}
-            />
-          </Suspense>
-        </div>
-
-        <div className="flex justify-end">
-          <Button variant="secondary" onClick={onClose}>
-            Cancel
-          </Button>
-        </div>
+      <div className="flex flex-col gap-3">
+        <label className="flex flex-col gap-1">
+          <span>Name</span>
+          <input
+            type="text"
+            className={inputBase}
+            value={name}
+            maxLength={100}
+            required
+            autoFocus
+            onChange={(e) => setName(e.target.value)}
+          />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span>Reason for visit (optional)</span>
+          <input
+            type="text"
+            className={inputBase}
+            value={reason}
+            maxLength={500}
+            onChange={(e) => setReason(e.target.value)}
+          />
+        </label>
+        <Button
+          variant="kiosk"
+          onClick={handleSignIn}
+          disabled={trimmedName === "" || signInInFlight}
+        >
+          {signInInFlight ? "Signing in…" : "Sign in"}
+        </Button>
       </div>
-    </div>
+
+      <div className="flex flex-col gap-2">
+        <h3 className="m-0 text-lg font-bold">Currently signed in guests</h3>
+        <Suspense fallback={<p className="text-ink-muted">Loading…</p>}>
+          <GuestList
+            onSignOut={handleSignOut}
+            signOutInFlightId={signOutInFlightId}
+          />
+        </Suspense>
+      </div>
+
+      <DialogActions>
+        <Button variant="secondary" onClick={onClose}>
+          Cancel
+        </Button>
+      </DialogActions>
+    </Dialog>
   );
 }

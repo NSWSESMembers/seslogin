@@ -116,8 +116,11 @@ export default function KioskEnvironment({
   const contextValue = useMemo(
     () => ({
       setToken,
+      profile,
+      authMode:
+        authState === "authed-key" ? ("key" as const) : ("jwt" as const),
     }),
-    [setToken],
+    [setToken, profile, authState],
   );
 
   const onJwtUnauthorized = useCallback(() => {
