@@ -3,6 +3,10 @@ import { fetchQuery } from "relay-runtime";
 import type { IEnvironment } from "relay-runtime";
 import type { KioskTokenSessionFetcherQuery } from "./__generated__/KioskTokenSessionFetcherQuery.graphql";
 import type { KioskSession } from "./KioskSessionContext";
+import {
+  recordServerContactFailure,
+  recordServerContactSuccess,
+} from "../lib/kioskServerStatus";
 
 const SESSION_REFRESH_INTERVAL_MS =
   import.meta.env.MODE === "development"
@@ -16,6 +20,7 @@ const kioskRefreshQuery = graphql`
       id
       name
       config
+      keyExpiresAt
       location {
         id
         name
@@ -71,6 +76,7 @@ export default function startKioskTokenSessionFetcher({
       .toPromise()
       .then((response) => {
         inFlight = false;
+        recordServerContactSuccess(response?.session?.keyExpiresAt ?? null);
         if (isCancelled) {
           return;
         }
@@ -96,6 +102,7 @@ export default function startKioskTokenSessionFetcher({
       })
       .catch((error) => {
         console.log("Failed to refresh kiosk session: ", error);
+        recordServerContactFailure(error);
         inFlight = false;
         if (isCancelled) {
           return;

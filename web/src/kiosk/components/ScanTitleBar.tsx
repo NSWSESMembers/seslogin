@@ -4,6 +4,7 @@ import TitleBarShell from "../../components/ui/TitleBarShell";
 export default function ScanTitleBar(props: {
   onCancelSignOut?: () => void;
   signingOutName?: string;
+  onLogoClick?: () => void;
 }) {
   const session = useKioskSession();
   const locationName = session?.location.name ?? "Unknown location";
@@ -13,7 +14,7 @@ export default function ScanTitleBar(props: {
     : `${locationName} > ${sessionName}`;
 
   return (
-    <TitleBarShell>
+    <TitleBarShell onLogoClick={props.onLogoClick}>
       <span>{title}</span>
       {props.onCancelSignOut && (
         <button
