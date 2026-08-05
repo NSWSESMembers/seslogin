@@ -10,8 +10,8 @@ use crate::app::App;
 use crate::app::HasDb;
 use crate::app::HasSqs;
 use crate::auth::AuthInfo;
-use crate::emf;
 use crate::request_metrics;
+use crate::telemetry::{self, OperationKind};
 
 pub mod auth;
 pub mod dataloader;
@@ -112,8 +112,8 @@ impl Extension for RequestMetricsExtImpl {
     ) -> ServerResult<Option<Value>> {
         let parent_type = info.parent_type;
         let operation_type = match parent_type {
-            "QueryRoot" => Some("query"),
-            "MutationRoot" => Some("mutation"),
+            "QueryRoot" => Some(OperationKind::Query),
+            "MutationRoot" => Some(OperationKind::Mutation),
             _ => None,
         };
         let field = info.name;
@@ -122,18 +122,19 @@ impl Extension for RequestMetricsExtImpl {
         // Only observe top-level query/mutation fields, not nested object fields.
         if let (Some(operation_type), Err(err)) = (operation_type, &res) {
             let _ = request_metrics::METRICS.try_with(|m| match operation_type {
-                "mutation" => m.incr_mutation_failure(),
+                OperationKind::Mutation => m.incr_mutation_failure(),
                 _ => m.incr_query_failure(),
             });
             let (caller_type, caller_id) = crate::auth::caller_info(ctx.data_opt::<AuthInfo>());
-            emf::emit_graphql_error_log(
+            telemetry::GraphQlFieldError {
                 operation_type,
                 field,
                 parent_type,
                 caller_type,
-                &caller_id,
-                &err.message,
-            );
+                caller_id: &caller_id,
+                error: &err.message,
+            }
+            .emit();
         }
         res
     }
