@@ -11,6 +11,7 @@ import type { TransactionSignedOut } from "../ScanState";
 import { categoriesFor, categoryIconSrc } from "../../lib/categories";
 import { scanView, scanViewPosition, type ScreenPosition } from "../../styles";
 import { Button } from "../../components/ui/Button";
+import { Dialog, DialogActions, DialogTitle } from "../../components/ui/Dialog";
 
 const LONG_PERIOD_CONFIRM_THRESHOLD_MS = 12 * 60 * 60 * 1000;
 
@@ -363,34 +364,31 @@ function Inner(props: {
       </div>
 
       {confirmingLongPeriod && (
-        <div className="fixed inset-0 z-10 flex items-center justify-center">
-          <div
-            className="absolute inset-0 bg-black opacity-50"
-            onClick={() => setConfirmingLongPeriod(false)}
-          ></div>
-          <div className="relative z-10 flex w-150 max-w-[90vw] flex-col gap-4 rounded-xl bg-surface p-6 text-base shadow-2xl">
-            <h2 className="m-0 text-2xl font-bold">Long session</h2>
-            <p className="m-0">
-              This period is {formatTimeDiff(buildStartDate(), buildEndDate())}{" "}
-              long. Are you sure this is correct?
-            </p>
-            <div className="flex justify-end gap-3">
-              <Button
-                variant="secondary"
-                onClick={() => setConfirmingLongPeriod(false)}
-              >
-                Cancel
-              </Button>
-              <Button
-                variant="kiosk"
-                onClick={onConfirmLongPeriod}
-                disabled={props.isSubmitting}
-              >
-                Confirm
-              </Button>
-            </div>
-          </div>
-        </div>
+        <Dialog
+          onDismiss={() => setConfirmingLongPeriod(false)}
+          className="text-base"
+        >
+          <DialogTitle>Long session</DialogTitle>
+          <p className="m-0">
+            This period is {formatTimeDiff(buildStartDate(), buildEndDate())}{" "}
+            long. Are you sure this is correct?
+          </p>
+          <DialogActions>
+            <Button
+              variant="secondary"
+              onClick={() => setConfirmingLongPeriod(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="kiosk"
+              onClick={onConfirmLongPeriod}
+              disabled={props.isSubmitting}
+            >
+              Confirm
+            </Button>
+          </DialogActions>
+        </Dialog>
       )}
     </>
   );

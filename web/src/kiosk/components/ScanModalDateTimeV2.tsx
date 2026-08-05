@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { formatDayDate, isSameDay } from "../../lib/time";
+import { Dialog } from "../../components/ui/Dialog";
 
 type AmPm = "AM" | "PM";
 
@@ -44,7 +45,6 @@ const keyConfirmBtn =
   "block w-full cursor-pointer rounded-[14px] bg-[#2f7d4f] px-2.5 py-[18px] text-[40px] text-white no-underline shadow-md active:bg-[#276a43] disabled:cursor-default disabled:bg-neutral-300 disabled:text-neutral-500 disabled:shadow-none dark:disabled:bg-neutral-700 dark:disabled:text-neutral-500";
 
 export function Inner(props: {
-  show: boolean;
   onSave: (field: string, date: Date, value: string) => void;
   onClose: () => void;
   field: string;
@@ -130,188 +130,176 @@ export function Inner(props: {
   }
 
   return (
-    <div
-      className="fixed inset-0 z-2 items-center justify-center"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) {
-          props.onClose();
-        }
-      }}
-      style={{
-        display: props.show ? "flex" : "none",
-      }}
-    >
-      <div className="rounded-[20px] bg-[#f4f4f4] p-5 shadow-[0_20px_50px_rgba(0,0,0,0.35)] dark:bg-neutral-900">
-        <div>
-          <div className="mb-3.5 w-full">
-            <div className="mb-2 flex items-center gap-2">
-              <button className={dateBtnClasses} onClick={() => changeDay(-1)}>
-                &#8592;
-              </button>
-              <span className="flex-1 text-center text-[26px] font-bold text-neutral-800 dark:text-neutral-100">
-                {formatDayDate(date)}
-              </span>
-              <button
-                className={dateBtnClasses}
-                onClick={() => changeDay(1)}
-                disabled={isToday}
-              >
-                &#8594;
-              </button>
-            </div>
-            <div className="flex gap-2">
-              <button
-                className={`${dateChipBase} ${isYesterday ? dateChipSelected : dateChipOff}`}
-                onClick={() => setDate(yesterday())}
-              >
-                Yesterday
-              </button>
-              <button
-                className={`${dateChipBase} ${isToday ? dateChipSelected : dateChipOff}`}
-                onClick={() => setDate(dateOnly(new Date()))}
-              >
-                Today
-              </button>
-            </div>
+    <Dialog onDismiss={props.onClose} width="w-auto">
+      <div>
+        <div className="mb-3.5 w-full">
+          <div className="mb-2 flex items-center gap-2">
+            <button className={dateBtnClasses} onClick={() => changeDay(-1)}>
+              &#8592;
+            </button>
+            <span className="flex-1 text-center text-[26px] font-bold text-neutral-800 dark:text-neutral-100">
+              {formatDayDate(date)}
+            </span>
+            <button
+              className={dateBtnClasses}
+              onClick={() => changeDay(1)}
+              disabled={isToday}
+            >
+              &#8594;
+            </button>
           </div>
-          <table className="border-separate border-spacing-2.5">
-            <tbody>
-              <tr>
-                <th
-                  colSpan={3}
-                  className="rounded-[14px] bg-neutral-800 px-2.5 py-3.5 text-white"
-                >
-                  <div className="flex items-center justify-center gap-4">
-                    <div className="flex items-center text-[56px]">
-                      <span
-                        className={`${digitSpanBase} ${current(0) ? "border-accent" : ""}`}
-                      >
-                        {char(0)}
-                      </span>
-                      <span
-                        className={`${digitSpanBase} ${current(1) ? "border-accent" : ""}`}
-                      >
-                        {char(1)}
-                      </span>
-                      :
-                      <span
-                        className={`${digitSpanBase} ${current(2) ? "border-accent" : ""}`}
-                      >
-                        {char(2)}
-                      </span>
-                      <span
-                        className={`${digitSpanBase} ${current(3) ? "border-accent" : ""}`}
-                      >
-                        {char(3)}
-                      </span>
-                    </div>
-                    {isUnambiguous24Hour ? (
-                      <span className="rounded-lg bg-white px-2.5 py-2 text-sm font-bold tracking-wider text-neutral-800">
-                        24h
-                      </span>
-                    ) : (
-                      <div className="flex flex-col gap-1">
-                        <button
-                          className={`${ampmMiniBase} ${ampm === "AM" ? ampmMiniSelected : ampmMiniOff}`}
-                          onClick={() => setAmpm("AM")}
-                        >
-                          AM
-                        </button>
-                        <button
-                          className={`${ampmMiniBase} ${ampm === "PM" ? ampmMiniSelected : ampmMiniOff}`}
-                          onClick={() => setAmpm("PM")}
-                        >
-                          PM
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </th>
-              </tr>
-              <tr>
-                <td className="p-0">
-                  <button className={keyDigitBtn} onClick={() => button("1")}>
-                    1
-                  </button>
-                </td>
-                <td className="p-0">
-                  <button className={keyDigitBtn} onClick={() => button("2")}>
-                    2
-                  </button>
-                </td>
-                <td className="p-0">
-                  <button className={keyDigitBtn} onClick={() => button("3")}>
-                    3
-                  </button>
-                </td>
-              </tr>
-              <tr>
-                <td className="p-0">
-                  <button className={keyDigitBtn} onClick={() => button("4")}>
-                    4
-                  </button>
-                </td>
-                <td className="p-0">
-                  <button className={keyDigitBtn} onClick={() => button("5")}>
-                    5
-                  </button>
-                </td>
-                <td className="p-0">
-                  <button className={keyDigitBtn} onClick={() => button("6")}>
-                    6
-                  </button>
-                </td>
-              </tr>
-              <tr>
-                <td className="p-0">
-                  <button className={keyDigitBtn} onClick={() => button("7")}>
-                    7
-                  </button>
-                </td>
-                <td className="p-0">
-                  <button className={keyDigitBtn} onClick={() => button("8")}>
-                    8
-                  </button>
-                </td>
-                <td className="p-0">
-                  <button className={keyDigitBtn} onClick={() => button("9")}>
-                    9
-                  </button>
-                </td>
-              </tr>
-              <tr>
-                <td className="p-0">
-                  <button className={keyAuxBtn} onClick={props.onClose}>
-                    &times;
-                  </button>
-                </td>
-                <td className="p-0">
-                  <button className={keyDigitBtn} onClick={() => button("0")}>
-                    0
-                  </button>
-                </td>
-                <td className="p-0">
-                  <button className={keyAuxBtn} onClick={() => button("DEL")}>
-                    DEL
-                  </button>
-                </td>
-              </tr>
-              <tr>
-                <td colSpan={3} className="p-0">
-                  <button
-                    className={keyConfirmBtn}
-                    disabled={value.length < 4}
-                    onClick={confirm}
-                  >
-                    Confirm
-                  </button>
-                </td>
-              </tr>
-            </tbody>
-          </table>
+          <div className="flex gap-2">
+            <button
+              className={`${dateChipBase} ${isYesterday ? dateChipSelected : dateChipOff}`}
+              onClick={() => setDate(yesterday())}
+            >
+              Yesterday
+            </button>
+            <button
+              className={`${dateChipBase} ${isToday ? dateChipSelected : dateChipOff}`}
+              onClick={() => setDate(dateOnly(new Date()))}
+            >
+              Today
+            </button>
+          </div>
         </div>
+        <table className="border-separate border-spacing-2.5">
+          <tbody>
+            <tr>
+              <th
+                colSpan={3}
+                className="rounded-[14px] bg-neutral-800 px-2.5 py-3.5 text-white"
+              >
+                <div className="flex items-center justify-center gap-4">
+                  <div className="flex items-center text-[56px]">
+                    <span
+                      className={`${digitSpanBase} ${current(0) ? "border-accent" : ""}`}
+                    >
+                      {char(0)}
+                    </span>
+                    <span
+                      className={`${digitSpanBase} ${current(1) ? "border-accent" : ""}`}
+                    >
+                      {char(1)}
+                    </span>
+                    :
+                    <span
+                      className={`${digitSpanBase} ${current(2) ? "border-accent" : ""}`}
+                    >
+                      {char(2)}
+                    </span>
+                    <span
+                      className={`${digitSpanBase} ${current(3) ? "border-accent" : ""}`}
+                    >
+                      {char(3)}
+                    </span>
+                  </div>
+                  {isUnambiguous24Hour ? (
+                    <span className="rounded-lg bg-white px-2.5 py-2 text-sm font-bold tracking-wider text-neutral-800">
+                      24h
+                    </span>
+                  ) : (
+                    <div className="flex flex-col gap-1">
+                      <button
+                        className={`${ampmMiniBase} ${ampm === "AM" ? ampmMiniSelected : ampmMiniOff}`}
+                        onClick={() => setAmpm("AM")}
+                      >
+                        AM
+                      </button>
+                      <button
+                        className={`${ampmMiniBase} ${ampm === "PM" ? ampmMiniSelected : ampmMiniOff}`}
+                        onClick={() => setAmpm("PM")}
+                      >
+                        PM
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </th>
+            </tr>
+            <tr>
+              <td className="p-0">
+                <button className={keyDigitBtn} onClick={() => button("1")}>
+                  1
+                </button>
+              </td>
+              <td className="p-0">
+                <button className={keyDigitBtn} onClick={() => button("2")}>
+                  2
+                </button>
+              </td>
+              <td className="p-0">
+                <button className={keyDigitBtn} onClick={() => button("3")}>
+                  3
+                </button>
+              </td>
+            </tr>
+            <tr>
+              <td className="p-0">
+                <button className={keyDigitBtn} onClick={() => button("4")}>
+                  4
+                </button>
+              </td>
+              <td className="p-0">
+                <button className={keyDigitBtn} onClick={() => button("5")}>
+                  5
+                </button>
+              </td>
+              <td className="p-0">
+                <button className={keyDigitBtn} onClick={() => button("6")}>
+                  6
+                </button>
+              </td>
+            </tr>
+            <tr>
+              <td className="p-0">
+                <button className={keyDigitBtn} onClick={() => button("7")}>
+                  7
+                </button>
+              </td>
+              <td className="p-0">
+                <button className={keyDigitBtn} onClick={() => button("8")}>
+                  8
+                </button>
+              </td>
+              <td className="p-0">
+                <button className={keyDigitBtn} onClick={() => button("9")}>
+                  9
+                </button>
+              </td>
+            </tr>
+            <tr>
+              <td className="p-0">
+                <button className={keyAuxBtn} onClick={props.onClose}>
+                  &times;
+                </button>
+              </td>
+              <td className="p-0">
+                <button className={keyDigitBtn} onClick={() => button("0")}>
+                  0
+                </button>
+              </td>
+              <td className="p-0">
+                <button className={keyAuxBtn} onClick={() => button("DEL")}>
+                  DEL
+                </button>
+              </td>
+            </tr>
+            <tr>
+              <td colSpan={3} className="p-0">
+                <button
+                  className={keyConfirmBtn}
+                  disabled={value.length < 4}
+                  onClick={confirm}
+                >
+                  Confirm
+                </button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </div>
-    </div>
+    </Dialog>
   );
 }
 
@@ -333,7 +321,6 @@ export default function ScanModalDateTimeV2(props: {
   );
   const [initialAmPm, setInitialAmPm] = useState<AmPm>("AM");
   const [initialValue, setInitialValue] = useState<string>("");
-  const shouldShow = field !== null;
 
   function show(
     fieldName: string,
@@ -363,27 +350,19 @@ export default function ScanModalDateTimeV2(props: {
     }
   }
 
+  if (field === null) {
+    return null;
+  }
+
   return (
-    <>
-      <div
-        className="fixed inset-0 z-1 bg-black transition-opacity duration-500"
-        style={{
-          display: shouldShow ? "block" : "none",
-          opacity: shouldShow ? 0.5 : 0,
-        }}
-      ></div>
-      {field && (
-        <Inner
-          key={field}
-          show={shouldShow}
-          onSave={onSave}
-          onClose={onClose}
-          field={field}
-          initialDate={initialDate}
-          initialAmPm={initialAmPm}
-          initialValue={initialValue}
-        />
-      )}
-    </>
+    <Inner
+      key={field}
+      onSave={onSave}
+      onClose={onClose}
+      field={field}
+      initialDate={initialDate}
+      initialAmPm={initialAmPm}
+      initialValue={initialValue}
+    />
   );
 }
