@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<82e988edb36fda7e87bddd662b3ddce8>>
+ * @generated SignedSource<<2a26b2957d9705d2f7e91658ed9c37fe>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -19,8 +19,11 @@ export type SessionsListQuery$data = {
       readonly clientVersion: string | null | undefined;
       readonly code: string | null | undefined;
       readonly id: string;
+      readonly keyEnrolled: boolean;
+      readonly keyExpiresAt: number | null | undefined;
       readonly lastContact: number | null | undefined;
       readonly name: string;
+      readonly reactivatable: boolean;
     }>;
   };
 };
@@ -96,6 +99,27 @@ v2 = [
             "kind": "ScalarField",
             "name": "clientVersion",
             "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "keyEnrolled",
+            "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "keyExpiresAt",
+            "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "reactivatable",
+            "storageKey": null
           }
         ],
         "storageKey": null
@@ -122,16 +146,16 @@ return {
     "selections": (v2/*: any*/)
   },
   "params": {
-    "cacheID": "a60bba0303f421753c664298090e2ba2",
+    "cacheID": "db76e6680d7f01e34d571b1e787bc22e",
     "id": null,
     "metadata": {},
     "name": "SessionsListQuery",
     "operationKind": "query",
-    "text": "query SessionsListQuery(\n  $location: ID!\n) {\n  location(id: $location) {\n    id\n    sessions {\n      id\n      name\n      code\n      lastContact\n      clientVersion\n    }\n  }\n}\n"
+    "text": "query SessionsListQuery(\n  $location: ID!\n) {\n  location(id: $location) {\n    id\n    sessions {\n      id\n      name\n      code\n      lastContact\n      clientVersion\n      keyEnrolled\n      keyExpiresAt\n      reactivatable\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "e0d695d64d44a3095fc421311b2bde1a";
+(node as any).hash = "a1ab5ab5191310783a69003c775cf0ed";
 
 export default node;
