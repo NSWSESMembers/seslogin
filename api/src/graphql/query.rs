@@ -2576,6 +2576,39 @@ impl<A: App + HasDb + Send + Sync + 'static> Session<A> {
         Json(self.rec.config.clone())
     }
 
+    /// True for a kiosk set up through the QR / public-key flow, false for one set up
+    /// with a 6-digit code. Only the former can be reactivated once it expires.
+    async fn key_enrolled(&self) -> bool {
+        self.rec.key_fingerprint.is_some()
+    }
+
+    /// When this kiosk's enrolled key stops authenticating. Null for code-enrolled kiosks.
+    async fn key_expires_at(&self) -> Option<i64> {
+        self.rec.key_expires_at.map(|t| t as i64)
+    }
+
+    /// Whether `reactivateSession` would succeed right now: a QR-enrolled kiosk that has
+    /// expired *and* is currently switched on showing its enrollment QR screen. Drives the
+    /// Reactivate button in the admin kiosk list, so it is only offered when it will work.
+    async fn reactivatable(&self, ctx: &Context<'_>) -> Result<bool> {
+        let now = crate::clock::now_sec();
+        // Cheap checks first: only a lapsed key-enrolled kiosk costs a DB read.
+        let Some(fingerprint) = self.rec.key_fingerprint.as_deref() else {
+            return Ok(false);
+        };
+        if !self.rec.active || !crate::session_key::key_expired(self.rec.key_expires_at, now) {
+            return Ok(false);
+        }
+
+        let app = ctx.data_unchecked::<Arc<A>>();
+        let pending = app
+            .db()
+            .get_ephemeral_state(&crate::session_key::enroll_state_id(fingerprint))
+            .await?;
+        Ok(pending
+            .is_some_and(|s| s.kind == crate::session_key::ENROLL_STATE_KIND && s.expires_at > now))
+    }
+
     async fn created_at(&self) -> Option<i64> {
         self.rec.created_at.map(|t| t as i64)
     }

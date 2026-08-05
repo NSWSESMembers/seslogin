@@ -289,6 +289,12 @@ pub enum SessionUpdateShape<'a> {
         /// throttled `last_contact` refresh, so it costs no extra write.
         extend_key_expires_at: Option<u64>,
     },
+    /// Set `key_expires_at` outright (kiosk reactivation). Deliberately leaves
+    /// `last_contact` alone, so the admin status dot keeps telling the truth and the
+    /// throttle in `auth::touch_session` stays open for the kiosk's redeeming request.
+    ExtendKey {
+        expires_at: u64,
+    },
     Delete,
 }
 
