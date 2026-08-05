@@ -1,11 +1,13 @@
 import { useKioskSession } from "./useKioskSession";
 import TitleBarShell from "../../components/ui/TitleBarShell";
+import { useNonProdDb } from "../../lib/environmentInfo";
 
 export default function ScanTitleBar(props: {
   onCancelSignOut?: () => void;
   signingOutName?: string;
 }) {
   const session = useKioskSession();
+  const nonProdDb = useNonProdDb();
   const locationName = session?.location.name ?? "Unknown location";
   const sessionName = session?.name ?? "Unknown kiosk";
   const title = props.signingOutName
@@ -13,7 +15,7 @@ export default function ScanTitleBar(props: {
     : `${locationName} > ${sessionName}`;
 
   return (
-    <TitleBarShell>
+    <TitleBarShell nonProdDb={nonProdDb}>
       <span>{title}</span>
       {props.onCancelSignOut && (
         <button

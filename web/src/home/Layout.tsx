@@ -3,6 +3,7 @@ import { ErrorBoundary } from "react-error-boundary";
 import TopBar from "../admin/components/TopBar";
 import ClientVersionLabel from "../components/ClientVersionLabel";
 import PageErrorFallback from "../components/PageErrorFallback";
+import HomeEnvironmentProbe from "./HomeEnvironmentProbe";
 
 export default function Layout() {
   const location = useLocation();
@@ -12,6 +13,7 @@ export default function Layout() {
       key={location.pathname}
       FallbackComponent={PageErrorFallback}
     >
+      <HomeEnvironmentProbe />
       <TopBar username="" />
       <Outlet />
       <footer className="bg-surface-sunken p-2.5 text-xs text-ink-muted">

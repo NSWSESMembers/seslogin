@@ -32,6 +32,7 @@
   --color-submenu-active: #bf5a3b;
   --color-submenu-hover: #c66c51;
   --color-navy: #1f3d79; /* headings / segmented control */
+  --color-danger-env: #7f1d1d; /* chrome background when the API is on a non-prod DB */
 
   /* Semantic surface/text/line tokens. Light values match the previous
    * hard-coded colors, so light mode is unchanged; the dark values below flip
