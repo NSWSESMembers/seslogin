@@ -28,9 +28,11 @@ import { useKioskSession } from "./useKioskSession";
 import type { ScreenPosition } from "../../styles";
 import { isValidMemberIdText } from "../../lib/memberId";
 import { getServerErrorMessage } from "../../lib/relayErrors";
+import { useSuspendScanFocus } from "../lib/scanFocusLeases";
 
 const PURGE_EXPIRED_TRANSACTIONS_INTERVAL_MS = 1_000;
 const SCAN_TRANSACTION_LOG_LEASE_ID = "scan:transaction-log";
+const SCAN_SCREEN_FOCUS_LEASE_ID = "scan:screen";
 
 export default function ScanController(props: {
   onCancelSignOutChange?: (fn: (() => void) | null) => void;
@@ -267,6 +269,11 @@ export default function ScanController(props: {
   const categoriesPos: ScreenPosition = needsCategory ? "center" : "offRight";
   const adjustPos: ScreenPosition =
     !needsQuickPick && !needsCategory && needsAdjust ? "center" : "offRight";
+
+  // The main screen (and its still-mounted member ID input) is slid off to the
+  // side while quick pick / categories / adjust are up, so its refocus timer
+  // must not pull focus out of whatever is on screen.
+  useSuspendScanFocus(SCAN_SCREEN_FOCUS_LEASE_ID, mainPos !== "center");
 
   const onCancelSignOut = useCallback(() => {
     if (!transactionUuid) return;
