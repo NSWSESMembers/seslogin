@@ -1231,6 +1231,9 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
         name: String,
         enabled: bool,
         nitc_enabled: Option<i64>,
+        // Omitting nitc_complete_on_export leaves the location's current preference unchanged,
+        // so a client that doesn't know about the field can't silently reset it.
+        nitc_complete_on_export: Option<bool>,
     ) -> Result<Location<A>> {
         let nitc_enabled = nitc_enabled
             .and_then(|ts| u64::try_from(ts).ok())
@@ -1243,6 +1246,7 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
                     name: &name,
                     enabled,
                     nitc_enabled,
+                    nitc_complete_on_export,
                 },
             )
             .await?;
