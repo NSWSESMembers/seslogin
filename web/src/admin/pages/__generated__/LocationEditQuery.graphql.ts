@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<b530efff062b8f2985540b4d19fd74c2>>
+ * @generated SignedSource<<a7028e4a974f568077618911e777f304>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -17,6 +17,7 @@ export type LocationEditQuery$data = {
     readonly enabled: boolean;
     readonly id: string;
     readonly name: string;
+    readonly nitcCompleteOnExport: boolean;
     readonly nitcEnabled: number | null | undefined;
   };
 };
@@ -75,6 +76,13 @@ v1 = [
         "kind": "ScalarField",
         "name": "nitcEnabled",
         "storageKey": null
+      },
+      {
+        "alias": null,
+        "args": null,
+        "kind": "ScalarField",
+        "name": "nitcCompleteOnExport",
+        "storageKey": null
       }
     ],
     "storageKey": null
@@ -98,16 +106,16 @@ return {
     "selections": (v1/*: any*/)
   },
   "params": {
-    "cacheID": "d8474176f6cb8dd463207e59da472e44",
+    "cacheID": "87749f8fa79b951c8c81f66cf44465d6",
     "id": null,
     "metadata": {},
     "name": "LocationEditQuery",
     "operationKind": "query",
-    "text": "query LocationEditQuery(\n  $id: ID!\n) {\n  location(id: $id) {\n    id\n    name\n    enabled\n    nitcEnabled\n  }\n}\n"
+    "text": "query LocationEditQuery(\n  $id: ID!\n) {\n  location(id: $id) {\n    id\n    name\n    enabled\n    nitcEnabled\n    nitcCompleteOnExport\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "03ac8efb742dbf778d80e2057ee8f057";
+(node as any).hash = "7517eff8483ea210aa09b03221a23421";
 
 export default node;

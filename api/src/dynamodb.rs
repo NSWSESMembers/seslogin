@@ -203,6 +203,8 @@ impl TryInto<Location> for Item {
                     ts => ts,
                 },
             },
+            // Only stored when the location has opted out; absent means complete.
+            nitc_complete_on_export: self.bool_field("nitc_complete_on_export")?.unwrap_or(true),
             ses_api_headquarters_id,
             last_successful_member_sync: self
                 .i64_field("last_successful_member_sync")?
@@ -2581,6 +2583,8 @@ impl db::Handler for Handler {
             name: name.to_string(),
             enabled: true,
             nitc_enabled,
+            // Not stored on create — the attribute only appears if the location opts out.
+            nitc_complete_on_export: true,
             ses_api_headquarters_id: ses_api_headquarters_id.map(str::to_string),
             last_successful_member_sync: None,
             created_at: now,
@@ -2630,21 +2634,42 @@ impl db::Handler for Handler {
                 name,
                 enabled,
                 nitc_enabled,
-            } => base
-                .update_expression(
+                nitc_complete_on_export,
+            } => {
+                let mut update_expr = String::from(
                     "SET #name = :name, enabled = :enabled, nitc_enabled = :nitc_enabled, updated_at = :updated_at",
-                )
-                .expression_attribute_names("#name", "name")
-                .expression_attribute_values(":name", AttributeValue::S(name.to_string()))
-                .expression_attribute_values(":enabled", AttributeValue::Bool(enabled))
-                .expression_attribute_values(
-                    ":nitc_enabled",
-                    AttributeValue::N(nitc_enabled.unwrap_or(0).to_string()),
-                )
-                .expression_attribute_values(
-                    ":updated_at",
-                    AttributeValue::N(crate::clock::now_sec().to_string()),
-                ),
+                );
+                let mut req = base
+                    .expression_attribute_names("#name", "name")
+                    .expression_attribute_values(":name", AttributeValue::S(name.to_string()))
+                    .expression_attribute_values(":enabled", AttributeValue::Bool(enabled))
+                    .expression_attribute_values(
+                        ":nitc_enabled",
+                        AttributeValue::N(nitc_enabled.unwrap_or(0).to_string()),
+                    )
+                    .expression_attribute_values(
+                        ":updated_at",
+                        AttributeValue::N(crate::clock::now_sec().to_string()),
+                    );
+
+                // Completing on export is the default, so it is never stored: only the opt-out
+                // is written, and choosing the default removes the attribute again. `None`
+                // leaves whatever is there untouched.
+                match nitc_complete_on_export {
+                    Some(false) => {
+                        update_expr
+                            .push_str(", nitc_complete_on_export = :nitc_complete_on_export");
+                        req = req.expression_attribute_values(
+                            ":nitc_complete_on_export",
+                            AttributeValue::Bool(false),
+                        );
+                    }
+                    Some(true) => update_expr.push_str(" REMOVE nitc_complete_on_export"),
+                    None => {}
+                }
+
+                req.update_expression(update_expr)
+            }
             db::LocationUpdateShape::LastSyncTime { time } => base
                 .update_expression("SET last_successful_member_sync = :last_successful_member_sync")
                 .expression_attribute_values(

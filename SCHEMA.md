@@ -74,7 +74,8 @@ No GSIs. Locations are always fetched by ID or via a full-table Scan (the table 
 
 - `ses_api_headquarters_id` (S) — the HQ system ID; absent means not linked
 - `last_successful_member_sync` (N) — Unix timestamp
-- `nitc_enabled` (Bool)
+- `nitc_enabled` (N) — Unix timestamp NITC export starts from; `0`/absent means off (legacy rows may still hold a Bool, which reads as off)
+- `nitc_complete_on_export` (Bool) — only written as `false`, for locations that want their exported NITCs left incomplete in SES; absent (the default) means they are marked completed
 - `enabled` (Bool)
 
 ---

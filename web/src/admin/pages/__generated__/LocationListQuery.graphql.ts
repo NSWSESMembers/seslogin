@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<f7f9d0d7becb081d6f4023d930411704>>
+ * @generated SignedSource<<28a749f7572c3100e8b1a0cd2bab5cb0>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -104,6 +104,13 @@ return {
             "alias": null,
             "args": null,
             "kind": "ScalarField",
+            "name": "nitcCompleteOnExport",
+            "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
             "name": "lastSuccessfulMemberSync",
             "storageKey": null
           }
@@ -113,12 +120,12 @@ return {
     ]
   },
   "params": {
-    "cacheID": "077f54c7fdd5f3b16e8ccff3a65cd2e8",
+    "cacheID": "c33e467ae1eea1ad325cb771b79208dc",
     "id": null,
     "metadata": {},
     "name": "LocationListQuery",
     "operationKind": "query",
-    "text": "query LocationListQuery {\n  locations {\n    id\n    name\n    enabled\n    ...LocationList_item\n  }\n}\n\nfragment LocationList_item on Location {\n  id\n  name\n  enabled\n  nitcEnabled\n  lastSuccessfulMemberSync\n}\n"
+    "text": "query LocationListQuery {\n  locations {\n    id\n    name\n    enabled\n    ...LocationList_item\n  }\n}\n\nfragment LocationList_item on Location {\n  id\n  name\n  enabled\n  nitcEnabled\n  nitcCompleteOnExport\n  lastSuccessfulMemberSync\n}\n"
   }
 };
 })();
