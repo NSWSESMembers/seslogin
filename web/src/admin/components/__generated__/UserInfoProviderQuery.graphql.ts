@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<8de70c1aeb327196212794dbb73b80a9>>
+ * @generated SignedSource<<92a6f86593b7c227839656832772a871>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -11,6 +11,10 @@
 import { ConcreteRequest } from 'relay-runtime';
 export type UserInfoProviderQuery$variables = Record<PropertyKey, never>;
 export type UserInfoProviderQuery$data = {
+  readonly environment: {
+    readonly gitRev: string;
+    readonly isProdDb: boolean;
+  };
   readonly user: {
     readonly disaggregateVirtualPeriods: boolean;
     readonly email: string;
@@ -103,6 +107,31 @@ v1 = [
       }
     ],
     "storageKey": null
+  },
+  {
+    "alias": null,
+    "args": null,
+    "concreteType": "Environment",
+    "kind": "LinkedField",
+    "name": "environment",
+    "plural": false,
+    "selections": [
+      {
+        "alias": null,
+        "args": null,
+        "kind": "ScalarField",
+        "name": "gitRev",
+        "storageKey": null
+      },
+      {
+        "alias": null,
+        "args": null,
+        "kind": "ScalarField",
+        "name": "isProdDb",
+        "storageKey": null
+      }
+    ],
+    "storageKey": null
   }
 ];
 return {
@@ -123,16 +152,16 @@ return {
     "selections": (v1/*: any*/)
   },
   "params": {
-    "cacheID": "d245a7590ce0fc5b8310ba5dc5b0a375",
+    "cacheID": "c6254fef8bfd515f436642705babab0f",
     "id": null,
     "metadata": {},
     "name": "UserInfoProviderQuery",
     "operationKind": "query",
-    "text": "query UserInfoProviderQuery {\n  user {\n    id\n    email\n    isSuper\n    isDev\n    disaggregateVirtualPeriods\n    locations {\n      id\n      name\n      enabled\n    }\n  }\n}\n"
+    "text": "query UserInfoProviderQuery {\n  user {\n    id\n    email\n    isSuper\n    isDev\n    disaggregateVirtualPeriods\n    locations {\n      id\n      name\n      enabled\n    }\n  }\n  environment {\n    gitRev\n    isProdDb\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "2ffc8a6965296feeece5ca1281649f6a";
+(node as any).hash = "18aa539902272228a5eb11fc1f4a5962";
 
 export default node;

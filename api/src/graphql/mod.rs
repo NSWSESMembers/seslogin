@@ -21,7 +21,7 @@ pub mod query;
 
 pub use self::mutations::MutationRoot;
 pub use self::query::{
-    ApiToken, Category, CategoryMemberPeriodSummary, CategoryPeriodSummary, Location,
+    ApiToken, Category, CategoryMemberPeriodSummary, CategoryPeriodSummary, Environment, Location,
     MemberCategoryPeriodSummary, MemberPeriodSummary, NitcExportStatus, NitcGroup, PasskeyInfo,
     Period, Person, QueryRoot, Session, User,
 };

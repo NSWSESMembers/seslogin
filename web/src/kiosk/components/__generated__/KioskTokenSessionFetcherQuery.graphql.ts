@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<194484e1dc00f6ef8294a3090a61954d>>
+ * @generated SignedSource<<0b05d8273d8a54c24bc14a9babceb48c>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -11,6 +11,10 @@
 import { ConcreteRequest } from 'relay-runtime';
 export type KioskTokenSessionFetcherQuery$variables = Record<PropertyKey, never>;
 export type KioskTokenSessionFetcherQuery$data = {
+  readonly environment: {
+    readonly gitRev: string;
+    readonly isProdDb: boolean;
+  };
   readonly refresh_token: string;
   readonly session: {
     readonly config: any;
@@ -82,6 +86,31 @@ v2 = [
       }
     ],
     "storageKey": null
+  },
+  {
+    "alias": null,
+    "args": null,
+    "concreteType": "Environment",
+    "kind": "LinkedField",
+    "name": "environment",
+    "plural": false,
+    "selections": [
+      {
+        "alias": null,
+        "args": null,
+        "kind": "ScalarField",
+        "name": "gitRev",
+        "storageKey": null
+      },
+      {
+        "alias": null,
+        "args": null,
+        "kind": "ScalarField",
+        "name": "isProdDb",
+        "storageKey": null
+      }
+    ],
+    "storageKey": null
   }
 ];
 return {
@@ -102,16 +131,16 @@ return {
     "selections": (v2/*: any*/)
   },
   "params": {
-    "cacheID": "204b0d5e568541166a5e28dcd48eb4aa",
+    "cacheID": "c27de6a419b7d6e05c08bfd8742a6060",
     "id": null,
     "metadata": {},
     "name": "KioskTokenSessionFetcherQuery",
     "operationKind": "query",
-    "text": "query KioskTokenSessionFetcherQuery {\n  refresh_token: refreshToken\n  session {\n    id\n    name\n    config\n    location {\n      id\n      name\n    }\n  }\n}\n"
+    "text": "query KioskTokenSessionFetcherQuery {\n  refresh_token: refreshToken\n  session {\n    id\n    name\n    config\n    location {\n      id\n      name\n    }\n  }\n  environment {\n    gitRev\n    isProdDb\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "28bbd044c6bf003381fc547d57d33d11";
+(node as any).hash = "29b866ea7eddf1cd570d7e71f8b7a730";
 
 export default node;

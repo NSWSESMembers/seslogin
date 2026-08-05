@@ -74,6 +74,20 @@ type DayMemberPeriodSummary {
 }
 
 """
+Build and deployment information about the API server.
+"""
+type Environment {
+	"""
+	Git commit the API server was built from, or "dev" for local builds.
+	"""
+	gitRev: String!
+	"""
+	Whether the server is using the production database tables.
+	"""
+	isProdDb: Boolean!
+}
+
+"""
 A scalar that can represent any JSON value.
 """
 scalar JSON
@@ -458,6 +472,16 @@ type PersonRef {
 }
 
 type QueryRoot {
+	"""
+	Build and deployment information about this API server.
+	
+	Deliberately unauthenticated — the only root field that is. The home page is
+	public and has no credentials to query with, but still needs to warn operators
+	when the server is pointed at a non-production database. Both values are safe to
+	expose: the repository is public, and `isProdDb` is a boolean rather than the raw
+	`DB_PREFIX`.
+	"""
+	environment: Environment!
 	user(
 		"""
 		ID for the user to look up
