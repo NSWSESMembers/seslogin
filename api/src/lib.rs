@@ -4,7 +4,6 @@ pub mod auth;
 pub mod clock;
 pub mod db;
 pub mod dynamodb;
-pub mod emf;
 pub mod expire;
 pub mod graphql;
 pub mod jwt;
@@ -19,6 +18,7 @@ pub mod request_metrics;
 pub mod ses_api;
 pub mod session_key;
 pub mod sqs_dispatch;
+pub mod telemetry;
 pub mod turnstile;
 
 /// Load local `.env`/`.env.secret` for CLI / dev binaries. The Lambda binaries
