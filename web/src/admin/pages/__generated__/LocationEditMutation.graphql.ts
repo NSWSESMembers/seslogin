@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<4df7d1e80d419f82ab10e4f47141a02f>>
+ * @generated SignedSource<<0a9c4d06083ac185854a67cc2072352b>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -13,6 +13,7 @@ export type LocationEditMutation$variables = {
   enabled: boolean;
   id: string;
   name: string;
+  nitcCompleteOnExport?: boolean | null | undefined;
   nitcEnabled?: number | null | undefined;
 };
 export type LocationEditMutation$data = {
@@ -20,6 +21,7 @@ export type LocationEditMutation$data = {
     readonly enabled: boolean;
     readonly id: string;
     readonly name: string;
+    readonly nitcCompleteOnExport: boolean;
     readonly nitcEnabled: number | null | undefined;
   };
 };
@@ -47,9 +49,14 @@ v2 = {
 v3 = {
   "defaultValue": null,
   "kind": "LocalArgument",
+  "name": "nitcCompleteOnExport"
+},
+v4 = {
+  "defaultValue": null,
+  "kind": "LocalArgument",
   "name": "nitcEnabled"
 },
-v4 = [
+v5 = [
   {
     "alias": null,
     "args": [
@@ -67,6 +74,11 @@ v4 = [
         "kind": "Variable",
         "name": "name",
         "variableName": "name"
+      },
+      {
+        "kind": "Variable",
+        "name": "nitcCompleteOnExport",
+        "variableName": "nitcCompleteOnExport"
       },
       {
         "kind": "Variable",
@@ -106,6 +118,13 @@ v4 = [
         "kind": "ScalarField",
         "name": "nitcEnabled",
         "storageKey": null
+      },
+      {
+        "alias": null,
+        "args": null,
+        "kind": "ScalarField",
+        "name": "nitcCompleteOnExport",
+        "storageKey": null
       }
     ],
     "storageKey": null
@@ -117,12 +136,13 @@ return {
       (v0/*: any*/),
       (v1/*: any*/),
       (v2/*: any*/),
-      (v3/*: any*/)
+      (v3/*: any*/),
+      (v4/*: any*/)
     ],
     "kind": "Fragment",
     "metadata": null,
     "name": "LocationEditMutation",
-    "selections": (v4/*: any*/),
+    "selections": (v5/*: any*/),
     "type": "MutationRoot",
     "abstractKey": null
   },
@@ -132,23 +152,24 @@ return {
       (v1/*: any*/),
       (v2/*: any*/),
       (v0/*: any*/),
+      (v4/*: any*/),
       (v3/*: any*/)
     ],
     "kind": "Operation",
     "name": "LocationEditMutation",
-    "selections": (v4/*: any*/)
+    "selections": (v5/*: any*/)
   },
   "params": {
-    "cacheID": "821a77c0e39cc681eb80d76c8d2b8172",
+    "cacheID": "ae452a62945900435b3905298154fb6f",
     "id": null,
     "metadata": {},
     "name": "LocationEditMutation",
     "operationKind": "mutation",
-    "text": "mutation LocationEditMutation(\n  $id: ID!\n  $name: String!\n  $enabled: Boolean!\n  $nitcEnabled: Int\n) {\n  updateLocation(id: $id, name: $name, enabled: $enabled, nitcEnabled: $nitcEnabled) {\n    id\n    name\n    enabled\n    nitcEnabled\n  }\n}\n"
+    "text": "mutation LocationEditMutation(\n  $id: ID!\n  $name: String!\n  $enabled: Boolean!\n  $nitcEnabled: Int\n  $nitcCompleteOnExport: Boolean\n) {\n  updateLocation(id: $id, name: $name, enabled: $enabled, nitcEnabled: $nitcEnabled, nitcCompleteOnExport: $nitcCompleteOnExport) {\n    id\n    name\n    enabled\n    nitcEnabled\n    nitcCompleteOnExport\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "868af79946c11959988de9c99d4975f6";
+(node as any).hash = "e853a0d2fce53648f02872836615bee8";
 
 export default node;

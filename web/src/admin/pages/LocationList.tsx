@@ -34,6 +34,7 @@ function Row(props: {
         name
         enabled
         nitcEnabled
+        nitcCompleteOnExport
         lastSuccessfulMemberSync
       }
     `,
@@ -132,9 +133,16 @@ function Row(props: {
       </Td>
       <Td nowrap>{lastSync}</Td>
       <Td>
-        {location.nitcEnabled
-          ? new Date(location.nitcEnabled * 1000).toISOString().slice(0, 10)
-          : ""}
+        {location.nitcEnabled ? (
+          <>
+            {new Date(location.nitcEnabled * 1000).toISOString().slice(0, 10)}
+            {!location.nitcCompleteOnExport && (
+              <div className="text-xs text-ink-muted">left incomplete</div>
+            )}
+          </>
+        ) : (
+          ""
+        )}
       </Td>
       <Td options>
         <div className="flex justify-end gap-1">

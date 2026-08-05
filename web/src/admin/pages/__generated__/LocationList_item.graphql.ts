@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<0cec14b6903f73568a4edf1499f27901>>
+ * @generated SignedSource<<59318e7f41adcce378477e13683a586d>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -15,6 +15,7 @@ export type LocationList_item$data = {
   readonly id: string;
   readonly lastSuccessfulMemberSync: number | null | undefined;
   readonly name: string;
+  readonly nitcCompleteOnExport: boolean;
   readonly nitcEnabled: number | null | undefined;
   readonly " $fragmentType": "LocationList_item";
 };
@@ -61,6 +62,13 @@ const node: ReaderFragment = {
       "alias": null,
       "args": null,
       "kind": "ScalarField",
+      "name": "nitcCompleteOnExport",
+      "storageKey": null
+    },
+    {
+      "alias": null,
+      "args": null,
+      "kind": "ScalarField",
       "name": "lastSuccessfulMemberSync",
       "storageKey": null
     }
@@ -69,6 +77,6 @@ const node: ReaderFragment = {
   "abstractKey": null
 };
 
-(node as any).hash = "8fb382df3874c6835737c80365ec3d5e";
+(node as any).hash = "a0d40c8441c0fbc9a538596b75915e17";
 
 export default node;

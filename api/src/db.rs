@@ -261,6 +261,8 @@ pub enum LocationUpdateShape<'a> {
         name: &'a str,
         enabled: bool,
         nitc_enabled: Option<u64>,
+        /// `None` leaves the current preference untouched.
+        nitc_complete_on_export: Option<bool>,
     },
     LastSyncTime {
         time: u64,
@@ -389,6 +391,9 @@ pub struct Location {
     pub name: String,
     pub enabled: bool,
     pub nitc_enabled: Option<u64>,
+    /// Whether exported NITC events are marked completed in SES. Defaults to true; locations
+    /// that want to finish their NITCs themselves opt out.
+    pub nitc_complete_on_export: bool,
     pub ses_api_headquarters_id: Option<String>,
     pub last_successful_member_sync: Option<u64>,
     pub created_at: u64,
