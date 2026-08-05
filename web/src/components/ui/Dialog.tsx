@@ -1,20 +1,24 @@
 import type { ReactNode } from "react";
 
-// Centred modal dialog over a dimmed backdrop. Clicking the backdrop calls
-// onDismiss (omit it to make the dialog non-dismissable).
+// Centred modal dialog over a dimmed backdrop, both fading in on mount.
+// Clicking the backdrop calls onDismiss (omit it to make the dialog
+// non-dismissable). `width` overrides the default panel width — pass a width
+// utility rather than putting one in `className`, since two width classes in
+// one string resolve by stylesheet order, not prop order.
 export function Dialog(props: {
   onDismiss?: () => void;
+  width?: string;
   className?: string;
   children: ReactNode;
 }) {
   return (
     <div className="fixed inset-0 z-10 flex items-center justify-center">
       <div
-        className="absolute inset-0 bg-black opacity-50"
+        className="absolute inset-0 animate-fade-in bg-black/50 motion-reduce:animate-none"
         onClick={props.onDismiss}
       ></div>
       <div
-        className={`relative z-10 flex w-150 max-w-[90vw] flex-col gap-4 rounded-xl bg-surface p-6 shadow-2xl ${props.className ?? ""}`}
+        className={`relative z-10 flex ${props.width ?? "w-150"} max-w-[90vw] animate-dialog-in flex-col gap-4 rounded-xl bg-surface p-6 shadow-2xl motion-reduce:animate-none ${props.className ?? ""}`}
       >
         {props.children}
       </div>
