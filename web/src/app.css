@@ -45,6 +45,25 @@
   --color-line: #d4d4d4; /* default borders (was neutral-300) */
   --color-line-strong: #a3a3a3; /* emphasised borders (was neutral-400) */
   --color-line-faint: #e8e8e8; /* faint dividers (was neutral-100/200) */
+
+  /* Dialog entrance (see components/ui/Dialog.tsx). These are animations rather
+   * than transitions on purpose: a dialog is mounted on open, so there is no
+   * rendered starting style for a transition to run from and it would snap. */
+  --animate-fade-in: fade-in 200ms ease-out;
+  --animate-dialog-in: dialog-in 150ms ease-out;
+
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+  }
+
+  @keyframes dialog-in {
+    from {
+      opacity: 0;
+      transform: scale(0.97);
+    }
+  }
 }
 
 /* Dark palette. Duplicated across the OS-preference media query and the
