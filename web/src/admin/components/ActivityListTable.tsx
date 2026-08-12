@@ -4,6 +4,10 @@ import { graphql, readInlineData } from "relay-runtime";
 import { useMutation } from "react-relay";
 import type { ActivityListTableDeleteMutation } from "./__generated__/ActivityListTableDeleteMutation.graphql";
 import type {
+  ActivityListTableRemindMutation,
+  ActivityListTableRemindMutation$data,
+} from "./__generated__/ActivityListTableRemindMutation.graphql";
+import type {
   ActivityListTable_period$data,
   ActivityListTable_period$key,
 } from "./__generated__/ActivityListTable_period.graphql";
@@ -133,6 +137,33 @@ function Row<T extends ActivityListTable_period$key>({
         deletePeriod(id: $id)
       }
     `);
+  const [commitRemind, isRemindInFlight] =
+    useMutation<ActivityListTableRemindMutation>(graphql`
+      mutation ActivityListTableRemindMutation($id: ID!) {
+        sendPeriodEditLink(id: $id)
+      }
+    `);
+
+  async function sendReminder() {
+    const yes = confirm(
+      `Email ${getRowLabel(entry.ref)} a link to check and correct this time entry?`,
+    );
+    if (!yes) return;
+    try {
+      const result = await new Promise<ActivityListTableRemindMutation$data>(
+        (resolve, reject) => {
+          commitRemind({
+            variables: { id: period.id },
+            onCompleted: resolve,
+            onError: reject,
+          });
+        },
+      );
+      notifySuccess(`Reminder sent to ${result.sendPeriodEditLink}`);
+    } catch (err) {
+      notifyError(err, "Couldn't send the reminder");
+    }
+  }
 
   async function deletePeriod() {
     const yes = confirm(
@@ -233,6 +264,18 @@ function Row<T extends ActivityListTable_period$key>({
             <ButtonLink size="row" to={`/admin/activity/${period.id}`}>
               Edit
             </ButtonLink>
+          )}
+          {/* Still being trialled, so dev-tagged users only. The guest check is
+              the same as Edit's: a guest has no member record to email. */}
+          {isDev && period.personId != null && (
+            <Button
+              size="row"
+              onClick={sendReminder}
+              disabled={isRemindInFlight}
+              title="Email this member a link to check and correct their time entry"
+            >
+              {isRemindInFlight ? "Sending…" : "Remind"} [dev-only]
+            </Button>
           )}
           <Button
             size="row"
