@@ -294,6 +294,62 @@ resource "aws_iam_role_policy" "scheduler_invoke_activity_summary" {
   })
 }
 
+# ── Open period notice lambda role ─────────────────────────────────────────────
+
+resource "aws_iam_role" "open_period_notice_lambda" {
+  name               = "seslogin-open-period-notice-lambda-role"
+  assume_role_policy = data.aws_iam_policy_document.lambda_assume_role.json
+}
+
+resource "aws_iam_role_policy_attachment" "open_period_notice_lambda_logs" {
+  role       = aws_iam_role.open_period_notice_lambda.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+}
+
+resource "aws_iam_role_policy" "open_period_notice_lambda_ses" {
+  name = "ses-send"
+  role = aws_iam_role.open_period_notice_lambda.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["ses:SendEmail", "ses:SendRawEmail"]
+      Resource = "*"
+    }]
+  })
+}
+
+# For the circuit breaker: an implausible number of open periods means something
+# is broken org-wide, and that has to reach a human rather than just a log line.
+resource "aws_iam_role_policy" "open_period_notice_lambda_sns" {
+  name = "sns-publish"
+  role = aws_iam_role.open_period_notice_lambda.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["sns:Publish"]
+      Resource = aws_sns_topic.member_sync_alerts.arn
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "scheduler_invoke_open_period_notice" {
+  name = "invoke-open-period-notice"
+  role = aws_iam_role.scheduler.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["lambda:InvokeFunction"]
+      Resource = aws_lambda_function.open_period_notice.arn
+    }]
+  })
+}
+
 # ── Sync locations lambda role ─────────────────────────────────────────────────
 
 resource "aws_iam_role" "sync_locations_lambda" {
