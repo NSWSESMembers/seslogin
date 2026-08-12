@@ -602,6 +602,23 @@ resource "aws_iam_role_policy" "checker_lambda_dynamodb" {
   })
 }
 
+resource "aws_iam_role_policy" "open_period_notice_lambda_dynamodb" {
+  name = "dynamodb-access"
+  role = aws_iam_role.open_period_notice_lambda.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Action = local.dynamodb_actions
+      Resource = [
+        "arn:aws:dynamodb:${local.region}:${local.account_id}:table/${var.db_prefix}*",
+        "arn:aws:dynamodb:${local.region}:${local.account_id}:table/${var.db_prefix}*/index/*",
+      ]
+    }]
+  })
+}
+
 resource "aws_iam_role_policy" "nitc_export_lambda_dynamodb" {
   name = "dynamodb-access"
   role = aws_iam_role.nitc_export_lambda.id

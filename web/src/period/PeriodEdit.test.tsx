@@ -196,6 +196,87 @@ describe("PeriodEdit", () => {
     expect(screen.queryByText("Thank you")).not.toBeInTheDocument();
   });
 
+  // An entry with no end time is someone who forgot to sign out. The page has to
+  // ask for the missing finish time rather than inviting a review of times that
+  // aren't there — and the confirmation has to match how they arrived, even
+  // though the entry is complete by the time they see it.
+  describe("when the entry was never signed out", () => {
+    const OPEN_PERIOD_RESPONSE = {
+      data: {
+        ...PERIOD_RESPONSE.data,
+        linkedPeriod: { ...PERIOD_RESPONSE.data.linkedPeriod, endTime: null },
+      },
+    };
+
+    function serveOpenPeriod() {
+      server.use(
+        relayEndpoint.query("PeriodEditFormQuery", () =>
+          HttpResponse.json(OPEN_PERIOD_RESPONSE),
+        ),
+      );
+    }
+
+    it("asks for the finish time instead of a review", async () => {
+      serveOpenPeriod();
+      renderAt(`/period#${TOKEN}`);
+
+      expect(
+        await screen.findByText("You didn't sign out"),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(/won't count towards your hours/i),
+      ).toBeInTheDocument();
+      // The end field is the ask, so it is labelled as a question and starts empty.
+      const end = screen.getByLabelText<HTMLInputElement>(
+        "What time did you finish?",
+      );
+      expect(end.value).toBe("");
+      expect(
+        screen.getByRole("button", { name: "Save finish time" }),
+      ).toBeInTheDocument();
+      // The complete-case wording must not leak through.
+      expect(
+        screen.queryByText("Check your time entry"),
+      ).not.toBeInTheDocument();
+    });
+
+    it("confirms the finish time was recorded", async () => {
+      serveOpenPeriod();
+      server.use(
+        relayEndpoint.mutation("PeriodEditFormMutation", (req) =>
+          HttpResponse.json({
+            data: {
+              updatePeriodTimeCategory: {
+                id: "period-123",
+                startTime: req.variables.startTime,
+                endTime: req.variables.endTime,
+                category: { id: "cat-training", name: "Training" },
+              },
+            },
+          }),
+        ),
+      );
+
+      const user = UserEvent.setup();
+      renderAt(`/period#${TOKEN}`);
+
+      const end = await screen.findByLabelText("What time did you finish?");
+      await user.type(end, "2026-03-04T12:00");
+      await user.click(
+        screen.getByRole("button", { name: "Save finish time" }),
+      );
+
+      expect(
+        await screen.findByText(/your finish time has been recorded/i),
+      ).toBeInTheDocument();
+      // Not the complete-case confirmation, even though the entry now has both
+      // times — the variant is fixed at load, not derived from what was saved.
+      expect(
+        screen.queryByText(/your time entry has been updated/i),
+      ).not.toBeInTheDocument();
+    });
+  });
+
   it("shows an expiry message when the token is rejected", async () => {
     server.use(
       relayEndpoint.query("PeriodEditFormQuery", () =>

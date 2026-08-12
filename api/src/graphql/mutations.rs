@@ -875,6 +875,116 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
         Ok(Period::new(period))
     }
 
+    /// Email the member a reminder to check one of their time entries, with a
+    /// short-lived link that lets them correct it themselves.
+    ///
+    /// Issues a fresh `slp_` token each time, so a member who lost or expired an
+    /// earlier link just needs another press. Returns the address it was sent to
+    /// (useful confirmation for the admin who pressed the button).
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    async fn send_period_edit_link(&self, ctx: &Context<'_>, id: ID) -> Result<String> {
+        require_writable(ctx)?;
+        let period = self
+            .app
+            .db()
+            .get_periods(&[&id])
+            .await?
+            .into_iter()
+            .next()
+            .flatten()
+            .ok_or_else(|| anyhow!("Period with ID {:?} missing", id))?;
+        require_location_access(ctx, &period.location_id)?;
+        // Checked before anything else costly, and before a token is minted, so a
+        // rejected press leaves no trace.
+        crate::period_link::check_reminder_cooldown(self.app.db(), &id).await?;
+
+        let Some(person_id) = period.person_id.clone() else {
+            return Err(anyhow!(
+                "This entry belongs to a guest, who has no member record to email"
+            ));
+        };
+        let person = self
+            .app
+            .db()
+            .get_persons(&[&person_id])
+            .await?
+            .into_iter()
+            .next()
+            .flatten()
+            .ok_or_else(|| anyhow!("Person with ID {person_id} missing"))?;
+        let email = person
+            .email
+            .as_deref()
+            .map(str::trim)
+            .filter(|e| !e.is_empty())
+            .ok_or_else(|| {
+                anyhow!(
+                    "{} {} has no email address on record",
+                    person.first_name,
+                    person.last_name
+                )
+            })?
+            .to_string();
+
+        let location = self
+            .app
+            .db()
+            .get_locations(&[&period.location_id])
+            .await?
+            .into_iter()
+            .next()
+            .flatten();
+        let location_name = location
+            .as_ref()
+            .map(|l| l.name.as_str())
+            .unwrap_or("your unit");
+
+        let category = match &period.category_id {
+            Some(category_id) => self
+                .app
+                .db()
+                .get_categories(&[category_id])
+                .await?
+                .into_iter()
+                .next()
+                .flatten(),
+            None => None,
+        };
+
+        let token = crate::period_link::issue_period_link_token(self.app.db(), &id).await?;
+        let url = crate::period_link::edit_link_url(&token);
+        // Shared with the automated open-period notice, so an admin pressing
+        // Remind on an open entry sends exactly the same wording the job would.
+        let email_content = crate::period_email::PeriodEmail {
+            first_name: &person.first_name,
+            location_name,
+            category_name: category.as_ref().map(|c| c.name.as_str()),
+            start_time: period.start_time,
+            end_time: period.end_time,
+            url: &url,
+        };
+        let subject = crate::period_email::subject(period.end_time);
+        let body = crate::period_email::build(&email_content, crate::clock::now_sec());
+
+        info!(period_id = %id.as_str(), "Sending period edit link to {}", email);
+        crate::mail::send_plain_text(&email, subject, &body)
+            .await
+            .map_err(|e| anyhow!("Couldn't send the email: {e:#}"))?;
+
+        // The email has already gone, so a failure to stamp the cooldown must not
+        // fail the mutation — that would tell the admin it didn't send and invite a
+        // second one. Worst case the cooldown doesn't apply to this send.
+        if let Err(e) = crate::period_link::record_reminder_sent(self.app.db(), &id).await {
+            warn!(
+                "Failed to record reminder cooldown for period {}: {:#}",
+                id.as_str(),
+                e
+            );
+        }
+
+        Ok(email)
+    }
+
     #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
     async fn delete_period(&self, ctx: &Context<'_>, id: ID) -> Result<bool> {
         require_writable(ctx)?;
@@ -2121,4 +2231,7 @@ mod tests {
             assert!(validate_link_edit_duration(0, 365 * 24 * 3600).is_err());
         }
     }
+
+    // The period email wording moved to `crate::period_email`, which owns both the
+    // complete and incomplete copy sets and their tests.
 }
