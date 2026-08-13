@@ -614,6 +614,11 @@ type Session {
 	id: ID!
 	lastContact: Int
 	clientVersion: String
+	"""
+	Unix seconds after which this kiosk's enrolled key stops authenticating.
+	Null for sessions that have never enrolled a key.
+	"""
+	keyExpiresAt: Int
 	name: String!
 	locationId: ID!
 	location: Location!

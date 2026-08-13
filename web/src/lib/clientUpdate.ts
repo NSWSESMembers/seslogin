@@ -7,6 +7,18 @@ import {
 const VERSION_META_NAME = "seslogin-client-version";
 const POLL_INTERVAL_MS = 60_000;
 
+export type ClientUpdateState = {
+  /** A newer deployed version we have seen but not yet reloaded into. */
+  pendingVersion: string | null;
+};
+
+let updateState: ClientUpdateState = { pendingVersion: null };
+
+/** Snapshot of the update poller's state, for diagnostics displays. */
+export function getClientUpdateState(): ClientUpdateState {
+  return updateState;
+}
+
 function getVersionFromHtml(html: string): string | null {
   const escapedName = VERSION_META_NAME.replace(
     /[-/\\^$*+?.()|[\]{}]/g,
@@ -52,11 +64,11 @@ export function startClientUpdatePolling(): () => void {
     return () => {};
   }
 
-  let pendingVersion: string | null = null;
   let disposed = false;
   let lastDeferredLeaseSignature: string | null = null;
 
   const tryReload = () => {
+    const pendingVersion = updateState.pendingVersion;
     if (disposed || pendingVersion == null) {
       return;
     }
@@ -96,8 +108,8 @@ export function startClientUpdatePolling(): () => void {
       if (!deployedVersion || deployedVersion === currentVersion) {
         return;
       }
-      if (pendingVersion !== deployedVersion) {
-        pendingVersion = deployedVersion;
+      if (updateState.pendingVersion !== deployedVersion) {
+        updateState = { pendingVersion: deployedVersion };
         console.info("Update available", currentVersion, "->", deployedVersion);
       }
       tryReload();
@@ -118,6 +130,7 @@ export function startClientUpdatePolling(): () => void {
 
   return () => {
     disposed = true;
+    updateState = { pendingVersion: null };
     window.clearInterval(intervalId);
     unsubscribeLeases();
   };

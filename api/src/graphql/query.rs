@@ -2559,6 +2559,12 @@ impl<A: App + HasDb + Send + Sync + 'static> Session<A> {
         self.rec.client_version.as_deref()
     }
 
+    /// Unix seconds after which this kiosk's enrolled key stops authenticating.
+    /// Null for sessions that have never enrolled a key.
+    async fn key_expires_at(&self) -> Option<i64> {
+        self.rec.key_expires_at.map(|ts| ts as i64)
+    }
+
     async fn name(&self) -> &String {
         &self.rec.name
     }
