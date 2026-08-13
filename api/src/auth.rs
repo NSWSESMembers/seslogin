@@ -116,17 +116,47 @@ pub async fn resolve_dev_auth<A: App + HasDb>(
     }
 }
 
+/// What kind of caller made a request, used as a telemetry/logging dimension.
+///
+/// The string forms are a stable log contract: CloudWatch Logs Insights queries and metric
+/// filters match on them, so renaming a variant's string changes what those queries return.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum CallerType {
+    User,
+    Session,
+    ApiToken,
+    PeriodLink,
+    #[default]
+    Unauthenticated,
+}
+
+impl CallerType {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::User => "user",
+            Self::Session => "session",
+            Self::ApiToken => "api_token",
+            Self::PeriodLink => "period_link",
+            Self::Unauthenticated => "unauthenticated",
+        }
+    }
+}
+
+impl std::fmt::Display for CallerType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
 /// Maps an optional [`AuthInfo`] to `(caller_type, caller_id)` for telemetry/logging.
-/// `caller_type` is one of "user", "session", "api_token", "period_link", or
-/// "unauthenticated".
-pub fn caller_info(auth: Option<&AuthInfo>) -> (&'static str, String) {
+pub fn caller_info(auth: Option<&AuthInfo>) -> (CallerType, String) {
     match auth {
-        None => ("unauthenticated", "unknown".to_owned()),
-        Some(AuthInfo::User { id, .. }) => ("user", id.clone()),
-        Some(AuthInfo::Session { id, .. }) => ("session", id.clone()),
-        Some(AuthInfo::ApiToken { id, .. }) => ("api_token", id.clone()),
+        None => (CallerType::Unauthenticated, "unknown".to_owned()),
+        Some(AuthInfo::User { id, .. }) => (CallerType::User, id.clone()),
+        Some(AuthInfo::Session { id, .. }) => (CallerType::Session, id.clone()),
+        Some(AuthInfo::ApiToken { id, .. }) => (CallerType::ApiToken, id.clone()),
         // The token itself is never logged; the period it grants is the useful id.
-        Some(AuthInfo::PeriodLink { period_id }) => ("period_link", period_id.clone()),
+        Some(AuthInfo::PeriodLink { period_id }) => (CallerType::PeriodLink, period_id.clone()),
     }
 }
 

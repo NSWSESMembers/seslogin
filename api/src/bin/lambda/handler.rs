@@ -95,13 +95,9 @@ impl<H: db::Handler + Send + Sync + 'static> Handler<H> {
             caller_id: &caller_id,
             latency_ms: request_start.elapsed().as_secs_f64() * 1000.0,
             graphql_error_count: gql_error_count,
-            query_failures: metrics.query_failures(),
-            mutation_failures: metrics.mutation_failures(),
-            rru: metrics.read_units(),
-            wru: metrics.write_units(),
-            ddb_calls: metrics.ddb_calls(),
-            auth_error: "",
+            ..Default::default()
         }
+        .with_metrics(&metrics)
         .emit();
 
         match result {
@@ -169,24 +165,15 @@ impl<H: db::Handler + Send + Sync + 'static> Handler<H> {
 fn emit_auth_failure_telemetry(status: u16, request_start: Instant, auth_error: &str) {
     RequestTelemetry {
         status,
-        operation_type: "unknown",
-        operation_name: "unknown",
-        caller_type: "unauthenticated",
-        caller_id: "unknown",
         latency_ms: request_start.elapsed().as_secs_f64() * 1000.0,
-        graphql_error_count: 0,
-        query_failures: 0,
-        mutation_failures: 0,
-        rru: 0.0,
-        wru: 0.0,
-        ddb_calls: 0,
         auth_error,
+        ..Default::default()
     }
     .emit();
 }
 
 fn graphql_error(message: impl Display) -> String {
-    let message = format!("{}", message);
+    let message = message.to_string();
     let response = GraphQlResponse::from_errors(vec![GraphQlError::new(message, None)]);
     serde_json::to_string(&response).expect("Valid response should never fail to serialize")
 }
