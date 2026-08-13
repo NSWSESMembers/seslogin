@@ -95,7 +95,7 @@ async fn index<H: db::Handler + Send + Sync + 'static>(
         .and_then(|value| value.to_str().ok())
         .map(str::trim)
         .filter(|value| !value.is_empty());
-    let mut caller_type = "unauthenticated";
+    let mut caller_type = auth::CallerType::Unauthenticated;
     let mut caller_id = String::from("unknown");
     if let Some(cfg) = (***dev_auth).as_ref() {
         // Dev-only override: skip token verification and act as the configured caller.
@@ -169,13 +169,9 @@ async fn index<H: db::Handler + Send + Sync + 'static>(
         caller_id: &caller_id,
         latency_ms: request_start.elapsed().as_secs_f64() * 1000.0,
         graphql_error_count: gql_error_count,
-        query_failures: metrics.query_failures(),
-        mutation_failures: metrics.mutation_failures(),
-        rru: metrics.read_units(),
-        wru: metrics.write_units(),
-        ddb_calls: metrics.ddb_calls(),
-        auth_error: "",
+        ..Default::default()
     }
+    .with_metrics(&metrics)
     .emit();
     response
 }
