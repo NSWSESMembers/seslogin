@@ -5,6 +5,7 @@ import { useNonProdDb } from "../../lib/environmentInfo";
 export default function ScanTitleBar(props: {
   onCancelSignOut?: () => void;
   signingOutName?: string;
+  onLogoClick?: () => void;
 }) {
   const session = useKioskSession();
   const nonProdDb = useNonProdDb();
@@ -15,7 +16,7 @@ export default function ScanTitleBar(props: {
     : `${locationName} > ${sessionName}`;
 
   return (
-    <TitleBarShell nonProdDb={nonProdDb}>
+    <TitleBarShell nonProdDb={nonProdDb} onLogoClick={props.onLogoClick}>
       <span>{title}</span>
       {props.onCancelSignOut && (
         <button

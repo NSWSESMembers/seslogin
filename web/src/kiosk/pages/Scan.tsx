@@ -1,17 +1,20 @@
 import ScanController from "../components/ScanController";
 import ScanTitleBar from "../components/ScanTitleBar";
+import KioskStatusDialog from "../components/KioskStatusDialog";
 import ClientVersionLabel from "../../components/ClientVersionLabel";
 import { useState } from "react";
 
 export default function Scan() {
   const [cancelSignOut, setCancelSignOut] = useState<(() => void) | null>(null);
   const [signingOutName, setSigningOutName] = useState<string | null>(null);
+  const [statusOpen, setStatusOpen] = useState(false);
 
   return (
     <div className="flex h-dvh flex-col">
       <ScanTitleBar
         onCancelSignOut={cancelSignOut ?? undefined}
         signingOutName={signingOutName ?? undefined}
+        onLogoClick={() => setStatusOpen(true)}
       />
       <div className="relative flex-1 overflow-hidden">
         <ScanController
@@ -22,6 +25,7 @@ export default function Scan() {
       <div className="fixed right-2.5 bottom-1.5 text-[0.75em] text-neutral-400">
         <ClientVersionLabel noLink />
       </div>
+      {statusOpen && <KioskStatusDialog onClose={() => setStatusOpen(false)} />}
     </div>
   );
 }
