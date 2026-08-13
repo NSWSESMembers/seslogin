@@ -15,6 +15,7 @@ import {
   PanelTitle,
 } from "../components/ui/Panel";
 import PeriodEditConfirmation from "./PeriodEditConfirmation";
+import { periodEditCopy } from "./copy";
 import type { PeriodEditFormQuery } from "./__generated__/PeriodEditFormQuery.graphql";
 import type { PeriodEditFormMutation } from "./__generated__/PeriodEditFormMutation.graphql";
 
@@ -24,6 +25,12 @@ export type SavedEntry = {
   endTime: number;
   categoryName: string;
   locationName: string;
+  /**
+   * Whether the entry had no finish time when the page loaded. Carried through
+   * the save because the saved entry always has one — this is the only record of
+   * how the member got here, and it picks the confirmation wording.
+   */
+  wasIncomplete: boolean;
 };
 
 export default function PeriodEditForm() {
@@ -84,6 +91,10 @@ export default function PeriodEditForm() {
     `);
 
   const period = data.linkedPeriod;
+
+  // Captured from the loaded period, before any save can fill the end time in.
+  const wasIncomplete = period.endTime == null;
+  const copy = periodEditCopy(wasIncomplete);
 
   const [startValue, setStartValue] = useState(
     dateToInputDateTimeLocal(new Date(period.startTime * 1000)),
@@ -157,6 +168,7 @@ export default function PeriodEditForm() {
       // The link can't move an entry between units, so the location the page
       // loaded with is still the one it was saved against.
       locationName: period.location.name,
+      wasIncomplete,
     });
   }
 
@@ -176,11 +188,8 @@ export default function PeriodEditForm() {
   return (
     <Panel>
       <PanelBox>
-        <PanelTitle>Check your time entry</PanelTitle>
-        <PanelIntro>
-          {name ? `${name}, if ` : "If "}the times or activity below aren't
-          right, correct them and save. Recorded at {period.location.name}.
-        </PanelIntro>
+        <PanelTitle>{copy.title}</PanelTitle>
+        <PanelIntro>{copy.intro(name, period.location.name)}</PanelIntro>
 
         {submitError && <PanelMessage>{submitError}</PanelMessage>}
 
@@ -212,7 +221,9 @@ export default function PeriodEditForm() {
                 onChange={(e) => setStartValue(e.target.value)}
               />
             </FormField>
-            <FormField label={<label htmlFor="end">End time</label>}>
+            <FormField
+              label={<label htmlFor="end">{copy.endFieldLabel}</label>}
+            >
               <TextInput
                 type="datetime-local"
                 name="end"
@@ -228,7 +239,7 @@ export default function PeriodEditForm() {
             </FormField>
             <FormField>
               <Button type="submit" disabled={isMutationInFlight || !!error}>
-                {isMutationInFlight ? "Saving…" : "Save"}
+                {isMutationInFlight ? "Saving…" : copy.submitLabel}
               </Button>
             </FormField>
           </FieldList>
