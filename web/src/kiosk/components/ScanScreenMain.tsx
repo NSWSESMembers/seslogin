@@ -8,10 +8,20 @@ import type {
   TransactionAborted as TransactionAbortedType,
 } from "../ScanState";
 import { formatTime, formatDayDateTime } from "../../lib/time";
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { scanView, scanViewPosition, type ScreenPosition } from "../../styles";
 import { inputBase } from "../../components/ui/inputStyles";
 import { Button } from "../../components/ui/Button";
+import {
+  isScanFocusSuspended,
+  onScanFocusSuspendedChange,
+} from "../lib/scanFocusLeases";
 
 // ensure this is less than the transaction timeout in ScanState
 const FINALIZED_TRANSACTION_TIMEOUT_MS = 10_000;
@@ -207,6 +217,10 @@ export default function ScanScreenMain(props: {
   const inputRef = useRef<HTMLInputElement>(null);
   const refocusTimeoutIdRef = useRef<number | null>(null);
   const clearTimeoutIdRef = useRef<number | null>(null);
+  const focusSuspended = useSyncExternalStore(
+    onScanFocusSuspendedChange,
+    isScanFocusSuspended,
+  );
 
   const clearRefocusTimeout = useCallback(() => {
     if (refocusTimeoutIdRef.current !== null) {
@@ -222,8 +236,13 @@ export default function ScanScreenMain(props: {
     }
   }, []);
 
+  // Read the lease state live rather than through the render snapshot: this runs
+  // from timers and callbacks that outlive the render they were created in.
   const focusInput = useCallback(() => {
     clearRefocusTimeout();
+    if (isScanFocusSuspended()) {
+      return;
+    }
     inputRef.current?.focus();
   }, [clearRefocusTimeout]);
 
@@ -241,14 +260,21 @@ export default function ScanScreenMain(props: {
     }, SCAN_INPUT_TIMEOUT_MS);
   }, [clearInputTimeout, clearInput]);
 
+  // Focus on mount, and take focus back whenever the last overlay closes.
   useEffect(() => {
+    if (focusSuspended) {
+      clearRefocusTimeout();
+      return;
+    }
     focusInput();
+  }, [clearRefocusTimeout, focusInput, focusSuspended]);
 
+  useEffect(() => {
     return () => {
       clearRefocusTimeout();
       clearInputTimeout();
     };
-  }, [clearInputTimeout, clearRefocusTimeout, focusInput]);
+  }, [clearInputTimeout, clearRefocusTimeout]);
 
   useEffect(() => {
     onFocusInputReady?.(focusInput);
@@ -294,14 +320,23 @@ export default function ScanScreenMain(props: {
           className={`${inputBase} mr-3.75 w-80 py-3 text-center align-middle font-mono text-[3em] leading-snug transition-colors duration-500`}
           onBlur={() => {
             clearRefocusTimeout();
+            if (isScanFocusSuspended()) {
+              return;
+            }
             refocusTimeoutIdRef.current = window.setTimeout(() => {
+              refocusTimeoutIdRef.current = null;
+              // Re-checked here as well as above: the blur that started this
+              // timer is what hands focus to an overlay, so the overlay's lease
+              // is usually not registered yet when the timer is scheduled.
+              if (isScanFocusSuspended()) {
+                return;
+              }
               if (
                 inputRef.current !== null &&
                 document.activeElement !== inputRef.current
               ) {
                 inputRef.current.focus();
               }
-              refocusTimeoutIdRef.current = null;
             }, SCAN_INPUT_TIMEOUT_MS);
           }}
           onFocus={() => {
