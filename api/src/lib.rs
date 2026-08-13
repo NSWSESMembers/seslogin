@@ -4,7 +4,6 @@ pub mod auth;
 pub mod clock;
 pub mod db;
 pub mod dynamodb;
-pub mod emf;
 pub mod environment;
 pub mod expire;
 pub mod graphql;
