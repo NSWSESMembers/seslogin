@@ -13,6 +13,7 @@ import type {
   SessionsListQuery$data,
 } from "./__generated__/SessionsListQuery.graphql";
 import type { SessionsListDeleteMutation } from "./__generated__/SessionsListDeleteMutation.graphql";
+import type { SessionsListReactivateMutation } from "./__generated__/SessionsListReactivateMutation.graphql";
 import { useNotify } from "../components/useNotify";
 import { AdminTable, Th, Td } from "../../components/ui/Table";
 import { Button, ButtonLink } from "../../components/ui/Button";
@@ -34,6 +35,20 @@ function Row({
     useMutation<SessionsListDeleteMutation>(graphql`
       mutation SessionsListDeleteMutation($id: ID!) {
         deleteSession(id: $id)
+      }
+    `);
+  // Selecting the same fields the list does lets Relay normalise the response straight
+  // into the store, so the row updates itself without an explicit updater.
+  const [commitReactivate, isReactivateInFlight] =
+    useMutation<SessionsListReactivateMutation>(graphql`
+      mutation SessionsListReactivateMutation($id: ID!) {
+        reactivateSession(id: $id) {
+          id
+          keyEnrolled
+          keyExpiresAt
+          reactivatable
+          lastContact
+        }
       }
     `);
 
@@ -60,6 +75,30 @@ function Row({
     }
   }
 
+  async function reactivateSession() {
+    try {
+      await new Promise((resolve, reject) => {
+        commitReactivate({
+          variables: { id: session.id },
+          onCompleted: resolve,
+          onError: reject,
+        });
+      });
+      notifySuccess(
+        `Kiosk ${session.name} reactivated — it should come back online within a few minutes`,
+      );
+    } catch (err) {
+      notifyError(err, `Couldn't reactivate kiosk ${session.name}`);
+    }
+  }
+
+  // An expired kiosk that isn't currently asking to be re-enrolled can't be reactivated
+  // yet — it has to be switched on first.
+  const isExpiredKiosk =
+    session.keyEnrolled &&
+    session.keyExpiresAt != null &&
+    session.keyExpiresAt <= now;
+
   const timeSinceAccess = session.lastContact
     ? formatSeconds(now - session.lastContact)
     : "never";
@@ -82,7 +121,23 @@ function Row({
       <Td>{session.code}</Td>
       <Td>{clientVersion}</Td>
       <Td options>
-        <div className="flex justify-end gap-1">
+        <div className="flex items-center justify-end gap-1">
+          {session.reactivatable ? (
+            <Button
+              size="row"
+              onClick={reactivateSession}
+              disabled={isReactivateInFlight}
+            >
+              Reactivate
+            </Button>
+          ) : isExpiredKiosk ? (
+            <span
+              className="mr-1 text-xs text-ink-muted"
+              title="Switch this kiosk on and wait for it to show its QR code, then reload this page to reactivate it."
+            >
+              Expired
+            </span>
+          ) : null}
           <ButtonLink size="row" to={`/admin/sessions/${session.id}`}>
             Edit
           </ButtonLink>
@@ -115,6 +170,9 @@ export default function SessionsList() {
             code
             lastContact
             clientVersion
+            keyEnrolled
+            keyExpiresAt
+            reactivatable
           }
         }
       }
@@ -139,6 +197,12 @@ export default function SessionsList() {
         that computer will have access until the entry here is deleted or it
         expires. Kiosks expire if the computer using it does not access the
         system for a period of 2 weeks.
+      </p>
+      <p>
+        An expired kiosk that was set up by scanning a QR code can be brought
+        back with the <strong>Reactivate</strong> button: switch the kiosk on,
+        wait for it to show its QR code screen, then reactivate it here. A kiosk
+        set up with a setup code has to be set up again from scratch.
       </p>
       <p>
         <img src={bulletGreen} alt="" className="inline-block align-middle" />{" "}

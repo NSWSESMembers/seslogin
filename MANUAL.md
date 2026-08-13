@@ -28,7 +28,7 @@ To take advantage of SES Activity's easy sign-in/sign-out functionality for memb
 - On the computer you want to set up as a kiosk visit the seslogin website and click Scan or Kiosk. If you're just trying out the system you can do this in a new browser tab on your computer.
 - Enter the 6 digit code from earlier.
 - Your kiosk should now be ready to use. You can test it by entering your member ID (assuming your record has synced or you created it earlier). The first time you enter your member ID and press return at a location you will be signed in. When you enter it again you will be prompted for a time category and given the ability to edit it before you are then signed out.
-- If you are not just testing you should save the current web address as a bookmark/favourite and/or set it as the homepage so you can get back to it easily. If the webpage does not stay open the session will expire after two weeks and you'll need to set it back up again.
+- If you are not just testing you should save the current web address as a bookmark/favourite and/or set it as the homepage so you can get back to it easily. If the webpage does not stay open the session will expire after two weeks and you'll need to set it back up again. A kiosk set up by scanning a QR code instead of typing a 6 digit code doesn't have to be set up from scratch: switch it back on, wait for it to show its QR code screen, then press Reactivate next to it on the Sessions tab.
 
 # Kiosk set-up tips
 
