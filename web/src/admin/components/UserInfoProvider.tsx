@@ -3,6 +3,7 @@ import { useLazyLoadQuery, useRelayEnvironment } from "react-relay";
 import { fetchQuery, graphql } from "relay-runtime";
 import type { UserInfoProviderQuery } from "./__generated__/UserInfoProviderQuery.graphql";
 import { UserInfoContext } from "./UserInfoContext";
+import { setEnvironmentInfo } from "../../lib/environmentInfo";
 
 export { UserInfoContext, type UserInfoContextType } from "./UserInfoContext";
 
@@ -26,6 +27,10 @@ const userInfoQuery = graphql`
         name
         enabled
       }
+    }
+    environment {
+      gitRev
+      isProdDb
     }
   }
 `;
@@ -76,6 +81,11 @@ export function UserInfoProvider({ children }: { children: ReactNode }) {
       fetchPolicy: "store-or-network",
     },
   );
+
+  useEffect(() => {
+    setEnvironmentInfo(data.environment);
+  }, [data.environment]);
+
   const contextValue = { user: data.user, isLoaded: true };
 
   return (
