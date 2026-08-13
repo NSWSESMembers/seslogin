@@ -91,6 +91,7 @@ export default function SubmenuBar({ isSuper }: SubmenuBarProps) {
           { to: "/admin/activity/totals", label: "Totals" },
           { to: "/admin/activity/breakdown", label: "Breakdown" },
           { to: "/admin/activity/daily-breakdown", label: "Daily Breakdown" },
+          { to: "/admin/activity/heatmap", label: "Heatmap" },
           { to: "/admin/activity/last-seen", label: "Last Seen" },
         ]}
       />
