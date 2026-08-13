@@ -31,6 +31,11 @@ pub const PENDING_ENROLLMENT_TTL_S: u64 = 30 * 60;
 /// Lifetime granted to an enrolled key, extended on each verified request (14 days).
 pub const KEY_LIFETIME_S: u64 = crate::expire::DEFAULT_SESSION_EXPIRE_S;
 
+/// How long a reactivated kiosk has to redeem its grant with one signed request (10 min).
+/// Reactivation only opens this short window; the normal sliding [`KEY_LIFETIME_S`] takes
+/// over as soon as the kiosk makes a verified request. If it never does, the grant lapses.
+pub const REACTIVATE_GRACE_S: u64 = 10 * 60;
+
 /// `kind` discriminator for pending-enrollment records in the `ephemeral_state` table.
 pub const ENROLL_STATE_KIND: &str = "kiosk_enroll";
 
@@ -52,6 +57,19 @@ pub struct EnrollPayload {
     pub public_key: String,
     /// Unix seconds the key was submitted (for observability; not security-critical).
     pub submitted_at: u64,
+}
+
+/// True once a key-enrolled session's window has lapsed (or was never set), meaning its
+/// signed requests no longer authenticate.
+pub fn key_expired(key_expires_at: Option<u64>, now: u64) -> bool {
+    key_expires_at.is_none_or(|exp| now >= exp)
+}
+
+/// New `key_expires_at` for a reactivation: a short redemption window. Never shortens an
+/// existing window, so a click that races a kiosk coming back online is a no-op rather
+/// than cutting a healthy 14-day window down to 10 minutes.
+pub fn reactivated_key_expiry(current: Option<u64>, now: u64) -> u64 {
+    (now + REACTIVATE_GRACE_S).max(current.unwrap_or(0))
 }
 
 /// Hex SHA-256 of the given bytes.
@@ -211,6 +229,35 @@ mod tests {
         assert!(check_timestamp_window(now + SIGNATURE_WINDOW_S, now).is_ok());
         assert!(check_timestamp_window(now - SIGNATURE_WINDOW_S - 1, now).is_err());
         assert!(check_timestamp_window(now + SIGNATURE_WINDOW_S + 1, now).is_err());
+    }
+
+    #[test]
+    fn key_expired_boundaries() {
+        let now = 1_700_000_000;
+        // A session that never carried a key window is treated as expired.
+        assert!(key_expired(None, now));
+        assert!(key_expired(Some(now), now));
+        assert!(key_expired(Some(now - 1), now));
+        assert!(!key_expired(Some(now + 1), now));
+    }
+
+    #[test]
+    fn reactivation_grants_a_short_window() {
+        let now = 1_700_000_000;
+        assert_eq!(
+            reactivated_key_expiry(Some(now - 1), now),
+            now + REACTIVATE_GRACE_S
+        );
+        assert_eq!(reactivated_key_expiry(None, now), now + REACTIVATE_GRACE_S);
+    }
+
+    #[test]
+    fn reactivation_never_shortens_a_live_window() {
+        // Clicking Reactivate on a kiosk that has just come back online must not cut its
+        // 14-day window down to the 10-minute grant.
+        let now = 1_700_000_000;
+        let healthy = now + 13 * 24 * 3600;
+        assert_eq!(reactivated_key_expiry(Some(healthy), now), healthy);
     }
 
     #[test]
