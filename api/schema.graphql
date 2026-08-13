@@ -248,6 +248,16 @@ type MutationRoot {
 	revokeApiToken(id: ID!): Boolean!
 	updateSession(id: ID!, name: String!, config: String, healthcheckUrl: String): Session!
 	deleteSession(id: ID!): Boolean!
+	"""
+	Bring back a QR-enrolled kiosk that expired after two weeks offline, without
+	deleting and re-enrolling it — it keeps its name, config and healthcheck URL.
+	Kiosks set up with a 6-digit code cannot be reactivated.
+	
+	Only succeeds while the kiosk is switched on and showing its enrollment QR screen,
+	and only grants a short window: the kiosk must come back with one signed request,
+	which restores its normal two-week window. Otherwise the grant simply lapses.
+	"""
+	reactivateSession(id: ID!): Session!
 	createLocation(name: String!, nitcEnabled: Int): Location!
 	updateLocation(id: ID!, name: String!, enabled: Boolean!, nitcEnabled: Int, nitcCompleteOnExport: Boolean): Location!
 	createCategory(name: String!, isVirtual: Boolean!, nitcGroupId: String, nitcParticipantType: String): Category!
@@ -610,6 +620,21 @@ type Session {
 	code: String
 	healthcheckUrl: String
 	config: JSON!
+	"""
+	True for a kiosk set up through the QR / public-key flow, false for one set up
+	with a 6-digit code. Only the former can be reactivated once it expires.
+	"""
+	keyEnrolled: Boolean!
+	"""
+	When this kiosk's enrolled key stops authenticating. Null for code-enrolled kiosks.
+	"""
+	keyExpiresAt: Int
+	"""
+	Whether `reactivateSession` would succeed right now: a QR-enrolled kiosk that has
+	expired *and* is currently switched on showing its enrollment QR screen. Drives the
+	Reactivate button in the admin kiosk list, so it is only offered when it will work.
+	"""
+	reactivatable: Boolean!
 	createdAt: Int
 	updatedAt: Int
 }

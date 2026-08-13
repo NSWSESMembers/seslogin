@@ -2274,6 +2274,35 @@ impl db::Handler for Handler {
                     .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
                 record_capacity("update_session", resp.consumed_capacity(), CapKind::Write);
             }
+            db::SessionUpdateShape::ExtendKey { expires_at } => {
+                // The condition keeps the write honest: a soft-deleted session (no
+                // `active`) or a code-enrolled one (no `public_key`) can never grow a
+                // `key_expires_at` attribute, whatever the caller asks for.
+                let resp = self
+                    .client
+                    .update_item()
+                    .table_name(self.table_name("session"))
+                    .key("id", AttributeValue::S(id.to_string()))
+                    .condition_expression(
+                        "attribute_exists(active) AND attribute_exists(public_key)",
+                    )
+                    .update_expression(
+                        "SET key_expires_at = :key_expires_at, updated_at = :updated_at",
+                    )
+                    .expression_attribute_values(
+                        ":key_expires_at",
+                        AttributeValue::N(expires_at.to_string()),
+                    )
+                    .expression_attribute_values(
+                        ":updated_at",
+                        AttributeValue::N(crate::clock::now_sec().to_string()),
+                    )
+                    .return_consumed_capacity(ReturnConsumedCapacity::Total)
+                    .send()
+                    .await
+                    .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
+                record_capacity("update_session", resp.consumed_capacity(), CapKind::Write);
+            }
             db::SessionUpdateShape::Delete => {
                 // Removing `active` soft-deletes the session. Also drop the key fields so
                 // a disabled key-enrolled session releases its fingerprint (the GSI row
