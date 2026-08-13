@@ -1,66 +1,91 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use async_graphql::Request;
+use async_graphql::parser::types::{DocumentOperations, OperationType};
 use serde::Serialize;
 
+/// Placeholder used for both telemetry dimensions when the operation can't be identified.
+const UNKNOWN: &str = "unknown";
+
+/// Which GraphQL operation a request is executing, used as telemetry dimensions.
+#[derive(Debug, PartialEq, Eq)]
 pub struct OperationContext {
+    /// `"query"`, `"mutation"`, `"subscription"`, or `"unknown"`.
     pub operation_type: &'static str,
+    /// `None` for an anonymous operation, or when the operation can't be identified.
     pub operation_name: Option<String>,
-    pub params_json: Option<String>,
 }
 
-impl std::fmt::Debug for OperationContext {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if let Some(params) = &self.params_json {
-            return write!(
-                f,
-                "{} {}({})",
-                self.operation_type,
-                self.operation_name.as_deref().unwrap_or("?"),
-                params,
-            );
+impl OperationContext {
+    /// The operation name for telemetry, substituting a placeholder for anonymous and
+    /// unidentifiable operations so the dimension is never empty.
+    pub fn operation_name(&self) -> &str {
+        self.operation_name.as_deref().unwrap_or(UNKNOWN)
+    }
+
+    fn unidentified(operation_name: Option<String>) -> Self {
+        Self {
+            operation_type: UNKNOWN,
+            operation_name,
         }
-        write!(
-            f,
-            "{} {}",
-            self.operation_type,
-            self.operation_name.as_deref().unwrap_or("?"),
-        )
     }
 }
 
-pub fn extract_operation_context(req: &Request) -> OperationContext {
-    let mut token_iter = req.query.split_whitespace();
-    let first_token = token_iter.next();
+/// Identify the operation a request will execute.
+///
+/// This defers to async-graphql's own parser instead of inspecting the query text, and mirrors
+/// the executor's operation-selection rules ([`async_graphql::Schema::execute`]) so telemetry
+/// names the operation that actually runs. Where the executor would fail to select one — an
+/// unparseable document, an unknown operation name, an ambiguous choice — the type is reported
+/// as `"unknown"` rather than guessed at.
+///
+/// The parse is cached on the `Request` and reused by the executor, so this adds no parsing work.
+pub fn extract_operation_context(req: &mut Request) -> OperationContext {
+    let requested_name = req.operation_name.clone();
 
-    let operation_type = match first_token {
-        Some("mutation") => "mutation",
-        Some("query") => "query",
-        // A shorthand selection set like `{ viewer { id } }` is implicitly a query.
-        Some(token) if token.starts_with('{') => "query",
-        _ => "unknown",
+    let Ok(document) = req.parsed_query() else {
+        // Unparseable, so execution will reject it too. Keep the client's claimed name.
+        return OperationContext::unidentified(requested_name);
     };
 
-    let parsed_name = match operation_type {
-        "query" | "mutation" => token_iter
-            .next()
-            .filter(|token| !token.starts_with('{') && !token.starts_with('('))
-            .map(str::to_owned),
-        _ => None,
-    };
+    match (&document.operations, requested_name) {
+        // Exactly one anonymous operation: `query { .. }`, `mutation { .. }`, or the shorthand
+        // selection set `{ .. }`, which is implicitly a query.
+        (DocumentOperations::Single(operation), None) => OperationContext {
+            operation_type: operation_type_name(operation.node.ty),
+            operation_name: None,
+        },
+        // Naming an operation in a document whose only operation is anonymous is an error
+        // ("Unknown operation named ..."), so don't report a type for it.
+        (DocumentOperations::Single(_), Some(name)) => OperationContext::unidentified(Some(name)),
+        // The document names its operations and the client chose one.
+        (DocumentOperations::Multiple(operations), Some(name)) => {
+            match operations.get(name.as_str()) {
+                Some(operation) => OperationContext {
+                    operation_type: operation_type_name(operation.node.ty),
+                    operation_name: Some(name),
+                },
+                None => OperationContext::unidentified(Some(name)),
+            }
+        }
+        // A lone named operation is unambiguous even when the client didn't choose.
+        (DocumentOperations::Multiple(operations), None) if operations.len() == 1 => {
+            let (name, operation) = operations.iter().next().expect("length checked above");
+            OperationContext {
+                operation_type: operation_type_name(operation.node.ty),
+                operation_name: Some(name.to_string()),
+            }
+        }
+        // Several operations and no choice; execution fails with "Operation name required".
+        (DocumentOperations::Multiple(_), None) => OperationContext::unidentified(None),
+    }
+}
 
-    let operation_name = req.operation_name.clone().or(parsed_name);
-    let operation_name = operation_name.map(|name| name.trim_end_matches('(').to_string());
-    let params_json = if req.variables.is_empty() {
-        None
-    } else {
-        Some(format!("{}", req.variables))
-    };
-
-    OperationContext {
-        operation_type,
-        operation_name,
-        params_json,
+fn operation_type_name(ty: OperationType) -> &'static str {
+    match ty {
+        OperationType::Query => "query",
+        OperationType::Mutation => "mutation",
+        OperationType::Subscription => "subscription",
     }
 }
 
@@ -220,6 +245,165 @@ pub fn emit_graphql_error_log(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `(operation_type, operation_name)` for a query with no explicit `operationName`.
+    fn context_of(query: &str) -> (&'static str, Option<String>) {
+        let mut req = Request::new(query);
+        let context = extract_operation_context(&mut req);
+        (context.operation_type, context.operation_name)
+    }
+
+    /// As [`context_of`], for a request that names the operation to run.
+    fn context_of_named(query: &str, operation_name: &str) -> (&'static str, Option<String>) {
+        let mut req = Request::new(query).operation_name(operation_name);
+        let context = extract_operation_context(&mut req);
+        (context.operation_type, context.operation_name)
+    }
+
+    fn named(operation_type: &'static str, name: &str) -> (&'static str, Option<String>) {
+        (operation_type, Some(name.to_owned()))
+    }
+
+    #[test]
+    fn identifies_anonymous_operations() {
+        // A shorthand selection set is implicitly a query.
+        assert_eq!(context_of("{ viewer { id } }"), ("query", None));
+        assert_eq!(context_of("query { viewer { id } }"), ("query", None));
+        assert_eq!(
+            context_of("mutation { checkIn { id } }"),
+            ("mutation", None)
+        );
+    }
+
+    #[test]
+    fn identifies_named_operations() {
+        assert_eq!(
+            context_of("query Viewer { viewer { id } }"),
+            named("query", "Viewer")
+        );
+        assert_eq!(
+            context_of("mutation CheckIn { checkIn { id } }"),
+            named("mutation", "CheckIn")
+        );
+        assert_eq!(
+            context_of("subscription Ticks { ticks { at } }"),
+            named("subscription", "Ticks")
+        );
+    }
+
+    /// Variable definitions used to be spliced into the name, yielding `"Viewer($id:"`.
+    #[test]
+    fn variable_definitions_are_not_part_of_the_name() {
+        assert_eq!(
+            context_of("query Viewer($id: ID!) { viewer(id: $id) { id } }"),
+            named("query", "Viewer")
+        );
+        assert_eq!(
+            context_of("query Viewer($id:ID!,$n:Int){ viewer { id } }"),
+            named("query", "Viewer")
+        );
+        // No space between the name and its selection set.
+        assert_eq!(
+            context_of("query Viewer{ viewer { id } }"),
+            named("query", "Viewer")
+        );
+    }
+
+    /// Whitespace-splitting saw `"mutation{"` as a single unrecognised token.
+    #[test]
+    fn identifies_operations_without_separating_whitespace() {
+        assert_eq!(context_of("mutation{ checkIn { id } }"), ("mutation", None));
+        assert_eq!(context_of("query{ viewer { id } }"), ("query", None));
+    }
+
+    /// A leading comment or a leading fragment used to make the whole document unrecognisable.
+    #[test]
+    fn identifies_operations_after_leading_comments_and_fragments() {
+        assert_eq!(
+            context_of("# fetch the viewer\nquery Viewer { viewer { id } }"),
+            named("query", "Viewer")
+        );
+        assert_eq!(
+            context_of("fragment F on Person { id }\nquery Viewer { viewer { ...F } }"),
+            named("query", "Viewer")
+        );
+        assert_eq!(
+            context_of("\n\n  \tquery Viewer { viewer { id } }"),
+            named("query", "Viewer")
+        );
+    }
+
+    #[test]
+    fn explicit_operation_name_selects_from_a_multi_operation_document() {
+        let document = "query A { a } mutation B { b }";
+        assert_eq!(context_of_named(document, "A"), named("query", "A"));
+        assert_eq!(context_of_named(document, "B"), named("mutation", "B"));
+    }
+
+    /// The name the client asked for wins over the sole operation's own name, matching the
+    /// executor: it rejects a mismatch rather than running the only operation present.
+    #[test]
+    fn unknown_operation_name_is_not_identified() {
+        assert_eq!(
+            context_of_named("query A { a } mutation B { b }", "C"),
+            named(UNKNOWN, "C")
+        );
+        // The document's only operation is anonymous, so no name can match it.
+        assert_eq!(
+            context_of_named("query { viewer { id } }", "A"),
+            named(UNKNOWN, "A")
+        );
+    }
+
+    /// A single named operation is unambiguous, so the executor runs it without being told to.
+    #[test]
+    fn a_lone_named_operation_needs_no_explicit_choice() {
+        assert_eq!(
+            context_of("query Viewer { viewer { id } }"),
+            named("query", "Viewer")
+        );
+    }
+
+    /// Several operations and no choice: the executor fails with "Operation name required".
+    #[test]
+    fn an_ambiguous_document_is_not_identified() {
+        assert_eq!(context_of("query A { a } query B { b }"), (UNKNOWN, None));
+    }
+
+    #[test]
+    fn unparseable_documents_are_not_identified() {
+        assert_eq!(context_of("query Viewer { viewer {"), (UNKNOWN, None));
+        assert_eq!(context_of(""), (UNKNOWN, None));
+        assert_eq!(context_of("not graphql at all"), (UNKNOWN, None));
+        // A claimed name is still worth recording when the document won't parse.
+        assert_eq!(
+            context_of_named("query Viewer { viewer {", "Viewer"),
+            named(UNKNOWN, "Viewer")
+        );
+    }
+
+    #[test]
+    fn operation_name_falls_back_to_a_placeholder() {
+        let mut req = Request::new("{ viewer { id } }");
+        assert_eq!(
+            extract_operation_context(&mut req).operation_name(),
+            "unknown"
+        );
+
+        let mut req = Request::new("query Viewer { viewer { id } }");
+        assert_eq!(
+            extract_operation_context(&mut req).operation_name(),
+            "Viewer"
+        );
+    }
+
+    /// The parse is cached on the request, so the executor doesn't repeat it.
+    #[test]
+    fn parsing_is_cached_on_the_request() {
+        let mut req = Request::new("query Viewer { viewer { id } }");
+        extract_operation_context(&mut req);
+        assert!(req.parsed_query().is_ok());
+    }
 
     fn telemetry(
         status: u16,

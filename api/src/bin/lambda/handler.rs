@@ -76,7 +76,7 @@ impl<H: db::Handler + Send + Sync + 'static> Handler<H> {
             .data(self.app.clone())
             .data(graphql::get_dataloader(self.app.clone()));
 
-        let operation_context = telemetry::extract_operation_context(&query);
+        let operation_context = telemetry::extract_operation_context(&mut query);
         let metrics = Arc::new(RequestMetrics::default());
         let gql_response = request_metrics::METRICS
             .scope(metrics.clone(), self.schema.execute(query))
@@ -90,10 +90,7 @@ impl<H: db::Handler + Send + Sync + 'static> Handler<H> {
         RequestTelemetry {
             status,
             operation_type: operation_context.operation_type,
-            operation_name: operation_context
-                .operation_name
-                .as_deref()
-                .unwrap_or("unknown"),
+            operation_name: operation_context.operation_name(),
             caller_type,
             caller_id: &caller_id,
             latency_ms: request_start.elapsed().as_secs_f64() * 1000.0,
