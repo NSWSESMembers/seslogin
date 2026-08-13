@@ -14,11 +14,11 @@ use seslogin::app;
 use seslogin::auth;
 use seslogin::db;
 use seslogin::dynamodb;
-use seslogin::emf;
 use seslogin::graphql;
 use seslogin::jwt;
 use seslogin::request_metrics::{self, RequestMetrics};
 use seslogin::sqs_dispatch::{SqsQueue, SqsQueues};
+use seslogin::telemetry;
 
 use async_graphql::{EmptySubscription, http::GraphiQLSource};
 use async_graphql_poem::*;
@@ -152,7 +152,7 @@ async fn index<H: db::Handler + Send + Sync + 'static>(
         .data(app.clone())
         .data(graphql::get_dataloader(app.clone()));
 
-    let operation_context = emf::extract_operation_context(&req);
+    let operation_context = telemetry::extract_operation_context(&req);
     let request_start = Instant::now();
     let metrics = Arc::new(RequestMetrics::default());
     let gql_response = request_metrics::METRICS
@@ -161,7 +161,7 @@ async fn index<H: db::Handler + Send + Sync + 'static>(
     let gql_error_count = gql_response.errors.len();
     let response = GraphQLResponse(gql_response).into_response();
 
-    emf::RequestTelemetry {
+    telemetry::RequestTelemetry {
         status: response.status().as_u16(),
         operation_type: operation_context.operation_type,
         operation_name: operation_context
