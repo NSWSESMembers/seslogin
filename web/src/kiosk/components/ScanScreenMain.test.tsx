@@ -4,7 +4,7 @@ import ScanScreenMain from "./ScanScreenMain";
 import { resumeScanFocus, suspendScanFocus } from "../lib/scanFocusLeases";
 
 const LEASE_ID = "test:overlay";
-const REFOCUS_DELAY_MS = 10_000;
+const REFOCUS_DELAY_MS = 2_000;
 
 function renderScanScreen(): HTMLElement {
   render(

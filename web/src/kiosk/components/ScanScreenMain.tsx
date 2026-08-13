@@ -26,7 +26,12 @@ import {
 // ensure this is less than the transaction timeout in ScanState
 const FINALIZED_TRANSACTION_TIMEOUT_MS = 10_000;
 const FINALIZED_TRANSACTION_FADE_MS = 1_000;
-const SCAN_INPUT_TIMEOUT_MS = 10_000;
+// How long a half-typed member ID is left in the input before it is discarded.
+const SCAN_INPUT_CLEAR_TIMEOUT_MS = 10_000;
+// How long after the input loses focus before the scan screen takes it back, so
+// a scan is never typed into nothing. Suspended while an overlay holds a scan
+// focus lease — see ../lib/scanFocusLeases.
+const SCAN_INPUT_REFOCUS_TIMEOUT_MS = 2_000;
 
 const transactionBase =
   "inline-block w-[800px] max-w-full rounded-md p-2.5 text-[1.2em] transition-opacity duration-1000";
@@ -257,7 +262,7 @@ export default function ScanScreenMain(props: {
     clearTimeoutIdRef.current = window.setTimeout(() => {
       clearInput();
       clearTimeoutIdRef.current = null;
-    }, SCAN_INPUT_TIMEOUT_MS);
+    }, SCAN_INPUT_CLEAR_TIMEOUT_MS);
   }, [clearInputTimeout, clearInput]);
 
   // Focus on mount, and take focus back whenever the last overlay closes.
@@ -337,7 +342,7 @@ export default function ScanScreenMain(props: {
               ) {
                 inputRef.current.focus();
               }
-            }, SCAN_INPUT_TIMEOUT_MS);
+            }, SCAN_INPUT_REFOCUS_TIMEOUT_MS);
           }}
           onFocus={() => {
             clearRefocusTimeout();
