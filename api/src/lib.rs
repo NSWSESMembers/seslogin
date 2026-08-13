@@ -15,6 +15,8 @@ pub mod member_sync;
 pub mod mockdb;
 pub mod nitc_export;
 pub mod nonce;
+pub mod open_period_notice;
+pub mod period_email;
 pub mod period_link;
 pub mod request_metrics;
 pub mod ses_api;

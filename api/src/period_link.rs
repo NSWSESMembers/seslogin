@@ -265,6 +265,144 @@ pub async fn record_reminder_sent(db: &impl Handler, period_id: &str) -> Result<
     Ok(())
 }
 
+// ---------------------------------------------------------------------------
+// Automated open-period notices (see `crate::open_period_notice`).
+//
+// Two markers, doing different jobs, deliberately kept apart from the admin
+// cooldown above:
+//
+//   * a *per-person* row enforcing the 12h gap between automated emails, so one
+//     member with several stuck entries is nudged once per window, not once per
+//     entry; and
+//   * a *per-period* row counting how many of the three waves that entry has had.
+//
+// Both **fail closed** — a read error or an unparseable payload blocks the send.
+// That is the opposite of [`check_reminder_cooldown`], and deliberately so: a
+// human pressing a button should not be stopped by a corrupt row, but an
+// unattended mailer that fails open is one bad row away from a loop.
+// ---------------------------------------------------------------------------
+
+/// `kind` discriminator for the per-person automated-notice gap marker.
+pub const NOTICE_PERSON_STATE_KIND: &str = "open_period_notice_person";
+
+/// Row TTL for the person gap marker. Comfortably past the 12h gap so the
+/// decision is always ours in code, never an artifact of TTL lag.
+const NOTICE_PERSON_STATE_TTL_S: u64 = 2 * 24 * 60 * 60;
+
+/// `kind` discriminator for the per-period wave counter.
+pub const NOTICE_PERIOD_STATE_KIND: &str = "open_period_notice";
+
+/// Row TTL for the wave counter. Must outlive the oldest period the job will
+/// still consider, or an exhausted entry could come back around for a fresh set
+/// of three emails.
+const NOTICE_PERIOD_STATE_TTL_S: u64 = 14 * 24 * 60 * 60;
+
+const _: () = assert!(NOTICE_PERIOD_STATE_TTL_S > crate::open_period_notice::MAX_PERIOD_AGE_S);
+
+// Both ids carry an explicit `person`/`period` segment. Without it the period
+// prefix would be a strict prefix of the person one, so a person id `x` and a
+// period id `person_x` would land on the same row.
+fn notice_person_state_id(person_id: &str) -> String {
+    format!("{NOTICE_PERIOD_STATE_KIND}_person_{person_id}")
+}
+
+fn notice_period_state_id(period_id: &str) -> String {
+    format!("{NOTICE_PERIOD_STATE_KIND}_period_{period_id}")
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct NoticePersonPayload {
+    /// Unix seconds of the last automated notice sent to this person.
+    last_sent_at: u64,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct NoticePeriodPayload {
+    /// How many waves this period has had (0..=3).
+    sent_count: usize,
+    /// Unix seconds of the most recent wave (observability).
+    last_sent_at: u64,
+}
+
+/// Unix seconds of the last automated notice sent to `person_id`, if any.
+///
+/// A corrupt or wrong-kind row reports "sent just now", blocking this person for
+/// a full window rather than letting a bad row unlock repeated sends.
+pub async fn notice_person_last_sent(
+    db: &impl Handler,
+    person_id: &str,
+    now: u64,
+) -> Result<Option<u64>> {
+    let Some(state) = db
+        .get_ephemeral_state(&notice_person_state_id(person_id))
+        .await?
+    else {
+        return Ok(None);
+    };
+    if state.kind != NOTICE_PERSON_STATE_KIND {
+        return Ok(Some(now));
+    }
+    match serde_json::from_str::<NoticePersonPayload>(&state.payload) {
+        Ok(payload) => Ok(Some(payload.last_sent_at)),
+        Err(_) => Ok(Some(now)),
+    }
+}
+
+/// Start a fresh 12h window for this person.
+pub async fn record_notice_person_sent(db: &impl Handler, person_id: &str, now: u64) -> Result<()> {
+    let payload = serde_json::to_string(&NoticePersonPayload { last_sent_at: now })?;
+    db.put_ephemeral_state(
+        &notice_person_state_id(person_id),
+        NOTICE_PERSON_STATE_KIND,
+        &payload,
+        now + NOTICE_PERSON_STATE_TTL_S,
+    )
+    .await?;
+    Ok(())
+}
+
+/// How many automated waves `period_id` has already had.
+///
+/// A corrupt or wrong-kind row reports the funnel as exhausted, so a bad row
+/// silences a period rather than restarting it.
+pub async fn notice_period_sent_count(db: &impl Handler, period_id: &str) -> Result<usize> {
+    let exhausted = crate::open_period_notice::WAVE_THRESHOLDS_S.len();
+    let Some(state) = db
+        .get_ephemeral_state(&notice_period_state_id(period_id))
+        .await?
+    else {
+        return Ok(0);
+    };
+    if state.kind != NOTICE_PERIOD_STATE_KIND {
+        return Ok(exhausted);
+    }
+    match serde_json::from_str::<NoticePeriodPayload>(&state.payload) {
+        Ok(payload) => Ok(payload.sent_count),
+        Err(_) => Ok(exhausted),
+    }
+}
+
+/// Record that `period_id` has now had `sent_count` waves.
+pub async fn record_notice_period_sent(
+    db: &impl Handler,
+    period_id: &str,
+    sent_count: usize,
+    now: u64,
+) -> Result<()> {
+    let payload = serde_json::to_string(&NoticePeriodPayload {
+        sent_count,
+        last_sent_at: now,
+    })?;
+    db.put_ephemeral_state(
+        &notice_period_state_id(period_id),
+        NOTICE_PERIOD_STATE_KIND,
+        &payload,
+        now + NOTICE_PERIOD_STATE_TTL_S,
+    )
+    .await?;
+    Ok(())
+}
+
 /// Resolve a link token to the period id it grants access to.
 ///
 /// Unknown, wrong-kind, malformed and expired tokens all yield
@@ -365,6 +503,44 @@ mod tests {
     #[test]
     fn reminder_state_id_is_namespaced() {
         assert_eq!(reminder_state_id("period-1"), "period_link_sent_period-1");
+    }
+
+    #[test]
+    fn notice_state_ids_are_namespaced_and_distinct() {
+        assert_eq!(
+            notice_person_state_id("person-1"),
+            "open_period_notice_person_person-1"
+        );
+        assert_eq!(
+            notice_period_state_id("period-1"),
+            "open_period_notice_period_period-1"
+        );
+        // The two kinds share a prefix, so an id that happens to start with the
+        // other's segment must still land on its own row.
+        assert_ne!(
+            notice_person_state_id("x"),
+            notice_period_state_id("person_x")
+        );
+        assert_ne!(
+            notice_period_state_id("x"),
+            notice_person_state_id("period_x")
+        );
+    }
+
+    #[test]
+    fn notice_payloads_round_trip() {
+        let json = serde_json::to_string(&NoticePeriodPayload {
+            sent_count: 2,
+            last_sent_at: 99,
+        })
+        .unwrap();
+        let back: NoticePeriodPayload = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.sent_count, 2);
+        assert_eq!(back.last_sent_at, 99);
+
+        let json = serde_json::to_string(&NoticePersonPayload { last_sent_at: 7 }).unwrap();
+        let back: NoticePersonPayload = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.last_sent_at, 7);
     }
 
     #[test]

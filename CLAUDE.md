@@ -129,11 +129,11 @@ Auto-deployment is split by branch, one workflow per branch under `.github/workf
 | `prod` | Production API Lambda (`seslogin-api`) + web to `new.seslogin.com` |
 | `preprod` | Preprod API Lambda (`seslogin-preprod-api`) + web to `preprod.seslogin.com` |
 | `test` | Test API Lambda (`seslogin-test-api`) + web to `test.seslogin.com` |
-| `workers` | Background/worker Lambdas: sync/dispatcher/checker/nitc-export/healthcheck/activity-summary/sync-locations |
+| `workers` | Background/worker Lambdas: sync/dispatcher/checker/nitc-export/healthcheck/activity-summary/sync-locations/open-period-notice |
 
 `preprod` is a production-like clone for staging: the `seslogin-preprod-api` Lambda intentionally shares prod's database (`DB_PREFIX=seslogin_prod`), SQS queues, and secrets (JWT/SES/Turnstile), so it operates on **live production data** with mutations enabled. It only differs from prod in its function name, IAM role, and WebAuthn/CORS origin (`preprod.seslogin.com`). Like `prod`, it deploys only the API Lambda + web (not the sync/utility Lambdas).
 
-The following Lambdas are only deployed from the `workers` branch, not from `test`, `prod`, or `preprod`: sync (`seslogin-sync-members`), dispatcher (`seslogin-dispatcher`), checker (`seslogin-checker`), nitc-export (`seslogin-nitc-export`), healthcheck (`seslogin-healthcheck`), activity-summary (`seslogin-activity-summary`), and sync-locations (`seslogin-sync-locations`). `test` deploys only the API Lambda + web.
+The following Lambdas are only deployed from the `workers` branch, not from `test`, `prod`, or `preprod`: sync (`seslogin-sync-members`), dispatcher (`seslogin-dispatcher`), checker (`seslogin-checker`), nitc-export (`seslogin-nitc-export`), healthcheck (`seslogin-healthcheck`), activity-summary (`seslogin-activity-summary`), sync-locations (`seslogin-sync-locations`), and open-period-notice (`seslogin-open-period-notice`). `test` deploys only the API Lambda + web.
 
 #### Branch model and history rewriting
 
@@ -189,6 +189,19 @@ Authorization uses an `AuthRequirement` guard enum per field: `Session`, `UserOr
 
 **Off by default** — set `SES_SYNC_ABSENCE_ENABLED=true` per environment after reviewing a dry run. Guards, all per-location so one bad unit cannot abort a run: a payload whose rows all fail to parse skips the pass entirely (an *empty* payload does not — plenty of units are legitimately empty in SES, and the cap below covers the rest); candidates are capped at `max(SES_SYNC_ABSENCE_MIN, SES_SYNC_ABSENCE_PERCENT% of the synced roster)`; and deletions are suppressed unless the location's previous successful sync is within `SES_SYNC_MAX_SYNC_STALENESS_SECS` (default 36h), so a location recovering from a DLQ outage cannot delete its roster on a single sighting. Absence writes are deliberately excluded from `max_mutations` — that abort would DLQ the location and stop its legitimate creates and updates too.
 
+**Open period notices ("you forgot to sign out")**: `api/src/open_period_notice.rs`, run by `open-period-notice-lambda` on an hourly schedule from 07:30 to 20:30 Sydney (`cron(30 7-20 * * ? *)`; the job re-checks the hour itself so a manual invocation can't mail someone at 3am). It finds periods with a `start_time` and no `end_time` and emails the member the same `slp_` edit link the admin **Remind** button sends, so they can enter their own finish time.
+
+Three waves at 12h / 24h / 48h after the period started, then the period is left alone; nothing is considered past 7 days. Two rules shape everything else:
+
+- **The next threshold is indexed by how many waves a period has already had**, not by elapsed time. So a wave delayed by quiet hours, the person gap or a truncated run just happens on a later run instead of doubling up — which is what makes truncation and per-location failure isolation safe.
+- **The unit of politeness is the person, not the period.** One failed kiosk can leave a member with several open entries, so candidates are grouped by person: a person emailed within the last 12h is skipped entirely (one cheap read, no per-period lookups), and otherwise exactly one email goes out about their *oldest* due period. An admin reminder counts towards that gap too.
+
+Marker rows live in `ephemeral_state` (`open_period_notice_person_*` for the 12h gap, `open_period_notice_period_*` for the wave counter) and **fail closed** — a corrupt or unreadable row blocks the send. That is the deliberate opposite of the admin cooldown's fail-open behaviour: a human pressing a button shouldn't be stopped by a bad row, but an unattended mailer that fails open is one bad row away from a loop. Write ordering is split for the same reason: the person gap is stamped *before* sending (so a failed send can't become a retry storm) and the wave counter *after* (so a transient SES failure retries the wave rather than consuming it).
+
+A period first seen older than 36h never enters the funnel at all. This is the switch-on protection: widening the allow list mails only entries that crossed 12h in about the last day, not the whole backlog.
+
+`api/src/bin/open-period-notice.rs` is the CLI twin — **defaults to `--dry-run true`**, and takes `--person-id` / `--location-id` to widen the allow list ad hoc, `--now <unix>` to exercise the waves without waiting, and `--all-locations` (dry run only) to size the org-wide blast radius before enabling a scope.
+
 **SES API client**: `api/src/ses_api.rs` — HTTP client with retry logic for the external headquarters system.
 
 **JWT**: `api/src/jwt.rs` — HMAC-SHA256 tokens with claims `{ user_id, exp }` or `{ session_id, exp }`.
@@ -220,4 +233,6 @@ Environment variables (loaded from `.env` and `.env.secret`; see
 - `RUST_LOG` — Log level (e.g., `info`, `debug`)
 - `MAIL_OVERRIDE_TO` — Redirect **all** outgoing email to this address instead of its real recipient, logging a warning each time. Set it locally before touching anything that mails a member: `seslogin_test` is a snapshot of production and carries real member addresses, so the admin "Remind" button would otherwise email a real volunteer from your laptop. Never set in a deployed environment.
 - `WEB_BASE_URL` — Public site origin used to build member-facing period edit links (`<base>/period#<token>`). Optional: falls back to the first `WEBAUTHN_RP_ORIGIN`, which is already the site origin in every environment, so no infra change is needed to deploy.
+- `OPEN_PERIOD_NOTICE_PERSON_IDS` / `OPEN_PERIOD_NOTICE_LOCATION_IDS` — Comma-separated allow lists for the open-period notice job (see below). **Both empty by default, which makes the job a no-op** — it returns without a single DB call. A period qualifies if its person id *or* its location id is listed.
+- `OPEN_PERIOD_NOTICE_MAX_PER_RUN` (default 200) — Soft cap; a run over it sends the oldest N and leaves the rest for the next run. `OPEN_PERIOD_NOTICE_MAX_CANDIDATES` (default 2000) — Circuit breaker; a run over it sends *nothing* and alerts to SNS, because that many open periods means kiosks have stopped signing people out rather than that there is a backlog to work through.
 - `WEBAUTHN_RP_ID` / `WEBAUTHN_RP_ORIGIN` — Passkey relying-party ID and origin. Local dev defaults to `localhost` / `http://localhost:5173`; deployed envs use `seslogin.com` / the site origin (e.g. `https://new.seslogin.com`). A passkey is bound to the RP ID it was registered under, so local-dev passkeys won't work in prod.

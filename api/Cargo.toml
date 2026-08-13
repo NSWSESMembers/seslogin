@@ -47,6 +47,14 @@ path = "src/bin/activity-summary-lambda.rs"
 name = "activity-summary"
 path = "src/bin/activity-summary.rs"
 
+[[bin]]
+name = "open-period-notice-lambda"
+path = "src/bin/open-period-notice-lambda.rs"
+
+[[bin]]
+name = "open-period-notice"
+path = "src/bin/open-period-notice.rs"
+
 [dependencies]
 anyhow = "1.0.99"
 async-graphql = { version = "7.0.17", features = ["dataloader"] }
@@ -65,6 +73,9 @@ base64 = "0.22.1"
 chrono = "0.4.42"
 chrono-tz = { version = "0.10", features = ["serde"] }
 clap = { version = "4.5.47", features = ["derive"] }
+# Only for `join_all` in the open-period-notice location sweep. Already present
+# transitively via the AWS SDK, so declaring it adds no build cost.
+futures = "0.3"
 hex = "0.4.3"
 p256 = { version = "0.13", features = ["ecdsa"] }
 poem = "3.1.12"

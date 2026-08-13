@@ -3560,6 +3560,7 @@ dependencies = [
  "chrono-tz",
  "clap",
  "dotenvy",
+ "futures",
  "hex",
  "http 1.4.2",
  "jsonwebtoken",
