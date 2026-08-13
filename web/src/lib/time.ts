@@ -37,6 +37,30 @@ export function formatSeconds(seconds: number): string {
   return `${diffMins} mins`;
 }
 
+/**
+ * Compact duration for diagnostics ("42s", "3m 05s", "2h 14m", "3d 4h"). Unlike
+ * `formatSeconds` this keeps second-level detail, so a just-happened event doesn't
+ * read as "0 mins". Negative inputs are clamped to zero.
+ */
+export function formatShortDuration(seconds: number): string {
+  const total = Math.max(0, Math.floor(seconds));
+  const secs = total % 60;
+  const mins = Math.floor(total / 60) % 60;
+  const hours = Math.floor(total / 3600) % 24;
+  const days = Math.floor(total / 86400);
+
+  if (days > 0) {
+    return `${days}d ${hours}h`;
+  }
+  if (hours > 0) {
+    return `${hours}h ${mins.toString().padStart(2, "0")}m`;
+  }
+  if (mins > 0) {
+    return `${mins}m ${secs.toString().padStart(2, "0")}s`;
+  }
+  return `${secs}s`;
+}
+
 export function formatTime(date: Date): string {
   return shortTimeFormatter.format(date);
 }
