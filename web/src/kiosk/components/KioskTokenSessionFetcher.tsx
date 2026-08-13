@@ -3,12 +3,17 @@ import { fetchQuery } from "relay-runtime";
 import type { IEnvironment } from "relay-runtime";
 import type { KioskTokenSessionFetcherQuery } from "./__generated__/KioskTokenSessionFetcherQuery.graphql";
 import type { KioskSession } from "./KioskSessionContext";
+import { setEnvironmentInfo } from "../../lib/environmentInfo";
 
 const SESSION_REFRESH_INTERVAL_MS =
   import.meta.env.MODE === "development"
     ? 20 * 1000 // dev: 20 seconds
     : 2 * 60 * 1000; // prod: 2 minutes
 
+// `environment` is handed to setEnvironmentInfo() whole rather than read field by
+// field, so the lint rule can't see the usage. See the same disable in
+// admin/components/UserInfoProvider.tsx.
+/* eslint-disable relay/unused-fields */
 const kioskRefreshQuery = graphql`
   query KioskTokenSessionFetcherQuery {
     refresh_token: refreshToken
@@ -21,8 +26,13 @@ const kioskRefreshQuery = graphql`
         name
       }
     }
+    environment {
+      gitRev
+      isProdDb
+    }
   }
 `;
+/* eslint-enable relay/unused-fields */
 
 export default function startKioskTokenSessionFetcher({
   environment,
@@ -73,6 +83,10 @@ export default function startKioskTokenSessionFetcher({
         inFlight = false;
         if (isCancelled) {
           return;
+        }
+
+        if (response?.environment) {
+          setEnvironmentInfo(response.environment);
         }
 
         const refreshedToken = response?.refresh_token;

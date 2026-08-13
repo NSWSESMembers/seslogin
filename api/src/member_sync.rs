@@ -337,7 +337,7 @@ struct ParsedPayload {
     present_ses_ids: HashSet<String>,
     /// Every non-empty registration number in the payload, likewise.
     present_registration_numbers: HashSet<String>,
-    /// Rows as returned by SES, before any filtering. Backs the empty-payload guard.
+    /// Rows as returned by SES, before any filtering. Backs the unusable-payload guard.
     raw_count: usize,
 }
 
@@ -672,9 +672,9 @@ fn absence_candidate_cap(synced_roster: usize, policy: &AbsencePolicy) -> usize 
 #[derive(Debug, PartialEq, Eq)]
 enum AbsenceSkip {
     Disabled,
-    /// SES returned nothing at all — far more likely a broken fetch than a disbanded unit.
-    EmptyPayload,
-    /// SES returned rows but none survived parsing into work items.
+    /// SES returned rows but none survived parsing into work items. A payload with *no*
+    /// rows is not this case — plenty of units are legitimately empty in SES, so those run
+    /// the pass normally and rely on the candidate cap and staleness guards below.
     NoUsableItems,
     OverCap {
         candidates: usize,
@@ -786,11 +786,11 @@ fn plan_absence_changes(input: AbsenceInput<'_>) -> AbsenceOutcome {
         outcome.skipped = Some(AbsenceSkip::Disabled);
         return outcome;
     }
-    if ses_payload_raw_count == 0 {
-        outcome.skipped = Some(AbsenceSkip::EmptyPayload);
-        return outcome;
-    }
-    if ses_usable_item_count == 0 {
+    // Rows that all fail to parse point at a malformed payload or a misconfigured
+    // headquarters id, so the pass stands down. A payload with no rows at all is taken at
+    // face value: many units are genuinely empty in SES, and the candidate cap plus the
+    // staleness guard below carry the protection for anything larger than a handful.
+    if ses_payload_raw_count > 0 && ses_usable_item_count == 0 {
         outcome.skipped = Some(AbsenceSkip::NoUsableItems);
         return outcome;
     }
@@ -1611,8 +1611,10 @@ mod tests {
         assert_eq!(count_deletes(&outcome), 0);
     }
 
+    /// A unit that is legitimately empty in SES is common, so an empty payload runs the
+    /// pass like any other and leans on the cap for protection.
     #[test]
-    fn empty_payload_plans_nothing() {
+    fn empty_payload_marks_a_small_roster() {
         let f = Fixture {
             roster: vec![person("p1", Some("1"), Some("R1"), None)],
             raw_count: 0,
@@ -1620,12 +1622,37 @@ mod tests {
             ..Default::default()
         };
         let outcome = f.plan();
-        assert_eq!(outcome.skipped, Some(AbsenceSkip::EmptyPayload));
+        assert_eq!(outcome.skipped, None);
+        assert_eq!(count_marks(&outcome), 1);
+    }
+
+    /// The cap is what keeps an empty payload from wiping a unit big enough for the loss to
+    /// look like a fetch failure rather than a disbandment.
+    #[test]
+    fn empty_payload_still_trips_the_cap_for_a_large_roster() {
+        let roster: Vec<db::Person> = (0..100)
+            .map(|i| person(&format!("p{i}"), Some(&format!("{i}")), None, None))
+            .collect();
+        let f = Fixture {
+            roster,
+            raw_count: 0,
+            usable: 0,
+            ..Default::default()
+        };
+        let outcome = f.plan();
+        assert_eq!(
+            outcome.skipped,
+            Some(AbsenceSkip::OverCap {
+                candidates: 100,
+                cap: 20,
+                synced_roster: 100
+            })
+        );
         assert_eq!(count_marks(&outcome), 0);
     }
 
-    /// A payload whose rows all belong to another headquarters is not an empty payload —
-    /// it yields no work items but plenty of exemptions.
+    /// A payload whose rows all belong to another headquarters is not the same as one with
+    /// no rows — it yields no work items but plenty of exemptions.
     #[test]
     fn payload_with_no_usable_items_plans_nothing() {
         let f = Fixture {
@@ -1670,12 +1697,12 @@ mod tests {
         let f = Fixture {
             roster: vec![person("p1", Some("1"), Some("R1"), Some(NOW - 100))],
             present_ses_ids: set(&["1"]),
-            raw_count: 0,
+            raw_count: 50,
             usable: 0,
             ..Default::default()
         };
         let outcome = f.plan();
-        assert_eq!(outcome.skipped, Some(AbsenceSkip::EmptyPayload));
+        assert_eq!(outcome.skipped, Some(AbsenceSkip::NoUsableItems));
         assert_eq!(count_clears(&outcome), 1);
         assert_eq!(outcome.cleared, 1);
     }
@@ -2004,7 +2031,7 @@ mod tests {
         assert_eq!(parsed.present_registration_numbers.len(), 2);
     }
 
-    /// The empty-payload guard reads this, so it must count rows SES sent, not survivors.
+    /// The unusable-payload guard reads this, so it must count rows SES sent, not survivors.
     #[test]
     fn raw_count_counts_every_row_including_skipped() {
         let mut foreign = ses_person(Some(2), Some("R2"));

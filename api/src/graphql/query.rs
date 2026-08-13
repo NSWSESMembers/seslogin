@@ -181,6 +181,15 @@ pub struct PendingEnrollmentKey {
     pub expires_at: i64,
 }
 
+/// Build and deployment information about the API server.
+#[derive(SimpleObject, Clone, Debug)]
+pub struct Environment {
+    /// Git commit the API server was built from, or "dev" for local builds.
+    pub git_rev: String,
+    /// Whether the server is using the production database tables.
+    pub is_prod_db: bool,
+}
+
 #[derive(SimpleObject, Clone, Debug)]
 pub struct DashboardDailyPeriodSummary {
     pub day_start: i64,
@@ -1614,6 +1623,11 @@ impl<A: App + HasDb + Send + Sync> Location<A> {
         self.rec.nitc_enabled.map(|ts| ts as i64)
     }
 
+    /// Whether NITC events exported for this location are marked completed in SES.
+    async fn nitc_complete_on_export(&self) -> bool {
+        self.rec.nitc_complete_on_export
+    }
+
     async fn ses_api_headquarters_id(&self) -> Option<String> {
         self.rec.ses_api_headquarters_id.clone()
     }
@@ -2811,6 +2825,20 @@ fn make_ses_client() -> Result<ses_api::SesClient> {
 
 #[Object]
 impl<A: App + HasDb + Send + Sync + 'static> QueryRoot<A> {
+    /// Build and deployment information about this API server.
+    ///
+    /// Deliberately unauthenticated — the only root field that is. The home page is
+    /// public and has no credentials to query with, but still needs to warn operators
+    /// when the server is pointed at a non-production database. Both values are safe to
+    /// expose: the repository is public, and `isProdDb` is a boolean rather than the raw
+    /// `DB_PREFIX`.
+    async fn environment(&self) -> Environment {
+        Environment {
+            git_rev: crate::environment::GIT_REV.to_string(),
+            is_prod_db: crate::environment::is_prod_db(),
+        }
+    }
+
     #[graphql(guard = "AuthGuard::new(AuthRequirement::Authenticated)")]
     async fn user(
         &self,

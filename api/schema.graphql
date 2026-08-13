@@ -74,6 +74,20 @@ type DayMemberPeriodSummary {
 }
 
 """
+Build and deployment information about the API server.
+"""
+type Environment {
+	"""
+	Git commit the API server was built from, or "dev" for local builds.
+	"""
+	gitRev: String!
+	"""
+	Whether the server is using the production database tables.
+	"""
+	isProdDb: Boolean!
+}
+
+"""
 A scalar that can represent any JSON value.
 """
 scalar JSON
@@ -83,6 +97,10 @@ type Location {
 	name: String!
 	enabled: Boolean!
 	nitcEnabled: Int
+	"""
+	Whether NITC events exported for this location are marked completed in SES.
+	"""
+	nitcCompleteOnExport: Boolean!
 	sesApiHeadquartersId: String
 	lastSuccessfulMemberSync: Int
 	createdAt: Int!
@@ -231,7 +249,7 @@ type MutationRoot {
 	updateSession(id: ID!, name: String!, config: String, healthcheckUrl: String): Session!
 	deleteSession(id: ID!): Boolean!
 	createLocation(name: String!, nitcEnabled: Int): Location!
-	updateLocation(id: ID!, name: String!, enabled: Boolean!, nitcEnabled: Int): Location!
+	updateLocation(id: ID!, name: String!, enabled: Boolean!, nitcEnabled: Int, nitcCompleteOnExport: Boolean): Location!
 	createCategory(name: String!, isVirtual: Boolean!, nitcGroupId: String, nitcParticipantType: String): Category!
 	updateCategory(id: ID!, name: String!, enabled: Boolean!, isVirtual: Boolean!, nitcGroupId: String, nitcParticipantType: String): Category!
 	createNitcGroup(id: String, nitcType: String!, nitcTagIds: [Int!]!): NitcGroup!
@@ -467,6 +485,16 @@ type PersonRef {
 }
 
 type QueryRoot {
+	"""
+	Build and deployment information about this API server.
+	
+	Deliberately unauthenticated — the only root field that is. The home page is
+	public and has no credentials to query with, but still needs to warn operators
+	when the server is pointed at a non-production database. Both values are safe to
+	expose: the repository is public, and `isProdDb` is a boolean rather than the raw
+	`DB_PREFIX`.
+	"""
+	environment: Environment!
 	user(
 		"""
 		ID for the user to look up

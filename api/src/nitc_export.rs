@@ -136,6 +136,15 @@ fn make_event_name(category_name: Option<&str>) -> String {
     truncated
 }
 
+/// Whether an event should be marked completed (finalised) in SES.
+///
+/// Locations can opt out of completing their NITCs so their own people can review and finish
+/// them. Emptied "SESLOGIN - unused" placeholders are completed regardless of that preference,
+/// so they don't linger on the headquarters' list of outstanding NITCs.
+fn should_complete(has_live_periods: bool, location_completes_on_export: bool) -> bool {
+    !has_live_periods || location_completes_on_export
+}
+
 pub struct SqsClients {
     pub client: SqsClient,
     pub queue_url: String,
@@ -706,6 +715,7 @@ pub async fn sync_nitc_event<D: db::Handler>(
             )
         })?;
     let nitc_location = location.name.clone();
+    let completed = should_complete(!live_periods.is_empty(), location.nitc_complete_on_export);
 
     // Fetch NITC group config (type, tags) from the event's nitc_group_id
     let Some(nitc_group) = clients
@@ -827,7 +837,7 @@ pub async fn sync_nitc_event<D: db::Handler>(
 
     if config.dry_run {
         info!(
-            "[dry-run] Would {} NITC event {} (ses_id={:?}) with {} participants",
+            "[dry-run] Would {} NITC event {} (ses_id={:?}) with {} participants, completed={}",
             if event.ses_api_nitc_id.is_none() {
                 "create+update"
             } else {
@@ -835,7 +845,8 @@ pub async fn sync_nitc_event<D: db::Handler>(
             },
             event_id,
             event.ses_api_nitc_id,
-            event_participants.len()
+            event_participants.len(),
+            completed
         );
         return Ok(EventSyncOutcome::Synced(event.ses_api_nitc_id.unwrap_or(0)));
     }
@@ -877,7 +888,7 @@ pub async fn sync_nitc_event<D: db::Handler>(
                 end_date: event_end_date,
                 participants: event_participants,
                 tags: event_tags,
-                completed: true,
+                completed,
             },
         )
         .await?;
@@ -945,5 +956,17 @@ mod tests {
         let result = make_event_name(Some(&long));
         assert_eq!(result.chars().count(), MAX_EVENT_NAME_LEN);
         assert!(result.ends_with('…'));
+    }
+
+    #[test]
+    fn completes_by_default_and_respects_location_opt_out() {
+        assert!(should_complete(true, true));
+        assert!(!should_complete(true, false));
+    }
+
+    #[test]
+    fn emptied_events_are_completed_even_when_location_opts_out() {
+        assert!(should_complete(false, true));
+        assert!(should_complete(false, false));
     }
 }

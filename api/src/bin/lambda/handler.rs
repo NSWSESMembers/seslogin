@@ -8,8 +8,8 @@ use async_graphql::{
 use http::{Method, StatusCode};
 use lambda_http::{Body, Error, Request, Response};
 use poem::web::headers;
-use seslogin::emf::{self, RequestTelemetry};
 use seslogin::request_metrics::{self, RequestMetrics};
+use seslogin::telemetry::{self, RequestTelemetry};
 
 use crate::app;
 use crate::auth::{self, AuthInfo};
@@ -76,7 +76,7 @@ impl<H: db::Handler + Send + Sync + 'static> Handler<H> {
             .data(self.app.clone())
             .data(graphql::get_dataloader(self.app.clone()));
 
-        let operation_context = emf::extract_operation_context(&query);
+        let operation_context = telemetry::extract_operation_context(&mut query);
         let metrics = Arc::new(RequestMetrics::default());
         let gql_response = request_metrics::METRICS
             .scope(metrics.clone(), self.schema.execute(query))
@@ -90,21 +90,14 @@ impl<H: db::Handler + Send + Sync + 'static> Handler<H> {
         RequestTelemetry {
             status,
             operation_type: operation_context.operation_type,
-            operation_name: operation_context
-                .operation_name
-                .as_deref()
-                .unwrap_or("unknown"),
+            operation_name: operation_context.operation_name(),
             caller_type,
             caller_id: &caller_id,
             latency_ms: request_start.elapsed().as_secs_f64() * 1000.0,
             graphql_error_count: gql_error_count,
-            query_failures: metrics.query_failures(),
-            mutation_failures: metrics.mutation_failures(),
-            rru: metrics.read_units(),
-            wru: metrics.write_units(),
-            ddb_calls: metrics.ddb_calls(),
-            auth_error: "",
+            ..Default::default()
         }
+        .with_metrics(&metrics)
         .emit();
 
         match result {
@@ -172,24 +165,15 @@ impl<H: db::Handler + Send + Sync + 'static> Handler<H> {
 fn emit_auth_failure_telemetry(status: u16, request_start: Instant, auth_error: &str) {
     RequestTelemetry {
         status,
-        operation_type: "unknown",
-        operation_name: "unknown",
-        caller_type: "unauthenticated",
-        caller_id: "unknown",
         latency_ms: request_start.elapsed().as_secs_f64() * 1000.0,
-        graphql_error_count: 0,
-        query_failures: 0,
-        mutation_failures: 0,
-        rru: 0.0,
-        wru: 0.0,
-        ddb_calls: 0,
         auth_error,
+        ..Default::default()
     }
     .emit();
 }
 
 fn graphql_error(message: impl Display) -> String {
-    let message = format!("{}", message);
+    let message = message.to_string();
     let response = GraphQlResponse::from_errors(vec![GraphQlError::new(message, None)]);
     serde_json::to_string(&response).expect("Valid response should never fail to serialize")
 }
