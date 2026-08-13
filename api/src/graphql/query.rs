@@ -1614,6 +1614,11 @@ impl<A: App + HasDb + Send + Sync> Location<A> {
         self.rec.nitc_enabled.map(|ts| ts as i64)
     }
 
+    /// Whether NITC events exported for this location are marked completed in SES.
+    async fn nitc_complete_on_export(&self) -> bool {
+        self.rec.nitc_complete_on_export
+    }
+
     async fn ses_api_headquarters_id(&self) -> Option<String> {
         self.rec.ses_api_headquarters_id.clone()
     }

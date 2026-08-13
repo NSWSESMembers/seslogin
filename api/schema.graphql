@@ -83,6 +83,10 @@ type Location {
 	name: String!
 	enabled: Boolean!
 	nitcEnabled: Int
+	"""
+	Whether NITC events exported for this location are marked completed in SES.
+	"""
+	nitcCompleteOnExport: Boolean!
 	sesApiHeadquartersId: String
 	lastSuccessfulMemberSync: Int
 	createdAt: Int!
@@ -231,7 +235,7 @@ type MutationRoot {
 	updateSession(id: ID!, name: String!, config: String, healthcheckUrl: String): Session!
 	deleteSession(id: ID!): Boolean!
 	createLocation(name: String!, nitcEnabled: Int): Location!
-	updateLocation(id: ID!, name: String!, enabled: Boolean!, nitcEnabled: Int): Location!
+	updateLocation(id: ID!, name: String!, enabled: Boolean!, nitcEnabled: Int, nitcCompleteOnExport: Boolean): Location!
 	createCategory(name: String!, isVirtual: Boolean!, nitcGroupId: String, nitcParticipantType: String): Category!
 	updateCategory(id: ID!, name: String!, enabled: Boolean!, isVirtual: Boolean!, nitcGroupId: String, nitcParticipantType: String): Category!
 	createNitcGroup(id: String, nitcType: String!, nitcTagIds: [Int!]!): NitcGroup!

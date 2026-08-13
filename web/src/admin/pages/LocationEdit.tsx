@@ -21,6 +21,7 @@ export default function EditLocation() {
           name
           enabled
           nitcEnabled
+          nitcCompleteOnExport
         }
       }
     `,
@@ -34,17 +35,20 @@ export default function EditLocation() {
         $name: String!
         $enabled: Boolean!
         $nitcEnabled: Int
+        $nitcCompleteOnExport: Boolean
       ) {
         updateLocation(
           id: $id
           name: $name
           enabled: $enabled
           nitcEnabled: $nitcEnabled
+          nitcCompleteOnExport: $nitcCompleteOnExport
         ) {
           id
           name
           enabled
           nitcEnabled
+          nitcCompleteOnExport
         }
       }
     `);
@@ -58,11 +62,18 @@ export default function EditLocation() {
     const nitcEnabled = nitcEnabledDate
       ? Math.floor(new Date(nitcEnabledDate + "T00:00:00Z").getTime() / 1000)
       : null;
+    const nitcCompleteOnExport = formData.get("nitcCompleteOnExport") === "on";
 
     try {
       await new Promise((resolve, reject) => {
         commitMutation({
-          variables: { id: location.id, name, enabled, nitcEnabled },
+          variables: {
+            id: location.id,
+            name,
+            enabled,
+            nitcEnabled,
+            nitcCompleteOnExport,
+          },
           onCompleted: resolve,
           onError: reject,
           updater: (store) => {
@@ -119,6 +130,24 @@ export default function EditLocation() {
                   : ""
               }
             />
+          </FormField>
+          <FormField
+            label={
+              <label htmlFor="nitcCompleteOnExport">
+                Mark NITCs as completed
+              </label>
+            }
+          >
+            <input
+              type="checkbox"
+              name="nitcCompleteOnExport"
+              id="nitcCompleteOnExport"
+              defaultChecked={location.nitcCompleteOnExport}
+            />
+            <div className="text-xs text-ink-muted">
+              Untick to leave exported NITCs incomplete in SES so they can be
+              reviewed and finalised there.
+            </div>
           </FormField>
           <FormField>
             <Button type="submit" disabled={isMutationInFlight}>
