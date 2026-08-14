@@ -99,10 +99,10 @@ impl RunStats {
     /// we are about to rewrite the member database".
     ///
     /// Absence writes are deliberately excluded. They are governed by the per-location
-    /// candidate cap, which logs and skips; folding them in here would instead abort the
-    /// whole run, and in the lambda an abort means SQS retries then a DLQ, so a location
-    /// with a backlog of departed members would stop syncing altogether — including its
-    /// legitimate creates and updates.
+    /// candidate cap instead, so that a location with a large but *legal* backlog of
+    /// departed members does not trip a global tripwire and abort every other location's
+    /// legitimate creates and updates along with it. Exceeding that cap is itself fatal for
+    /// the offending location — see `absence_skip_is_fatal`.
     pub fn total_mutations(&self) -> usize {
         self.adopts + self.creates + self.updates + self.undeletes
     }
@@ -676,11 +676,26 @@ enum AbsenceSkip {
     /// rows is not this case — plenty of units are legitimately empty in SES, so those run
     /// the pass normally and rely on the candidate cap and staleness guards below.
     NoUsableItems,
+    /// More of the roster has vanished from SES than the cap allows. Fatal outside dry-run
+    /// — see `absence_skip_is_fatal`.
     OverCap {
         candidates: usize,
         cap: usize,
         synced_roster: usize,
     },
+}
+
+/// Whether a suppressed absence pass should abort the location's sync outright.
+///
+/// Only `OverCap` is fatal. It means the local roster and the SES payload have diverged so
+/// far that we cannot distinguish a genuine mass departure from a bad payload, so the run
+/// refuses to touch the location at all — no creates, no updates, no last-sync stamp — and
+/// returns an error. In the lambda that means SQS retries and then the DLQ, which is the
+/// alarm; a human decides whether the departure is real. The other variants are ordinary
+/// conditions that only stand the pass down, and dry-run never aborts so that a review pass
+/// still reports on every remaining location.
+fn absence_skip_is_fatal(skip: &AbsenceSkip, dry_run: bool) -> bool {
+    !dry_run && matches!(skip, AbsenceSkip::OverCap { .. })
 }
 
 #[derive(Debug, Default)]
@@ -807,6 +822,8 @@ fn plan_absence_changes(input: AbsenceInput<'_>) -> AbsenceOutcome {
         .collect();
 
     let cap = absence_candidate_cap(synced_roster, &policy);
+    // Fatal for the location outside dry-run — the caller turns this into an error rather
+    // than merely standing the pass down. See `absence_skip_is_fatal`.
     if candidates.len() > cap {
         outcome.skipped = Some(AbsenceSkip::OverCap {
             candidates: candidates.len(),
@@ -855,6 +872,27 @@ fn plan_absence_changes(input: AbsenceInput<'_>) -> AbsenceOutcome {
     outcome.changes.extend(marks);
     outcome.changes.extend(deletes);
     outcome
+}
+
+/// The `max_mutations` tripwire: "SES handed us garbage and we are about to rewrite the
+/// member database".
+///
+/// Called twice per location — once for the member changes before they are applied, then
+/// again with that location's email updates folded into the running total — so the ceiling
+/// still governs the run as a whole even though the two are applied in separate phases.
+/// The consequence of the split is deliberate: a location whose member changes fit but
+/// whose emails push it over now commits the member changes and aborts before the emails,
+/// rather than abandoning both.
+fn check_max_mutations(applied_so_far: usize, planned: usize, max_mutations: usize) -> Result<()> {
+    if applied_so_far + planned > max_mutations {
+        return Err(anyhow!(
+            "Aborting sync: planned mutations exceed max_mutations (current_total={} planned_for_location={} max_mutations={})",
+            applied_so_far,
+            planned,
+            max_mutations
+        ));
+    }
+    Ok(())
 }
 
 async fn apply_changes<H: db::Handler>(
@@ -1325,11 +1363,28 @@ pub async fn run(config: SyncConfig) -> Result<RunStats> {
                     location.id, location.name
                 );
             } else {
-                error!(
-                    "Skipping absence pass for location={} name='{}': {:?}",
-                    location.id, location.name, reason
-                );
                 stats.absence_skipped_locations += 1;
+
+                if let AbsenceSkip::OverCap {
+                    candidates,
+                    cap,
+                    synced_roster,
+                } = reason
+                {
+                    let detail = format!(
+                        "location={} name='{}' has {} absence candidate(s), over the cap of {} for a synced roster of {}. SES and the local roster have diverged too far to act on, so no changes are applied for this location at all. Investigate the SES payload for headquarters {}; if the departure is genuine, raise SES_SYNC_ABSENCE_PERCENT / SES_SYNC_ABSENCE_MIN or remove the members by hand",
+                        location.id, location.name, candidates, cap, synced_roster, headquarters_id,
+                    );
+                    if absence_skip_is_fatal(reason, config.dry_run) {
+                        return Err(anyhow!("Aborting sync: {}", detail));
+                    }
+                    error!("[DRY-RUN] would abort sync: {}", detail);
+                } else {
+                    error!(
+                        "Skipping absence pass for location={} name='{}': {:?}",
+                        location.id, location.name, reason
+                    );
+                }
             }
         }
         if absence.deletes_suppressed > 0 {
@@ -1365,28 +1420,36 @@ pub async fn run(config: SyncConfig) -> Result<RunStats> {
             }
         }
 
-        let email_updates = plan_email_updates(&db, &search_client, &location, &mut stats)
-            .await
-            .with_context(|| format!("Planning email sync for location={}", location.id))?;
-
-        let planned_mutations = adopts + creates + updates + undeletes + email_updates.len();
-        if !config.dry_run && stats.total_mutations() + planned_mutations > config.max_mutations {
-            return Err(anyhow!(
-                "Aborting sync: planned mutations exceed max_mutations (current_total={} planned_for_location={} max_mutations={})",
+        let member_mutations = adopts + creates + updates + undeletes;
+        if !config.dry_run {
+            check_max_mutations(
                 stats.total_mutations(),
-                planned_mutations,
-                config.max_mutations
-            ));
+                member_mutations,
+                config.max_mutations,
+            )?;
         }
 
         apply_changes(&db, &plans, config.dry_run)
             .await
             .with_context(|| format!("Applying sync changes for location={}", location.id))?;
 
-        apply_email_updates(&db, &email_updates, &location.id, config.dry_run)
-            .await
-            .with_context(|| format!("Applying email sync for location={}", location.id))?;
+        // Member stats land as soon as their writes do, so the running total the tripwire
+        // reads below reflects what is actually in the database.
+        stats.adopts += adopts;
+        stats.creates += creates;
+        stats.updates += updates;
+        stats.undeletes += undeletes;
+        stats.soft_deletes += absence_deleted;
+        stats.missing_marked += absence_marked;
+        stats.missing_cleared += absence_cleared;
+        stats.missing_waiting += absence_waiting;
+        stats.absence_deletes_suppressed += absence_deletes_suppressed;
 
+        // Stamp before the email phase. The member sync for this location has now
+        // succeeded, and a failure in the secondary email API below must not leave the
+        // location looking un-synced — that would suppress its absence deletions on the
+        // next run and light up the checker lambda's stale-location digest for a reason
+        // that has nothing to do with member sync.
         if !config.dry_run {
             db.update_location(
                 &location.id,
@@ -1398,15 +1461,26 @@ pub async fn run(config: SyncConfig) -> Result<RunStats> {
             .with_context(|| format!("Updating last sync time for location={}", location.id))?;
         }
 
-        stats.adopts += adopts;
-        stats.creates += creates;
-        stats.updates += updates;
-        stats.undeletes += undeletes;
-        stats.soft_deletes += absence_deleted;
-        stats.missing_marked += absence_marked;
-        stats.missing_cleared += absence_cleared;
-        stats.missing_waiting += absence_waiting;
-        stats.absence_deletes_suppressed += absence_deletes_suppressed;
+        // Email sync runs last because it depends on a different API with its own
+        // credential. It still errors, retries and DLQs on failure — but by then the member
+        // changes are committed, so an outage of the secondary API cannot stop every
+        // location's primary sync and bury a real single-location failure in the DLQ.
+        let email_updates = plan_email_updates(&db, &search_client, &location, &mut stats)
+            .await
+            .with_context(|| format!("Planning email sync for location={}", location.id))?;
+
+        if !config.dry_run {
+            check_max_mutations(
+                stats.total_mutations(),
+                email_updates.len(),
+                config.max_mutations,
+            )?;
+        }
+
+        apply_email_updates(&db, &email_updates, &location.id, config.dry_run)
+            .await
+            .with_context(|| format!("Applying email sync for location={}", location.id))?;
+
         stats.emails_updated += email_updates.len();
     }
 
@@ -1689,6 +1763,60 @@ mod tests {
         );
         assert_eq!(count_marks(&outcome), 0);
         assert_eq!(count_deletes(&outcome), 0);
+    }
+
+    // ── max_mutations tripwire ──────────────────────────────────────────────
+
+    #[test]
+    fn mutations_exactly_at_the_ceiling_are_allowed() {
+        assert!(check_max_mutations(90, 10, 100).is_ok());
+    }
+
+    #[test]
+    fn one_mutation_over_the_ceiling_aborts() {
+        assert!(check_max_mutations(90, 11, 100).is_err());
+    }
+
+    /// The two phases share one ceiling: emails are checked against a running total that
+    /// already includes the member changes applied moments earlier.
+    #[test]
+    fn email_phase_counts_against_the_member_changes_already_applied() {
+        let applied_member_mutations = 95;
+        assert!(check_max_mutations(applied_member_mutations, 5, 100).is_ok());
+        assert!(check_max_mutations(applied_member_mutations, 6, 100).is_err());
+    }
+
+    // ── fatal guards ────────────────────────────────────────────────────────
+
+    /// Over-cap is the one guard that aborts the location instead of standing the pass
+    /// down, so that the lambda DLQs and a human looks at the payload.
+    #[test]
+    fn over_cap_aborts_the_location() {
+        let over_cap = AbsenceSkip::OverCap {
+            candidates: 30,
+            cap: 20,
+            synced_roster: 100,
+        };
+        assert!(absence_skip_is_fatal(&over_cap, false));
+    }
+
+    /// A review pass must still report on every remaining location.
+    #[test]
+    fn over_cap_does_not_abort_a_dry_run() {
+        let over_cap = AbsenceSkip::OverCap {
+            candidates: 30,
+            cap: 20,
+            synced_roster: 100,
+        };
+        assert!(!absence_skip_is_fatal(&over_cap, true));
+    }
+
+    /// The remaining guards are ordinary conditions; they must not stop the location's
+    /// creates and updates.
+    #[test]
+    fn other_guards_are_not_fatal() {
+        assert!(!absence_skip_is_fatal(&AbsenceSkip::Disabled, false));
+        assert!(!absence_skip_is_fatal(&AbsenceSkip::NoUsableItems, false));
     }
 
     /// Clears are unconditionally safe, so a guard must not suppress them.
