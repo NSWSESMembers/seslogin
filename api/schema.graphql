@@ -109,7 +109,10 @@ type Location {
 	"""
 	This location's most-frequently-used categories recently, ranked by
 	frequency then recency, with the people who most recently used each one.
-	Powers the kiosk sign-out quick-pick.
+	
+	Superseded by `scanRegister2`'s `quickPick`, which serves the kiosk
+	sign-out screen without a second round trip. Kept for the kiosk clients
+	still deployed against it; remove once they have all rolled over.
 	"""
 	recentCategories(limit: Int): [LocationRecentCategory!]!
 	periods(onlyActive: Boolean, startTime: Int, endTime: Int, after: String, before: String, first: Int, last: Int): PeriodConnection!
@@ -265,7 +268,12 @@ type MutationRoot {
 	createNitcGroup(id: String, nitcType: String!, nitcTagIds: [Int!]!): NitcGroup!
 	updateNitcGroup(id: ID!, nitcType: String!, nitcTagIds: [Int!]!): NitcGroup!
 	deleteNitcGroup(id: ID!): Boolean!
-	scanRegister2(memberNumber: String!): RegisterResult!
+	scanRegister2(		memberNumber: String!,
+		"""
+		Also compute the sign-out quick-pick shortcuts (see RegisterResult.quickPick). Opt-in: it costs extra reads, and a kiosk with the quick-pick screen turned off has no use for them.
+		"""
+		quickPick: Boolean
+	): RegisterResult!
 	scanSignOut(id: ID!, startTime: Int!, endTime: Int!, categoryId: ID!): Period!
 	"""
 	Sign in a guest (non-member) at the kiosk. Creates an open period with no
@@ -468,7 +476,11 @@ type Person {
 	lastPeriod: Period
 	"""
 	This person's most-frequently-used categories recently, ranked by
-	frequency then recency. Powers the kiosk sign-out quick-pick.
+	frequency then recency.
+	
+	Superseded by `scanRegister2`'s `quickPick`, which serves the kiosk
+	sign-out screen without a second round trip. Kept for the kiosk clients
+	still deployed against it; remove once they have all rolled over.
 	"""
 	recentCategories(limit: Int): [PersonRecentCategory!]!
 }
@@ -581,9 +593,37 @@ type QueryRoot {
 	ses_participant_types: [String!]!
 }
 
+"""
+Both halves of the kiosk sign-out quick-pick, returned inline by
+`scanRegister2` so the kiosk needs no second round trip.
+
+Deliberately has no field arguments: it is built eagerly by the mutation, so
+there is nothing to resolve lazily and nothing for a caller to tune.
+"""
+type QuickPick {
+	"""
+	Categories recently used at the kiosk's own location.
+	"""
+	locationCategories: [LocationRecentCategory!]!
+	"""
+	Categories recently used by the person signing out, at any location.
+	"""
+	personCategories: [PersonRecentCategory!]!
+}
+
 type RegisterResult {
 	state: RegisterState!
 	period: Period
+	"""
+	Shortcuts for the sign-out category screen, saving the kiosk a round trip.
+	
+	Only ever populated when `state` is `SIGN_OUT_PENDING` and the caller asked
+	for it via `quickPick: true` — in any other case there is no sign-out screen
+	to fill in, and computing it would be wasted reads on the scan path. Null is
+	also what a failed build returns, so the kiosk falls back to the full
+	category tree rather than failing the scan.
+	"""
+	quickPick: QuickPick
 }
 
 enum RegisterState {
