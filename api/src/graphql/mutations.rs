@@ -25,6 +25,7 @@ use hex;
 use super::auth::{
     AuthGuard, AuthRequirement, require_location_access, require_period_access, require_writable,
 };
+use super::query::{QuickPick, build_quick_pick};
 use super::{ApiToken, Category, Location, NitcGroup, PasskeyInfo, Period, Person, Session, User};
 
 /// Longest entry a member-facing edit link may set. The admin form only *warns*
@@ -144,6 +145,14 @@ enum RegisterState {
 struct RegisterResult<A: App + HasDb + Send + Sync + 'static> {
     state: RegisterState,
     period: Option<Period<A>>,
+    /// Shortcuts for the sign-out category screen, saving the kiosk a round trip.
+    ///
+    /// Only ever populated when `state` is `SIGN_OUT_PENDING` and the caller asked
+    /// for it via `quickPick: true` — in any other case there is no sign-out screen
+    /// to fill in, and computing it would be wasted reads on the scan path. Null is
+    /// also what a failed build returns, so the kiosk falls back to the full
+    /// category tree rather than failing the scan.
+    quick_pick: Option<QuickPick<A>>,
 }
 
 #[derive(SimpleObject)]
@@ -1585,6 +1594,12 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
         &self,
         ctx: &Context<'_>,
         #[graphql(name = "memberNumber")] registration_number: String,
+        #[graphql(
+            desc = "Also compute the sign-out quick-pick shortcuts (see RegisterResult.quickPick). \
+                    Opt-in: it costs extra reads, and a kiosk with the quick-pick screen turned \
+                    off has no use for them."
+        )]
+        quick_pick: Option<bool>,
     ) -> Result<RegisterResult<A>> {
         require_writable(ctx)?;
 
@@ -1613,6 +1628,7 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
             return Ok(RegisterResult {
                 state: RegisterState::NotFound,
                 period: None,
+                quick_pick: None,
             });
         };
 
@@ -1636,10 +1652,28 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
             .next();
 
         if let Some(period) = existing_unfinished_period {
+            // The person is signed in *here*, which is the whole authorization for the
+            // quick-pick: it is only ever built for someone standing at this kiosk, so
+            // their own history is fair game even when they belong to another unit.
+            let quick_pick = if quick_pick.unwrap_or(false) {
+                match build_quick_pick(self.app.as_ref(), location_id, &person_id).await {
+                    Ok(qp) => Some(qp),
+                    // Never fail a sign-out over a shortcut list. The kiosk treats a null
+                    // quick-pick as "nothing to suggest" and shows the full category tree.
+                    Err(e) => {
+                        warn!("failed to build quick pick for person {person_id}: {e:?}");
+                        None
+                    }
+                }
+            } else {
+                None
+            };
+
             // already signed in — return pending state without modifying the period
             Ok(RegisterResult {
                 state: RegisterState::SignOutPending,
                 period: Some(Period::new(period)),
+                quick_pick,
             })
         } else {
             // no existing unfinished period, so sign them in
@@ -1652,6 +1686,7 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
             Ok(RegisterResult {
                 state: RegisterState::SignedIn,
                 period: Some(Period::new(rec)),
+                quick_pick: None,
             })
         }
     }

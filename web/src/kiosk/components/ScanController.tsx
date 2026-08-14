@@ -89,8 +89,11 @@ export default function ScanController(props: {
 
   const [commitRegister2Mutation] =
     useMutation<ScanControllerRegister2Mutation>(graphql`
-      mutation ScanControllerRegister2Mutation($memberNumber: String!) {
-        scanRegister2(memberNumber: $memberNumber) {
+      mutation ScanControllerRegister2Mutation(
+        $memberNumber: String!
+        $quickPick: Boolean!
+      ) {
+        scanRegister2(memberNumber: $memberNumber, quickPick: $quickPick) {
           state
           period {
             id
@@ -100,6 +103,22 @@ export default function ScanController(props: {
               id
               firstName
               lastName
+            }
+          }
+          quickPick {
+            locationCategories {
+              category {
+                id
+              }
+              recentPeople {
+                id
+                firstName
+              }
+            }
+            personCategories {
+              category {
+                id
+              }
             }
           }
         }
@@ -143,7 +162,8 @@ export default function ScanController(props: {
     try {
       res = await new Promise((resolve, reject) => {
         commitRegister2Mutation({
-          variables: { memberNumber: memberId },
+          // Only worth the server's extra reads if this kiosk shows the screen.
+          variables: { memberNumber: memberId, quickPick: quickPickCategories },
           onCompleted: resolve,
           onError: reject,
         });
@@ -190,6 +210,7 @@ export default function ScanController(props: {
     } else if (state == "SIGN_OUT_PENDING") {
       audioSuccess.play();
       const startTime = new Date(res.scanRegister2.period!.startTime! * 1000);
+      const quickPick = res.scanRegister2.quickPick;
       dispatchTransaction({
         type: "PERSON_RESOLVED",
         uuid,
@@ -197,6 +218,19 @@ export default function ScanController(props: {
         person: res.scanRegister2.period!.person!,
         status: "SIGNED_OUT",
         startTime,
+        // Null when this kiosk didn't ask for it, or when the server couldn't
+        // build it — either way the sign-out screen shows the full category tree.
+        quickPick: quickPick
+          ? {
+              location: quickPick.locationCategories.map((entry) => ({
+                categoryId: entry.category.id,
+                peopleNames: entry.recentPeople.map((p) => p.firstName),
+              })),
+              person: quickPick.personCategories.map((entry) => ({
+                categoryId: entry.category.id,
+              })),
+            }
+          : undefined,
       });
       return;
     }
@@ -232,8 +266,21 @@ export default function ScanController(props: {
   // most recent transaction
   const newTransaction = transactionState.transactions[0];
   const memberIdEnabled = newTransaction?.status != "LOADING";
+  const signedOutTransaction: TransactionSignedOut | null =
+    newTransaction?.status === "SIGNED_OUT" ? newTransaction : null;
+  // The register mutation returns these with the sign-out, so we know up front
+  // whether there is anything to show — skip the screen entirely rather than
+  // sliding an empty one in. (Suggestions the static category tree doesn't
+  // recognise are dropped later, inside the screen, which skips itself if that
+  // leaves nothing.)
+  const quickPickSuggestions = signedOutTransaction?.quickPick ?? null;
+  const hasQuickPickSuggestions =
+    !!quickPickSuggestions &&
+    (quickPickSuggestions.location.length > 0 ||
+      quickPickSuggestions.person.length > 0);
   const needsQuickPick =
     quickPickCategories &&
+    hasQuickPickSuggestions &&
     typeof newTransaction !== "undefined" &&
     newTransaction.status == "SIGNED_OUT" &&
     typeof newTransaction.categoryId === "undefined" &&
@@ -247,8 +294,6 @@ export default function ScanController(props: {
     typeof newTransaction !== "undefined" &&
     newTransaction.status == "SIGNED_OUT" &&
     !newTransaction.adjusted;
-  const signedOutTransaction: TransactionSignedOut | null =
-    newTransaction?.status === "SIGNED_OUT" ? newTransaction : null;
 
   // we use this as a key to ensure ScanCategories/ScanQuickPick clear state for each transaction
   const transactionUuid =
@@ -374,7 +419,7 @@ export default function ScanController(props: {
         onSelectCategory={onSelectCategory}
         onSkip={onSkipQuickPick}
         uuid={needsQuickPick ? transactionUuid : null}
-        personId={signedOutTransaction?.person.id ?? null}
+        suggestions={quickPickSuggestions}
         smallCategories={smallCategories}
         newCategories={newCategories}
       />
