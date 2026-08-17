@@ -528,6 +528,10 @@ async fn show_locations(_db: &impl Handler, locs: &[Location]) {
             ("enabled", bool_str(l.enabled)),
             ("nitc_enabled", opt_ts(l.nitc_enabled)),
             (
+                "nitc_complete_on_export",
+                bool_str(l.nitc_complete_on_export),
+            ),
+            (
                 "ses_api_headquarters_id",
                 opt_str(&l.ses_api_headquarters_id),
             ),
@@ -555,10 +559,14 @@ async fn show_sessions(db: &impl Handler, sessions: &[Session]) {
                 "location_id",
                 decorate(&s.location_id, locs.get(&s.location_id)),
             ),
+            ("active", bool_str(s.active)),
             ("code", opt_str(&s.code)),
             ("client_version", opt_str(&s.client_version)),
             ("last_contact", opt_ts(s.last_contact)),
             ("healthcheck_url", opt_str(&s.healthcheck_url)),
+            ("public_key", opt_str(&s.public_key)),
+            ("key_fingerprint", opt_str(&s.key_fingerprint)),
+            ("key_expires_at", opt_ts(s.key_expires_at)),
             (
                 "config",
                 serde_json::to_string(&s.config).unwrap_or_default(),
@@ -626,6 +634,7 @@ async fn show_periods(db: &impl Handler, periods: &[Period]) {
                 decorate(&p.location_id, locs.get(&p.location_id)),
             ),
             ("category_id", category),
+            ("comment", opt_str(&p.comment)),
             ("start_time", fmt_ts(p.start_time)),
             (
                 "end_time",
@@ -680,6 +689,7 @@ async fn show_categories(db: &impl Handler, cats: &[Category]) {
             ("id", c.id.clone()),
             ("name", c.name.clone()),
             ("enabled", bool_str(c.enabled)),
+            ("is_virtual", bool_str(c.is_virtual)),
             ("nitc_group_id", group),
             ("nitc_participant_type", opt_str(&c.nitc_participant_type)),
             ("created_at", fmt_ts(c.created_at)),
@@ -718,6 +728,10 @@ async fn show_users(db: &impl Handler, users: &[User]) {
             (
                 "email_config",
                 serde_json::to_string(&u.email_config).unwrap_or_default(),
+            ),
+            (
+                "disaggregate_virtual_periods",
+                bool_str(u.disaggregate_virtual_periods),
             ),
             ("created_at", fmt_ts(u.created_at)),
             ("updated_at", fmt_ts(u.updated_at)),
