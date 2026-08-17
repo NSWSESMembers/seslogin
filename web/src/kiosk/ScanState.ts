@@ -3,6 +3,26 @@ export type MemberIdWithUuid = {
   uuid: string;
 };
 
+export type QuickPickCategory = {
+  categoryId: string;
+  /**
+   * First names of the people who most recently picked this category here. Only
+   * carried on the location list — it's a "who else has been doing this" hint,
+   * which makes no sense against your own history.
+   */
+  peopleNames?: string[];
+};
+
+/**
+ * Sign-out category shortcuts, returned inline by the register mutation (see
+ * `RegisterResult.quickPick`) rather than fetched separately when the sign-out
+ * screen opens.
+ */
+export type QuickPickSuggestions = {
+  location: QuickPickCategory[];
+  person: QuickPickCategory[];
+};
+
 export type LoadPersonAction = MemberIdWithUuid & {
   type: "LOAD_PERSON";
 };
@@ -19,6 +39,8 @@ export type PersonResolvedAction = {
   periodId: string;
   startTime: Date;
   endTime?: Date;
+  /** Only present when signing out, and only if the kiosk asked for it. */
+  quickPick?: QuickPickSuggestions;
 };
 
 export type ErrorAction = {
@@ -108,6 +130,7 @@ export type TransactionSignedOut = {
   categoryId?: string;
   adjusted: boolean;
   quickPickSkipped: boolean;
+  quickPick?: QuickPickSuggestions;
 };
 
 export type TransactionLoading = MemberIdWithUuid & {
@@ -183,6 +206,7 @@ export function reducer(
           adjusted: false,
           quickPickSkipped: false,
           periodId: action.periodId,
+          quickPick: action.quickPick,
         };
       } else {
         throw Error("Invalid status in PERSON_RESOLVED action");

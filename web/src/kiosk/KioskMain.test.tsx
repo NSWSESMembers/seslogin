@@ -24,28 +24,32 @@ const FOUND_USER_RESPONSE = {
           lastName: "Guy",
         },
       },
+      quickPick: null,
     },
   },
 };
 const SIGNOUT_USER = "40050108";
-const SIGNOUT_USER_RESPONSE = {
-  data: {
-    scanRegister2: {
-      id: SIGNOUT_USER,
-      state: "SIGN_OUT_PENDING",
-      period: {
-        id: "period-456",
-        startTime: new Date().getTime() - 1000 * 60 * 60,
-        endTime: null,
-        person: {
-          id: `person-${SIGNOUT_USER}`,
-          firstName: "Jamie",
-          lastName: "Smith",
+function signOutUserResponse(quickPick: unknown = null) {
+  return {
+    data: {
+      scanRegister2: {
+        id: SIGNOUT_USER,
+        state: "SIGN_OUT_PENDING",
+        period: {
+          id: "period-456",
+          startTime: new Date().getTime() - 1000 * 60 * 60,
+          endTime: null,
+          person: {
+            id: `person-${SIGNOUT_USER}`,
+            firstName: "Jamie",
+            lastName: "Smith",
+          },
         },
+        quickPick,
       },
     },
-  },
-};
+  };
+}
 // a real leaf category id, shared between the legacy and new category trees in
 // web/src/lib/categories.ts (Training > AIIMS)
 const QUICK_PICK_CATEGORY_ID = "RX2bfpU6ppvV";
@@ -76,71 +80,49 @@ function sessionConfigHandler(config: Record<string, unknown>) {
   });
 }
 
-const emptyQuickPickHandler = relayEndpoint.query(
-  "ScanScreenQuickPickQuery",
-  () => {
-    return HttpResponse.json({
-      data: {
-        session: { location: { recentCategories: [] } },
-        person: { recentCategories: [] },
-      },
-    });
-  },
-);
+const EMPTY_QUICK_PICK = { locationCategories: [], personCategories: [] };
 
-const populatedQuickPickHandler = relayEndpoint.query(
-  "ScanScreenQuickPickQuery",
-  () => {
-    return HttpResponse.json({
-      data: {
-        session: {
-          location: {
-            recentCategories: [
-              {
-                category: { id: QUICK_PICK_CATEGORY_ID, name: "AIIMS" },
-                periodCount: 5,
-                recentPeople: [
-                  { id: "person-jane", firstName: "Jane" },
-                  { id: "person-tom", firstName: "Tom" },
-                ],
-              },
-            ],
+const POPULATED_QUICK_PICK = {
+  locationCategories: [
+    {
+      category: { id: QUICK_PICK_CATEGORY_ID },
+      recentPeople: [
+        { id: "person-jane", firstName: "Jane" },
+        { id: "person-tom", firstName: "Tom" },
+      ],
+    },
+  ],
+  personCategories: [{ category: { id: QUICK_PICK_CATEGORY_ID } }],
+};
+
+// The quick pick now rides along with the register mutation, so a test picks its
+// shape by swapping this handler rather than by stubbing a second query.
+function register2Handler(quickPick: unknown = null) {
+  return relayEndpoint.mutation(
+    "ScanControllerRegister2Mutation",
+    ({ variables }) => {
+      const { memberNumber } = variables;
+      if (memberNumber === FOUND_USER) {
+        return HttpResponse.json(FOUND_USER_RESPONSE);
+      }
+      if (memberNumber === SIGNOUT_USER) {
+        return HttpResponse.json(signOutUserResponse(quickPick));
+      }
+      return HttpResponse.json({
+        data: {
+          scanRegister2: {
+            id: memberNumber,
+            state: "NOT_FOUND",
+            period: null,
+            quickPick: null,
           },
         },
-        person: {
-          recentCategories: [
-            {
-              category: { id: QUICK_PICK_CATEGORY_ID, name: "AIIMS" },
-              periodCount: 2,
-            },
-          ],
-        },
-      },
-    });
-  },
-);
+      });
+    },
+  );
+}
 
-const graphqlHandlers = [
-  sessionConfigHandler({}),
-  relayEndpoint.mutation("ScanControllerRegister2Mutation", ({ variables }) => {
-    const { memberNumber } = variables;
-    if (memberNumber === FOUND_USER) {
-      return HttpResponse.json(FOUND_USER_RESPONSE);
-    }
-    if (memberNumber === SIGNOUT_USER) {
-      return HttpResponse.json(SIGNOUT_USER_RESPONSE);
-    }
-    return HttpResponse.json({
-      data: {
-        scanRegister2: {
-          id: memberNumber,
-          state: "NOT_FOUND",
-          period: null,
-        },
-      },
-    });
-  }),
-];
+const graphqlHandlers = [sessionConfigHandler({}), register2Handler()];
 
 const server = setupServer(...graphqlHandlers);
 const getItemSpy = vi.spyOn(localStorage, "getItem");
@@ -260,12 +242,10 @@ describe("KioskMain theme", () => {
 });
 
 describe("KioskMain quick pick categories", () => {
-  async function setupQuickPickTest(
-    quickPickHandler: ReturnType<typeof relayEndpoint.query>,
-  ) {
+  async function setupQuickPickTest(quickPick: unknown) {
     server.use(
       sessionConfigHandler({ quickPickCategories: true }),
-      quickPickHandler,
+      register2Handler(quickPick),
     );
     const user = await setupTest();
     await user.type(screen.getByRole("textbox"), SIGNOUT_USER + "{enter}");
@@ -273,7 +253,7 @@ describe("KioskMain quick pick categories", () => {
   }
 
   it("shows location and personal recent categories, and selecting one proceeds to confirm", async () => {
-    const user = await setupQuickPickTest(populatedQuickPickHandler);
+    const user = await setupQuickPickTest(POPULATED_QUICK_PICK);
 
     await waitFor(() =>
       expect(screen.getByText("Quick pick")).toBeInTheDocument(),
@@ -290,7 +270,7 @@ describe("KioskMain quick pick categories", () => {
   });
 
   it("falls through to the full category tree via 'More categories'", async () => {
-    const user = await setupQuickPickTest(populatedQuickPickHandler);
+    const user = await setupQuickPickTest(POPULATED_QUICK_PICK);
 
     await waitFor(() =>
       expect(screen.getByText("Quick pick")).toBeInTheDocument(),
@@ -303,11 +283,38 @@ describe("KioskMain quick pick categories", () => {
   });
 
   it("skips straight to the full category tree when there are no recent categories", async () => {
-    await setupQuickPickTest(emptyQuickPickHandler);
+    await setupQuickPickTest(EMPTY_QUICK_PICK);
 
     await waitFor(() =>
       expect(screen.getByText("Categories")).toBeInTheDocument(),
     );
     expect(screen.queryByText("Quick pick")).not.toBeInTheDocument();
+  });
+
+  it("skips straight to the full category tree when the server sends no quick pick", async () => {
+    await setupQuickPickTest(null);
+
+    await waitFor(() =>
+      expect(screen.getByText("Categories")).toBeInTheDocument(),
+    );
+    expect(screen.queryByText("Quick pick")).not.toBeInTheDocument();
+  });
+
+  it("only asks for the quick pick when the kiosk has the screen enabled", async () => {
+    const seen: unknown[] = [];
+    server.use(
+      sessionConfigHandler({}),
+      relayEndpoint.mutation(
+        "ScanControllerRegister2Mutation",
+        ({ variables }) => {
+          seen.push(variables.quickPick);
+          return HttpResponse.json(signOutUserResponse());
+        },
+      ),
+    );
+    const user = await setupTest();
+    await user.type(screen.getByRole("textbox"), SIGNOUT_USER + "{enter}");
+
+    await waitFor(() => expect(seen).toEqual([false]));
   });
 });

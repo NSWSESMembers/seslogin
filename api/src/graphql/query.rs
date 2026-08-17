@@ -556,50 +556,24 @@ impl<A: App + HasDb + Send + Sync> Person<A> {
     }
 
     /// This person's most-frequently-used categories recently, ranked by
-    /// frequency then recency. Powers the kiosk sign-out quick-pick.
+    /// frequency then recency.
+    ///
+    /// Superseded by `scanRegister2`'s `quickPick`, which serves the kiosk
+    /// sign-out screen without a second round trip. Kept for the kiosk clients
+    /// still deployed against it; remove once they have all rolled over.
     async fn recent_categories(
         &self,
         ctx: &Context<'_>,
         limit: Option<i32>,
     ) -> Result<Vec<PersonRecentCategory<A>>> {
         require_location_access(ctx, &self.rec.location_id)?;
-        let app = ctx.data_unchecked::<Arc<A>>();
+        let app = ctx.data_unchecked::<Arc<A>>().as_ref();
 
-        let periods = app
-            .db()
-            .list_periods_for_person(
-                &self.rec.id,
-                None,
-                None,
-                db::ListPeriodsPage {
-                    after: None,
-                    before: None,
-                    limit: RECENT_CATEGORIES_PERSON_SCAN_LIMIT,
-                    descending: true,
-                },
-            )
-            .await
-            .map_err(|e| {
-                warn!("db error: {:?}", e);
-                e
-            })?;
-
-        let enabled_category_ids: HashSet<String> = app
-            .db()
-            .list_categories()
-            .await
-            .map_err(|e| {
-                warn!("db error: {:?}", e);
-                e
-            })?
-            .into_iter()
-            .filter(|cat| cat.enabled)
-            .map(|cat| cat.id)
-            .collect();
-
+        let periods = recent_periods_for_person(app, &self.rec.id).await?;
+        let enabled = enabled_category_ids(app).await?;
         let ranked = rank_recent_categories(
             periods.iter(),
-            &enabled_category_ids,
+            &enabled,
             clamp_recent_categories_limit(limit),
             0,
         );
@@ -1380,6 +1354,127 @@ fn clamp_recent_categories_limit(limit: Option<i32>) -> usize {
         .min(RECENT_CATEGORIES_MAX_LIMIT)
 }
 
+/// The categories a quick-pick is allowed to suggest. Disabled (and deleted)
+/// categories are dropped here so a retired activity is never offered as a
+/// shortcut.
+async fn enabled_category_ids<A: App + HasDb + Send + Sync>(app: &A) -> Result<HashSet<String>> {
+    Ok(app
+        .db()
+        .list_categories()
+        .await
+        .map_err(|e| {
+            warn!("db error: {:?}", e);
+            e
+        })?
+        .into_iter()
+        .filter(|cat| cat.enabled)
+        .map(|cat| cat.id)
+        .collect())
+}
+
+/// The candidate pool for a location's quick-pick: its most recent periods.
+async fn recent_periods_for_location<A: App + HasDb + Send + Sync>(
+    app: &A,
+    location_id: &str,
+) -> Result<Vec<db::Period>> {
+    app.db()
+        .list_periods_for_location(
+            location_id,
+            false,
+            None,
+            db::ListPeriodsPage {
+                after: None,
+                before: None,
+                limit: RECENT_CATEGORIES_LOCATION_SCAN_LIMIT,
+                descending: true,
+            },
+        )
+        .await
+        .map_err(|e| {
+            warn!("db error: {:?}", e);
+            e.into()
+        })
+}
+
+/// The candidate pool for a person's quick-pick: their most recent periods, at
+/// any location.
+async fn recent_periods_for_person<A: App + HasDb + Send + Sync>(
+    app: &A,
+    person_id: &str,
+) -> Result<Vec<db::Period>> {
+    app.db()
+        .list_periods_for_person(
+            person_id,
+            None,
+            None,
+            db::ListPeriodsPage {
+                after: None,
+                before: None,
+                limit: RECENT_CATEGORIES_PERSON_SCAN_LIMIT,
+                descending: true,
+            },
+        )
+        .await
+        .map_err(|e| {
+            warn!("db error: {:?}", e);
+            e.into()
+        })
+}
+
+/// Both halves of the kiosk sign-out quick-pick, returned inline by
+/// `scanRegister2` so the kiosk needs no second round trip.
+///
+/// Deliberately has no field arguments: it is built eagerly by the mutation, so
+/// there is nothing to resolve lazily and nothing for a caller to tune.
+#[derive(SimpleObject)]
+pub struct QuickPick<A: App + HasDb + Send + Sync + 'static> {
+    /// Categories recently used at the kiosk's own location.
+    location_categories: Vec<LocationRecentCategory<A>>,
+    /// Categories recently used by the person signing out, at any location.
+    person_categories: Vec<PersonRecentCategory<A>>,
+}
+
+/// Build the quick-pick for `person_id` signing out at `location_id`.
+///
+/// The caller is responsible for authorization, and by construction has it: this
+/// is only reached from `scanRegister2` once the person has been found to have an
+/// open period at the calling kiosk's location. That is what lets the person half
+/// span every location — a member signing out at a unit other than their own is
+/// standing at the kiosk, and their `Person` record's home location is irrelevant.
+///
+/// The three reads run concurrently: this sits on the scan path, with a member
+/// waiting at the screen.
+pub(super) async fn build_quick_pick<A: App + HasDb + Send + Sync + 'static>(
+    app: &A,
+    location_id: &str,
+    person_id: &str,
+) -> Result<QuickPick<A>> {
+    let (enabled, location_periods, person_periods) = tokio::try_join!(
+        enabled_category_ids(app),
+        recent_periods_for_location(app, location_id),
+        recent_periods_for_person(app, person_id),
+    )?;
+
+    let limit = RECENT_CATEGORIES_DEFAULT_LIMIT;
+    Ok(QuickPick {
+        location_categories: rank_recent_categories(
+            location_periods.iter(),
+            &enabled,
+            limit,
+            RECENT_CATEGORIES_PEOPLE_CAP,
+        )
+        .into_iter()
+        .map(LocationRecentCategory::new)
+        .collect(),
+        // No people cap: "who else did this" is a hint about the location, not
+        // something to show someone about their own history.
+        person_categories: rank_recent_categories(person_periods.iter(), &enabled, limit, 0)
+            .into_iter()
+            .map(PersonRecentCategory::new)
+            .collect(),
+    })
+}
+
 #[cfg(test)]
 mod recent_categories_tests {
     use super::*;
@@ -1660,50 +1755,23 @@ impl<A: App + HasDb + Send + Sync> Location<A> {
 
     /// This location's most-frequently-used categories recently, ranked by
     /// frequency then recency, with the people who most recently used each one.
-    /// Powers the kiosk sign-out quick-pick.
+    ///
+    /// Superseded by `scanRegister2`'s `quickPick`, which serves the kiosk
+    /// sign-out screen without a second round trip. Kept for the kiosk clients
+    /// still deployed against it; remove once they have all rolled over.
     async fn recent_categories(
         &self,
         ctx: &Context<'_>,
         limit: Option<i32>,
     ) -> Result<Vec<LocationRecentCategory<A>>> {
         require_location_access(ctx, &self.rec.id)?;
-        let app = ctx.data_unchecked::<Arc<A>>();
+        let app = ctx.data_unchecked::<Arc<A>>().as_ref();
 
-        let periods = app
-            .db()
-            .list_periods_for_location(
-                &self.rec.id,
-                false,
-                None,
-                db::ListPeriodsPage {
-                    after: None,
-                    before: None,
-                    limit: RECENT_CATEGORIES_LOCATION_SCAN_LIMIT,
-                    descending: true,
-                },
-            )
-            .await
-            .map_err(|e| {
-                warn!("db error: {:?}", e);
-                e
-            })?;
-
-        let enabled_category_ids: HashSet<String> = app
-            .db()
-            .list_categories()
-            .await
-            .map_err(|e| {
-                warn!("db error: {:?}", e);
-                e
-            })?
-            .into_iter()
-            .filter(|cat| cat.enabled)
-            .map(|cat| cat.id)
-            .collect();
-
+        let periods = recent_periods_for_location(app, &self.rec.id).await?;
+        let enabled = enabled_category_ids(app).await?;
         let ranked = rank_recent_categories(
             periods.iter(),
-            &enabled_category_ids,
+            &enabled,
             clamp_recent_categories_limit(limit),
             RECENT_CATEGORIES_PEOPLE_CAP,
         );

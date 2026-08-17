@@ -1,6 +1,5 @@
-import { Suspense, useEffect } from "react";
-import { graphql, useLazyLoadQuery } from "react-relay";
-import type { ScanScreenQuickPickQuery } from "./__generated__/ScanScreenQuickPickQuery.graphql";
+import { useEffect } from "react";
+import type { QuickPickSuggestions } from "../ScanState";
 import { categoriesFor, categoryIconSrc } from "../../lib/categories";
 import { scanView, scanViewPosition, type ScreenPosition } from "../../styles";
 import { Button } from "../../components/ui/Button";
@@ -105,74 +104,41 @@ function QuickPickSection(props: {
   );
 }
 
+// Suggestions name categories by id only; drop any the kiosk's static tree
+// doesn't know about (a category retired from the tree, or one only the admin
+// UI uses) rather than rendering a button with no name or icon.
+function toItems(
+  categories: QuickPickSuggestions["location"],
+  newCategories: boolean,
+): QuickPickItem[] {
+  return categories
+    .map((entry): QuickPickItem | null => {
+      const leaf = findLeafCategory(entry.categoryId, newCategories);
+      if (!leaf) {
+        return null;
+      }
+      return {
+        categoryId: entry.categoryId,
+        groupName: leaf.groupName,
+        name: leaf.name,
+        icon: leaf.icon,
+        peopleNames: entry.peopleNames,
+      };
+    })
+    .filter((item): item is QuickPickItem => item !== null);
+}
+
 function Inner(props: {
-  personId: string;
+  suggestions: QuickPickSuggestions;
   newCategories: boolean;
   smallCategories?: boolean;
   onSelectCategory: (categoryId: string) => void;
   onSkip: () => void;
 }) {
-  const data = useLazyLoadQuery<ScanScreenQuickPickQuery>(
-    graphql`
-      query ScanScreenQuickPickQuery($personId: ID!) {
-        session {
-          location {
-            recentCategories(limit: 6) {
-              category {
-                id
-              }
-              recentPeople {
-                id
-                firstName
-              }
-            }
-          }
-        }
-        person(id: $personId) {
-          recentCategories(limit: 6) {
-            category {
-              id
-            }
-          }
-        }
-      }
-    `,
-    { personId: props.personId },
-    { fetchPolicy: "network-only" },
-  );
+  const { newCategories, suggestions } = props;
 
-  const { newCategories } = props;
-
-  const locationItems: QuickPickItem[] = data.session.location.recentCategories
-    .map((entry): QuickPickItem | null => {
-      const leaf = findLeafCategory(entry.category.id, newCategories);
-      if (!leaf) {
-        return null;
-      }
-      return {
-        categoryId: entry.category.id,
-        groupName: leaf.groupName,
-        name: leaf.name,
-        icon: leaf.icon,
-        peopleNames: entry.recentPeople.map((p) => p.firstName),
-      };
-    })
-    .filter((item): item is QuickPickItem => item !== null);
-
-  const personItems: QuickPickItem[] = data.person.recentCategories
-    .map((entry): QuickPickItem | null => {
-      const leaf = findLeafCategory(entry.category.id, newCategories);
-      if (!leaf) {
-        return null;
-      }
-      return {
-        categoryId: entry.category.id,
-        groupName: leaf.groupName,
-        name: leaf.name,
-        icon: leaf.icon,
-      };
-    })
-    .filter((item): item is QuickPickItem => item !== null);
+  const locationItems = toItems(suggestions.location, newCategories);
+  const personItems = toItems(suggestions.person, newCategories);
 
   const isEmpty = locationItems.length === 0 && personItems.length === 0;
 
@@ -225,14 +191,6 @@ function Inner(props: {
   );
 }
 
-function QuickPickFallback() {
-  return (
-    <div className="mt-20 flex justify-center">
-      <span className="inline-block size-10 animate-spin rounded-full border-[3px] border-line border-t-menu align-middle motion-reduce:animate-none" />
-    </div>
-  );
-}
-
 // we expose this wrapper just so we can reset inner state on UUID change without
 // causing the container <div> to remount and lose CSS transition state
 export default function ScanScreenQuickPick(props: {
@@ -240,27 +198,24 @@ export default function ScanScreenQuickPick(props: {
   onSkip: () => void;
   screenPosition: ScreenPosition;
   uuid: string | null;
-  personId: string | null;
+  /** Comes back with the sign-out itself; null if the server had none to give. */
+  suggestions: QuickPickSuggestions | null;
   smallCategories?: boolean;
   newCategories?: boolean;
 }) {
-  const { uuid, personId, onSelectCategory } = props;
+  const { uuid, suggestions, onSelectCategory } = props;
 
   return (
     <div className={`${scanView} ${scanViewPosition[props.screenPosition]}`}>
-      {uuid && personId && (
-        <Suspense fallback={<QuickPickFallback />}>
-          <Inner
-            key={uuid}
-            personId={personId}
-            smallCategories={props.smallCategories}
-            newCategories={!!props.newCategories}
-            onSelectCategory={(categoryId) =>
-              onSelectCategory(uuid, categoryId)
-            }
-            onSkip={props.onSkip}
-          />
-        </Suspense>
+      {uuid && suggestions && (
+        <Inner
+          key={uuid}
+          suggestions={suggestions}
+          smallCategories={props.smallCategories}
+          newCategories={!!props.newCategories}
+          onSelectCategory={(categoryId) => onSelectCategory(uuid, categoryId)}
+          onSkip={props.onSkip}
+        />
       )}
     </div>
   );
