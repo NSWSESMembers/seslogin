@@ -8,8 +8,8 @@ use anyhow::{Result, anyhow};
 use chrono::{DateTime, Local, NaiveDate};
 use clap::{Parser, Subcommand};
 use seslogin::db::{
-    Category, Handler, ListLocationsFilter, ListPeriodsPage, ListSessionsQuery, Location, Period,
-    PeriodCursor, Person, Session, User,
+    ApiToken, Category, Handler, ListLocationsFilter, ListPeriodsPage, ListSessionsQuery, Location,
+    NitcEvent, NitcGroup, Period, PeriodCursor, Person, Session, User,
 };
 use seslogin::dynamodb;
 use seslogin::jwt::{ExpirePolicy, Key};
@@ -490,6 +490,13 @@ async fn nitc_event_dates(db: &impl Handler, ids: &[String]) -> HashMap<String, 
 }
 
 // ── Detail renderers ─────────────────────────────────────────────────────────
+//
+// Every renderer below destructures its record exhaustively — no `..` in any of the
+// patterns. That is deliberate: adding a field to one of the `db.rs` structs then
+// fails to compile here (E0027, "pattern does not mention field"), so a new field
+// can't quietly go missing from `get`. Fields we intentionally don't print are
+// bound as `field: _` with a reason, which keeps the trap armed for genuinely new
+// ones. Please keep it that way rather than reaching for `..`.
 
 async fn show_persons(db: &impl Handler, persons: &[Person]) {
     let loc_ids: Vec<String> = persons.iter().map(|p| p.location_id.clone()).collect();
@@ -498,21 +505,31 @@ async fn show_persons(db: &impl Handler, persons: &[Person]) {
         if i > 0 {
             println!("{DIVIDER}");
         }
+        let Person {
+            id,
+            location_id,
+            first_name,
+            last_name,
+            registration_number,
+            ses_api_person_id,
+            email,
+            deleted,
+            missing_since,
+            created_at,
+            updated_at,
+        } = p;
         print_detail(&[
-            ("id", p.id.clone()),
-            ("first_name", p.first_name.clone()),
-            ("last_name", p.last_name.clone()),
-            ("registration_number", opt_str(&p.registration_number)),
-            (
-                "location_id",
-                decorate(&p.location_id, locs.get(&p.location_id)),
-            ),
-            ("ses_api_person_id", opt_str(&p.ses_api_person_id)),
-            ("email", opt_str(&p.email)),
-            ("deleted", opt_ts(p.deleted)),
-            ("missing_since", opt_ts(p.missing_since)),
-            ("created_at", opt_ts(p.created_at)),
-            ("updated_at", opt_ts(p.updated_at)),
+            ("id", id.clone()),
+            ("first_name", first_name.clone()),
+            ("last_name", last_name.clone()),
+            ("registration_number", opt_str(registration_number)),
+            ("location_id", decorate(location_id, locs.get(location_id))),
+            ("ses_api_person_id", opt_str(ses_api_person_id)),
+            ("email", opt_str(email)),
+            ("deleted", opt_ts(*deleted)),
+            ("missing_since", opt_ts(*missing_since)),
+            ("created_at", opt_ts(*created_at)),
+            ("updated_at", opt_ts(*updated_at)),
         ]);
     }
 }
@@ -522,25 +539,33 @@ async fn show_locations(_db: &impl Handler, locs: &[Location]) {
         if i > 0 {
             println!("{DIVIDER}");
         }
+        let Location {
+            id,
+            name,
+            enabled,
+            nitc_enabled,
+            nitc_complete_on_export,
+            ses_api_headquarters_id,
+            last_successful_member_sync,
+            created_at,
+            updated_at,
+        } = l;
         print_detail(&[
-            ("id", l.id.clone()),
-            ("name", l.name.clone()),
-            ("enabled", bool_str(l.enabled)),
-            ("nitc_enabled", opt_ts(l.nitc_enabled)),
+            ("id", id.clone()),
+            ("name", name.clone()),
+            ("enabled", bool_str(*enabled)),
+            ("nitc_enabled", opt_ts(*nitc_enabled)),
             (
                 "nitc_complete_on_export",
-                bool_str(l.nitc_complete_on_export),
+                bool_str(*nitc_complete_on_export),
             ),
-            (
-                "ses_api_headquarters_id",
-                opt_str(&l.ses_api_headquarters_id),
-            ),
+            ("ses_api_headquarters_id", opt_str(ses_api_headquarters_id)),
             (
                 "last_successful_member_sync",
-                opt_ts(l.last_successful_member_sync),
+                opt_ts(*last_successful_member_sync),
             ),
-            ("created_at", fmt_ts(l.created_at)),
-            ("updated_at", fmt_ts(l.updated_at)),
+            ("created_at", fmt_ts(*created_at)),
+            ("updated_at", fmt_ts(*updated_at)),
         ]);
     }
 }
@@ -552,27 +577,37 @@ async fn show_sessions(db: &impl Handler, sessions: &[Session]) {
         if i > 0 {
             println!("{DIVIDER}");
         }
+        let Session {
+            id,
+            name,
+            location_id,
+            active,
+            last_contact,
+            client_version,
+            code,
+            config,
+            healthcheck_url,
+            public_key,
+            key_fingerprint,
+            key_expires_at,
+            created_at,
+            updated_at,
+        } = s;
         print_detail(&[
-            ("id", s.id.clone()),
-            ("name", s.name.clone()),
-            (
-                "location_id",
-                decorate(&s.location_id, locs.get(&s.location_id)),
-            ),
-            ("active", bool_str(s.active)),
-            ("code", opt_str(&s.code)),
-            ("client_version", opt_str(&s.client_version)),
-            ("last_contact", opt_ts(s.last_contact)),
-            ("healthcheck_url", opt_str(&s.healthcheck_url)),
-            ("public_key", opt_str(&s.public_key)),
-            ("key_fingerprint", opt_str(&s.key_fingerprint)),
-            ("key_expires_at", opt_ts(s.key_expires_at)),
-            (
-                "config",
-                serde_json::to_string(&s.config).unwrap_or_default(),
-            ),
-            ("created_at", opt_ts(s.created_at)),
-            ("updated_at", opt_ts(s.updated_at)),
+            ("id", id.clone()),
+            ("name", name.clone()),
+            ("location_id", decorate(location_id, locs.get(location_id))),
+            ("active", bool_str(*active)),
+            ("code", opt_str(code)),
+            ("client_version", opt_str(client_version)),
+            ("last_contact", opt_ts(*last_contact)),
+            ("healthcheck_url", opt_str(healthcheck_url)),
+            ("public_key", opt_str(public_key)),
+            ("key_fingerprint", opt_str(key_fingerprint)),
+            ("key_expires_at", opt_ts(*key_expires_at)),
+            ("config", serde_json::to_string(config).unwrap_or_default()),
+            ("created_at", opt_ts(*created_at)),
+            ("updated_at", opt_ts(*updated_at)),
         ]);
     }
 }
@@ -616,52 +651,67 @@ async fn show_periods(db: &impl Handler, periods: &[Period]) {
         if i > 0 {
             println!("{DIVIDER}");
         }
-        let category = match &p.category_id {
+        let Period {
+            id,
+            person_id,
+            guest_name,
+            comment,
+            location_id,
+            category_id,
+            start_time,
+            end_time,
+            signed_in_session_id,
+            signed_out_session_id,
+            version,
+            nitc_event_id,
+            nitc_participant_id,
+            nitc_exported_version,
+            deleted,
+            created_at,
+            updated_at,
+        } = p;
+        let category = match category_id {
             Some(c) => decorate(c, cat_map.get(c)),
             None => "-".to_string(),
         };
         print_detail(&[
-            ("id", p.id.clone()),
+            ("id", id.clone()),
             (
                 "person_id",
-                match &p.person_id {
+                match person_id {
                     Some(pid) => decorate(pid, person_map.get(pid)),
-                    None => format!("GUEST {}", p.guest_name.as_deref().unwrap_or("")),
+                    // A guest period has no person; show the guest's name instead.
+                    None => format!("GUEST {}", guest_name.as_deref().unwrap_or("")),
                 },
             ),
-            (
-                "location_id",
-                decorate(&p.location_id, locs.get(&p.location_id)),
-            ),
+            ("location_id", decorate(location_id, locs.get(location_id))),
             ("category_id", category),
-            ("comment", opt_str(&p.comment)),
-            ("start_time", fmt_ts(p.start_time)),
+            ("comment", opt_str(comment)),
+            ("start_time", fmt_ts(*start_time)),
             (
                 "end_time",
-                p.end_time
-                    .map(fmt_ts)
-                    .unwrap_or_else(|| "active".to_string()),
+                end_time.map(fmt_ts).unwrap_or_else(|| "active".to_string()),
             ),
             (
                 "signed_in_session_id",
-                opt_ref(&p.signed_in_session_id, &session_map),
+                opt_ref(signed_in_session_id, &session_map),
             ),
             (
                 "signed_out_session_id",
-                opt_ref(&p.signed_out_session_id, &session_map),
+                opt_ref(signed_out_session_id, &session_map),
             ),
-            ("version", p.version.to_string()),
-            ("nitc_event_id", opt_ref(&p.nitc_event_id, &event_map)),
+            ("version", version.to_string()),
+            ("nitc_event_id", opt_ref(nitc_event_id, &event_map)),
             (
                 "nitc_participant_id",
-                p.nitc_participant_id
+                nitc_participant_id
                     .map(|v| v.to_string())
                     .unwrap_or_else(|| "-".to_string()),
             ),
-            ("nitc_exported_version", opt_num(p.nitc_exported_version)),
-            ("deleted", opt_ts(p.deleted)),
-            ("created_at", opt_ts(p.created_at)),
-            ("updated_at", opt_ts(p.updated_at)),
+            ("nitc_exported_version", opt_num(*nitc_exported_version)),
+            ("deleted", opt_ts(*deleted)),
+            ("created_at", opt_ts(*created_at)),
+            ("updated_at", opt_ts(*updated_at)),
         ]);
     }
 }
@@ -681,19 +731,29 @@ async fn show_categories(db: &impl Handler, cats: &[Category]) {
         if i > 0 {
             println!("{DIVIDER}");
         }
-        let group = match &c.nitc_group_id {
+        let Category {
+            id,
+            name,
+            enabled,
+            is_virtual,
+            nitc_participant_type,
+            nitc_group_id,
+            created_at,
+            updated_at,
+        } = c;
+        let group = match nitc_group_id {
             Some(g) => decorate(g, group_types.get(g)),
             None => "-".to_string(),
         };
         print_detail(&[
-            ("id", c.id.clone()),
-            ("name", c.name.clone()),
-            ("enabled", bool_str(c.enabled)),
-            ("is_virtual", bool_str(c.is_virtual)),
+            ("id", id.clone()),
+            ("name", name.clone()),
+            ("enabled", bool_str(*enabled)),
+            ("is_virtual", bool_str(*is_virtual)),
             ("nitc_group_id", group),
-            ("nitc_participant_type", opt_str(&c.nitc_participant_type)),
-            ("created_at", fmt_ts(c.created_at)),
-            ("updated_at", fmt_ts(c.updated_at)),
+            ("nitc_participant_type", opt_str(nitc_participant_type)),
+            ("created_at", fmt_ts(*created_at)),
+            ("updated_at", fmt_ts(*updated_at)),
         ]);
     }
 }
@@ -708,38 +768,145 @@ async fn show_users(db: &impl Handler, users: &[User]) {
         if i > 0 {
             println!("{DIVIDER}");
         }
-        let grants = if u.location_grants.is_empty() {
+        let User {
+            id,
+            email,
+            is_super,
+            is_dev,
+            enabled,
+            location_grants,
+            access_time,
+            email_config,
+            disaggregate_virtual_periods,
+            created_at,
+            updated_at,
+        } = u;
+        let grants = if location_grants.is_empty() {
             "-".to_string()
         } else {
-            u.location_grants
+            location_grants
                 .iter()
                 .map(|g| decorate(g, locs.get(g)))
                 .collect::<Vec<_>>()
                 .join(", ")
         };
         print_detail(&[
-            ("id", u.id.clone()),
-            ("email", u.email.clone()),
-            ("is_super", bool_str(u.is_super)),
-            ("is_dev", bool_str(u.is_dev)),
-            ("enabled", bool_str(u.enabled)),
+            ("id", id.clone()),
+            ("email", email.clone()),
+            ("is_super", bool_str(*is_super)),
+            ("is_dev", bool_str(*is_dev)),
+            ("enabled", bool_str(*enabled)),
             ("location_grants", grants),
-            ("access_time", opt_ts(u.access_time)),
+            ("access_time", opt_ts(*access_time)),
             (
                 "email_config",
-                serde_json::to_string(&u.email_config).unwrap_or_default(),
+                serde_json::to_string(email_config).unwrap_or_default(),
             ),
             (
                 "disaggregate_virtual_periods",
-                bool_str(u.disaggregate_virtual_periods),
+                bool_str(*disaggregate_virtual_periods),
             ),
-            ("created_at", fmt_ts(u.created_at)),
-            ("updated_at", fmt_ts(u.updated_at)),
+            ("created_at", fmt_ts(*created_at)),
+            ("updated_at", fmt_ts(*updated_at)),
         ]);
     }
 }
 
-async fn show_nitc_events(db: &impl Handler, events: &[seslogin::db::NitcEvent]) {
+async fn show_api_tokens(db: &impl Handler, tokens: &[ApiToken]) {
+    let grant_ids: Vec<String> = tokens
+        .iter()
+        .flat_map(|t| t.location_grants.clone())
+        .collect();
+    let locs = location_names(db, &grant_ids).await;
+    let creator_ids: Vec<String> = tokens
+        .iter()
+        .map(|t| t.created_by_user_id.clone())
+        .collect();
+    let creators = user_emails(db, &creator_ids).await;
+    for (i, t) in tokens.iter().enumerate() {
+        if i > 0 {
+            println!("{DIVIDER}");
+        }
+        let ApiToken {
+            id,
+            name,
+            // The stored secret hash; deliberately never printed.
+            token_hash: _,
+            location_grants,
+            read_only,
+            created_at,
+            created_by_user_id,
+            expires_at,
+            revoked_at,
+            last_used_at,
+        } = t;
+        let grants = if location_grants.is_empty() {
+            "-".to_string()
+        } else {
+            location_grants
+                .iter()
+                .map(|g| decorate(g, locs.get(g)))
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
+        print_detail(&[
+            ("id", id.clone()),
+            ("name", name.clone()),
+            ("read_only", bool_str(*read_only)),
+            ("location_grants", grants),
+            ("created_at", fmt_ts(*created_at)),
+            (
+                "created_by_user_id",
+                decorate(created_by_user_id, creators.get(created_by_user_id)),
+            ),
+            ("expires_at", opt_ts(*expires_at)),
+            ("revoked_at", opt_ts(*revoked_at)),
+            ("last_used_at", opt_ts(*last_used_at)),
+        ]);
+    }
+}
+
+async fn show_nitc_groups(db: &impl Handler, groups: &[NitcGroup]) -> Result<()> {
+    // Resolve tag IDs to names (single full-table fetch), only if needed.
+    let tag_names: HashMap<i32, String> = if groups.iter().any(|g| !g.nitc_tag_ids.is_empty()) {
+        db.list_nitc_tags()
+            .await?
+            .into_iter()
+            .map(|t| (t.id, t.name))
+            .collect()
+    } else {
+        HashMap::new()
+    };
+    for (i, g) in groups.iter().enumerate() {
+        if i > 0 {
+            println!("{DIVIDER}");
+        }
+        let NitcGroup {
+            id,
+            nitc_type,
+            nitc_tag_ids,
+            created_at,
+            updated_at,
+        } = g;
+        print_detail(&[
+            ("id", id.clone()),
+            ("nitc_type", nitc_type.clone()),
+            (
+                "nitc_tag_ids",
+                nitc_tag_ids
+                    .iter()
+                    .map(|t| decorate(&t.to_string(), tag_names.get(t)))
+                    .collect::<Vec<_>>()
+                    .join(", "),
+            ),
+            ("created_at", opt_ts(*created_at)),
+            ("updated_at", opt_ts(*updated_at)),
+        ]);
+    }
+    Ok(())
+}
+
+async fn show_nitc_events(db: &impl Handler, events: &[NitcEvent]) {
     let loc_ids: Vec<String> = events.iter().map(|e| e.location_id.clone()).collect();
     let locs = location_names(db, &loc_ids).await;
     let mut group_types: HashMap<String, String> = HashMap::new();
@@ -754,27 +921,35 @@ async fn show_nitc_events(db: &impl Handler, events: &[seslogin::db::NitcEvent])
         if i > 0 {
             println!("{DIVIDER}");
         }
+        let NitcEvent {
+            id,
+            location_id,
+            nitc_group_id,
+            event_date,
+            ses_api_nitc_id,
+            version,
+            synced_version,
+            created_at,
+            updated_at,
+        } = e;
         print_detail(&[
-            ("id", e.id.clone()),
-            (
-                "location_id",
-                decorate(&e.location_id, locs.get(&e.location_id)),
-            ),
+            ("id", id.clone()),
+            ("location_id", decorate(location_id, locs.get(location_id))),
             (
                 "nitc_group_id",
-                decorate(&e.nitc_group_id, group_types.get(&e.nitc_group_id)),
+                decorate(nitc_group_id, group_types.get(nitc_group_id)),
             ),
-            ("event_date", e.event_date.to_string()),
+            ("event_date", event_date.to_string()),
             (
                 "ses_api_nitc_id",
-                e.ses_api_nitc_id
+                ses_api_nitc_id
                     .map(|v| v.to_string())
                     .unwrap_or_else(|| "-".to_string()),
             ),
-            ("version", e.version.to_string()),
-            ("synced_version", opt_num(e.synced_version)),
-            ("created_at", opt_ts(e.created_at)),
-            ("updated_at", opt_ts(e.updated_at)),
+            ("version", version.to_string()),
+            ("synced_version", opt_num(*synced_version)),
+            ("created_at", opt_ts(*created_at)),
+            ("updated_at", opt_ts(*updated_at)),
         ]);
     }
 }
@@ -1248,50 +1423,7 @@ async fn run(db: &impl Handler, object: Object) -> Result<()> {
                         None => eprintln!("not found: {}", id),
                     }
                 }
-                let locs = location_names(
-                    db,
-                    &found
-                        .iter()
-                        .flat_map(|t| t.location_grants.clone())
-                        .collect::<Vec<_>>(),
-                )
-                .await;
-                let creators = user_emails(
-                    db,
-                    &found
-                        .iter()
-                        .map(|t| t.created_by_user_id.clone())
-                        .collect::<Vec<_>>(),
-                )
-                .await;
-                for (i, t) in found.iter().enumerate() {
-                    if i > 0 {
-                        println!("{DIVIDER}");
-                    }
-                    let grants = if t.location_grants.is_empty() {
-                        "-".to_string()
-                    } else {
-                        t.location_grants
-                            .iter()
-                            .map(|g| decorate(g, locs.get(g)))
-                            .collect::<Vec<_>>()
-                            .join(", ")
-                    };
-                    print_detail(&[
-                        ("id", t.id.clone()),
-                        ("name", t.name.clone()),
-                        ("read_only", bool_str(t.read_only)),
-                        ("location_grants", grants),
-                        ("created_at", fmt_ts(t.created_at)),
-                        (
-                            "created_by_user_id",
-                            decorate(&t.created_by_user_id, creators.get(&t.created_by_user_id)),
-                        ),
-                        ("expires_at", opt_ts(t.expires_at)),
-                        ("revoked_at", opt_ts(t.revoked_at)),
-                        ("last_used_at", opt_ts(t.last_used_at)),
-                    ]);
-                }
+                show_api_tokens(db, &found).await;
             }
             ApiTokenCmd::List => {
                 let mut tokens = db.list_api_tokens().await?;
@@ -1328,36 +1460,7 @@ async fn run(db: &impl Handler, object: Object) -> Result<()> {
                         None => eprintln!("not found: {}", id),
                     }
                 }
-                // Resolve tag IDs to names (single full-table fetch), only if needed.
-                let tag_names: HashMap<i32, String> =
-                    if found.iter().any(|g| !g.nitc_tag_ids.is_empty()) {
-                        db.list_nitc_tags()
-                            .await?
-                            .into_iter()
-                            .map(|t| (t.id, t.name))
-                            .collect()
-                    } else {
-                        HashMap::new()
-                    };
-                for (i, g) in found.iter().enumerate() {
-                    if i > 0 {
-                        println!("{DIVIDER}");
-                    }
-                    print_detail(&[
-                        ("id", g.id.clone()),
-                        ("nitc_type", g.nitc_type.clone()),
-                        (
-                            "nitc_tag_ids",
-                            g.nitc_tag_ids
-                                .iter()
-                                .map(|t| decorate(&t.to_string(), tag_names.get(t)))
-                                .collect::<Vec<_>>()
-                                .join(", "),
-                        ),
-                        ("created_at", opt_ts(g.created_at)),
-                        ("updated_at", opt_ts(g.updated_at)),
-                    ]);
-                }
+                show_nitc_groups(db, &found).await?;
             }
             NitcGroupCmd::List => {
                 let groups = db.list_nitc_groups().await?;
