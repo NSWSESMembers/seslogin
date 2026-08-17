@@ -2669,6 +2669,13 @@ impl<A: App + HasDb + Send + Sync + 'static> Session<A> {
         self.rec.key_fingerprint.is_some()
     }
 
+    /// Hex SHA-256 of the kiosk's enrolled public key (SPKI DER), or null for a kiosk set
+    /// up with a 6-digit code. The kiosk shows the same value under its enrollment QR
+    /// code, so an admin can check they are reactivating the device in front of them.
+    async fn key_fingerprint(&self) -> Option<&str> {
+        self.rec.key_fingerprint.as_deref()
+    }
+
     /// Whether `reactivateSession` would succeed right now: a QR-enrolled kiosk that has
     /// expired *and* is currently switched on showing its enrollment QR screen. Drives the
     /// Reactivate button in the admin kiosk list, so it is only offered when it will work.

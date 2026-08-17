@@ -17,8 +17,16 @@ import type { SessionsListReactivateMutation } from "./__generated__/SessionsLis
 import { useNotify } from "../components/useNotify";
 import { AdminTable, Th, Td } from "../../components/ui/Table";
 import { Button, ButtonLink } from "../../components/ui/Button";
+import { Dialog, DialogActions, DialogTitle } from "../../components/ui/Dialog";
 
 type Session = SessionsListQuery$data["location"]["sessions"][number];
+
+// The kiosk prints the same 16-hex-digit prefix of its key fingerprint under the
+// enrollment QR code (see KioskEnrollment), so showing the identical truncation here
+// lets an admin compare the two by eye.
+function shortFingerprint(fingerprint: string) {
+  return `${fingerprint.slice(0, 16)}…`;
+}
 
 function Row({
   session,
@@ -30,6 +38,7 @@ function Row({
   isDev: boolean;
 }) {
   const [now] = useState(() => Math.round(Date.now() / 1000));
+  const [confirmingReactivate, setConfirmingReactivate] = useState(false);
   const { notifyError, notifySuccess } = useNotify();
   const [commitMutation, isMutationInFlight] =
     useMutation<SessionsListDeleteMutation>(graphql`
@@ -76,6 +85,7 @@ function Row({
   }
 
   async function reactivateSession() {
+    setConfirmingReactivate(false);
     try {
       await new Promise((resolve, reject) => {
         commitReactivate({
@@ -119,13 +129,21 @@ function Row({
       <Td>{session.name}</Td>
       <Td>{timeSinceAccess}</Td>
       <Td>{session.code}</Td>
+      <Td
+        className="font-mono text-[0.85em]"
+        title={session.keyFingerprint ?? undefined}
+      >
+        {session.keyFingerprint
+          ? shortFingerprint(session.keyFingerprint)
+          : "-"}
+      </Td>
       <Td>{clientVersion}</Td>
       <Td options>
         <div className="flex items-center justify-end gap-1">
           {session.reactivatable ? (
             <Button
               size="row"
-              onClick={reactivateSession}
+              onClick={() => setConfirmingReactivate(true)}
               disabled={isReactivateInFlight}
             >
               Reactivate
@@ -150,8 +168,53 @@ function Row({
             Delete
           </Button>
         </div>
+        {confirmingReactivate && (
+          <ReactivateDialog
+            session={session}
+            onConfirm={reactivateSession}
+            onCancel={() => setConfirmingReactivate(false)}
+          />
+        )}
       </Td>
     </tr>
+  );
+}
+
+// Reactivation grants a lapsed key a fresh window, so it has to be the right device:
+// the admin checks the fingerprint here against the one on the kiosk's QR screen before
+// confirming.
+function ReactivateDialog({
+  session,
+  onConfirm,
+  onCancel,
+}: {
+  session: Session;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <Dialog onDismiss={onCancel} width="w-120">
+      <DialogTitle>Reactivate {session.name}?</DialogTitle>
+      <p className="m-0 text-left">
+        Check the device key shown under the QR code on the kiosk screen. It
+        must match:
+      </p>
+      <p className="m-0 text-center font-mono text-lg break-all">
+        {session.keyFingerprint
+          ? shortFingerprint(session.keyFingerprint)
+          : "-"}
+      </p>
+      <p className="m-0 text-left text-sm text-ink-muted">
+        If it doesn't match, cancel — you would be reactivating a different
+        computer.
+      </p>
+      <DialogActions>
+        <Button variant="secondary" onClick={onCancel}>
+          Cancel
+        </Button>
+        <Button onClick={onConfirm}>Reactivate</Button>
+      </DialogActions>
+    </Dialog>
   );
 }
 
@@ -172,6 +235,7 @@ export default function SessionsList() {
             clientVersion
             keyEnrolled
             keyExpiresAt
+            keyFingerprint
             reactivatable
           }
         }
@@ -222,6 +286,7 @@ export default function SessionsList() {
             <Th>Name</Th>
             <Th>Last contact</Th>
             <Th>Code</Th>
+            <Th>Device key</Th>
             <Th>Version</Th>
             <Th></Th>
           </tr>
