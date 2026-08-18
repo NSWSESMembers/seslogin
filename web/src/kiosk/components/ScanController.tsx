@@ -41,7 +41,9 @@ export default function ScanController(props: {
   const session = useKioskSession();
   const smallCategories = !!session?.config?.smallCategories;
   const easyTimeEntry = !!session?.config?.easyTimeEntry;
-  const newCategories = !!session?.config?.newCategories;
+  // The reworked category list is now on for every kiosk; the `newCategories`
+  // session config flag is ignored and is on its way out.
+  const newCategories = true;
   const guestsEnabled = !!session?.config?.guests;
   const quickPickCategories = !!session?.config?.quickPickCategories;
 
