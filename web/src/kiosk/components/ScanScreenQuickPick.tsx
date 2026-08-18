@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import type { QuickPickSuggestions } from "../ScanState";
-import { categoriesFor, categoryIconSrc } from "../../lib/categories";
+import { categories, categoryIconSrc } from "../../lib/categories";
 import { scanView, scanViewPosition, type ScreenPosition } from "../../styles";
 import { Button } from "../../components/ui/Button";
 
@@ -20,9 +20,8 @@ type QuickPickItem = {
 // identical, indistinguishable buttons.
 function findLeafCategory(
   categoryId: string,
-  newCategories: boolean,
 ): { groupName: string; name: string; icon: string } | null {
-  for (const top of categoriesFor(newCategories)) {
+  for (const top of categories) {
     for (const sub of top.subcategories || []) {
       if (sub.id === categoryId) {
         return { groupName: top.name, name: sub.name, icon: sub.icon };
@@ -34,12 +33,11 @@ function findLeafCategory(
 
 function QuickPickButton(props: {
   item: QuickPickItem;
-  newCategories: boolean;
   small?: boolean;
   onSelect: () => void;
 }) {
-  const { item, newCategories, small, onSelect } = props;
-  const iconSrc = categoryIconSrc(item.icon, newCategories);
+  const { item, small, onSelect } = props;
+  const iconSrc = categoryIconSrc(item.icon);
 
   return (
     <li className="inline-block list-none align-bottom">
@@ -73,7 +71,6 @@ function QuickPickSection(props: {
   title: string;
   description: string;
   items: QuickPickItem[];
-  newCategories: boolean;
   small?: boolean;
   onSelect: (categoryId: string) => void;
 }) {
@@ -94,7 +91,6 @@ function QuickPickSection(props: {
           <QuickPickButton
             key={item.categoryId}
             item={item}
-            newCategories={props.newCategories}
             small={props.small}
             onSelect={() => props.onSelect(item.categoryId)}
           />
@@ -107,13 +103,10 @@ function QuickPickSection(props: {
 // Suggestions name categories by id only; drop any the kiosk's static tree
 // doesn't know about (a category retired from the tree, or one only the admin
 // UI uses) rather than rendering a button with no name or icon.
-function toItems(
-  categories: QuickPickSuggestions["location"],
-  newCategories: boolean,
-): QuickPickItem[] {
-  return categories
+function toItems(entries: QuickPickSuggestions["location"]): QuickPickItem[] {
+  return entries
     .map((entry): QuickPickItem | null => {
-      const leaf = findLeafCategory(entry.categoryId, newCategories);
+      const leaf = findLeafCategory(entry.categoryId);
       if (!leaf) {
         return null;
       }
@@ -130,15 +123,14 @@ function toItems(
 
 function Inner(props: {
   suggestions: QuickPickSuggestions;
-  newCategories: boolean;
   smallCategories?: boolean;
   onSelectCategory: (categoryId: string) => void;
   onSkip: () => void;
 }) {
-  const { newCategories, suggestions } = props;
+  const { suggestions } = props;
 
-  const locationItems = toItems(suggestions.location, newCategories);
-  const personItems = toItems(suggestions.person, newCategories);
+  const locationItems = toItems(suggestions.location);
+  const personItems = toItems(suggestions.person);
 
   const isEmpty = locationItems.length === 0 && personItems.length === 0;
 
@@ -164,7 +156,6 @@ function Inner(props: {
         title="This location"
         description="Popular here recently"
         items={locationItems}
-        newCategories={newCategories}
         small={props.smallCategories}
         onSelect={props.onSelectCategory}
       />
@@ -172,7 +163,6 @@ function Inner(props: {
         title="You"
         description="Your recent picks"
         items={personItems}
-        newCategories={newCategories}
         small={props.smallCategories}
         onSelect={props.onSelectCategory}
       />
@@ -201,7 +191,6 @@ export default function ScanScreenQuickPick(props: {
   /** Comes back with the sign-out itself; null if the server had none to give. */
   suggestions: QuickPickSuggestions | null;
   smallCategories?: boolean;
-  newCategories?: boolean;
 }) {
   const { uuid, suggestions, onSelectCategory } = props;
 
@@ -212,7 +201,6 @@ export default function ScanScreenQuickPick(props: {
           key={uuid}
           suggestions={suggestions}
           smallCategories={props.smallCategories}
-          newCategories={!!props.newCategories}
           onSelectCategory={(categoryId) => onSelectCategory(uuid, categoryId)}
           onSkip={props.onSkip}
         />
