@@ -41,7 +41,6 @@ export default function ScanController(props: {
   const session = useKioskSession();
   const smallCategories = !!session?.config?.smallCategories;
   const easyTimeEntry = !!session?.config?.easyTimeEntry;
-  const newCategories = !!session?.config?.newCategories;
   const guestsEnabled = !!session?.config?.guests;
   const quickPickCategories = !!session?.config?.quickPickCategories;
 
@@ -421,14 +420,12 @@ export default function ScanController(props: {
         uuid={needsQuickPick ? transactionUuid : null}
         suggestions={quickPickSuggestions}
         smallCategories={smallCategories}
-        newCategories={newCategories}
       />
       <ScanScreenCategories
         screenPosition={categoriesPos}
         onSelectCategory={onSelectCategory}
         uuid={transactionUuid}
         smallCategories={smallCategories}
-        newCategories={newCategories}
       />
       <ScanScreenAdjust
         screenPosition={adjustPos}
@@ -439,7 +436,6 @@ export default function ScanController(props: {
         onEditCategory={onEditCategory}
         isSubmitting={signOutIsInFlight}
         easyTimeEntry={easyTimeEntry}
-        newCategories={newCategories}
       />
       {guestDialogOpen && (
         <ScanGuestDialog
