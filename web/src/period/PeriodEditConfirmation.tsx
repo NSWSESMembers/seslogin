@@ -8,6 +8,7 @@ import {
   PanelTitle,
 } from "../components/ui/Panel";
 import type { SavedEntry } from "./PeriodEditForm";
+import { periodEditCopy } from "./copy";
 
 /**
  * Shown after a successful save. The link stays usable for its full 48 hours, so
@@ -23,14 +24,15 @@ export default function PeriodEditConfirmation({
 }) {
   const start = new Date(saved.startTime * 1000);
   const end = new Date(saved.endTime * 1000);
+  // The entry now has both times either way, so the wording has to come from
+  // how the member arrived rather than from what was saved.
+  const copy = periodEditCopy(saved.wasIncomplete);
 
   return (
     <Panel>
       <PanelBox>
-        <PanelTitle>Thank you</PanelTitle>
-        <PanelIntro>
-          Your time entry has been updated. There's nothing else you need to do.
-        </PanelIntro>
+        <PanelTitle>{copy.confirmationTitle}</PanelTitle>
+        <PanelIntro>{copy.confirmationIntro}</PanelIntro>
 
         <FieldList>
           <FormField label="Location">{saved.locationName}</FormField>

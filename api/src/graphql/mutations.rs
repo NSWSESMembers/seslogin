@@ -42,60 +42,6 @@ fn validate_link_edit_duration(start_time: i64, end_time: i64) -> Result<()> {
     Ok(())
 }
 
-pub(crate) const PERIOD_REMINDER_SUBJECT: &str = "Please check your SES activity time entry";
-
-/// Render a timestamp in Sydney local time, matching the activity summary email.
-fn format_reminder_datetime(ts: u64) -> String {
-    chrono::DateTime::from_timestamp(ts as i64, 0)
-        .unwrap_or_default()
-        .with_timezone(&chrono_tz::Australia::Sydney)
-        .format("%a %-d %b %Y, %H:%M")
-        .to_string()
-}
-
-/// Body of the "please check your time entry" email.
-///
-/// Plain text on purpose: it renders identically everywhere, and a bare URL is
-/// easier to trust than a styled button in a message asking someone to click a
-/// link. Kept as a pure function so the wording and the still-signed-in case are
-/// unit-testable without SES.
-fn build_period_reminder_email(
-    first_name: &str,
-    location_name: &str,
-    category_name: Option<&str>,
-    start_time: u64,
-    end_time: Option<u64>,
-    url: &str,
-) -> String {
-    let greeting = if first_name.trim().is_empty() {
-        "Hello,".to_string()
-    } else {
-        format!("Hi {},", first_name.trim())
-    };
-    let end_line = match end_time {
-        Some(end) => format!("  Finished: {}\n", format_reminder_datetime(end)),
-        // An entry with no end time is someone still signed in; say so rather
-        // than printing a blank field they can't explain.
-        None => "  Finished: still signed in\n".to_string(),
-    };
-
-    format!(
-        "{greeting}\n\n\
-         Please check the following activity recorded for you at {location_name}:\n\n\
-         {}  Started:  {}\n{end_line}\n\
-         If that isn't right, you can correct the times and the activity here:\n\n\
-         {url}\n\n\
-         This link works for the next 48 hours and only opens this one entry. \
-         If the details above are already correct, you don't need to do anything.\n\n\
-         Thanks,\n\
-         SES Activity administrators\n",
-        category_name
-            .map(|c| format!("  Activity: {c}\n"))
-            .unwrap_or_default(),
-        format_reminder_datetime(start_time),
-    )
-}
-
 fn parse_session_config_json(
     config: Option<&str>,
 ) -> Result<serde_json::Map<String, serde_json::Value>> {
@@ -1016,17 +962,21 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
 
         let token = crate::period_link::issue_period_link_token(self.app.db(), &id).await?;
         let url = crate::period_link::edit_link_url(&token);
-        let body = build_period_reminder_email(
-            &person.first_name,
+        // Shared with the automated open-period notice, so an admin pressing
+        // Remind on an open entry sends exactly the same wording the job would.
+        let email_content = crate::period_email::PeriodEmail {
+            first_name: &person.first_name,
             location_name,
-            category.as_ref().map(|c| c.name.as_str()),
-            period.start_time,
-            period.end_time,
-            &url,
-        );
+            category_name: category.as_ref().map(|c| c.name.as_str()),
+            start_time: period.start_time,
+            end_time: period.end_time,
+            url: &url,
+        };
+        let subject = crate::period_email::subject(period.end_time);
+        let body = crate::period_email::build(&email_content, crate::clock::now_sec());
 
         info!(period_id = %id.as_str(), "Sending period edit link to {}", email);
-        crate::mail::send_plain_text(&email, PERIOD_REMINDER_SUBJECT, &body)
+        crate::mail::send_plain_text(&email, subject, &body)
             .await
             .map_err(|e| anyhow!("Couldn't send the email: {e:#}"))?;
 
@@ -2391,57 +2341,6 @@ mod tests {
         }
     }
 
-    mod period_reminder_email {
-        use super::super::build_period_reminder_email;
-
-        // 2026-07-24 09:53 and 09:55 Sydney time.
-        const START: u64 = 1784850780;
-        const END: u64 = 1784850959;
-
-        fn body(first_name: &str, category: Option<&str>, end: Option<u64>) -> String {
-            build_period_reminder_email(
-                first_name,
-                "Test Unit",
-                category,
-                START,
-                end,
-                "https://new.seslogin.com/period#slp_abc",
-            )
-        }
-
-        #[test]
-        fn includes_the_link_and_the_entry_details() {
-            let out = body("Sam", Some("Training"), Some(END));
-            assert!(out.contains("Hi Sam,"));
-            assert!(out.contains("Test Unit"));
-            assert!(out.contains("Activity: Training"));
-            assert!(out.contains("https://new.seslogin.com/period#slp_abc"));
-            assert!(out.contains("48 hours"));
-        }
-
-        #[test]
-        fn formats_times_in_sydney_local_time() {
-            let out = body("Sam", None, Some(END));
-            assert!(out.contains("Fri 24 Jul 2026, 09:53"), "got: {out}");
-            assert!(out.contains("Fri 24 Jul 2026, 09:55"), "got: {out}");
-        }
-
-        #[test]
-        fn falls_back_to_a_neutral_greeting_without_a_name() {
-            // Person.first_name is `""` rather than null when missing.
-            assert!(body("", None, Some(END)).starts_with("Hello,"));
-            assert!(body("   ", None, Some(END)).starts_with("Hello,"));
-        }
-
-        #[test]
-        fn omits_the_activity_line_when_uncategorised() {
-            assert!(!body("Sam", None, Some(END)).contains("Activity:"));
-        }
-
-        #[test]
-        fn explains_an_entry_that_is_still_open() {
-            let out = body("Sam", None, None);
-            assert!(out.contains("Finished: still signed in"), "got: {out}");
-        }
-    }
+    // The period email wording moved to `crate::period_email`, which owns both the
+    // complete and incomplete copy sets and their tests.
 }
