@@ -1339,19 +1339,39 @@ impl db::Handler for Handler {
         person_id: &str,
         location_id: Option<&str>,
         only_unfinished: Option<bool>,
+        category_ids: Option<&[String]>,
         page: db::ListPeriodsPage,
     ) -> db::Result<Vec<Period>> {
+        // An explicit-but-empty category filter can never match anything.
+        if category_ids == Some(&[]) {
+            return Ok(Vec::new());
+        }
+
         let fetch_limit = page.limit as usize;
         let (scan_forward, reverse_output) =
             page_scan_direction(page.after.is_some(), page.before.is_some(), page.descending);
 
         // Build filter expression and optional extra attribute values.
-        let mut filter_parts = vec!["(attribute_not_exists(deleted) OR deleted = :zero)"];
+        let mut filter_parts =
+            vec!["(attribute_not_exists(deleted) OR deleted = :zero)".to_string()];
         if location_id.is_some() {
-            filter_parts.push("location_id = :location_id");
+            filter_parts.push("location_id = :location_id".to_string());
         }
         if only_unfinished == Some(true) {
-            filter_parts.push("attribute_not_exists(end_time)");
+            filter_parts.push("attribute_not_exists(end_time)".to_string());
+        }
+        let category_placeholders: Vec<String> = category_ids
+            .map(|ids| (0..ids.len()).map(|i| format!(":category{i}")).collect())
+            .unwrap_or_default();
+        if !category_placeholders.is_empty() {
+            // DynamoDB rejects an IN operand list over 100 items, and a location can have
+            // more categories than that (a "select all" filter easily exceeds it) — split
+            // into multiple IN clauses, OR'd together, each within the limit.
+            let clauses: Vec<String> = category_placeholders
+                .chunks(100)
+                .map(|chunk| format!("category_id IN ({})", chunk.join(", ")))
+                .collect();
+            filter_parts.push(format!("({})", clauses.join(" OR ")));
         }
         let filter_expr = filter_parts.join(" AND ");
         let location_attr: Option<AttributeValue> =
@@ -1390,6 +1410,12 @@ impl db::Handler for Handler {
                 .return_consumed_capacity(ReturnConsumedCapacity::Total);
             if let Some(ref v) = location_attr {
                 builder = builder.expression_attribute_values(":location_id", v.clone());
+            }
+            if let Some(ids) = category_ids {
+                for (placeholder, id) in category_placeholders.iter().zip(ids) {
+                    builder = builder
+                        .expression_attribute_values(placeholder, AttributeValue::S(id.clone()));
+                }
             }
             if let Some(esk) = exclusive_start_key.take() {
                 builder = builder.set_exclusive_start_key(Some(esk));

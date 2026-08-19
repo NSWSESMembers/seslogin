@@ -1640,6 +1640,7 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
                 &person_id,
                 Some(location_id),
                 Some(true),
+                None,
                 db::ListPeriodsPage {
                     after: None,
                     before: None,
