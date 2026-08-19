@@ -35,7 +35,6 @@ function renderAdjust(
       onError={onError}
       isSubmitting={false}
       easyTimeEntry={easyTimeEntry}
-      newCategories={false}
     />,
   );
 }
