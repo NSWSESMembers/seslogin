@@ -485,6 +485,7 @@ impl<A: App + HasDb + Send + Sync> Person<A> {
     async fn periods<'ctx>(
         &self,
         ctx: &Context<'ctx>,
+        categories: Option<Vec<ID>>,
         after: Option<String>,
         before: Option<String>,
         first: Option<i32>,
@@ -498,6 +499,8 @@ impl<A: App + HasDb + Send + Sync> Person<A> {
             pagination_args(first, last, DEFAULT_PERIOD_PAGE_SIZE, MAX_PERIOD_PAGE_SIZE)?;
         let fetch_limit = i32::try_from(page_size.saturating_add(1))
             .map_err(|_| anyhow!("Requested page is too large"))?;
+        let category_ids: Option<Vec<String>> =
+            categories.map(|cs| cs.into_iter().map(|c| c.0).collect());
 
         require_location_access(ctx, &self.rec.location_id)?;
         let app = ctx.data_unchecked::<Arc<A>>();
@@ -507,6 +510,7 @@ impl<A: App + HasDb + Send + Sync> Person<A> {
                 &self.rec.id,
                 None,
                 None,
+                category_ids.as_deref(),
                 db::ListPeriodsPage {
                     after: after_cursor,
                     before: before_cursor,
@@ -538,6 +542,7 @@ impl<A: App + HasDb + Send + Sync> Person<A> {
             .db()
             .list_periods_for_person(
                 &self.rec.id,
+                None,
                 None,
                 None,
                 db::ListPeriodsPage {
@@ -1425,6 +1430,7 @@ async fn recent_periods_for_person<A: App + HasDb + Send + Sync>(
     app.db()
         .list_periods_for_person(
             person_id,
+            None,
             None,
             None,
             db::ListPeriodsPage {

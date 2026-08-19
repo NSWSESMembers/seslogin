@@ -1331,6 +1331,7 @@ async fn run(db: &impl Handler, object: Object) -> Result<()> {
                         &person,
                         None,
                         None,
+                        None,
                         ListPeriodsPage {
                             after: None,
                             before: None,

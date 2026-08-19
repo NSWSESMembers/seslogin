@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<7a3b409142e53d636e36ef0aa243dfce>>
+ * @generated SignedSource<<1e884a7d5b962ccb1067abd8c82cf5b8>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -12,6 +12,7 @@ import { ConcreteRequest } from 'relay-runtime';
 import { FragmentRefs } from "relay-runtime";
 export type ActivityListMemberQuery$variables = {
   after?: string | null | undefined;
+  categories?: ReadonlyArray<string> | null | undefined;
   first: number;
   person: string;
 };
@@ -47,42 +48,47 @@ var v0 = {
 v1 = {
   "defaultValue": null,
   "kind": "LocalArgument",
-  "name": "first"
+  "name": "categories"
 },
 v2 = {
   "defaultValue": null,
   "kind": "LocalArgument",
+  "name": "first"
+},
+v3 = {
+  "defaultValue": null,
+  "kind": "LocalArgument",
   "name": "person"
 },
-v3 = [
+v4 = [
   {
     "kind": "Variable",
     "name": "id",
     "variableName": "person"
   }
 ],
-v4 = {
+v5 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
   "name": "id",
   "storageKey": null
 },
-v5 = {
+v6 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
   "name": "firstName",
   "storageKey": null
 },
-v6 = {
+v7 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
   "name": "lastName",
   "storageKey": null
 },
-v7 = [
+v8 = [
   {
     "kind": "Variable",
     "name": "after",
@@ -90,84 +96,89 @@ v7 = [
   },
   {
     "kind": "Variable",
+    "name": "categories",
+    "variableName": "categories"
+  },
+  {
+    "kind": "Variable",
     "name": "first",
     "variableName": "first"
   }
 ],
-v8 = {
+v9 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
   "name": "personId",
   "storageKey": null
 },
-v9 = {
+v10 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
   "name": "startTime",
   "storageKey": null
 },
-v10 = {
+v11 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
   "name": "endTime",
   "storageKey": null
 },
-v11 = {
+v12 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
   "name": "comment",
   "storageKey": null
 },
-v12 = {
+v13 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
   "name": "nitcExportStatus",
   "storageKey": null
 },
-v13 = {
+v14 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
   "name": "nitcEventId",
   "storageKey": null
 },
-v14 = {
+v15 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
   "name": "name",
   "storageKey": null
 },
-v15 = [
-  (v4/*: any*/),
-  (v14/*: any*/)
+v16 = [
+  (v5/*: any*/),
+  (v15/*: any*/)
 ],
-v16 = {
+v17 = {
   "alias": null,
   "args": null,
   "concreteType": "Session",
   "kind": "LinkedField",
   "name": "signedInSession",
   "plural": false,
-  "selections": (v15/*: any*/),
+  "selections": (v16/*: any*/),
   "storageKey": null
 },
-v17 = {
+v18 = {
   "alias": null,
   "args": null,
   "concreteType": "Session",
   "kind": "LinkedField",
   "name": "signedOutSession",
   "plural": false,
-  "selections": (v15/*: any*/),
+  "selections": (v16/*: any*/),
   "storageKey": null
 },
-v18 = {
+v19 = {
   "alias": null,
   "args": null,
   "concreteType": "Category",
@@ -175,8 +186,8 @@ v18 = {
   "name": "category",
   "plural": false,
   "selections": [
-    (v4/*: any*/),
-    (v14/*: any*/),
+    (v5/*: any*/),
+    (v15/*: any*/),
     {
       "alias": null,
       "args": null,
@@ -187,17 +198,17 @@ v18 = {
   ],
   "storageKey": null
 },
-v19 = {
+v20 = {
   "alias": null,
   "args": null,
   "concreteType": "Location",
   "kind": "LinkedField",
   "name": "location",
   "plural": false,
-  "selections": (v15/*: any*/),
+  "selections": (v16/*: any*/),
   "storageKey": null
 },
-v20 = {
+v21 = {
   "alias": null,
   "args": null,
   "concreteType": "PageInfo",
@@ -227,7 +238,8 @@ return {
     "argumentDefinitions": [
       (v0/*: any*/),
       (v1/*: any*/),
-      (v2/*: any*/)
+      (v2/*: any*/),
+      (v3/*: any*/)
     ],
     "kind": "Fragment",
     "metadata": null,
@@ -235,18 +247,18 @@ return {
     "selections": [
       {
         "alias": null,
-        "args": (v3/*: any*/),
+        "args": (v4/*: any*/),
         "concreteType": "Person",
         "kind": "LinkedField",
         "name": "person",
         "plural": false,
         "selections": [
-          (v4/*: any*/),
           (v5/*: any*/),
           (v6/*: any*/),
+          (v7/*: any*/),
           {
             "alias": null,
-            "args": (v7/*: any*/),
+            "args": (v8/*: any*/),
             "concreteType": "PeriodConnection",
             "kind": "LinkedField",
             "name": "periods",
@@ -272,16 +284,16 @@ return {
                         "kind": "InlineDataFragmentSpread",
                         "name": "ActivityListTable_period",
                         "selections": [
-                          (v4/*: any*/),
-                          (v8/*: any*/),
+                          (v5/*: any*/),
                           (v9/*: any*/),
                           (v10/*: any*/),
                           (v11/*: any*/),
                           (v12/*: any*/),
                           (v13/*: any*/),
-                          (v16/*: any*/),
+                          (v14/*: any*/),
                           (v17/*: any*/),
-                          (v18/*: any*/)
+                          (v18/*: any*/),
+                          (v19/*: any*/)
                         ],
                         "args": null,
                         "argumentDefinitions": []
@@ -290,7 +302,7 @@ return {
                         "kind": "InlineDataFragmentSpread",
                         "name": "ActivityListMember_periodName",
                         "selections": [
-                          (v19/*: any*/)
+                          (v20/*: any*/)
                         ],
                         "args": null,
                         "argumentDefinitions": []
@@ -301,7 +313,7 @@ return {
                 ],
                 "storageKey": null
               },
-              (v20/*: any*/)
+              (v21/*: any*/)
             ],
             "storageKey": null
           }
@@ -315,27 +327,28 @@ return {
   "kind": "Request",
   "operation": {
     "argumentDefinitions": [
+      (v3/*: any*/),
       (v2/*: any*/),
-      (v1/*: any*/),
-      (v0/*: any*/)
+      (v0/*: any*/),
+      (v1/*: any*/)
     ],
     "kind": "Operation",
     "name": "ActivityListMemberQuery",
     "selections": [
       {
         "alias": null,
-        "args": (v3/*: any*/),
+        "args": (v4/*: any*/),
         "concreteType": "Person",
         "kind": "LinkedField",
         "name": "person",
         "plural": false,
         "selections": [
-          (v4/*: any*/),
           (v5/*: any*/),
           (v6/*: any*/),
+          (v7/*: any*/),
           {
             "alias": null,
-            "args": (v7/*: any*/),
+            "args": (v8/*: any*/),
             "concreteType": "PeriodConnection",
             "kind": "LinkedField",
             "name": "periods",
@@ -357,24 +370,24 @@ return {
                     "name": "node",
                     "plural": false,
                     "selections": [
-                      (v4/*: any*/),
-                      (v8/*: any*/),
+                      (v5/*: any*/),
                       (v9/*: any*/),
                       (v10/*: any*/),
                       (v11/*: any*/),
                       (v12/*: any*/),
                       (v13/*: any*/),
-                      (v16/*: any*/),
+                      (v14/*: any*/),
                       (v17/*: any*/),
                       (v18/*: any*/),
-                      (v19/*: any*/)
+                      (v19/*: any*/),
+                      (v20/*: any*/)
                     ],
                     "storageKey": null
                   }
                 ],
                 "storageKey": null
               },
-              (v20/*: any*/)
+              (v21/*: any*/)
             ],
             "storageKey": null
           }
@@ -384,16 +397,16 @@ return {
     ]
   },
   "params": {
-    "cacheID": "85443cc5dee4e0f4db421b3ccb20cdbb",
+    "cacheID": "28afd1920355dc4669b2576ab1d8421e",
     "id": null,
     "metadata": {},
     "name": "ActivityListMemberQuery",
     "operationKind": "query",
-    "text": "query ActivityListMemberQuery(\n  $person: ID!\n  $first: Int!\n  $after: String\n) {\n  person(id: $person) {\n    id\n    firstName\n    lastName\n    periods(first: $first, after: $after) {\n      edges {\n        node {\n          ...ActivityListTable_period\n          ...ActivityListMember_periodName\n          id\n        }\n      }\n      pageInfo {\n        hasNextPage\n        endCursor\n      }\n    }\n  }\n}\n\nfragment ActivityListMember_periodName on Period {\n  location {\n    id\n    name\n  }\n}\n\nfragment ActivityListTable_period on Period {\n  id\n  personId\n  startTime\n  endTime\n  comment\n  nitcExportStatus\n  nitcEventId\n  signedInSession {\n    id\n    name\n  }\n  signedOutSession {\n    id\n    name\n  }\n  category {\n    id\n    name\n    isVirtual\n  }\n}\n"
+    "text": "query ActivityListMemberQuery(\n  $person: ID!\n  $first: Int!\n  $after: String\n  $categories: [ID!]\n) {\n  person(id: $person) {\n    id\n    firstName\n    lastName\n    periods(first: $first, after: $after, categories: $categories) {\n      edges {\n        node {\n          ...ActivityListTable_period\n          ...ActivityListMember_periodName\n          id\n        }\n      }\n      pageInfo {\n        hasNextPage\n        endCursor\n      }\n    }\n  }\n}\n\nfragment ActivityListMember_periodName on Period {\n  location {\n    id\n    name\n  }\n}\n\nfragment ActivityListTable_period on Period {\n  id\n  personId\n  startTime\n  endTime\n  comment\n  nitcExportStatus\n  nitcEventId\n  signedInSession {\n    id\n    name\n  }\n  signedOutSession {\n    id\n    name\n  }\n  category {\n    id\n    name\n    isVirtual\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "2baf0120438d99ca8e730476bf6bf61c";
+(node as any).hash = "70e2eee53c9cdbdca594e597fe4892d6";
 
 export default node;

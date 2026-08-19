@@ -112,6 +112,7 @@ impl db::Handler for Handler {
         _person_id: &str,
         _location_id: Option<&str>,
         _only_unfinished: Option<bool>,
+        _category_ids: Option<&[String]>,
         _page: db::ListPeriodsPage,
     ) -> db::Result<Vec<Period>> {
         Self::unsupported()
