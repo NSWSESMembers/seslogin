@@ -10,14 +10,14 @@ interface ActivityTotalsDisplayProps {
   locationId: string;
   startTime: number;
   endTime: number;
-  category?: string;
+  categories: ReadonlyArray<string>;
 }
 
 export default function ActivityTotalsDisplay({
   locationId,
   startTime,
   endTime,
-  category,
+  categories,
 }: ActivityTotalsDisplayProps) {
   const { disaggregateVirtualPeriods } = useUserInfo();
 
@@ -27,14 +27,14 @@ export default function ActivityTotalsDisplay({
         $location: ID!
         $startTime: Int!
         $endTime: Int!
-        $category: ID
+        $categories: [ID!]
       ) {
         location(id: $location) {
           id
           periodSummaryByMember(
             startTime: $startTime
             endTime: $endTime
-            category: $category
+            categories: $categories
           ) {
             person {
               id
@@ -59,7 +59,7 @@ export default function ActivityTotalsDisplay({
       location: locationId,
       startTime,
       endTime,
-      category: category || null,
+      categories: categories.length > 0 ? categories : null,
     },
   );
 
@@ -103,7 +103,7 @@ export default function ActivityTotalsDisplay({
         rows={memberRows}
         showSplit={disaggregateVirtualPeriods}
       />
-      {!category &&
+      {categories.length === 0 &&
         (disaggregateVirtualPeriods ? (
           <>
             <ActivityTotalsTable

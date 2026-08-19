@@ -61,6 +61,12 @@ function parseDateTimeLocal(value: string): number | null {
   return Number.isNaN(ms) ? null : Math.floor(ms / 1000);
 }
 
+function sameCategoryIds(a: ReadonlyArray<string>, b: ReadonlyArray<string>) {
+  if (a.length !== b.length) return false;
+  const bSet = new Set(b);
+  return a.every((id) => bSet.has(id));
+}
+
 export default function ActivityHeatmap() {
   const settings = useSettings();
 
@@ -72,7 +78,7 @@ export default function ActivityHeatmap() {
     () => endTime - PRESET_DAYS["30d"] * DAY_SECONDS,
   );
   const [preset, setPreset] = useState<HeatmapPreset | "custom">("30d");
-  const [categoryId, setCategoryId] = useState("");
+  const [categoryIds, setCategoryIds] = useState<string[]>([]);
 
   // What's actually queried/rendered. Kept separate from the picker values
   // above and only synced on "Update results" — otherwise every filter
@@ -80,10 +86,14 @@ export default function ActivityHeatmap() {
   // filters means paying for several intermediate, wasted queries. Scale and
   // sort don't affect the query (they only re-bucket/re-sort already-fetched
   // data), so they're applied live below instead of gated on submit.
-  const [appliedRange, setAppliedRange] = useState(() => ({
+  const [appliedRange, setAppliedRange] = useState<{
+    startTime: number;
+    endTime: number;
+    categoryIds: string[];
+  }>(() => ({
     startTime,
     endTime,
-    categoryId: "",
+    categoryIds: [],
   }));
 
   const [scale, setScale] = useState<HeatmapScale>("day");
@@ -104,7 +114,7 @@ export default function ActivityHeatmap() {
   const isDirty =
     startTime !== appliedRange.startTime ||
     endTime !== appliedRange.endTime ||
-    categoryId !== appliedRange.categoryId;
+    !sameCategoryIds(categoryIds, appliedRange.categoryIds);
 
   function applyPreset(p: HeatmapPreset, now: number) {
     const days = PRESET_DAYS[p];
@@ -121,7 +131,7 @@ export default function ActivityHeatmap() {
 
   function applyFilters() {
     if (!hasValidRange) return;
-    setAppliedRange({ startTime, endTime, categoryId });
+    setAppliedRange({ startTime, endTime, categoryIds });
   }
 
   // The applied range can become inconsistent with the (live) scale without
@@ -216,8 +226,8 @@ export default function ActivityHeatmap() {
         </label>
         <Suspense fallback={null}>
           <ActivityCategorySelector
-            value={categoryId}
-            onChange={setCategoryId}
+            value={categoryIds}
+            onChange={setCategoryIds}
           />
         </Suspense>
         <Button
@@ -244,7 +254,7 @@ export default function ActivityHeatmap() {
             startTime={appliedRange.startTime}
             endTime={appliedRange.endTime}
             scale={scale}
-            categoryId={appliedRange.categoryId}
+            categoryIds={appliedRange.categoryIds}
             sortBy={sortBy}
           />
         </Suspense>
