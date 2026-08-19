@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { graphql } from "relay-runtime";
 import { useLazyLoadQuery } from "react-relay";
 import ActivityDailyBreakdownTable, {
@@ -19,6 +20,8 @@ export default function ActivityDailyBreakdownDisplay({
   endTime,
 }: ActivityDailyBreakdownDisplayProps) {
   const { disaggregateVirtualPeriods } = useUserInfo();
+  const [hideVirtual, setHideVirtual] = useState(false);
+  const showSplit = disaggregateVirtualPeriods && !hideVirtual;
 
   const data = useLazyLoadQuery<ActivityDailyBreakdownDisplayQuery>(
     graphql`
@@ -63,32 +66,49 @@ export default function ActivityDailyBreakdownDisplay({
   );
 
   const days: ReadonlyArray<ActivityDailyBreakdownDayRow> =
-    data.location.periodSummaryByDayByCategoryByMember.map((day) => {
-      const virtualTime = day.categories
-        .filter((c) => c.category.isVirtual)
-        .reduce((sum, c) => sum + c.totalTime, 0);
-      const nonVirtualTime = day.totalTime - virtualTime;
-      return {
-        date: day.date,
-        totalTime: day.totalTime,
-        splitLine: disaggregateVirtualPeriods
-          ? `${formatSeconds(virtualTime)} virtual · ${formatSeconds(nonVirtualTime)} non-virtual`
-          : undefined,
-        categories: day.categories.map((category) => ({
-          id: category.category.id,
-          name: category.category.name,
-          totalTime: category.totalTime,
-          isVirtual: disaggregateVirtualPeriods
-            ? category.category.isVirtual
+    data.location.periodSummaryByDayByCategoryByMember
+      .map((day) => {
+        const virtualTime = day.categories
+          .filter((c) => c.category.isVirtual)
+          .reduce((sum, c) => sum + c.totalTime, 0);
+        const nonVirtualTime = day.totalTime - virtualTime;
+        const categories = hideVirtual
+          ? day.categories.filter((c) => !c.category.isVirtual)
+          : day.categories;
+        return {
+          date: day.date,
+          totalTime: hideVirtual ? nonVirtualTime : day.totalTime,
+          splitLine: showSplit
+            ? `${formatSeconds(virtualTime)} virtual · ${formatSeconds(nonVirtualTime)} non-virtual`
             : undefined,
-          members: category.members.map((member) => ({
-            id: member.person.id,
-            name: `${member.person.firstName} ${member.person.lastName}`,
-            totalTime: member.totalTime,
+          categories: categories.map((category) => ({
+            id: category.category.id,
+            name: category.category.name,
+            totalTime: category.totalTime,
+            isVirtual: showSplit ? category.category.isVirtual : undefined,
+            members: category.members.map((member) => ({
+              id: member.person.id,
+              name: `${member.person.firstName} ${member.person.lastName}`,
+              totalTime: member.totalTime,
+            })),
           })),
-        })),
-      };
-    });
+        };
+      })
+      .filter((day) => day.categories.length > 0);
 
-  return <ActivityDailyBreakdownTable days={days} />;
+  return (
+    <>
+      {disaggregateVirtualPeriods && (
+        <label className="mb-3 flex items-center justify-end gap-2">
+          <input
+            type="checkbox"
+            checked={hideVirtual}
+            onChange={(e) => setHideVirtual(e.target.checked)}
+          />
+          Hide virtual
+        </label>
+      )}
+      <ActivityDailyBreakdownTable days={days} />
+    </>
+  );
 }
