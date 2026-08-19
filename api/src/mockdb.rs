@@ -209,7 +209,7 @@ impl db::Handler for Handler {
         Self::unsupported()
     }
 
-    async fn list_api_tokens(&self) -> db::Result<Vec<ApiToken>> {
+    async fn list_api_tokens(&self, _filter: db::ListApiTokensFilter) -> db::Result<Vec<ApiToken>> {
         Self::unsupported()
     }
 
@@ -319,7 +319,54 @@ impl db::Handler for Handler {
     async fn get_nitc_events_by_ids<T: AsRef<str> + Sync>(
         &self,
         _ids: &[T],
+    ) -> db::Result<Vec<Option<db::NitcEvent>>> {
+        Self::unsupported()
+    }
+
+    async fn list_nitc_events_for_location(
+        &self,
+        _location_id: &str,
     ) -> db::Result<Vec<db::NitcEvent>> {
+        Self::unsupported()
+    }
+
+    async fn scan_persons(
+        &self,
+        _cursor: Option<db::ScanCursor>,
+        _limit: i32,
+    ) -> db::Result<db::ScanPage<Person>> {
+        Self::unsupported()
+    }
+
+    async fn scan_periods(
+        &self,
+        _cursor: Option<db::ScanCursor>,
+        _limit: i32,
+    ) -> db::Result<db::ScanPage<Period>> {
+        Self::unsupported()
+    }
+
+    async fn scan_sessions(
+        &self,
+        _cursor: Option<db::ScanCursor>,
+        _limit: i32,
+    ) -> db::Result<db::ScanPage<Session>> {
+        Self::unsupported()
+    }
+
+    async fn scan_user_tokens(
+        &self,
+        _cursor: Option<db::ScanCursor>,
+        _limit: i32,
+    ) -> db::Result<db::ScanPage<db::UserToken>> {
+        Self::unsupported()
+    }
+
+    async fn scan_nitc_events(
+        &self,
+        _cursor: Option<db::ScanCursor>,
+        _limit: i32,
+    ) -> db::Result<db::ScanPage<db::NitcEvent>> {
         Self::unsupported()
     }
 
