@@ -8,7 +8,7 @@ import {
   isSameDay,
 } from "../../lib/time";
 import type { TransactionSignedOut } from "../ScanState";
-import { categoriesFor, categoryIconSrc } from "../../lib/categories";
+import { categories, categoryIconSrc } from "../../lib/categories";
 import { scanView, scanViewPosition, type ScreenPosition } from "../../styles";
 import { Button } from "../../components/ui/Button";
 import { Dialog, DialogActions, DialogTitle } from "../../components/ui/Dialog";
@@ -48,7 +48,6 @@ function Inner(props: {
   onEditCategory: () => void;
   isSubmitting: boolean;
   easyTimeEntry: boolean;
-  newCategories: boolean;
 }) {
   const transaction = props.transaction;
   // "date" + rollover-on-save is used by the legacy (non-easyTimeEntry) picker only;
@@ -197,7 +196,7 @@ function Inner(props: {
   let subcategoryName = "Unknown";
   let categoryIcon = "unknown";
 
-  for (const category of categoriesFor(props.newCategories)) {
+  for (const category of categories) {
     for (const subcategory of category.subcategories || []) {
       if (subcategory.id === props.transaction.categoryId) {
         categoryName = category.name;
@@ -318,7 +317,7 @@ function Inner(props: {
         <div className="flex items-center">
           <div className="min-w-48.75 p-2.5 text-right">Category:</div>
           <div className="flex flex-1 items-center justify-center gap-2.5 p-2.5">
-            <img src={categoryIconSrc(categoryIcon, props.newCategories)} />
+            <img src={categoryIconSrc(categoryIcon)} />
             <div className="pr-5 text-left text-xl whitespace-nowrap">
               <div>{categoryName}</div>
               <div>{subcategoryName}</div>
@@ -405,7 +404,6 @@ export default function ScanScreenAdjust(props: {
   onError: () => void;
   isSubmitting: boolean;
   easyTimeEntry: boolean;
-  newCategories: boolean;
 }) {
   return (
     <div
@@ -420,7 +418,6 @@ export default function ScanScreenAdjust(props: {
           onError={props.onError}
           isSubmitting={props.isSubmitting}
           easyTimeEntry={props.easyTimeEntry}
-          newCategories={props.newCategories}
         />
       )}
     </div>

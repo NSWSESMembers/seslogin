@@ -12,7 +12,6 @@ describe("ScanScreenCategories", () => {
         screenPosition={"center"}
         onSelectCategory={onSelect}
         smallCategories={false}
-        newCategories={false}
       />,
     );
     const categoryElements = screen.getAllByRole("button");
@@ -40,7 +39,6 @@ describe("ScanScreenCategories", () => {
         screenPosition={"center"}
         onSelectCategory={onSelect}
         smallCategories={false}
-        newCategories={false}
       />,
     );
     const trainingCategory = screen.getByText("Training");
@@ -60,7 +58,6 @@ describe("ScanScreenCategories", () => {
       "Flood Operator L1",
       "Flood Operator L2 (Boat)",
       "Flood Operator L3 (SWR)",
-      "Fundamentals",
       "Industrial & Domestic Rescue",
       "Job Ready",
       "Land Search",
