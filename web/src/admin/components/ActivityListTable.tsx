@@ -1,4 +1,4 @@
-import type { CSSProperties } from "react";
+import { useState, type CSSProperties } from "react";
 import { formatTime, formatTimeDiff } from "../../lib/time";
 import { graphql, readInlineData } from "relay-runtime";
 import { useMutation } from "react-relay";
@@ -68,13 +68,13 @@ function Section<T extends ActivityListTable_period$key>({
   entries,
   getRowLabel,
   isDev,
-  disaggregateVirtualPeriods,
+  showSplit,
 }: {
   day: string;
   entries: ReadonlyArray<Entry<T>>;
   getRowLabel: (p: T) => string;
   isDev: boolean;
-  disaggregateVirtualPeriods: boolean;
+  showSplit: boolean;
 }) {
   const colSpan = isDev ? 8 : 7;
   const periodCount = entries.length;
@@ -95,7 +95,7 @@ function Section<T extends ActivityListTable_period$key>({
           <div>{day}</div>
           <div className="font-normal text-ink-muted">
             {periodCount} {periodLabel}
-            {disaggregateVirtualPeriods
+            {showSplit
               ? ` — ${virtualCount} virtual / ${nonVirtualCount} non-virtual`
               : ""}
             , {uniqueMemberCount} unique {memberLabel}
@@ -309,6 +309,8 @@ export default function ActivityListTable<
   onLoadMore?: () => void;
 }) {
   const { isDev, disaggregateVirtualPeriods } = useUserInfo();
+  const [hideVirtual, setHideVirtual] = useState(false);
+  const showSplit = disaggregateVirtualPeriods && !hideVirtual;
   const dayGroupedRows = new Map<string, Array<Entry<T>>>();
   const dateOptions: Intl.DateTimeFormatOptions = {
     weekday: "long",
@@ -320,6 +322,7 @@ export default function ActivityListTable<
   for (const periodRef of periods) {
     const data = readInlineData(activityListTablePeriod, periodRef);
     if (!data) continue;
+    if (hideVirtual && data.category?.isVirtual) continue;
     const startTime = new Date(data.startTime * 1000);
     const day = startTime.toLocaleDateString(undefined, dateOptions);
     if (!dayGroupedRows.has(day)) {
@@ -330,6 +333,16 @@ export default function ActivityListTable<
 
   return (
     <>
+      {disaggregateVirtualPeriods && (
+        <label className="mb-3 flex items-center justify-end gap-2">
+          <input
+            type="checkbox"
+            checked={hideVirtual}
+            onChange={(e) => setHideVirtual(e.target.checked)}
+          />
+          Hide virtual
+        </label>
+      )}
       <AdminTable>
         <thead>
           <tr>
@@ -351,7 +364,7 @@ export default function ActivityListTable<
               entries={entries}
               getRowLabel={getRowLabel}
               isDev={isDev}
-              disaggregateVirtualPeriods={disaggregateVirtualPeriods}
+              showSplit={showSplit}
             />
           ))}
         </tbody>

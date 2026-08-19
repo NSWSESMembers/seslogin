@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { graphql } from "relay-runtime";
 import { useLazyLoadQuery } from "react-relay";
 import ActivityBreakdownTable, {
@@ -19,6 +20,8 @@ export default function ActivityBreakdownDisplay({
   endTime,
 }: ActivityBreakdownDisplayProps) {
   const { disaggregateVirtualPeriods } = useUserInfo();
+  const [hideVirtual, setHideVirtual] = useState(false);
+  const showSplit = disaggregateVirtualPeriods && !hideVirtual;
 
   const data = useLazyLoadQuery<ActivityBreakdownDisplayQuery>(
     graphql`
@@ -83,20 +86,21 @@ export default function ActivityBreakdownDisplay({
         .filter((c) => c.category.isVirtual)
         .reduce((sum, c) => sum + c.totalTime, 0);
       const nonVirtualTime = entry.totalTime - virtualTime;
+      const categories = hideVirtual
+        ? entry.categories.filter((c) => !c.category.isVirtual)
+        : entry.categories;
       return {
         id: entry.person.id,
         name: `${entry.person.firstName} ${entry.person.lastName}`,
-        totalTime: entry.totalTime,
-        splitLine: disaggregateVirtualPeriods
+        totalTime: hideVirtual ? nonVirtualTime : entry.totalTime,
+        splitLine: showSplit
           ? `${formatSeconds(virtualTime)} virtual · ${formatSeconds(nonVirtualTime)} non-virtual`
           : undefined,
-        children: entry.categories.map((category) => ({
+        children: categories.map((category) => ({
           id: category.category.id,
           name: category.category.name,
           totalTime: category.totalTime,
-          isVirtual: disaggregateVirtualPeriods
-            ? category.category.isVirtual
-            : undefined,
+          isVirtual: showSplit ? category.category.isVirtual : undefined,
         })),
       };
     });
@@ -127,28 +131,44 @@ export default function ActivityBreakdownDisplay({
       .map(toCategoryMemberRow);
 
   return (
-    <div className="flex items-start gap-5 max-md:flex-col">
-      <ActivityBreakdownTable
-        title="Time per member per category"
-        rows={memberCategoryRows}
-      />
-      {disaggregateVirtualPeriods ? (
-        <>
-          <ActivityBreakdownTable
-            title="Time per category per member — Virtual"
-            rows={virtualCategoryMemberRows}
+    <>
+      {disaggregateVirtualPeriods && (
+        <label className="mb-3 flex items-center justify-end gap-2">
+          <input
+            type="checkbox"
+            checked={hideVirtual}
+            onChange={(e) => setHideVirtual(e.target.checked)}
           />
-          <ActivityBreakdownTable
-            title="Time per category per member — Non-virtual"
-            rows={nonVirtualCategoryMemberRows}
-          />
-        </>
-      ) : (
-        <ActivityBreakdownTable
-          title="Time per category per member"
-          rows={categoryMemberRows}
-        />
+          Hide virtual
+        </label>
       )}
-    </div>
+      <div className="flex items-start gap-5 max-md:flex-col">
+        <ActivityBreakdownTable
+          title="Time per member per category"
+          rows={memberCategoryRows}
+        />
+        {showSplit ? (
+          <>
+            <ActivityBreakdownTable
+              title="Time per category per member — Virtual"
+              rows={virtualCategoryMemberRows}
+            />
+            <ActivityBreakdownTable
+              title="Time per category per member — Non-virtual"
+              rows={nonVirtualCategoryMemberRows}
+            />
+          </>
+        ) : (
+          <ActivityBreakdownTable
+            title="Time per category per member"
+            rows={
+              disaggregateVirtualPeriods
+                ? nonVirtualCategoryMemberRows
+                : categoryMemberRows
+            }
+          />
+        )}
+      </div>
+    </>
   );
 }

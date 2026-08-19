@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { graphql } from "relay-runtime";
 import { useLazyLoadQuery } from "react-relay";
 import ActivityTotalsTable, {
@@ -20,6 +21,8 @@ export default function ActivityTotalsDisplay({
   categories,
 }: ActivityTotalsDisplayProps) {
   const { disaggregateVirtualPeriods } = useUserInfo();
+  const [hideVirtual, setHideVirtual] = useState(false);
+  const showSplit = disaggregateVirtualPeriods && !hideVirtual;
 
   const data = useLazyLoadQuery<ActivityTotalsDisplayQuery>(
     graphql`
@@ -64,14 +67,18 @@ export default function ActivityTotalsDisplay({
   );
 
   const memberRows: ReadonlyArray<ActivityTotalsRow> =
-    data.location.periodSummaryByMember.map((entry) => ({
-      id: entry.person.id,
-      name: `${entry.person.firstName} ${entry.person.lastName}`,
-      totalTime: entry.totalTime,
+    data.location.periodSummaryByMember.map((entry) => {
       // The API sends only the virtual portion; non-virtual is the remainder.
-      totalTimeVirtual: entry.totalTimeVirtual ?? 0,
-      totalTimeNonVirtual: entry.totalTime - (entry.totalTimeVirtual ?? 0),
-    }));
+      const totalTimeVirtual = entry.totalTimeVirtual ?? 0;
+      const totalTimeNonVirtual = entry.totalTime - totalTimeVirtual;
+      return {
+        id: entry.person.id,
+        name: `${entry.person.firstName} ${entry.person.lastName}`,
+        totalTime: hideVirtual ? totalTimeNonVirtual : entry.totalTime,
+        totalTimeVirtual,
+        totalTimeNonVirtual,
+      };
+    });
 
   const categoryRows: ReadonlyArray<ActivityTotalsRow> =
     data.location.periodSummaryByCategory.map((entry) => ({
@@ -97,27 +104,46 @@ export default function ActivityTotalsDisplay({
       }));
 
   return (
-    <div className="flex items-start gap-5 max-md:flex-col">
-      <ActivityTotalsTable
-        title="Time per member"
-        rows={memberRows}
-        showSplit={disaggregateVirtualPeriods}
-      />
-      {categories.length === 0 &&
-        (disaggregateVirtualPeriods ? (
-          <>
+    <>
+      {disaggregateVirtualPeriods && (
+        <label className="mb-3 flex items-center justify-end gap-2">
+          <input
+            type="checkbox"
+            checked={hideVirtual}
+            onChange={(e) => setHideVirtual(e.target.checked)}
+          />
+          Hide virtual
+        </label>
+      )}
+      <div className="flex items-start gap-5 max-md:flex-col">
+        <ActivityTotalsTable
+          title="Time per member"
+          rows={memberRows}
+          showSplit={showSplit}
+        />
+        {categories.length === 0 &&
+          (showSplit ? (
+            <>
+              <ActivityTotalsTable
+                title="Time per category — Virtual"
+                rows={virtualCategoryRows}
+              />
+              <ActivityTotalsTable
+                title="Time per category — Non-virtual"
+                rows={nonVirtualCategoryRows}
+              />
+            </>
+          ) : (
             <ActivityTotalsTable
-              title="Time per category — Virtual"
-              rows={virtualCategoryRows}
+              title="Time per category"
+              rows={
+                disaggregateVirtualPeriods
+                  ? nonVirtualCategoryRows
+                  : categoryRows
+              }
             />
-            <ActivityTotalsTable
-              title="Time per category — Non-virtual"
-              rows={nonVirtualCategoryRows}
-            />
-          </>
-        ) : (
-          <ActivityTotalsTable title="Time per category" rows={categoryRows} />
-        ))}
-    </div>
+          ))}
+      </div>
+    </>
   );
 }
