@@ -14,6 +14,7 @@ use seslogin::db::{
 use seslogin::dynamodb;
 use seslogin::jwt::{ExpirePolicy, Key};
 use seslogin::request_metrics::{self, RequestMetrics};
+use seslogin::text_table::{DIVIDER, print_detail, print_table};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -339,48 +340,6 @@ fn decorate(value: &str, name: Option<&String>) -> String {
     match name {
         Some(n) => format!("{} ({})", value, n),
         None => value.to_string(),
-    }
-}
-
-/// Render a key/value detail block. Long string keys are left-padded to align.
-fn print_detail(rows: &[(&str, String)]) {
-    let width = rows.iter().map(|(k, _)| k.len()).max().unwrap_or(0);
-    for (k, v) in rows {
-        println!("{:>width$}: {}", k, v, width = width);
-    }
-}
-
-const DIVIDER: &str = "────────────────────────────────────────────────────────";
-
-/// Print left-aligned, width-computed columns. The first header should be "id".
-fn print_table(headers: &[&str], rows: &[Vec<String>]) {
-    let mut widths: Vec<usize> = headers.iter().map(|h| h.len()).collect();
-    for row in rows {
-        for (i, cell) in row.iter().enumerate() {
-            if cell.len() > widths[i] {
-                widths[i] = cell.len();
-            }
-        }
-    }
-    let fmt_row = |cells: &[String]| -> String {
-        cells
-            .iter()
-            .enumerate()
-            .map(|(i, c)| format!("{:<width$}", c, width = widths[i]))
-            .collect::<Vec<_>>()
-            .join("  ")
-            .trim_end()
-            .to_string()
-    };
-    let header_cells: Vec<String> = headers.iter().map(|h| h.to_string()).collect();
-    println!("{}", fmt_row(&header_cells));
-    let total: usize = widths.iter().sum::<usize>() + 2 * widths.len().saturating_sub(1);
-    println!("{}", "-".repeat(total));
-    for row in rows {
-        println!("{}", fmt_row(row));
-    }
-    if rows.is_empty() {
-        println!("(no rows)");
     }
 }
 
