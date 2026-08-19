@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<ba8445dbdc8d35b066c0ba3469a7733c>>
+ * @generated SignedSource<<d5bb681f31b3c428460cc0c1d9866b75>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -10,7 +10,7 @@
 
 import { ConcreteRequest } from 'relay-runtime';
 export type ActivityHeatmapDisplayQuery$variables = {
-  category?: string | null | undefined;
+  categories?: ReadonlyArray<string> | null | undefined;
   endTime: number;
   location: string;
   startTime: number;
@@ -44,7 +44,7 @@ const node: ConcreteRequest = (function(){
 var v0 = {
   "defaultValue": null,
   "kind": "LocalArgument",
-  "name": "category"
+  "name": "categories"
 },
 v1 = {
   "defaultValue": null,
@@ -115,8 +115,8 @@ v5 = [
         "args": [
           {
             "kind": "Variable",
-            "name": "category",
-            "variableName": "category"
+            "name": "categories",
+            "variableName": "categories"
           },
           {
             "kind": "Variable",
@@ -213,16 +213,16 @@ return {
     "selections": (v5/*: any*/)
   },
   "params": {
-    "cacheID": "57cc96e8248f4042990358b676829df3",
+    "cacheID": "c8884b87e62d253cfc606dab5e6c41d9",
     "id": null,
     "metadata": {},
     "name": "ActivityHeatmapDisplayQuery",
     "operationKind": "query",
-    "text": "query ActivityHeatmapDisplayQuery(\n  $location: ID!\n  $startTime: Int!\n  $endTime: Int!\n  $category: ID\n) {\n  location(id: $location) {\n    id\n    people {\n      id\n      firstName\n      lastName\n    }\n    periodSummaryByDayByMember(startTime: $startTime, endTime: $endTime, category: $category) {\n      date\n      members {\n        person {\n          id\n        }\n        totalTime\n        periodCount\n      }\n    }\n  }\n}\n"
+    "text": "query ActivityHeatmapDisplayQuery(\n  $location: ID!\n  $startTime: Int!\n  $endTime: Int!\n  $categories: [ID!]\n) {\n  location(id: $location) {\n    id\n    people {\n      id\n      firstName\n      lastName\n    }\n    periodSummaryByDayByMember(startTime: $startTime, endTime: $endTime, categories: $categories) {\n      date\n      members {\n        person {\n          id\n        }\n        totalTime\n        periodCount\n      }\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "8cc6ec0cf62c51079478f844a72502d4";
+(node as any).hash = "8727ac7260d5bdb25593874e59df1acc";
 
 export default node;

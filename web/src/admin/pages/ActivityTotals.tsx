@@ -8,7 +8,7 @@ import useActivityTimeRange from "../components/useActivityTimeRange";
 
 export default function ActivityTotals() {
   const settings = useSettings();
-  const [category, setCategory] = useState("");
+  const [categoryIds, setCategoryIds] = useState<string[]>([]);
   const {
     startInput,
     endInput,
@@ -27,9 +27,14 @@ export default function ActivityTotals() {
         onStartChange={setStartInput}
         onEndChange={setEndInput}
       />
-      <Suspense fallback={<LoadingIndicator />}>
-        <ActivityCategorySelector value={category} onChange={setCategory} />
-      </Suspense>
+      <div className="mb-4 flex justify-center">
+        <Suspense fallback={<LoadingIndicator />}>
+          <ActivityCategorySelector
+            value={categoryIds}
+            onChange={setCategoryIds}
+          />
+        </Suspense>
+      </div>
       {!hasValidRange && (
         <p className="font-bold text-red-600">
           Start time must be before end time.
@@ -42,7 +47,7 @@ export default function ActivityTotals() {
             locationId={settings?.locationId || ""}
             startTime={queryStartTime}
             endTime={queryEndTime}
-            category={category || undefined}
+            categories={categoryIds}
           />
         </Suspense>
       )}

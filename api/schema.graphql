@@ -116,7 +116,7 @@ type Location {
 	"""
 	recentCategories(limit: Int): [LocationRecentCategory!]!
 	periods(onlyActive: Boolean, startTime: Int, endTime: Int, after: String, before: String, first: Int, last: Int): PeriodConnection!
-	periodSummaryByMember(startTime: Int!, endTime: Int!, category: ID): [MemberPeriodSummary!]!
+	periodSummaryByMember(startTime: Int!, endTime: Int!, categories: [ID!]): [MemberPeriodSummary!]!
 	periodSummaryByCategory(startTime: Int!, endTime: Int!): [CategoryPeriodSummary!]!
 	periodSummaryByMemberByCategory(startTime: Int!, endTime: Int!): [MemberCategoryPeriodSummary!]!
 	periodSummaryByCategoryByMember(startTime: Int!, endTime: Int!): [CategoryMemberPeriodSummary!]!
@@ -131,7 +131,7 @@ type Location {
 	a left-to-right time series), unlike the descending order used by the
 	other day-bucketed resolver.
 	"""
-	periodSummaryByDayByMember(startTime: Int!, endTime: Int!, category: ID): [DayMemberPeriodSummary!]!
+	periodSummaryByDayByMember(startTime: Int!, endTime: Int!, categories: [ID!]): [DayMemberPeriodSummary!]!
 	sessions: [Session!]!
 	dashboardSummary(asOf: Int): LocationDashboardSummary!
 }

@@ -1073,7 +1073,8 @@ impl<A: App + HasDb + Send + Sync + 'static> DayMemberPeriodSummary<A> {
 /// up today's cell) alongside `total_time` (only from periods with a known
 /// duration — same convention as every other `period_summary_by_*` resolver).
 /// Unlike `period_summary_by_day_by_category_by_member`, periods with no
-/// category are still counted (unless a specific `category_filter` is given).
+/// category are still counted (unless a `category_filter` is given, in which
+/// case a period must match one of the wanted categories).
 /// (person_id, total_time, period_count)
 type MemberDayBucket = (String, i64, i32);
 /// (date, members)
@@ -1081,7 +1082,7 @@ type DayBucket = (String, Vec<MemberDayBucket>);
 
 fn bucket_periods_by_day_and_member(
     periods: &[db::Period],
-    category_filter: Option<&str>,
+    category_filter: Option<&[String]>,
 ) -> Vec<DayBucket> {
     let mut totals_by_day: HashMap<String, HashMap<String, (u64, i32)>> = HashMap::new();
     for period in periods {
@@ -1091,7 +1092,9 @@ fn bucket_periods_by_day_and_member(
             continue;
         };
         if let Some(wanted) = category_filter
-            && period.category_id.as_deref() != Some(wanted)
+            && !wanted
+                .iter()
+                .any(|id| period.category_id.as_deref() == Some(id.as_str()))
         {
             continue;
         }
@@ -1188,10 +1191,27 @@ mod period_summary_by_day_by_member_tests {
             period("p2", "person-1", Some("cat-b"), 200, Some(3800)),
         ];
 
-        let rows = bucket_periods_by_day_and_member(&periods, Some("cat-a"));
+        let rows = bucket_periods_by_day_and_member(&periods, Some(&["cat-a".to_string()]));
 
         let (_, members) = &rows[0];
         assert_eq!(members, &[("person-1".to_string(), 3600, 1)]);
+    }
+
+    #[test]
+    fn category_filter_matches_any_of_multiple_wanted_categories() {
+        let periods = [
+            period("p1", "person-1", Some("cat-a"), 100, Some(3700)),
+            period("p2", "person-1", Some("cat-b"), 200, Some(3800)),
+            period("p3", "person-1", Some("cat-c"), 300, Some(3900)),
+        ];
+
+        let rows = bucket_periods_by_day_and_member(
+            &periods,
+            Some(&["cat-a".to_string(), "cat-b".to_string()]),
+        );
+
+        let (_, members) = &rows[0];
+        assert_eq!(members, &[("person-1".to_string(), 7200, 2)]);
     }
 
     #[test]
@@ -1855,7 +1875,7 @@ impl<A: App + HasDb + Send + Sync> Location<A> {
         ctx: &Context<'_>,
         start_time: i64,
         end_time: i64,
-        category: Option<ID>,
+        categories: Option<Vec<ID>>,
     ) -> Result<Vec<MemberPeriodSummary<A>>> {
         if start_time >= end_time {
             return Err(anyhow!("start_time must be before end_time"));
@@ -1864,7 +1884,8 @@ impl<A: App + HasDb + Send + Sync> Location<A> {
             .map_err(|_| anyhow!("start_time must be a non-negative unix timestamp"))?;
         let range_end = u64::try_from(end_time)
             .map_err(|_| anyhow!("end_time must be a non-negative unix timestamp"))?;
-        let category_filter = category.map(|c| c.0);
+        let category_filter: Option<Vec<String>> =
+            categories.map(|cs| cs.into_iter().map(|c| c.0).collect());
 
         let app = ctx.data_unchecked::<Arc<A>>();
         let periods = app
@@ -1900,7 +1921,9 @@ impl<A: App + HasDb + Send + Sync> Location<A> {
                 continue;
             };
             if let Some(ref wanted) = category_filter
-                && period.category_id.as_deref() != Some(wanted.as_str())
+                && !wanted
+                    .iter()
+                    .any(|id| period.category_id.as_deref() == Some(id.as_str()))
             {
                 continue;
             }
@@ -2228,7 +2251,7 @@ impl<A: App + HasDb + Send + Sync> Location<A> {
         ctx: &Context<'_>,
         start_time: i64,
         end_time: i64,
-        category: Option<ID>,
+        categories: Option<Vec<ID>>,
     ) -> Result<Vec<DayMemberPeriodSummary<A>>> {
         if start_time >= end_time {
             return Err(anyhow!("start_time must be before end_time"));
@@ -2240,7 +2263,8 @@ impl<A: App + HasDb + Send + Sync> Location<A> {
             .map_err(|_| anyhow!("start_time must be a non-negative unix timestamp"))?;
         let range_end = u64::try_from(end_time)
             .map_err(|_| anyhow!("end_time must be a non-negative unix timestamp"))?;
-        let category_filter = category.map(|c| c.0);
+        let category_filter: Option<Vec<String>> =
+            categories.map(|cs| cs.into_iter().map(|c| c.0).collect());
 
         let app = ctx.data_unchecked::<Arc<A>>();
         let periods = app
