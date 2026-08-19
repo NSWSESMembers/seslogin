@@ -1,13 +1,15 @@
 import { graphql, readInlineData } from "relay-runtime";
 import { fetchQuery, useLazyLoadQuery, useRelayEnvironment } from "react-relay";
 import ActivityListTable from "../components/ActivityListTable";
+import ActivityCategorySelector from "../components/ActivityCategorySelector";
+import LoadingIndicator from "../../components/LoadingIndicator";
 import type {
   ActivityListMemberQuery,
   ActivityListMemberQuery$data,
 } from "./__generated__/ActivityListMemberQuery.graphql";
 import type { ActivityListMember_periodName$key } from "./__generated__/ActivityListMember_periodName.graphql";
 import { useParams } from "react-router";
-import { startTransition, useEffect, useState } from "react";
+import { Suspense, startTransition, useEffect, useState } from "react";
 
 const ACTIVITY_MEMBER_PAGE_SIZE = 100;
 
@@ -30,6 +32,35 @@ const activityListMemberPeriodName = graphql`
 
 export default function ActivityListMember() {
   const params = useParams();
+  const [categoryIds, setCategoryIds] = useState<string[]>([]);
+
+  return (
+    <>
+      <div className="mb-4 flex justify-center">
+        <Suspense fallback={<LoadingIndicator />}>
+          <ActivityCategorySelector
+            value={categoryIds}
+            onChange={setCategoryIds}
+          />
+        </Suspense>
+      </div>
+      <Suspense fallback={<LoadingIndicator />}>
+        <ActivityListMemberContent
+          memberId={params.memberId!}
+          categoryIds={categoryIds}
+        />
+      </Suspense>
+    </>
+  );
+}
+
+function ActivityListMemberContent({
+  memberId,
+  categoryIds,
+}: {
+  memberId: string;
+  categoryIds: string[];
+}) {
   const relayEnvironment = useRelayEnvironment();
   const data = useLazyLoadQuery<ActivityListMemberQuery>(
     graphql`
@@ -37,12 +68,13 @@ export default function ActivityListMember() {
         $person: ID!
         $first: Int!
         $after: String
+        $categories: [ID!]
       ) {
         person(id: $person) {
           id
           firstName
           lastName
-          periods(first: $first, after: $after) {
+          periods(first: $first, after: $after, categories: $categories) {
             edges {
               node {
                 ...ActivityListTable_period
@@ -58,9 +90,10 @@ export default function ActivityListMember() {
       }
     `,
     {
-      person: params.memberId!,
+      person: memberId,
       first: ACTIVITY_MEMBER_PAGE_SIZE,
       after: null,
+      categories: categoryIds.length > 0 ? categoryIds : null,
     },
   );
 
@@ -100,12 +133,13 @@ export default function ActivityListMember() {
             $person: ID!
             $first: Int!
             $after: String
+            $categories: [ID!]
           ) {
             person(id: $person) {
               id
               firstName
               lastName
-              periods(first: $first, after: $after) {
+              periods(first: $first, after: $after, categories: $categories) {
                 edges {
                   node {
                     ...ActivityListTable_period
@@ -121,9 +155,10 @@ export default function ActivityListMember() {
           }
         `,
         {
-          person: params.memberId!,
+          person: memberId,
           first: ACTIVITY_MEMBER_PAGE_SIZE,
           after: endCursor,
+          categories: categoryIds.length > 0 ? categoryIds : null,
         },
       ).toPromise();
 

@@ -579,6 +579,7 @@ pub trait Handler: Sync {
         person_id: &str,
         location_id: Option<&str>,
         only_unfinished: Option<bool>,
+        category_ids: Option<&[String]>,
         page: ListPeriodsPage,
     ) -> impl Future<Output = Result<Vec<Period>>> + Send;
     fn get_periods<T: AsRef<str> + Sync>(
