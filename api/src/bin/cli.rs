@@ -9,7 +9,8 @@ use chrono::{DateTime, Local, NaiveDate};
 use clap::{Parser, Subcommand};
 use seslogin::db::{
     ApiToken, Category, Handler, ListApiTokensFilter, ListLocationsFilter, ListPeriodsPage,
-    ListSessionsQuery, Location, NitcEvent, NitcGroup, Period, PeriodCursor, Person, Session, User,
+    ListSessionsQuery, Location, NitcEvent, NitcGroup, Period, PeriodCursor, Person, ScanCursor,
+    Session, User,
 };
 use seslogin::dynamodb;
 use seslogin::jwt::{ExpirePolicy, Key};
@@ -92,6 +93,21 @@ enum Object {
         #[command(subcommand)]
         cmd: PeriodLinkCmd,
     },
+    /// Walk a whole table with a base-table scan, reporting rows that fail to hydrate.
+    ///
+    /// Unlike every other command here this bypasses the indexes, so it reaches rows no
+    /// query can: a person with a malformed `location_id`, a soft-deleted period or
+    /// session. Scans are expensive — `person` and `period` are the largest tables.
+    Scan {
+        #[arg(long)]
+        table: ScanTableArg,
+        /// Items examined per request. Not the number of rows returned.
+        #[arg(long, default_value_t = 500)]
+        limit: i32,
+        /// Stop after this many pages instead of walking the whole table.
+        #[arg(long)]
+        max_pages: Option<usize>,
+    },
     /// Generate a signed JWT for a session or user (does not touch the DB).
     Jwt {
         /// JWT secret (overrides JWT_SECRET env var).
@@ -103,6 +119,15 @@ enum Object {
         #[command(subcommand)]
         cmd: JwtCmd,
     },
+}
+
+#[derive(clap::ValueEnum, Clone, Copy, Debug)]
+enum ScanTableArg {
+    Person,
+    Period,
+    Session,
+    UserToken,
+    NitcEvent,
 }
 
 #[derive(Subcommand, Debug)]
@@ -1011,6 +1036,81 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
+/// Walk a table with repeated scan pages, reporting rows that fail to hydrate.
+///
+/// Every table is walked by the same loop; only the page-fetching closure differs, so
+/// the pagination contract is exercised identically for each. Note the loop ends on
+/// `next == None` and never on an empty page: DynamoDB's `Limit` counts items examined,
+/// so a page can legitimately come back with no rows and more still to read.
+async fn run_scan(
+    db: &impl Handler,
+    table: ScanTableArg,
+    limit: i32,
+    max_pages: Option<usize>,
+) -> Result<()> {
+    let mut cursor: Option<ScanCursor> = None;
+    let mut pages = 0usize;
+    let mut ok = 0usize;
+    let mut failed = 0usize;
+
+    loop {
+        // Each arm hydrates a different type, so collapse to the counts and errors
+        // rather than trying to return one page type from all five.
+        let (rows, next): (Vec<Result<(), String>>, _) = match table {
+            ScanTableArg::Person => {
+                let page = db.scan_persons(cursor.clone(), limit).await?;
+                (scan_outcomes(page.rows), page.next)
+            }
+            ScanTableArg::Period => {
+                let page = db.scan_periods(cursor.clone(), limit).await?;
+                (scan_outcomes(page.rows), page.next)
+            }
+            ScanTableArg::Session => {
+                let page = db.scan_sessions(cursor.clone(), limit).await?;
+                (scan_outcomes(page.rows), page.next)
+            }
+            ScanTableArg::UserToken => {
+                let page = db.scan_user_tokens(cursor.clone(), limit).await?;
+                (scan_outcomes(page.rows), page.next)
+            }
+            ScanTableArg::NitcEvent => {
+                let page = db.scan_nitc_events(cursor.clone(), limit).await?;
+                (scan_outcomes(page.rows), page.next)
+            }
+        };
+
+        for row in rows {
+            match row {
+                Ok(()) => ok += 1,
+                Err(msg) => {
+                    failed += 1;
+                    println!("hydration error: {msg}");
+                }
+            }
+        }
+
+        pages += 1;
+        cursor = next;
+        if cursor.is_none() {
+            break;
+        }
+        if max_pages.is_some_and(|max| pages >= max) {
+            eprintln!("stopping after {pages} page(s); more rows remain");
+            break;
+        }
+    }
+
+    println!("scan complete table={table:?} pages={pages} rows={ok} hydration_errors={failed}");
+    Ok(())
+}
+
+/// Reduce a hydrated page to per-row success/failure, discarding the records themselves.
+fn scan_outcomes<T>(rows: Vec<seslogin::db::Result<T>>) -> Vec<Result<(), String>> {
+    rows.into_iter()
+        .map(|r| r.map(|_| ()).map_err(|e| e.to_string()))
+        .collect()
+}
+
 /// Generate and print a signed JWT for a session or user. Does not touch the DB.
 fn run_jwt(jwt_secret: Option<String>, expire_s: Option<u64>, cmd: &JwtCmd) -> Result<()> {
     let secret = jwt_secret
@@ -1575,6 +1675,14 @@ async fn run(db: &impl Handler, object: Object) -> Result<()> {
                 list_activity_summary_subscriptions(db).await?;
             }
         },
+
+        Object::Scan {
+            table,
+            limit,
+            max_pages,
+        } => {
+            run_scan(db, table, limit, max_pages).await?;
+        }
 
         // Handled in `main` before the shared read-only DB is opened.
         Object::Jwt { .. } => unreachable!("jwt is handled before DB setup"),
