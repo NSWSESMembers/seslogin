@@ -16,7 +16,7 @@ interface ActivityHeatmapDisplayProps {
   startTime: number;
   endTime: number;
   scale: HeatmapScale;
-  categoryId: string;
+  categoryIds: ReadonlyArray<string>;
   sortBy: HeatmapSortBy;
 }
 
@@ -25,7 +25,7 @@ export default function ActivityHeatmapDisplay({
   startTime,
   endTime,
   scale,
-  categoryId,
+  categoryIds,
   sortBy,
 }: ActivityHeatmapDisplayProps) {
   const data = useLazyLoadQuery<ActivityHeatmapDisplayQuery>(
@@ -34,7 +34,7 @@ export default function ActivityHeatmapDisplay({
         $location: ID!
         $startTime: Int!
         $endTime: Int!
-        $category: ID
+        $categories: [ID!]
       ) {
         location(id: $location) {
           id
@@ -46,7 +46,7 @@ export default function ActivityHeatmapDisplay({
           periodSummaryByDayByMember(
             startTime: $startTime
             endTime: $endTime
-            category: $category
+            categories: $categories
           ) {
             date
             members {
@@ -64,7 +64,7 @@ export default function ActivityHeatmapDisplay({
       location: locationId,
       startTime,
       endTime,
-      category: categoryId || null,
+      categories: categoryIds.length > 0 ? categoryIds : null,
     },
   );
 
