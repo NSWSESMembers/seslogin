@@ -17,7 +17,6 @@ use aws_sdk_dynamodb::types::{
 use aws_sdk_dynamodb::{Client, types::AttributeValue};
 use nanoid::nanoid;
 use std::collections::HashMap;
-use thiserror::Error;
 
 const NANOID_ALPHABET: [char; 62] = [
     '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I',
@@ -142,9 +141,62 @@ impl Item {
     }
 }
 
-#[derive(Error, Debug)]
-#[error(transparent)]
-pub struct HydrationError(#[from] anyhow::Error);
+/// A row that could not be turned into its typed record.
+///
+/// Carries the offending row's `id` where one could be read, because the whole point of
+/// the error is to send someone to look at that row. Without it a failed listing says
+/// only which table was being read — which, for a table with tens of thousands of rows,
+/// is not an actionable report.
+#[derive(Debug)]
+pub struct HydrationError {
+    source: anyhow::Error,
+    record_id: Option<String>,
+}
+
+impl HydrationError {
+    /// Attach the row's `id`, if it is not already known.
+    ///
+    /// An inner conversion may already have identified a more specific record, so an
+    /// existing id is never overwritten.
+    fn with_record_id(mut self, record_id: Option<String>) -> Self {
+        if self.record_id.is_none() {
+            self.record_id = record_id;
+        }
+        self
+    }
+
+    /// The offending row's `id`, where it was readable. `None` means the row's own `id`
+    /// attribute is what is broken.
+    pub fn record_id(&self) -> Option<&str> {
+        self.record_id.as_deref()
+    }
+}
+
+impl std::fmt::Display for HydrationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.record_id {
+            Some(id) => write!(f, "record {id}: {}", self.source),
+            None => write!(f, "{}", self.source),
+        }
+    }
+}
+
+impl std::error::Error for HydrationError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(self.source.as_ref())
+    }
+}
+
+/// Lets the `TryInto` impls keep using `?` on `anyhow` errors. The id is filled in
+/// afterwards by [`hydrate_item`], which is the only place that still has the raw row.
+impl From<anyhow::Error> for HydrationError {
+    fn from(source: anyhow::Error) -> Self {
+        Self {
+            source,
+            record_id: None,
+        }
+    }
+}
 
 type HydrationResult<T> = Result<T, HydrationError>;
 
@@ -644,8 +696,7 @@ impl Handler {
                 && let Some(items) = responses.remove(&table_name)
             {
                 for item in items {
-                    let res: Result<R, HydrationError> = Item(item).try_into();
-                    let rec: R = res?;
+                    let rec: R = hydrate_item(item)?;
                     results.insert(rec.id().to_string(), rec);
                 }
             }
@@ -710,6 +761,25 @@ fn page_scan_direction(has_after: bool, has_before: bool, descending: bool) -> (
 }
 
 /// Hydrate a batch of raw DynamoDB attribute maps into typed records.
+/// Hydrate one raw row, tagging any failure with that row's `id`.
+///
+/// The id is read before the conversion consumes the item, so a row that fails on some
+/// *other* attribute can still be named. A row whose `id` is itself unreadable reports no
+/// id — the error message then describes the `id` problem directly.
+fn hydrate_item<T>(raw: HashMap<String, AttributeValue>) -> HydrationResult<T>
+where
+    Item: TryInto<T, Error = HydrationError>,
+{
+    let item = Item(raw);
+    let record_id = item.id().ok();
+    item.try_into().map_err(|e| e.with_record_id(record_id))
+}
+
+/// Hydrate a page of rows, stopping at the first bad one.
+///
+/// This is the default because production read paths should fail loudly rather than
+/// quietly serve a short list. Tools that need to survey every bad row in one pass want
+/// [`hydrate_items_lenient`] instead.
 fn hydrate_items<T>(items: Option<Vec<HashMap<String, AttributeValue>>>) -> HydrationResult<Vec<T>>
 where
     Item: TryInto<T, Error = HydrationError>,
@@ -717,7 +787,26 @@ where
     items
         .unwrap_or_default()
         .into_iter()
-        .map(|i| Item(i).try_into())
+        .map(hydrate_item)
+        .collect()
+}
+
+/// Hydrate a page of rows, reporting each row's outcome independently.
+///
+/// One corrupt row hides every row after it under [`hydrate_items`], so a consistency
+/// check built on that would need one pass per bad row to enumerate them all. Here the
+/// caller sees every failure at once, each already tagged with its record id.
+#[allow(dead_code)] // consumed by the forthcoming db-check tool
+fn hydrate_items_lenient<T>(
+    items: Option<Vec<HashMap<String, AttributeValue>>>,
+) -> Vec<HydrationResult<T>>
+where
+    Item: TryInto<T, Error = HydrationError>,
+{
+    items
+        .unwrap_or_default()
+        .into_iter()
+        .map(hydrate_item)
         .collect()
 }
 
@@ -4043,19 +4132,41 @@ impl db::Handler for Handler {
 
 #[cfg(test)]
 mod tests {
-    use super::{Item, nitc_event_key, topic_date_key};
+    use super::{Item, hydrate_items, hydrate_items_lenient, nitc_event_key, topic_date_key};
     use crate::db::Category;
     use aws_sdk_dynamodb::types::AttributeValue;
     use chrono::NaiveDate;
     use std::collections::HashMap;
 
+    fn raw(fields: &[(&str, AttributeValue)]) -> HashMap<String, AttributeValue> {
+        fields
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.clone()))
+            .collect()
+    }
+
     fn item(fields: &[(&str, AttributeValue)]) -> Item {
-        Item(
-            fields
-                .iter()
-                .map(|(k, v)| (k.to_string(), v.clone()))
-                .collect::<HashMap<_, _>>(),
-        )
+        Item(raw(fields))
+    }
+
+    /// A category row that hydrates cleanly.
+    fn good_category(id: &str) -> HashMap<String, AttributeValue> {
+        raw(&[
+            ("id", AttributeValue::S(id.to_string())),
+            ("name", AttributeValue::S("Training".to_string())),
+            ("created_at", AttributeValue::N("1000".to_string())),
+            ("updated_at", AttributeValue::N("2000".to_string())),
+        ])
+    }
+
+    /// Same, but missing `updated_at` — bad in a way that has nothing to do with the id,
+    /// so the id is still readable and must appear in the error.
+    fn bad_category(id: &str) -> HashMap<String, AttributeValue> {
+        raw(&[
+            ("id", AttributeValue::S(id.to_string())),
+            ("name", AttributeValue::S("Training".to_string())),
+            ("created_at", AttributeValue::N("1000".to_string())),
+        ])
     }
 
     #[test]
@@ -4097,6 +4208,68 @@ mod tests {
         ]);
         let hydrated: Result<Category, _> = row.try_into();
         assert!(hydrated.is_err());
+    }
+
+    #[test]
+    fn hydration_failure_names_the_offending_record() {
+        let items = vec![good_category("cat1"), bad_category("cat2")];
+        let err = hydrate_items::<Category>(Some(items))
+            .expect_err("a row missing updated_at must not hydrate");
+        assert_eq!(err.record_id(), Some("cat2"));
+        // The id belongs in the message too — most callers only ever see the string,
+        // via db::Error::Hydration.
+        let msg = err.to_string();
+        assert!(msg.contains("cat2"), "id missing from message: {msg}");
+        assert!(msg.contains("updated_at"), "cause missing: {msg}");
+    }
+
+    #[test]
+    fn hydration_failure_on_the_id_itself_reports_no_record() {
+        // Nothing to name here: the id is what's broken. The message must still say so
+        // rather than claiming some other record is at fault.
+        let items = vec![raw(&[("name", AttributeValue::S("orphan".to_string()))])];
+        let err = hydrate_items::<Category>(Some(items)).expect_err("no id, no hydration");
+        assert_eq!(err.record_id(), None);
+        assert!(
+            err.to_string().contains("missing id"),
+            "unhelpful message: {err}"
+        );
+    }
+
+    #[test]
+    fn strict_hydration_stops_at_the_first_bad_row() {
+        let items = vec![good_category("cat1"), bad_category("cat2")];
+        assert!(hydrate_items::<Category>(Some(items)).is_err());
+    }
+
+    #[test]
+    fn lenient_hydration_reports_every_row_independently() {
+        // The reason the lenient variant exists: under the strict helper, cat4 is
+        // invisible until cat2 is fixed, so surveying a table takes one pass per bad row.
+        let items = vec![
+            good_category("cat1"),
+            bad_category("cat2"),
+            bad_category("cat3"),
+            good_category("cat4"),
+        ];
+        let results = hydrate_items_lenient::<Category>(Some(items));
+
+        assert_eq!(results.len(), 4);
+        assert_eq!(results[0].as_ref().unwrap().id, "cat1");
+        assert_eq!(results[3].as_ref().unwrap().id, "cat4");
+
+        let failed: Vec<&str> = results
+            .iter()
+            .filter_map(|r| r.as_ref().err())
+            .filter_map(|e| e.record_id())
+            .collect();
+        assert_eq!(failed, vec!["cat2", "cat3"]);
+    }
+
+    #[test]
+    fn hydrating_nothing_yields_nothing() {
+        assert!(hydrate_items::<Category>(None).unwrap().is_empty());
+        assert!(hydrate_items_lenient::<Category>(None).is_empty());
     }
 
     #[test]
