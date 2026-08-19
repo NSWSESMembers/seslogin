@@ -3288,7 +3288,10 @@ impl<A: App + HasDb + Send + Sync + 'static> QueryRoot<A> {
     #[graphql(guard = "AuthGuard::new(AuthRequirement::SuperUser)")]
     async fn api_tokens(&self, ctx: &Context<'_>) -> Result<Vec<ApiToken>> {
         let app = ctx.data_unchecked::<Arc<A>>();
-        let items = app.db().list_api_tokens().await?;
+        let items = app
+            .db()
+            .list_api_tokens(db::ListApiTokensFilter::ActiveOnly)
+            .await?;
         Ok(items.into_iter().map(ApiToken::new).collect())
     }
 
