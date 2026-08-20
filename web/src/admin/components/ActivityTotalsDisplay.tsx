@@ -6,6 +6,7 @@ import ActivityTotalsTable, {
 } from "./ActivityTotalsTable";
 import type { ActivityTotalsDisplayQuery } from "./__generated__/ActivityTotalsDisplayQuery.graphql";
 import { useUserInfo } from "./useUserInfo";
+import { useRelayRetryFetchKey } from "../../components/relayRetryContext";
 
 interface ActivityTotalsDisplayProps {
   locationId: string;
@@ -23,6 +24,7 @@ export default function ActivityTotalsDisplay({
   const { disaggregateVirtualPeriods } = useUserInfo();
   const [hideVirtual, setHideVirtual] = useState(false);
   const showSplit = disaggregateVirtualPeriods && !hideVirtual;
+  const fetchKey = useRelayRetryFetchKey();
 
   const data = useLazyLoadQuery<ActivityTotalsDisplayQuery>(
     graphql`
@@ -64,6 +66,7 @@ export default function ActivityTotalsDisplay({
       endTime,
       categories: categories.length > 0 ? categories : null,
     },
+    { fetchKey },
   );
 
   const memberRows: ReadonlyArray<ActivityTotalsRow> =

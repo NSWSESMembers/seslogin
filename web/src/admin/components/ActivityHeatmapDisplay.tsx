@@ -10,6 +10,7 @@ import {
   type HeatmapSortBy,
 } from "./activityHeatmapBuckets";
 import type { ActivityHeatmapDisplayQuery } from "./__generated__/ActivityHeatmapDisplayQuery.graphql";
+import { useRelayRetryFetchKey } from "../../components/relayRetryContext";
 
 interface ActivityHeatmapDisplayProps {
   locationId: string;
@@ -28,6 +29,7 @@ export default function ActivityHeatmapDisplay({
   categoryIds,
   sortBy,
 }: ActivityHeatmapDisplayProps) {
+  const fetchKey = useRelayRetryFetchKey();
   const data = useLazyLoadQuery<ActivityHeatmapDisplayQuery>(
     graphql`
       query ActivityHeatmapDisplayQuery(
@@ -66,6 +68,7 @@ export default function ActivityHeatmapDisplay({
       endTime,
       categories: categoryIds.length > 0 ? categoryIds : null,
     },
+    { fetchKey },
   );
 
   // Sparse (personId, dayKey) -> cell map from the query's day-by-day rows.

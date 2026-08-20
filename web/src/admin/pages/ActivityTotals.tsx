@@ -4,6 +4,7 @@ import ActivityCategorySelector from "../components/ActivityCategorySelector";
 import ActivityTimeRange from "../components/ActivityTimeRange";
 import ActivityTotalsDisplay from "../components/ActivityTotalsDisplay";
 import LoadingIndicator from "../../components/LoadingIndicator";
+import RelayErrorBoundary from "../../components/RelayErrorBoundary";
 import useActivityTimeRange from "../components/useActivityTimeRange";
 import { Button } from "../../components/ui/Button";
 
@@ -68,14 +69,18 @@ export default function ActivityTotals() {
       )}
 
       {hasValidRange && (
-        <Suspense fallback={<LoadingIndicator />}>
-          <ActivityTotalsDisplay
-            locationId={settings?.locationId || ""}
-            startTime={appliedStartTime}
-            endTime={appliedEndTime}
-            categories={appliedCategoryIds}
-          />
-        </Suspense>
+        <RelayErrorBoundary
+          resetKey={`${appliedStartTime}-${appliedEndTime}-${appliedCategoryIds.join(",")}`}
+        >
+          <Suspense fallback={<LoadingIndicator />}>
+            <ActivityTotalsDisplay
+              locationId={settings?.locationId || ""}
+              startTime={appliedStartTime}
+              endTime={appliedEndTime}
+              categories={appliedCategoryIds}
+            />
+          </Suspense>
+        </RelayErrorBoundary>
       )}
     </>
   );
