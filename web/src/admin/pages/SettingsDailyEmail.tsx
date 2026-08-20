@@ -9,7 +9,7 @@ import { Button } from "../../components/ui/Button";
 export default function SettingsDailyEmail() {
   const data = useLazyLoadQuery<SettingsDailyEmailQuery>(
     graphql`
-      query SettingsDailyEmailQuery {
+      query SettingsDailyEmailQuery @throwOnFieldError {
         user {
           id
           emailSummaryLocationIds

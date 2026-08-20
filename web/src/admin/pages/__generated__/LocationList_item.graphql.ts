@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<59318e7f41adcce378477e13683a586d>>
+ * @generated SignedSource<<16b505c02960ca560b1e25aa83d037ce>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -27,7 +27,9 @@ export type LocationList_item$key = {
 const node: ReaderFragment = {
   "argumentDefinitions": [],
   "kind": "Fragment",
-  "metadata": null,
+  "metadata": {
+    "throwOnFieldError": true
+  },
   "name": "LocationList_item",
   "selections": [
     {
@@ -77,6 +79,6 @@ const node: ReaderFragment = {
   "abstractKey": null
 };
 
-(node as any).hash = "a0d40c8441c0fbc9a538596b75915e17";
+(node as any).hash = "f20a9d6035256997c2e79e5fea80577d";
 
 export default node;

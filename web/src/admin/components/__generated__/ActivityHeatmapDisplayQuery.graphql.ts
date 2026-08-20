@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<d5bb681f31b3c428460cc0c1d9866b75>>
+ * @generated SignedSource<<d9d38c2f0bee251b69bbc47e3d8c255f>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -194,7 +194,9 @@ return {
       (v3/*: any*/)
     ],
     "kind": "Fragment",
-    "metadata": null,
+    "metadata": {
+      "throwOnFieldError": true
+    },
     "name": "ActivityHeatmapDisplayQuery",
     "selections": (v5/*: any*/),
     "type": "QueryRoot",
@@ -223,6 +225,6 @@ return {
 };
 })();
 
-(node as any).hash = "8727ac7260d5bdb25593874e59df1acc";
+(node as any).hash = "47d6a519d9b266bf8dde3872757bab06";
 
 export default node;

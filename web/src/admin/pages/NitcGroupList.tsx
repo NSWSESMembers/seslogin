@@ -92,7 +92,7 @@ function Row({
 export default function NitcGroupList() {
   const data = useLazyLoadQuery<NitcGroupListQuery>(
     graphql`
-      query NitcGroupListQuery {
+      query NitcGroupListQuery @throwOnFieldError {
         nitcGroups {
           id
           nitcType

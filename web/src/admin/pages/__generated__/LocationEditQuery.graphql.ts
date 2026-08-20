@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<a7028e4a974f568077618911e777f304>>
+ * @generated SignedSource<<e4dd7fb3b5893a868497d3f97668650d>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -92,7 +92,9 @@ return {
   "fragment": {
     "argumentDefinitions": (v0/*: any*/),
     "kind": "Fragment",
-    "metadata": null,
+    "metadata": {
+      "throwOnFieldError": true
+    },
     "name": "LocationEditQuery",
     "selections": (v1/*: any*/),
     "type": "QueryRoot",
@@ -116,6 +118,6 @@ return {
 };
 })();
 
-(node as any).hash = "7517eff8483ea210aa09b03221a23421";
+(node as any).hash = "31fe755e8f86cb716ad9f9e3a0411870";
 
 export default node;

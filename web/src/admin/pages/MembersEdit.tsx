@@ -17,7 +17,7 @@ export default function MembersEdit() {
   const locationId = selectedLocation.id;
   const data = useLazyLoadQuery<MembersEditQuery>(
     graphql`
-      query MembersEditQuery($id: ID!) {
+      query MembersEditQuery($id: ID!) @throwOnFieldError {
         person(id: $id) {
           id
           firstName

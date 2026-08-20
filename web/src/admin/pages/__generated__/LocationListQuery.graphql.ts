@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<28a749f7572c3100e8b1a0cd2bab5cb0>>
+ * @generated SignedSource<<56b3de3ec848c69202c913e46e09cc38>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -50,7 +50,9 @@ return {
   "fragment": {
     "argumentDefinitions": [],
     "kind": "Fragment",
-    "metadata": null,
+    "metadata": {
+      "throwOnFieldError": true
+    },
     "name": "LocationListQuery",
     "selections": [
       {
@@ -130,6 +132,6 @@ return {
 };
 })();
 
-(node as any).hash = "7582c1fb5c6492f624346b776366c4be";
+(node as any).hash = "4140795a8c340e0e869636840f3781e7";
 
 export default node;

@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<aadaa298906e024344be42db299f76a1>>
+ * @generated SignedSource<<4e2efb9fb9929ce67d441f7a54710101>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -45,7 +45,9 @@ return {
   "fragment": {
     "argumentDefinitions": [],
     "kind": "Fragment",
-    "metadata": null,
+    "metadata": {
+      "throwOnFieldError": true
+    },
     "name": "PasskeyEnrollPromptQuery",
     "selections": [
       {
@@ -102,6 +104,6 @@ return {
 };
 })();
 
-(node as any).hash = "8923604fec8c096c680fa0bb1353f2e1";
+(node as any).hash = "cfb1ad6ad025f24611d6c8de083c9836";
 
 export default node;

@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<ffcd35e2b59c8058aba4335944320b45>>
+ * @generated SignedSource<<432b0bfd323d6f511ce7e445f5afc499>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -85,7 +85,9 @@ return {
   "fragment": {
     "argumentDefinitions": [],
     "kind": "Fragment",
-    "metadata": null,
+    "metadata": {
+      "throwOnFieldError": true
+    },
     "name": "SettingsPasskeysQuery",
     "selections": (v1/*: any*/),
     "type": "QueryRoot",
@@ -109,6 +111,6 @@ return {
 };
 })();
 
-(node as any).hash = "2add0c01ce18105fcc2a86f7c5fd1b71";
+(node as any).hash = "de4c302175324ab7fa7483cc364aed0b";
 
 export default node;

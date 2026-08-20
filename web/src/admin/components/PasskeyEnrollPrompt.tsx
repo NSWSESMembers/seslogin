@@ -33,7 +33,7 @@ export default function PasskeyEnrollPrompt({
 }) {
   const data = useLazyLoadQuery<PasskeyEnrollPromptQuery>(
     graphql`
-      query PasskeyEnrollPromptQuery {
+      query PasskeyEnrollPromptQuery @throwOnFieldError {
         user {
           passkeys {
             __typename

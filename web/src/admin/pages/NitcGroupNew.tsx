@@ -14,7 +14,7 @@ export default function NitcGroupNew() {
 
   const data = useLazyLoadQuery<NitcGroupNewQuery>(
     graphql`
-      query NitcGroupNewQuery {
+      query NitcGroupNewQuery @throwOnFieldError {
         ses_nonincident_types
         ses_nonincident_tags {
           id

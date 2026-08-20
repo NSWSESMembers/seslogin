@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<ed42df57bfd409332261499fdadcadf8>>
+ * @generated SignedSource<<6716a0b11809d97117eebf5dcf264197>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -309,7 +309,9 @@ return {
   "fragment": {
     "argumentDefinitions": (v0/*: any*/),
     "kind": "Fragment",
-    "metadata": null,
+    "metadata": {
+      "throwOnFieldError": true
+    },
     "name": "AdminHomeQuery",
     "selections": (v3/*: any*/),
     "type": "QueryRoot",
@@ -333,6 +335,6 @@ return {
 };
 })();
 
-(node as any).hash = "e7571deb1a9507c99ca3aaf35cf0ef3d";
+(node as any).hash = "5764ac58011341bf866cdb7d49b9d73c";
 
 export default node;

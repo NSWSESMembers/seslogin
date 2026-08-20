@@ -69,7 +69,7 @@ function ActivityListMemberContent({
         $first: Int!
         $after: String
         $categories: [ID!]
-      ) {
+      ) @throwOnFieldError {
         person(id: $person) {
           id
           firstName
