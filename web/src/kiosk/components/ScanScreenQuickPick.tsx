@@ -42,7 +42,7 @@ function QuickPickButton(props: {
   const iconSrc = categoryIconSrc(item.icon, newCategories);
 
   return (
-    <li className="inline-block list-none align-bottom">
+    <li className="flex list-none">
       <button
         onClick={onSelect}
         className={
@@ -58,7 +58,11 @@ function QuickPickButton(props: {
         <span className={`opacity-60 ${small ? "text-xs" : "text-sm"}`}>
           {item.groupName}
         </span>
-        <span className="font-semibold">{item.name}</span>
+        <span
+          className={`line-clamp-2 font-semibold ${small ? "min-h-10" : "min-h-14"}`}
+        >
+          {item.name}
+        </span>
         {item.peopleNames && item.peopleNames.length > 0 && (
           <span className="mt-auto text-sm opacity-60">
             {item.peopleNames.join(", ")}
@@ -89,7 +93,7 @@ function QuickPickSection(props: {
       <p className="mx-auto mt-0.5 mb-0 max-w-100 text-center text-sm opacity-60">
         {props.description}
       </p>
-      <ul className="pl-0 text-center">
+      <ul className="flex flex-wrap justify-center pl-0">
         {props.items.map((item) => (
           <QuickPickButton
             key={item.categoryId}
