@@ -559,32 +559,6 @@ impl<A: App + HasDb + Send + Sync> Person<A> {
             })?;
         Ok(items.drain(..).next().map(Period::new))
     }
-
-    /// This person's most-frequently-used categories recently, ranked by
-    /// frequency then recency.
-    ///
-    /// Superseded by `scanRegister2`'s `quickPick`, which serves the kiosk
-    /// sign-out screen without a second round trip. Kept for the kiosk clients
-    /// still deployed against it; remove once they have all rolled over.
-    async fn recent_categories(
-        &self,
-        ctx: &Context<'_>,
-        limit: Option<i32>,
-    ) -> Result<Vec<PersonRecentCategory<A>>> {
-        require_location_access(ctx, &self.rec.location_id)?;
-        let app = ctx.data_unchecked::<Arc<A>>().as_ref();
-
-        let periods = recent_periods_for_person(app, &self.rec.id).await?;
-        let enabled = enabled_category_ids(app).await?;
-        let ranked = rank_recent_categories(
-            periods.iter(),
-            &enabled,
-            clamp_recent_categories_limit(limit),
-            0,
-        );
-
-        Ok(ranked.into_iter().map(PersonRecentCategory::new).collect())
-    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -1304,8 +1278,9 @@ const MAX_HEATMAP_RANGE_SECONDS: i64 = 366 * DAY_SECONDS as i64;
 // GSIs) as the candidate pool for the kiosk "recent categories" quick-pick.
 const RECENT_CATEGORIES_LOCATION_SCAN_LIMIT: i32 = 100;
 const RECENT_CATEGORIES_PERSON_SCAN_LIMIT: i32 = 20;
-const RECENT_CATEGORIES_DEFAULT_LIMIT: usize = 6;
-const RECENT_CATEGORIES_MAX_LIMIT: usize = 10;
+// How many shortcuts each half of the quick-pick offers, and how many names are
+// listed under a location shortcut.
+const RECENT_CATEGORIES_LIMIT: usize = 6;
 const RECENT_CATEGORIES_PEOPLE_CAP: usize = 3;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1369,14 +1344,6 @@ fn rank_recent_categories<'a>(
     });
     items.truncate(limit);
     items
-}
-
-fn clamp_recent_categories_limit(limit: Option<i32>) -> usize {
-    limit
-        .and_then(|l| usize::try_from(l).ok())
-        .filter(|l| *l > 0)
-        .unwrap_or(RECENT_CATEGORIES_DEFAULT_LIMIT)
-        .min(RECENT_CATEGORIES_MAX_LIMIT)
 }
 
 /// The categories a quick-pick is allowed to suggest. Disabled (and deleted)
@@ -1481,12 +1448,11 @@ pub(super) async fn build_quick_pick<A: App + HasDb + Send + Sync + 'static>(
         recent_periods_for_person(app, person_id),
     )?;
 
-    let limit = RECENT_CATEGORIES_DEFAULT_LIMIT;
     Ok(QuickPick {
         location_categories: rank_recent_categories(
             location_periods.iter(),
             &enabled,
-            limit,
+            RECENT_CATEGORIES_LIMIT,
             RECENT_CATEGORIES_PEOPLE_CAP,
         )
         .into_iter()
@@ -1494,10 +1460,15 @@ pub(super) async fn build_quick_pick<A: App + HasDb + Send + Sync + 'static>(
         .collect(),
         // No people cap: "who else did this" is a hint about the location, not
         // something to show someone about their own history.
-        person_categories: rank_recent_categories(person_periods.iter(), &enabled, limit, 0)
-            .into_iter()
-            .map(PersonRecentCategory::new)
-            .collect(),
+        person_categories: rank_recent_categories(
+            person_periods.iter(),
+            &enabled,
+            RECENT_CATEGORIES_LIMIT,
+            0,
+        )
+        .into_iter()
+        .map(PersonRecentCategory::new)
+        .collect(),
     })
 }
 
@@ -1660,27 +1631,6 @@ mod recent_categories_tests {
 
         assert_eq!(ranked.len(), 2);
     }
-
-    #[test]
-    fn clamps_requested_limit() {
-        assert_eq!(
-            clamp_recent_categories_limit(None),
-            RECENT_CATEGORIES_DEFAULT_LIMIT
-        );
-        assert_eq!(
-            clamp_recent_categories_limit(Some(0)),
-            RECENT_CATEGORIES_DEFAULT_LIMIT
-        );
-        assert_eq!(
-            clamp_recent_categories_limit(Some(-5)),
-            RECENT_CATEGORIES_DEFAULT_LIMIT
-        );
-        assert_eq!(
-            clamp_recent_categories_limit(Some(1000)),
-            RECENT_CATEGORIES_MAX_LIMIT
-        );
-        assert_eq!(clamp_recent_categories_limit(Some(3)), 3);
-    }
 }
 
 fn encode_period_cursor(period: &db::Period) -> String {
@@ -1777,35 +1727,6 @@ impl<A: App + HasDb + Send + Sync> Location<A> {
             })?;
 
         Ok(items.into_iter().map(|p| Person::new(p)).collect())
-    }
-
-    /// This location's most-frequently-used categories recently, ranked by
-    /// frequency then recency, with the people who most recently used each one.
-    ///
-    /// Superseded by `scanRegister2`'s `quickPick`, which serves the kiosk
-    /// sign-out screen without a second round trip. Kept for the kiosk clients
-    /// still deployed against it; remove once they have all rolled over.
-    async fn recent_categories(
-        &self,
-        ctx: &Context<'_>,
-        limit: Option<i32>,
-    ) -> Result<Vec<LocationRecentCategory<A>>> {
-        require_location_access(ctx, &self.rec.id)?;
-        let app = ctx.data_unchecked::<Arc<A>>().as_ref();
-
-        let periods = recent_periods_for_location(app, &self.rec.id).await?;
-        let enabled = enabled_category_ids(app).await?;
-        let ranked = rank_recent_categories(
-            periods.iter(),
-            &enabled,
-            clamp_recent_categories_limit(limit),
-            RECENT_CATEGORIES_PEOPLE_CAP,
-        );
-
-        Ok(ranked
-            .into_iter()
-            .map(LocationRecentCategory::new)
-            .collect())
     }
 
     async fn periods(
