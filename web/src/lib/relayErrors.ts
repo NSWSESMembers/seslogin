@@ -1,3 +1,37 @@
+/** One entry of a GraphQL response's `errors` array. */
+export interface GraphQLResponseError {
+  message: string;
+  path?: ReadonlyArray<string | number>;
+  extensions?: Record<string, unknown>;
+}
+
+/**
+ * Thrown by `fetchGraphQL` when a mutation response has `errors` even though
+ * `data` is non-null — the mutation itself succeeded server-side (the write
+ * happened), but a nested field on its result (e.g. `Period.person`) failed to
+ * resolve. Distinct from an ordinary Relay network error so a caller can tell the
+ * two apart: this one means "recorded, but couldn't show you the full result",
+ * not "nothing happened".
+ *
+ * `.source.errors` matches the shape `getServerErrorMessage` already reads, so
+ * existing `onError` handlers keep working without any change.
+ */
+export class MutationFieldError extends Error {
+  readonly source: { errors: ReadonlyArray<GraphQLResponseError> };
+
+  constructor(errors: ReadonlyArray<GraphQLResponseError>) {
+    super(
+      `Mutation reported field error(s): ${errors.map((e) => e.message).join("; ")}`,
+    );
+    this.name = "MutationFieldError";
+    this.source = { errors };
+  }
+}
+
+export function isMutationFieldError(err: unknown): err is MutationFieldError {
+  return err instanceof MutationFieldError;
+}
+
 /**
  * Extracts the server-reported GraphQL error message(s) from an error thrown by a
  * Relay mutation's `onError` callback, or `null` if this isn't a GraphQL error.
