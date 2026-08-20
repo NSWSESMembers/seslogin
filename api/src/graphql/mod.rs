@@ -3,7 +3,7 @@ use async_graphql::dataloader::DataLoader;
 use async_graphql::extensions::{
     Extension, ExtensionContext, ExtensionFactory, NextResolve, ResolveInfo,
 };
-use async_graphql::{EmptySubscription, Schema, ServerError, ServerResult, Value};
+use async_graphql::{EmptySubscription, Schema, ServerResult, Value};
 use std::sync::Arc;
 
 use crate::app::App;
@@ -15,6 +15,8 @@ use crate::telemetry::{self, OperationKind};
 
 pub mod auth;
 pub mod dataloader;
+#[cfg(debug_assertions)]
+pub mod error_injection;
 pub mod mutations;
 pub mod pagination;
 pub mod query;
@@ -48,46 +50,6 @@ pub struct CategoryId(pub ID);
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct NitcEventId(pub String);
-
-/// TESTING ONLY: when true, every mutation field fails with an error before it
-/// runs, so the frontend's mutation error handling can be exercised end to end.
-/// Set back to `false` before committing.
-const FORCE_MUTATION_ERRORS: bool = false;
-
-/// Extension that makes every top-level mutation field return an error. Gated by
-/// [`FORCE_MUTATION_ERRORS`] and only registered when that const is `true`.
-struct ForceMutationErrors;
-
-impl ExtensionFactory for ForceMutationErrors {
-    fn create(&self) -> Arc<dyn Extension> {
-        Arc::new(ForceMutationErrorsExt)
-    }
-}
-
-struct ForceMutationErrorsExt;
-
-#[async_graphql::async_trait::async_trait]
-impl Extension for ForceMutationErrorsExt {
-    async fn resolve(
-        &self,
-        ctx: &ExtensionContext<'_>,
-        info: ResolveInfo<'_>,
-        next: NextResolve<'_>,
-    ) -> ServerResult<Option<Value>> {
-        // Only fail the top-level mutation fields (whose parent is the mutation
-        // root type), not the nested fields of any returned object.
-        if info.parent_type == "MutationRoot" {
-            return Err(ServerError::new(
-                format!(
-                    "Forced test error: mutation `{}` was rejected (FORCE_MUTATION_ERRORS is enabled)",
-                    info.name
-                ),
-                None,
-            ));
-        }
-        next.run(ctx, info).await
-    }
-}
 
 /// Always-on extension that records top-level query/mutation field failures. On each error it bumps
 /// the per-request failure counter (consumed by the slim EMF metrics) and emits a structured
@@ -154,8 +116,12 @@ pub fn build_schema<A: App + HasDb + HasSqs + Send + Sync + 'static>(
     .data(webauthn)
     .extension(RequestMetricsExt);
 
-    if FORCE_MUTATION_ERRORS {
-        builder = builder.extension(ForceMutationErrors);
+    // Dev-only resolver error injection. Compiled out of release builds entirely, so
+    // it cannot be switched on in any deployed environment — every Lambda is a release
+    // build, and `test`/`preprod` share the production database.
+    #[cfg(debug_assertions)]
+    if let Some(injector) = error_injection::ForceFieldErrors::from_env() {
+        builder = builder.extension(injector);
     }
 
     builder.finish()
