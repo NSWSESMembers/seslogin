@@ -19,7 +19,7 @@ export default function Status() {
 
   const data = useLazyLoadQuery<StatusQuery>(
     graphql`
-      query StatusQuery($first: Int!) {
+      query StatusQuery($first: Int!) @throwOnFieldError {
         session {
           location {
             periods(onlyActive: true, first: $first) {

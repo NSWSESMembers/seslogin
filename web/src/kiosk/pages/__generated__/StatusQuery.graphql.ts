@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<f0851e423028f2a8ea1e7bc594c0be8f>>
+ * @generated SignedSource<<702100a144aee6c8605ff62ae854a876>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -141,7 +141,9 @@ return {
   "fragment": {
     "argumentDefinitions": (v0/*: any*/),
     "kind": "Fragment",
-    "metadata": null,
+    "metadata": {
+      "throwOnFieldError": true
+    },
     "name": "StatusQuery",
     "selections": [
       {
@@ -215,6 +217,6 @@ return {
 };
 })();
 
-(node as any).hash = "82f5f0c148ec1230191bf13362ddfe66";
+(node as any).hash = "6da7f6861726427ce3727d4f439f6991";
 
 export default node;

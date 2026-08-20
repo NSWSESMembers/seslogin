@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<04719b97306acc2735f52a67cfecdcd6>>
+ * @generated SignedSource<<dfe5396f666c5fa3af85342af5f249d1>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -110,7 +110,9 @@ return {
   "fragment": {
     "argumentDefinitions": (v0/*: any*/),
     "kind": "Fragment",
-    "metadata": null,
+    "metadata": {
+      "throwOnFieldError": true
+    },
     "name": "ScanGuestDialogQuery",
     "selections": [
       {
@@ -184,6 +186,6 @@ return {
 };
 })();
 
-(node as any).hash = "887e8cb163f9846e1aef9db95578f2bf";
+(node as any).hash = "f2042c9c65f0b85173f109c57d72f14f";
 
 export default node;
