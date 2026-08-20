@@ -129,7 +129,7 @@ export default function MembersList() {
   const locationId = selectedLocation.id;
   const data = useLazyLoadQuery<MembersListQuery>(
     graphql`
-      query MembersListQuery($location: ID!) {
+      query MembersListQuery($location: ID!) @throwOnFieldError {
         location(id: $location) {
           id
           sesApiHeadquartersId

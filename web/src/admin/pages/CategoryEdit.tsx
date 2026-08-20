@@ -15,7 +15,7 @@ export default function CategoryEdit() {
   const id = params.categoryId!;
   const data = useLazyLoadQuery<CategoryEditQuery>(
     graphql`
-      query CategoryEditQuery($id: ID!) {
+      query CategoryEditQuery($id: ID!) @throwOnFieldError {
         category(id: $id) {
           id
           name

@@ -31,7 +31,7 @@ export default function ActivityTotalsDisplay({
         $startTime: Int!
         $endTime: Int!
         $categories: [ID!]
-      ) {
+      ) @throwOnFieldError {
         location(id: $location) {
           id
           periodSummaryByMember(

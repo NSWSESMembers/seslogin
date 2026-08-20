@@ -13,7 +13,7 @@ export default function SessionsEdit() {
 
   const data = useLazyLoadQuery<SessionsEditQuery>(
     graphql`
-      query SessionsEditQuery($id: ID!) {
+      query SessionsEditQuery($id: ID!) @throwOnFieldError {
         session(id: $id) {
           name
           config

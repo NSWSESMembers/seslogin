@@ -29,7 +29,7 @@ export default function ActivityBreakdownDisplay({
         $location: ID!
         $startTime: Int!
         $endTime: Int!
-      ) {
+      ) @throwOnFieldError {
         location(id: $location) {
           id
           periodSummaryByMemberByCategory(

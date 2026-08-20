@@ -19,7 +19,7 @@ function Row(props: { user: UserList_user$key; idx: number; isDev: boolean }) {
   const { notifyError, notifySuccess } = useNotify();
   const user = useFragment<UserList_user$key>(
     graphql`
-      fragment UserList_user on User {
+      fragment UserList_user on User @throwOnFieldError {
         id
         email
         accessTime
@@ -133,7 +133,7 @@ export default function UserList() {
   const [showDisabled, setShowDisabled] = useState(false);
   const data = useLazyLoadQuery<UserListQuery>(
     graphql`
-      query UserListQuery {
+      query UserListQuery @throwOnFieldError {
         users {
           id
           accessTime

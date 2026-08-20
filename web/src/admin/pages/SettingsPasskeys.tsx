@@ -26,7 +26,7 @@ export default function SettingsPasskeys() {
 
   const data = useLazyLoadQuery<SettingsPasskeysQuery>(
     graphql`
-      query SettingsPasskeysQuery {
+      query SettingsPasskeysQuery @throwOnFieldError {
         user {
           id
           passkeys {

@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<f4669b945c441cdaaa13e561ec3833af>>
+ * @generated SignedSource<<ee493e42e4121a1423608ca425b76e3c>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -132,7 +132,9 @@ return {
   "fragment": {
     "argumentDefinitions": (v0/*: any*/),
     "kind": "Fragment",
-    "metadata": null,
+    "metadata": {
+      "throwOnFieldError": true
+    },
     "name": "CategoryEditQuery",
     "selections": (v2/*: any*/),
     "type": "QueryRoot",
@@ -156,6 +158,6 @@ return {
 };
 })();
 
-(node as any).hash = "cc6a7f1b7f9745ac9069d62b0ef9192e";
+(node as any).hash = "73e3f244025378c5a6f8a61b6faf9065";
 
 export default node;
