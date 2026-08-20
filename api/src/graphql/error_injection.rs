@@ -26,7 +26,9 @@
 use async_graphql::extensions::{
     Extension, ExtensionContext, ExtensionFactory, NextResolve, ResolveInfo,
 };
-use async_graphql::{ServerError, ServerResult, Value};
+use async_graphql::{
+    PathSegment, QueryPathNode, QueryPathSegment, ServerError, ServerResult, Value,
+};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicI64, Ordering};
 
@@ -115,6 +117,28 @@ fn selected_by_rate(path: &str, scaled_rate: u64) -> bool {
         return true;
     }
     path_hash(path) % RATE_SCALE < scaled_rate
+}
+
+/// Build the `path` a real resolver error would carry, from the same
+/// [`QueryPathNode`] this extension already reads for the rate decision.
+///
+/// `QueryPathNode` is a reverse linked list (each node points at its parent), and
+/// the walk that converts it to `Vec<PathSegment>` for [`ServerError::path`]
+/// (`ContextBase::set_error_path` in async-graphql) is `pub(crate)`-only, so it
+/// isn't reachable from here. Its `segment`/`parent` fields are public, though,
+/// which is enough to reimplement the same walk.
+fn path_segments(node: &QueryPathNode) -> Vec<PathSegment> {
+    let mut segments = Vec::new();
+    let mut current = Some(node);
+    while let Some(n) = current {
+        segments.push(match n.segment {
+            QueryPathSegment::Name(name) => PathSegment::Field(name.to_string()),
+            QueryPathSegment::Index(idx) => PathSegment::Index(idx),
+        });
+        current = n.parent;
+    }
+    segments.reverse();
+    segments
 }
 
 pub struct ForceFieldErrors {
@@ -227,13 +251,19 @@ impl Extension for ForceFieldErrorsExt {
                     info.parent_type,
                     info.name
                 );
+                // Match the shape of a real resolver error (message + locations +
+                // path) rather than just a message — the two are otherwise
+                // distinguishable client-side, which defeats the point of
+                // injecting from here instead of a resolver.
+                let pos = info.field.name.pos;
                 return Err(ServerError::new(
                     format!(
                         "Injected error: `{}.{}` was failed by {TARGETS_VAR}",
                         info.parent_type, info.name
                     ),
-                    None,
-                ));
+                    Some(pos),
+                )
+                .with_path(path_segments(info.path_node)));
             }
         }
 
@@ -244,6 +274,55 @@ impl Extension for ForceFieldErrorsExt {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn path_segments_walks_from_root_to_leaf() {
+        // QueryPathNode is a reverse linked list (child -> parent), so the walk
+        // must reverse it: this represents `location.periods.3.node.person`.
+        let root = QueryPathNode {
+            parent: None,
+            segment: QueryPathSegment::Name("location"),
+        };
+        let periods = QueryPathNode {
+            parent: Some(&root),
+            segment: QueryPathSegment::Name("periods"),
+        };
+        let index = QueryPathNode {
+            parent: Some(&periods),
+            segment: QueryPathSegment::Index(3),
+        };
+        let node = QueryPathNode {
+            parent: Some(&index),
+            segment: QueryPathSegment::Name("node"),
+        };
+        let person = QueryPathNode {
+            parent: Some(&node),
+            segment: QueryPathSegment::Name("person"),
+        };
+
+        assert_eq!(
+            path_segments(&person),
+            vec![
+                PathSegment::Field("location".to_string()),
+                PathSegment::Field("periods".to_string()),
+                PathSegment::Index(3),
+                PathSegment::Field("node".to_string()),
+                PathSegment::Field("person".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn path_segments_handles_a_single_root_field() {
+        let root = QueryPathNode {
+            parent: None,
+            segment: QueryPathSegment::Name("dashboardSummary"),
+        };
+        assert_eq!(
+            path_segments(&root),
+            vec![PathSegment::Field("dashboardSummary".to_string())]
+        );
+    }
 
     #[test]
     fn parses_a_bare_target_at_full_rate() {
