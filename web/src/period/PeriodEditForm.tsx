@@ -31,7 +31,7 @@ export default function PeriodEditForm() {
   // scope, so this can only ever return the one period the link was issued for.
   const data = useLazyLoadQuery<PeriodEditFormQuery>(
     graphql`
-      query PeriodEditFormQuery {
+      query PeriodEditFormQuery @throwOnFieldError {
         linkedPeriod {
           id
           startTime

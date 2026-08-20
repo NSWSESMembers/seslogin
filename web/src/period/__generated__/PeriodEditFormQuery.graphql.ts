@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<e82b1c731d97d004f2bd646828928fff>>
+ * @generated SignedSource<<7df902b28a7d466edbe5b97144e926c4>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -118,7 +118,9 @@ return {
   "fragment": {
     "argumentDefinitions": [],
     "kind": "Fragment",
-    "metadata": null,
+    "metadata": {
+      "throwOnFieldError": true
+    },
     "name": "PeriodEditFormQuery",
     "selections": [
       {
@@ -228,6 +230,6 @@ return {
 };
 })();
 
-(node as any).hash = "e3e9e36420d298eadaa364a854b35401";
+(node as any).hash = "b31f2bd30dc99c0294addcdf4a35673f";
 
 export default node;
