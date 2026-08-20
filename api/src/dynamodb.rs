@@ -58,13 +58,22 @@ fn new_id() -> String {
 pub struct Item(HashMap<String, AttributeValue>);
 
 impl Item {
-    pub fn id(&self) -> String {
-        self.0
+    /// The item's primary key.
+    ///
+    /// A row with no `id`, or an `id` that is not a string, is corrupt rather than
+    /// merely unexpected — but it is still just one bad row, so this reports a
+    /// hydration error and leaves the rest of the table readable. It used to panic,
+    /// which took down the whole process (in Lambda, the whole invocation) over a
+    /// single item.
+    pub fn id(&self) -> HydrationResult<String> {
+        let value = self
+            .0
             .get("id")
-            .expect("Encountered an item with a missing id field")
+            .ok_or_else(|| anyhow!("Encountered an item with a missing id field"))?;
+        let id = value
             .as_s()
-            .expect("Encountered an item with an ID that is not a string")
-            .to_string()
+            .map_err(|_| anyhow!("Encountered an item with an ID that is not a string"))?;
+        Ok(id.to_string())
     }
 
     /// True if the attribute is present at all, regardless of type. Used for
@@ -150,10 +159,10 @@ impl TryInto<Category> for Item {
     type Error = HydrationError;
     fn try_into(self) -> Result<Category, Self::Error> {
         Ok(Category {
-            id: self.id(),
+            id: self.id()?,
             name: self
                 .string_field("name")?
-                .unwrap_or(format!("Unnamed category {}", self.id())),
+                .unwrap_or(format!("Unnamed category {}", self.id()?)),
             enabled: self.bool_field("enabled")?.unwrap_or(false),
             is_virtual: self.bool_field("virtual")?.unwrap_or(false),
             nitc_participant_type: self.string_field("nitc_participant_type")?,
@@ -190,10 +199,10 @@ impl TryInto<Location> for Item {
             });
 
         Ok(Location {
-            id: self.id(),
+            id: self.id()?,
             name: self
                 .string_field("name")?
-                .unwrap_or(format!("Unnamed location {}", self.id())),
+                .unwrap_or(format!("Unnamed location {}", self.id()?)),
             enabled: self.bool_field("enabled")?.unwrap_or(true),
             // TODO: Remove bool compatibility once all rows are updated with timestamps or the attribute is removed.
             nitc_enabled: match self.0.get("nitc_enabled") {
@@ -225,7 +234,7 @@ impl TryInto<User> for Item {
     type Error = HydrationError;
     fn try_into(self) -> Result<User, Self::Error> {
         Ok(User {
-            id: self.id(),
+            id: self.id()?,
             email: self
                 .string_field("email")?
                 .ok_or_else(|| anyhow!("User missing email"))?,
@@ -260,7 +269,7 @@ impl TryInto<Person> for Item {
     type Error = HydrationError;
     fn try_into(self) -> Result<Person, Self::Error> {
         Ok(Person {
-            id: self.id(),
+            id: self.id()?,
             location_id: self
                 .string_field("location_id")?
                 .ok_or_else(|| anyhow!("Person missing location_id"))?,
@@ -287,7 +296,7 @@ impl TryInto<Session> for Item {
     type Error = HydrationError;
     fn try_into(self) -> Result<Session, Self::Error> {
         Ok(Session {
-            id: self.id(),
+            id: self.id()?,
             name: self.string_field("name")?.unwrap_or_default(),
             location_id: self
                 .string_field("location_id")?
@@ -319,7 +328,7 @@ impl TryInto<ApiToken> for Item {
     type Error = HydrationError;
     fn try_into(self) -> Result<ApiToken, Self::Error> {
         Ok(ApiToken {
-            id: self.id(),
+            id: self.id()?,
             name: self.string_field("name")?.unwrap_or_default(),
             token_hash: self
                 .string_field("token_hash")?
@@ -365,7 +374,7 @@ impl TryInto<UserToken> for Item {
     type Error = HydrationError;
     fn try_into(self) -> Result<UserToken, Self::Error> {
         Ok(UserToken {
-            id: self.id(),
+            id: self.id()?,
             token_hash: self
                 .string_field("token_hash")?
                 .ok_or_else(|| anyhow!("UserToken missing token_hash"))?,
@@ -389,7 +398,7 @@ impl TryInto<WebauthnCredential> for Item {
     type Error = HydrationError;
     fn try_into(self) -> Result<WebauthnCredential, Self::Error> {
         Ok(WebauthnCredential {
-            id: self.id(),
+            id: self.id()?,
             user_id: self
                 .string_field("user_id")?
                 .ok_or_else(|| anyhow!("WebauthnCredential missing user_id"))?,
@@ -412,7 +421,7 @@ impl TryInto<EphemeralState> for Item {
     type Error = HydrationError;
     fn try_into(self) -> Result<EphemeralState, Self::Error> {
         Ok(EphemeralState {
-            id: self.id(),
+            id: self.id()?,
             kind: self
                 .string_field("kind")?
                 .ok_or_else(|| anyhow!("EphemeralState missing kind"))?,
@@ -431,7 +440,7 @@ impl TryInto<Period> for Item {
     type Error = HydrationError;
     fn try_into(self) -> Result<Period, Self::Error> {
         Ok(Period {
-            id: self.id(),
+            id: self.id()?,
             person_id: self.string_field("person_id")?,
             guest_name: self.string_field("guest_name")?,
             comment: self.string_field("comment")?,
@@ -472,7 +481,7 @@ impl TryInto<db::NitcEvent> for Item {
         let event_date = chrono::NaiveDate::parse_from_str(&event_date_str, "%Y-%m-%d")
             .map_err(|e| anyhow!("NitcEvent invalid event_date: {}", e))?;
         Ok(db::NitcEvent {
-            id: self.id(),
+            id: self.id()?,
             location_id: self
                 .string_field("location_id")?
                 .ok_or_else(|| anyhow!("NitcEvent missing location_id"))?,
@@ -499,7 +508,7 @@ impl TryInto<db::NitcGroup> for Item {
             })
             .collect::<anyhow::Result<Vec<i32>>>()?;
         Ok(db::NitcGroup {
-            id: self.id(),
+            id: self.id()?,
             nitc_type: self.string_field("nitc_type")?.unwrap_or_default(),
             nitc_tag_ids,
             created_at: self.i64_field("created_at")?.map(|i| i as u64),
@@ -512,7 +521,7 @@ impl TryInto<db::NitcTag> for Item {
     type Error = HydrationError;
     fn try_into(self) -> Result<db::NitcTag, Self::Error> {
         let id = self
-            .id()
+            .id()?
             .parse::<i32>()
             .map_err(|e| anyhow!("Invalid nitc_tag id: {}", e))?;
         Ok(db::NitcTag {
@@ -529,7 +538,7 @@ impl TryInto<db::TestPaginationRow> for Item {
     type Error = HydrationError;
     fn try_into(self) -> Result<db::TestPaginationRow, Self::Error> {
         Ok(db::TestPaginationRow {
-            id: self.id(),
+            id: self.id()?,
             group_id: self
                 .i64_field("group_id")?
                 .ok_or_else(|| anyhow!("TestPaginationRow missing group_id"))?,
@@ -824,7 +833,7 @@ impl db::Handler for Handler {
             .unwrap_or_default()
             .into_iter()
             .map(|item| Item(item).id())
-            .collect())
+            .collect::<HydrationResult<Vec<String>>>()?)
     }
 
     async fn list_users(&self) -> db::Result<Vec<User>> {
@@ -1062,7 +1071,7 @@ impl db::Handler for Handler {
             .unwrap_or_default()
             .into_iter()
             .map(|item| Item(item).id())
-            .collect())
+            .collect::<HydrationResult<Vec<String>>>()?)
     }
 
     async fn get_person_id_by_ses_api_person_id(
@@ -1094,7 +1103,7 @@ impl db::Handler for Handler {
             .unwrap_or_default()
             .into_iter()
             .map(|item| Item(item).id())
-            .collect())
+            .collect::<HydrationResult<Vec<String>>>()?)
     }
 
     async fn get_sessions<T: AsRef<str> + Sync>(
@@ -1127,7 +1136,7 @@ impl db::Handler for Handler {
             .unwrap_or_default()
             .into_iter()
             .map(|item| Item(item).id())
-            .collect())
+            .collect::<HydrationResult<Vec<String>>>()?)
     }
 
     async fn get_session_id_by_key_fingerprint(
@@ -1156,7 +1165,7 @@ impl db::Handler for Handler {
             .unwrap_or_default()
             .into_iter()
             .map(|item| Item(item).id())
-            .collect())
+            .collect::<HydrationResult<Vec<String>>>()?)
     }
 
     async fn wipe_session_code(&self, id: &str) -> db::Result<()> {
@@ -2408,7 +2417,7 @@ impl db::Handler for Handler {
                 .next()
                 .unwrap(),
         );
-        let id = gsi_item.id();
+        let id = gsi_item.id()?;
         self.get_api_token(&id).await
     }
 
@@ -3687,7 +3696,7 @@ impl db::Handler for Handler {
                 .next()
                 .unwrap(),
         );
-        let id = gsi_item.id();
+        let id = gsi_item.id()?;
         let full = self
             .client
             .get_item()
@@ -4034,8 +4043,61 @@ impl db::Handler for Handler {
 
 #[cfg(test)]
 mod tests {
-    use super::{nitc_event_key, topic_date_key};
+    use super::{Item, nitc_event_key, topic_date_key};
+    use crate::db::Category;
+    use aws_sdk_dynamodb::types::AttributeValue;
     use chrono::NaiveDate;
+    use std::collections::HashMap;
+
+    fn item(fields: &[(&str, AttributeValue)]) -> Item {
+        Item(
+            fields
+                .iter()
+                .map(|(k, v)| (k.to_string(), v.clone()))
+                .collect::<HashMap<_, _>>(),
+        )
+    }
+
+    #[test]
+    fn id_reads_a_string_key() {
+        let row = item(&[("id", AttributeValue::S("abc123".to_string()))]);
+        assert_eq!(row.id().unwrap(), "abc123");
+    }
+
+    #[test]
+    fn id_of_a_row_without_one_is_an_error_not_a_panic() {
+        let row = item(&[("name", AttributeValue::S("orphan".to_string()))]);
+        let err = row.id().expect_err("a row with no id must not hydrate");
+        assert!(
+            err.to_string().contains("missing id"),
+            "unhelpful message: {err}"
+        );
+    }
+
+    #[test]
+    fn id_of_the_wrong_type_is_an_error_not_a_panic() {
+        // Every id in this schema is a string; a numeric one means something wrote the
+        // row outside the normal paths.
+        let row = item(&[("id", AttributeValue::N("42".to_string()))]);
+        let err = row.id().expect_err("a non-string id must not hydrate");
+        assert!(
+            err.to_string().contains("not a string"),
+            "unhelpful message: {err}"
+        );
+    }
+
+    #[test]
+    fn hydrating_a_row_with_no_id_fails_the_row_rather_than_the_process() {
+        // The point of the whole change: one corrupt row is a failed conversion, so a
+        // caller can report it and carry on reading the rest of the table.
+        let row = item(&[
+            ("name", AttributeValue::S("Training".to_string())),
+            ("created_at", AttributeValue::N("1000".to_string())),
+            ("updated_at", AttributeValue::N("2000".to_string())),
+        ]);
+        let hydrated: Result<Category, _> = row.try_into();
+        assert!(hydrated.is_err());
+    }
 
     #[test]
     fn topic_date_key_format() {
