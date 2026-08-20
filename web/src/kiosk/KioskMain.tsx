@@ -1,9 +1,8 @@
 import Scan from "./pages/Scan";
 import KioskEnvironment from "./components/KioskEnvironment";
 import LoadingIndicator from "../components/LoadingIndicator";
-import PageErrorFallback from "../components/PageErrorFallback";
+import RelayErrorBoundary from "../components/RelayErrorBoundary";
 import { Suspense, useEffect } from "react";
-import { ErrorBoundary } from "react-error-boundary";
 import { useKioskSession } from "./components/useKioskSession";
 import type { JsonValue } from "./components/KioskSessionContext";
 import Status from "./pages/Status";
@@ -16,11 +15,11 @@ export default function KioskMain() {
   return (
     <Suspense fallback={<LoadingIndicator />}>
       <KioskEnvironment profile={profile}>
-        <ErrorBoundary FallbackComponent={PageErrorFallback}>
+        <RelayErrorBoundary>
           <Suspense fallback={<LoadingIndicator />}>
             <Router />
           </Suspense>
-        </ErrorBoundary>
+        </RelayErrorBoundary>
       </KioskEnvironment>
     </Suspense>
   );
