@@ -15,7 +15,7 @@ export default function NitcGroupEdit() {
 
   const data = useLazyLoadQuery<NitcGroupEditQuery>(
     graphql`
-      query NitcGroupEditQuery($id: ID!) {
+      query NitcGroupEditQuery($id: ID!) @throwOnFieldError {
         nitcGroup(id: $id) {
           id
           nitcType

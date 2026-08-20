@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<9d2058db1de54c8574f4ca154dac578e>>
+ * @generated SignedSource<<eb96e7868c867625326277173b5e8dac>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -60,7 +60,9 @@ return {
   "fragment": {
     "argumentDefinitions": (v0/*: any*/),
     "kind": "Fragment",
-    "metadata": null,
+    "metadata": {
+      "throwOnFieldError": true
+    },
     "name": "SessionEnrollQuery",
     "selections": (v1/*: any*/),
     "type": "QueryRoot",
@@ -84,6 +86,6 @@ return {
 };
 })();
 
-(node as any).hash = "11667855956eeeae637e9899bb3664d5";
+(node as any).hash = "432028033e7668d8a5c521192b306b11";
 
 export default node;

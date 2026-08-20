@@ -14,7 +14,7 @@ export default function ActivityLastSeen() {
 
   const data = useLazyLoadQuery<ActivityLastSeenQuery>(
     graphql`
-      query ActivityLastSeenQuery($location: ID!) {
+      query ActivityLastSeenQuery($location: ID!) @throwOnFieldError {
         location(id: $location) {
           id
           people {

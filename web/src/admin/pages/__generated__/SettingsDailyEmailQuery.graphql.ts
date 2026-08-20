@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<3100977cd6c6206a5da8d439dc8bdf75>>
+ * @generated SignedSource<<9d02592a95a1b6668b3f1d20e9307e16>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -77,7 +77,9 @@ return {
   "fragment": {
     "argumentDefinitions": [],
     "kind": "Fragment",
-    "metadata": null,
+    "metadata": {
+      "throwOnFieldError": true
+    },
     "name": "SettingsDailyEmailQuery",
     "selections": (v1/*: any*/),
     "type": "QueryRoot",
@@ -101,6 +103,6 @@ return {
 };
 })();
 
-(node as any).hash = "231e6ab2cfbe92a6ca89624f17f30777";
+(node as any).hash = "dbbacde83474d5e37c72f296e6066c7d";
 
 export default node;

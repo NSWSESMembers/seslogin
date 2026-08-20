@@ -359,3 +359,57 @@ describe("KioskMain quick pick categories", () => {
     await waitFor(() => expect(seen).toEqual([false]));
   });
 });
+
+describe("KioskMain status screen", () => {
+  it("shows the error fallback instead of crashing when a field fails to resolve", async () => {
+    // Same shape as a dangling person reference: data present, but one field
+    // errored. @throwOnFieldError turns this into a thrown error the boundary
+    // catches, instead of a null silently reaching StatusCurrentDisplay.
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    server.use(
+      sessionConfigHandler({ status: true }),
+      relayEndpoint.query("StatusQuery", () =>
+        HttpResponse.json({
+          data: {
+            session: {
+              location: {
+                periods: {
+                  edges: [
+                    {
+                      node: {
+                        id: "period-1",
+                        startTime: Math.floor(Date.now() / 1000),
+                        guestName: null,
+                        person: null,
+                      },
+                    },
+                  ],
+                },
+              },
+            },
+          },
+          errors: [
+            {
+              message: "Person with ID abc123 missing",
+              path: [
+                "session",
+                "location",
+                "periods",
+                "edges",
+                0,
+                "node",
+                "person",
+              ],
+            },
+          ],
+        }),
+      ),
+    );
+
+    render(<KioskMain />);
+
+    await waitFor(() =>
+      expect(screen.getByText("Something went wrong")).toBeInTheDocument(),
+    );
+  });
+});

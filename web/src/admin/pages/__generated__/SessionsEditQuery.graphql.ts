@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<7d9900991dd9d7f58686553f1cb8def6>>
+ * @generated SignedSource<<58f8aff94b9a5e5654aca1c2f8d7d815>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -64,7 +64,9 @@ return {
   "fragment": {
     "argumentDefinitions": (v0/*: any*/),
     "kind": "Fragment",
-    "metadata": null,
+    "metadata": {
+      "throwOnFieldError": true
+    },
     "name": "SessionsEditQuery",
     "selections": [
       {
@@ -125,6 +127,6 @@ return {
 };
 })();
 
-(node as any).hash = "edac348338d984a070c13ef639e178e8";
+(node as any).hash = "1fd27adcc3747890888fb05a307c5724";
 
 export default node;

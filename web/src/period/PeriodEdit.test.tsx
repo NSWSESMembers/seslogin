@@ -216,4 +216,40 @@ describe("PeriodEdit", () => {
       screen.queryByText("Invalid or expired token"),
     ).not.toBeInTheDocument();
   });
+
+  it("shows a load-problem message, not raw GraphQL text, when a field fails to resolve", async () => {
+    // Same shape as a dangling person/category reference: data present, but one
+    // field errored. @throwOnFieldError turns this into a thrown error instead of
+    // silently handing the form a null it doesn't expect.
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    server.use(
+      relayEndpoint.query("PeriodEditFormQuery", () =>
+        HttpResponse.json({
+          data: {
+            linkedPeriod: {
+              ...PERIOD_RESPONSE.data.linkedPeriod,
+              category: null,
+            },
+            categories: PERIOD_RESPONSE.data.categories,
+          },
+          errors: [
+            {
+              message: "Category with ID cat-training missing",
+              path: ["linkedPeriod", "category"],
+            },
+          ],
+        }),
+      ),
+    );
+
+    renderAt(`/period#${TOKEN}`);
+
+    expect(await screen.findByText("Link not valid")).toBeInTheDocument();
+    expect(
+      screen.getByText(/couldn't load your time entry/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText("Category with ID cat-training missing"),
+    ).not.toBeInTheDocument();
+  });
 });

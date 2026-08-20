@@ -161,7 +161,7 @@ export default function SessionsList() {
   const locationId = selectedLocation.id;
   const data = useLazyLoadQuery<SessionsListQuery>(
     graphql`
-      query SessionsListQuery($location: ID!) {
+      query SessionsListQuery($location: ID!) @throwOnFieldError {
         location(id: $location) {
           id
           sessions {
