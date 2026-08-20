@@ -27,7 +27,10 @@ import type { ScanControllerSignOutMutation } from "./__generated__/ScanControll
 import { useKioskSession } from "./useKioskSession";
 import type { ScreenPosition } from "../../styles";
 import { isValidMemberIdText } from "../../lib/memberId";
-import { getServerErrorMessage } from "../../lib/relayErrors";
+import {
+  getServerErrorMessage,
+  isMutationFieldError,
+} from "../../lib/relayErrors";
 import { useSuspendScanFocus } from "../lib/scanFocusLeases";
 
 const PURGE_EXPIRED_TRANSACTIONS_INTERVAL_MS = 1_000;
@@ -173,6 +176,18 @@ export default function ScanController(props: {
     } catch (err) {
       console.error("Error during register2 mutation:", err);
       audioError.play();
+      if (isMutationFieldError(err)) {
+        // The scan was recorded server-side — only reading back its result (e.g.
+        // the member's name) failed. Rescanning would create a second
+        // transaction, so point the operator at admin instead of implying
+        // nothing happened.
+        dispatchTransaction({
+          type: "ERROR",
+          uuid,
+          message: `recorded a scan for member ID ${memberId}, but couldn't display the result — check the activity list in admin`,
+        });
+        return;
+      }
       // An unknown member ID comes back as a NOT_FOUND state, not an error, so a
       // rejection here is something the operator needs the detail of — e.g. two
       // people sharing a registration number.
@@ -388,6 +403,17 @@ export default function ScanController(props: {
       console.error("Error during adjust mutation:", err);
       audioError.play();
       const name = tx.person.firstName + " " + tx.person.lastName;
+      if (isMutationFieldError(err)) {
+        // The sign-out was recorded server-side — only reading back its result
+        // failed. Repeating the action would create a second record, so point
+        // the operator at admin instead of implying nothing happened.
+        dispatchTransaction({
+          type: "ERROR",
+          uuid,
+          message: `recorded the sign-out for ${name}, but couldn't display the result — check the activity list in admin`,
+        });
+        return;
+      }
       // A rejected mutation (e.g. start time after end time) carries the server's
       // message; only a genuine transport failure gets the generic network wording.
       const serverMessage = getServerErrorMessage(err);
