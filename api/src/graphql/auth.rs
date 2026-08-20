@@ -1,10 +1,20 @@
 use anyhow::Result;
-use anyhow::anyhow;
 use async_graphql::Context;
+use async_graphql::ErrorExtensions;
 use async_graphql::Guard;
 
+use super::error::ApiError;
 use crate::auth::AuthInfo;
 use crate::db;
+
+/// Build a guard-check failure carrying `extensions.code = "UNAUTHENTICATED"`.
+/// Guard failures bypass the resolver entirely — there is no `anyhow::Result` for
+/// an `ApiError` to ride through — so the code is set here directly rather than
+/// via the central classification in `graphql::mod::RequestMetricsExtImpl`, which
+/// only fills in a code when one isn't already present.
+fn unauthenticated(message: &str) -> async_graphql::Error {
+    async_graphql::Error::new(message).extend_with(|_, e| e.set("code", "UNAUTHENTICATED"))
+}
 
 #[derive(Eq, PartialEq, Copy, Clone)]
 pub(crate) enum AuthRequirement {
@@ -50,7 +60,7 @@ impl Guard for AuthGuard {
                 } {
                     Ok(())
                 } else {
-                    Err("Must provide session token".into())
+                    Err(unauthenticated("Must provide session token"))
                 }
             }
             AuthRequirement::Authenticated => {
@@ -64,7 +74,7 @@ impl Guard for AuthGuard {
                 } {
                     Ok(())
                 } else {
-                    Err("Must be authenticated".into())
+                    Err(unauthenticated("Must be authenticated"))
                 }
             }
             AuthRequirement::User => {
@@ -77,7 +87,7 @@ impl Guard for AuthGuard {
                 } {
                     Ok(())
                 } else {
-                    Err("Must provide user token".into())
+                    Err(unauthenticated("Must provide user token"))
                 }
             }
             AuthRequirement::UserOrApiToken => {
@@ -90,7 +100,7 @@ impl Guard for AuthGuard {
                 } {
                     Ok(())
                 } else {
-                    Err("Must provide user or API token".into())
+                    Err(unauthenticated("Must provide user or API token"))
                 }
             }
             AuthRequirement::SuperUser => {
@@ -103,7 +113,7 @@ impl Guard for AuthGuard {
                 } {
                     Ok(())
                 } else {
-                    Err("Must provide super user token".into())
+                    Err(unauthenticated("Must provide super user token"))
                 }
             }
             AuthRequirement::PeriodLink => {
@@ -116,7 +126,7 @@ impl Guard for AuthGuard {
                 } {
                     Ok(())
                 } else {
-                    Err("Must provide a period edit-link token".into())
+                    Err(unauthenticated("Must provide a period edit-link token"))
                 }
             }
         }
@@ -142,7 +152,7 @@ pub(crate) fn require_location_access(ctx: &Context<'_>, location_id: &str) -> R
         Some(AuthInfo::ApiToken {
             location_grants, ..
         }) if location_grants.iter().any(|g| g == location_id) => Ok(()),
-        _ => Err(anyhow!("Not authorized for this location")),
+        _ => Err(ApiError::forbidden("Not authorized for this location").into()),
     }
 }
 
@@ -157,7 +167,7 @@ pub(crate) fn require_period_access(ctx: &Context<'_>, period: &db::Period) -> R
             if *period_id == period.id {
                 Ok(())
             } else {
-                Err(anyhow!("Not authorized for this period"))
+                Err(ApiError::forbidden("Not authorized for this period").into())
             }
         }
         _ => require_location_access(ctx, &period.location_id),
@@ -171,7 +181,7 @@ pub(crate) fn require_writable(ctx: &Context<'_>) -> Result<()> {
     match ctx.data_opt::<AuthInfo>() {
         Some(AuthInfo::ApiToken {
             read_only: true, ..
-        }) => Err(anyhow!("API token is read-only")),
+        }) => Err(ApiError::forbidden("API token is read-only").into()),
         _ => Ok(()),
     }
 }
