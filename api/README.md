@@ -59,6 +59,50 @@ return `401`.
 > **real** caller against live production data, and `--enable-mutations` means writes hit
 > prod. Only impersonate records you own, and prefer read-only testing.
 
+### Injecting resolver errors
+
+To exercise the frontend's GraphQL error handling, `SESLOGIN_FORCE_FIELD_ERRORS`
+makes named fields fail on demand:
+
+```bash
+# Fail every Period.person resolution
+SESLOGIN_FORCE_FIELD_ERRORS='Period.person' \
+  RUST_LOG=info cargo run --bin poem -- --enable-mutations
+
+# Fail ~5% of rows, and only the first 1 of them
+SESLOGIN_FORCE_FIELD_ERRORS='Period.person@0.05' \
+  SESLOGIN_FORCE_FIELD_ERRORS_BUDGET=1 \
+  RUST_LOG=info cargo run --bin poem -- --enable-mutations
+```
+
+Each target is `ParentType.field`, comma-separated, optionally suffixed with
+`@<rate>` (a probability in `0.0..=1.0`, default `1.0`).
+
+The failure is raised from an async-graphql extension, which is indistinguishable
+from the resolver itself returning `Err` — so async-graphql applies its normal
+null-propagation. That is what makes this useful:
+
+- A **nullable** target (`Period.person`, `Period.category`) produces a *partial*
+  response: HTTP 200, `data` populated, plus an `errors` entry. This is the case
+  clients tend to mishandle, and it is otherwise hard to provoke.
+- A **non-null** target (`Period.location`) propagates up to the nearest nullable
+  ancestor, usually collapsing the whole response to `data: null`.
+
+Two details worth knowing:
+
+- **Failures are deterministic.** The rate is decided by hashing the field's full
+  response path (`location.periods.nodes.3.person`), so the *same* rows fail on every
+  refetch. A random rate would make retry behaviour untestable — you couldn't tell a
+  fix from a lucky reroll.
+- **`_BUDGET` caps total injections** for the life of the process. Set it to `1` and
+  the first attempt fails while a retry succeeds, which is how you verify that a
+  "try again" path actually refetches.
+
+> ⚠️ Dev only, and structurally so: the module is behind `#[cfg(debug_assertions)]`,
+> and every deployed Lambda is a release build, so the code is absent from them rather
+> than merely disabled. The server logs a loud warning at startup when injection is
+> active.
+
 ## SES member sync
 
 Set `ses_api_headquarters_id` per location via the admin UI before syncing.

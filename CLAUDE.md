@@ -58,6 +58,28 @@ or inactive record yields `401`. See `api/README.md` for details.
 > **real** user or kiosk against live production data, and `--enable-mutations` means writes
 > hit prod. Only impersonate records you own, and prefer read-only testing.
 
+#### Injecting resolver errors
+
+`SESLOGIN_FORCE_FIELD_ERRORS` makes named GraphQL fields fail, for testing how the
+frontend handles resolver errors:
+
+```bash
+cd api && SESLOGIN_FORCE_FIELD_ERRORS='Period.person@0.05' \
+  SESLOGIN_FORCE_FIELD_ERRORS_BUDGET=1 \
+  RUST_LOG=info cargo run --bin poem -- --enable-mutations
+```
+
+Comma-separated `ParentType.field` targets, each optionally `@<rate>` (0.0–1.0,
+default 1.0). Failing a **nullable** field (`Period.person`) yields a *partial*
+response — HTTP 200 with `data` populated plus an `errors` entry — which is the shape
+clients most often mishandle; failing a **non-null** field (`Period.location`)
+collapses the response to `data: null`. Rates are decided by hashing the field's
+response path, so the same rows fail on every refetch. `_BUDGET` caps total
+injections, so setting it to `1` lets you verify that a retry actually refetches.
+
+Dev only and compiled out of release builds (`#[cfg(debug_assertions)]`), so it cannot
+be enabled in any deployed environment. See `api/README.md` for details.
+
 ### After GraphQL Schema Changes
 
 When you modify the GraphQL API (queries or mutations in `api/src/graphql/`), you **must** regenerate the schema file and recompile the Relay types before the frontend will type-check correctly:
