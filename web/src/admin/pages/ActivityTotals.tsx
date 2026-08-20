@@ -71,6 +71,7 @@ export default function ActivityTotals() {
       {hasValidRange && (
         <RelayErrorBoundary
           resetKey={`${appliedStartTime}-${appliedEndTime}-${appliedCategoryIds.join(",")}`}
+          canRetry
         >
           <Suspense fallback={<LoadingIndicator />}>
             <ActivityTotalsDisplay
