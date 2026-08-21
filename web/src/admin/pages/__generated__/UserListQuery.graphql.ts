@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<bd28707673a0ccef2531a769ba024c56>>
+ * @generated SignedSource<<1326ae5ba6d385d7fe2715a0e110ee7a>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -50,7 +50,9 @@ return {
   "fragment": {
     "argumentDefinitions": [],
     "kind": "Fragment",
-    "metadata": null,
+    "metadata": {
+      "throwOnFieldError": true
+    },
     "name": "UserListQuery",
     "selections": [
       {
@@ -156,6 +158,6 @@ return {
 };
 })();
 
-(node as any).hash = "309adf320bce4221d7beccd586eb3b5e";
+(node as any).hash = "35966beda30d0293278eada5e1927386";
 
 export default node;

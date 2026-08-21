@@ -129,7 +129,7 @@ export default function CategoryList() {
 
   const data = useLazyLoadQuery<CategoryListQuery>(
     graphql`
-      query CategoryListQuery {
+      query CategoryListQuery @throwOnFieldError {
         categories {
           id
           name

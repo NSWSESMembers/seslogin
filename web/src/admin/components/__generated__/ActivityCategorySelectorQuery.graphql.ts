@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<50b33d0da4395a577491931dc8437135>>
+ * @generated SignedSource<<f812b9406aec3b05cbdff2b9ac2d7087>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -53,7 +53,9 @@ return {
   "fragment": {
     "argumentDefinitions": [],
     "kind": "Fragment",
-    "metadata": null,
+    "metadata": {
+      "throwOnFieldError": true
+    },
     "name": "ActivityCategorySelectorQuery",
     "selections": (v0/*: any*/),
     "type": "QueryRoot",
@@ -77,6 +79,6 @@ return {
 };
 })();
 
-(node as any).hash = "a11125b852a6294df9a32009b5449b0d";
+(node as any).hash = "ae3c1d3b9f2e643d22691b6061b6b7a0";
 
 export default node;

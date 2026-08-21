@@ -20,7 +20,7 @@ export default function ActivityEdit() {
   const locationId = selectedLocation.id;
   const data = useLazyLoadQuery<ActivityEditQuery>(
     graphql`
-      query ActivityEditQuery($id: ID!) {
+      query ActivityEditQuery($id: ID!) @throwOnFieldError {
         period(id: $id) {
           id
           startTime

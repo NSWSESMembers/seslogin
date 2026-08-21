@@ -36,7 +36,7 @@ function SessionEnrollForm({ fingerprint }: { fingerprint: string }) {
 
   const data = useLazyLoadQuery<SessionEnrollQuery>(
     graphql`
-      query SessionEnrollQuery($fingerprint: String!) {
+      query SessionEnrollQuery($fingerprint: String!) @throwOnFieldError {
         pendingEnrollmentKey(fingerprint: $fingerprint) {
           __typename
         }

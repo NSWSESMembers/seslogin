@@ -29,7 +29,7 @@ function Row(props: {
   const { notifyError, notifySuccess } = useNotify();
   const location = useFragment<LocationList_item$key>(
     graphql`
-      fragment LocationList_item on Location {
+      fragment LocationList_item on Location @throwOnFieldError {
         id
         name
         enabled
@@ -174,7 +174,7 @@ export default function LocationList() {
   const [showDisabled, setShowDisabled] = useState(false);
   const data = useLazyLoadQuery<LocationListQuery>(
     graphql`
-      query LocationListQuery {
+      query LocationListQuery @throwOnFieldError {
         locations {
           id
           name

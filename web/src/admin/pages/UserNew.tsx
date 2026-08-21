@@ -12,7 +12,7 @@ export default function NewUser() {
   const { notifyError, notifySuccess } = useNotify();
   const data = useLazyLoadQuery<UserNewQuery>(
     graphql`
-      query UserNewQuery {
+      query UserNewQuery @throwOnFieldError {
         locations {
           id
           name

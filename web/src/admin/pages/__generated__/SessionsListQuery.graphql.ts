@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<2a26b2957d9705d2f7e91658ed9c37fe>>
+ * @generated SignedSource<<a97ad04c629113676dc785e23059e8be>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -132,7 +132,9 @@ return {
   "fragment": {
     "argumentDefinitions": (v0/*: any*/),
     "kind": "Fragment",
-    "metadata": null,
+    "metadata": {
+      "throwOnFieldError": true
+    },
     "name": "SessionsListQuery",
     "selections": (v2/*: any*/),
     "type": "QueryRoot",
@@ -156,6 +158,6 @@ return {
 };
 })();
 
-(node as any).hash = "a1ab5ab5191310783a69003c775cf0ed";
+(node as any).hash = "af2ff382ee5c5334212db0c34374aba4";
 
 export default node;

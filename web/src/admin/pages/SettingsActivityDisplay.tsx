@@ -9,7 +9,7 @@ import { Button } from "../../components/ui/Button";
 export default function SettingsActivityDisplay() {
   const data = useLazyLoadQuery<SettingsActivityDisplayQuery>(
     graphql`
-      query SettingsActivityDisplayQuery {
+      query SettingsActivityDisplayQuery @throwOnFieldError {
         user {
           disaggregateVirtualPeriods
         }

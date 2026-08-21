@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<00f05dd9d2a87e5dbb9d0e1c38386db6>>
+ * @generated SignedSource<<552f5d5e74a995c7423acc0229ee99d4>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -115,7 +115,9 @@ return {
   "fragment": {
     "argumentDefinitions": (v0/*: any*/),
     "kind": "Fragment",
-    "metadata": null,
+    "metadata": {
+      "throwOnFieldError": true
+    },
     "name": "NitcGroupEditQuery",
     "selections": (v3/*: any*/),
     "type": "QueryRoot",
@@ -139,6 +141,6 @@ return {
 };
 })();
 
-(node as any).hash = "8ed10953c3827f6c8e8f4635a01636ae";
+(node as any).hash = "f0f38712f5fa847c1f8eb5fb3d3c2eb4";
 
 export default node;

@@ -16,7 +16,7 @@ export default function UserEdit() {
 
   const data = useLazyLoadQuery<UserEditQuery>(
     graphql`
-      query UserEditQuery($id: ID!) {
+      query UserEditQuery($id: ID!) @throwOnFieldError {
         user(id: $id) {
           id
           email

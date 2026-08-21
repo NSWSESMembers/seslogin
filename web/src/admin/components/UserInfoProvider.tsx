@@ -15,7 +15,7 @@ const USER_INFO_RELOAD_INTERVAL_MS = 2 * 60 * 1000;
 // fragment-colocating a global current-user across ~10 consumers.
 /* eslint-disable relay/unused-fields */
 const userInfoQuery = graphql`
-  query UserInfoProviderQuery {
+  query UserInfoProviderQuery @throwOnFieldError {
     user {
       id
       email
