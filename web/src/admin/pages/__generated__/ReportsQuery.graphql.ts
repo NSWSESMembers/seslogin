@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<38ad635810139fbcfe2c3e13802846b8>>
+ * @generated SignedSource<<06618f98cd11dc267f0afd86cd12b8ee>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -9,6 +9,7 @@
 // @ts-nocheck
 
 import { ConcreteRequest } from 'relay-runtime';
+import { Result } from "relay-runtime";
 export type ReportsQuery$variables = {
   after?: string | null | undefined;
   endTime: number;
@@ -22,20 +23,20 @@ export type ReportsQuery$data = {
     readonly periods: {
       readonly edges: ReadonlyArray<{
         readonly node: {
-          readonly category: {
+          readonly category: Result<{
             readonly id: string;
             readonly name: string;
-          } | null | undefined;
+          } | null | undefined, unknown>;
           readonly comment: string | null | undefined;
           readonly endTime: number | null | undefined;
           readonly guestName: string | null | undefined;
           readonly id: string;
-          readonly person: {
+          readonly person: Result<{
             readonly firstName: string;
             readonly id: string;
             readonly lastName: string;
             readonly memberNumber: string | null | undefined;
-          } | null | undefined;
+          } | null | undefined, unknown>;
           readonly personId: string | null | undefined;
           readonly signedInSession: {
             readonly name: string;
@@ -250,7 +251,9 @@ return {
       (v4/*: any*/)
     ],
     "kind": "Fragment",
-    "metadata": null,
+    "metadata": {
+      "throwOnFieldError": true
+    },
     "name": "ReportsQuery",
     "selections": [
       {
@@ -312,8 +315,16 @@ return {
                         "selections": (v14/*: any*/),
                         "storageKey": null
                       },
-                      (v15/*: any*/),
-                      (v16/*: any*/)
+                      {
+                        "kind": "CatchField",
+                        "field": (v15/*: any*/),
+                        "to": "RESULT"
+                      },
+                      {
+                        "kind": "CatchField",
+                        "field": (v16/*: any*/),
+                        "to": "RESULT"
+                      }
                     ],
                     "storageKey": null
                   }
@@ -430,6 +441,6 @@ return {
 };
 })();
 
-(node as any).hash = "76b34a0fd35ccc0c35d7095c02d8cf2c";
+(node as any).hash = "8a7fb4b145b13d315377bc81904d6bc8";
 
 export default node;
