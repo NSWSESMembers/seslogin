@@ -21,7 +21,7 @@ export default function ActivityNew() {
   const [endValue, setEndValue] = useState("");
   const data = useLazyLoadQuery<ActivityNewQuery>(
     graphql`
-      query ActivityNewQuery($location: ID!) {
+      query ActivityNewQuery($location: ID!) @throwOnFieldError {
         location(id: $location) {
           id
           people {

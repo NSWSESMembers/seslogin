@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<70203fa42ed8bcabc12659a3514161f1>>
+ * @generated SignedSource<<361aa6b0739b4f5b734746e9a48e37e8>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -230,7 +230,9 @@ return {
       (v2/*: any*/)
     ],
     "kind": "Fragment",
-    "metadata": null,
+    "metadata": {
+      "throwOnFieldError": true
+    },
     "name": "ActivityBreakdownDisplayQuery",
     "selections": (v8/*: any*/),
     "type": "QueryRoot",
@@ -258,6 +260,6 @@ return {
 };
 })();
 
-(node as any).hash = "4336151547b65742ee25e3b5801f19ca";
+(node as any).hash = "3df6e008241e18d4ebbb0ef3d42a340c";
 
 export default node;

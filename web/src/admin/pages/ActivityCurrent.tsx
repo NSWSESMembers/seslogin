@@ -35,7 +35,8 @@ export default function ActivityCurrent() {
   const relayEnvironment = useRelayEnvironment();
   const data = useLazyLoadQuery<ActivityCurrentQuery>(
     graphql`
-      query ActivityCurrentQuery($location: ID!, $first: Int!, $after: String) {
+      query ActivityCurrentQuery($location: ID!, $first: Int!, $after: String)
+      @throwOnFieldError {
         location(id: $location) {
           id
           periods(onlyActive: true, first: $first, after: $after) {

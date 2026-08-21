@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<fa5f3628b3dc8b15a3bbdfbedf882c63>>
+ * @generated SignedSource<<099586105e562bc803abca11eeeb8e89>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -210,7 +210,9 @@ return {
       (v3/*: any*/)
     ],
     "kind": "Fragment",
-    "metadata": null,
+    "metadata": {
+      "throwOnFieldError": true
+    },
     "name": "ActivityTotalsDisplayQuery",
     "selections": (v8/*: any*/),
     "type": "QueryRoot",
@@ -239,6 +241,6 @@ return {
 };
 })();
 
-(node as any).hash = "6762d984aaf6915e31f156181aa5cf40";
+(node as any).hash = "5d8a580b4d2dfc148fac9c728681f301";
 
 export default node;

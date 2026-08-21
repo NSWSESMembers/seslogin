@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<eda03519e60eac0dc1fa610521bfc864>>
+ * @generated SignedSource<<6a413b1d414f68827947891ff849a5f3>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -242,7 +242,9 @@ return {
       (v2/*: any*/)
     ],
     "kind": "Fragment",
-    "metadata": null,
+    "metadata": {
+      "throwOnFieldError": true
+    },
     "name": "ActivityCurrentQuery",
     "selections": [
       {
@@ -404,6 +406,6 @@ return {
 };
 })();
 
-(node as any).hash = "a5a3e789bf19339fc4db820647a9d44a";
+(node as any).hash = "ad495d2ddc599a91a24cc9c5aaefbf8e";
 
 export default node;

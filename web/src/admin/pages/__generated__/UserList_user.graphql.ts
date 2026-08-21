@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<3ac95a304573e5e7539afdbf45afe32a>>
+ * @generated SignedSource<<daac357931c88c645a911d7908be9849>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -40,7 +40,9 @@ var v0 = {
 return {
   "argumentDefinitions": [],
   "kind": "Fragment",
-  "metadata": null,
+  "metadata": {
+    "throwOnFieldError": true
+  },
   "name": "UserList_user",
   "selections": [
     (v0/*: any*/),
@@ -111,6 +113,6 @@ return {
 };
 })();
 
-(node as any).hash = "13c232d9f7ca183f12e8c832e6ef90f7";
+(node as any).hash = "a2f4d87acf1924e569c2f389bed6d1a6";
 
 export default node;

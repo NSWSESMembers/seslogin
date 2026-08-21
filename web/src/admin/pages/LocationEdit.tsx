@@ -15,7 +15,7 @@ export default function EditLocation() {
 
   const data = useLazyLoadQuery<LocationEditQuery>(
     graphql`
-      query LocationEditQuery($id: ID!) {
+      query LocationEditQuery($id: ID!) @throwOnFieldError {
         location(id: $id) {
           id
           name

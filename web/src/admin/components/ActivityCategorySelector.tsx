@@ -16,7 +16,7 @@ export default function ActivityCategorySelector({
 }: ActivityCategorySelectorProps) {
   const data = useLazyLoadQuery<ActivityCategorySelectorQuery>(
     graphql`
-      query ActivityCategorySelectorQuery {
+      query ActivityCategorySelectorQuery @throwOnFieldError {
         categories {
           id
           name

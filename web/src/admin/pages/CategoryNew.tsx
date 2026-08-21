@@ -34,7 +34,7 @@ export default function CategoryNew() {
 
   const data = useLazyLoadQuery<CategoryNewQuery>(
     graphql`
-      query CategoryNewQuery {
+      query CategoryNewQuery @throwOnFieldError {
         nitcGroups {
           id
           nitcType

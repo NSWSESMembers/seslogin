@@ -59,7 +59,7 @@ export default function AdminHome() {
 
   const data = useLazyLoadQuery<AdminHomeQuery>(
     graphql`
-      query AdminHomeQuery($location: ID!, $now: Int!) {
+      query AdminHomeQuery($location: ID!, $now: Int!) @throwOnFieldError {
         location(id: $location) {
           id
           name

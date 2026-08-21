@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<28c091c2f5c074d645e1f757a10eb5a3>>
+ * @generated SignedSource<<3ff6d0f8484cd846c59a7e12091c691a>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -32,7 +32,9 @@ return {
   "fragment": {
     "argumentDefinitions": [],
     "kind": "Fragment",
-    "metadata": null,
+    "metadata": {
+      "throwOnFieldError": true
+    },
     "name": "SettingsActivityDisplayQuery",
     "selections": [
       {
@@ -89,6 +91,6 @@ return {
 };
 })();
 
-(node as any).hash = "2078030de1caa865b137cb11261f5e8d";
+(node as any).hash = "0593ce15ff4aa50c796ddb7049286267";
 
 export default node;
