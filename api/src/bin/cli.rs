@@ -8,8 +8,9 @@ use anyhow::{Result, anyhow};
 use chrono::{DateTime, Local, NaiveDate};
 use clap::{Parser, Subcommand};
 use seslogin::db::{
-    ApiToken, Category, Handler, ListLocationsFilter, ListPeriodsPage, ListSessionsQuery, Location,
-    NitcEvent, NitcGroup, Period, PeriodCursor, Person, Session, User,
+    ApiToken, Category, Handler, ListApiTokensFilter, ListLocationsFilter, ListPeriodsPage,
+    ListSessionsQuery, Location, NitcEvent, NitcGroup, Period, PeriodCursor, Person, ScanCursor,
+    Session, User,
 };
 use seslogin::dynamodb;
 use seslogin::jwt::{ExpirePolicy, Key};
@@ -93,6 +94,21 @@ enum Object {
         #[command(subcommand)]
         cmd: PeriodLinkCmd,
     },
+    /// Walk a whole table with a base-table scan, reporting rows that fail to hydrate.
+    ///
+    /// Unlike every other command here this bypasses the indexes, so it reaches rows no
+    /// query can: a person with a malformed `location_id`, a soft-deleted period or
+    /// session. Scans are expensive — `person` and `period` are the largest tables.
+    Scan {
+        #[arg(long)]
+        table: ScanTableArg,
+        /// Items examined per request. Not the number of rows returned.
+        #[arg(long, default_value_t = 500)]
+        limit: i32,
+        /// Stop after this many pages instead of walking the whole table.
+        #[arg(long)]
+        max_pages: Option<usize>,
+    },
     /// Generate a signed JWT for a session or user (does not touch the DB).
     Jwt {
         /// JWT secret (overrides JWT_SECRET env var).
@@ -104,6 +120,15 @@ enum Object {
         #[command(subcommand)]
         cmd: JwtCmd,
     },
+}
+
+#[derive(clap::ValueEnum, Clone, Copy, Debug)]
+enum ScanTableArg {
+    Person,
+    Period,
+    Session,
+    UserToken,
+    NitcEvent,
 }
 
 #[derive(Subcommand, Debug)]
@@ -249,7 +274,12 @@ enum ApiTokenCmd {
     /// Show one or more API tokens by ID.
     Get { ids: Vec<String> },
     /// List API tokens.
-    List,
+    List {
+        /// Include revoked tokens. They are absent from `active-index`, so this
+        /// scans the table instead of querying it.
+        #[arg(long)]
+        all: bool,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -279,6 +309,11 @@ enum NitcEventCmd {
         /// Event date in YYYY-MM-DD.
         #[arg(long)]
         date: NaiveDate,
+    },
+    /// List every NITC event at a location, across all groups and dates.
+    ForLocation {
+        #[arg(long)]
+        location: String,
     },
 }
 
@@ -441,7 +476,7 @@ async fn nitc_event_dates(db: &impl Handler, ids: &[String]) -> HashMap<String, 
         return map;
     }
     if let Ok(events) = db.get_nitc_events_by_ids(&refs).await {
-        for e in events {
+        for e in events.into_iter().flatten() {
             map.insert(e.id.clone(), e.event_date.to_string());
         }
     }
@@ -960,6 +995,81 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
+/// Walk a table with repeated scan pages, reporting rows that fail to hydrate.
+///
+/// Every table is walked by the same loop; only the page-fetching closure differs, so
+/// the pagination contract is exercised identically for each. Note the loop ends on
+/// `next == None` and never on an empty page: DynamoDB's `Limit` counts items examined,
+/// so a page can legitimately come back with no rows and more still to read.
+async fn run_scan(
+    db: &impl Handler,
+    table: ScanTableArg,
+    limit: i32,
+    max_pages: Option<usize>,
+) -> Result<()> {
+    let mut cursor: Option<ScanCursor> = None;
+    let mut pages = 0usize;
+    let mut ok = 0usize;
+    let mut failed = 0usize;
+
+    loop {
+        // Each arm hydrates a different type, so collapse to the counts and errors
+        // rather than trying to return one page type from all five.
+        let (rows, next): (Vec<Result<(), String>>, _) = match table {
+            ScanTableArg::Person => {
+                let page = db.scan_persons(cursor.clone(), limit).await?;
+                (scan_outcomes(page.rows), page.next)
+            }
+            ScanTableArg::Period => {
+                let page = db.scan_periods(cursor.clone(), limit).await?;
+                (scan_outcomes(page.rows), page.next)
+            }
+            ScanTableArg::Session => {
+                let page = db.scan_sessions(cursor.clone(), limit).await?;
+                (scan_outcomes(page.rows), page.next)
+            }
+            ScanTableArg::UserToken => {
+                let page = db.scan_user_tokens(cursor.clone(), limit).await?;
+                (scan_outcomes(page.rows), page.next)
+            }
+            ScanTableArg::NitcEvent => {
+                let page = db.scan_nitc_events(cursor.clone(), limit).await?;
+                (scan_outcomes(page.rows), page.next)
+            }
+        };
+
+        for row in rows {
+            match row {
+                Ok(()) => ok += 1,
+                Err(msg) => {
+                    failed += 1;
+                    println!("hydration error: {msg}");
+                }
+            }
+        }
+
+        pages += 1;
+        cursor = next;
+        if cursor.is_none() {
+            break;
+        }
+        if max_pages.is_some_and(|max| pages >= max) {
+            eprintln!("stopping after {pages} page(s); more rows remain");
+            break;
+        }
+    }
+
+    println!("scan complete table={table:?} pages={pages} rows={ok} hydration_errors={failed}");
+    Ok(())
+}
+
+/// Reduce a hydrated page to per-row success/failure, discarding the records themselves.
+fn scan_outcomes<T>(rows: Vec<seslogin::db::Result<T>>) -> Vec<Result<(), String>> {
+    rows.into_iter()
+        .map(|r| r.map(|_| ()).map_err(|e| e.to_string()))
+        .collect()
+}
+
 /// Generate and print a signed JWT for a session or user. Does not touch the DB.
 fn run_jwt(jwt_secret: Option<String>, expire_s: Option<u64>, cmd: &JwtCmd) -> Result<()> {
     let secret = jwt_secret
@@ -1385,8 +1495,13 @@ async fn run(db: &impl Handler, object: Object) -> Result<()> {
                 }
                 show_api_tokens(db, &found).await;
             }
-            ApiTokenCmd::List => {
-                let mut tokens = db.list_api_tokens().await?;
+            ApiTokenCmd::List { all } => {
+                let filter = if all {
+                    ListApiTokensFilter::All
+                } else {
+                    ListApiTokensFilter::ActiveOnly
+                };
+                let mut tokens = db.list_api_tokens(filter).await?;
                 tokens.sort_by(|a, b| a.name.cmp(&b.name));
                 let rows: Vec<Vec<String>> = tokens
                     .iter()
@@ -1458,12 +1573,13 @@ async fn run(db: &impl Handler, object: Object) -> Result<()> {
 
         Object::NitcEvent { cmd } => match cmd {
             NitcEventCmd::Get { ids } => {
-                let events = db.get_nitc_events_by_ids(&ids).await?;
-                let found: std::collections::HashSet<&str> =
-                    events.iter().map(|e| e.id.as_str()).collect();
-                for id in &ids {
-                    if !found.contains(id.as_str()) {
-                        eprintln!("not found: {}", id);
+                // Results are positionally aligned with the requested ids, so a missing
+                // event is identified directly rather than by diffing the two lists.
+                let mut events = Vec::new();
+                for (id, found) in ids.iter().zip(db.get_nitc_events_by_ids(&ids).await?) {
+                    match found {
+                        Some(event) => events.push(event),
+                        None => eprintln!("not found: {}", id),
                     }
                 }
                 show_nitc_events(db, &events).await;
@@ -1486,6 +1602,31 @@ async fn run(db: &impl Handler, object: Object) -> Result<()> {
                     show_nitc_events(db, &events).await;
                 }
             }
+            NitcEventCmd::ForLocation { location } => {
+                let mut events = db.list_nitc_events_for_location(&location).await?;
+                events.sort_by(|a, b| {
+                    a.event_date
+                        .cmp(&b.event_date)
+                        .then_with(|| a.nitc_group_id.cmp(&b.nitc_group_id))
+                });
+                let rows: Vec<Vec<String>> = events
+                    .iter()
+                    .map(|e| {
+                        vec![
+                            e.id.clone(),
+                            e.event_date.to_string(),
+                            e.nitc_group_id.clone(),
+                            opt_num(e.ses_api_nitc_id.map(|v| v as u64)),
+                            e.version.to_string(),
+                            opt_num(e.synced_version),
+                        ]
+                    })
+                    .collect();
+                print_table(
+                    &["id", "date", "group", "ses_nitc_id", "version", "synced"],
+                    &rows,
+                );
+            }
         },
 
         Object::ActivitySummary { cmd } => match cmd {
@@ -1493,6 +1634,14 @@ async fn run(db: &impl Handler, object: Object) -> Result<()> {
                 list_activity_summary_subscriptions(db).await?;
             }
         },
+
+        Object::Scan {
+            table,
+            limit,
+            max_pages,
+        } => {
+            run_scan(db, table, limit, max_pages).await?;
+        }
 
         // Handled in `main` before the shared read-only DB is opened.
         Object::Jwt { .. } => unreachable!("jwt is handled before DB setup"),

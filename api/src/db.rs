@@ -272,6 +272,36 @@ pub enum LocationUpdateShape<'a> {
     },
 }
 
+/// Where a table scan left off. Scanning the base table returns a `LastEvaluatedKey`
+/// of just the primary key, and every scannable table here is hash-keyed on `id`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ScanCursor {
+    pub last_id: String,
+}
+
+/// One page of a table scan.
+///
+/// Rows are hydrated independently: an `Err` — always [`Error::Hydration`], naming the
+/// offending row — is one bad record, not a failed page, so a scan can survey a table
+/// end to end and report every problem it finds.
+///
+/// **`rows` being empty does not mean the scan is finished.** DynamoDB's `Limit` counts
+/// items *examined*, and a page can come back empty while more remain. Only
+/// `next == None` ends the walk.
+#[derive(Debug)]
+pub struct ScanPage<T> {
+    pub rows: Vec<Result<T>>,
+    pub next: Option<ScanCursor>,
+}
+
+/// Which API tokens a listing should include. Revoked tokens have no `active`
+/// attribute, so they are absent from `active-index` and only a scan finds them.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ListApiTokensFilter {
+    ActiveOnly,
+    All,
+}
+
 pub enum ListLocationsFilter {
     EnabledOnly,
     All,
@@ -334,6 +364,12 @@ pub struct NitcEvent {
     pub synced_version: Option<u64>,
     pub created_at: Option<u64>,
     pub updated_at: Option<u64>,
+}
+
+impl HasID for NitcEvent {
+    fn id(&self) -> &str {
+        &self.id
+    }
 }
 
 /// NITC topic group configuration: type, tags. Location fields are fetched separately.
@@ -661,7 +697,12 @@ pub trait Handler: Sync {
         &self,
         token_hash: &str,
     ) -> impl Future<Output = Result<Option<ApiToken>>> + Send;
-    fn list_api_tokens(&self) -> impl Future<Output = Result<Vec<ApiToken>>> + Send;
+    /// List API tokens. [`ListApiTokensFilter::ActiveOnly`] queries `active-index` and
+    /// so cannot see revoked tokens; `All` scans, which is the only way to reach them.
+    fn list_api_tokens(
+        &self,
+        filter: ListApiTokensFilter,
+    ) -> impl Future<Output = Result<Vec<ApiToken>>> + Send;
     fn create_api_token(
         &self,
         name: &str,
@@ -747,10 +788,72 @@ pub trait Handler: Sync {
         id: &str,
     ) -> impl Future<Output = Result<Option<NitcEvent>>> + Send;
 
+    /// Batch-fetch NITC events. Results are positionally aligned with `ids`, so a
+    /// `None` names exactly which requested event is missing.
     fn get_nitc_events_by_ids<T: AsRef<str> + Sync>(
         &self,
         ids: &[T],
+    ) -> impl Future<Output = Result<Vec<Option<NitcEvent>>>> + Send;
+
+    /// Every NITC event at a location, across all groups and dates.
+    ///
+    /// `location_id-topic_date-index` is hash-keyed on `location_id`, so this is the
+    /// same index [`Handler::list_nitc_events_for_day`] uses, queried without the sort
+    /// key. It is the only way to enumerate the `nitc_event` table — otherwise events
+    /// are reachable only by following `Period.nitc_event_id`.
+    fn list_nitc_events_for_location(
+        &self,
+        location_id: &str,
     ) -> impl Future<Output = Result<Vec<NitcEvent>>> + Send;
+
+    // ── Table scans ──────────────────────────────────────────────────────────
+    //
+    // Every other read here goes through an index, which means it can only return rows
+    // whose index key attribute is present and well-formed. That is exactly the wrong
+    // property for auditing data integrity: a person with a malformed `location_id` is
+    // absent from `location_id-index`, and a soft-deleted period has neither
+    // `location_open` nor `location_live`, so no query reaches either. These scans read
+    // the base table, so they see every row regardless of what its index keys look like.
+    //
+    // Scans are expensive and eventually consistent. `person` and `period` in
+    // particular are the largest tables in the system, so callers should treat walking
+    // them as a deliberate, occasional operation rather than a routine one.
+
+    fn scan_persons(
+        &self,
+        cursor: Option<ScanCursor>,
+        limit: i32,
+    ) -> impl Future<Output = Result<ScanPage<Person>>> + Send;
+
+    fn scan_periods(
+        &self,
+        cursor: Option<ScanCursor>,
+        limit: i32,
+    ) -> impl Future<Output = Result<ScanPage<Period>>> + Send;
+
+    /// Unlike `list_sessions`, this reaches soft-deleted sessions — they have no
+    /// `active` attribute, so they are absent from `active-location_id-index`.
+    fn scan_sessions(
+        &self,
+        cursor: Option<ScanCursor>,
+        limit: i32,
+    ) -> impl Future<Output = Result<ScanPage<Session>>> + Send;
+
+    /// The only way to enumerate user tokens: `user_token` has just
+    /// `token_hash-index`, so there is no lookup by `user_id` or anything else.
+    fn scan_user_tokens(
+        &self,
+        cursor: Option<ScanCursor>,
+        limit: i32,
+    ) -> impl Future<Output = Result<ScanPage<UserToken>>> + Send;
+
+    /// Reaches events whose `location_id` is missing or malformed, which
+    /// `list_nitc_events_for_location` cannot.
+    fn scan_nitc_events(
+        &self,
+        cursor: Option<ScanCursor>,
+        limit: i32,
+    ) -> impl Future<Output = Result<ScanPage<NitcEvent>>> + Send;
 
     /// Fetch NITC group configuration (type, tags) by ID.
     fn get_nitc_group(&self, id: &str) -> impl Future<Output = Result<Option<NitcGroup>>> + Send;

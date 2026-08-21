@@ -17,7 +17,6 @@ use aws_sdk_dynamodb::types::{
 use aws_sdk_dynamodb::{Client, types::AttributeValue};
 use nanoid::nanoid;
 use std::collections::HashMap;
-use thiserror::Error;
 
 const NANOID_ALPHABET: [char; 62] = [
     '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I',
@@ -142,9 +141,62 @@ impl Item {
     }
 }
 
-#[derive(Error, Debug)]
-#[error(transparent)]
-pub struct HydrationError(#[from] anyhow::Error);
+/// A row that could not be turned into its typed record.
+///
+/// Carries the offending row's `id` where one could be read, because the whole point of
+/// the error is to send someone to look at that row. Without it a failed listing says
+/// only which table was being read — which, for a table with tens of thousands of rows,
+/// is not an actionable report.
+#[derive(Debug)]
+pub struct HydrationError {
+    source: anyhow::Error,
+    record_id: Option<String>,
+}
+
+impl HydrationError {
+    /// Attach the row's `id`, if it is not already known.
+    ///
+    /// An inner conversion may already have identified a more specific record, so an
+    /// existing id is never overwritten.
+    fn with_record_id(mut self, record_id: Option<String>) -> Self {
+        if self.record_id.is_none() {
+            self.record_id = record_id;
+        }
+        self
+    }
+
+    /// The offending row's `id`, where it was readable. `None` means the row's own `id`
+    /// attribute is what is broken.
+    pub fn record_id(&self) -> Option<&str> {
+        self.record_id.as_deref()
+    }
+}
+
+impl std::fmt::Display for HydrationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.record_id {
+            Some(id) => write!(f, "record {id}: {}", self.source),
+            None => write!(f, "{}", self.source),
+        }
+    }
+}
+
+impl std::error::Error for HydrationError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(self.source.as_ref())
+    }
+}
+
+/// Lets the `TryInto` impls keep using `?` on `anyhow` errors. The id is filled in
+/// afterwards by [`hydrate_item`], which is the only place that still has the raw row.
+impl From<anyhow::Error> for HydrationError {
+    fn from(source: anyhow::Error) -> Self {
+        Self {
+            source,
+            record_id: None,
+        }
+    }
+}
 
 type HydrationResult<T> = Result<T, HydrationError>;
 
@@ -599,6 +651,47 @@ impl Handler {
         }
     }
 
+    /// One page of a base-table scan, hydrated leniently so a corrupt row is reported
+    /// rather than failing the page. See [`db::ScanPage`] for why an empty page does
+    /// not mean the walk is over.
+    async fn scan_page<R>(
+        &self,
+        op: &'static str,
+        name: &str,
+        cursor: Option<db::ScanCursor>,
+        limit: i32,
+    ) -> db::Result<db::ScanPage<R>>
+    where
+        Item: TryInto<R, Error = HydrationError>,
+    {
+        let mut builder = self
+            .client
+            .scan()
+            .table_name(self.table_name(name))
+            .limit(limit)
+            .return_consumed_capacity(ReturnConsumedCapacity::Total);
+        if let Some(cursor) = cursor {
+            builder = builder.set_exclusive_start_key(Some(HashMap::from([(
+                "id".to_string(),
+                AttributeValue::S(cursor.last_id),
+            )])));
+        }
+
+        let resp = builder
+            .send()
+            .await
+            .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
+        record_capacity(op, resp.consumed_capacity(), CapKind::Read);
+
+        Ok(db::ScanPage {
+            rows: hydrate_items_lenient(resp.items)
+                .into_iter()
+                .map(|row| row.map_err(db::Error::from))
+                .collect(),
+            next: scan_cursor_from_key(resp.last_evaluated_key),
+        })
+    }
+
     async fn get_records<R, T>(&self, name: &str, ids: &[T]) -> db::Result<Vec<Option<R>>>
     where
         T: AsRef<str> + Sync,
@@ -610,44 +703,68 @@ impl Handler {
         let mut results: HashMap<String, R> = HashMap::new();
 
         for chunk in ids.chunks(100) {
-            let resp = self
-                .client
-                .batch_get_item()
-                .request_items(
-                    table_name.clone(),
-                    KeysAndAttributes::builder()
-                        .set_keys(Some(
-                            chunk
-                                .iter()
-                                .map(|id| {
-                                    HashMap::from([(
-                                        "id".to_string(),
-                                        AttributeValue::S(id.to_string()),
-                                    )])
-                                })
-                                .collect(),
-                        ))
-                        .build()
-                        .map_err(|e| Error::Infrastructure(e.to_string()))?,
-                )
-                .return_consumed_capacity(ReturnConsumedCapacity::Total)
-                .send()
-                .await
-                .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
+            // DynamoDB is allowed to return fewer items than requested — under
+            // throttling or when a response would exceed 16MB it defers the rest into
+            // `UnprocessedKeys`. Those keys must be re-requested, or the caller sees a
+            // row that exists as if it were missing.
+            let mut pending: Vec<HashMap<String, AttributeValue>> = chunk
+                .iter()
+                .map(|id| HashMap::from([("id".to_string(), AttributeValue::S(id.to_string()))]))
+                .collect();
 
-            batch_record_capacity(
-                &format!("batch_get {name}"),
-                resp.consumed_capacity(),
-                CapKind::Read,
-            );
-            if let Some(mut responses) = resp.responses
-                && let Some(items) = responses.remove(&table_name)
-            {
-                for item in items {
-                    let res: Result<R, HydrationError> = Item(item).try_into();
-                    let rec: R = res?;
-                    results.insert(rec.id().to_string(), rec);
+            for attempt in 1..=BATCH_GET_MAX_ATTEMPTS {
+                if attempt > 1 {
+                    tokio::time::sleep(batch_get_backoff(attempt - 1)).await;
                 }
+
+                let resp = self
+                    .client
+                    .batch_get_item()
+                    .request_items(
+                        table_name.clone(),
+                        KeysAndAttributes::builder()
+                            .set_keys(Some(pending.clone()))
+                            .build()
+                            .map_err(|e| Error::Infrastructure(e.to_string()))?,
+                    )
+                    .return_consumed_capacity(ReturnConsumedCapacity::Total)
+                    .send()
+                    .await
+                    .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
+
+                batch_record_capacity(
+                    &format!("batch_get {name}"),
+                    resp.consumed_capacity(),
+                    CapKind::Read,
+                );
+                if let Some(mut responses) = resp.responses
+                    && let Some(items) = responses.remove(&table_name)
+                {
+                    for item in items {
+                        let rec: R = hydrate_item(item)?;
+                        results.insert(rec.id().to_string(), rec);
+                    }
+                }
+
+                pending = unprocessed_keys_for(&table_name, resp.unprocessed_keys);
+                if pending.is_empty() {
+                    break;
+                }
+                tracing::warn!(
+                    table = %table_name,
+                    unprocessed = pending.len(),
+                    attempt,
+                    "batch_get returned unprocessed keys; retrying"
+                );
+            }
+
+            if !pending.is_empty() {
+                // Returning `None` for these would be indistinguishable from the rows
+                // not existing, so fail loudly instead.
+                return Err(Error::Infrastructure(format!(
+                    "batch_get {table_name}: {} key(s) still unprocessed after {BATCH_GET_MAX_ATTEMPTS} attempts",
+                    pending.len(),
+                )));
             }
         }
 
@@ -657,6 +774,46 @@ impl Handler {
             .map(|id| results.remove(id))
             .collect())
     }
+}
+
+/// Read a scan's continuation key back into a cursor.
+///
+/// A base-table scan's `LastEvaluatedKey` is just the primary key, and every scannable
+/// table is hash-keyed on a string `id`. A key of any other shape means the assumption
+/// no longer holds, so treat it as the end of the walk rather than guessing.
+fn scan_cursor_from_key(key: Option<HashMap<String, AttributeValue>>) -> Option<db::ScanCursor> {
+    key?.get("id")
+        .and_then(|v| v.as_s().ok())
+        .map(|id| db::ScanCursor {
+            last_id: id.to_string(),
+        })
+}
+
+/// How many times a single `BatchGetItem` chunk is sent before giving up. Four retries
+/// after the first attempt, which at the backoff below spans roughly 750ms — long enough
+/// to ride out an ordinary throttle, short enough not to stall a request.
+const BATCH_GET_MAX_ATTEMPTS: usize = 5;
+
+/// Delay before retry number `retry` (1-based): 50ms doubling to a 1s ceiling.
+fn batch_get_backoff(retry: usize) -> std::time::Duration {
+    let ms = 50u64
+        .saturating_mul(1u64 << retry.min(8).saturating_sub(1))
+        .min(1000);
+    std::time::Duration::from_millis(ms)
+}
+
+/// The keys DynamoDB deferred for our table, if any.
+///
+/// `UnprocessedKeys` is keyed by table name and is absent — not empty — when everything
+/// was processed, so both shapes have to mean "nothing left to do".
+fn unprocessed_keys_for(
+    table_name: &str,
+    unprocessed: Option<HashMap<String, KeysAndAttributes>>,
+) -> Vec<HashMap<String, AttributeValue>> {
+    unprocessed
+        .and_then(|mut tables| tables.remove(table_name))
+        .map(|ka| ka.keys)
+        .unwrap_or_default()
 }
 
 enum CapKind {
@@ -710,6 +867,25 @@ fn page_scan_direction(has_after: bool, has_before: bool, descending: bool) -> (
 }
 
 /// Hydrate a batch of raw DynamoDB attribute maps into typed records.
+/// Hydrate one raw row, tagging any failure with that row's `id`.
+///
+/// The id is read before the conversion consumes the item, so a row that fails on some
+/// *other* attribute can still be named. A row whose `id` is itself unreadable reports no
+/// id — the error message then describes the `id` problem directly.
+fn hydrate_item<T>(raw: HashMap<String, AttributeValue>) -> HydrationResult<T>
+where
+    Item: TryInto<T, Error = HydrationError>,
+{
+    let item = Item(raw);
+    let record_id = item.id().ok();
+    item.try_into().map_err(|e| e.with_record_id(record_id))
+}
+
+/// Hydrate a page of rows, stopping at the first bad one.
+///
+/// This is the default because production read paths should fail loudly rather than
+/// quietly serve a short list. Tools that need to survey every bad row in one pass want
+/// [`hydrate_items_lenient`] instead.
 fn hydrate_items<T>(items: Option<Vec<HashMap<String, AttributeValue>>>) -> HydrationResult<Vec<T>>
 where
     Item: TryInto<T, Error = HydrationError>,
@@ -717,7 +893,25 @@ where
     items
         .unwrap_or_default()
         .into_iter()
-        .map(|i| Item(i).try_into())
+        .map(hydrate_item)
+        .collect()
+}
+
+/// Hydrate a page of rows, reporting each row's outcome independently.
+///
+/// One corrupt row hides every row after it under [`hydrate_items`], so a consistency
+/// check built on that would need one pass per bad row to enumerate them all. Here the
+/// caller sees every failure at once, each already tagged with its record id.
+fn hydrate_items_lenient<T>(
+    items: Option<Vec<HashMap<String, AttributeValue>>>,
+) -> Vec<HydrationResult<T>>
+where
+    Item: TryInto<T, Error = HydrationError>,
+{
+    items
+        .unwrap_or_default()
+        .into_iter()
+        .map(hydrate_item)
         .collect()
 }
 
@@ -2421,16 +2615,30 @@ impl db::Handler for Handler {
         self.get_api_token(&id).await
     }
 
-    async fn list_api_tokens(&self) -> db::Result<Vec<ApiToken>> {
-        query_all("list_api_tokens", || {
-            self.client
-                .query()
-                .table_name(self.table_name("api_token"))
-                .index_name("active-index")
-                .key_condition_expression("active = :active")
-                .expression_attribute_values(":active", AttributeValue::N("1".to_string()))
-        })
-        .await
+    async fn list_api_tokens(&self, filter: db::ListApiTokensFilter) -> db::Result<Vec<ApiToken>> {
+        match filter {
+            db::ListApiTokensFilter::ActiveOnly => {
+                query_all("list_api_tokens", || {
+                    self.client
+                        .query()
+                        .table_name(self.table_name("api_token"))
+                        .index_name("active-index")
+                        .key_condition_expression("active = :active")
+                        .expression_attribute_values(":active", AttributeValue::N("1".to_string()))
+                })
+                .await
+            }
+            // Revoking a token REMOVEs `active`, which is the hash key of
+            // `active-index`, so revoked rows are not in that index at all. A scan is
+            // the only way to reach them. WARNING: using scan - fine while table
+            // remains small.
+            db::ListApiTokensFilter::All => {
+                scan_all("list_api_tokens_all", || {
+                    self.client.scan().table_name(self.table_name("api_token"))
+                })
+                .await
+            }
+        }
     }
 
     async fn create_api_token(
@@ -3024,47 +3232,71 @@ impl db::Handler for Handler {
     async fn get_nitc_events_by_ids<T: AsRef<str> + Sync>(
         &self,
         ids: &[T],
-    ) -> db::Result<Vec<db::NitcEvent>> {
-        if ids.is_empty() {
-            return Ok(vec![]);
-        }
-        let table_name = self.table_name("nitc_event");
-        let resp = self
-            .client
-            .batch_get_item()
-            .request_items(
-                table_name.clone(),
-                KeysAndAttributes::builder()
-                    .set_keys(Some(
-                        ids.iter()
-                            .map(|id| {
-                                HashMap::from([(
-                                    "id".to_string(),
-                                    AttributeValue::S(id.as_ref().to_string()),
-                                )])
-                            })
-                            .collect(),
-                    ))
-                    .build()
-                    .map_err(|e| Error::Infrastructure(e.to_string()))?,
-            )
-            .return_consumed_capacity(ReturnConsumedCapacity::Total)
-            .send()
-            .await
-            .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
-        batch_record_capacity(
-            "get_nitc_events_by_ids",
-            resp.consumed_capacity(),
-            CapKind::Read,
-        );
+    ) -> db::Result<Vec<Option<db::NitcEvent>>> {
+        // Uses the shared batch getter like every other `get_*s`, which also brings
+        // chunking at 100 — a longer list previously raised a ValidationException — and
+        // the UnprocessedKeys retry.
+        self.get_records("nitc_event", ids).await
+    }
 
-        resp.responses
-            .unwrap_or_default()
-            .remove(&table_name)
-            .unwrap_or_default()
-            .into_iter()
-            .map(|item| Item(item).try_into().map_err(db::Error::from))
-            .collect()
+    async fn scan_persons(
+        &self,
+        cursor: Option<db::ScanCursor>,
+        limit: i32,
+    ) -> db::Result<db::ScanPage<Person>> {
+        self.scan_page("scan_persons", "person", cursor, limit)
+            .await
+    }
+
+    async fn scan_periods(
+        &self,
+        cursor: Option<db::ScanCursor>,
+        limit: i32,
+    ) -> db::Result<db::ScanPage<Period>> {
+        self.scan_page("scan_periods", "period", cursor, limit)
+            .await
+    }
+
+    async fn scan_sessions(
+        &self,
+        cursor: Option<db::ScanCursor>,
+        limit: i32,
+    ) -> db::Result<db::ScanPage<Session>> {
+        self.scan_page("scan_sessions", "session", cursor, limit)
+            .await
+    }
+
+    async fn scan_user_tokens(
+        &self,
+        cursor: Option<db::ScanCursor>,
+        limit: i32,
+    ) -> db::Result<db::ScanPage<UserToken>> {
+        self.scan_page("scan_user_tokens", "user_token", cursor, limit)
+            .await
+    }
+
+    async fn scan_nitc_events(
+        &self,
+        cursor: Option<db::ScanCursor>,
+        limit: i32,
+    ) -> db::Result<db::ScanPage<db::NitcEvent>> {
+        self.scan_page("scan_nitc_events", "nitc_event", cursor, limit)
+            .await
+    }
+
+    async fn list_nitc_events_for_location(
+        &self,
+        location_id: &str,
+    ) -> db::Result<Vec<db::NitcEvent>> {
+        query_all("list_nitc_events_for_location", || {
+            self.client
+                .query()
+                .table_name(self.table_name("nitc_event"))
+                .index_name("location_id-topic_date-index")
+                .key_condition_expression("location_id = :loc")
+                .expression_attribute_values(":loc", AttributeValue::S(location_id.to_string()))
+        })
+        .await
     }
 
     async fn get_nitc_group(&self, id: &str) -> db::Result<Option<db::NitcGroup>> {
@@ -4043,19 +4275,45 @@ impl db::Handler for Handler {
 
 #[cfg(test)]
 mod tests {
-    use super::{Item, nitc_event_key, topic_date_key};
+    use super::{
+        Item, batch_get_backoff, hydrate_items, hydrate_items_lenient, nitc_event_key,
+        scan_cursor_from_key, topic_date_key, unprocessed_keys_for,
+    };
+    use crate::db;
     use crate::db::Category;
-    use aws_sdk_dynamodb::types::AttributeValue;
+    use aws_sdk_dynamodb::types::{AttributeValue, KeysAndAttributes};
     use chrono::NaiveDate;
     use std::collections::HashMap;
 
+    fn raw(fields: &[(&str, AttributeValue)]) -> HashMap<String, AttributeValue> {
+        fields
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.clone()))
+            .collect()
+    }
+
     fn item(fields: &[(&str, AttributeValue)]) -> Item {
-        Item(
-            fields
-                .iter()
-                .map(|(k, v)| (k.to_string(), v.clone()))
-                .collect::<HashMap<_, _>>(),
-        )
+        Item(raw(fields))
+    }
+
+    /// A category row that hydrates cleanly.
+    fn good_category(id: &str) -> HashMap<String, AttributeValue> {
+        raw(&[
+            ("id", AttributeValue::S(id.to_string())),
+            ("name", AttributeValue::S("Training".to_string())),
+            ("created_at", AttributeValue::N("1000".to_string())),
+            ("updated_at", AttributeValue::N("2000".to_string())),
+        ])
+    }
+
+    /// Same, but missing `updated_at` — bad in a way that has nothing to do with the id,
+    /// so the id is still readable and must appear in the error.
+    fn bad_category(id: &str) -> HashMap<String, AttributeValue> {
+        raw(&[
+            ("id", AttributeValue::S(id.to_string())),
+            ("name", AttributeValue::S("Training".to_string())),
+            ("created_at", AttributeValue::N("1000".to_string())),
+        ])
     }
 
     #[test]
@@ -4097,6 +4355,152 @@ mod tests {
         ]);
         let hydrated: Result<Category, _> = row.try_into();
         assert!(hydrated.is_err());
+    }
+
+    #[test]
+    fn hydration_failure_names_the_offending_record() {
+        let items = vec![good_category("cat1"), bad_category("cat2")];
+        let err = hydrate_items::<Category>(Some(items))
+            .expect_err("a row missing updated_at must not hydrate");
+        assert_eq!(err.record_id(), Some("cat2"));
+        // The id belongs in the message too — most callers only ever see the string,
+        // via db::Error::Hydration.
+        let msg = err.to_string();
+        assert!(msg.contains("cat2"), "id missing from message: {msg}");
+        assert!(msg.contains("updated_at"), "cause missing: {msg}");
+    }
+
+    #[test]
+    fn hydration_failure_on_the_id_itself_reports_no_record() {
+        // Nothing to name here: the id is what's broken. The message must still say so
+        // rather than claiming some other record is at fault.
+        let items = vec![raw(&[("name", AttributeValue::S("orphan".to_string()))])];
+        let err = hydrate_items::<Category>(Some(items)).expect_err("no id, no hydration");
+        assert_eq!(err.record_id(), None);
+        assert!(
+            err.to_string().contains("missing id"),
+            "unhelpful message: {err}"
+        );
+    }
+
+    #[test]
+    fn strict_hydration_stops_at_the_first_bad_row() {
+        let items = vec![good_category("cat1"), bad_category("cat2")];
+        assert!(hydrate_items::<Category>(Some(items)).is_err());
+    }
+
+    #[test]
+    fn lenient_hydration_reports_every_row_independently() {
+        // The reason the lenient variant exists: under the strict helper, cat4 is
+        // invisible until cat2 is fixed, so surveying a table takes one pass per bad row.
+        let items = vec![
+            good_category("cat1"),
+            bad_category("cat2"),
+            bad_category("cat3"),
+            good_category("cat4"),
+        ];
+        let results = hydrate_items_lenient::<Category>(Some(items));
+
+        assert_eq!(results.len(), 4);
+        assert_eq!(results[0].as_ref().unwrap().id, "cat1");
+        assert_eq!(results[3].as_ref().unwrap().id, "cat4");
+
+        let failed: Vec<&str> = results
+            .iter()
+            .filter_map(|r| r.as_ref().err())
+            .filter_map(|e| e.record_id())
+            .collect();
+        assert_eq!(failed, vec!["cat2", "cat3"]);
+    }
+
+    #[test]
+    fn hydrating_nothing_yields_nothing() {
+        assert!(hydrate_items::<Category>(None).unwrap().is_empty());
+        assert!(hydrate_items_lenient::<Category>(None).is_empty());
+    }
+
+    fn key(id: &str) -> HashMap<String, AttributeValue> {
+        HashMap::from([("id".to_string(), AttributeValue::S(id.to_string()))])
+    }
+
+    #[test]
+    fn a_scan_with_no_continuation_key_is_finished() {
+        assert_eq!(scan_cursor_from_key(None), None);
+    }
+
+    #[test]
+    fn scan_cursor_round_trips_the_primary_key() {
+        let key = HashMap::from([("id".to_string(), AttributeValue::S("p42".to_string()))]);
+        assert_eq!(
+            scan_cursor_from_key(Some(key)),
+            Some(db::ScanCursor {
+                last_id: "p42".to_string()
+            })
+        );
+    }
+
+    #[test]
+    fn an_unexpected_continuation_key_shape_ends_the_walk() {
+        // A base-table scan's key is just the string `id`. Anything else means the
+        // assumption behind ScanCursor no longer holds, and stopping is safer than
+        // guessing a resume point and silently skipping rows.
+        let numeric = HashMap::from([("id".to_string(), AttributeValue::N("42".to_string()))]);
+        assert_eq!(scan_cursor_from_key(Some(numeric)), None);
+
+        let wrong_attr =
+            HashMap::from([("email".to_string(), AttributeValue::S("a@b.c".to_string()))]);
+        assert_eq!(scan_cursor_from_key(Some(wrong_attr)), None);
+    }
+
+    #[test]
+    fn no_unprocessed_keys_means_nothing_left_to_do() {
+        // DynamoDB omits the field entirely when everything was processed, but an empty
+        // map is also legal. Both must read as "done", or the retry loop never ends.
+        assert!(unprocessed_keys_for("seslogin_person", None).is_empty());
+        assert!(unprocessed_keys_for("seslogin_person", Some(HashMap::new())).is_empty());
+    }
+
+    #[test]
+    fn unprocessed_keys_are_read_for_our_table_only() {
+        let deferred = KeysAndAttributes::builder()
+            .set_keys(Some(vec![key("p1"), key("p2")]))
+            .build()
+            .unwrap();
+        let other = KeysAndAttributes::builder()
+            .set_keys(Some(vec![key("s1")]))
+            .build()
+            .unwrap();
+        let unprocessed = HashMap::from([
+            ("seslogin_person".to_string(), deferred),
+            ("seslogin_session".to_string(), other),
+        ]);
+
+        let pending = unprocessed_keys_for("seslogin_person", Some(unprocessed));
+        assert_eq!(pending, vec![key("p1"), key("p2")]);
+    }
+
+    #[test]
+    fn unprocessed_keys_of_a_table_we_did_not_ask_for_are_ignored() {
+        let other = KeysAndAttributes::builder()
+            .set_keys(Some(vec![key("s1")]))
+            .build()
+            .unwrap();
+        let unprocessed = HashMap::from([("seslogin_session".to_string(), other)]);
+        assert!(unprocessed_keys_for("seslogin_person", Some(unprocessed)).is_empty());
+    }
+
+    #[test]
+    fn backoff_grows_and_is_capped() {
+        let delays: Vec<u64> = (1..=4)
+            .map(|r| batch_get_backoff(r).as_millis() as u64)
+            .collect();
+        assert_eq!(delays, vec![50, 100, 200, 400]);
+        // Total wait across every retry the loop will make, so the ceiling on a
+        // throttled request is predictable.
+        assert_eq!(delays.iter().sum::<u64>(), 750);
+        // Far beyond the attempt limit it must still terminate at the ceiling rather
+        // than overflow the shift.
+        assert_eq!(batch_get_backoff(64).as_millis(), 1000);
     }
 
     #[test]
