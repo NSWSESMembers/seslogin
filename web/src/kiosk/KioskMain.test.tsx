@@ -204,6 +204,47 @@ describe("KioskMain", () => {
     );
     expect(audioPlaySpy).toHaveBeenCalledOnce();
   });
+
+  it("reports a recorded-but-undisplayed scan when the mutation response has a field error", async () => {
+    // The write succeeded (data is non-null) but a nested field — Period.person,
+    // as a dangling reference would produce — failed to resolve. This must not
+    // be silently treated as a successful scan with a missing name.
+    server.use(
+      relayEndpoint.mutation("ScanControllerRegister2Mutation", () => {
+        return HttpResponse.json({
+          data: {
+            scanRegister2: {
+              id: FOUND_USER,
+              state: "SIGNED_IN",
+              period: {
+                id: "period-123",
+                startTime: new Date().getTime() - 1000 * 60 * 60,
+                endTime: new Date().getTime(),
+                person: null,
+              },
+              quickPick: null,
+            },
+          },
+          errors: [
+            {
+              message: "Person with ID abc123 missing",
+              path: ["scanRegister2", "period", "person"],
+            },
+          ],
+        });
+      }),
+    );
+    const user = await setupTest();
+    await user.type(screen.getByRole("textbox"), FOUND_USER + "{enter}");
+    await waitFor(() =>
+      expect(
+        screen.getByText(
+          `recorded a scan for member ID ${FOUND_USER}, but couldn't display the result — check the activity list in admin`,
+        ),
+      ).toBeInTheDocument(),
+    );
+    expect(audioPlaySpy).toHaveBeenCalledOnce();
+  });
 });
 
 describe("KioskMain theme", () => {
