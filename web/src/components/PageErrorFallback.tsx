@@ -12,6 +12,14 @@ interface PageErrorFallbackProps extends FallbackProps {
    * can silently redisplay the exact same error.
    */
   reloadInstead?: boolean;
+  /**
+   * The resolved display message, from `useCaughtErrorMessage`'s `onError`
+   * capture — see that hook for why this can't be computed here instead.
+   * Falls back to the error's own message when absent (e.g. the brief window
+   * before `onError` has resolved it, or a caller that hasn't adopted the
+   * hook).
+   */
+  message?: string;
 }
 
 export default function PageErrorFallback({
@@ -19,14 +27,18 @@ export default function PageErrorFallback({
   resetErrorBoundary,
   showDetailsByDefault = false,
   reloadInstead = false,
+  message,
 }: PageErrorFallbackProps) {
   const [showDetails, setShowDetails] = useState(showDetailsByDefault);
-  const message = error instanceof Error ? error.message : String(error);
+  const displayMessage =
+    message ?? (error instanceof Error ? error.message : String(error));
 
   return (
     <div role="alert" className="p-6 text-center">
       <p>Something went wrong</p>
-      {showDetails ? <pre className="text-red-600">{message}</pre> : null}
+      {showDetails ? (
+        <pre className="text-red-600">{displayMessage}</pre>
+      ) : null}
       {reloadInstead ? (
         <Button onClick={() => window.location.reload()}>Reload page</Button>
       ) : (

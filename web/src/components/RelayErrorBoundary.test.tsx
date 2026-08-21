@@ -1,4 +1,5 @@
 import "@testing-library/jest-dom/vitest";
+import { StrictMode } from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import UserEvent from "@testing-library/user-event";
 import { render, screen } from "@testing-library/react";
@@ -6,9 +7,25 @@ import { Environment, Network, RecordSource, Store } from "relay-runtime";
 import { RelayEnvironmentProvider } from "react-relay";
 import RelayErrorBoundary from "./RelayErrorBoundary";
 import { useRelayRetryFetchKey } from "./relayRetryContext";
+import { relayFieldLogger } from "../lib/relayFieldLogger";
 
 function ThrowsAlways(): never {
   throw new Error("boom");
+}
+
+function ThrowsGenericRelayError(): never {
+  throw new Error("Relay: Missing expected data at path 'x' in 'y'.");
+}
+
+function bufferMessage(message: string) {
+  relayFieldLogger({
+    kind: "relay_field_payload.error" as const,
+    owner: "SomeQuery",
+    fieldPath: "location.periodSummaryByCategory.0.category",
+    error: { message, path: [], severity: "ERROR" as const },
+    shouldThrow: true,
+    handled: false,
+  });
 }
 
 function makeEnvironment() {
@@ -153,5 +170,33 @@ describe("RelayErrorBoundary", () => {
       </RelayEnvironmentProvider>,
     );
     expect(screen.getByText("recovered")).toBeInTheDocument();
+  });
+
+  it("recovers the real server message under StrictMode", () => {
+    // The bug this guards against: recovering the buffered message via a
+    // useState lazy initializer looks safe (it "only runs once" per commit)
+    // but isn't — StrictMode deliberately double-invokes exactly that kind
+    // of render-phase function to catch impurity like this. Since the
+    // recovery drains the buffer as a side effect, the first (thrown-away)
+    // invocation would consume the real message and the second would find
+    // nothing. Resolving it via onError (componentDidCatch) instead is safe
+    // because React guarantees that lifecycle method runs exactly once per
+    // catch, StrictMode included.
+    bufferMessage("Category with ID abc123 missing");
+    const environment = makeEnvironment();
+
+    render(
+      <StrictMode>
+        <RelayEnvironmentProvider environment={environment}>
+          <RelayErrorBoundary showDetailsByDefault>
+            <ThrowsGenericRelayError />
+          </RelayErrorBoundary>
+        </RelayEnvironmentProvider>
+      </StrictMode>,
+    );
+
+    expect(
+      screen.getByText("Category with ID abc123 missing"),
+    ).toBeInTheDocument();
   });
 });

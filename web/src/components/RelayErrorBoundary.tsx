@@ -4,6 +4,7 @@ import { commitLocalUpdate } from "relay-runtime";
 import { useRelayEnvironment } from "react-relay";
 import PageErrorFallback from "./PageErrorFallback";
 import { RelayRetryContext } from "./relayRetryContext";
+import { useCaughtErrorMessage } from "../lib/useCaughtErrorMessage";
 
 interface RelayErrorBoundaryProps {
   children: ReactNode;
@@ -55,11 +56,14 @@ export default function RelayErrorBoundary({
 }: RelayErrorBoundaryProps) {
   const environment = useRelayEnvironment();
   const [retryGeneration, setRetryGeneration] = useState(0);
+  const { message, onError, reset } = useCaughtErrorMessage();
 
   return (
     <ErrorBoundary
       key={resetKey}
+      onError={onError}
       onReset={() => {
+        reset();
         commitLocalUpdate(environment, (store) => store.invalidateStore());
         setRetryGeneration((n) => n + 1);
       }}
@@ -69,6 +73,7 @@ export default function RelayErrorBoundary({
           resetErrorBoundary={resetErrorBoundary}
           showDetailsByDefault={showDetailsByDefault}
           reloadInstead={!canRetry}
+          message={message ?? undefined}
         />
       )}
     >
