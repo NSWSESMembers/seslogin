@@ -8,6 +8,7 @@ import {
   clearBlockClientUpdates,
 } from "./clientUpdateLeases";
 import { type RequestParameters, type Variables } from "relay-runtime";
+import { MutationFieldError } from "./relayErrors";
 
 let requestLeaseCounter = 0;
 
@@ -84,5 +85,21 @@ export async function fetchGraphQL(
   if (!resp.ok) {
     throw new Error("Response failed.");
   }
-  return await resp.json();
+  const responseBody = await resp.json();
+
+  // A mutation that reports a field error is a failure, not a partial success:
+  // the write already happened (data is non-null), but some nested field on the
+  // result couldn't be read back. Routing this into the same MutationFieldError
+  // → onError path as any other mutation failure means every existing onError
+  // handler covers it with no changes, instead of the field silently landing in
+  // the response as an unexplained null that reaches onCompleted.
+  if (
+    request.operationKind === "mutation" &&
+    Array.isArray(responseBody?.errors) &&
+    responseBody.errors.length > 0
+  ) {
+    throw new MutationFieldError(responseBody.errors);
+  }
+
+  return responseBody;
 }
