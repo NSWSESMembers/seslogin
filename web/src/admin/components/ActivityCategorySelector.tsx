@@ -1,9 +1,9 @@
 import { useRef, useState } from "react";
 import { graphql } from "relay-runtime";
-import { useLazyLoadQuery } from "react-relay";
 import type { ActivityCategorySelectorQuery } from "./__generated__/ActivityCategorySelectorQuery.graphql";
 import { inputBase } from "../../components/ui/inputStyles";
 import { Button } from "../../components/ui/Button";
+import { useRetryableLazyLoadQuery } from "../../components/useRetryableLazyLoadQuery";
 
 interface ActivityCategorySelectorProps {
   value: ReadonlyArray<string>;
@@ -14,7 +14,7 @@ export default function ActivityCategorySelector({
   value,
   onChange,
 }: ActivityCategorySelectorProps) {
-  const data = useLazyLoadQuery<ActivityCategorySelectorQuery>(
+  const data = useRetryableLazyLoadQuery<ActivityCategorySelectorQuery>(
     graphql`
       query ActivityCategorySelectorQuery @throwOnFieldError {
         categories {

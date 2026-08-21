@@ -1,5 +1,6 @@
 import { useNavigate, useParams } from "react-router";
-import { graphql, useLazyLoadQuery, useMutation } from "react-relay";
+import { graphql, useMutation } from "react-relay";
+import { useRetryableLazyLoadQuery } from "../../components/useRetryableLazyLoadQuery";
 import type { NitcGroupEditQuery } from "./__generated__/NitcGroupEditQuery.graphql";
 import type { NitcGroupEditMutation } from "./__generated__/NitcGroupEditMutation.graphql";
 import { useNotify } from "../components/useNotify";
@@ -13,7 +14,7 @@ export default function NitcGroupEdit() {
   const { notifyError, notifySuccess } = useNotify();
   const id = params.nitcGroupId!;
 
-  const data = useLazyLoadQuery<NitcGroupEditQuery>(
+  const data = useRetryableLazyLoadQuery<NitcGroupEditQuery>(
     graphql`
       query NitcGroupEditQuery($id: ID!) @throwOnFieldError {
         nitcGroup(id: $id) {

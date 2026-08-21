@@ -1,5 +1,6 @@
-import { graphql, useLazyLoadQuery, useMutation } from "react-relay";
+import { graphql, useMutation } from "react-relay";
 import { useNavigate, useParams } from "react-router";
+import { useRetryableLazyLoadQuery } from "../../components/useRetryableLazyLoadQuery";
 import type { CategoryEditMutation } from "./__generated__/CategoryEditMutation.graphql";
 import type { CategoryEditQuery } from "./__generated__/CategoryEditQuery.graphql";
 import { useNotify } from "../components/useNotify";
@@ -13,7 +14,7 @@ export default function CategoryEdit() {
   const { notifyError, notifySuccess } = useNotify();
   const params = useParams();
   const id = params.categoryId!;
-  const data = useLazyLoadQuery<CategoryEditQuery>(
+  const data = useRetryableLazyLoadQuery<CategoryEditQuery>(
     graphql`
       query CategoryEditQuery($id: ID!) @throwOnFieldError {
         category(id: $id) {

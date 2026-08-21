@@ -1,5 +1,6 @@
 import { useNavigate } from "react-router";
-import { graphql, useLazyLoadQuery, useMutation } from "react-relay";
+import { graphql, useMutation } from "react-relay";
+import { useRetryableLazyLoadQuery } from "../../components/useRetryableLazyLoadQuery";
 import type { CategoryNewQuery } from "./__generated__/CategoryNewQuery.graphql";
 import type { CategoryNewMutation } from "./__generated__/CategoryNewMutation.graphql";
 import { useNotify } from "../components/useNotify";
@@ -32,7 +33,7 @@ export default function CategoryNew() {
   );
   const navigate = useNavigate();
 
-  const data = useLazyLoadQuery<CategoryNewQuery>(
+  const data = useRetryableLazyLoadQuery<CategoryNewQuery>(
     graphql`
       query CategoryNewQuery @throwOnFieldError {
         nitcGroups {

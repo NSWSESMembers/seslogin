@@ -1,4 +1,5 @@
-import { graphql, useLazyLoadQuery, useMutation } from "react-relay";
+import { graphql, useMutation } from "react-relay";
+import { useRetryableLazyLoadQuery } from "../../components/useRetryableLazyLoadQuery";
 import type {
   MembersListQuery,
   MembersListQuery$data,
@@ -127,7 +128,7 @@ export default function MembersList() {
   const { isDev } = useUserInfo();
   const selectedLocation = useSelectedLocation();
   const locationId = selectedLocation.id;
-  const data = useLazyLoadQuery<MembersListQuery>(
+  const data = useRetryableLazyLoadQuery<MembersListQuery>(
     graphql`
       query MembersListQuery($location: ID!) @throwOnFieldError {
         location(id: $location) {

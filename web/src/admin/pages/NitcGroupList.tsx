@@ -1,4 +1,5 @@
-import { graphql, useLazyLoadQuery, useMutation } from "react-relay";
+import { graphql, useMutation } from "react-relay";
+import { useRetryableLazyLoadQuery } from "../../components/useRetryableLazyLoadQuery";
 import type { NitcGroupListQuery } from "./__generated__/NitcGroupListQuery.graphql";
 import type { NitcGroupListDeleteMutation } from "./__generated__/NitcGroupListDeleteMutation.graphql";
 import { useNotify } from "../components/useNotify";
@@ -90,7 +91,7 @@ function Row({
 }
 
 export default function NitcGroupList() {
-  const data = useLazyLoadQuery<NitcGroupListQuery>(
+  const data = useRetryableLazyLoadQuery<NitcGroupListQuery>(
     graphql`
       query NitcGroupListQuery @throwOnFieldError {
         nitcGroups {

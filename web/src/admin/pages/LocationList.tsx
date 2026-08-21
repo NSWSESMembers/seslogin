@@ -1,10 +1,6 @@
 import { useState } from "react";
-import {
-  graphql,
-  useFragment,
-  useLazyLoadQuery,
-  useMutation,
-} from "react-relay";
+import { graphql, useFragment, useMutation } from "react-relay";
+import { useRetryableLazyLoadQuery } from "../../components/useRetryableLazyLoadQuery";
 import type { LocationList_item$key } from "./__generated__/LocationList_item.graphql";
 import type { LocationListQuery } from "./__generated__/LocationListQuery.graphql";
 import { useNavigate } from "react-router";
@@ -172,7 +168,7 @@ function Row(props: {
 export default function LocationList() {
   const { isDev } = useUserInfo();
   const [showDisabled, setShowDisabled] = useState(false);
-  const data = useLazyLoadQuery<LocationListQuery>(
+  const data = useRetryableLazyLoadQuery<LocationListQuery>(
     graphql`
       query LocationListQuery @throwOnFieldError {
         locations {

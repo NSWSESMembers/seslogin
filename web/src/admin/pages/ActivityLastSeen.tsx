@@ -1,6 +1,7 @@
-import { graphql, useLazyLoadQuery } from "react-relay";
+import { graphql } from "react-relay";
 import { useState } from "react";
 import { useSettings } from "../../lib/settings";
+import { useRetryableLazyLoadQuery } from "../../components/useRetryableLazyLoadQuery";
 import { formatFullDateTime, formatTimeDiff } from "../../lib/time";
 import type { ActivityLastSeenQuery } from "./__generated__/ActivityLastSeenQuery.graphql";
 import { AdminTable, Th, Td } from "../../components/ui/Table";
@@ -12,7 +13,7 @@ export default function ActivityLastSeen() {
   const settings = useSettings();
   const [sort, setSort] = useState<SortMode>("recent");
 
-  const data = useLazyLoadQuery<ActivityLastSeenQuery>(
+  const data = useRetryableLazyLoadQuery<ActivityLastSeenQuery>(
     graphql`
       query ActivityLastSeenQuery($location: ID!) @throwOnFieldError {
         location(id: $location) {

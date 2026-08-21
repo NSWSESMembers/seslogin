@@ -1,6 +1,7 @@
-import { graphql, useLazyLoadQuery, useMutation } from "react-relay";
+import { graphql, useMutation } from "react-relay";
 import { useNavigate, useParams } from "react-router";
 import useSelectedLocation from "../components/useSelectedLocation";
+import { useRetryableLazyLoadQuery } from "../../components/useRetryableLazyLoadQuery";
 import type { MembersEditQuery } from "./__generated__/MembersEditQuery.graphql";
 import type { MembersEditMutation } from "./__generated__/MembersEditMutation.graphql";
 import { useNotify } from "../components/useNotify";
@@ -15,7 +16,7 @@ export default function MembersEdit() {
   const { notifyError, notifySuccess } = useNotify();
   const selectedLocation = useSelectedLocation();
   const locationId = selectedLocation.id;
-  const data = useLazyLoadQuery<MembersEditQuery>(
+  const data = useRetryableLazyLoadQuery<MembersEditQuery>(
     graphql`
       query MembersEditQuery($id: ID!) @throwOnFieldError {
         person(id: $id) {

@@ -1,9 +1,10 @@
-import { graphql, useLazyLoadQuery, useMutation } from "react-relay";
+import { graphql, useMutation } from "react-relay";
 import { Link, useSearchParams } from "react-router";
 import { useState } from "react";
 import SessionForm from "../components/SessionForm";
 import useSelectedLocation from "../components/useSelectedLocation";
 import { useNotify } from "../components/useNotify";
+import { useRetryableLazyLoadQuery } from "../../components/useRetryableLazyLoadQuery";
 import type { SessionEnrollQuery } from "./__generated__/SessionEnrollQuery.graphql";
 import type { SessionEnrollMutation } from "./__generated__/SessionEnrollMutation.graphql";
 
@@ -34,7 +35,7 @@ function SessionEnrollForm({ fingerprint }: { fingerprint: string }) {
   const locationId = selectedLocation.id;
   const [enrolled, setEnrolled] = useState(false);
 
-  const data = useLazyLoadQuery<SessionEnrollQuery>(
+  const data = useRetryableLazyLoadQuery<SessionEnrollQuery>(
     graphql`
       query SessionEnrollQuery($fingerprint: String!) @throwOnFieldError {
         pendingEnrollmentKey(fingerprint: $fingerprint) {

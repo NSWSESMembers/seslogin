@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { formatSeconds } from "../../lib/time";
-import { graphql, useLazyLoadQuery, useMutation } from "react-relay";
+import { graphql, useMutation } from "react-relay";
 import SessionStatus from "../components/SessionStatus";
+import { useRetryableLazyLoadQuery } from "../../components/useRetryableLazyLoadQuery";
 import useSelectedLocation from "../components/useSelectedLocation";
 import { useUserInfo } from "../components/useUserInfo";
 import bulletGreen from "../../assets/bullet-green.svg";
@@ -159,7 +160,7 @@ export default function SessionsList() {
   const { isDev } = useUserInfo();
   const selectedLocation = useSelectedLocation();
   const locationId = selectedLocation.id;
-  const data = useLazyLoadQuery<SessionsListQuery>(
+  const data = useRetryableLazyLoadQuery<SessionsListQuery>(
     graphql`
       query SessionsListQuery($location: ID!) @throwOnFieldError {
         location(id: $location) {
