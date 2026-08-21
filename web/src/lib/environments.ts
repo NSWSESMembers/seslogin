@@ -6,6 +6,7 @@ import {
   type FetchFunction,
 } from "relay-runtime";
 import { fetchGraphQL } from "./graphql";
+import { relayFieldLogger } from "./relayFieldLogger";
 
 type GetTokenFn = () => Promise<string>;
 
@@ -39,6 +40,7 @@ export function createAdminGraphQLEnvironment(
   const environment = new Environment({
     network: Network.create(_fetchGraphQL),
     store: new Store(new RecordSource()),
+    relayFieldLogger,
   });
 
   return environment;
@@ -69,6 +71,7 @@ export function createKioskGraphQLEnvironment(
   const environment = new Environment({
     network: Network.create(_fetchGraphQL),
     store: new Store(new RecordSource(), { gcReleaseBufferSize: 0 }),
+    relayFieldLogger,
   });
 
   return environment;
@@ -108,6 +111,7 @@ export function createKioskKeyGraphQLEnvironment(
   const environment = new Environment({
     network: Network.create(_fetchGraphQL),
     store: new Store(new RecordSource(), { gcReleaseBufferSize: 0 }),
+    relayFieldLogger,
   });
 
   return environment;
@@ -135,6 +139,7 @@ export function createPeriodLinkGraphQLEnvironment(
   return new Environment({
     network: Network.create(_fetchGraphQL),
     store: new Store(new RecordSource()),
+    relayFieldLogger,
   });
 }
 
@@ -148,6 +153,7 @@ export function createUnauthenticatedGraphQLEnvironment(): Environment {
   const environment = new Environment({
     network: Network.create(_fetchGraphQL),
     // note: no cache/store as this is intended for one-off requests without auth
+    relayFieldLogger,
   });
 
   return environment;
