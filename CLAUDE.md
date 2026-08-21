@@ -60,22 +60,29 @@ or inactive record yields `401`. See `api/README.md` for details.
 
 #### Injecting resolver errors
 
-`SESLOGIN_FORCE_FIELD_ERRORS` makes named GraphQL fields fail, for testing how the
-frontend handles resolver errors:
+`SESLOGIN_FORCE_FIELD_ERRORS` makes a specific GraphQL field resolution fail, for
+testing how the frontend handles resolver errors:
 
 ```bash
-cd api && SESLOGIN_FORCE_FIELD_ERRORS='Period.person@0.05' \
-  SESLOGIN_FORCE_FIELD_ERRORS_BUDGET=1 \
+cd api && SESLOGIN_FORCE_FIELD_ERRORS='location.periods.edges.1.node.person' \
   RUST_LOG=info cargo run --bin poem -- --enable-mutations
 ```
 
-Comma-separated `ParentType.field` targets, each optionally `@<rate>` (0.0–1.0,
-default 1.0). Failing a **nullable** field (`Period.person`) yields a *partial*
-response — HTTP 200 with `data` populated plus an `errors` entry — which is the shape
-clients most often mishandle; failing a **non-null** field (`Period.location`)
-collapses the response to `data: null`. Rates are decided by hashing the field's
-response path, so the same rows fail on every refetch. `_BUDGET` caps total
-injections, so setting it to `1` lets you verify that a retry actually refetches.
+Comma-separated targets, each an *exact* GraphQL response path — the same dotted
+string (`field.field.<index>.field...`) a real resolver error's `path` would carry,
+and the one this tool's own "injecting error at ..." log line prints, so a path
+copied from either place pins that exact field on that exact row. A `*` segment
+matches any single segment at that position (typically an array index), for a field
+across every row instead of one specific one — pair it with `@<rate>` (0.0–1.0,
+default 1.0) to select roughly that fraction, decided by hashing each row's own
+resolved path so the *same* rows fail on every refetch (a rate on an exact,
+non-wildcarded path just makes that one path always or never fire — not something
+you can tune from the outside, so leave it off there). Failing a **nullable** field
+(`...node.person`) yields a *partial* response — HTTP 200 with `data` populated plus
+an `errors` entry — which is the shape clients most often mishandle; failing a
+**non-null** field (`...node.location`) collapses the response to `data: null`.
+`SESLOGIN_FORCE_FIELD_ERRORS_BUDGET` caps total injections for the life of the
+process, so setting it to `1` lets you verify that a retry actually refetches.
 
 Dev only and compiled out of release builds (`#[cfg(debug_assertions)]`), so it cannot
 be enabled in any deployed environment. See `api/README.md` for details.
