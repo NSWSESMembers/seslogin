@@ -330,6 +330,46 @@ impl db::Handler for Handler {
         Self::unsupported()
     }
 
+    async fn scan_persons(
+        &self,
+        _cursor: Option<db::ScanCursor>,
+        _limit: i32,
+    ) -> db::Result<db::ScanPage<Person>> {
+        Self::unsupported()
+    }
+
+    async fn scan_periods(
+        &self,
+        _cursor: Option<db::ScanCursor>,
+        _limit: i32,
+    ) -> db::Result<db::ScanPage<Period>> {
+        Self::unsupported()
+    }
+
+    async fn scan_sessions(
+        &self,
+        _cursor: Option<db::ScanCursor>,
+        _limit: i32,
+    ) -> db::Result<db::ScanPage<Session>> {
+        Self::unsupported()
+    }
+
+    async fn scan_user_tokens(
+        &self,
+        _cursor: Option<db::ScanCursor>,
+        _limit: i32,
+    ) -> db::Result<db::ScanPage<db::UserToken>> {
+        Self::unsupported()
+    }
+
+    async fn scan_nitc_events(
+        &self,
+        _cursor: Option<db::ScanCursor>,
+        _limit: i32,
+    ) -> db::Result<db::ScanPage<db::NitcEvent>> {
+        Self::unsupported()
+    }
+
     async fn get_nitc_group(&self, _id: &str) -> db::Result<Option<db::NitcGroup>> {
         Self::unsupported()
     }

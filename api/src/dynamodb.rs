@@ -651,6 +651,47 @@ impl Handler {
         }
     }
 
+    /// One page of a base-table scan, hydrated leniently so a corrupt row is reported
+    /// rather than failing the page. See [`db::ScanPage`] for why an empty page does
+    /// not mean the walk is over.
+    async fn scan_page<R>(
+        &self,
+        op: &'static str,
+        name: &str,
+        cursor: Option<db::ScanCursor>,
+        limit: i32,
+    ) -> db::Result<db::ScanPage<R>>
+    where
+        Item: TryInto<R, Error = HydrationError>,
+    {
+        let mut builder = self
+            .client
+            .scan()
+            .table_name(self.table_name(name))
+            .limit(limit)
+            .return_consumed_capacity(ReturnConsumedCapacity::Total);
+        if let Some(cursor) = cursor {
+            builder = builder.set_exclusive_start_key(Some(HashMap::from([(
+                "id".to_string(),
+                AttributeValue::S(cursor.last_id),
+            )])));
+        }
+
+        let resp = builder
+            .send()
+            .await
+            .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
+        record_capacity(op, resp.consumed_capacity(), CapKind::Read);
+
+        Ok(db::ScanPage {
+            rows: hydrate_items_lenient(resp.items)
+                .into_iter()
+                .map(|row| row.map_err(db::Error::from))
+                .collect(),
+            next: scan_cursor_from_key(resp.last_evaluated_key),
+        })
+    }
+
     async fn get_records<R, T>(&self, name: &str, ids: &[T]) -> db::Result<Vec<Option<R>>>
     where
         T: AsRef<str> + Sync,
@@ -733,6 +774,19 @@ impl Handler {
             .map(|id| results.remove(id))
             .collect())
     }
+}
+
+/// Read a scan's continuation key back into a cursor.
+///
+/// A base-table scan's `LastEvaluatedKey` is just the primary key, and every scannable
+/// table is hash-keyed on a string `id`. A key of any other shape means the assumption
+/// no longer holds, so treat it as the end of the walk rather than guessing.
+fn scan_cursor_from_key(key: Option<HashMap<String, AttributeValue>>) -> Option<db::ScanCursor> {
+    key?.get("id")
+        .and_then(|v| v.as_s().ok())
+        .map(|id| db::ScanCursor {
+            last_id: id.to_string(),
+        })
 }
 
 /// How many times a single `BatchGetItem` chunk is sent before giving up. Four retries
@@ -848,7 +902,6 @@ where
 /// One corrupt row hides every row after it under [`hydrate_items`], so a consistency
 /// check built on that would need one pass per bad row to enumerate them all. Here the
 /// caller sees every failure at once, each already tagged with its record id.
-#[allow(dead_code)] // consumed by the forthcoming db-check tool
 fn hydrate_items_lenient<T>(
     items: Option<Vec<HashMap<String, AttributeValue>>>,
 ) -> Vec<HydrationResult<T>>
@@ -3186,6 +3239,51 @@ impl db::Handler for Handler {
         self.get_records("nitc_event", ids).await
     }
 
+    async fn scan_persons(
+        &self,
+        cursor: Option<db::ScanCursor>,
+        limit: i32,
+    ) -> db::Result<db::ScanPage<Person>> {
+        self.scan_page("scan_persons", "person", cursor, limit)
+            .await
+    }
+
+    async fn scan_periods(
+        &self,
+        cursor: Option<db::ScanCursor>,
+        limit: i32,
+    ) -> db::Result<db::ScanPage<Period>> {
+        self.scan_page("scan_periods", "period", cursor, limit)
+            .await
+    }
+
+    async fn scan_sessions(
+        &self,
+        cursor: Option<db::ScanCursor>,
+        limit: i32,
+    ) -> db::Result<db::ScanPage<Session>> {
+        self.scan_page("scan_sessions", "session", cursor, limit)
+            .await
+    }
+
+    async fn scan_user_tokens(
+        &self,
+        cursor: Option<db::ScanCursor>,
+        limit: i32,
+    ) -> db::Result<db::ScanPage<UserToken>> {
+        self.scan_page("scan_user_tokens", "user_token", cursor, limit)
+            .await
+    }
+
+    async fn scan_nitc_events(
+        &self,
+        cursor: Option<db::ScanCursor>,
+        limit: i32,
+    ) -> db::Result<db::ScanPage<db::NitcEvent>> {
+        self.scan_page("scan_nitc_events", "nitc_event", cursor, limit)
+            .await
+    }
+
     async fn list_nitc_events_for_location(
         &self,
         location_id: &str,
@@ -4179,8 +4277,9 @@ impl db::Handler for Handler {
 mod tests {
     use super::{
         Item, batch_get_backoff, hydrate_items, hydrate_items_lenient, nitc_event_key,
-        topic_date_key, unprocessed_keys_for,
+        scan_cursor_from_key, topic_date_key, unprocessed_keys_for,
     };
+    use crate::db;
     use crate::db::Category;
     use aws_sdk_dynamodb::types::{AttributeValue, KeysAndAttributes};
     use chrono::NaiveDate;
@@ -4322,6 +4421,35 @@ mod tests {
 
     fn key(id: &str) -> HashMap<String, AttributeValue> {
         HashMap::from([("id".to_string(), AttributeValue::S(id.to_string()))])
+    }
+
+    #[test]
+    fn a_scan_with_no_continuation_key_is_finished() {
+        assert_eq!(scan_cursor_from_key(None), None);
+    }
+
+    #[test]
+    fn scan_cursor_round_trips_the_primary_key() {
+        let key = HashMap::from([("id".to_string(), AttributeValue::S("p42".to_string()))]);
+        assert_eq!(
+            scan_cursor_from_key(Some(key)),
+            Some(db::ScanCursor {
+                last_id: "p42".to_string()
+            })
+        );
+    }
+
+    #[test]
+    fn an_unexpected_continuation_key_shape_ends_the_walk() {
+        // A base-table scan's key is just the string `id`. Anything else means the
+        // assumption behind ScanCursor no longer holds, and stopping is safer than
+        // guessing a resume point and silently skipping rows.
+        let numeric = HashMap::from([("id".to_string(), AttributeValue::N("42".to_string()))]);
+        assert_eq!(scan_cursor_from_key(Some(numeric)), None);
+
+        let wrong_attr =
+            HashMap::from([("email".to_string(), AttributeValue::S("a@b.c".to_string()))]);
+        assert_eq!(scan_cursor_from_key(Some(wrong_attr)), None);
     }
 
     #[test]
