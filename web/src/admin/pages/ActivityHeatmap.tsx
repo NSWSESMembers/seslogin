@@ -4,6 +4,7 @@ import ActivityTimeRange from "../components/ActivityTimeRange";
 import ActivityCategorySelector from "../components/ActivityCategorySelector";
 import ActivityHeatmapDisplay from "../components/ActivityHeatmapDisplay";
 import LoadingIndicator from "../../components/LoadingIndicator";
+import RelayErrorBoundary from "../../components/RelayErrorBoundary";
 import { Button } from "../../components/ui/Button";
 import Select from "../../components/ui/Select";
 import { dateToInputDateTimeLocal } from "../../lib/time";
@@ -248,16 +249,20 @@ export default function ActivityHeatmap() {
       )}
 
       {canRenderResults && (
-        <Suspense fallback={<LoadingIndicator />}>
-          <ActivityHeatmapDisplay
-            locationId={settings?.locationId || ""}
-            startTime={appliedRange.startTime}
-            endTime={appliedRange.endTime}
-            scale={scale}
-            categoryIds={appliedRange.categoryIds}
-            sortBy={sortBy}
-          />
-        </Suspense>
+        <RelayErrorBoundary
+          resetKey={`${appliedRange.startTime}-${appliedRange.endTime}-${appliedRange.categoryIds.join(",")}`}
+        >
+          <Suspense fallback={<LoadingIndicator />}>
+            <ActivityHeatmapDisplay
+              locationId={settings?.locationId || ""}
+              startTime={appliedRange.startTime}
+              endTime={appliedRange.endTime}
+              scale={scale}
+              categoryIds={appliedRange.categoryIds}
+              sortBy={sortBy}
+            />
+          </Suspense>
+        </RelayErrorBoundary>
       )}
     </>
   );
