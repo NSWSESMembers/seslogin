@@ -126,7 +126,11 @@ function LoginRequired() {
         onTokenError={onTokenError}
         onUnauthorized={onUnauthorized}
       >
-        <ErrorBoundary FallbackComponent={PageErrorFallback}>
+        <ErrorBoundary
+          fallbackRender={(props) => (
+            <PageErrorFallback {...props} reloadInstead />
+          )}
+        >
           <Suspense fallback={<LoadingIndicator />}>
             <UserInfoProvider>
               <NotificationProvider>

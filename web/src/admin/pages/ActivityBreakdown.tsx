@@ -46,7 +46,10 @@ export default function ActivityBreakdown() {
       )}
 
       {hasValidRange && (
-        <RelayErrorBoundary resetKey={`${appliedStartTime}-${appliedEndTime}`}>
+        <RelayErrorBoundary
+          resetKey={`${appliedStartTime}-${appliedEndTime}`}
+          canRetry
+        >
           <Suspense fallback={<LoadingIndicator />}>
             <ActivityBreakdownDisplay
               locationId={settings?.locationId || ""}

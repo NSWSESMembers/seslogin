@@ -10,6 +10,15 @@ interface RelayErrorBoundaryProps {
   /** Remounts the boundary (clearing its caught error) when this value changes. */
   resetKey?: string | number;
   showDetailsByDefault?: boolean;
+  /**
+   * Set only once every `useLazyLoadQuery` call reachable from `children`
+   * threads `useRelayRetryFetchKey()` into its `fetchKey` option — that's
+   * what makes "Try again" actually retry (see the doc comment below).
+   * Without it, "Try again" looks like it does something but doesn't:
+   * default to a "Reload page" button that does a real `window.location.reload()`
+   * instead.
+   */
+  canRetry?: boolean;
 }
 
 /**
@@ -31,11 +40,18 @@ interface RelayErrorBoundaryProps {
  *   entry — Relay's documented mechanism for forcing a query to be
  *   "re-evaluated... even if the variables didn't change" — which is what
  *   actually triggers a new fetch.
+ *
+ * Neither of those helps a single bit if nothing under `children` reads
+ * `useRelayRetryFetchKey()`, which is the case for most of this app today.
+ * `canRetry` defaults to false so a boundary that hasn't been checked for
+ * that shows an honest "Reload page" instead of a "Try again" that silently
+ * rethrows the same cached error.
  */
 export default function RelayErrorBoundary({
   children,
   resetKey,
   showDetailsByDefault,
+  canRetry = false,
 }: RelayErrorBoundaryProps) {
   const environment = useRelayEnvironment();
   const [retryGeneration, setRetryGeneration] = useState(0);
@@ -52,6 +68,7 @@ export default function RelayErrorBoundary({
           error={error}
           resetErrorBoundary={resetErrorBoundary}
           showDetailsByDefault={showDetailsByDefault}
+          reloadInstead={!canRetry}
         />
       )}
     >
