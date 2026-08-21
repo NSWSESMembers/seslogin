@@ -106,15 +106,6 @@ type Location {
 	createdAt: Int!
 	updatedAt: Int!
 	people: [Person!]!
-	"""
-	This location's most-frequently-used categories recently, ranked by
-	frequency then recency, with the people who most recently used each one.
-	
-	Superseded by `scanRegister2`'s `quickPick`, which serves the kiosk
-	sign-out screen without a second round trip. Kept for the kiosk clients
-	still deployed against it; remove once they have all rolled over.
-	"""
-	recentCategories(limit: Int): [LocationRecentCategory!]!
 	periods(onlyActive: Boolean, startTime: Int, endTime: Int, after: String, before: String, first: Int, last: Int): PeriodConnection!
 	periodSummaryByMember(startTime: Int!, endTime: Int!, categories: [ID!]): [MemberPeriodSummary!]!
 	periodSummaryByCategory(startTime: Int!, endTime: Int!): [CategoryPeriodSummary!]!
@@ -474,15 +465,6 @@ type Person {
 	The person's most recent period (by start time), or null if they have none.
 	"""
 	lastPeriod: Period
-	"""
-	This person's most-frequently-used categories recently, ranked by
-	frequency then recency.
-	
-	Superseded by `scanRegister2`'s `quickPick`, which serves the kiosk
-	sign-out screen without a second round trip. Kept for the kiosk clients
-	still deployed against it; remove once they have all rolled over.
-	"""
-	recentCategories(limit: Int): [PersonRecentCategory!]!
 }
 
 type PersonRecentCategory {

@@ -297,6 +297,11 @@ pub struct GraphQlFieldError<'a> {
     pub caller_type: CallerType,
     pub caller_id: &'a str,
     pub error: &'a str,
+    /// Machine-readable classification (`NOT_FOUND`, `FORBIDDEN`,
+    /// `UNAUTHENTICATED`, `CONFLICT`, `INTERNAL`) — lets alarms and Logs Insights
+    /// queries separate expected failures from ones that need attention, which the
+    /// message text alone can't do.
+    pub code: &'a str,
 }
 
 impl GraphQlFieldError<'_> {
@@ -309,6 +314,7 @@ impl GraphQlFieldError<'_> {
             caller_type = self.caller_type.as_str(),
             caller_id = self.caller_id,
             error = self.error,
+            code = self.code,
             "graphql field error",
         );
     }
