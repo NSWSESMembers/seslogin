@@ -3,7 +3,7 @@ use async_graphql::dataloader::DataLoader;
 use async_graphql::extensions::{
     Extension, ExtensionContext, ExtensionFactory, NextResolve, ResolveInfo,
 };
-use async_graphql::{EmptySubscription, Schema, ServerResult, Value};
+use async_graphql::{EmptySubscription, Schema, ServerError, ServerResult, Value};
 use std::sync::Arc;
 
 use crate::app::App;
@@ -15,6 +15,7 @@ use crate::telemetry::{self, OperationKind};
 
 pub mod auth;
 pub mod dataloader;
+pub mod error;
 #[cfg(debug_assertions)]
 pub mod error_injection;
 pub mod mutations;
@@ -64,6 +65,15 @@ impl ExtensionFactory for RequestMetricsExt {
 
 struct RequestMetricsExtImpl;
 
+/// Read back the `code` extension an error already carries (set by `AuthGuard` for
+/// its six failure arms), if any.
+fn existing_code(err: &ServerError) -> Option<String> {
+    match err.extensions.as_ref()?.get("code")? {
+        Value::String(s) => Some(s.clone()),
+        _ => None,
+    }
+}
+
 #[async_graphql::async_trait::async_trait]
 impl Extension for RequestMetricsExtImpl {
     async fn resolve(
@@ -79,10 +89,28 @@ impl Extension for RequestMetricsExtImpl {
             _ => None,
         };
         let field = info.name;
-        let res = next.run(ctx, info).await;
+        let mut res = next.run(ctx, info).await;
 
-        // Only observe top-level query/mutation fields, not nested object fields.
-        if let (Some(operation_type), Err(err)) = (operation_type, &res) {
+        let Err(err) = &mut res else {
+            return res;
+        };
+
+        // Classify and stamp `extensions.code`, at every depth — not just root
+        // fields. The sub-field errors this exists for (e.g. Period.person on a
+        // page of periods) are never at the root, so classification can't be
+        // limited to the same scope as the metrics counter below. A code already
+        // set by AuthGuard is left as-is; anything else defaults to INTERNAL.
+        let code = existing_code(err).unwrap_or_else(|| {
+            let code = error::classify(err).as_str();
+            err.extensions
+                .get_or_insert_with(Default::default)
+                .set("code", code);
+            code.to_string()
+        });
+
+        // Only observe (metrics + structured log) top-level query/mutation fields,
+        // not nested object fields.
+        if let Some(operation_type) = operation_type {
             let _ = request_metrics::METRICS.try_with(|m| match operation_type {
                 OperationKind::Mutation => m.incr_mutation_failure(),
                 _ => m.incr_query_failure(),
@@ -95,6 +123,7 @@ impl Extension for RequestMetricsExtImpl {
                 caller_type,
                 caller_id: &caller_id,
                 error: &err.message,
+                code: &code,
             }
             .emit();
         }
