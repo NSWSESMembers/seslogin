@@ -62,36 +62,42 @@ return `401`.
 ### Injecting resolver errors
 
 To exercise the frontend's GraphQL error handling, `SESLOGIN_FORCE_FIELD_ERRORS`
-makes named fields fail on demand:
+makes a specific field resolution fail on demand:
 
 ```bash
-# Fail every Period.person resolution
-SESLOGIN_FORCE_FIELD_ERRORS='Period.person' \
+# Fail exactly this row's person lookup — copy the path straight out of a previous
+# run's "injecting error at ..." log line, or a real resolver error's `path`
+SESLOGIN_FORCE_FIELD_ERRORS='location.periods.edges.1.node.person' \
   RUST_LOG=info cargo run --bin poem -- --enable-mutations
 
-# Fail ~5% of rows, and only the first 1 of them
-SESLOGIN_FORCE_FIELD_ERRORS='Period.person@0.05' \
+# Fail ~5% of every row's person lookup, and only the first 1 of them
+SESLOGIN_FORCE_FIELD_ERRORS='location.periods.edges.*.node.person@0.05' \
   SESLOGIN_FORCE_FIELD_ERRORS_BUDGET=1 \
   RUST_LOG=info cargo run --bin poem -- --enable-mutations
 ```
 
-Each target is `ParentType.field`, comma-separated, optionally suffixed with
-`@<rate>` (a probability in `0.0..=1.0`, default `1.0`).
+Each target is an exact GraphQL response path, comma-separated — the same dotted
+shape (`field.field.<index>.field...`) a real resolver error's `path` carries. A `*`
+segment matches any single segment at that position (typically an array index), for
+targeting a field across every row instead of one specific one; pair it with
+`@<rate>` (a probability in `0.0..=1.0`, default `1.0`) to fail roughly that fraction
+of matches. A rate on an exact, non-wildcarded path just makes that one path always
+or never fire — not something you can tune from the outside — so leave it off there.
 
 The failure is raised from an async-graphql extension, which is indistinguishable
 from the resolver itself returning `Err` — so async-graphql applies its normal
 null-propagation. That is what makes this useful:
 
-- A **nullable** target (`Period.person`, `Period.category`) produces a *partial*
+- A **nullable** target (`...node.person`, `...node.category`) produces a *partial*
   response: HTTP 200, `data` populated, plus an `errors` entry. This is the case
   clients tend to mishandle, and it is otherwise hard to provoke.
-- A **non-null** target (`Period.location`) propagates up to the nearest nullable
+- A **non-null** target (`...node.location`) propagates up to the nearest nullable
   ancestor, usually collapsing the whole response to `data: null`.
 
 Two details worth knowing:
 
-- **Failures are deterministic.** The rate is decided by hashing the field's full
-  response path (`location.periods.nodes.3.person`), so the *same* rows fail on every
+- **Failures are deterministic.** With a `*` in the path, the rate is decided by
+  hashing each matched row's own full response path, so the *same* rows fail on every
   refetch. A random rate would make retry behaviour untestable — you couldn't tell a
   fix from a lucky reroll.
 - **`_BUDGET` caps total injections** for the life of the process. Set it to `1` and
