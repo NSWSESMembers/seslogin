@@ -20,7 +20,7 @@ function GuestList(props: {
 }) {
   const data = useLazyLoadQuery<ScanGuestDialogQuery>(
     graphql`
-      query ScanGuestDialogQuery($first: Int!) {
+      query ScanGuestDialogQuery($first: Int!) @throwOnFieldError {
         session {
           location {
             periods(onlyActive: true, first: $first) {
