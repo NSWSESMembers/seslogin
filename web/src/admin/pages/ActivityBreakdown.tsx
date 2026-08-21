@@ -3,6 +3,7 @@ import { useSettings } from "../../lib/settings";
 import ActivityTimeRange from "../components/ActivityTimeRange";
 import ActivityBreakdownDisplay from "../components/ActivityBreakdownDisplay";
 import LoadingIndicator from "../../components/LoadingIndicator";
+import RelayErrorBoundary from "../../components/RelayErrorBoundary";
 import useActivityTimeRange from "../components/useActivityTimeRange";
 import { Button } from "../../components/ui/Button";
 
@@ -45,13 +46,15 @@ export default function ActivityBreakdown() {
       )}
 
       {hasValidRange && (
-        <Suspense fallback={<LoadingIndicator />}>
-          <ActivityBreakdownDisplay
-            locationId={settings?.locationId || ""}
-            startTime={appliedStartTime}
-            endTime={appliedEndTime}
-          />
-        </Suspense>
+        <RelayErrorBoundary resetKey={`${appliedStartTime}-${appliedEndTime}`}>
+          <Suspense fallback={<LoadingIndicator />}>
+            <ActivityBreakdownDisplay
+              locationId={settings?.locationId || ""}
+              startTime={appliedStartTime}
+              endTime={appliedEndTime}
+            />
+          </Suspense>
+        </RelayErrorBoundary>
       )}
     </>
   );

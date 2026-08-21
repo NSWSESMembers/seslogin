@@ -7,6 +7,7 @@ import ActivityBreakdownTable, {
 import type { ActivityBreakdownDisplayQuery } from "./__generated__/ActivityBreakdownDisplayQuery.graphql";
 import { useUserInfo } from "./useUserInfo";
 import { formatSeconds } from "../../lib/time";
+import { useRelayRetryFetchKey } from "../../components/relayRetryContext";
 
 interface ActivityBreakdownDisplayProps {
   locationId: string;
@@ -22,6 +23,7 @@ export default function ActivityBreakdownDisplay({
   const { disaggregateVirtualPeriods } = useUserInfo();
   const [hideVirtual, setHideVirtual] = useState(false);
   const showSplit = disaggregateVirtualPeriods && !hideVirtual;
+  const fetchKey = useRelayRetryFetchKey();
 
   const data = useLazyLoadQuery<ActivityBreakdownDisplayQuery>(
     graphql`
@@ -78,6 +80,7 @@ export default function ActivityBreakdownDisplay({
       startTime,
       endTime,
     },
+    { fetchKey },
   );
 
   const memberCategoryRows: ReadonlyArray<ActivityBreakdownGroupRow> =
