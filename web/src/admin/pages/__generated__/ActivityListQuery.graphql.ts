@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<400621ebead08c968a5ecb98e5a95638>>
+ * @generated SignedSource<<7c1549f9af8a50273f6108ffabebce30>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -286,9 +286,21 @@ return {
                           (v9/*: any*/),
                           (v10/*: any*/),
                           (v11/*: any*/),
-                          (v14/*: any*/),
-                          (v15/*: any*/),
-                          (v16/*: any*/)
+                          {
+                            "kind": "CatchField",
+                            "field": (v14/*: any*/),
+                            "to": "RESULT"
+                          },
+                          {
+                            "kind": "CatchField",
+                            "field": (v15/*: any*/),
+                            "to": "RESULT"
+                          },
+                          {
+                            "kind": "CatchField",
+                            "field": (v16/*: any*/),
+                            "to": "RESULT"
+                          }
                         ],
                         "args": null,
                         "argumentDefinitions": []
@@ -298,7 +310,11 @@ return {
                         "name": "ActivityList_periodName",
                         "selections": [
                           (v17/*: any*/),
-                          (v18/*: any*/)
+                          {
+                            "kind": "CatchField",
+                            "field": (v18/*: any*/),
+                            "to": "RESULT"
+                          }
                         ],
                         "args": null,
                         "argumentDefinitions": []
