@@ -4,6 +4,7 @@ import { fetchQuery, graphql } from "relay-runtime";
 import type { UserInfoProviderQuery } from "./__generated__/UserInfoProviderQuery.graphql";
 import { UserInfoContext } from "./UserInfoContext";
 import { setEnvironmentInfo } from "../../lib/environmentInfo";
+import { useRelayRetryFetchKey } from "../../components/relayRetryContext";
 
 export { UserInfoContext, type UserInfoContextType } from "./UserInfoContext";
 
@@ -43,6 +44,7 @@ const userInfoQuery = graphql`
  */
 export function UserInfoProvider({ children }: { children: ReactNode }) {
   const environment = useRelayEnvironment();
+  const fetchKey = useRelayRetryFetchKey();
 
   useEffect(() => {
     let currentSubscription: { unsubscribe: () => void } | undefined;
@@ -79,6 +81,7 @@ export function UserInfoProvider({ children }: { children: ReactNode }) {
     {},
     {
       fetchPolicy: "store-or-network",
+      fetchKey,
     },
   );
 

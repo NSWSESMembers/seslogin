@@ -3,6 +3,7 @@ import { ErrorBoundary } from "react-error-boundary";
 import AdminContent from "./components/AdminContent";
 import LoadingIndicator from "../components/LoadingIndicator";
 import PageErrorFallback from "../components/PageErrorFallback";
+import RelayErrorBoundary from "../components/RelayErrorBoundary";
 import SettingsProvider from "./components/SettingsProvider";
 import { UserInfoProvider } from "./components/UserInfoProvider";
 import { NotificationProvider } from "./components/Notifications";
@@ -126,11 +127,10 @@ function LoginRequired() {
         onTokenError={onTokenError}
         onUnauthorized={onUnauthorized}
       >
-        <ErrorBoundary
-          fallbackRender={(props) => (
-            <PageErrorFallback {...props} reloadInstead />
-          )}
-        >
+        {/* canRetry: both queries reachable here before AdminContent's own
+            boundary takes over — UserInfoProvider and PasskeyEnrollPrompt —
+            thread useRelayRetryFetchKey() into their useLazyLoadQuery call. */}
+        <RelayErrorBoundary canRetry>
           <Suspense fallback={<LoadingIndicator />}>
             <UserInfoProvider>
               <NotificationProvider>
@@ -144,7 +144,7 @@ function LoginRequired() {
               </NotificationProvider>
             </UserInfoProvider>
           </Suspense>
-        </ErrorBoundary>
+        </RelayErrorBoundary>
       </AdminRelayEnvironment>
     </SettingsProvider>
   );
