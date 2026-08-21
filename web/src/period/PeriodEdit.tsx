@@ -92,8 +92,8 @@ export default function PeriodEdit() {
       <ErrorBoundary
         fallback={
           <LinkProblem>
-            This link has expired or is no longer valid. Edit links last 48
-            hours.
+            We couldn't load your time entry. This can happen if the link has
+            expired, or if something went wrong on our end.
           </LinkProblem>
         }
       >
