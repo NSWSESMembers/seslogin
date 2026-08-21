@@ -4,15 +4,17 @@ import type { StatusQuery } from "./__generated__/StatusQuery.graphql";
 import StatusCurrentDisplay, {
   type StatusPeriod,
 } from "../components/StatusCurrentDisplay";
+import { useRelayRetryFetchKey } from "../../components/relayRetryContext";
 
 const REFRESH_INTERVAL_MS = 60_000;
 
 export default function Status() {
-  const [fetchKey, setFetchKey] = useState(0);
+  const [autoRefreshKey, setAutoRefreshKey] = useState(0);
+  const retryFetchKey = useRelayRetryFetchKey();
 
   useEffect(() => {
     const intervalId = window.setInterval(() => {
-      setFetchKey((k) => k + 1);
+      setAutoRefreshKey((k) => k + 1);
     }, REFRESH_INTERVAL_MS);
     return () => window.clearInterval(intervalId);
   }, []);
@@ -41,7 +43,13 @@ export default function Status() {
       }
     `,
     { first: 100 },
-    { fetchKey, fetchPolicy: "network-only" },
+    {
+      // Two independent reasons to force a refetch: the periodic auto-refresh
+      // and a "Try again" click on the error boundary. Combine both counters
+      // into one fetchKey so either alone busts the QueryResource cache.
+      fetchKey: `${autoRefreshKey}-${retryFetchKey}`,
+      fetchPolicy: "network-only",
+    },
   );
 
   // StatusCurrentDisplay is presentational (also rendered with mock data in

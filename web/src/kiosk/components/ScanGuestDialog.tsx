@@ -9,6 +9,7 @@ import type { ScanGuestDialogQuery } from "./__generated__/ScanGuestDialogQuery.
 import type { ScanGuestDialogSignInMutation } from "./__generated__/ScanGuestDialogSignInMutation.graphql";
 import type { ScanGuestDialogSignOutMutation } from "./__generated__/ScanGuestDialogSignOutMutation.graphql";
 import { useSuspendScanFocus } from "../lib/scanFocusLeases";
+import { useRelayRetryFetchKey } from "../../components/relayRetryContext";
 
 const GUEST_DIALOG_FOCUS_LEASE_ID = "scan:guest-dialog";
 
@@ -18,6 +19,7 @@ function GuestList(props: {
   onSignOut: (id: string) => void;
   signOutInFlightId: string | null;
 }) {
+  const fetchKey = useRelayRetryFetchKey();
   const data = useLazyLoadQuery<ScanGuestDialogQuery>(
     graphql`
       query ScanGuestDialogQuery($first: Int!) @throwOnFieldError {
@@ -37,7 +39,7 @@ function GuestList(props: {
       }
     `,
     { first: 100 },
-    { fetchPolicy: "network-only" },
+    { fetchPolicy: "network-only", fetchKey },
   );
 
   const guests = data.session.location.periods.edges

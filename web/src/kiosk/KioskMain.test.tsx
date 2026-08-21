@@ -412,4 +412,92 @@ describe("KioskMain status screen", () => {
       expect(screen.getByText("Something went wrong")).toBeInTheDocument(),
     );
   });
+
+  it("recovers when 'Try again' is clicked once the query starts succeeding", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    server.use(
+      sessionConfigHandler({ status: true }),
+      relayEndpoint.query("StatusQuery", () =>
+        HttpResponse.json({
+          data: {
+            session: {
+              location: {
+                periods: {
+                  edges: [
+                    {
+                      node: {
+                        id: "period-1",
+                        startTime: Math.floor(Date.now() / 1000),
+                        guestName: null,
+                        person: null,
+                      },
+                    },
+                  ],
+                },
+              },
+            },
+          },
+          errors: [
+            {
+              message: "Person with ID abc123 missing",
+              path: [
+                "session",
+                "location",
+                "periods",
+                "edges",
+                0,
+                "node",
+                "person",
+              ],
+            },
+          ],
+        }),
+      ),
+    );
+
+    render(<KioskMain />);
+
+    await waitFor(() =>
+      expect(screen.getByText("Something went wrong")).toBeInTheDocument(),
+    );
+
+    // Whatever caused the field error is now fixed server-side.
+    server.use(
+      relayEndpoint.query("StatusQuery", () =>
+        HttpResponse.json({
+          data: {
+            session: {
+              location: {
+                periods: {
+                  edges: [
+                    {
+                      node: {
+                        id: "period-1",
+                        startTime: Math.floor(Date.now() / 1000),
+                        guestName: "Random Guy",
+                        person: null,
+                      },
+                    },
+                  ],
+                },
+              },
+            },
+          },
+        }),
+      ),
+    );
+
+    const user = UserEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Try again" }));
+
+    // This is the actual regression test for the fetchKey fix: if "Try
+    // again" only invalidated the store (the pre-fetchKey behaviour), the
+    // useLazyLoadQuery cache entry still holds the original thrown error and
+    // this would keep showing "Something went wrong" forever, even though
+    // the server would now respond successfully.
+    await waitFor(() =>
+      expect(screen.getByText("1 member signed in")).toBeInTheDocument(),
+    );
+    expect(screen.getByText("Random Guy (Guest)")).toBeInTheDocument();
+  });
 });
