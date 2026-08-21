@@ -1,23 +1,38 @@
 //! Dev-only resolver error injection.
 //!
-//! Makes a named field fail on demand so the frontend's handling of GraphQL errors
-//! can be exercised against a real server. Failing from an [`Extension::resolve`] is
-//! indistinguishable from the resolver itself returning `Err`: async-graphql performs
-//! its normal null-propagation, so a nullable field yields a *partial* response
-//! (`data` populated plus an `errors` entry) while a non-null one propagates up to the
-//! nearest nullable ancestor. Both are shapes the client is otherwise hard to push into.
+//! Makes a specific field resolution fail on demand so the frontend's handling of
+//! GraphQL errors can be exercised against a real server. Failing from an
+//! [`Extension::resolve`] is indistinguishable from the resolver itself returning
+//! `Err`: async-graphql performs its normal null-propagation, so a nullable field
+//! yields a *partial* response (`data` populated plus an `errors` entry) while a
+//! non-null one propagates up to the nearest nullable ancestor. Both are shapes the
+//! client is otherwise hard to push into.
 //!
 //! Configured entirely by environment variable:
 //!
 //! ```text
-//! SESLOGIN_FORCE_FIELD_ERRORS="Period.person@0.05,Period.location"
+//! SESLOGIN_FORCE_FIELD_ERRORS="location.periods.edges.1.node.person,location.periods.edges.*.node.category@0.1"
 //! SESLOGIN_FORCE_FIELD_ERRORS_BUDGET=1
 //! ```
 //!
-//! Each target is `ParentType.field`, optionally suffixed with `@<rate>` where rate is
-//! a probability in `0.0..=1.0` (default `1.0`). `BUDGET` caps the total number of
-//! injected failures for the life of the process; once spent, the injector goes quiet.
-//! That is what makes a retry testable — set it to 1 and the second attempt must succeed.
+//! Each target is a comma-separated GraphQL response path, using the same dotted shape
+//! (`field.field.<index>.field...`) a real resolver error's `path` would carry and the
+//! one this module's own "injecting error at ..." log line prints — so a path copied
+//! from either place matches directly, letting you pin one exact row. A `*` segment
+//! matches any single segment at that position (typically an array index), for
+//! targeting a field across every row instead of one specific one.
+//!
+//! Optionally suffixed with `@<rate>` (a probability in `0.0..=1.0`, default `1.0`) —
+//! mainly useful together with a `*`: the rate is decided per matched row by hashing
+//! that row's own fully-resolved path, so the *same* rows fail on every request rather
+//! than reshuffling each time (a fix couldn't otherwise be told apart from a lucky
+//! reroll). On an exact, non-wildcarded path a rate other than the default just makes
+//! that one path either always or never fire — not something you can tune
+//! meaningfully from the outside — so leave it off there.
+//!
+//! `BUDGET` caps the total number of injected failures for the life of the process;
+//! once spent, the injector goes quiet. That is what makes a retry testable — set it
+//! to 1 and the first request against a target fails while the next succeeds.
 //!
 //! This module is compiled only in debug builds (see the `#[cfg(debug_assertions)]` on
 //! its declaration in the parent module). Every deployed Lambda is a release build, so
@@ -38,27 +53,40 @@ const BUDGET_VAR: &str = "SESLOGIN_FORCE_FIELD_ERRORS_BUDGET";
 /// Denominator for the rate comparison. Rates finer than 1/10000 aren't useful here.
 const RATE_SCALE: u64 = 10_000;
 
+/// A segment that's `*` in the target spec matches any single segment (name or index)
+/// at that position in an actual response path.
+const WILDCARD: &str = "*";
+
 #[derive(Debug, Clone, PartialEq)]
 struct Target {
-    parent_type: String,
-    field: String,
+    /// The response path pattern to match, e.g. `location.periods.edges.*.node.person`.
+    pattern: String,
     /// Probability of failure, already scaled by [`RATE_SCALE`].
     scaled_rate: u64,
 }
 
 impl Target {
-    fn matches(&self, parent_type: &str, field: &str) -> bool {
-        self.parent_type == parent_type && self.field == field
+    /// Segment-wise match against an actual response path: same segment count, and
+    /// each pattern segment either is `*` or equals the corresponding path segment.
+    fn matches(&self, path: &str) -> bool {
+        let mut pattern_segments = self.pattern.split('.');
+        let mut path_segments = path.split('.');
+        loop {
+            match (pattern_segments.next(), path_segments.next()) {
+                (None, None) => return true,
+                (Some(p), Some(a)) if p == WILDCARD || p == a => continue,
+                _ => return false,
+            }
+        }
     }
 }
 
-/// Parse one `ParentType.field[@rate]` entry. Returns `Err` with a human-readable
-/// reason so the caller can warn about the specific entry rather than silently
-/// ignoring a typo.
+/// Parse one `pattern[@rate]` entry. Returns `Err` with a human-readable reason so the
+/// caller can warn about the specific entry rather than silently ignoring a typo.
 fn parse_target(spec: &str) -> Result<Target, String> {
-    let (path, scaled_rate) = match spec.split_once('@') {
+    let (pattern, scaled_rate) = match spec.split_once('@') {
         None => (spec, RATE_SCALE),
-        Some((path, rate)) => {
+        Some((pattern, rate)) => {
             let rate: f64 = rate
                 .trim()
                 .parse()
@@ -66,21 +94,17 @@ fn parse_target(spec: &str) -> Result<Target, String> {
             if !(0.0..=1.0).contains(&rate) {
                 return Err(format!("rate `{rate}` is outside 0.0..=1.0"));
             }
-            (path, (rate * RATE_SCALE as f64).round() as u64)
+            (pattern, (rate * RATE_SCALE as f64).round() as u64)
         }
     };
 
-    let (parent_type, field) = path
-        .trim()
-        .split_once('.')
-        .ok_or_else(|| format!("`{path}` is not in `ParentType.field` form"))?;
-    if parent_type.is_empty() || field.is_empty() {
-        return Err(format!("`{path}` is not in `ParentType.field` form"));
+    let pattern = pattern.trim();
+    if pattern.is_empty() {
+        return Err("pattern is empty".to_string());
     }
 
     Ok(Target {
-        parent_type: parent_type.to_string(),
-        field: field.to_string(),
+        pattern: pattern.to_string(),
         scaled_rate,
     })
 }
@@ -120,13 +144,12 @@ fn selected_by_rate(path: &str, scaled_rate: u64) -> bool {
 }
 
 /// Build the `path` a real resolver error would carry, from the same
-/// [`QueryPathNode`] this extension already reads for the rate decision.
-///
-/// `QueryPathNode` is a reverse linked list (each node points at its parent), and
-/// the walk that converts it to `Vec<PathSegment>` for [`ServerError::path`]
-/// (`ContextBase::set_error_path` in async-graphql) is `pub(crate)`-only, so it
-/// isn't reachable from here. Its `segment`/`parent` fields are public, though,
-/// which is enough to reimplement the same walk.
+/// [`QueryPathNode`] this extension already reads for the match. `QueryPathNode` is a
+/// reverse linked list (each node points at its parent), and the walk that converts it
+/// to `Vec<PathSegment>` for [`ServerError::path`] (`ContextBase::set_error_path` in
+/// async-graphql) is `pub(crate)`-only, so it isn't reachable from here. Its
+/// `segment`/`parent` fields are public, though, which is enough to reimplement the
+/// same walk.
 fn path_segments(node: &QueryPathNode) -> Vec<PathSegment> {
     let mut segments = Vec::new();
     let mut current = Some(node);
@@ -178,12 +201,7 @@ impl ForceFieldErrors {
             "ERROR INJECTION ACTIVE: {} will fail{}. This is a dev-only testing aid.",
             targets
                 .iter()
-                .map(|t| format!(
-                    "{}.{}@{}",
-                    t.parent_type,
-                    t.field,
-                    t.scaled_rate as f64 / RATE_SCALE as f64
-                ))
+                .map(|t| format!("{}@{}", t.pattern, t.scaled_rate as f64 / RATE_SCALE as f64))
                 .collect::<Vec<_>>()
                 .join(", "),
             match &budget {
@@ -236,35 +254,36 @@ impl Extension for ForceFieldErrorsExt {
         info: ResolveInfo<'_>,
         next: NextResolve<'_>,
     ) -> ServerResult<Option<Value>> {
-        let matched = self
-            .targets
-            .iter()
-            .find(|t| t.matches(info.parent_type, info.name));
+        // Targets are matched by response path (with optional wildcard segments)
+        // rather than by (parent_type, name), so the path has to be built
+        // unconditionally rather than only after a cheap type/field match — fine,
+        // since this whole extension only exists when a developer has explicitly
+        // opted in via SESLOGIN_FORCE_FIELD_ERRORS.
+        let path = info.path_node.to_string();
+        let matched = self.targets.iter().find(|t| t.matches(&path));
 
-        if let Some(target) = matched {
-            // Full response path, e.g. `location.periods.nodes.3.person`, so the rate
-            // decision is stable per row rather than per resolution.
-            let path = info.path_node.to_string();
-            if selected_by_rate(&path, target.scaled_rate) && self.claim_budget() {
-                tracing::warn!(
-                    "injecting error at {path} ({}.{})",
-                    info.parent_type,
-                    info.name
-                );
-                // Match the shape of a real resolver error (message + locations +
-                // path) rather than just a message — the two are otherwise
-                // distinguishable client-side, which defeats the point of
-                // injecting from here instead of a resolver.
-                let pos = info.field.name.pos;
-                return Err(ServerError::new(
-                    format!(
-                        "Injected error: `{}.{}` was failed by {TARGETS_VAR}",
-                        info.parent_type, info.name
-                    ),
-                    Some(pos),
-                )
-                .with_path(path_segments(info.path_node)));
-            }
+        if let Some(target) = matched
+            && selected_by_rate(&path, target.scaled_rate)
+            && self.claim_budget()
+        {
+            tracing::warn!(
+                "injecting error at {path} ({}.{})",
+                info.parent_type,
+                info.name
+            );
+            // Match the shape of a real resolver error (message + locations +
+            // path) rather than just a message — the two are otherwise
+            // distinguishable client-side, which defeats the point of
+            // injecting from here instead of a resolver.
+            let pos = info.field.name.pos;
+            return Err(ServerError::new(
+                format!(
+                    "Injected error: `{}.{}` was failed by {TARGETS_VAR}",
+                    info.parent_type, info.name
+                ),
+                Some(pos),
+            )
+            .with_path(path_segments(info.path_node)));
         }
 
         next.run(ctx, info).await
@@ -325,12 +344,11 @@ mod tests {
     }
 
     #[test]
-    fn parses_a_bare_target_at_full_rate() {
+    fn parses_a_bare_pattern_at_full_rate() {
         assert_eq!(
-            parse_target("Period.person").unwrap(),
+            parse_target("location.periods.edges.1.node.person").unwrap(),
             Target {
-                parent_type: "Period".into(),
-                field: "person".into(),
+                pattern: "location.periods.edges.1.node.person".into(),
                 scaled_rate: RATE_SCALE,
             }
         );
@@ -338,38 +356,62 @@ mod tests {
 
     #[test]
     fn parses_an_explicit_rate() {
-        assert_eq!(parse_target("Period.person@0.05").unwrap().scaled_rate, 500);
         assert_eq!(
-            parse_target("Period.person@1.0").unwrap().scaled_rate,
+            parse_target("location.periods.edges.*.node.person@0.05")
+                .unwrap()
+                .scaled_rate,
+            500
+        );
+        assert_eq!(
+            parse_target("location.periods.edges.*.node.person@1.0")
+                .unwrap()
+                .scaled_rate,
             RATE_SCALE
         );
-        assert_eq!(parse_target("Period.person@0").unwrap().scaled_rate, 0);
+        assert_eq!(
+            parse_target("location.periods.edges.*.node.person@0")
+                .unwrap()
+                .scaled_rate,
+            0
+        );
     }
 
     #[test]
     fn rejects_malformed_targets() {
-        assert!(parse_target("Period").is_err());
-        assert!(parse_target(".person").is_err());
-        assert!(parse_target("Period.").is_err());
-        assert!(parse_target("Period.person@nope").is_err());
-        assert!(parse_target("Period.person@1.5").is_err());
-        assert!(parse_target("Period.person@-0.1").is_err());
+        assert!(parse_target("").is_err());
+        assert!(parse_target("@0.5").is_err());
+        assert!(parse_target("location.periods.edges.1.node.person@nope").is_err());
+        assert!(parse_target("location.periods.edges.1.node.person@1.5").is_err());
+        assert!(parse_target("location.periods.edges.1.node.person@-0.1").is_err());
     }
 
     #[test]
     fn skips_bad_entries_but_keeps_good_ones() {
-        let targets = parse_targets("Period.person, nonsense ,Period.location@0.5");
+        let targets = parse_targets(
+            "location.periods.edges.1.node.person, @nope ,location.periods.edges.*.node.category@0.5",
+        );
         assert_eq!(targets.len(), 2);
-        assert_eq!(targets[0].field, "person");
-        assert_eq!(targets[1].field, "location");
+        assert_eq!(targets[0].pattern, "location.periods.edges.1.node.person");
+        assert_eq!(targets[1].pattern, "location.periods.edges.*.node.category");
     }
 
     #[test]
-    fn matches_on_parent_type_and_field() {
-        let target = parse_target("Period.person").unwrap();
-        assert!(target.matches("Period", "person"));
-        assert!(!target.matches("Person", "person"));
-        assert!(!target.matches("Period", "location"));
+    fn an_exact_pattern_matches_only_that_path() {
+        let target = parse_target("location.periods.edges.1.node.person").unwrap();
+        assert!(target.matches("location.periods.edges.1.node.person"));
+        assert!(!target.matches("location.periods.edges.2.node.person"));
+        assert!(!target.matches("location.periods.edges.1.node.category"));
+        assert!(!target.matches("location.periods.edges.1.node"));
+    }
+
+    #[test]
+    fn a_wildcard_pattern_matches_any_single_segment_at_that_position() {
+        let target = parse_target("location.periods.edges.*.node.person").unwrap();
+        assert!(target.matches("location.periods.edges.0.node.person"));
+        assert!(target.matches("location.periods.edges.41.node.person"));
+        // Still has to match everywhere else, and be the same length.
+        assert!(!target.matches("location.periods.edges.0.node.category"));
+        assert!(!target.matches("location.periods.edges.0.node.person.extra"));
     }
 
     #[test]
@@ -391,7 +433,8 @@ mod tests {
 
     #[test]
     fn a_partial_rate_selects_some_rows_but_not_all() {
-        // The point of hashing the path: one bad row in a page, not all or nothing.
+        // The point of hashing the (wildcard-matched) path: one bad row in a page,
+        // not all or nothing.
         let selected = (0..200)
             .filter(|i| selected_by_rate(&format!("location.periods.nodes.{i}.person"), 500))
             .count();
