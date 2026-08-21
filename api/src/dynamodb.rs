@@ -662,43 +662,68 @@ impl Handler {
         let mut results: HashMap<String, R> = HashMap::new();
 
         for chunk in ids.chunks(100) {
-            let resp = self
-                .client
-                .batch_get_item()
-                .request_items(
-                    table_name.clone(),
-                    KeysAndAttributes::builder()
-                        .set_keys(Some(
-                            chunk
-                                .iter()
-                                .map(|id| {
-                                    HashMap::from([(
-                                        "id".to_string(),
-                                        AttributeValue::S(id.to_string()),
-                                    )])
-                                })
-                                .collect(),
-                        ))
-                        .build()
-                        .map_err(|e| Error::Infrastructure(e.to_string()))?,
-                )
-                .return_consumed_capacity(ReturnConsumedCapacity::Total)
-                .send()
-                .await
-                .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
+            // DynamoDB is allowed to return fewer items than requested — under
+            // throttling or when a response would exceed 16MB it defers the rest into
+            // `UnprocessedKeys`. Those keys must be re-requested, or the caller sees a
+            // row that exists as if it were missing.
+            let mut pending: Vec<HashMap<String, AttributeValue>> = chunk
+                .iter()
+                .map(|id| HashMap::from([("id".to_string(), AttributeValue::S(id.to_string()))]))
+                .collect();
 
-            batch_record_capacity(
-                &format!("batch_get {name}"),
-                resp.consumed_capacity(),
-                CapKind::Read,
-            );
-            if let Some(mut responses) = resp.responses
-                && let Some(items) = responses.remove(&table_name)
-            {
-                for item in items {
-                    let rec: R = hydrate_item(item)?;
-                    results.insert(rec.id().to_string(), rec);
+            for attempt in 1..=BATCH_GET_MAX_ATTEMPTS {
+                if attempt > 1 {
+                    tokio::time::sleep(batch_get_backoff(attempt - 1)).await;
                 }
+
+                let resp = self
+                    .client
+                    .batch_get_item()
+                    .request_items(
+                        table_name.clone(),
+                        KeysAndAttributes::builder()
+                            .set_keys(Some(pending.clone()))
+                            .build()
+                            .map_err(|e| Error::Infrastructure(e.to_string()))?,
+                    )
+                    .return_consumed_capacity(ReturnConsumedCapacity::Total)
+                    .send()
+                    .await
+                    .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
+
+                batch_record_capacity(
+                    &format!("batch_get {name}"),
+                    resp.consumed_capacity(),
+                    CapKind::Read,
+                );
+                if let Some(mut responses) = resp.responses
+                    && let Some(items) = responses.remove(&table_name)
+                {
+                    for item in items {
+                        let rec: R = hydrate_item(item)?;
+                        results.insert(rec.id().to_string(), rec);
+                    }
+                }
+
+                pending = unprocessed_keys_for(&table_name, resp.unprocessed_keys);
+                if pending.is_empty() {
+                    break;
+                }
+                tracing::warn!(
+                    table = %table_name,
+                    unprocessed = pending.len(),
+                    attempt,
+                    "batch_get returned unprocessed keys; retrying"
+                );
+            }
+
+            if !pending.is_empty() {
+                // Returning `None` for these would be indistinguishable from the rows
+                // not existing, so fail loudly instead.
+                return Err(Error::Infrastructure(format!(
+                    "batch_get {table_name}: {} key(s) still unprocessed after {BATCH_GET_MAX_ATTEMPTS} attempts",
+                    pending.len(),
+                )));
             }
         }
 
@@ -708,6 +733,33 @@ impl Handler {
             .map(|id| results.remove(id))
             .collect())
     }
+}
+
+/// How many times a single `BatchGetItem` chunk is sent before giving up. Four retries
+/// after the first attempt, which at the backoff below spans roughly 750ms — long enough
+/// to ride out an ordinary throttle, short enough not to stall a request.
+const BATCH_GET_MAX_ATTEMPTS: usize = 5;
+
+/// Delay before retry number `retry` (1-based): 50ms doubling to a 1s ceiling.
+fn batch_get_backoff(retry: usize) -> std::time::Duration {
+    let ms = 50u64
+        .saturating_mul(1u64 << retry.min(8).saturating_sub(1))
+        .min(1000);
+    std::time::Duration::from_millis(ms)
+}
+
+/// The keys DynamoDB deferred for our table, if any.
+///
+/// `UnprocessedKeys` is keyed by table name and is absent — not empty — when everything
+/// was processed, so both shapes have to mean "nothing left to do".
+fn unprocessed_keys_for(
+    table_name: &str,
+    unprocessed: Option<HashMap<String, KeysAndAttributes>>,
+) -> Vec<HashMap<String, AttributeValue>> {
+    unprocessed
+        .and_then(|mut tables| tables.remove(table_name))
+        .map(|ka| ka.keys)
+        .unwrap_or_default()
 }
 
 enum CapKind {
@@ -4132,9 +4184,12 @@ impl db::Handler for Handler {
 
 #[cfg(test)]
 mod tests {
-    use super::{Item, hydrate_items, hydrate_items_lenient, nitc_event_key, topic_date_key};
+    use super::{
+        Item, batch_get_backoff, hydrate_items, hydrate_items_lenient, nitc_event_key,
+        topic_date_key, unprocessed_keys_for,
+    };
     use crate::db::Category;
-    use aws_sdk_dynamodb::types::AttributeValue;
+    use aws_sdk_dynamodb::types::{AttributeValue, KeysAndAttributes};
     use chrono::NaiveDate;
     use std::collections::HashMap;
 
@@ -4270,6 +4325,61 @@ mod tests {
     fn hydrating_nothing_yields_nothing() {
         assert!(hydrate_items::<Category>(None).unwrap().is_empty());
         assert!(hydrate_items_lenient::<Category>(None).is_empty());
+    }
+
+    fn key(id: &str) -> HashMap<String, AttributeValue> {
+        HashMap::from([("id".to_string(), AttributeValue::S(id.to_string()))])
+    }
+
+    #[test]
+    fn no_unprocessed_keys_means_nothing_left_to_do() {
+        // DynamoDB omits the field entirely when everything was processed, but an empty
+        // map is also legal. Both must read as "done", or the retry loop never ends.
+        assert!(unprocessed_keys_for("seslogin_person", None).is_empty());
+        assert!(unprocessed_keys_for("seslogin_person", Some(HashMap::new())).is_empty());
+    }
+
+    #[test]
+    fn unprocessed_keys_are_read_for_our_table_only() {
+        let deferred = KeysAndAttributes::builder()
+            .set_keys(Some(vec![key("p1"), key("p2")]))
+            .build()
+            .unwrap();
+        let other = KeysAndAttributes::builder()
+            .set_keys(Some(vec![key("s1")]))
+            .build()
+            .unwrap();
+        let unprocessed = HashMap::from([
+            ("seslogin_person".to_string(), deferred),
+            ("seslogin_session".to_string(), other),
+        ]);
+
+        let pending = unprocessed_keys_for("seslogin_person", Some(unprocessed));
+        assert_eq!(pending, vec![key("p1"), key("p2")]);
+    }
+
+    #[test]
+    fn unprocessed_keys_of_a_table_we_did_not_ask_for_are_ignored() {
+        let other = KeysAndAttributes::builder()
+            .set_keys(Some(vec![key("s1")]))
+            .build()
+            .unwrap();
+        let unprocessed = HashMap::from([("seslogin_session".to_string(), other)]);
+        assert!(unprocessed_keys_for("seslogin_person", Some(unprocessed)).is_empty());
+    }
+
+    #[test]
+    fn backoff_grows_and_is_capped() {
+        let delays: Vec<u64> = (1..=4)
+            .map(|r| batch_get_backoff(r).as_millis() as u64)
+            .collect();
+        assert_eq!(delays, vec![50, 100, 200, 400]);
+        // Total wait across every retry the loop will make, so the ceiling on a
+        // throttled request is predictable.
+        assert_eq!(delays.iter().sum::<u64>(), 750);
+        // Far beyond the attempt limit it must still terminate at the ceiling rather
+        // than overflow the shift.
+        assert_eq!(batch_get_backoff(64).as_millis(), 1000);
     }
 
     #[test]
