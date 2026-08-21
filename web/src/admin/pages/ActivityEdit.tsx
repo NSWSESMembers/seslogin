@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { graphql, useLazyLoadQuery, useMutation } from "react-relay";
+import { graphql, useMutation } from "react-relay";
 import { useNavigate, useParams } from "react-router";
+import { useRetryableLazyLoadQuery } from "../../components/useRetryableLazyLoadQuery";
 import { dateToInputDateTimeLocal } from "../../lib/time";
 import useSelectedLocation from "../components/useSelectedLocation";
 import type { ActivityEditQuery } from "./__generated__/ActivityEditQuery.graphql";
@@ -18,7 +19,7 @@ export default function ActivityEdit() {
   const { notifyError, notifySuccess } = useNotify();
   const selectedLocation = useSelectedLocation();
   const locationId = selectedLocation.id;
-  const data = useLazyLoadQuery<ActivityEditQuery>(
+  const data = useRetryableLazyLoadQuery<ActivityEditQuery>(
     graphql`
       query ActivityEditQuery($id: ID!) @throwOnFieldError {
         period(id: $id) {

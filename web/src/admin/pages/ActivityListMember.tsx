@@ -1,6 +1,8 @@
 import { graphql, readInlineData } from "relay-runtime";
-import { fetchQuery, useLazyLoadQuery, useRelayEnvironment } from "react-relay";
+import { fetchQuery, useRelayEnvironment } from "react-relay";
 import ActivityListTable from "../components/ActivityListTable";
+import { useRetryableLazyLoadQuery } from "../../components/useRetryableLazyLoadQuery";
+import { unwrapCatch } from "../../lib/relayCatch";
 import ActivityCategorySelector from "../components/ActivityCategorySelector";
 import LoadingIndicator from "../../components/LoadingIndicator";
 import type {
@@ -23,7 +25,11 @@ type PeriodRef = NonNullable<
 // that data dependency here, read inside getRowLabel from the same period ref.
 const activityListMemberPeriodName = graphql`
   fragment ActivityListMember_periodName on Period @inline {
-    location {
+    # @catch so one dangling location reference degrades that row instead of
+    # (via @throwOnFieldError on the enclosing query) hiding the whole page.
+    # location is non-null in the schema, so a failed lookup here always
+    # means an error, never a legitimately absent location.
+    location @catch {
       id
       name
     }
@@ -62,7 +68,7 @@ function ActivityListMemberContent({
   categoryIds: string[];
 }) {
   const relayEnvironment = useRelayEnvironment();
-  const data = useLazyLoadQuery<ActivityListMemberQuery>(
+  const data = useRetryableLazyLoadQuery<ActivityListMemberQuery>(
     graphql`
       query ActivityListMemberQuery(
         $person: ID!
@@ -101,6 +107,7 @@ function ActivityListMemberContent({
   const [hasNextPage, setHasNextPage] = useState(false);
   const [endCursor, setEndCursor] = useState<string | null>(null);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
 
   useEffect(() => {
     const nextPeriods = data.person.periods.edges.map((edge) => edge.node);
@@ -116,7 +123,9 @@ function ActivityListMemberContent({
       activityListMemberPeriodName,
       periodRef,
     );
-    return location?.name ?? "";
+    // Throwing unwrap: a failed lookup here is caught by the per-row
+    // ErrorBoundary this is always called from within (see ActivityListTable).
+    return unwrapCatch(location).name;
   }
 
   async function onLoadMore() {
@@ -125,6 +134,7 @@ function ActivityListMemberContent({
     }
 
     setIsLoadingMore(true);
+    setLoadMoreError(null);
     try {
       const next = await fetchQuery<ActivityListMemberQuery>(
         relayEnvironment,
@@ -163,10 +173,19 @@ function ActivityListMemberContent({
       ).toPromise();
 
       const nextPeriods =
-        next?.person.periods.edges.map((edge) => edge.node) ?? [];
+        next?.person.periods.edges
+          // Defensive, same as the initial load: a null edge/node shouldn't be
+          // possible per the schema, but a locally mutated store can produce one.
+          .filter(
+            (edge): edge is NonNullable<typeof edge> => edge?.node != null,
+          )
+          .map((edge) => edge.node) ?? [];
       setPeriods((previous) => [...previous, ...nextPeriods]);
       setHasNextPage(next?.person.periods.pageInfo.hasNextPage ?? false);
       setEndCursor(next?.person.periods.pageInfo.endCursor ?? null);
+    } catch (err) {
+      console.error("Failed to load more activity:", err);
+      setLoadMoreError("Couldn't load more — please try again.");
     } finally {
       setIsLoadingMore(false);
     }
@@ -184,6 +203,7 @@ function ActivityListMemberContent({
         hasNextPage={hasNextPage}
         isLoadingMore={isLoadingMore}
         onLoadMore={onLoadMore}
+        loadMoreError={loadMoreError}
       />
     </>
   );

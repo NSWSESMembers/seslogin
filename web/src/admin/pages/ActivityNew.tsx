@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { graphql } from "relay-runtime";
-import { useLazyLoadQuery, useMutation } from "react-relay";
+import { useMutation } from "react-relay";
 import { useNavigate } from "react-router";
 import useSelectedLocation from "../components/useSelectedLocation";
+import { useRetryableLazyLoadQuery } from "../../components/useRetryableLazyLoadQuery";
 import type { ActivityNewMutation } from "./__generated__/ActivityNewMutation.graphql";
 import type { ActivityNewQuery } from "./__generated__/ActivityNewQuery.graphql";
 import { useNotify } from "../components/useNotify";
@@ -19,7 +20,7 @@ export default function ActivityNew() {
   const { notifyError, notifySuccess } = useNotify();
   const [startValue, setStartValue] = useState("");
   const [endValue, setEndValue] = useState("");
-  const data = useLazyLoadQuery<ActivityNewQuery>(
+  const data = useRetryableLazyLoadQuery<ActivityNewQuery>(
     graphql`
       query ActivityNewQuery($location: ID!) @throwOnFieldError {
         location(id: $location) {

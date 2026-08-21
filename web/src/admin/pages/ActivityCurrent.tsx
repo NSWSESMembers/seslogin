@@ -1,6 +1,8 @@
 import { graphql, readInlineData } from "relay-runtime";
-import { fetchQuery, useLazyLoadQuery, useRelayEnvironment } from "react-relay";
+import { fetchQuery, useRelayEnvironment } from "react-relay";
 import { useSettings } from "../../lib/settings";
+import { useRetryableLazyLoadQuery } from "../../components/useRetryableLazyLoadQuery";
+import { unwrapCatch } from "../../lib/relayCatch";
 import { startTransition, useEffect, useState } from "react";
 import type {
   ActivityCurrentQuery,
@@ -22,7 +24,11 @@ type PeriodRef = NonNullable<
 const activityCurrentPeriodName = graphql`
   fragment ActivityCurrent_periodName on Period @inline {
     guestName
-    person {
+    # @catch so one dangling member reference degrades that row instead of
+    # (via @throwOnFieldError on the enclosing query) hiding the whole page.
+    # Also lets getRowLabel tell "no person, has a guest name" apart from
+    # "person lookup failed" — a real member must never render as a guest.
+    person @catch {
       id
       firstName
       lastName
@@ -33,7 +39,7 @@ const activityCurrentPeriodName = graphql`
 export default function ActivityCurrent() {
   const settings = useSettings();
   const relayEnvironment = useRelayEnvironment();
-  const data = useLazyLoadQuery<ActivityCurrentQuery>(
+  const data = useRetryableLazyLoadQuery<ActivityCurrentQuery>(
     graphql`
       query ActivityCurrentQuery($location: ID!, $first: Int!, $after: String)
       @throwOnFieldError {
@@ -65,6 +71,7 @@ export default function ActivityCurrent() {
   const [hasNextPage, setHasNextPage] = useState(false);
   const [endCursor, setEndCursor] = useState<string | null>(null);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
 
   useEffect(() => {
     const nextPeriods = data.location.periods.edges
@@ -88,8 +95,12 @@ export default function ActivityCurrent() {
         activityCurrentPeriodName,
         periodRef,
       );
-    return person
-      ? `${person.firstName} ${person.lastName}`
+    // Throwing unwrap: a failed lookup here is caught by the per-row
+    // ErrorBoundary this is always called from within (see ActivityListTable),
+    // degrading just that row instead of misattributing activity to a guest.
+    const personValue = unwrapCatch(person);
+    return personValue
+      ? `${personValue.firstName} ${personValue.lastName}`
       : `${guestName ?? "Guest"} (Guest)`;
   }
 
@@ -99,6 +110,7 @@ export default function ActivityCurrent() {
     }
 
     setIsLoadingMore(true);
+    setLoadMoreError(null);
     try {
       const next = await fetchQuery<ActivityCurrentQuery>(
         relayEnvironment,
@@ -133,10 +145,19 @@ export default function ActivityCurrent() {
       ).toPromise();
 
       const nextPeriods =
-        next?.location.periods.edges.map((edge) => edge.node) ?? [];
+        next?.location.periods.edges
+          // Defensive, same as the initial load: a null edge/node shouldn't be
+          // possible per the schema, but a locally mutated store can produce one.
+          .filter(
+            (edge): edge is NonNullable<typeof edge> => edge?.node != null,
+          )
+          .map((edge) => edge.node) ?? [];
       setPeriods((previous) => [...previous, ...nextPeriods]);
       setHasNextPage(next?.location.periods.pageInfo.hasNextPage ?? false);
       setEndCursor(next?.location.periods.pageInfo.endCursor ?? null);
+    } catch (err) {
+      console.error("Failed to load more activity:", err);
+      setLoadMoreError("Couldn't load more — please try again.");
     } finally {
       setIsLoadingMore(false);
     }
@@ -150,6 +171,7 @@ export default function ActivityCurrent() {
       hasNextPage={hasNextPage}
       isLoadingMore={isLoadingMore}
       onLoadMore={onLoadMore}
+      loadMoreError={loadMoreError}
     />
   );
 }

@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<61dbfa3b1efe2998fd02af9f626df1d8>>
+ * @generated SignedSource<<f0328d20c15360225ebe53f4af88f0e1>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -9,14 +9,14 @@
 // @ts-nocheck
 
 import { ReaderInlineDataFragment } from 'relay-runtime';
-import { FragmentRefs } from "relay-runtime";
+import { FragmentRefs, Result } from "relay-runtime";
 export type ActivityCurrent_periodName$data = {
   readonly guestName: string | null | undefined;
-  readonly person: {
+  readonly person: Result<{
     readonly firstName: string;
     readonly id: string;
     readonly lastName: string;
-  } | null | undefined;
+  } | null | undefined, unknown>;
   readonly " $fragmentType": "ActivityCurrent_periodName";
 };
 export type ActivityCurrent_periodName$key = {
@@ -29,6 +29,6 @@ const node: ReaderInlineDataFragment = {
   "name": "ActivityCurrent_periodName"
 };
 
-(node as any).hash = "d7c2268dcbddf883a38cc33f85e420be";
+(node as any).hash = "5ec07e853527fdbf8c003b654a9aa2c3";
 
 export default node;

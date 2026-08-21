@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { graphql, useLazyLoadQuery, useMutation } from "react-relay";
+import { graphql, useMutation } from "react-relay";
+import { useRetryableLazyLoadQuery } from "../../components/useRetryableLazyLoadQuery";
 import type { SettingsPasskeysQuery } from "./__generated__/SettingsPasskeysQuery.graphql";
 import type { SettingsPasskeysRenameMutation } from "./__generated__/SettingsPasskeysRenameMutation.graphql";
 import type { SettingsPasskeysDeleteMutation } from "./__generated__/SettingsPasskeysDeleteMutation.graphql";
@@ -24,7 +25,7 @@ export default function SettingsPasskeys() {
   const [refreshKey, setRefreshKey] = useState(0);
   const refresh = () => setRefreshKey((k) => k + 1);
 
-  const data = useLazyLoadQuery<SettingsPasskeysQuery>(
+  const data = useRetryableLazyLoadQuery<SettingsPasskeysQuery>(
     graphql`
       query SettingsPasskeysQuery @throwOnFieldError {
         user {

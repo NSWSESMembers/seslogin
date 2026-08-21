@@ -37,9 +37,14 @@ export default function AdminContent({
       <SubmenuBar isSuper={isSuper} />
 
       <div className="bg-surface px-[3%] py-5">
+        {/* canRetry: every useLazyLoadQuery reachable through a routed page
+            here (and ActivityCategorySelector, the one shared component that
+            queries outside its own page's boundary) threads
+            useRelayRetryFetchKey() into its call. */}
         <RelayErrorBoundary
           resetKey={location.pathname}
           showDetailsByDefault={isDev}
+          canRetry
         >
           <Suspense fallback={<LoadingIndicator />}>{children}</Suspense>
         </RelayErrorBoundary>

@@ -1,6 +1,7 @@
-import { graphql, useLazyLoadQuery, useMutation } from "react-relay";
+import { graphql, useMutation } from "react-relay";
 import { useNavigate, useParams } from "react-router";
 import SessionForm from "../components/SessionForm";
+import { useRetryableLazyLoadQuery } from "../../components/useRetryableLazyLoadQuery";
 import type { SessionsEditMutation } from "./__generated__/SessionsEditMutation.graphql";
 import type { SessionsEditQuery } from "./__generated__/SessionsEditQuery.graphql";
 import { useNotify } from "../components/useNotify";
@@ -11,7 +12,7 @@ export default function SessionsEdit() {
   const { notifyError, notifySuccess } = useNotify();
   const id = params.sessionId!;
 
-  const data = useLazyLoadQuery<SessionsEditQuery>(
+  const data = useRetryableLazyLoadQuery<SessionsEditQuery>(
     graphql`
       query SessionsEditQuery($id: ID!) @throwOnFieldError {
         session(id: $id) {

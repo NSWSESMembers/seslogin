@@ -1,13 +1,14 @@
 import { useState } from "react";
-import { graphql, useLazyLoadQuery, useMutation } from "react-relay";
+import { graphql, useMutation } from "react-relay";
 import type { SettingsActivityDisplayQuery } from "./__generated__/SettingsActivityDisplayQuery.graphql";
 import type { SettingsActivityDisplayMutation } from "./__generated__/SettingsActivityDisplayMutation.graphql";
 import { useNotify } from "../components/useNotify";
 import { FieldList, FormField } from "../../components/ui/FormField";
 import { Button } from "../../components/ui/Button";
+import { useRetryableLazyLoadQuery } from "../../components/useRetryableLazyLoadQuery";
 
 export default function SettingsActivityDisplay() {
-  const data = useLazyLoadQuery<SettingsActivityDisplayQuery>(
+  const data = useRetryableLazyLoadQuery<SettingsActivityDisplayQuery>(
     graphql`
       query SettingsActivityDisplayQuery @throwOnFieldError {
         user {
