@@ -11,6 +11,7 @@ import { usePasskeyRegistration } from "./usePasskeyRegistration";
 import { useNotify } from "./useNotify";
 import { getErrorMessage } from "../../lib/relayErrors";
 import type { PasskeyEnrollPromptQuery } from "./__generated__/PasskeyEnrollPromptQuery.graphql";
+import { useRelayRetryFetchKey } from "../../components/relayRetryContext";
 import {
   Panel,
   PanelBox,
@@ -31,6 +32,7 @@ export default function PasskeyEnrollPrompt({
 }: {
   children: ReactNode;
 }) {
+  const fetchKey = useRelayRetryFetchKey();
   const data = useLazyLoadQuery<PasskeyEnrollPromptQuery>(
     graphql`
       query PasskeyEnrollPromptQuery @throwOnFieldError {
@@ -42,6 +44,7 @@ export default function PasskeyEnrollPrompt({
       }
     `,
     {},
+    { fetchKey },
   );
 
   const hasPasskey = data.user.passkeys.length > 0;
