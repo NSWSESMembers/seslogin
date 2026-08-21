@@ -209,7 +209,7 @@ impl db::Handler for Handler {
         Self::unsupported()
     }
 
-    async fn list_api_tokens(&self) -> db::Result<Vec<ApiToken>> {
+    async fn list_api_tokens(&self, _filter: db::ListApiTokensFilter) -> db::Result<Vec<ApiToken>> {
         Self::unsupported()
     }
 
@@ -319,6 +319,13 @@ impl db::Handler for Handler {
     async fn get_nitc_events_by_ids<T: AsRef<str> + Sync>(
         &self,
         _ids: &[T],
+    ) -> db::Result<Vec<Option<db::NitcEvent>>> {
+        Self::unsupported()
+    }
+
+    async fn list_nitc_events_for_location(
+        &self,
+        _location_id: &str,
     ) -> db::Result<Vec<db::NitcEvent>> {
         Self::unsupported()
     }

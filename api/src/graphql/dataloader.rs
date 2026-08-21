@@ -147,8 +147,11 @@ impl<A: App + HasDb + Send + Sync + 'static> Loader<NitcEventId> for DatabaseLoa
             .get_nitc_events_by_ids(&ids)
             .await
             .map_err(|e| Arc::new(anyhow!("DB error: {:?}", e)))?;
+        // A dataloader reports what exists; ids with no row are simply absent from the
+        // map, which is how async-graphql signals "not found" to the resolver.
         let map = recs
             .into_iter()
+            .flatten()
             .map(|rec| (NitcEventId(rec.id.clone()), rec))
             .collect();
         Ok(map)
