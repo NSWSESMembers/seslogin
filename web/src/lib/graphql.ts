@@ -9,6 +9,7 @@ import {
 } from "./clientUpdateLeases";
 import { type RequestParameters, type Variables } from "relay-runtime";
 import { MutationFieldError } from "./relayErrors";
+import { recordServerErrorMessages } from "./relayFieldLogger";
 
 let requestLeaseCounter = 0;
 
@@ -86,6 +87,30 @@ export async function fetchGraphQL(
     throw new Error("Response failed.");
   }
   const responseBody = await resp.json();
+
+  // Capture the raw errors immediately, for every operation kind, regardless of
+  // what Relay itself later makes of the response. This is the only reliable
+  // place to get the real message: async-graphql omits a failed field's key from
+  // the response entirely rather than sending it as explicit `null`, so Relay's
+  // normalizer — which only attaches an error to the store when it sees an
+  // explicit `null` — never gets the chance to, and the field-level events that
+  // do carry a message essentially never fire. Logging here also means the
+  // message shows up even for a query that silently degrades with no throw at
+  // all (no @throwOnFieldError on that query, or the field absorbed the error).
+  if (Array.isArray(responseBody?.errors) && responseBody.errors.length > 0) {
+    const messages = (
+      responseBody.errors as ReadonlyArray<{ message?: unknown }>
+    )
+      .map((e) => e?.message)
+      .filter((m): m is string => typeof m === "string");
+    if (messages.length > 0) {
+      console.error(
+        `[graphql-error] ${request.name ?? "unknown"}:`,
+        responseBody.errors,
+      );
+      recordServerErrorMessages(messages);
+    }
+  }
 
   // A mutation that reports a field error is a failure, not a partial success:
   // the write already happened (data is non-null), but some nested field on the

@@ -29,13 +29,48 @@ function describe(event: RelayFieldLoggerEvent): string {
 const isDev = import.meta.env.MODE === "development";
 
 /**
- * Real server-reported messages seen very recently, most recent last. Populated
- * only by event kinds that carry an actual `error.message` — see
+ * Real server-reported messages seen very recently, most recent last. See
  * `takeRecentFieldErrorMessages` for why this exists and its (deliberately narrow)
  * lifetime.
+ *
+ * Populated from two sources: `relayFieldLogger` below, for the rare event kinds
+ * that carry an actual `error.message`; and `recordServerErrorMessages`
+ * (exported for `fetchGraphQL`), which reads the raw GraphQL response directly —
+ * necessary because most server-side field failures never reach Relay's
+ * field-logger with a message at all. async-graphql omits a failed field's key
+ * from the response entirely rather than sending it as explicit `null`, and
+ * Relay's normalizer only attaches an error to the store when it sees an explicit
+ * `null` — an absent key takes an earlier branch that warns and returns before
+ * ever looking at the error list. So `relay_field_payload.error` (the one event
+ * kind with a message) essentially never fires for a real query-side resolver
+ * failure in this app; capturing the message before Relay ever touches the
+ * response is what makes it recoverable at all.
  */
 let recentFieldErrorMessages: string[] = [];
 const MAX_BUFFERED_MESSAGES = 5;
+
+function bufferMessage(message: string): void {
+  recentFieldErrorMessages.push(message);
+  if (recentFieldErrorMessages.length > MAX_BUFFERED_MESSAGES) {
+    recentFieldErrorMessages.shift();
+  }
+}
+
+/**
+ * Records real server-reported error message(s) from a raw GraphQL response's
+ * `errors[]`, for later recovery by `describeCaughtError`. Called from
+ * `fetchGraphQL` for every response that has errors, regardless of operation kind
+ * — this is deliberately independent of whatever Relay itself later makes of the
+ * response, since that's the part that loses the message (see the module-level
+ * comment above `recentFieldErrorMessages`).
+ */
+export function recordServerErrorMessages(
+  messages: ReadonlyArray<string>,
+): void {
+  for (const message of messages) {
+    bufferMessage(message);
+  }
+}
 
 /**
  * Shared Relay field logger, installed on every environment. This never changes
@@ -55,27 +90,22 @@ export const relayFieldLogger: RelayFieldLogger = (event) => {
     event.kind === "relay_field_payload.error" ||
     event.kind === "relay_resolver.error"
   ) {
-    recentFieldErrorMessages.push(event.error.message);
-    if (recentFieldErrorMessages.length > MAX_BUFFERED_MESSAGES) {
-      recentFieldErrorMessages.shift();
-    }
+    bufferMessage(event.error.message);
   }
 };
 
 /**
- * Returns and clears the real message(s) `relayFieldLogger` has captured since the
- * last call, most recent last.
+ * Returns and clears the real message(s) buffered since the last call (see
+ * `recentFieldErrorMessages` above for where these come from), most recent last.
  *
  * Relay's own thrown-error text for a field-level failure is a hardcoded, generic
  * string in every case that isn't a client-side Relay Resolver — even
  * `relay_field_payload.error`, fired for an actual server-reported GraphQL error on
  * a queried field, throws "Unexpected response payload - check server logs for
  * details." and never includes the real message (see relay-runtime's
- * `handlePotentialSnapshotErrors.js`). But `relayFieldLogger` receives the real
- * message moments earlier, synchronously, in the same read that produces the throw
- * — so a caller that just caught a generic Relay error (see the `Relay: ` prefix
- * convention those messages share) can call this immediately afterward to recover
- * what actually went wrong.
+ * `handlePotentialSnapshotErrors.js`). A caller that just caught a generic Relay
+ * error (see the `Relay: ` prefix convention those messages share) can call this
+ * immediately afterward to recover what actually went wrong.
  *
  * This only works because of that synchronous adjacency: the buffer is cleared on
  * every read so a stale message can't attach itself to an unrelated later error,
