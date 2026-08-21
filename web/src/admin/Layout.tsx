@@ -1,8 +1,7 @@
 import { Suspense, startTransition, useState } from "react";
-import { ErrorBoundary } from "react-error-boundary";
 import AdminContent from "./components/AdminContent";
 import LoadingIndicator from "../components/LoadingIndicator";
-import PageErrorFallback from "../components/PageErrorFallback";
+import PageErrorBoundary from "../components/PageErrorBoundary";
 import RelayErrorBoundary from "../components/RelayErrorBoundary";
 import SettingsProvider from "./components/SettingsProvider";
 import { UserInfoProvider } from "./components/UserInfoProvider";
@@ -26,9 +25,9 @@ import {
 export default function Layout() {
   return (
     <div>
-      <ErrorBoundary FallbackComponent={PageErrorFallback}>
+      <PageErrorBoundary>
         <LoginRequired />
-      </ErrorBoundary>
+      </PageErrorBoundary>
     </div>
   );
 }

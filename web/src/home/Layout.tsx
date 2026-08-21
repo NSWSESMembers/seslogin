@@ -1,18 +1,14 @@
 import { Outlet, useLocation } from "react-router";
-import { ErrorBoundary } from "react-error-boundary";
 import TopBar from "../admin/components/TopBar";
 import ClientVersionLabel from "../components/ClientVersionLabel";
-import PageErrorFallback from "../components/PageErrorFallback";
+import PageErrorBoundary from "../components/PageErrorBoundary";
 import HomeEnvironmentProbe from "./HomeEnvironmentProbe";
 
 export default function Layout() {
   const location = useLocation();
 
   return (
-    <ErrorBoundary
-      key={location.pathname}
-      FallbackComponent={PageErrorFallback}
-    >
+    <PageErrorBoundary resetKey={location.pathname}>
       <HomeEnvironmentProbe />
       <TopBar username="" />
       <Outlet />
@@ -20,6 +16,6 @@ export default function Layout() {
         NSW SES Volunteers &mdash; SES Activity v2 &mdash;{" "}
         <ClientVersionLabel />
       </footer>
-    </ErrorBoundary>
+    </PageErrorBoundary>
   );
 }
