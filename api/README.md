@@ -109,6 +109,53 @@ Two details worth knowing:
 > than merely disabled. The server logs a loud warning at startup when injection is
 > active.
 
+## Database consistency check
+
+`db-check` walks the database, confirms every record hydrates, and resolves every
+reference to another record. The handler is opened read-only, so it cannot write — there
+is deliberately no `--dry-run` flag.
+
+```bash
+DB_PREFIX=seslogin_test cargo run --bin db-check --                    # last 90 days
+DB_PREFIX=seslogin_test cargo run --bin db-check -- --scope global     # global tables only
+DB_PREFIX=seslogin_test cargo run --bin db-check -- --location-id L1   # one location
+DB_PREFIX=seslogin_test cargo run --bin db-check -- --all-periods --deep-scan
+DB_PREFIX=seslogin_test cargo run --bin db-check -- --format json | jq '.stats'
+```
+
+Period window (mutually exclusive): `--days N` (default 90), `--since YYYY-MM-DD`
+(Sydney local midnight), `--all-periods`, `--skip-periods`.
+
+`--deep-scan` additionally scans the `person` and `period` tables. Every other read goes
+through an index, so it can only return rows whose index key is present and well-formed —
+a person with a malformed `location_id`, or a soft-deleted period (both `location_open`
+and `location_live` are REMOVEd on delete) are invisible without it. Expensive: those are
+the two largest tables.
+
+Opt-in check groups, each costing a query per record:
+
+- `--check-operational` — business judgement rather than corruption: stuck-open periods
+  (see `--stuck-open-days`, default 7), implausible timestamps, expired session keys.
+- `--check-uniqueness` — probes the user and session uniqueness GSIs for index rot: an
+  entry that no longer resolves to its owning row. The always-on duplicate scan finds two
+  rows sharing a value; this finds the index disagreeing with the table.
+- `--check-person-uniqueness` — the same probes per member. Separate from
+  `--check-uniqueness` because it is two queries per member across every location.
+- `--check-nitc-reverse` — cross-checks NITC event assignment against
+  `nitc_event_id-index`, the one path that observes soft-deleted periods without a scan.
+
+`--skip-webauthn` turns off the per-user credential back-reference check, which is on by
+default.
+
+Exit codes: `0` nothing at or above `--fail-on` (default `error`), `1` something was, `2`
+the run itself failed. `--min-severity` filters what is printed and is independent of
+`--fail-on`, so a run can print only errors while still failing on warnings.
+
+Every report ends with a "Not verified by this run" list. Read it before treating a clean
+report as proof: a default run does not scan for orphans, only covers 90 days of periods,
+and never touches the transient TTL'd tables (`login_code`, `webauthn_state`,
+`ephemeral_state`).
+
 ## SES member sync
 
 Set `ses_api_headquarters_id` per location via the admin UI before syncing.
