@@ -2562,16 +2562,30 @@ impl db::Handler for Handler {
         self.get_api_token(&id).await
     }
 
-    async fn list_api_tokens(&self) -> db::Result<Vec<ApiToken>> {
-        query_all("list_api_tokens", || {
-            self.client
-                .query()
-                .table_name(self.table_name("api_token"))
-                .index_name("active-index")
-                .key_condition_expression("active = :active")
-                .expression_attribute_values(":active", AttributeValue::N("1".to_string()))
-        })
-        .await
+    async fn list_api_tokens(&self, filter: db::ListApiTokensFilter) -> db::Result<Vec<ApiToken>> {
+        match filter {
+            db::ListApiTokensFilter::ActiveOnly => {
+                query_all("list_api_tokens", || {
+                    self.client
+                        .query()
+                        .table_name(self.table_name("api_token"))
+                        .index_name("active-index")
+                        .key_condition_expression("active = :active")
+                        .expression_attribute_values(":active", AttributeValue::N("1".to_string()))
+                })
+                .await
+            }
+            // Revoking a token REMOVEs `active`, which is the hash key of
+            // `active-index`, so revoked rows are not in that index at all. A scan is
+            // the only way to reach them. WARNING: using scan - fine while table
+            // remains small.
+            db::ListApiTokensFilter::All => {
+                scan_all("list_api_tokens_all", || {
+                    self.client.scan().table_name(self.table_name("api_token"))
+                })
+                .await
+            }
+        }
     }
 
     async fn create_api_token(
@@ -3165,47 +3179,26 @@ impl db::Handler for Handler {
     async fn get_nitc_events_by_ids<T: AsRef<str> + Sync>(
         &self,
         ids: &[T],
-    ) -> db::Result<Vec<db::NitcEvent>> {
-        if ids.is_empty() {
-            return Ok(vec![]);
-        }
-        let table_name = self.table_name("nitc_event");
-        let resp = self
-            .client
-            .batch_get_item()
-            .request_items(
-                table_name.clone(),
-                KeysAndAttributes::builder()
-                    .set_keys(Some(
-                        ids.iter()
-                            .map(|id| {
-                                HashMap::from([(
-                                    "id".to_string(),
-                                    AttributeValue::S(id.as_ref().to_string()),
-                                )])
-                            })
-                            .collect(),
-                    ))
-                    .build()
-                    .map_err(|e| Error::Infrastructure(e.to_string()))?,
-            )
-            .return_consumed_capacity(ReturnConsumedCapacity::Total)
-            .send()
-            .await
-            .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
-        batch_record_capacity(
-            "get_nitc_events_by_ids",
-            resp.consumed_capacity(),
-            CapKind::Read,
-        );
+    ) -> db::Result<Vec<Option<db::NitcEvent>>> {
+        // Uses the shared batch getter like every other `get_*s`, which also brings
+        // chunking at 100 — a longer list previously raised a ValidationException — and
+        // the UnprocessedKeys retry.
+        self.get_records("nitc_event", ids).await
+    }
 
-        resp.responses
-            .unwrap_or_default()
-            .remove(&table_name)
-            .unwrap_or_default()
-            .into_iter()
-            .map(|item| Item(item).try_into().map_err(db::Error::from))
-            .collect()
+    async fn list_nitc_events_for_location(
+        &self,
+        location_id: &str,
+    ) -> db::Result<Vec<db::NitcEvent>> {
+        query_all("list_nitc_events_for_location", || {
+            self.client
+                .query()
+                .table_name(self.table_name("nitc_event"))
+                .index_name("location_id-topic_date-index")
+                .key_condition_expression("location_id = :loc")
+                .expression_attribute_values(":loc", AttributeValue::S(location_id.to_string()))
+        })
+        .await
     }
 
     async fn get_nitc_group(&self, id: &str) -> db::Result<Option<db::NitcGroup>> {

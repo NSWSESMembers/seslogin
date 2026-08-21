@@ -272,6 +272,14 @@ pub enum LocationUpdateShape<'a> {
     },
 }
 
+/// Which API tokens a listing should include. Revoked tokens have no `active`
+/// attribute, so they are absent from `active-index` and only a scan finds them.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ListApiTokensFilter {
+    ActiveOnly,
+    All,
+}
+
 pub enum ListLocationsFilter {
     EnabledOnly,
     All,
@@ -334,6 +342,12 @@ pub struct NitcEvent {
     pub synced_version: Option<u64>,
     pub created_at: Option<u64>,
     pub updated_at: Option<u64>,
+}
+
+impl HasID for NitcEvent {
+    fn id(&self) -> &str {
+        &self.id
+    }
 }
 
 /// NITC topic group configuration: type, tags. Location fields are fetched separately.
@@ -661,7 +675,12 @@ pub trait Handler: Sync {
         &self,
         token_hash: &str,
     ) -> impl Future<Output = Result<Option<ApiToken>>> + Send;
-    fn list_api_tokens(&self) -> impl Future<Output = Result<Vec<ApiToken>>> + Send;
+    /// List API tokens. [`ListApiTokensFilter::ActiveOnly`] queries `active-index` and
+    /// so cannot see revoked tokens; `All` scans, which is the only way to reach them.
+    fn list_api_tokens(
+        &self,
+        filter: ListApiTokensFilter,
+    ) -> impl Future<Output = Result<Vec<ApiToken>>> + Send;
     fn create_api_token(
         &self,
         name: &str,
@@ -747,9 +766,22 @@ pub trait Handler: Sync {
         id: &str,
     ) -> impl Future<Output = Result<Option<NitcEvent>>> + Send;
 
+    /// Batch-fetch NITC events. Results are positionally aligned with `ids`, so a
+    /// `None` names exactly which requested event is missing.
     fn get_nitc_events_by_ids<T: AsRef<str> + Sync>(
         &self,
         ids: &[T],
+    ) -> impl Future<Output = Result<Vec<Option<NitcEvent>>>> + Send;
+
+    /// Every NITC event at a location, across all groups and dates.
+    ///
+    /// `location_id-topic_date-index` is hash-keyed on `location_id`, so this is the
+    /// same index [`Handler::list_nitc_events_for_day`] uses, queried without the sort
+    /// key. It is the only way to enumerate the `nitc_event` table — otherwise events
+    /// are reachable only by following `Period.nitc_event_id`.
+    fn list_nitc_events_for_location(
+        &self,
+        location_id: &str,
     ) -> impl Future<Output = Result<Vec<NitcEvent>>> + Send;
 
     /// Fetch NITC group configuration (type, tags) by ID.

@@ -8,8 +8,8 @@ use anyhow::{Result, anyhow};
 use chrono::{DateTime, Local, NaiveDate};
 use clap::{Parser, Subcommand};
 use seslogin::db::{
-    ApiToken, Category, Handler, ListLocationsFilter, ListPeriodsPage, ListSessionsQuery, Location,
-    NitcEvent, NitcGroup, Period, PeriodCursor, Person, Session, User,
+    ApiToken, Category, Handler, ListApiTokensFilter, ListLocationsFilter, ListPeriodsPage,
+    ListSessionsQuery, Location, NitcEvent, NitcGroup, Period, PeriodCursor, Person, Session, User,
 };
 use seslogin::dynamodb;
 use seslogin::jwt::{ExpirePolicy, Key};
@@ -249,7 +249,12 @@ enum ApiTokenCmd {
     /// Show one or more API tokens by ID.
     Get { ids: Vec<String> },
     /// List API tokens.
-    List,
+    List {
+        /// Include revoked tokens. They are absent from `active-index`, so this
+        /// scans the table instead of querying it.
+        #[arg(long)]
+        all: bool,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -279,6 +284,11 @@ enum NitcEventCmd {
         /// Event date in YYYY-MM-DD.
         #[arg(long)]
         date: NaiveDate,
+    },
+    /// List every NITC event at a location, across all groups and dates.
+    ForLocation {
+        #[arg(long)]
+        location: String,
     },
 }
 
@@ -441,7 +451,7 @@ async fn nitc_event_dates(db: &impl Handler, ids: &[String]) -> HashMap<String, 
         return map;
     }
     if let Ok(events) = db.get_nitc_events_by_ids(&refs).await {
-        for e in events {
+        for e in events.into_iter().flatten() {
             map.insert(e.id.clone(), e.event_date.to_string());
         }
     }
@@ -1385,8 +1395,13 @@ async fn run(db: &impl Handler, object: Object) -> Result<()> {
                 }
                 show_api_tokens(db, &found).await;
             }
-            ApiTokenCmd::List => {
-                let mut tokens = db.list_api_tokens().await?;
+            ApiTokenCmd::List { all } => {
+                let filter = if all {
+                    ListApiTokensFilter::All
+                } else {
+                    ListApiTokensFilter::ActiveOnly
+                };
+                let mut tokens = db.list_api_tokens(filter).await?;
                 tokens.sort_by(|a, b| a.name.cmp(&b.name));
                 let rows: Vec<Vec<String>> = tokens
                     .iter()
@@ -1458,12 +1473,13 @@ async fn run(db: &impl Handler, object: Object) -> Result<()> {
 
         Object::NitcEvent { cmd } => match cmd {
             NitcEventCmd::Get { ids } => {
-                let events = db.get_nitc_events_by_ids(&ids).await?;
-                let found: std::collections::HashSet<&str> =
-                    events.iter().map(|e| e.id.as_str()).collect();
-                for id in &ids {
-                    if !found.contains(id.as_str()) {
-                        eprintln!("not found: {}", id);
+                // Results are positionally aligned with the requested ids, so a missing
+                // event is identified directly rather than by diffing the two lists.
+                let mut events = Vec::new();
+                for (id, found) in ids.iter().zip(db.get_nitc_events_by_ids(&ids).await?) {
+                    match found {
+                        Some(event) => events.push(event),
+                        None => eprintln!("not found: {}", id),
                     }
                 }
                 show_nitc_events(db, &events).await;
@@ -1485,6 +1501,31 @@ async fn run(db: &impl Handler, object: Object) -> Result<()> {
                     }
                     show_nitc_events(db, &events).await;
                 }
+            }
+            NitcEventCmd::ForLocation { location } => {
+                let mut events = db.list_nitc_events_for_location(&location).await?;
+                events.sort_by(|a, b| {
+                    a.event_date
+                        .cmp(&b.event_date)
+                        .then_with(|| a.nitc_group_id.cmp(&b.nitc_group_id))
+                });
+                let rows: Vec<Vec<String>> = events
+                    .iter()
+                    .map(|e| {
+                        vec![
+                            e.id.clone(),
+                            e.event_date.to_string(),
+                            e.nitc_group_id.clone(),
+                            opt_num(e.ses_api_nitc_id.map(|v| v as u64)),
+                            e.version.to_string(),
+                            opt_num(e.synced_version),
+                        ]
+                    })
+                    .collect();
+                print_table(
+                    &["id", "date", "group", "ses_nitc_id", "version", "synced"],
+                    &rows,
+                );
             }
         },
 
