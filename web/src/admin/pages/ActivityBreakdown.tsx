@@ -4,6 +4,7 @@ import ActivityTimeRange from "../components/ActivityTimeRange";
 import ActivityBreakdownDisplay from "../components/ActivityBreakdownDisplay";
 import LoadingIndicator from "../../components/LoadingIndicator";
 import useActivityTimeRange from "../components/useActivityTimeRange";
+import { Button } from "../../components/ui/Button";
 
 export default function ActivityBreakdown() {
   const settings = useSettings();
@@ -13,8 +14,10 @@ export default function ActivityBreakdown() {
     setStartInput,
     setEndInput,
     hasValidRange,
-    queryStartTime,
-    queryEndTime,
+    appliedStartTime,
+    appliedEndTime,
+    isDirty,
+    applyRange,
   } = useActivityTimeRange();
 
   return (
@@ -25,6 +28,16 @@ export default function ActivityBreakdown() {
         onStartChange={setStartInput}
         onEndChange={setEndInput}
       />
+      <div className="mb-4 flex justify-center">
+        <Button
+          variant="primary"
+          size="row"
+          disabled={!hasValidRange || !isDirty}
+          onClick={applyRange}
+        >
+          Update results
+        </Button>
+      </div>
       {!hasValidRange && (
         <p className="font-bold text-red-600">
           Start time must be before end time.
@@ -35,8 +48,8 @@ export default function ActivityBreakdown() {
         <Suspense fallback={<LoadingIndicator />}>
           <ActivityBreakdownDisplay
             locationId={settings?.locationId || ""}
-            startTime={queryStartTime}
-            endTime={queryEndTime}
+            startTime={appliedStartTime}
+            endTime={appliedEndTime}
           />
         </Suspense>
       )}
