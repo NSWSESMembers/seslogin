@@ -1,6 +1,7 @@
 import { graphql, readInlineData } from "relay-runtime";
-import { fetchQuery, useLazyLoadQuery, useRelayEnvironment } from "react-relay";
+import { fetchQuery, useRelayEnvironment } from "react-relay";
 import ActivityListTable from "../components/ActivityListTable";
+import { useRetryableLazyLoadQuery } from "../../components/useRetryableLazyLoadQuery";
 import ActivityCategorySelector from "../components/ActivityCategorySelector";
 import LoadingIndicator from "../../components/LoadingIndicator";
 import type {
@@ -62,7 +63,7 @@ function ActivityListMemberContent({
   categoryIds: string[];
 }) {
   const relayEnvironment = useRelayEnvironment();
-  const data = useLazyLoadQuery<ActivityListMemberQuery>(
+  const data = useRetryableLazyLoadQuery<ActivityListMemberQuery>(
     graphql`
       query ActivityListMemberQuery(
         $person: ID!

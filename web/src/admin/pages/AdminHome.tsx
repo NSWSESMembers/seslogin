@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { graphql } from "relay-runtime";
-import { useLazyLoadQuery } from "react-relay";
 import type { AdminHomeQuery } from "./__generated__/AdminHomeQuery.graphql";
+import { useRetryableLazyLoadQuery } from "../../components/useRetryableLazyLoadQuery";
 import ClearLocationButton from "../components/ClearLocationButton";
 import ShowPasskeyPromptButton from "../components/ShowPasskeyPromptButton";
 import DevOnly from "../components/DevOnly";
@@ -57,7 +57,7 @@ export default function AdminHome() {
   const { disaggregateVirtualPeriods } = useUserInfo();
   const [now] = useState(() => Math.floor(Date.now() / 1000));
 
-  const data = useLazyLoadQuery<AdminHomeQuery>(
+  const data = useRetryableLazyLoadQuery<AdminHomeQuery>(
     graphql`
       query AdminHomeQuery($location: ID!, $now: Int!) @throwOnFieldError {
         location(id: $location) {

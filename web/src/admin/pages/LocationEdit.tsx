@@ -1,5 +1,6 @@
 import { useNavigate, useParams } from "react-router";
-import { graphql, useLazyLoadQuery, useMutation } from "react-relay";
+import { graphql, useMutation } from "react-relay";
+import { useRetryableLazyLoadQuery } from "../../components/useRetryableLazyLoadQuery";
 import type { LocationEditQuery } from "./__generated__/LocationEditQuery.graphql";
 import type { LocationEditMutation } from "./__generated__/LocationEditMutation.graphql";
 import { useNotify } from "../components/useNotify";
@@ -13,7 +14,7 @@ export default function EditLocation() {
   const { notifyError, notifySuccess } = useNotify();
   const id = params.locationId!;
 
-  const data = useLazyLoadQuery<LocationEditQuery>(
+  const data = useRetryableLazyLoadQuery<LocationEditQuery>(
     graphql`
       query LocationEditQuery($id: ID!) @throwOnFieldError {
         location(id: $id) {

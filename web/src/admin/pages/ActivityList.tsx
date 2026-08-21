@@ -1,6 +1,7 @@
 import { graphql, readInlineData } from "relay-runtime";
-import { fetchQuery, useLazyLoadQuery, useRelayEnvironment } from "react-relay";
+import { fetchQuery, useRelayEnvironment } from "react-relay";
 import { useSettings } from "../../lib/settings";
+import { useRetryableLazyLoadQuery } from "../../components/useRetryableLazyLoadQuery";
 import { startTransition, useEffect, useState } from "react";
 import type {
   ActivityListQuery,
@@ -33,7 +34,7 @@ const activityListPeriodName = graphql`
 export default function ActivityList() {
   const settings = useSettings();
   const relayEnvironment = useRelayEnvironment();
-  const data = useLazyLoadQuery<ActivityListQuery>(
+  const data = useRetryableLazyLoadQuery<ActivityListQuery>(
     graphql`
       query ActivityListQuery($location: ID!, $first: Int!, $after: String)
       @throwOnFieldError {

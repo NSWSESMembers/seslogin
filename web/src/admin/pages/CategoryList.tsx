@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { graphql, useLazyLoadQuery, useMutation } from "react-relay";
+import { graphql, useMutation } from "react-relay";
 import type { CategoryListDisableMutation } from "./__generated__/CategoryListDisableMutation.graphql";
 import type { CategoryListQuery } from "./__generated__/CategoryListQuery.graphql";
 import { useUserInfo } from "../components/useUserInfo";
+import { useRetryableLazyLoadQuery } from "../../components/useRetryableLazyLoadQuery";
 import { useNotify } from "../components/useNotify";
 import { AdminTable, Th, Td } from "../../components/ui/Table";
 import { Button, ButtonLink } from "../../components/ui/Button";
@@ -127,7 +128,7 @@ export default function CategoryList() {
   const { isDev } = useUserInfo();
   const [showDisabled, setShowDisabled] = useState(false);
 
-  const data = useLazyLoadQuery<CategoryListQuery>(
+  const data = useRetryableLazyLoadQuery<CategoryListQuery>(
     graphql`
       query CategoryListQuery @throwOnFieldError {
         categories {

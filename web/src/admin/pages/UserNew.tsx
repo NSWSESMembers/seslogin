@@ -1,5 +1,6 @@
 import { useNavigate } from "react-router";
-import { graphql, useLazyLoadQuery, useMutation } from "react-relay";
+import { graphql, useMutation } from "react-relay";
+import { useRetryableLazyLoadQuery } from "../../components/useRetryableLazyLoadQuery";
 import type { UserNewQuery } from "./__generated__/UserNewQuery.graphql";
 import type { UserNewMutation } from "./__generated__/UserNewMutation.graphql";
 import { useNotify } from "../components/useNotify";
@@ -10,7 +11,7 @@ import { Button } from "../../components/ui/Button";
 export default function NewUser() {
   const navigate = useNavigate();
   const { notifyError, notifySuccess } = useNotify();
-  const data = useLazyLoadQuery<UserNewQuery>(
+  const data = useRetryableLazyLoadQuery<UserNewQuery>(
     graphql`
       query UserNewQuery @throwOnFieldError {
         locations {

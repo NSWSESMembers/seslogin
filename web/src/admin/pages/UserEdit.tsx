@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate, useParams } from "react-router";
-import { graphql, useLazyLoadQuery, useMutation } from "react-relay";
+import { graphql, useMutation } from "react-relay";
+import { useRetryableLazyLoadQuery } from "../../components/useRetryableLazyLoadQuery";
 import type { UserEditQuery } from "./__generated__/UserEditQuery.graphql";
 import type { UserEditMutation } from "./__generated__/UserEditMutation.graphql";
 import { useNotify } from "../components/useNotify";
@@ -14,7 +15,7 @@ export default function UserEdit() {
   const { notifyError, notifySuccess } = useNotify();
   const id = params.userId!;
 
-  const data = useLazyLoadQuery<UserEditQuery>(
+  const data = useRetryableLazyLoadQuery<UserEditQuery>(
     graphql`
       query UserEditQuery($id: ID!) @throwOnFieldError {
         user(id: $id) {

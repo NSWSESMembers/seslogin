@@ -1,10 +1,6 @@
 import { useState } from "react";
-import {
-  graphql,
-  useFragment,
-  useLazyLoadQuery,
-  useMutation,
-} from "react-relay";
+import { graphql, useFragment, useMutation } from "react-relay";
+import { useRetryableLazyLoadQuery } from "../../components/useRetryableLazyLoadQuery";
 import type { UserListQuery } from "./__generated__/UserListQuery.graphql";
 import type { UserListToggleMutation } from "./__generated__/UserListToggleMutation.graphql";
 import type { UserList_user$key } from "./__generated__/UserList_user.graphql";
@@ -131,7 +127,7 @@ function Row(props: { user: UserList_user$key; idx: number; isDev: boolean }) {
 export default function UserList() {
   const { isDev } = useUserInfo();
   const [showDisabled, setShowDisabled] = useState(false);
-  const data = useLazyLoadQuery<UserListQuery>(
+  const data = useRetryableLazyLoadQuery<UserListQuery>(
     graphql`
       query UserListQuery @throwOnFieldError {
         users {

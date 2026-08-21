@@ -1,5 +1,6 @@
 import { useNavigate } from "react-router";
-import { graphql, useLazyLoadQuery, useMutation } from "react-relay";
+import { graphql, useMutation } from "react-relay";
+import { useRetryableLazyLoadQuery } from "../../components/useRetryableLazyLoadQuery";
 import type { NitcGroupNewQuery } from "./__generated__/NitcGroupNewQuery.graphql";
 import type { NitcGroupNewMutation } from "./__generated__/NitcGroupNewMutation.graphql";
 import { useNotify } from "../components/useNotify";
@@ -12,7 +13,7 @@ export default function NitcGroupNew() {
   const navigate = useNavigate();
   const { notifyError, notifySuccess } = useNotify();
 
-  const data = useLazyLoadQuery<NitcGroupNewQuery>(
+  const data = useRetryableLazyLoadQuery<NitcGroupNewQuery>(
     graphql`
       query NitcGroupNewQuery @throwOnFieldError {
         ses_nonincident_types

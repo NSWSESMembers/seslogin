@@ -1,13 +1,14 @@
 import { useState } from "react";
-import { graphql, useLazyLoadQuery, useMutation } from "react-relay";
+import { graphql, useMutation } from "react-relay";
 import type { SettingsDailyEmailQuery } from "./__generated__/SettingsDailyEmailQuery.graphql";
 import type { SettingsDailyEmailMutation } from "./__generated__/SettingsDailyEmailMutation.graphql";
 import { useNotify } from "../components/useNotify";
 import { FieldList, FormField } from "../../components/ui/FormField";
 import { Button } from "../../components/ui/Button";
+import { useRetryableLazyLoadQuery } from "../../components/useRetryableLazyLoadQuery";
 
 export default function SettingsDailyEmail() {
-  const data = useLazyLoadQuery<SettingsDailyEmailQuery>(
+  const data = useRetryableLazyLoadQuery<SettingsDailyEmailQuery>(
     graphql`
       query SettingsDailyEmailQuery @throwOnFieldError {
         user {
