@@ -1,5 +1,4 @@
 import { useLocation } from "react-router";
-import { ErrorBoundary, type FallbackProps } from "react-error-boundary";
 import { Suspense } from "react";
 import { useUserInfo } from "./useUserInfo";
 import TopBar from "./TopBar";
@@ -8,7 +7,7 @@ import MenuBar from "./MenuBar";
 import SubmenuBar from "./SubmenuBar";
 import Footer from "./Footer";
 import LoadingIndicator from "../../components/LoadingIndicator";
-import PageErrorFallback from "../../components/PageErrorFallback";
+import RelayErrorBoundary from "../../components/RelayErrorBoundary";
 import LocationSelector from "./LocationSelector";
 interface AdminContentProps {
   children?: React.ReactNode;
@@ -38,18 +37,12 @@ export default function AdminContent({
       <SubmenuBar isSuper={isSuper} />
 
       <div className="bg-surface px-[3%] py-5">
-        <ErrorBoundary
-          key={location.pathname}
-          fallbackRender={({ error, resetErrorBoundary }: FallbackProps) => (
-            <PageErrorFallback
-              error={error}
-              resetErrorBoundary={resetErrorBoundary}
-              showDetailsByDefault={isDev}
-            />
-          )}
+        <RelayErrorBoundary
+          resetKey={location.pathname}
+          showDetailsByDefault={isDev}
         >
           <Suspense fallback={<LoadingIndicator />}>{children}</Suspense>
-        </ErrorBoundary>
+        </RelayErrorBoundary>
       </div>
       <Footer />
     </LocationSelector>
