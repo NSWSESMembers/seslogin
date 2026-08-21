@@ -46,7 +46,10 @@ export default function ActivityDailyBreakdown() {
       )}
 
       {hasValidRange && (
-        <RelayErrorBoundary resetKey={`${appliedStartTime}-${appliedEndTime}`}>
+        <RelayErrorBoundary
+          resetKey={`${appliedStartTime}-${appliedEndTime}`}
+          canRetry
+        >
           <Suspense fallback={<LoadingIndicator />}>
             <ActivityDailyBreakdownDisplay
               locationId={settings?.locationId || ""}

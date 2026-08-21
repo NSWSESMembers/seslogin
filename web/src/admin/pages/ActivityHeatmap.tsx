@@ -251,6 +251,7 @@ export default function ActivityHeatmap() {
       {canRenderResults && (
         <RelayErrorBoundary
           resetKey={`${appliedRange.startTime}-${appliedRange.endTime}-${appliedRange.categoryIds.join(",")}`}
+          canRetry
         >
           <Suspense fallback={<LoadingIndicator />}>
             <ActivityHeatmapDisplay

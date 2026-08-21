@@ -25,13 +25,51 @@ describe("RelayErrorBoundary", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
   });
 
-  it("invalidates the Relay store when 'Try again' is clicked", async () => {
+  it("shows 'Reload page' by default instead of a 'Try again' that can't guarantee a retry", async () => {
+    const environment = makeEnvironment();
+    // jsdom's window.location.reload isn't configurable enough for
+    // vi.spyOn (or for redefining just that one property), so swap the
+    // whole location object out for this test.
+    const reloadSpy = vi.fn();
+    const originalLocation = window.location;
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: { ...originalLocation, reload: reloadSpy },
+    });
+
+    try {
+      render(
+        <RelayEnvironmentProvider environment={environment}>
+          <RelayErrorBoundary>
+            <ThrowsAlways />
+          </RelayErrorBoundary>
+        </RelayEnvironmentProvider>,
+      );
+
+      expect(screen.getByText("Something went wrong")).toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: "Try again" }),
+      ).not.toBeInTheDocument();
+
+      const user = UserEvent.setup();
+      await user.click(screen.getByRole("button", { name: "Reload page" }));
+
+      expect(reloadSpy).toHaveBeenCalledOnce();
+    } finally {
+      Object.defineProperty(window, "location", {
+        configurable: true,
+        value: originalLocation,
+      });
+    }
+  });
+
+  it("invalidates the Relay store when 'Try again' is clicked (canRetry)", async () => {
     const environment = makeEnvironment();
     const commitUpdateSpy = vi.spyOn(environment, "commitUpdate");
 
     render(
       <RelayEnvironmentProvider environment={environment}>
-        <RelayErrorBoundary>
+        <RelayErrorBoundary canRetry>
           <ThrowsAlways />
         </RelayErrorBoundary>
       </RelayEnvironmentProvider>,
@@ -52,7 +90,7 @@ describe("RelayErrorBoundary", () => {
     expect(commitUpdateSpy).toHaveBeenCalledOnce();
   });
 
-  it("provides an incrementing fetchKey via useRelayRetryFetchKey on each 'Try again' click", async () => {
+  it("provides an incrementing fetchKey via useRelayRetryFetchKey on each 'Try again' click (canRetry)", async () => {
     const environment = makeEnvironment();
     // A plain boolean rather than a throw-once counter: React can invoke a
     // throwing component more than once per render pass while recovering
@@ -72,7 +110,7 @@ describe("RelayErrorBoundary", () => {
 
     render(
       <RelayEnvironmentProvider environment={environment}>
-        <RelayErrorBoundary>
+        <RelayErrorBoundary canRetry>
           <MaybeThrowsThenReportsFetchKey />
         </RelayErrorBoundary>
       </RelayEnvironmentProvider>,
