@@ -332,11 +332,11 @@ Both issue `Scan` with only a `FilterExpression`. These tables are small (~10s o
 
 Same pattern as above. Locations are ~45 items. The `filter_expression("enabled = :enabled")` filters disabled locations after reading everything. Given the table size this is not a practical concern, but it scans the whole table on every `list_locations` call, including the NITC export loop which calls it once at startup.
 
-#### `get_records` — `BatchGetItem` does not retry `UnprocessedKeys`
+#### ~~`get_records` — `BatchGetItem` does not retry `UnprocessedKeys`~~ ✓ Fixed
 
-DynamoDB's `BatchGetItem` can return `UnprocessedKeys` when throughput is exceeded or when the request is throttled. The implementation does not check this field and silently discards any unprocessed items, causing `NotFound` errors for IDs that were not returned. For `PAY_PER_REQUEST` tables this is rare but not impossible under burst load.
+Was: the response's `UnprocessedKeys` field was never read, so any item DynamoDB deferred — under throttling, or when a response would exceed 16MB — was silently discarded and the caller saw a row that exists as if it were missing. Now: each chunk is re-requested until nothing is left unprocessed, with 50ms backoff doubling to a 1s ceiling over at most 5 attempts (~750ms total). Keys still unprocessed after that raise `Error::Infrastructure` rather than reporting the rows as absent, because `None` would be indistinguishable from "does not exist".
 
-Additionally, `BatchGetItem` has a hard limit of 100 items per request. Callers passing more than 100 IDs will receive a `ValidationException`. There is no chunking logic.
+The 100-item-per-request limit noted here was already handled: `get_records` chunks IDs with `.chunks(100)`.
 
 #### `list_periods_for_location` — `limit` applies before `FilterExpression`
 
