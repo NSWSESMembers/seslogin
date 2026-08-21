@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<ca6c01ec0f038289c07c4d690d28e5b3>>
+ * @generated SignedSource<<c0b54d6bb9173ed39d922ac8efd47fd6>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -10,27 +10,27 @@
 
 import { ReaderInlineDataFragment } from 'relay-runtime';
 export type NitcExportStatus = "PENDING" | "SYNCED" | "%future added value";
-import { FragmentRefs } from "relay-runtime";
+import { FragmentRefs, Result } from "relay-runtime";
 export type ActivityListTable_period$data = {
-  readonly category: {
+  readonly category: Result<{
     readonly id: string;
     readonly isVirtual: boolean;
     readonly name: string;
-  } | null | undefined;
+  } | null | undefined, unknown>;
   readonly comment: string | null | undefined;
   readonly endTime: number | null | undefined;
   readonly id: string;
   readonly nitcEventId: string | null | undefined;
   readonly nitcExportStatus: NitcExportStatus | null | undefined;
   readonly personId: string | null | undefined;
-  readonly signedInSession: {
+  readonly signedInSession: Result<{
     readonly id: string;
     readonly name: string;
-  } | null | undefined;
-  readonly signedOutSession: {
+  } | null | undefined, unknown>;
+  readonly signedOutSession: Result<{
     readonly id: string;
     readonly name: string;
-  } | null | undefined;
+  } | null | undefined, unknown>;
   readonly startTime: number;
   readonly " $fragmentType": "ActivityListTable_period";
 };
@@ -44,6 +44,6 @@ const node: ReaderInlineDataFragment = {
   "name": "ActivityListTable_period"
 };
 
-(node as any).hash = "167489a9d7fb4c58145139c92d5d2b86";
+(node as any).hash = "ee29059716c9eead19cf8ca517362bfe";
 
 export default node;

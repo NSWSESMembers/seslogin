@@ -1,6 +1,8 @@
 import { useState, type CSSProperties } from "react";
+import { ErrorBoundary } from "react-error-boundary";
 import { formatTime, formatTimeDiff } from "../../lib/time";
-import { graphql, readInlineData } from "relay-runtime";
+import { unwrapCatch } from "../../lib/relayCatch";
+import { graphql, isValueResult, readInlineData } from "relay-runtime";
 import { useMutation } from "react-relay";
 import type { ActivityListTableDeleteMutation } from "./__generated__/ActivityListTableDeleteMutation.graphql";
 import type {
@@ -35,15 +37,19 @@ const activityListTablePeriod = graphql`
     comment
     nitcExportStatus
     nitcEventId
-    signedInSession {
+    # @catch on every relation below: a dangling reference (deleted session,
+    # deleted category) must not throw @throwOnFieldError's whole-query error
+    # and hide every other row — Row unwraps these with unwrapCatch, which
+    # throws, so a per-row ErrorBoundary degrades just that one row instead.
+    signedInSession @catch {
       id
       name
     }
-    signedOutSession {
+    signedOutSession @catch {
       id
       name
     }
-    category {
+    category @catch {
       id
       name
       isVirtual
@@ -83,9 +89,14 @@ function Section<T extends ActivityListTable_period$key>({
   ).size;
   const periodLabel = periodCount === 1 ? "period" : "periods";
   const memberLabel = uniqueMemberCount === 1 ? "member" : "members";
-  const virtualCount = entries.filter(
-    (entry) => entry.data.category?.isVirtual,
-  ).length;
+  // Non-throwing here: this is a summary count spanning every row in the
+  // section, not a single row's own render, so a failed category just counts
+  // as non-virtual rather than blanking the whole day's summary. The row
+  // itself still shows its own "unable to load" state below.
+  const virtualCount = entries.filter((entry) => {
+    const category = entry.data.category;
+    return isValueResult(category) && category.value?.isVirtual;
+  }).length;
   const nonVirtualCount = periodCount - virtualCount;
 
   return (
@@ -106,13 +117,29 @@ function Section<T extends ActivityListTable_period$key>({
         <td className="h-0.75" colSpan={colSpan}></td>
       </tr>
       {entries.map((entry, idx) => (
-        <Row
+        <ErrorBoundary
           key={entry.data.id}
-          entry={entry}
-          idx={idx}
-          getRowLabel={getRowLabel}
-          isDev={isDev}
-        />
+          fallbackRender={() => (
+            <tr>
+              <td colSpan={colSpan} className="font-bold text-red-600">
+                Unable to load period with ID {entry.data.id}
+              </td>
+            </tr>
+          )}
+          onError={(error) =>
+            console.error(
+              `Failed to render activity row ${entry.data.id}:`,
+              error,
+            )
+          }
+        >
+          <Row
+            entry={entry}
+            idx={idx}
+            getRowLabel={getRowLabel}
+            isDev={isDev}
+          />
+        </ErrorBoundary>
       ))}
     </>
   );
@@ -130,6 +157,11 @@ function Row<T extends ActivityListTable_period$key>({
   isDev: boolean;
 }) {
   const period = entry.data;
+  // Throwing unwraps: a failure here is caught by the per-row ErrorBoundary
+  // this Row is always rendered inside (see Section), degrading just this row.
+  const category = unwrapCatch(period.category);
+  const signedInSession = unwrapCatch(period.signedInSession);
+  const signedOutSession = unwrapCatch(period.signedOutSession);
   const { notifyError, notifySuccess } = useNotify();
   const [commitMutation, isMutationInFlight] =
     useMutation<ActivityListTableDeleteMutation>(graphql`
@@ -239,21 +271,21 @@ function Row<T extends ActivityListTable_period$key>({
       {isDev && <Td className="font-mono text-[0.85em]">{period.id}</Td>}
       <Td>{getRowLabel(entry.ref)}</Td>
       <Td
-        title={period.signedInSession?.name ?? undefined}
-        style={period.signedInSession ? sessionHintStyle : undefined}
+        title={signedInSession?.name ?? undefined}
+        style={signedInSession ? sessionHintStyle : undefined}
       >
         {formatTime(start)}
       </Td>
       <Td
-        title={period.signedOutSession?.name ?? undefined}
-        style={period.signedOutSession ? sessionHintStyle : undefined}
+        title={signedOutSession?.name ?? undefined}
+        style={signedOutSession ? sessionHintStyle : undefined}
       >
         {end ? formatTime(end) : ""}
       </Td>
       <Td>{timeDiff}</Td>
       <Td>
         <span className="inline-flex items-center gap-1.5">
-          {period.category?.name}
+          {category?.name}
           {period.comment && <CommentIndicator comment={period.comment} />}
         </span>
       </Td>
@@ -300,6 +332,7 @@ export default function ActivityListTable<
   hasNextPage,
   isLoadingMore,
   onLoadMore,
+  loadMoreError,
 }: {
   periods: ReadonlyArray<T>;
   firstcol: Firstcol;
@@ -307,6 +340,7 @@ export default function ActivityListTable<
   hasNextPage?: boolean;
   isLoadingMore?: boolean;
   onLoadMore?: () => void;
+  loadMoreError?: string | null;
 }) {
   const { isDev, disaggregateVirtualPeriods } = useUserInfo();
   const [hideVirtual, setHideVirtual] = useState(false);
@@ -322,7 +356,16 @@ export default function ActivityListTable<
   for (const periodRef of periods) {
     const data = readInlineData(activityListTablePeriod, periodRef);
     if (!data) continue;
-    if (hideVirtual && data.category?.isVirtual) continue;
+    // Non-throwing: a failed category should keep the row visible (so its own
+    // "unable to load" state can show), not hide it via a filter that can't
+    // tell "not virtual" from "couldn't tell".
+    if (
+      hideVirtual &&
+      isValueResult(data.category) &&
+      data.category.value?.isVirtual
+    ) {
+      continue;
+    }
     const startTime = new Date(data.startTime * 1000);
     const day = startTime.toLocaleDateString(undefined, dateOptions);
     if (!dayGroupedRows.has(day)) {
@@ -375,6 +418,9 @@ export default function ActivityListTable<
             {isLoadingMore ? "Loading..." : "Load More"}
           </Button>
         </p>
+      )}
+      {loadMoreError && (
+        <p className="font-bold text-red-600">{loadMoreError}</p>
       )}
     </>
   );

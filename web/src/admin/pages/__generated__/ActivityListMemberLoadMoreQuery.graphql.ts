@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<b3e7ebde7dde5612a56b54edc88516e2>>
+ * @generated SignedSource<<b8ffae49b33f717ef60979a795b7fea2>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -291,9 +291,21 @@ return {
                           (v12/*: any*/),
                           (v13/*: any*/),
                           (v14/*: any*/),
-                          (v17/*: any*/),
-                          (v18/*: any*/),
-                          (v19/*: any*/)
+                          {
+                            "kind": "CatchField",
+                            "field": (v17/*: any*/),
+                            "to": "RESULT"
+                          },
+                          {
+                            "kind": "CatchField",
+                            "field": (v18/*: any*/),
+                            "to": "RESULT"
+                          },
+                          {
+                            "kind": "CatchField",
+                            "field": (v19/*: any*/),
+                            "to": "RESULT"
+                          }
                         ],
                         "args": null,
                         "argumentDefinitions": []
@@ -302,7 +314,11 @@ return {
                         "kind": "InlineDataFragmentSpread",
                         "name": "ActivityListMember_periodName",
                         "selections": [
-                          (v20/*: any*/)
+                          {
+                            "kind": "CatchField",
+                            "field": (v20/*: any*/),
+                            "to": "RESULT"
+                          }
                         ],
                         "args": null,
                         "argumentDefinitions": []
