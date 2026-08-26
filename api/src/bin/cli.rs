@@ -17,6 +17,7 @@ use seslogin::jwt::{ExpirePolicy, Key};
 use seslogin::request_metrics::{self, RequestMetrics};
 use seslogin::text_table::{DIVIDER, print_detail, print_table};
 use std::collections::{HashMap, HashSet};
+use std::io::{BufRead, Write};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -249,6 +250,12 @@ enum PeriodCmd {
         #[arg(long)]
         event: String,
     },
+    /// Read period IDs from stdin (one per line; blank lines and `#` comments
+    /// ignored) and write a CSV to stdout with person, start/end time, location,
+    /// and category. Built for auditing periods with a broken reference (e.g.
+    /// db-check's missing_reference finding): a reference that no longer
+    /// resolves is left blank rather than failing the whole export.
+    ExportCsv,
 }
 
 #[derive(Subcommand, Debug)]
@@ -1419,6 +1426,9 @@ async fn run(db: &impl Handler, object: Object) -> Result<()> {
                     db.get_periods(&ids).await?.into_iter().flatten().collect();
                 print_period_table(db, &periods).await;
             }
+            PeriodCmd::ExportCsv => {
+                export_periods_csv(db).await?;
+            }
         },
 
         Object::Category { cmd } => match cmd {
@@ -1754,6 +1764,111 @@ async fn print_period_table(db: &impl Handler, periods: &[Period]) {
         })
         .collect();
     print_table(&["id", "person", "start", "end", "category"], &rows);
+}
+
+/// Quote a CSV field only if it needs it (contains a comma, quote, or newline),
+/// doubling any embedded quotes per RFC 4180.
+fn csv_field(s: &str) -> String {
+    if s.contains(',') || s.contains('"') || s.contains('\n') || s.contains('\r') {
+        format!("\"{}\"", s.replace('"', "\"\""))
+    } else {
+        s.to_string()
+    }
+}
+
+/// RFC 3339 rendering of an epoch-seconds timestamp, for machine-readable CSV output
+/// (unlike `fmt_ts`, which is tuned for a human reading a terminal).
+fn iso_ts(epoch_secs: u64) -> String {
+    DateTime::from_timestamp(epoch_secs as i64, 0)
+        .map(|dt| dt.to_rfc3339())
+        .unwrap_or_else(|| epoch_secs.to_string())
+}
+
+/// Read period IDs from stdin (one per line) and write a CSV to stdout, resolving
+/// whatever person/location/category references still exist and leaving the rest
+/// blank — the point is to audit periods whose references are known to be broken,
+/// so a lookup miss is the expected case, not a failure.
+async fn export_periods_csv(db: &impl Handler) -> Result<()> {
+    let stdin = std::io::stdin();
+    let mut ids = Vec::new();
+    for line in stdin.lock().lines() {
+        let line = line?;
+        let id = line.trim();
+        if id.is_empty() || id.starts_with('#') {
+            continue;
+        }
+        ids.push(id.to_string());
+    }
+    if ids.is_empty() {
+        return Err(anyhow!("no period ids on stdin"));
+    }
+
+    // Dedup for the batch call (BatchGetItem rejects duplicate keys within a chunk);
+    // the output below still has one row per input line, in input order.
+    let unique: Vec<String> = unique_refs(&ids).into_iter().map(str::to_string).collect();
+    let fetched = db.get_periods(&unique).await?;
+    let by_id: HashMap<&str, &Period> = unique
+        .iter()
+        .zip(fetched.iter())
+        .filter_map(|(id, p)| p.as_ref().map(|p| (id.as_str(), p)))
+        .collect();
+
+    let periods: Vec<&Period> = ids
+        .iter()
+        .filter_map(|id| match by_id.get(id.as_str()) {
+            Some(p) => Some(*p),
+            None => {
+                eprintln!("not found: {id}");
+                None
+            }
+        })
+        .collect();
+
+    let person_ids: Vec<String> = periods.iter().filter_map(|p| p.person_id.clone()).collect();
+    let person_map = person_names(db, &person_ids).await;
+    let loc_ids: Vec<String> = periods.iter().map(|p| p.location_id.clone()).collect();
+    let locs = location_names(db, &loc_ids).await;
+    let cat_ids: Vec<String> = periods
+        .iter()
+        .filter_map(|p| p.category_id.clone())
+        .collect();
+    let cat_map = category_names(db, &cat_ids).await;
+
+    let stdout = std::io::stdout();
+    let mut out = stdout.lock();
+    writeln!(
+        out,
+        "period_id,person_name,start_time,end_time,location_id,location_name,category_id,category_name"
+    )?;
+    for p in &periods {
+        let person_name = match &p.person_id {
+            Some(pid) => person_map.get(pid).cloned().unwrap_or_else(|| pid.clone()),
+            None => format!("GUEST {}", p.guest_name.as_deref().unwrap_or("")),
+        };
+        let start_time = iso_ts(p.start_time);
+        let end_time = p
+            .end_time
+            .map(iso_ts)
+            .unwrap_or_else(|| "active".to_string());
+        let location_name = locs.get(&p.location_id).cloned().unwrap_or_default();
+        let (category_id, category_name) = match &p.category_id {
+            Some(c) => (c.clone(), cat_map.get(c).cloned().unwrap_or_default()),
+            None => (String::new(), String::new()),
+        };
+        writeln!(
+            out,
+            "{},{},{},{},{},{},{},{}",
+            csv_field(&p.id),
+            csv_field(&person_name),
+            csv_field(&start_time),
+            csv_field(&end_time),
+            csv_field(&p.location_id),
+            csv_field(&location_name),
+            csv_field(&category_id),
+            csv_field(&category_name),
+        )?;
+    }
+    Ok(())
 }
 
 /// Page through every period for a location within [start_ts, end_ts].
