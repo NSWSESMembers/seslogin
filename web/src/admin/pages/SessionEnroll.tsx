@@ -2,6 +2,7 @@ import { graphql, useMutation } from "react-relay";
 import { Link, useSearchParams } from "react-router";
 import { useState } from "react";
 import SessionForm from "../components/SessionForm";
+import { NEW_SESSION_CONFIG } from "../components/sessionConfig";
 import useSelectedLocation from "../components/useSelectedLocation";
 import { useNotify } from "../components/useNotify";
 import { useRetryableLazyLoadQuery } from "../../components/useRetryableLazyLoadQuery";
@@ -126,7 +127,7 @@ function SessionEnrollForm({ fingerprint }: { fingerprint: string }) {
 
       <SessionForm
         initialName=""
-        initialConfig="{}"
+        initialConfig={NEW_SESSION_CONFIG}
         initialHealthcheckUrl=""
         isMutationInFlight={isMutationInFlight}
         onSubmit={handleSubmit}

@@ -2,6 +2,7 @@ import { graphql } from "relay-runtime";
 import { useState } from "react";
 import { useMutation } from "react-relay";
 import SessionForm from "../components/SessionForm";
+import { NEW_SESSION_CONFIG } from "../components/sessionConfig";
 import SessionCreatedInterstitial from "../components/SessionCreatedInterstitial";
 import useSelectedLocation from "../components/useSelectedLocation";
 import type { SessionsNewMutation } from "./__generated__/SessionsNewMutation.graphql";
@@ -75,7 +76,7 @@ export default function SessionsNew() {
 
       <SessionForm
         initialName=""
-        initialConfig="{}"
+        initialConfig={NEW_SESSION_CONFIG}
         initialHealthcheckUrl=""
         isMutationInFlight={isMutationInFlight}
         onSubmit={handleSubmit}
