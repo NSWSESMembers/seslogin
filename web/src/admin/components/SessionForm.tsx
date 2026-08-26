@@ -14,16 +14,31 @@ interface SessionFormProps {
 
 type ConfigEditorMode = "basic" | "advanced";
 type SessionMode = "scan" | "status";
+type KioskTheme = "auto" | "light" | "dark";
 type ConfigObject = Record<string, unknown>;
+
+interface SegmentedControlProps<T extends string> {
+  label: string;
+  value: T;
+  options: { value: T; label: string }[];
+  onChange: (nextValue: T) => void;
+}
 
 interface ConfigEditorModeControlProps {
   configEditorMode: ConfigEditorMode;
   onSetEditorMode: (nextEditorMode: ConfigEditorMode) => void;
 }
 
+interface ThemeControlProps {
+  theme: KioskTheme;
+  onChange: (nextTheme: KioskTheme) => void;
+}
+
 interface BasicSessionModeFieldsProps {
   sessionMode: SessionMode;
   onChange: (nextMode: SessionMode) => void;
+  theme: KioskTheme;
+  onThemeChange: (next: KioskTheme) => void;
   smallCategories: boolean;
   onSmallCategoriesChange: (next: boolean) => void;
   easyTimeEntry: boolean;
@@ -78,6 +93,32 @@ function withSessionMode(
 
 function getSessionModeFromConfig(config: ConfigObject): SessionMode {
   return config.status ? "status" : "scan";
+}
+
+/**
+ * Omits the key entirely for Auto rather than writing `theme: "auto"`, since an
+ * omitted key already means auto to the kiosk (see `themeFromConfig` in
+ * KioskMain) — matched by `getThemeFromConfig` below reading it back the same way.
+ */
+function withTheme(config: ConfigObject, theme: KioskTheme): ConfigObject {
+  const next = { ...config };
+  if (theme === "auto") {
+    delete next.theme;
+  } else {
+    next.theme = theme;
+  }
+  return next;
+}
+
+/**
+ * Mirrors the kiosk's own reading of the key (see `themeFromConfig` in
+ * KioskMain): an omitted key is auto, `"dark"` is dark, and anything else is light.
+ */
+function getThemeFromConfig(config: ConfigObject): KioskTheme {
+  if (config.theme === undefined || config.theme === "auto") {
+    return "auto";
+  }
+  return config.theme === "dark" ? "dark" : "light";
 }
 
 function withSmallCategories(
@@ -186,34 +227,70 @@ function NameField({ initialName }: { initialName: string }) {
   );
 }
 
+function SegmentedControl<T extends string>({
+  label,
+  value,
+  options,
+  onChange,
+}: SegmentedControlProps<T>) {
+  return (
+    <div
+      className="inline-flex overflow-hidden rounded-lg border border-line-strong"
+      role="group"
+      aria-label={label}
+    >
+      {options.map((option, index) => (
+        <button
+          key={option.value}
+          className={`m-0 min-w-23 cursor-pointer rounded-none border-0 bg-surface-raised px-3 py-1.5 text-ink hover:bg-surface-sunken aria-pressed:bg-navy aria-pressed:text-white aria-pressed:hover:bg-[#2b4f97] ${index > 0 ? "border-l border-line-strong" : ""}`}
+          type="button"
+          onClick={() => onChange(option.value)}
+          aria-pressed={value === option.value}
+        >
+          {option.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function ConfigEditorModeControl({
   configEditorMode,
   onSetEditorMode,
 }: ConfigEditorModeControlProps) {
   return (
     <FormField label={<span>Config Editor</span>}>
-      <div
-        className="inline-flex overflow-hidden rounded-lg border border-line-strong"
-        role="group"
-        aria-label="Config editor mode"
-      >
-        <button
-          className="m-0 min-w-23 cursor-pointer rounded-none border-0 bg-surface-raised px-3 py-1.5 text-ink hover:bg-surface-sunken aria-pressed:bg-navy aria-pressed:text-white aria-pressed:hover:bg-[#2b4f97]"
-          type="button"
-          onClick={() => onSetEditorMode("basic")}
-          aria-pressed={configEditorMode === "basic"}
-        >
-          Basic
-        </button>
-        <button
-          className="m-0 min-w-23 cursor-pointer rounded-none border-0 border-l border-line-strong bg-surface-raised px-3 py-1.5 text-ink hover:bg-surface-sunken aria-pressed:bg-navy aria-pressed:text-white aria-pressed:hover:bg-[#2b4f97]"
-          type="button"
-          onClick={() => onSetEditorMode("advanced")}
-          aria-pressed={configEditorMode === "advanced"}
-        >
-          Advanced
-        </button>
-      </div>
+      <SegmentedControl
+        label="Config editor mode"
+        value={configEditorMode}
+        options={[
+          { value: "basic", label: "Basic" },
+          { value: "advanced", label: "Advanced" },
+        ]}
+        onChange={onSetEditorMode}
+      />
+    </FormField>
+  );
+}
+
+function ThemeControl({ theme, onChange }: ThemeControlProps) {
+  return (
+    <FormField label={<span>Theme</span>}>
+      <SegmentedControl
+        label="Theme"
+        value={theme}
+        options={[
+          { value: "auto", label: "Auto" },
+          { value: "light", label: "Light" },
+          { value: "dark", label: "Dark" },
+        ]}
+        onChange={onChange}
+      />
+      <p className="mt-1.5 mb-0 text-ink-muted">
+        Auto follows the device's own light/dark setting, which may require
+        configuration of the browser and/or the operating system to work. Light
+        and Dark pin the kiosk to that theme regardless of the device.
+      </p>
     </FormField>
   );
 }
@@ -232,6 +309,8 @@ function BasicSessionModeFields({
   quickPickCategories,
   onQuickPickCategoriesChange,
   configJson,
+  theme,
+  onThemeChange,
 }: BasicSessionModeFieldsProps) {
   return (
     <>
@@ -268,6 +347,7 @@ function BasicSessionModeFields({
         </OptionList>
         <input type="hidden" name="config" value={configJson} />
       </FormField>
+      <ThemeControl theme={theme} onChange={onThemeChange} />
       {sessionMode === "scan" && (
         <FormField label={<span>Options</span>}>
           <OptionList>
@@ -432,6 +512,7 @@ export default function SessionForm({
   const newCategories = getNewCategoriesFromConfig(parsedConfig);
   const guests = getGuestsFromConfig(parsedConfig);
   const quickPickCategories = getQuickPickCategoriesFromConfig(parsedConfig);
+  const theme = getThemeFromConfig(parsedConfig);
 
   function setEditorMode(nextEditorMode: ConfigEditorMode) {
     if (configEditorMode === nextEditorMode) {
@@ -482,6 +563,11 @@ export default function SessionForm({
     setConfigJson(JSON.stringify(nextConfig, null, 2));
   }
 
+  function handleThemeChange(nextTheme: KioskTheme) {
+    const nextConfig = withTheme(parseConfigObject(configJson), nextTheme);
+    setConfigJson(JSON.stringify(nextConfig, null, 2));
+  }
+
   function handleAdvancedConfigChange(event: ChangeEvent<HTMLTextAreaElement>) {
     const nextConfigText = event.target.value;
     setConfigJson(nextConfigText);
@@ -510,6 +596,8 @@ export default function SessionForm({
             quickPickCategories={quickPickCategories}
             onQuickPickCategoriesChange={handleQuickPickCategoriesChange}
             configJson={configJson}
+            theme={theme}
+            onThemeChange={handleThemeChange}
           />
         )}
         {configEditorMode === "advanced" && (
