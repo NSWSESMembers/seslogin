@@ -220,17 +220,23 @@ enum SessionCmd {
         #[arg(long)]
         location: Option<String>,
     },
-    /// Bulk-set one JSON config key across active sessions (soft-deleted sessions
-    /// are already invisible to `list_sessions`, which this uses). WRITES to the
-    /// `session` table. Defaults to dry-run — pass `--dry-run false` to apply. Unlike
-    /// `list`/`list-active`, walks every location including disabled ones, so a
-    /// session isn't skipped just because its location got disabled.
+    /// Bulk-set (or clear) one JSON config key across active sessions (soft-deleted
+    /// sessions are already invisible to `list_sessions`, which this uses). WRITES
+    /// to the `session` table. Defaults to dry-run — pass `--dry-run false` to
+    /// apply. Unlike `list`/`list-active`, walks every location including disabled
+    /// ones, so a session isn't skipped just because its location got disabled.
     SetConfigKey {
-        /// Config key to set, e.g. "theme".
+        /// Config key to set or clear, e.g. "theme".
         key: String,
         /// JSON value to assign, e.g. '"light"', 'true', or '42'. Must be valid
-        /// JSON — a bare string needs its own quotes.
-        value: String,
+        /// JSON — a bare string needs its own quotes. Required unless --clear.
+        #[arg(required_unless_present = "clear")]
+        value: Option<String>,
+        /// Remove the key entirely instead of setting it. Mutually exclusive with
+        /// `value` — an attribute is omitted, never written as JSON `null` (see
+        /// the CLAUDE.md note on optional DynamoDB attributes).
+        #[arg(long, conflicts_with = "value")]
+        clear: bool,
         /// Restrict to one location instead of every location.
         #[arg(long)]
         location: Option<String>,
@@ -1007,13 +1013,21 @@ async fn main() -> Result<()> {
             SessionCmd::SetConfigKey {
                 key,
                 value,
+                clear,
                 location,
                 dry_run,
             },
     } = &cli.object
     {
-        return run_session_set_config_key(&db_prefix, key, value, location.clone(), *dry_run)
-            .await;
+        return run_session_set_config_key(
+            &db_prefix,
+            key,
+            value.as_deref(),
+            *clear,
+            location.clone(),
+            *dry_run,
+        )
+        .await;
     }
 
     let db = dynamodb::Handler::new(&db_prefix, true).await;
@@ -1133,23 +1147,32 @@ fn run_jwt(jwt_secret: Option<String>, expire_s: Option<u64>, cmd: &JwtCmd) -> R
     Ok(())
 }
 
-/// Bulk-set one JSON config key across active sessions. Opens its own DB handler
-/// (unlike the read-only inspectors) since this writes to the `session` table when
-/// not in dry-run mode; `read_only` on the handler is set to `dry_run` itself, so a
-/// dry run cannot write even if a bug elsewhere tried to.
+/// Bulk-set or clear one JSON config key across active sessions. Opens its own DB
+/// handler (unlike the read-only inspectors) since this writes to the `session`
+/// table when not in dry-run mode; `read_only` on the handler is set to `dry_run`
+/// itself, so a dry run cannot write even if a bug elsewhere tried to.
+///
+/// `value_json` and `clear` are mutually exclusive and clap enforces that exactly
+/// one is given, so `value_json.is_some() == !clear` always holds here.
 async fn run_session_set_config_key(
     db_prefix: &str,
     key: &str,
-    value_json: &str,
+    value_json: Option<&str>,
+    clear: bool,
     location: Option<String>,
     dry_run: bool,
 ) -> Result<()> {
-    let value: serde_json::Value = serde_json::from_str(value_json).map_err(|e| {
-        anyhow!(
-            "--value {value_json:?} is not valid JSON ({e}) — a bare string needs its \
-             own quotes, e.g. value '\"light\"'"
-        )
-    })?;
+    let value: Option<serde_json::Value> = value_json
+        .map(|v| {
+            serde_json::from_str(v).map_err(|e| {
+                anyhow!(
+                    "--value {v:?} is not valid JSON ({e}) — a bare string needs its \
+                     own quotes, e.g. value '\"light\"'"
+                )
+            })
+        })
+        .transpose()?;
+    debug_assert_eq!(value.is_some(), !clear);
 
     let db = dynamodb::Handler::new(db_prefix, dry_run).await;
 
@@ -1168,32 +1191,52 @@ async fn run_session_set_config_key(
         }
     };
 
+    let describe = |v: Option<&serde_json::Value>| {
+        v.map(|v| v.to_string())
+            .unwrap_or_else(|| "<omitted>".to_string())
+    };
+
     let mut changed = 0usize;
     let mut unchanged = 0usize;
     for session in &sessions {
-        if session.config.get(key) == Some(&value) {
+        let current = session.config.get(key);
+        let already_matches = match &value {
+            Some(v) => current == Some(v),
+            None => current.is_none(),
+        };
+        if already_matches {
             unchanged += 1;
             continue;
         }
         changed += 1;
         println!(
-            "{} session={} ({}) {key}: {} -> {value}",
+            "{} session={} ({}) {key}: {} -> {}",
             if dry_run {
-                "[dry-run] would set"
+                if clear {
+                    "[dry-run] would clear"
+                } else {
+                    "[dry-run] would set"
+                }
+            } else if clear {
+                "clearing"
             } else {
                 "setting"
             },
             session.id,
             session.name,
-            session
-                .config
-                .get(key)
-                .map(|v| v.to_string())
-                .unwrap_or_else(|| "<omitted>".to_string()),
+            describe(current),
+            describe(value.as_ref()),
         );
         if !dry_run {
             let mut next_config = session.config.clone();
-            next_config.insert(key.to_string(), value.clone());
+            match &value {
+                Some(v) => {
+                    next_config.insert(key.to_string(), v.clone());
+                }
+                None => {
+                    next_config.remove(key);
+                }
+            }
             db.update_session(
                 &session.id,
                 SessionUpdateShape::Fields {
