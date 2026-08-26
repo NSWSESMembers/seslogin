@@ -3,6 +3,7 @@ pub mod app;
 pub mod auth;
 pub mod clock;
 pub mod db;
+pub mod db_check;
 pub mod dynamodb;
 pub mod environment;
 pub mod expire;
