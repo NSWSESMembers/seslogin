@@ -252,9 +252,9 @@ describe("KioskMain theme", () => {
     document.documentElement.removeAttribute("data-theme");
   });
 
-  it("pins light when no theme is set", async () => {
+  it("leaves the theme unpinned when no theme is set", async () => {
     await setupTest();
-    expect(document.documentElement).toHaveAttribute("data-theme", "light");
+    expect(document.documentElement).not.toHaveAttribute("data-theme");
   });
 
   it("pins light when the theme is 'light'", async () => {
