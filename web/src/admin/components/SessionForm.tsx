@@ -43,8 +43,6 @@ interface BasicSessionModeFieldsProps {
   onSmallCategoriesChange: (next: boolean) => void;
   easyTimeEntry: boolean;
   onEasyTimeEntryChange: (next: boolean) => void;
-  newCategories: boolean;
-  onNewCategoriesChange: (next: boolean) => void;
   guests: boolean;
   onGuestsChange: (next: boolean) => void;
   quickPickCategories: boolean;
@@ -153,23 +151,6 @@ function withEasyTimeEntry(
 
 function getEasyTimeEntryFromConfig(config: ConfigObject): boolean {
   return !!config.easyTimeEntry;
-}
-
-function withNewCategories(
-  config: ConfigObject,
-  enabled: boolean,
-): ConfigObject {
-  const next = { ...config };
-  if (enabled) {
-    next.newCategories = true;
-  } else {
-    delete next.newCategories;
-  }
-  return next;
-}
-
-function getNewCategoriesFromConfig(config: ConfigObject): boolean {
-  return !!config.newCategories;
 }
 
 function withGuests(config: ConfigObject, enabled: boolean): ConfigObject {
@@ -302,8 +283,6 @@ function BasicSessionModeFields({
   onSmallCategoriesChange,
   easyTimeEntry,
   onEasyTimeEntryChange,
-  newCategories,
-  onNewCategoriesChange,
   guests,
   onGuestsChange,
   quickPickCategories,
@@ -374,18 +353,6 @@ function BasicSessionModeFields({
               }
               title="Easy time entry"
               description="use a touch-friendly 12-hour keypad with an explicit confirm step and quick Yesterday/Today buttons on the sign-out Adjust screen, instead of the default 24-hour numeric keypad"
-            />
-            <OptionRow
-              input={
-                <input
-                  type="checkbox"
-                  checked={newCategories}
-                  onChange={(e) => onNewCategoriesChange(e.target.checked)}
-                  className="mt-0.5"
-                />
-              }
-              title="New categories"
-              description="use the reworked category list on the sign-out screens — new icon artwork, with several retired subcategories removed and others reordered"
             />
             <OptionRow
               input={
@@ -509,7 +476,6 @@ export default function SessionForm({
   const sessionMode = getSessionModeFromConfig(parsedConfig);
   const smallCategories = getSmallCategoriesFromConfig(parsedConfig);
   const easyTimeEntry = getEasyTimeEntryFromConfig(parsedConfig);
-  const newCategories = getNewCategoriesFromConfig(parsedConfig);
   const guests = getGuestsFromConfig(parsedConfig);
   const quickPickCategories = getQuickPickCategoriesFromConfig(parsedConfig);
   const theme = getThemeFromConfig(parsedConfig);
@@ -536,14 +502,6 @@ export default function SessionForm({
 
   function handleEasyTimeEntryChange(enabled: boolean) {
     const nextConfig = withEasyTimeEntry(
-      parseConfigObject(configJson),
-      enabled,
-    );
-    setConfigJson(JSON.stringify(nextConfig, null, 2));
-  }
-
-  function handleNewCategoriesChange(enabled: boolean) {
-    const nextConfig = withNewCategories(
       parseConfigObject(configJson),
       enabled,
     );
@@ -589,8 +547,6 @@ export default function SessionForm({
             onSmallCategoriesChange={handleSmallCategoriesChange}
             easyTimeEntry={easyTimeEntry}
             onEasyTimeEntryChange={handleEasyTimeEntryChange}
-            newCategories={newCategories}
-            onNewCategoriesChange={handleNewCategoriesChange}
             guests={guests}
             onGuestsChange={handleGuestsChange}
             quickPickCategories={quickPickCategories}
