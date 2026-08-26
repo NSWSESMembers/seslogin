@@ -345,13 +345,15 @@ fn relative(epoch_secs: u64) -> String {
     }
 }
 
-/// Absolute datetime in the system local timezone (honors the `TZ` env var) plus a
-/// relative suffix, e.g. `2026-06-12 14:30 +10:00 (2h ago)`.
+/// Absolute datetime in the system local timezone (honors the `TZ` env var) plus the
+/// raw Unix timestamp and a relative suffix, e.g.
+/// `2026-06-12 14:30 +10:00 (1749716200, 2h ago)`.
 fn fmt_ts(epoch_secs: u64) -> String {
     match DateTime::from_timestamp(epoch_secs as i64, 0) {
         Some(dt) => format!(
-            "{} ({})",
+            "{} ({}, {})",
             dt.with_timezone(&Local).format("%Y-%m-%d %H:%M %Z"),
+            epoch_secs,
             relative(epoch_secs)
         ),
         None => epoch_secs.to_string(),
