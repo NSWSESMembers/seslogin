@@ -31,13 +31,13 @@ export default function KioskMain() {
 /**
  * Maps the session config's `theme` key to the `data-theme` value to pin on
  * <html>, or `null` to leave it unpinned and follow the browser's
- * `prefers-color-scheme`. Anything other than `"dark"` or `"auto"` — including an
- * omitted key — pins light.
+ * `prefers-color-scheme`. An omitted key behaves the same as `"auto"`; any other
+ * invalid value pins light.
  */
 function themeFromConfig(
   theme: JsonValue | undefined,
 ): "dark" | "light" | null {
-  if (theme === "auto") {
+  if (theme === undefined || theme === "auto") {
     return null;
   }
   return theme === "dark" ? "dark" : "light";
@@ -46,11 +46,10 @@ function themeFromConfig(
 function Router() {
   const session = useKioskSession();
 
-  // The kiosk normally pins its theme explicitly and ignores the device's OS
-  // setting: its session config's `theme` key is `"light"` by default (also when
-  // omitted) and `"dark"` goes dark. The exception is `"auto"`, which leaves the
-  // theme unpinned so the browser's `prefers-color-scheme` decides — this will
-  // become the default later, but not yet. We stamp `data-theme` on <html> so the
+  // The kiosk's session config `theme` key defaults to `"auto"` (also when
+  // omitted), which leaves the theme unpinned so the browser's
+  // `prefers-color-scheme` decides. `"light"` and `"dark"` pin the theme instead,
+  // ignoring the device's OS setting. We stamp `data-theme` on <html> so the
   // tokens in app.css take over the whole document, including the body background
   // behind the kiosk view.
   const theme = themeFromConfig(session?.config?.theme);
