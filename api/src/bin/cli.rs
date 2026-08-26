@@ -2,7 +2,9 @@
 //!
 //! Each object type is a subcommand. `get <ids…>` shows one attribute per line
 //! (with referenced IDs decoded to names in parens); `list` renders a table with
-//! the ID in the first column. All access is read-only.
+//! the ID in the first column. Almost all access is read-only; the two exceptions are
+//! `period-link issue` and `session set-config-key`, each called out in its own doc
+//! comment below.
 
 use anyhow::{Result, anyhow};
 use chrono::{DateTime, Local, NaiveDate};
@@ -10,7 +12,7 @@ use clap::{Parser, Subcommand};
 use seslogin::db::{
     ApiToken, Category, Handler, ListApiTokensFilter, ListLocationsFilter, ListPeriodsPage,
     ListSessionsQuery, Location, NitcEvent, NitcGroup, Period, PeriodCursor, Person, ScanCursor,
-    Session, User,
+    Session, SessionUpdateShape, User,
 };
 use seslogin::dynamodb;
 use seslogin::jwt::{ExpirePolicy, Key};
@@ -218,6 +220,23 @@ enum SessionCmd {
         minutes: u64,
         #[arg(long)]
         location: Option<String>,
+    },
+    /// Bulk-set one JSON config key across active sessions (soft-deleted sessions
+    /// are already invisible to `list_sessions`, which this uses). WRITES to the
+    /// `session` table. Defaults to dry-run — pass `--dry-run false` to apply. Unlike
+    /// `list`/`list-active`, walks every location including disabled ones, so a
+    /// session isn't skipped just because its location got disabled.
+    SetConfigKey {
+        /// Config key to set, e.g. "theme".
+        key: String,
+        /// JSON value to assign, e.g. '"light"', 'true', or '42'. Must be valid
+        /// JSON — a bare string needs its own quotes.
+        value: String,
+        /// Restrict to one location instead of every location.
+        #[arg(long)]
+        location: Option<String>,
+        #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
+        dry_run: bool,
     },
 }
 
@@ -982,10 +1001,26 @@ async fn main() -> Result<()> {
         .or_else(|| std::env::var("DB_PREFIX").ok())
         .ok_or_else(|| anyhow!("DB_PREFIX is required (flag or env var)"))?;
 
-    // Issuing a period-link token is the one write path here, so it needs its own
+    // Issuing a period-link token is a write path here, so it needs its own
     // writable handler rather than the read-only one the inspectors share.
     if let Object::PeriodLink { cmd } = &cli.object {
         return run_period_link(&db_prefix, cmd).await;
+    }
+
+    // Same story for the session config bulk-write: it opens its own handler (in
+    // read_only mode while dry-run) instead of the shared read-only one below.
+    if let Object::Session {
+        cmd:
+            SessionCmd::SetConfigKey {
+                key,
+                value,
+                location,
+                dry_run,
+            },
+    } = &cli.object
+    {
+        return run_session_set_config_key(&db_prefix, key, value, location.clone(), *dry_run)
+            .await;
     }
 
     let db = dynamodb::Handler::new(&db_prefix, true).await;
@@ -1102,6 +1137,87 @@ fn run_jwt(jwt_secret: Option<String>, expire_s: Option<u64>, cmd: &JwtCmd) -> R
 
     println!("{token}");
 
+    Ok(())
+}
+
+/// Bulk-set one JSON config key across active sessions. Opens its own DB handler
+/// (unlike the read-only inspectors) since this writes to the `session` table when
+/// not in dry-run mode; `read_only` on the handler is set to `dry_run` itself, so a
+/// dry run cannot write even if a bug elsewhere tried to.
+async fn run_session_set_config_key(
+    db_prefix: &str,
+    key: &str,
+    value_json: &str,
+    location: Option<String>,
+    dry_run: bool,
+) -> Result<()> {
+    let value: serde_json::Value = serde_json::from_str(value_json).map_err(|e| {
+        anyhow!(
+            "--value {value_json:?} is not valid JSON ({e}) — a bare string needs its \
+             own quotes, e.g. value '\"light\"'"
+        )
+    })?;
+
+    let db = dynamodb::Handler::new(db_prefix, dry_run).await;
+
+    let sessions = match location {
+        Some(loc) => db.list_sessions(ListSessionsQuery::ByLocation(loc)).await?,
+        None => {
+            let locations = db.list_locations(ListLocationsFilter::All).await?;
+            let mut all = Vec::new();
+            for loc in &locations {
+                all.extend(
+                    db.list_sessions(ListSessionsQuery::ByLocation(loc.id.clone()))
+                        .await?,
+                );
+            }
+            all
+        }
+    };
+
+    let mut changed = 0usize;
+    let mut unchanged = 0usize;
+    for session in &sessions {
+        if session.config.get(key) == Some(&value) {
+            unchanged += 1;
+            continue;
+        }
+        changed += 1;
+        println!(
+            "{} session={} ({}) {key}: {} -> {value}",
+            if dry_run {
+                "[dry-run] would set"
+            } else {
+                "setting"
+            },
+            session.id,
+            session.name,
+            session
+                .config
+                .get(key)
+                .map(|v| v.to_string())
+                .unwrap_or_else(|| "<omitted>".to_string()),
+        );
+        if !dry_run {
+            let mut next_config = session.config.clone();
+            next_config.insert(key.to_string(), value.clone());
+            db.update_session(
+                &session.id,
+                SessionUpdateShape::Fields {
+                    name: &session.name,
+                    config: &next_config,
+                    healthcheck_url: session.healthcheck_url.as_deref(),
+                },
+            )
+            .await?;
+        }
+    }
+
+    println!(
+        "\n{} complete: {} session(s) examined, {changed} to change, {unchanged} already matched.",
+        if dry_run { "dry-run" } else { "apply" },
+        sessions.len(),
+    );
     Ok(())
 }
 
@@ -1346,6 +1462,10 @@ async fn run(db: &impl Handler, object: Object) -> Result<()> {
                     &["id", "location", "kiosk", "client_version", "last_contact"],
                     &rows,
                 );
+            }
+            // Handled in `main` before the shared read-only DB is opened.
+            SessionCmd::SetConfigKey { .. } => {
+                unreachable!("set-config-key is handled before the read-only DB is opened")
             }
         },
 
