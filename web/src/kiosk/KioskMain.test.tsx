@@ -50,7 +50,7 @@ function signOutUserResponse(quickPick: unknown = null) {
     },
   };
 }
-// a real leaf category id, shared between the legacy and new category trees in
+// a real leaf category id from the category tree in
 // web/src/lib/categories.ts (Training > AIIMS)
 const QUICK_PICK_CATEGORY_ID = "RX2bfpU6ppvV";
 const SETTINGS = {

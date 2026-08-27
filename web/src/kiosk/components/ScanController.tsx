@@ -44,9 +44,6 @@ export default function ScanController(props: {
   const session = useKioskSession();
   const smallCategories = !!session?.config?.smallCategories;
   const easyTimeEntry = !!session?.config?.easyTimeEntry;
-  // The reworked category list is now on for every kiosk; the `newCategories`
-  // session config flag is ignored and is on its way out.
-  const newCategories = true;
   const guestsEnabled = !!session?.config?.guests;
   const quickPickCategories = !!session?.config?.quickPickCategories;
 
@@ -449,14 +446,12 @@ export default function ScanController(props: {
         uuid={needsQuickPick ? transactionUuid : null}
         suggestions={quickPickSuggestions}
         smallCategories={smallCategories}
-        newCategories={newCategories}
       />
       <ScanScreenCategories
         screenPosition={categoriesPos}
         onSelectCategory={onSelectCategory}
         uuid={transactionUuid}
         smallCategories={smallCategories}
-        newCategories={newCategories}
       />
       <ScanScreenAdjust
         screenPosition={adjustPos}
@@ -467,7 +462,6 @@ export default function ScanController(props: {
         onEditCategory={onEditCategory}
         isSubmitting={signOutIsInFlight}
         easyTimeEntry={easyTimeEntry}
-        newCategories={newCategories}
       />
       {guestDialogOpen && (
         <ScanGuestDialog
