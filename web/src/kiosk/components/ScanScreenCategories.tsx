@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { categoriesFor, categoryIconSrc } from "../../lib/categories";
+import { categories, categoryIconSrc } from "../../lib/categories";
 import type { Category } from "../../lib/categories";
 import { scanView, scanViewPosition, type ScreenPosition } from "../../styles";
 
@@ -9,10 +9,9 @@ function CategoryButton(props: {
   icon: string;
   onSelect: () => void;
   small?: boolean;
-  newCategories?: boolean;
 }) {
-  const { name, icon, onSelect, small, newCategories } = props;
-  const iconSrc = categoryIconSrc(icon, !!newCategories);
+  const { name, icon, onSelect, small } = props;
+  const iconSrc = categoryIconSrc(icon);
 
   return (
     <li className="inline-block list-none align-bottom">
@@ -38,20 +37,17 @@ export function Inner(props: {
   onSelectCategory: (uuid: string, categoryId: string) => void;
   uuid: string | null;
   smallCategories?: boolean;
-  newCategories?: boolean;
 }) {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
 
-  const categoriesFixture = categoriesFor(!!props.newCategories);
-
   const selectedCategoryData = selectedCategory
-    ? categoriesFixture.find((c: Category) => c.id === selectedCategory)
+    ? categories.find((c: Category) => c.id === selectedCategory)
     : null;
-  const categories = selectedCategoryData
+  const shownCategories = selectedCategoryData
     ? selectedCategoryData.subcategories || []
-    : categoriesFixture;
+    : categories;
 
-  const sortedCategories = categories.sort((a, b) =>
+  const sortedCategories = shownCategories.sort((a, b) =>
     a.name.localeCompare(b.name),
   );
 
@@ -99,7 +95,6 @@ export function Inner(props: {
             icon={category.icon}
             onSelect={() => select(category.id)}
             small={props.smallCategories}
-            newCategories={props.newCategories}
           />
         ))}
       </ul>
@@ -114,7 +109,6 @@ export default function ScanScreenCategories(props: {
   screenPosition: ScreenPosition;
   uuid: string | null;
   smallCategories?: boolean;
-  newCategories?: boolean;
 }) {
   return (
     <div className={`${scanView} ${scanViewPosition[props.screenPosition]}`}>
@@ -123,7 +117,6 @@ export default function ScanScreenCategories(props: {
         key={props.uuid}
         uuid={props.uuid}
         smallCategories={props.smallCategories}
-        newCategories={props.newCategories}
       />
     </div>
   );
