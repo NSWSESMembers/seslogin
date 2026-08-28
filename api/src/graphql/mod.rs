@@ -31,6 +31,26 @@ pub use self::query::{
 
 use self::dataloader::DatabaseLoader;
 
+/// Client IP for the current request, threaded from the HTTP layer so resolvers
+/// (currently just Turnstile verification) can forward it to external services.
+/// `None` when the transport didn't supply one.
+#[derive(Clone, Debug, Default)]
+pub struct ClientIp(pub Option<String>);
+
+impl ClientIp {
+    /// Extract the client IP from an `X-Forwarded-For` header value: the first
+    /// comma-separated entry, trimmed. Returns `None` for a missing/empty header.
+    pub fn from_forwarded_for(value: Option<&str>) -> Self {
+        Self(
+            value
+                .and_then(|v| v.split(',').next())
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_owned),
+        )
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct UserId(pub ID);
 

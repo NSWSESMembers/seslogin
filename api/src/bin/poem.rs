@@ -150,6 +150,11 @@ async fn index<H: db::Handler + Send + Sync + 'static>(
     }
     req = req
         .data(app.clone())
+        .data(graphql::ClientIp::from_forwarded_for(
+            headers
+                .get("x-forwarded-for")
+                .and_then(|value| value.to_str().ok()),
+        ))
         .data(graphql::get_dataloader(app.clone()));
 
     let operation_context = telemetry::extract_operation_context(&mut req);
