@@ -1,10 +1,9 @@
 import { Suspense } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router";
-import { ErrorBoundary } from "react-error-boundary";
 
 import { lazyWithReload } from "./lib/lazyWithReload";
 import LoadingIndicator from "./components/LoadingIndicator";
-import PageErrorFallback from "./components/PageErrorFallback";
+import PageErrorBoundary from "./components/PageErrorBoundary";
 
 // Home is the landing page — keep it eager for fast first paint.
 import HomeLayout from "./home/Layout";
@@ -29,7 +28,7 @@ export default function Router() {
           /kiosk/status-demo, *) and for a throw before an area's own boundary
           mounts. Every area below installs a more specific boundary of its own;
           this one only sees what escapes those. */}
-      <ErrorBoundary FallbackComponent={PageErrorFallback}>
+      <PageErrorBoundary>
         <Suspense fallback={<LoadingIndicator />}>
           <Routes>
             {/* Home routes - no auth required */}
@@ -54,7 +53,7 @@ export default function Router() {
             <Route path="*" element={<h1>Not Found</h1>} />
           </Routes>
         </Suspense>
-      </ErrorBoundary>
+      </PageErrorBoundary>
     </BrowserRouter>
   );
 }
