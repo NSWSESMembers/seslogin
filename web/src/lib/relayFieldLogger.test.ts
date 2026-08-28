@@ -3,6 +3,7 @@ import {
   relayFieldLogger,
   takeRecentFieldErrorMessages,
   describeCaughtError,
+  recordServerErrorMessages,
 } from "./relayFieldLogger";
 
 function fieldPayloadError(message: string) {
@@ -61,6 +62,37 @@ describe("relayFieldLogger message recovery", () => {
     const messages = takeRecentFieldErrorMessages();
     expect(messages.length).toBeLessThanOrEqual(5);
     // Keeps the most recent ones, not the oldest.
+    expect(messages[messages.length - 1]).toBe("error 9");
+  });
+});
+
+describe("recordServerErrorMessages", () => {
+  beforeEach(() => {
+    takeRecentFieldErrorMessages();
+  });
+
+  it("buffers messages so describeCaughtError can recover them", () => {
+    recordServerErrorMessages(["Category with ID abc123 missing"]);
+    const thrown = new Error(
+      "Relay: Missing expected data at path 'location.periodSummaryByMember' in 'ActivityTotalsDisplayQuery'.",
+    );
+    expect(describeCaughtError(thrown)).toBe("Category with ID abc123 missing");
+  });
+
+  it("buffers every message from a multi-error response", () => {
+    recordServerErrorMessages(["first problem", "second problem"]);
+    expect(takeRecentFieldErrorMessages()).toEqual([
+      "first problem",
+      "second problem",
+    ]);
+  });
+
+  it("shares the same cap as relayFieldLogger's own buffering", () => {
+    for (let i = 0; i < 10; i++) {
+      recordServerErrorMessages([`error ${i}`]);
+    }
+    const messages = takeRecentFieldErrorMessages();
+    expect(messages.length).toBeLessThanOrEqual(5);
     expect(messages[messages.length - 1]).toBe("error 9");
   });
 });
