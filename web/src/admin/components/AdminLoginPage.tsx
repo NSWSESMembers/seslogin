@@ -218,11 +218,21 @@ export default function AdminLoginPage({
               placeholder="Email address"
               autoComplete="username webauthn"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(e) => {
+                setEmail(e.target.value);
+                // Widget unmounts when the field is cleared; drop its token
+                // too so a stale one can't linger.
+                if (e.target.value.length === 0) setTurnstileToken(null);
+              }}
               required
               disabled={step !== "idle"}
             />
-            {TURNSTILE_SITE_KEY && (
+            {/* Defer rendering the widget until the user starts typing an
+                email. Otherwise it renders (and runs a client-side challenge)
+                for every visitor — including the passkey users who never
+                submit the form — so Cloudflare sees widget executions with no
+                matching siteverify calls and flags the widget as unprotected. */}
+            {TURNSTILE_SITE_KEY && email.length > 0 && (
               <div className="mb-3">
                 <Turnstile
                   ref={turnstileRef}
