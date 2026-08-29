@@ -424,6 +424,17 @@ pub enum PeriodUpdateShape<'a> {
         /// `Some(Some(_))` sets it.
         comment: Option<Option<&'a str>>,
     },
+    /// Admin edit of a guest period: name, times, and comment only. A guest
+    /// period has no person and no category, so those are never touched here.
+    Guest {
+        guest_name: &'a str,
+        start_time: i64,
+        end_time: i64,
+        /// Three-state update for the free-text comment: `None` leaves the
+        /// existing comment untouched, `Some(None)` clears it, and
+        /// `Some(Some(_))` sets it.
+        comment: Option<Option<&'a str>>,
+    },
     Delete,
 }
 

@@ -2297,6 +2297,73 @@ impl db::Handler for Handler {
                     .map_err(|e| map_update_err(e, format!("Period {}", id)))?;
                 record_capacity("update_period", resp.consumed_capacity(), CapKind::Write);
             }
+            db::PeriodUpdateShape::Guest {
+                guest_name,
+                start_time,
+                end_time,
+                comment,
+            } => {
+                // Guest periods have no person or category, so this only touches
+                // the name, times, and the three-state comment. `comment` is a
+                // DynamoDB reserved word, referenced via `#comment` when touched
+                // (omit-over-Null on clear, see CLAUDE.md).
+                let mut set_clauses = vec![
+                    "guest_name = :guest_name",
+                    "start_time = :start_time",
+                    "end_time = :end_time",
+                    "updated_at = :updated_at",
+                ];
+                let mut remove_clauses = vec!["location_open"];
+                match comment {
+                    Some(Some(_)) => set_clauses.push("#comment = :comment"),
+                    Some(None) => remove_clauses.push("#comment"),
+                    None => {}
+                }
+                let update_expr = format!(
+                    "SET {} REMOVE {} ADD v :one",
+                    set_clauses.join(", "),
+                    remove_clauses.join(", "),
+                );
+                let mut update = self
+                    .client
+                    .update_item()
+                    .table_name(self.table_name("period"))
+                    .key("id", AttributeValue::S(id.to_string()))
+                    .condition_expression("attribute_exists(id)")
+                    .update_expression(update_expr)
+                    .expression_attribute_values(
+                        ":guest_name",
+                        AttributeValue::S(guest_name.to_string()),
+                    )
+                    .expression_attribute_values(
+                        ":start_time",
+                        AttributeValue::N(start_time.to_string()),
+                    )
+                    .expression_attribute_values(
+                        ":end_time",
+                        AttributeValue::N(end_time.to_string()),
+                    )
+                    .expression_attribute_values(":one", AttributeValue::N("1".to_string()))
+                    .expression_attribute_values(
+                        ":updated_at",
+                        AttributeValue::N(crate::clock::now_sec().to_string()),
+                    );
+                if comment.is_some() {
+                    update = update.expression_attribute_names("#comment", "comment");
+                }
+                if let Some(Some(comment)) = comment {
+                    update = update.expression_attribute_values(
+                        ":comment",
+                        AttributeValue::S(comment.to_string()),
+                    );
+                }
+                let resp = update
+                    .return_consumed_capacity(ReturnConsumedCapacity::Total)
+                    .send()
+                    .await
+                    .map_err(|e| map_update_err(e, format!("Period {}", id)))?;
+                record_capacity("update_period", resp.consumed_capacity(), CapKind::Write);
+            }
             db::PeriodUpdateShape::Delete => {
                 let deleted_time = crate::clock::now_sec().to_string();
 
