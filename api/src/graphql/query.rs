@@ -2540,6 +2540,94 @@ impl<A: App + HasDb + Send + Sync> Location<A> {
     }
 }
 
+/// A kiosk's self-report, as last written by [`crate::auth::touch_session`].
+///
+/// Every field is nullable: a client only reports what it can observe, and the fields it
+/// leaves out are cleared rather than kept, so a null here means "not reported as of
+/// `updatedAt`" and never "reported once, long ago".
+pub struct SessionClientInfo {
+    info: crate::client_info::ClientInfo,
+    updated_at: Option<u64>,
+}
+
+#[Object]
+impl SessionClientInfo {
+    /// Build channel the client was deployed from: `prod`, `preprod`, `test` or `dev`.
+    /// Worth watching: `test` and `preprod` builds run against the production database,
+    /// so a kiosk reporting either is on live data from a non-production front-end.
+    async fn env(&self) -> Option<&str> {
+        self.info.env.as_deref()
+    }
+
+    /// The origin the client was actually loaded from, e.g. `https://new.seslogin.com`.
+    /// Unlike `env` this can't be stale or misconfigured at build time.
+    async fn origin(&self) -> Option<&str> {
+        self.info.origin.as_deref()
+    }
+
+    /// The GraphQL endpoint the client believes it is talking to. A mismatch against
+    /// `origin` means a front-end pointed at another environment's API.
+    async fn api_url(&self) -> Option<&str> {
+        self.info.api_url.as_deref()
+    }
+
+    /// Kiosk profile from the `/kiosk/:profile` route — which stored identity a shared
+    /// device is running under.
+    async fn profile(&self) -> Option<&str> {
+        self.info.profile.as_deref()
+    }
+
+    /// Browser and OS, taken from the request's `User-Agent` rather than self-reported.
+    async fn user_agent(&self) -> Option<&str> {
+        self.info.user_agent.as_deref()
+    }
+
+    /// Viewport as `<width>x<height>@<devicePixelRatio>`.
+    async fn screen(&self) -> Option<&str> {
+        self.info.screen.as_deref()
+    }
+
+    /// `standalone`, `fullscreen`, `minimal-ui` or `browser` — whether the kiosk is
+    /// installed as intended or running in a normal browser tab.
+    async fn display_mode(&self) -> Option<&str> {
+        self.info.display_mode.as_deref()
+    }
+
+    /// IANA zone name the client's browser is set to.
+    async fn timezone(&self) -> Option<&str> {
+        self.info.timezone.as_deref()
+    }
+
+    /// Client clock minus server clock, in seconds; negative means the client is behind.
+    /// A large value predicts signed-key auth failures, whose timestamp window this
+    /// breaks before anything else does.
+    async fn clock_skew_secs(&self) -> Option<i64> {
+        self.info.clock_skew_secs
+    }
+
+    /// Seconds since the client page loaded. A kiosk whose uptime keeps resetting is
+    /// reloading or crash-looping.
+    async fn uptime_secs(&self) -> Option<i64> {
+        self.info.uptime_secs.map(|s| s as i64)
+    }
+
+    /// A newer build the client has seen but not yet reloaded into — the reason a
+    /// `clientVersion` can look stale on a perfectly healthy kiosk.
+    async fn pending_version(&self) -> Option<&str> {
+        self.info.pending_version.as_deref()
+    }
+
+    /// Failed server contacts since the page loaded.
+    async fn contact_failures(&self) -> Option<i64> {
+        self.info.contact_failures.map(|c| c as i64)
+    }
+
+    /// When this snapshot was written, in Unix seconds.
+    async fn updated_at(&self) -> Option<i64> {
+        self.updated_at.map(|ts| ts as i64)
+    }
+}
+
 #[derive(Debug, PartialEq)]
 pub struct Session<A: App + HasDb + Send + Sync> {
     _marker: std::marker::PhantomData<A>,
@@ -2576,6 +2664,15 @@ impl<A: App + HasDb + Send + Sync + 'static> Session<A> {
 
     async fn client_version(&self) -> Option<&str> {
         self.rec.client_version.as_deref()
+    }
+
+    /// What this kiosk last reported about itself. Null for one that has never reported —
+    /// an old client, or a kiosk that has not authenticated since this was deployed.
+    async fn client_info(&self) -> Option<SessionClientInfo> {
+        self.rec.client_info.as_ref().map(|info| SessionClientInfo {
+            info: info.clone(),
+            updated_at: self.rec.client_info_updated_at,
+        })
     }
 
     /// When this kiosk's enrolled key stops authenticating. Null for code-enrolled kiosks.

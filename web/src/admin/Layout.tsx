@@ -18,10 +18,7 @@ import {
   clearAdminToken,
 } from "../lib/adminToken";
 import { getGraphQLEndpoint } from "../lib/api";
-import {
-  getCurrentClientVersion,
-  CLIENT_VERSION_HEADER,
-} from "../lib/clientVersion";
+import { clientHeaders } from "../lib/clientInfo";
 
 export default function Layout() {
   return (
@@ -94,7 +91,7 @@ function LoginRequired() {
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${token}`,
-            [CLIENT_VERSION_HEADER]: getCurrentClientVersion(),
+            ...clientHeaders(),
           },
           body: JSON.stringify({ query: "mutation { logout }" }),
           cache: "no-store",

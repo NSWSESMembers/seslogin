@@ -16,6 +16,12 @@ export type KioskServerStatus = {
   lastErrorMessage: string | null;
   /** Unix seconds; when the enrolled key expires. Null for code/JWT kiosks. */
   keyExpiresAt: number | null;
+  /**
+   * Failed refreshes since the page loaded. Monotonic — deliberately *not* cleared on
+   * the next success, because a kiosk that drops off and recovers forty times a day
+   * looks perfectly healthy in every field that only describes the present moment.
+   */
+  failureCount: number;
 };
 
 let status: KioskServerStatus = {
@@ -24,6 +30,7 @@ let status: KioskServerStatus = {
   lastFailureAt: null,
   lastErrorMessage: null,
   keyExpiresAt: null,
+  failureCount: 0,
 };
 
 function describeError(error: unknown): string {
@@ -45,6 +52,7 @@ export function recordServerContactSuccess(
 ): void {
   const now = Date.now();
   status = {
+    ...status,
     lastSuccessAt: now,
     lastAttemptAt: now,
     lastFailureAt: null,
@@ -60,6 +68,7 @@ export function recordServerContactFailure(error: unknown): void {
     lastAttemptAt: now,
     lastFailureAt: now,
     lastErrorMessage: describeError(error),
+    failureCount: status.failureCount + 1,
   };
 }
 
@@ -75,5 +84,6 @@ export function resetKioskServerStatus(): void {
     lastFailureAt: null,
     lastErrorMessage: null,
     keyExpiresAt: null,
+    failureCount: 0,
   };
 }

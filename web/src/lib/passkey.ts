@@ -4,10 +4,7 @@ import {
   browserSupportsWebAuthnAutofill,
 } from "@simplewebauthn/browser";
 import { getGraphQLEndpoint } from "./api";
-import {
-  getCurrentClientVersion,
-  CLIENT_VERSION_HEADER,
-} from "./clientVersion";
+import { clientHeaders } from "./clientInfo";
 
 export { browserSupportsWebAuthn, browserSupportsWebAuthnAutofill };
 
@@ -64,7 +61,7 @@ async function rawGraphQL(
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      [CLIENT_VERSION_HEADER]: getCurrentClientVersion(),
+      ...clientHeaders(),
     },
     body: JSON.stringify({ query, variables }),
     cache: "no-store",

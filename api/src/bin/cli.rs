@@ -612,6 +612,8 @@ async fn show_sessions(db: &impl Handler, sessions: &[Session]) {
             active,
             last_contact,
             client_version,
+            client_info,
+            client_info_updated_at,
             code,
             config,
             healthcheck_url,
@@ -621,6 +623,7 @@ async fn show_sessions(db: &impl Handler, sessions: &[Session]) {
             created_at,
             updated_at,
         } = s;
+        let info = client_info.clone().unwrap_or_default();
         print_detail(&[
             ("id", id.clone()),
             ("name", name.clone()),
@@ -629,6 +632,23 @@ async fn show_sessions(db: &impl Handler, sessions: &[Session]) {
             ("code", opt_str(code)),
             ("client_version", opt_str(client_version)),
             ("last_contact", opt_ts(*last_contact)),
+            ("client_env", opt_str(&info.env)),
+            ("client_origin", opt_str(&info.origin)),
+            ("client_api_url", opt_str(&info.api_url)),
+            ("client_profile", opt_str(&info.profile)),
+            ("client_user_agent", opt_str(&info.user_agent)),
+            ("client_screen", opt_str(&info.screen)),
+            ("client_display_mode", opt_str(&info.display_mode)),
+            ("client_timezone", opt_str(&info.timezone)),
+            (
+                "client_clock_skew_secs",
+                info.clock_skew_secs
+                    .map_or_else(|| "-".to_string(), |v| v.to_string()),
+            ),
+            ("client_uptime_secs", opt_num(info.uptime_secs)),
+            ("client_pending_version", opt_str(&info.pending_version)),
+            ("client_contact_failures", opt_num(info.contact_failures)),
+            ("client_info_updated_at", opt_ts(*client_info_updated_at)),
             ("healthcheck_url", opt_str(healthcheck_url)),
             ("public_key", opt_str(public_key)),
             ("key_fingerprint", opt_str(key_fingerprint)),
