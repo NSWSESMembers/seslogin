@@ -163,141 +163,98 @@ export function Inner(props: {
             </button>
           </div>
         </div>
-        <table className="border-separate border-spacing-2.5">
-          <tbody>
-            <tr>
-              <th
-                colSpan={3}
-                className="rounded-[14px] bg-neutral-800 px-2.5 py-3.5 text-white"
-              >
-                <div className="flex items-center justify-center gap-4">
-                  <div className="flex items-center text-[56px]">
-                    <span
-                      className={`${digitSpanBase} ${current(0) ? "border-accent" : ""}`}
-                    >
-                      {char(0)}
-                    </span>
-                    <span
-                      className={`${digitSpanBase} ${current(1) ? "border-accent" : ""}`}
-                    >
-                      {char(1)}
-                    </span>
-                    :
-                    <span
-                      className={`${digitSpanBase} ${current(2) ? "border-accent" : ""}`}
-                    >
-                      {char(2)}
-                    </span>
-                    <span
-                      className={`${digitSpanBase} ${current(3) ? "border-accent" : ""}`}
-                    >
-                      {char(3)}
-                    </span>
-                  </div>
-                  {isUnambiguous24Hour ? (
-                    <span className="rounded-lg bg-white px-2.5 py-2 text-sm font-bold tracking-wider text-neutral-800">
-                      24h
-                    </span>
-                  ) : (
-                    <div className="flex flex-col gap-1">
-                      <button
-                        className={`${ampmMiniBase} ${ampm === "AM" ? ampmMiniSelected : ampmMiniOff}`}
-                        onClick={() => setAmpm("AM")}
-                      >
-                        AM
-                      </button>
-                      <button
-                        className={`${ampmMiniBase} ${ampm === "PM" ? ampmMiniSelected : ampmMiniOff}`}
-                        onClick={() => setAmpm("PM")}
-                      >
-                        PM
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </th>
-            </tr>
-            <tr>
-              <td className="p-0">
-                <button className={keyDigitBtn} onClick={() => button("1")}>
-                  1
-                </button>
-              </td>
-              <td className="p-0">
-                <button className={keyDigitBtn} onClick={() => button("2")}>
-                  2
-                </button>
-              </td>
-              <td className="p-0">
-                <button className={keyDigitBtn} onClick={() => button("3")}>
-                  3
-                </button>
-              </td>
-            </tr>
-            <tr>
-              <td className="p-0">
-                <button className={keyDigitBtn} onClick={() => button("4")}>
-                  4
-                </button>
-              </td>
-              <td className="p-0">
-                <button className={keyDigitBtn} onClick={() => button("5")}>
-                  5
-                </button>
-              </td>
-              <td className="p-0">
-                <button className={keyDigitBtn} onClick={() => button("6")}>
-                  6
-                </button>
-              </td>
-            </tr>
-            <tr>
-              <td className="p-0">
-                <button className={keyDigitBtn} onClick={() => button("7")}>
-                  7
-                </button>
-              </td>
-              <td className="p-0">
-                <button className={keyDigitBtn} onClick={() => button("8")}>
-                  8
-                </button>
-              </td>
-              <td className="p-0">
-                <button className={keyDigitBtn} onClick={() => button("9")}>
-                  9
-                </button>
-              </td>
-            </tr>
-            <tr>
-              <td className="p-0">
-                <button className={keyAuxBtn} onClick={props.onClose}>
-                  &times;
-                </button>
-              </td>
-              <td className="p-0">
-                <button className={keyDigitBtn} onClick={() => button("0")}>
-                  0
-                </button>
-              </td>
-              <td className="p-0">
-                <button className={keyAuxBtn} onClick={() => button("DEL")}>
-                  DEL
-                </button>
-              </td>
-            </tr>
-            <tr>
-              <td colSpan={3} className="p-0">
-                <button
-                  className={keyConfirmBtn}
-                  disabled={value.length < 4}
-                  onClick={confirm}
+        <div className="grid grid-cols-3 gap-2.5">
+          <div className="col-span-3 rounded-[14px] bg-neutral-800 px-2.5 py-3.5 text-center font-bold text-white">
+            <div className="flex items-center justify-center gap-4">
+              <div className="flex items-center text-[56px]">
+                <span
+                  className={`${digitSpanBase} ${current(0) ? "border-accent" : ""}`}
                 >
-                  Confirm
-                </button>
-              </td>
-            </tr>
-          </tbody>
-        </table>
+                  {char(0)}
+                </span>
+                <span
+                  className={`${digitSpanBase} ${current(1) ? "border-accent" : ""}`}
+                >
+                  {char(1)}
+                </span>
+                :
+                <span
+                  className={`${digitSpanBase} ${current(2) ? "border-accent" : ""}`}
+                >
+                  {char(2)}
+                </span>
+                <span
+                  className={`${digitSpanBase} ${current(3) ? "border-accent" : ""}`}
+                >
+                  {char(3)}
+                </span>
+              </div>
+              {isUnambiguous24Hour ? (
+                <span className="rounded-lg bg-white px-2.5 py-2 text-sm font-bold tracking-wider text-neutral-800">
+                  24h
+                </span>
+              ) : (
+                <div className="flex flex-col gap-1">
+                  <button
+                    className={`${ampmMiniBase} ${ampm === "AM" ? ampmMiniSelected : ampmMiniOff}`}
+                    onClick={() => setAmpm("AM")}
+                  >
+                    AM
+                  </button>
+                  <button
+                    className={`${ampmMiniBase} ${ampm === "PM" ? ampmMiniSelected : ampmMiniOff}`}
+                    onClick={() => setAmpm("PM")}
+                  >
+                    PM
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+          <button className={keyDigitBtn} onClick={() => button("1")}>
+            1
+          </button>
+          <button className={keyDigitBtn} onClick={() => button("2")}>
+            2
+          </button>
+          <button className={keyDigitBtn} onClick={() => button("3")}>
+            3
+          </button>
+          <button className={keyDigitBtn} onClick={() => button("4")}>
+            4
+          </button>
+          <button className={keyDigitBtn} onClick={() => button("5")}>
+            5
+          </button>
+          <button className={keyDigitBtn} onClick={() => button("6")}>
+            6
+          </button>
+          <button className={keyDigitBtn} onClick={() => button("7")}>
+            7
+          </button>
+          <button className={keyDigitBtn} onClick={() => button("8")}>
+            8
+          </button>
+          <button className={keyDigitBtn} onClick={() => button("9")}>
+            9
+          </button>
+          <button className={keyAuxBtn} onClick={props.onClose}>
+            &times;
+          </button>
+          <button className={keyDigitBtn} onClick={() => button("0")}>
+            0
+          </button>
+          <button className={keyAuxBtn} onClick={() => button("DEL")}>
+            DEL
+          </button>
+          <button
+            className={`col-span-3 ${keyConfirmBtn}`}
+            disabled={value.length < 4}
+            onClick={confirm}
+          >
+            Confirm
+          </button>
+        </div>
       </div>
     </Dialog>
   );
