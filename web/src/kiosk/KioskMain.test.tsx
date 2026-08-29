@@ -360,6 +360,64 @@ describe("KioskMain quick pick categories", () => {
   });
 });
 
+describe("KioskMain forgot-to-sign-out interstitial", () => {
+  function longSignOutHandler() {
+    return relayEndpoint.mutation("ScanControllerRegister2Mutation", () =>
+      HttpResponse.json({
+        data: {
+          scanRegister2: {
+            id: SIGNOUT_USER,
+            state: "SIGN_OUT_PENDING",
+            period: {
+              id: "period-456",
+              // signed in well over 12 hours ago (unix seconds, as the API sends)
+              startTime: Math.floor(Date.now() / 1000) - 60 * 60 * 30,
+              endTime: null,
+              person: {
+                id: `person-${SIGNOUT_USER}`,
+                firstName: "Jamie",
+                lastName: "Smith",
+              },
+            },
+            quickPick: null,
+          },
+        },
+      }),
+    );
+  }
+
+  it("shows the interstitial for a long session, then proceeds to categories", async () => {
+    server.use(sessionConfigHandler({}), longSignOutHandler());
+    const user = await setupTest();
+    await user.type(screen.getByRole("textbox"), SIGNOUT_USER + "{enter}");
+
+    await waitFor(() =>
+      expect(
+        screen.getByText("Did you forget to sign out?"),
+      ).toBeInTheDocument(),
+    );
+
+    await user.click(screen.getByRole("button", { name: "Nah" }));
+
+    await waitFor(() =>
+      expect(screen.getByText("Categories")).toBeInTheDocument(),
+    );
+  });
+
+  it("is not shown for a short session", async () => {
+    server.use(sessionConfigHandler({}), register2Handler());
+    const user = await setupTest();
+    await user.type(screen.getByRole("textbox"), SIGNOUT_USER + "{enter}");
+
+    await waitFor(() =>
+      expect(screen.getByText("Categories")).toBeInTheDocument(),
+    );
+    expect(
+      screen.queryByText("Did you forget to sign out?"),
+    ).not.toBeInTheDocument();
+  });
+});
+
 describe("KioskMain status screen", () => {
   it("shows the error fallback instead of crashing when a field fails to resolve", async () => {
     // Same shape as a dangling person reference: data present, but one field

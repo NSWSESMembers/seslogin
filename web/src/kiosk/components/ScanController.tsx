@@ -13,6 +13,7 @@ import { reducer } from "../ScanState";
 import ScanScreenCategories from "./ScanScreenCategories";
 import ScanScreenMain from "./ScanScreenMain";
 import ScanScreenAdjust from "./ScanScreenAdjust";
+import ScanScreenForgotSignOut from "./ScanScreenForgotSignOut";
 import ScanGuestDialog from "./ScanGuestDialog";
 import ScanScreenQuickPick from "./ScanScreenQuickPick";
 import {
@@ -292,26 +293,41 @@ export default function ScanController(props: {
     !!quickPickSuggestions &&
     (quickPickSuggestions.location.length > 0 ||
       quickPickSuggestions.person.length > 0);
+  // Shown before quick pick / categories when someone scans to sign out after
+  // being signed in for an implausibly long stretch — they probably left without
+  // signing out. They pick a sensible end time and the flow carries on to the
+  // category screen as normal.
+  const needsForgotSignOut =
+    typeof newTransaction !== "undefined" &&
+    newTransaction.status == "SIGNED_OUT" &&
+    typeof newTransaction.categoryId === "undefined" &&
+    newTransaction.longSession &&
+    !newTransaction.forgotSignOutPrompted;
   const needsQuickPick =
     quickPickCategories &&
     hasQuickPickSuggestions &&
     typeof newTransaction !== "undefined" &&
     newTransaction.status == "SIGNED_OUT" &&
     typeof newTransaction.categoryId === "undefined" &&
-    !newTransaction.quickPickSkipped;
+    !newTransaction.quickPickSkipped &&
+    !needsForgotSignOut;
   const needsCategory =
     typeof newTransaction !== "undefined" &&
     newTransaction.status == "SIGNED_OUT" &&
     typeof newTransaction.categoryId === "undefined" &&
-    !needsQuickPick;
+    !needsQuickPick &&
+    !needsForgotSignOut;
   const needsAdjust =
     typeof newTransaction !== "undefined" &&
     newTransaction.status == "SIGNED_OUT" &&
-    !newTransaction.adjusted;
+    !newTransaction.adjusted &&
+    !needsForgotSignOut;
 
   // we use this as a key to ensure ScanCategories/ScanQuickPick clear state for each transaction
   const transactionUuid =
-    needsQuickPick || needsCategory || needsAdjust ? newTransaction.uuid : null;
+    needsForgotSignOut || needsQuickPick || needsCategory || needsAdjust
+      ? newTransaction.uuid
+      : null;
 
   // Refs so onSubmitAdjust always reads latest values at call time regardless of memoization.
   // Synced in useLayoutEffect (not during render) to be safe under concurrent rendering.
@@ -323,11 +339,18 @@ export default function ScanController(props: {
   });
 
   const mainPos: ScreenPosition =
-    needsQuickPick || needsCategory || needsAdjust ? "offLeft" : "center";
+    needsForgotSignOut || needsQuickPick || needsCategory || needsAdjust
+      ? "offLeft"
+      : "center";
+  const forgotSignOutPos: ScreenPosition = needsForgotSignOut
+    ? "center"
+    : "offRight";
   const quickPickPos: ScreenPosition = needsQuickPick ? "center" : "offRight";
   const categoriesPos: ScreenPosition = needsCategory ? "center" : "offRight";
   const adjustPos: ScreenPosition =
-    !needsQuickPick && !needsCategory && needsAdjust ? "center" : "offRight";
+    !needsForgotSignOut && !needsQuickPick && !needsCategory && needsAdjust
+      ? "center"
+      : "offRight";
 
   // The main screen (and its still-mounted member ID input) is slid off to the
   // side while quick pick / categories / adjust are up, so its refocus timer
@@ -340,14 +363,16 @@ export default function ScanController(props: {
     focusMainInputRef.current?.();
   }, [transactionUuid]);
 
-  const canCancelSignOut = needsQuickPick || needsCategory || needsAdjust;
+  const canCancelSignOut =
+    needsForgotSignOut || needsQuickPick || needsCategory || needsAdjust;
   const { onCancelSignOutChange } = props;
   useEffect(() => {
     onCancelSignOutChange?.(canCancelSignOut ? onCancelSignOut : null);
   }, [canCancelSignOut, onCancelSignOut, onCancelSignOutChange]);
 
   const signingOutName =
-    (needsQuickPick || needsCategory || needsAdjust) && signedOutTransaction
+    (needsForgotSignOut || needsQuickPick || needsCategory || needsAdjust) &&
+    signedOutTransaction
       ? `${signedOutTransaction.person.firstName} ${signedOutTransaction.person.lastName}`
       : null;
   const { onSigningOutNameChange } = props;
@@ -357,6 +382,15 @@ export default function ScanController(props: {
 
   function onSelectCategory(uuid: string, categoryId: string) {
     dispatchTransaction({ type: "SET_CATEGORY", uuid, categoryId });
+  }
+
+  function onResolveForgotSignOut(endTime: Date) {
+    if (!transactionUuid) return;
+    dispatchTransaction({
+      type: "RESOLVE_FORGOT_SIGN_OUT",
+      uuid: transactionUuid,
+      endTime,
+    });
   }
 
   // Memoized: passed down into ScanScreenQuickPick's suspended query tree, where
@@ -438,6 +472,12 @@ export default function ScanController(props: {
         }}
         guestsEnabled={guestsEnabled}
         onOpenGuestDialog={() => setGuestDialogOpen(true)}
+      />
+      <ScanScreenForgotSignOut
+        screenPosition={forgotSignOutPos}
+        transaction={signedOutTransaction}
+        uuid={needsForgotSignOut ? transactionUuid : null}
+        onResolve={onResolveForgotSignOut}
       />
       <ScanScreenQuickPick
         screenPosition={quickPickPos}

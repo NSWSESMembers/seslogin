@@ -80,6 +80,12 @@ export type PurgeExpiredTransactionsAction = {
 
 export const FINALIZED_TRANSACTION_PURGE_AGE_MS = 60_000;
 
+/**
+ * Signed in for longer than this when scanning to sign out → the kiosk shows the
+ * "did you forget to sign out?" interstitial before the category screen.
+ */
+export const FORGOT_SIGN_OUT_PROMPT_THRESHOLD_MS = 12 * 60 * 60 * 1000;
+
 export type CancelTransactionAction = {
   type: "CANCEL_TRANSACTION";
   uuid: string;
@@ -88,6 +94,17 @@ export type CancelTransactionAction = {
 export type SkipQuickPickAction = {
   type: "SKIP_QUICK_PICK";
   uuid: string;
+};
+
+/**
+ * Answer to the "you may have forgotten to sign out" interstitial: stamp the
+ * chosen end time on the period and mark the prompt as dealt with so the flow
+ * moves on to category selection.
+ */
+export type ResolveForgotSignOutAction = {
+  type: "RESOLVE_FORGOT_SIGN_OUT";
+  uuid: string;
+  endTime: Date;
 };
 
 export type TransactionAction =
@@ -100,7 +117,8 @@ export type TransactionAction =
   | AdjustPeriodAction
   | PurgeExpiredTransactionsAction
   | CancelTransactionAction
-  | SkipQuickPickAction;
+  | SkipQuickPickAction
+  | ResolveForgotSignOutAction;
 
 export type TransactionSignedIn = {
   uuid: string;
@@ -130,6 +148,17 @@ export type TransactionSignedOut = {
   categoryId?: string;
   adjusted: boolean;
   quickPickSkipped: boolean;
+  /**
+   * Whether the person had been signed in implausibly long (see
+   * `FORGOT_SIGN_OUT_PROMPT_THRESHOLD_MS`) when they scanned to sign out —
+   * decided once, when the transaction resolves.
+   */
+  longSession: boolean;
+  /**
+   * Set once the "you may have forgotten to sign out" interstitial has been
+   * answered, so it isn't shown again for this transaction.
+   */
+  forgotSignOutPrompted: boolean;
   quickPick?: QuickPickSuggestions;
 };
 
@@ -205,6 +234,10 @@ export function reducer(
           status: "SIGNED_OUT",
           adjusted: false,
           quickPickSkipped: false,
+          longSession:
+            Date.now() - action.startTime.getTime() >
+            FORGOT_SIGN_OUT_PROMPT_THRESHOLD_MS,
+          forgotSignOutPrompted: false,
           periodId: action.periodId,
           quickPick: action.quickPick,
         };
@@ -322,6 +355,33 @@ export function reducer(
       const updatedTransaction: TransactionSignedOut = {
         ...oldTransaction,
         quickPickSkipped: true,
+      };
+      return {
+        ...state,
+        transactions: [
+          ...state.transactions.slice(0, idx),
+          updatedTransaction,
+          ...state.transactions.slice(idx + 1),
+        ],
+      };
+    }
+    case "RESOLVE_FORGOT_SIGN_OUT": {
+      const idx = state.transactions.findIndex((t) => t.uuid === action.uuid);
+      if (idx === -1) {
+        throw Error(
+          "Could not find transaction while resolving uuid " + action.uuid,
+        );
+      }
+      const oldTransaction = state.transactions[idx];
+      if (oldTransaction.status != "SIGNED_OUT") {
+        throw Error(
+          "Doesn't make sense to resolve a forgotten sign-out for transaction not in SIGNED_OUT state",
+        );
+      }
+      const updatedTransaction: TransactionSignedOut = {
+        ...oldTransaction,
+        endTime: action.endTime,
+        forgotSignOutPrompted: true,
       };
       return {
         ...state,
