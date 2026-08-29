@@ -1,5 +1,4 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { graphql, useLazyLoadQuery } from "react-relay";
 import {
   browserSupportsWebAuthn,
   wasPasskeyLoginSession,
@@ -10,8 +9,7 @@ import {
 import { usePasskeyRegistration } from "./usePasskeyRegistration";
 import { useNotify } from "./useNotify";
 import { getErrorMessage } from "../../lib/relayErrors";
-import type { PasskeyEnrollPromptQuery } from "./__generated__/PasskeyEnrollPromptQuery.graphql";
-import { useRelayRetryFetchKey } from "../../components/relayRetryContext";
+import { useUserInfo } from "./useUserInfo";
 import {
   Panel,
   PanelBox,
@@ -26,28 +24,20 @@ import { Button } from "../../components/ui/Button";
  * full-screen interstitial (styled like the login window) over the app, at most
  * once every 12 hours. Suppressed when the device lacks WebAuthn or when the
  * current session was itself authenticated via passkey.
+ *
+ * The passkey list rides along on UserInfoProviderQuery rather than being fetched
+ * here: this component sits below UserInfoProvider, so its own query could only ever
+ * start once that one had resolved, costing the admin shell a second serial round
+ * trip for a single length check.
  */
 export default function PasskeyEnrollPrompt({
   children,
 }: {
   children: ReactNode;
 }) {
-  const fetchKey = useRelayRetryFetchKey();
-  const data = useLazyLoadQuery<PasskeyEnrollPromptQuery>(
-    graphql`
-      query PasskeyEnrollPromptQuery @throwOnFieldError {
-        user {
-          passkeys {
-            __typename
-          }
-        }
-      }
-    `,
-    {},
-    { fetchKey },
-  );
+  const { passkeys } = useUserInfo();
 
-  const hasPasskey = data.user.passkeys.length > 0;
+  const hasPasskey = passkeys.length > 0;
 
   const [show, setShow] = useState(
     () =>

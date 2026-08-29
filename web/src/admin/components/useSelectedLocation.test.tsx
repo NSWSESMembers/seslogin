@@ -26,6 +26,7 @@ describe("useSelectedLocation", () => {
       isSuper: false,
       isDev: false,
       disaggregateVirtualPeriods: false,
+      passkeys: [],
       locations: [{ id: "loc-1", name: "HQ", enabled: true }],
     });
 
@@ -44,6 +45,7 @@ describe("useSelectedLocation", () => {
       isSuper: false,
       isDev: false,
       disaggregateVirtualPeriods: false,
+      passkeys: [],
       locations: [{ id: "loc-1", name: "HQ", enabled: true }],
     });
 
@@ -62,6 +64,7 @@ describe("useSelectedLocation", () => {
       isSuper: false,
       isDev: false,
       disaggregateVirtualPeriods: false,
+      passkeys: [],
       locations: [
         { id: "loc-1", name: "HQ", enabled: true },
         { id: "loc-2", name: "Downtown", enabled: true },

@@ -2,6 +2,7 @@ import { type ReactNode, useEffect } from "react";
 import { useLazyLoadQuery, useRelayEnvironment } from "react-relay";
 import { fetchQuery, graphql } from "relay-runtime";
 import type { UserInfoProviderQuery } from "./__generated__/UserInfoProviderQuery.graphql";
+import type { UserInfoProviderHeartbeatQuery } from "./__generated__/UserInfoProviderHeartbeatQuery.graphql";
 import { UserInfoContext } from "./UserInfoContext";
 import { setEnvironmentInfo } from "../../lib/environmentInfo";
 import { useRelayRetryFetchKey } from "../../components/relayRetryContext";
@@ -28,10 +29,26 @@ const userInfoQuery = graphql`
         name
         enabled
       }
+      passkeys {
+        __typename
+      }
     }
     environment {
       gitRev
       isProdDb
+    }
+  }
+`;
+
+// Deliberately minimal: this only ever needs to make an authenticated round trip so a
+// 401 can be noticed (see the interval below), not to carry data. Keeping the passkey
+// list and the location grants off it means an idle tab doesn't re-run the
+// webauthn_credential index query every two minutes for a value PasskeyEnrollPrompt
+// reads exactly once, on mount.
+const userInfoHeartbeatQuery = graphql`
+  query UserInfoProviderHeartbeatQuery @throwOnFieldError {
+    user {
+      id
     }
   }
 `;
@@ -51,12 +68,19 @@ export function UserInfoProvider({ children }: { children: ReactNode }) {
 
     const refreshUserInfo = () => {
       currentSubscription?.unsubscribe();
-      currentSubscription = fetchQuery<UserInfoProviderQuery>(
+      currentSubscription = fetchQuery<UserInfoProviderHeartbeatQuery>(
         environment,
-        userInfoQuery,
+        userInfoHeartbeatQuery,
         {},
         {
-          // Periodically force a network refresh so we verify the user's auth token is still valid.
+          // Periodically force a network request so we verify the user's auth token is
+          // still valid — a 401 is caught in fetchGraphQL and routed to onUnauthorized()
+          // whatever the query was, so the heartbeat needn't fetch anything real.
+          //
+          // This used to re-run the full userInfoQuery, which also refreshed locations /
+          // isSuper / grants in the store as a side effect. It no longer does: those now
+          // refresh on page load or on a RelayErrorBoundary retry (both bump the fetch
+          // key below).
           fetchPolicy: "network-only",
         },
       ).subscribe({
