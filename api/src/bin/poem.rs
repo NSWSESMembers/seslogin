@@ -90,11 +90,13 @@ async fn index<H: db::Handler + Send + Sync + 'static>(
         }
     };
 
-    let client_version = headers
-        .get(auth::CLIENT_VERSION_HEADER)
-        .and_then(|value| value.to_str().ok())
-        .map(str::trim)
-        .filter(|value| !value.is_empty());
+    let header = |name: &str| headers.get(name).and_then(|value| value.to_str().ok());
+    let client = seslogin::client_info::ClientReport::from_headers(
+        header(auth::CLIENT_VERSION_HEADER),
+        header(seslogin::client_info::CLIENT_INFO_HEADER),
+        header("User-Agent"),
+        seslogin::clock::now_ms(),
+    );
     let mut caller_type = auth::CallerType::Unauthenticated;
     let mut caller_id = String::from("unknown");
     if let Some(cfg) = (***dev_auth).as_ref() {
@@ -120,7 +122,7 @@ async fn index<H: db::Handler + Send + Sync + 'static>(
             .get("Authorization")
             .and_then(|value| value.to_str().ok()),
         &body_hash,
-        client_version,
+        &client,
     )
     .await
     {

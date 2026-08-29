@@ -9,10 +9,7 @@ import {
 import { Button } from "../../components/ui/Button";
 import LoadingIndicator from "../../components/LoadingIndicator";
 import { getGraphQLEndpoint } from "../../lib/api";
-import {
-  CLIENT_VERSION_HEADER,
-  getCurrentClientVersion,
-} from "../../lib/clientVersion";
+import { clientHeaders } from "../../lib/clientInfo";
 import {
   buildSignedAuthHeader,
   getOrCreateKioskKey,
@@ -27,7 +24,7 @@ const SUBMIT_INTERVAL_MS = 10 * 60 * 1000;
 function baseHeaders(): Record<string, string> {
   return {
     "Content-Type": "application/json",
-    [CLIENT_VERSION_HEADER]: getCurrentClientVersion(),
+    ...clientHeaders(),
   };
 }
 

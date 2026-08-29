@@ -190,6 +190,13 @@ pub struct Session {
     pub active: bool,
     pub last_contact: Option<u64>,
     pub client_version: Option<String>,
+    /// What the client last told us about itself (build channel, origin, device). `None`
+    /// for a kiosk that has never reported — every field within is independently optional.
+    pub client_info: Option<crate::client_info::ClientInfo>,
+    /// When `client_info` was last written, as Unix seconds. Distinct from `last_contact`:
+    /// the two move together today, but a snapshot that stops being refreshed while the
+    /// kiosk keeps checking in is exactly the anomaly worth being able to see.
+    pub client_info_updated_at: Option<u64>,
     pub code: Option<String>,
     pub config: serde_json::Map<String, serde_json::Value>,
     pub healthcheck_url: Option<String>,
@@ -316,6 +323,11 @@ pub enum SessionUpdateShape<'a> {
     },
     Info {
         client_version: Option<&'a str>,
+        /// The client's latest self-description. `Some` is an authoritative snapshot —
+        /// fields it leaves empty are removed from the record, so a kiosk that stops
+        /// reporting one doesn't leave a stale value behind. `None` means the client
+        /// reported nothing at all, and the stored snapshot is left exactly as it was.
+        client_info: Option<&'a crate::client_info::ClientInfo>,
         /// When set, also bump `key_expires_at` to this value (the sliding 14-day
         /// window for key-enrolled sessions). Written in the same update as the
         /// throttled `last_contact` refresh, so it costs no extra write.

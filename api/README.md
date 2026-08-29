@@ -109,6 +109,38 @@ Two details worth knowing:
 > than merely disabled. The server logs a loud warning at startup when injection is
 > active.
 
+## Client self-reporting (`X-Client-Info`)
+
+Every request from the web client carries two diagnostic headers, which the server
+stores on the caller's session record during the throttled `last_contact` refresh in
+`auth::touch_session` — so they cost no writes beyond the one already happening:
+
+- `X-Client-Version` — the build the client is running (unchanged; predates the below).
+- `X-Client-Info` — a compact JSON object describing the client, parsed by
+  `client_info::ClientReport::from_headers`.
+
+The server folds in two facts of its own: the request's `User-Agent`, and the clock skew
+implied by the client's reported `clockMs`. The result is exposed as
+`Session.clientInfo` and rendered in the admin kiosk list (environment column) and the
+kiosk edit page (full panel).
+
+The most operationally useful field is `env`/`origin`: the `test` and `preprod`
+front-ends talk to the **production** database, so a kiosk running one of those builds is
+signing real members in and out — and nothing else in the admin UI would reveal it.
+`env` comes from `VITE_ENVIRONMENT`, set per deploy workflow; a build without it reports
+`dev`.
+
+Two rules govern the parsing, both enforced by tests in `client_info.rs`:
+
+1. **A bad header never fails a request.** Missing, oversized, malformed, or wrong-typed
+   input degrades to "nothing reported". Diagnostics must not be able to lock a kiosk out
+   of service.
+2. **A parsed snapshot is authoritative.** Fields the client omits are `REMOVE`d from the
+   record rather than left in place, so a value on screen is always something the kiosk
+   reported at the timestamp in `clientInfo.updatedAt` — never a stale leftover.
+
+Sizes are bounded (2 KB per header, 128 characters per field, 256 for the user agent).
+
 ## SES member sync
 
 Set `ses_api_headquarters_id` per location via the admin UI before syncing.

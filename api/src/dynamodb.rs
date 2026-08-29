@@ -356,6 +356,27 @@ impl TryInto<Session> for Item {
             active: self.has_field("active"),
             last_contact: self.i64_field("last_contact")?.map(|i| i as u64),
             client_version: self.string_field("client_version")?,
+            client_info: {
+                // Every field is optional, so an all-absent snapshot is indistinguishable
+                // from never having reported — represent that as `None` rather than a
+                // struct full of nothing.
+                let info = crate::client_info::ClientInfo {
+                    env: self.string_field("client_env")?,
+                    origin: self.string_field("client_origin")?,
+                    api_url: self.string_field("client_api_url")?,
+                    profile: self.string_field("client_profile")?,
+                    user_agent: self.string_field("client_user_agent")?,
+                    screen: self.string_field("client_screen")?,
+                    display_mode: self.string_field("client_display_mode")?,
+                    timezone: self.string_field("client_timezone")?,
+                    clock_skew_secs: self.i64_field("client_clock_skew_secs")?,
+                    uptime_secs: self.i64_field("client_uptime_secs")?.map(|i| i as u64),
+                    pending_version: self.string_field("client_pending_version")?,
+                    contact_failures: self.i64_field("client_contact_failures")?.map(|i| i as u64),
+                };
+                (info != crate::client_info::ClientInfo::default()).then_some(info)
+            },
+            client_info_updated_at: self.i64_field("client_info_updated_at")?.map(|i| i as u64),
             code: self.string_field("code")?,
             config: {
                 let raw = self.string_field("config")?;
@@ -374,6 +395,35 @@ impl TryInto<Session> for Item {
             updated_at: self.i64_field("updated_at")?.map(|i| i as u64),
         })
     }
+}
+
+/// The session attributes backing [`crate::client_info::ClientInfo`], paired with the
+/// value to write. `None` means the client didn't report that field, so it is removed
+/// from the item rather than stored as Null.
+///
+/// This is the single source of truth for the attribute names on the write side; the
+/// `TryInto<Session>` impl above reads the same names, and
+/// `client_info_round_trips_through_dynamodb_attributes` holds the two together.
+fn client_info_attributes(
+    info: &crate::client_info::ClientInfo,
+) -> [(&'static str, Option<AttributeValue>); 12] {
+    let s = |value: &Option<String>| value.clone().map(AttributeValue::S);
+    let n = |value: &Option<i64>| value.map(|v| AttributeValue::N(v.to_string()));
+    let u = |value: &Option<u64>| value.map(|v| AttributeValue::N(v.to_string()));
+    [
+        ("client_env", s(&info.env)),
+        ("client_origin", s(&info.origin)),
+        ("client_api_url", s(&info.api_url)),
+        ("client_profile", s(&info.profile)),
+        ("client_user_agent", s(&info.user_agent)),
+        ("client_screen", s(&info.screen)),
+        ("client_display_mode", s(&info.display_mode)),
+        ("client_timezone", s(&info.timezone)),
+        ("client_clock_skew_secs", n(&info.clock_skew_secs)),
+        ("client_uptime_secs", u(&info.uptime_secs)),
+        ("client_pending_version", s(&info.pending_version)),
+        ("client_contact_failures", u(&info.contact_failures)),
+    ]
 }
 
 impl TryInto<ApiToken> for Item {
@@ -2398,6 +2448,9 @@ impl db::Handler for Handler {
             active: true,
             last_contact: Some(unix_time),
             client_version: None,
+            // A kiosk reports itself on its first authenticated request, not at creation.
+            client_info: None,
+            client_info_updated_at: None,
             code,
             config: config.clone(),
             healthcheck_url: healthcheck_url.map(str::to_string),
@@ -2458,6 +2511,7 @@ impl db::Handler for Handler {
             }
             db::SessionUpdateShape::Info {
                 client_version,
+                client_info,
                 extend_key_expires_at,
             } => {
                 let unix_time = crate::clock::now_sec();
@@ -2470,14 +2524,42 @@ impl db::Handler for Handler {
 
                 // Build the SET clause from whichever optional fields are present, always
                 // including last_contact.
-                let mut set_parts = vec!["last_contact = :last_contact"];
+                let mut set_parts = vec!["last_contact = :last_contact".to_string()];
+                let mut remove_parts: Vec<String> = Vec::new();
                 if client_version.is_some() {
-                    set_parts.push("client_version = :client_version");
+                    set_parts.push("client_version = :client_version".to_string());
                 }
                 if extend_key_expires_at.is_some() {
-                    set_parts.push("key_expires_at = :key_expires_at");
+                    set_parts.push("key_expires_at = :key_expires_at".to_string());
                 }
-                update = update.update_expression(format!("SET {}", set_parts.join(", ")));
+
+                if let Some(info) = client_info {
+                    // A snapshot is authoritative: what the client reported is SET, and
+                    // what it left out is REMOVEd rather than SET to Null, per the
+                    // optional-attribute rule in CLAUDE.md. Stamping the time alongside
+                    // records when this snapshot was taken, independently of last_contact.
+                    set_parts.push("client_info_updated_at = :client_info_updated_at".to_string());
+                    update = update.expression_attribute_values(
+                        ":client_info_updated_at",
+                        AttributeValue::N(unix_time.to_string()),
+                    );
+                    for (attr, value) in client_info_attributes(info) {
+                        match value {
+                            Some(value) => {
+                                set_parts.push(format!("{attr} = :{attr}"));
+                                update =
+                                    update.expression_attribute_values(format!(":{attr}"), value);
+                            }
+                            None => remove_parts.push(attr.to_string()),
+                        }
+                    }
+                }
+
+                let mut expression = format!("SET {}", set_parts.join(", "));
+                if !remove_parts.is_empty() {
+                    expression.push_str(&format!(" REMOVE {}", remove_parts.join(", ")));
+                }
+                update = update.update_expression(expression);
 
                 if let Some(client_version) = client_version {
                     update = update.expression_attribute_values(
@@ -4276,8 +4358,8 @@ impl db::Handler for Handler {
 #[cfg(test)]
 mod tests {
     use super::{
-        Item, batch_get_backoff, hydrate_items, hydrate_items_lenient, nitc_event_key,
-        scan_cursor_from_key, topic_date_key, unprocessed_keys_for,
+        Item, batch_get_backoff, client_info_attributes, hydrate_items, hydrate_items_lenient,
+        nitc_event_key, scan_cursor_from_key, topic_date_key, unprocessed_keys_for,
     };
     use crate::db;
     use crate::db::Category;
@@ -4529,5 +4611,79 @@ mod tests {
         assert_ne!(base, nitc_event_key("loc8", "42", date));
         assert_ne!(base, nitc_event_key("loc7", "43", date));
         assert_ne!(base, nitc_event_key("loc7", "42", other_date));
+    }
+
+    fn full_client_info() -> crate::client_info::ClientInfo {
+        crate::client_info::ClientInfo {
+            env: Some("test".to_string()),
+            origin: Some("https://test.seslogin.com".to_string()),
+            api_url: Some("https://api.example/".to_string()),
+            profile: Some("default".to_string()),
+            user_agent: Some("Mozilla/5.0".to_string()),
+            screen: Some("1280x800@2".to_string()),
+            display_mode: Some("standalone".to_string()),
+            timezone: Some("Australia/Sydney".to_string()),
+            clock_skew_secs: Some(-42),
+            uptime_secs: Some(3600),
+            pending_version: Some("abc1234".to_string()),
+            contact_failures: Some(7),
+        }
+    }
+
+    /// The write path and the hydration path name these attributes independently, so a
+    /// rename on one side would otherwise silently start dropping a field on read.
+    #[test]
+    fn client_info_round_trips_through_dynamodb_attributes() {
+        let info = full_client_info();
+        let mut fields: Vec<(&str, AttributeValue)> =
+            vec![("id", AttributeValue::S("s1".to_string()))];
+        fields.push(("location_id", AttributeValue::S("loc1".to_string())));
+        let attributes = client_info_attributes(&info);
+        for (attr, value) in &attributes {
+            fields.push((attr, value.clone().expect("every field is populated")));
+        }
+
+        let session: db::Session = item(&fields).try_into().unwrap();
+        assert_eq!(session.client_info, Some(info));
+    }
+
+    /// A field the client didn't report becomes a REMOVE, never a stored Null — writing
+    /// Null is what broke category creation, and the same rule holds here.
+    #[test]
+    fn unreported_client_info_fields_have_no_attribute_value() {
+        let info = crate::client_info::ClientInfo {
+            env: Some("prod".to_string()),
+            ..Default::default()
+        };
+        let attributes = client_info_attributes(&info);
+        let set: Vec<&str> = attributes
+            .iter()
+            .filter(|(_, value)| value.is_some())
+            .map(|(attr, _)| *attr)
+            .collect();
+        assert_eq!(set, vec!["client_env"]);
+    }
+
+    /// An item with none of the attributes is a kiosk that has never reported, not one
+    /// that reported a snapshot of nothings.
+    #[test]
+    fn a_session_with_no_client_attributes_has_no_client_info() {
+        let session: db::Session = item(&[
+            ("id", AttributeValue::S("s1".to_string())),
+            ("location_id", AttributeValue::S("loc1".to_string())),
+        ])
+        .try_into()
+        .unwrap();
+        assert_eq!(session.client_info, None);
+        assert_eq!(session.client_info_updated_at, None);
+    }
+
+    /// Every attribute this module writes is prefixed, so it can never collide with an
+    /// existing session attribute (`name`, `code`, `config`, ...).
+    #[test]
+    fn client_info_attributes_are_namespaced() {
+        for (attr, _) in client_info_attributes(&full_client_info()) {
+            assert!(attr.starts_with("client_"), "{attr} is not namespaced");
+        }
     }
 }

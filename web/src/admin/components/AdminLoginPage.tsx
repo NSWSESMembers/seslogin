@@ -1,10 +1,7 @@
 import { Turnstile, type TurnstileInstance } from "@marsidev/react-turnstile";
 import { useState, useRef, useEffect } from "react";
 import { getGraphQLEndpoint } from "../../lib/api";
-import {
-  getCurrentClientVersion,
-  CLIENT_VERSION_HEADER,
-} from "../../lib/clientVersion";
+import { clientHeaders } from "../../lib/clientInfo";
 import {
   loginWithPasskey,
   browserSupportsWebAuthn,
@@ -40,7 +37,7 @@ async function callMutation(
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      [CLIENT_VERSION_HEADER]: getCurrentClientVersion(),
+      ...clientHeaders(),
     },
     body: JSON.stringify({ query, variables }),
     cache: "no-store",
