@@ -1,8 +1,30 @@
+# Vite serves in about a second, but `cargo run` has to compile the API first, so
+# starting all three at once means the browser can reach the web app minutes before
+# :8000 answers — every GraphQL call in that window fails. Build the API up front,
+# then hold vite until it is actually listening.
 dev:
 	@set -e; \
 	trap 'kill 0' INT TERM EXIT; \
-	(cd api && RUST_LOG=info exec cargo run --bin poem -- --enable-mutations) & \
 	(cd web && npm run relay -- --watch) & \
+	echo "==> Building API (first build may take a few minutes)..."; \
+	(cd api && cargo build --bin poem); \
+	(cd api && RUST_LOG=info exec cargo run --bin poem -- --enable-mutations) & \
+	api_pid=$$!; \
+	printf '==> Waiting for API on :8000'; \
+	ready=; \
+	for _ in $$(seq 1 120); do \
+		if curl -sf -o /dev/null http://localhost:8000/; then ready=1; break; fi; \
+		if ! kill -0 $$api_pid 2>/dev/null; then \
+			echo; echo "==> API exited before it became ready — see its output above."; \
+			exit 1; \
+		fi; \
+		printf '.'; sleep 0.5; \
+	done; \
+	if [ -z "$$ready" ]; then \
+		echo; echo "==> Timed out after 60s waiting for the API on :8000."; \
+		exit 1; \
+	fi; \
+	echo " ready"; \
 	(cd web && npm run dev)
 
 lint:	gha-lint
