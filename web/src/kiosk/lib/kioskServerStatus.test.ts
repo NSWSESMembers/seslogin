@@ -18,6 +18,7 @@ describe("kioskServerStatus", () => {
       lastFailureAt: null,
       lastErrorMessage: null,
       keyExpiresAt: null,
+      failureCount: 0,
     });
   });
 
@@ -58,5 +59,20 @@ describe("kioskServerStatus", () => {
 
     recordServerContactFailure({ status: 502 });
     expect(getKioskServerStatus().lastErrorMessage).toBe('{"status":502}');
+  });
+
+  // The count is what makes a kiosk that drops off and recovers all day visible: every
+  // other field describes only the present moment, in which it looks fine.
+  it("counts failures cumulatively and does not reset them on success", () => {
+    recordServerContactFailure(new Error("boom"));
+    recordServerContactFailure(new Error("boom again"));
+    expect(getKioskServerStatus().failureCount).toBe(2);
+
+    recordServerContactSuccess(1234);
+    expect(getKioskServerStatus().failureCount).toBe(2);
+    expect(getKioskServerStatus().lastFailureAt).toBeNull();
+
+    recordServerContactFailure(new Error("and again"));
+    expect(getKioskServerStatus().failureCount).toBe(3);
   });
 });
