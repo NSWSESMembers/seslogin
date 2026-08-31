@@ -13,6 +13,10 @@ import type { SessionEnrollMutation } from "./__generated__/SessionEnrollMutatio
  * Admin page reached by scanning a kiosk's enrollment QR code. The `?fp=` query param
  * carries the kiosk's public-key fingerprint. Confirms the pending enrollment is still
  * live, then creates a key-bound session via `enrollSession`.
+ *
+ * A device already enrolled as another kiosk can simply be enrolled again: the server
+ * retires the old kiosk. This page says nothing about that kiosk — it may belong to a
+ * location this admin has no access to, and the QR code is not a way to look it up.
  */
 export default function SessionEnroll() {
   const [searchParams] = useSearchParams();

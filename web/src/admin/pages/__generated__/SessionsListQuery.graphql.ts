@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<a97ad04c629113676dc785e23059e8be>>
+ * @generated SignedSource<<881c13192f6fc7e75e633daca5cab439>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -21,6 +21,7 @@ export type SessionsListQuery$data = {
       readonly id: string;
       readonly keyEnrolled: boolean;
       readonly keyExpiresAt: number | null | undefined;
+      readonly keyReleasedAt: number | null | undefined;
       readonly lastContact: number | null | undefined;
       readonly name: string;
       readonly reactivatable: boolean;
@@ -120,6 +121,13 @@ v2 = [
             "kind": "ScalarField",
             "name": "reactivatable",
             "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "keyReleasedAt",
+            "storageKey": null
           }
         ],
         "storageKey": null
@@ -148,16 +156,16 @@ return {
     "selections": (v2/*: any*/)
   },
   "params": {
-    "cacheID": "db76e6680d7f01e34d571b1e787bc22e",
+    "cacheID": "eabf3af4590ee03d9a50c217462c8a00",
     "id": null,
     "metadata": {},
     "name": "SessionsListQuery",
     "operationKind": "query",
-    "text": "query SessionsListQuery(\n  $location: ID!\n) {\n  location(id: $location) {\n    id\n    sessions {\n      id\n      name\n      code\n      lastContact\n      clientVersion\n      keyEnrolled\n      keyExpiresAt\n      reactivatable\n    }\n  }\n}\n"
+    "text": "query SessionsListQuery(\n  $location: ID!\n) {\n  location(id: $location) {\n    id\n    sessions {\n      id\n      name\n      code\n      lastContact\n      clientVersion\n      keyEnrolled\n      keyExpiresAt\n      reactivatable\n      keyReleasedAt\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "af2ff382ee5c5334212db0c34374aba4";
+(node as any).hash = "6207d90da5c277bfc704b3097df769ae";
 
 export default node;

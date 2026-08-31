@@ -2311,14 +2311,20 @@ impl<A: App + HasDb + Send + Sync> Location<A> {
                 e
             })?;
 
-        let sessions = app
+        // Replaced kiosks (key released to another entry) stay in this listing so admins
+        // can see them, but they are leftovers, not kiosks — they must not count towards
+        // the dashboard totals.
+        let sessions: Vec<db::Session> = app
             .db()
             .list_sessions(ListSessionsQuery::ByLocation(self.rec.id.to_string()))
             .await
             .map_err(|e| {
                 warn!("db error: {:?}", e);
                 e
-            })?;
+            })?
+            .into_iter()
+            .filter(|session| session.is_live())
+            .collect();
 
         // Only totals and the virtual portion are tracked for additive metrics
         // (counts/time); clients derive the non-virtual portion by subtraction.
@@ -2618,6 +2624,15 @@ impl<A: App + HasDb + Send + Sync + 'static> Session<A> {
     /// with a 6-digit code. Only the former can be reactivated once it expires.
     async fn key_enrolled(&self) -> bool {
         self.rec.key_fingerprint.is_some()
+    }
+
+    /// When this kiosk's key was released because its device was set up again by scanning
+    /// its QR code, which moved the key onto a new kiosk entry. Non-null only for such a
+    /// leftover: it no longer authenticates, can never come back online, and is safe to
+    /// delete. Null for every working kiosk — including a code-enrolled one, which looks
+    /// identical otherwise once its setup code has been used up.
+    async fn key_released_at(&self) -> Option<i64> {
+        self.rec.key_released_at.map(|t| t as i64)
     }
 
     /// Whether `reactivateSession` would succeed right now: a QR-enrolled kiosk that has
@@ -3115,6 +3130,9 @@ impl<A: App + HasDb + Send + Sync + 'static> QueryRoot<A> {
     /// Look up a pending kiosk enrollment by its key fingerprint (from the QR code).
     /// Returns `None` if it never existed or has expired — the admin SessionEnroll page
     /// uses this to tell the operator to rescan.
+    ///
+    /// Deliberately says nothing about the kiosk this device may already be enrolled as:
+    /// scanning a QR code is not a lookup tool for another location's kiosks.
     #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
     async fn pending_enrollment_key(
         &self,

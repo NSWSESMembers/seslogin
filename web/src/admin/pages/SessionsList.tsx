@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { formatSeconds } from "../../lib/time";
+import { formatFullDateTime, formatSeconds } from "../../lib/time";
 import { graphql, useMutation } from "react-relay";
 import SessionStatus from "../components/SessionStatus";
 import { useRetryableLazyLoadQuery } from "../../components/useRetryableLazyLoadQuery";
@@ -32,6 +32,11 @@ function Row({
 }) {
   const [now] = useState(() => Math.round(Date.now() / 1000));
   const { notifyError, notifySuccess } = useNotify();
+  // Its computer was set up again by scanning its QR code, which moved the key onto a new
+  // entry. Nothing here can revive this one — it's a leftover kept so the change is
+  // visible. Needs the server's marker: a code-enrolled kiosk whose setup code has been
+  // used up also ends up with no code and no key, and that one is perfectly healthy.
+  const isReplacedKiosk = session.keyReleasedAt != null;
   const [commitMutation, isMutationInFlight] =
     useMutation<SessionsListDeleteMutation>(graphql`
       mutation SessionsListDeleteMutation($id: ID!) {
@@ -55,7 +60,9 @@ function Row({
 
   async function deleteSession() {
     const yes = confirm(
-      `Are you sure you want to delete this kiosk? Any computer using it will no longer be able to be used to access the system. This action cannot be undone.`,
+      isReplacedKiosk
+        ? `Are you sure you want to remove this kiosk from the list? It has already been replaced and no longer works. This action cannot be undone.`
+        : `Are you sure you want to delete this kiosk? Any computer using it will no longer be able to be used to access the system. This action cannot be undone.`,
     );
     if (yes) {
       try {
@@ -96,6 +103,7 @@ function Row({
   // An expired kiosk that isn't currently asking to be re-enrolled can't be reactivated
   // yet — it has to be switched on first.
   const isExpiredKiosk =
+    !isReplacedKiosk &&
     session.keyEnrolled &&
     session.keyExpiresAt != null &&
     session.keyExpiresAt <= now;
@@ -112,12 +120,39 @@ function Row({
     : "-";
 
   return (
-    <tr className={idx % 2 === 0 ? "bg-surface-raised" : undefined}>
+    <tr
+      className={`${idx % 2 === 0 ? "bg-surface-raised" : ""} ${
+        isReplacedKiosk ? "text-ink-muted" : ""
+      }`}
+    >
       <Td center>
-        <SessionStatus lastContact={session.lastContact} />
+        {isReplacedKiosk ? (
+          // Its last contact may be minutes old, so the live status dot would read as a
+          // healthy kiosk. It isn't one any more.
+          <img
+            src={bulletGray}
+            alt=""
+            className="inline-block align-middle"
+            title="Replaced"
+          />
+        ) : (
+          <SessionStatus lastContact={session.lastContact} />
+        )}
       </Td>
       {isDev && <Td className="font-mono text-[0.85em]">{session.id}</Td>}
-      <Td>{session.name}</Td>
+      <Td>
+        {session.name}
+        {isReplacedKiosk && (
+          <span
+            className="ml-2 rounded-sm border border-current px-1 py-px text-[0.7em] uppercase"
+            title={`This computer was set up again as a different kiosk on ${formatFullDateTime(
+              new Date(session.keyReleasedAt! * 1000),
+            )}, so this entry no longer works. Delete it once you don't need the record.`}
+          >
+            Replaced
+          </span>
+        )}
+      </Td>
       <Td>{timeSinceAccess}</Td>
       <Td>{session.code}</Td>
       <Td>{clientVersion}</Td>
@@ -139,9 +174,11 @@ function Row({
               Expired
             </span>
           ) : null}
-          <ButtonLink size="row" to={`/admin/sessions/${session.id}`}>
-            Edit
-          </ButtonLink>
+          {!isReplacedKiosk && (
+            <ButtonLink size="row" to={`/admin/sessions/${session.id}`}>
+              Edit
+            </ButtonLink>
+          )}
           <Button
             size="row"
             variant="danger"
@@ -174,6 +211,7 @@ export default function SessionsList() {
             keyEnrolled
             keyExpiresAt
             reactivatable
+            keyReleasedAt
           }
         }
       }
@@ -204,6 +242,13 @@ export default function SessionsList() {
         back with the <strong>Reactivate</strong> button: switch the kiosk on,
         wait for it to show its QR code screen, then reactivate it here. A kiosk
         set up with a setup code has to be set up again from scratch.
+      </p>
+      <p>
+        A kiosk marked <strong>Replaced</strong> is one whose computer has since
+        been set up again by scanning its QR code, which moved it onto a
+        different kiosk entry — possibly at another location. The entry stops
+        working at that point and stays here only so the change is visible;
+        delete it once you don't need the record.
       </p>
       <p>
         <img src={bulletGreen} alt="" className="inline-block align-middle" />{" "}

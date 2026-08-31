@@ -618,6 +618,7 @@ async fn show_sessions(db: &impl Handler, sessions: &[Session]) {
             public_key,
             key_fingerprint,
             key_expires_at,
+            key_released_at,
             created_at,
             updated_at,
         } = s;
@@ -633,6 +634,7 @@ async fn show_sessions(db: &impl Handler, sessions: &[Session]) {
             ("public_key", opt_str(public_key)),
             ("key_fingerprint", opt_str(key_fingerprint)),
             ("key_expires_at", opt_ts(*key_expires_at)),
+            ("key_released_at", opt_ts(*key_released_at)),
             ("config", serde_json::to_string(config).unwrap_or_default()),
             ("created_at", opt_ts(*created_at)),
             ("updated_at", opt_ts(*updated_at)),
@@ -1183,7 +1185,7 @@ async fn run_session_set_config_key(
 
     let db = dynamodb::Handler::new(db_prefix, dry_run).await;
 
-    let sessions = match location {
+    let mut sessions = match location {
         Some(loc) => db.list_sessions(ListSessionsQuery::ByLocation(loc)).await?,
         None => {
             let locations = db.list_locations(ListLocationsFilter::All).await?;
@@ -1197,6 +1199,9 @@ async fn run_session_set_config_key(
             all
         }
     };
+    // Kiosks retired by a re-enrollment stay in the listing but no computer reads their
+    // config, so leave them out rather than reporting phantom changes.
+    sessions.retain(|s| s.is_live());
 
     let describe = |v: Option<&serde_json::Value>| {
         v.map(|v| v.to_string())
@@ -1463,6 +1468,9 @@ async fn run(db: &impl Handler, object: Object) -> Result<()> {
                             locs.get(&s.location_id)
                                 .cloned()
                                 .unwrap_or_else(|| s.location_id.clone()),
+                            // Retired kiosks stay listed (their device was enrolled as
+                            // another kiosk), so say which rows are still working.
+                            if s.is_live() { "live" } else { "replaced" }.to_string(),
                             opt_str(&s.client_version),
                             s.last_contact
                                 .map(relative)
@@ -1471,16 +1479,24 @@ async fn run(db: &impl Handler, object: Object) -> Result<()> {
                     })
                     .collect();
                 print_table(
-                    &["id", "name", "location", "client_version", "last_contact"],
+                    &[
+                        "id",
+                        "name",
+                        "location",
+                        "state",
+                        "client_version",
+                        "last_contact",
+                    ],
                     &rows,
                 );
             }
             SessionCmd::ListActive { minutes, location } => {
                 let cutoff = now_secs().saturating_sub(minutes * 60);
                 let mut sessions = list_sessions(db, location).await?;
-                // list_sessions sorts by last_contact descending; keep only kiosks
-                // that have checked in within the window.
-                sessions.retain(|s| s.last_contact.is_some_and(|t| t >= cutoff));
+                // list_sessions sorts by last_contact descending; keep only working
+                // kiosks that have checked in within the window (a kiosk retired by a
+                // re-enrollment keeps its last contact time, but isn't one).
+                sessions.retain(|s| s.is_live() && s.last_contact.is_some_and(|t| t >= cutoff));
 
                 let loc_ids: Vec<String> = sessions.iter().map(|s| s.location_id.clone()).collect();
                 let locs = location_names(db, &loc_ids).await;
@@ -2114,7 +2130,7 @@ async fn list_active_locations(db: &impl Handler, days: u64, session_days: u64) 
             .await?;
         let active_sessions = sessions
             .iter()
-            .filter(|s| s.last_contact.is_some_and(|t| t >= session_cutoff))
+            .filter(|s| s.is_live() && s.last_contact.is_some_and(|t| t >= session_cutoff))
             .count();
 
         // Skip locations with no activity at all in the window.

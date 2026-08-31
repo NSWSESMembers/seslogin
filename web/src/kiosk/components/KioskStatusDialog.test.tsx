@@ -1,15 +1,39 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import UserEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vitest } from "vitest";
 import KioskStatusDialog from "./KioskStatusDialog";
 import { KioskSessionContext } from "./KioskSessionContext";
-import { KioskEnvironmentContext } from "./KioskEnvironmentContext";
+import {
+  KioskEnvironmentContext,
+  type KioskAuthMode,
+} from "./KioskEnvironmentContext";
 import {
   recordServerContactFailure,
   recordServerContactSuccess,
   resetKioskServerStatus,
 } from "../lib/kioskServerStatus";
 import { setEnvironmentInfo } from "../../lib/environmentInfo";
+
+// The QR panel's key handling needs WebCrypto and IndexedDB, neither of which jsdom
+// provides; the enrollment side of it is covered by useEnrollmentQr's own tests.
+vitest.mock("../lib/useEnrollmentQr", () => ({
+  useEnrollmentQr: (_profile: string, enabled: boolean) =>
+    enabled
+      ? {
+          info: null,
+          fingerprint: "abcdef0123456789ffff",
+          enrollUrl: "https://example.test/admin/sessions/enroll?fp=abcdef",
+          qrDataUrl: "data:image/png;base64,QR",
+          error: null,
+        }
+      : {
+          info: null,
+          fingerprint: null,
+          enrollUrl: null,
+          qrDataUrl: null,
+          error: null,
+        },
+}));
 
 const session = {
   id: "sess123",
@@ -18,10 +42,19 @@ const session = {
   location: { id: "loc456", name: "Test Unit" },
 };
 
-function renderDialog(onClose = vitest.fn()) {
+function renderDialog(
+  onClose = vitest.fn(),
+  authMode: KioskAuthMode = "key",
+  onKeyEnrolled = vitest.fn(),
+) {
   return render(
     <KioskEnvironmentContext.Provider
-      value={{ setToken: vitest.fn(), profile: "default", authMode: "key" }}
+      value={{
+        setToken: vitest.fn(),
+        profile: "default",
+        authMode,
+        onKeyEnrolled,
+      }}
     >
       <KioskSessionContext.Provider value={{ session }}>
         <KioskStatusDialog onClose={onClose} />
@@ -91,6 +124,44 @@ describe("KioskStatusDialog", () => {
   it("contains no links that could navigate the kiosk away", () => {
     recordServerContactSuccess(null);
     const { container } = renderDialog();
+    expect(container.querySelectorAll("a")).toHaveLength(0);
+  });
+
+  it("only shows the enrollment QR code once it is asked for", async () => {
+    const user = UserEvent.setup();
+    renderDialog();
+
+    expect(screen.queryByAltText("Kiosk enrollment QR code")).toBeNull();
+
+    await user.click(screen.getByText("Re-enroll this kiosk"));
+
+    const qr = await screen.findByAltText("Kiosk enrollment QR code");
+    expect(qr.getAttribute("src")).toBe("data:image/png;base64,QR");
+    expect(screen.getByText("abcdef0123456789…")).toBeDefined();
+    // Names the kiosk that re-enrolling would replace, on top of the "Kiosk" row above.
+    expect(screen.getAllByText("Front Desk")).toHaveLength(2);
+  });
+
+  it("hides the QR code again, stopping the key from being republished", async () => {
+    const user = UserEvent.setup();
+    renderDialog();
+
+    await user.click(screen.getByText("Re-enroll this kiosk"));
+    await screen.findByAltText("Kiosk enrollment QR code");
+    await user.click(screen.getByText("Hide code"));
+
+    await waitFor(() =>
+      expect(screen.queryByAltText("Kiosk enrollment QR code")).toBeNull(),
+    );
+  });
+
+  it("still shows no links once the QR code is displayed", async () => {
+    const user = UserEvent.setup();
+    const { container } = renderDialog();
+
+    await user.click(screen.getByText("Re-enroll this kiosk"));
+    await screen.findByAltText("Kiosk enrollment QR code");
+
     expect(container.querySelectorAll("a")).toHaveLength(0);
   });
 
