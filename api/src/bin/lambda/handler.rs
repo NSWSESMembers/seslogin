@@ -6,7 +6,8 @@ use async_graphql::{
     Request as GraphQlRequest, Response as GraphQlResponse, ServerError as GraphQlError,
 };
 use http::{Method, StatusCode};
-use lambda_http::{Body, Error, Request, Response};
+use lambda_http::request::RequestContext;
+use lambda_http::{Body, Error, Request, RequestExt, Response};
 use poem::web::headers;
 use seslogin::request_metrics::{self, RequestMetrics};
 use seslogin::telemetry::{self, RequestTelemetry};
@@ -36,6 +37,18 @@ impl<H: db::Handler + Send + Sync + 'static> Handler<H> {
     pub async fn handle_request(&self, request: Request) -> Result<Response<Body>, Error> {
         let request_start = Instant::now();
         let headers = request.headers().clone();
+
+        // Authoritative client IP from the Function URL's request context (not
+        // spoofable), falling back to the first X-Forwarded-For hop. Forwarded
+        // to Cloudflare as `remoteip` during Turnstile verification.
+        let client_ip = match request.request_context_ref() {
+            Some(RequestContext::ApiGatewayV2(ctx)) => {
+                graphql::ClientIp(ctx.http.source_ip.clone())
+            }
+            _ => graphql::ClientIp::from_forwarded_for(
+                headers.get("x-forwarded-for").and_then(|v| v.to_str().ok()),
+            ),
+        };
 
         let query = if request.method() == Method::POST {
             self.graphql_request_from_post(request).await
@@ -74,6 +87,7 @@ impl<H: db::Handler + Send + Sync + 'static> Handler<H> {
 
         query = query
             .data(self.app.clone())
+            .data(client_ip)
             .data(graphql::get_dataloader(self.app.clone()));
 
         let operation_context = telemetry::extract_operation_context(&mut query);
