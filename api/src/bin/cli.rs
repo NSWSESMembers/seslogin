@@ -178,6 +178,37 @@ enum PersonCmd {
         #[arg(long)]
         include_deleted: bool,
     },
+    /// List members with their most recent period, for spotting manually created
+    /// members that are never actually used.
+    ///
+    /// Every matching member is listed, including those with no activity at all —
+    /// a row showing no period is the signal you are looking for. The activity
+    /// scan is location-scoped, so periods a member recorded at some *other*
+    /// location are not counted; `--last-ever` fills in their true last period
+    /// across all locations. Run fleet-wide (no `--location`) this costs a full
+    /// period scan per enabled location, the same as `location list-active`.
+    ListActive {
+        /// Restrict to one location. Defaults to every enabled location.
+        #[arg(long)]
+        location: Option<String>,
+        /// Activity window: only consider periods started within this many days.
+        #[arg(long, default_value_t = 90)]
+        days: u64,
+        /// Only members with no SES API person ID — i.e. created by hand, not by sync.
+        #[arg(long)]
+        unsynced: bool,
+        /// For members with no period in the window, run one extra indexed query
+        /// each to find their true most recent period ever (any location). Costs
+        /// one query per inactive member.
+        #[arg(long)]
+        last_ever: bool,
+        /// Include soft-deleted members.
+        #[arg(long)]
+        include_deleted: bool,
+        /// Emit RFC 4180 CSV on stdout instead of a table.
+        #[arg(long)]
+        csv: bool,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -394,6 +425,27 @@ fn fmt_ts(epoch_secs: u64) -> String {
 
 fn opt_ts(epoch_secs: Option<u64>) -> String {
     epoch_secs.map(fmt_ts).unwrap_or_else(|| "-".to_string())
+}
+
+/// Compact local datetime for a table cell, e.g. `2026-08-27 18:02`. Unlike [`fmt_ts`]
+/// it drops the raw epoch and relative suffix, which are too wide for a table that
+/// already has a column to spare.
+fn short_ts(epoch_secs: u64) -> String {
+    match DateTime::from_timestamp(epoch_secs as i64, 0) {
+        Some(dt) => dt
+            .with_timezone(&Local)
+            .format("%Y-%m-%d %H:%M")
+            .to_string(),
+        None => epoch_secs.to_string(),
+    }
+}
+
+/// Local calendar date only, e.g. `2025-01-02`.
+fn short_date(epoch_secs: u64) -> String {
+    match DateTime::from_timestamp(epoch_secs as i64, 0) {
+        Some(dt) => dt.with_timezone(&Local).format("%Y-%m-%d").to_string(),
+        None => epoch_secs.to_string(),
+    }
 }
 
 fn opt_str(s: &Option<String>) -> String {
@@ -1409,6 +1461,25 @@ async fn run(db: &impl Handler, object: Object) -> Result<()> {
                     &rows,
                 );
             }
+            PersonCmd::ListActive {
+                location,
+                days,
+                unsynced,
+                last_ever,
+                include_deleted,
+                csv,
+            } => {
+                list_active_people(
+                    db,
+                    location.as_deref(),
+                    days,
+                    unsynced,
+                    last_ever,
+                    include_deleted,
+                    csv,
+                )
+                .await?;
+            }
         },
 
         Object::Location { cmd } => match cmd {
@@ -2201,5 +2272,338 @@ async fn list_active_locations(db: &impl Handler, days: u64, session_days: u64) 
         "Synced SES members (not deleted, SES API ID set) across all locations: {}.",
         total_synced
     );
+    Ok(())
+}
+
+/// The most recent period found for a member, and where it was found.
+struct LastPeriod {
+    id: String,
+    start_time: u64,
+    end_time: Option<u64>,
+    category_id: Option<String>,
+    /// True when this came from the cross-location `--last-ever` fallback rather than
+    /// from the location's in-window scan.
+    ever: bool,
+}
+
+/// One output row: a member plus whatever activity we could find for them.
+struct MemberRow {
+    person: Person,
+    location_id: String,
+    last: Option<LastPeriod>,
+    /// Whether the `--last-ever` lookup actually ran for this member, which is what
+    /// separates "never had a period" from "none inside the window".
+    checked_ever: bool,
+    periods_in_window: usize,
+}
+
+/// List members alongside their most recent period, so a manually created member that
+/// nobody actually uses shows up as a row with no activity.
+///
+/// Activity comes from one paged period scan per location (not one query per member),
+/// grouped by person. Members with no period in the window are still listed — that row
+/// is the answer the command exists to give. With `last_ever`, each of those members
+/// costs one extra indexed query to resolve their true most recent period across all
+/// locations.
+async fn list_active_people(
+    db: &impl Handler,
+    location: Option<&str>,
+    days: u64,
+    unsynced: bool,
+    last_ever: bool,
+    include_deleted: bool,
+    csv: bool,
+) -> Result<()> {
+    let now = now_secs();
+    let cutoff = now.saturating_sub(days.saturating_mul(86400));
+
+    let location_ids: Vec<String> = match location {
+        Some(id) => vec![id.to_string()],
+        None => db
+            .list_locations(ListLocationsFilter::EnabledOnly)
+            .await?
+            .into_iter()
+            .map(|l| l.id)
+            .collect(),
+    };
+    let loc_names = location_names(db, &location_ids).await;
+
+    let mut rows: Vec<MemberRow> = Vec::new();
+
+    for loc_id in &location_ids {
+        let mut people = db
+            .list_people_for_location(loc_id, !include_deleted)
+            .await?;
+        if unsynced {
+            people.retain(|p| p.ses_api_person_id.is_none());
+        }
+        // Nobody to report on here, so skip the (much more expensive) period scan.
+        if people.is_empty() {
+            continue;
+        }
+
+        let periods = fetch_all_periods(db, loc_id, cutoff, now).await?;
+        // Per person: how many periods in the window, and the latest one by start time.
+        let mut by_person: HashMap<&str, (usize, &Period)> = HashMap::new();
+        for p in &periods {
+            let Some(pid) = p.person_id.as_deref() else {
+                continue;
+            };
+            by_person
+                .entry(pid)
+                .and_modify(|(n, latest)| {
+                    *n += 1;
+                    if p.start_time > latest.start_time {
+                        *latest = p;
+                    }
+                })
+                .or_insert((1, p));
+        }
+
+        for person in people {
+            // Copy out of the borrow of `periods` before any await below.
+            let (periods_in_window, in_window) = match by_person.get(person.id.as_str()) {
+                Some((n, p)) => (
+                    *n,
+                    Some(LastPeriod {
+                        id: p.id.clone(),
+                        start_time: p.start_time,
+                        end_time: p.end_time,
+                        category_id: p.category_id.clone(),
+                        ever: false,
+                    }),
+                ),
+                None => (0, None),
+            };
+
+            let checked_ever = last_ever && in_window.is_none();
+            let last = if checked_ever {
+                db.list_periods_for_person(
+                    &person.id,
+                    None,
+                    None,
+                    None,
+                    ListPeriodsPage {
+                        after: None,
+                        before: None,
+                        limit: 1,
+                        descending: true,
+                    },
+                )
+                .await?
+                .into_iter()
+                .next()
+                .map(|p| LastPeriod {
+                    id: p.id,
+                    start_time: p.start_time,
+                    end_time: p.end_time,
+                    category_id: p.category_id,
+                    ever: true,
+                })
+            } else {
+                in_window
+            };
+
+            rows.push(MemberRow {
+                person,
+                location_id: loc_id.clone(),
+                last,
+                checked_ever,
+                periods_in_window,
+            });
+        }
+    }
+
+    // Stalest first: members with no period at all, then oldest last-period upwards —
+    // the rows worth investigating land at the top.
+    rows.sort_by(|a, b| {
+        a.last
+            .as_ref()
+            .map(|l| l.start_time)
+            .cmp(&b.last.as_ref().map(|l| l.start_time))
+            .then_with(|| a.person.last_name.cmp(&b.person.last_name))
+            .then_with(|| a.person.first_name.cmp(&b.person.first_name))
+    });
+
+    if csv {
+        write_active_people_csv(db, &rows, &loc_names).await?;
+        return Ok(());
+    }
+
+    let show_location = location.is_none();
+    let mut headers: Vec<&str> = vec!["id"];
+    if show_location {
+        headers.push("location");
+    }
+    headers.extend([
+        "rego",
+        "first",
+        "last",
+        "synced",
+        "created",
+        "last period",
+        "age",
+        "n",
+    ]);
+    if include_deleted {
+        headers.push("deleted");
+    }
+
+    let none_cell = format!("none in {days}d");
+    let table_rows: Vec<Vec<String>> = rows
+        .iter()
+        .map(|r| {
+            let mut cells = vec![r.person.id.clone()];
+            if show_location {
+                cells.push(
+                    loc_names
+                        .get(&r.location_id)
+                        .cloned()
+                        .unwrap_or_else(|| r.location_id.clone()),
+                );
+            }
+            let (last_cell, age_cell) = match &r.last {
+                Some(l) => (short_ts(l.start_time), relative(l.start_time)),
+                // `checked_ever` means we actually looked across every location and
+                // found nothing, which is a stronger statement than "none in the window".
+                None if r.checked_ever => ("never".to_string(), "-".to_string()),
+                None => (none_cell.clone(), "-".to_string()),
+            };
+            cells.extend([
+                opt_str(&r.person.registration_number),
+                r.person.first_name.clone(),
+                r.person.last_name.clone(),
+                if r.person.ses_api_person_id.is_some() {
+                    "yes"
+                } else {
+                    "-"
+                }
+                .to_string(),
+                r.person
+                    .created_at
+                    .map(short_date)
+                    .unwrap_or_else(|| "-".to_string()),
+                last_cell,
+                age_cell,
+                r.periods_in_window.to_string(),
+            ]);
+            if include_deleted {
+                cells.push(
+                    if r.person.deleted.is_some() {
+                        "yes"
+                    } else {
+                        ""
+                    }
+                    .to_string(),
+                );
+            }
+            cells
+        })
+        .collect();
+
+    println!(
+        "Members{} with their most recent period (window: past {} day(s)){}:\n",
+        if unsynced {
+            " with no SES API ID (created by hand)"
+        } else {
+            ""
+        },
+        days,
+        if show_location {
+            format!(", across {} enabled location(s)", location_ids.len())
+        } else {
+            String::new()
+        }
+    );
+    print_table(&headers, &table_rows);
+
+    let inactive = rows.iter().filter(|r| r.last.is_none()).count();
+    let idle = rows.iter().filter(|r| r.periods_in_window == 0).count();
+    println!(
+        "\n{} member(s) listed. {} with no period in the past {} day(s) at their location.",
+        rows.len(),
+        idle,
+        days
+    );
+    if last_ever {
+        println!("{inactive} have never had a period at any location.");
+    } else if idle > 0 {
+        println!(
+            "Re-run with --last-ever to resolve the true last period for those {idle} member(s)."
+        );
+    }
+    Ok(())
+}
+
+/// CSV form of `list_active_people`. `last_period_scope` says where the date came from:
+/// `window` (this location, inside the window), `ever` (the `--last-ever` cross-location
+/// fallback), or `none`.
+async fn write_active_people_csv(
+    db: &impl Handler,
+    rows: &[MemberRow],
+    loc_names: &HashMap<String, String>,
+) -> Result<()> {
+    let cat_ids: Vec<String> = rows
+        .iter()
+        .filter_map(|r| r.last.as_ref().and_then(|l| l.category_id.clone()))
+        .collect();
+    let cat_names = category_names(db, &cat_ids).await;
+
+    let stdout = std::io::stdout();
+    let mut out = stdout.lock();
+    writeln!(
+        out,
+        "person_id,location_id,location_name,registration_number,first_name,last_name,synced,created_at,last_period_id,last_period_start,last_period_end,last_period_category,last_period_scope,periods_in_window"
+    )?;
+    for r in rows {
+        let (id, start, end, category, scope) = match &r.last {
+            Some(l) => (
+                l.id.clone(),
+                iso_ts(l.start_time),
+                l.end_time
+                    .map(iso_ts)
+                    .unwrap_or_else(|| "active".to_string()),
+                l.category_id
+                    .as_ref()
+                    .and_then(|c| cat_names.get(c).cloned())
+                    .unwrap_or_default(),
+                if l.ever { "ever" } else { "window" }.to_string(),
+            ),
+            None => (
+                String::new(),
+                String::new(),
+                String::new(),
+                String::new(),
+                "none".to_string(),
+            ),
+        };
+        writeln!(
+            out,
+            "{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
+            csv_field(&r.person.id),
+            csv_field(&r.location_id),
+            csv_field(
+                loc_names
+                    .get(&r.location_id)
+                    .map(String::as_str)
+                    .unwrap_or("")
+            ),
+            csv_field(r.person.registration_number.as_deref().unwrap_or("")),
+            csv_field(&r.person.first_name),
+            csv_field(&r.person.last_name),
+            if r.person.ses_api_person_id.is_some() {
+                "yes"
+            } else {
+                "no"
+            },
+            csv_field(&r.person.created_at.map(iso_ts).unwrap_or_default()),
+            csv_field(&id),
+            csv_field(&start),
+            csv_field(&end),
+            csv_field(&category),
+            scope,
+            r.periods_in_window,
+        )?;
+    }
     Ok(())
 }
