@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<90fb736b4a3bd6a68f49ca1789a08637>>
+ * @generated SignedSource<<01bf128b7f5b410f4d600b29a631cc43>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -25,6 +25,9 @@ export type UserInfoProviderQuery$data = {
       readonly enabled: boolean;
       readonly id: string;
       readonly name: string;
+    }>;
+    readonly passkeys: ReadonlyArray<{
+      readonly __typename: "PasskeyInfo";
     }>;
   };
 };
@@ -104,6 +107,24 @@ v1 = [
           }
         ],
         "storageKey": null
+      },
+      {
+        "alias": null,
+        "args": null,
+        "concreteType": "PasskeyInfo",
+        "kind": "LinkedField",
+        "name": "passkeys",
+        "plural": true,
+        "selections": [
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "__typename",
+            "storageKey": null
+          }
+        ],
+        "storageKey": null
       }
     ],
     "storageKey": null
@@ -154,16 +175,16 @@ return {
     "selections": (v1/*: any*/)
   },
   "params": {
-    "cacheID": "c6254fef8bfd515f436642705babab0f",
+    "cacheID": "67756f51099cbfc4dd5d9fd6d1b2b1ac",
     "id": null,
     "metadata": {},
     "name": "UserInfoProviderQuery",
     "operationKind": "query",
-    "text": "query UserInfoProviderQuery {\n  user {\n    id\n    email\n    isSuper\n    isDev\n    disaggregateVirtualPeriods\n    locations {\n      id\n      name\n      enabled\n    }\n  }\n  environment {\n    gitRev\n    isProdDb\n  }\n}\n"
+    "text": "query UserInfoProviderQuery {\n  user {\n    id\n    email\n    isSuper\n    isDev\n    disaggregateVirtualPeriods\n    locations {\n      id\n      name\n      enabled\n    }\n    passkeys {\n      __typename\n    }\n  }\n  environment {\n    gitRev\n    isProdDb\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "52fb2695566fec47a3f1aed8964b0200";
+(node as any).hash = "c5fb6d3d2a9a8efc366a280f67069df1";
 
 export default node;

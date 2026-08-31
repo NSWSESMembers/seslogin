@@ -127,9 +127,12 @@ function LoginRequired() {
         onTokenError={onTokenError}
         onUnauthorized={onUnauthorized}
       >
-        {/* canRetry: both queries reachable here before AdminContent's own
-            boundary takes over — UserInfoProvider and PasskeyEnrollPrompt —
-            thread useRelayRetryFetchKey() into their useLazyLoadQuery call. */}
+        {/* canRetry: the one query reachable here before AdminContent's own
+            boundary takes over — UserInfoProvider's — threads
+            useRelayRetryFetchKey() into its useLazyLoadQuery call.
+            PasskeyEnrollPrompt reads its passkey list off the same query via
+            useUserInfo(), so it must stay below UserInfoProvider (and below
+            NotificationProvider, whose useNotify it calls). */}
         <RelayErrorBoundary canRetry>
           <Suspense fallback={<LoadingIndicator />}>
             <UserInfoProvider>
