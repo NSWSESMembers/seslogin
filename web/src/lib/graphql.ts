@@ -1,8 +1,5 @@
 import { getGraphQLEndpoint } from "./api";
-import {
-  CLIENT_VERSION_HEADER,
-  getCurrentClientVersion,
-} from "./clientVersion";
+import { clientHeaders } from "./clientInfo";
 import {
   blockClientUpdates,
   clearBlockClientUpdates,
@@ -47,7 +44,7 @@ export async function fetchGraphQL(
   );
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
-    [CLIENT_VERSION_HEADER]: getCurrentClientVersion(),
+    ...clientHeaders(),
   };
   // Serialize the body once so the auth producer signs exactly what we send.
   const body = JSON.stringify({ query: request.text, variables });

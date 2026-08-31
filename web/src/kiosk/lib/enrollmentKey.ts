@@ -4,10 +4,7 @@
  */
 
 import { getGraphQLEndpoint } from "../../lib/api";
-import {
-  CLIENT_VERSION_HEADER,
-  getCurrentClientVersion,
-} from "../../lib/clientVersion";
+import { clientHeaders } from "../../lib/clientInfo";
 import { buildSignedAuthHeader, type KioskKeyInfo } from "./kioskKey";
 
 // Re-publish the public key this often while the kiosk shows its QR code. The server
@@ -17,7 +14,7 @@ export const ENROLL_SUBMIT_INTERVAL_MS = 10 * 60 * 1000;
 export function enrollHeaders(): Record<string, string> {
   return {
     "Content-Type": "application/json",
-    [CLIENT_VERSION_HEADER]: getCurrentClientVersion(),
+    ...clientHeaders(),
   };
 }
 

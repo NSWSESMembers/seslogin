@@ -141,18 +141,16 @@ impl<H: db::Handler + Send + Sync + 'static> Handler<H> {
         headers: &headers::HeaderMap,
         body_hash: &str,
     ) -> Result<Option<AuthInfo>, auth::AuthError> {
-        let client_version = headers
-            .get(auth::CLIENT_VERSION_HEADER)
-            .and_then(|value| value.to_str().ok())
-            .map(str::trim)
-            .filter(|value| !value.is_empty());
+        let header = |name: &str| headers.get(name).and_then(|value| value.to_str().ok());
+        let client = seslogin::client_info::ClientReport::from_headers(
+            header(auth::CLIENT_VERSION_HEADER),
+            header(seslogin::client_info::CLIENT_INFO_HEADER),
+            header("User-Agent"),
+            seslogin::clock::now_ms(),
+        );
 
-        let auth_header = headers
-            .get("Authorization")
-            .and_then(|value| value.to_str().ok());
-        match auth::verify_authorization_header(&*self.app, auth_header, body_hash, client_version)
-            .await
-        {
+        let auth_header = header("Authorization");
+        match auth::verify_authorization_header(&*self.app, auth_header, body_hash, &client).await {
             Some(res) => res.map(Some),
             None => Ok(None),
         }

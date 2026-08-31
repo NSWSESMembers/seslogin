@@ -5,6 +5,7 @@ use tracing::warn;
 use crate::app::App;
 use crate::app::HasDb;
 use crate::app::HasSqs;
+use crate::client_info::ClientReport;
 use crate::db;
 use crate::db::Handler;
 use crate::jwt;
@@ -28,7 +29,7 @@ fn classify_db_err(msg: &str, e: db::Error) -> AuthError {
 }
 
 pub const CLIENT_VERSION_HEADER: &str = "X-Client-Version";
-const MAX_CLIENT_VERSION_LEN: usize = 64;
+pub(crate) const MAX_CLIENT_VERSION_LEN: usize = 64;
 
 /// How stale a session's `last_contact` must be before we write a refresh.
 const LAST_CONTACT_REFRESH_SECS: u64 = 5 * 60;
@@ -234,23 +235,17 @@ async fn fetch_update_user_auth_info<A: App + HasDb>(
     })
 }
 
-fn normalize_client_version(client_version: Option<&str>) -> Option<String> {
-    let value = client_version?.trim();
-    if value.is_empty() {
-        return None;
-    }
-    Some(value.chars().take(MAX_CLIENT_VERSION_LEN).collect())
-}
-
 /// Throttled "touch" of a session on a successful authenticated request: refreshes
 /// `last_contact` (and enqueues a healthcheck) at most once per [`LAST_CONTACT_REFRESH_SECS`].
 /// When `extend_key` is set, the same write also slides `key_expires_at` forward to
 /// `now + KEY_LIFETIME_S` — this is how a key-enrolled kiosk keeps its 14-day window
-/// alive at no extra write cost.
+/// alive at no extra write cost. The client's self-reported [`ClientReport`] rides along
+/// in the same write, so the diagnostics cost nothing beyond what `last_contact` already
+/// spends.
 async fn touch_session<A: App + HasDb + HasSqs>(
     app: &A,
     session: &db::Session,
-    client_version: Option<&str>,
+    client: &ClientReport,
     extend_key: bool,
 ) -> Result<(), AuthError> {
     // Only refresh last_contact if it's older than this window, to reduce DB
@@ -272,14 +267,14 @@ async fn touch_session<A: App + HasDb + HasSqs>(
             .last_contact
             .is_none_or(|t| now > t + LAST_CONTACT_REFRESH_SECS)
     {
-        let client_version = normalize_client_version(client_version);
         let extend_key_expires_at = extend_key.then(|| now + crate::session_key::KEY_LIFETIME_S);
         match app
             .db()
             .update_session(
                 &session.id,
                 db::SessionUpdateShape::Info {
-                    client_version: client_version.as_deref(),
+                    client_version: client.version.as_deref(),
+                    client_info: client.info.as_ref(),
                     extend_key_expires_at,
                 },
             )
@@ -314,7 +309,7 @@ async fn touch_session<A: App + HasDb + HasSqs>(
 async fn fetch_update_session_auth_info<A: App + HasDb + HasSqs>(
     app: &A,
     session_id: String,
-    client_version: Option<&str>,
+    client: &ClientReport,
 ) -> Result<AuthInfo, AuthError> {
     let primary_session = match app.db().get_sessions(&[&session_id]).await {
         Ok(mut v) => v.pop().flatten(),
@@ -333,7 +328,7 @@ async fn fetch_update_session_auth_info<A: App + HasDb + HasSqs>(
         return Err(AuthError::Permanent("Session not found".into()));
     }
 
-    touch_session(app, &session, client_version, false).await?;
+    touch_session(app, &session, client, false).await?;
 
     Ok(AuthInfo::Session {
         id: session.id,
@@ -352,7 +347,7 @@ pub async fn verify_signed_key<A: App + HasDb + HasSqs>(
     app: &A,
     header_rest: &str,
     body_hash_hex: &str,
-    client_version: Option<&str>,
+    client: &ClientReport,
 ) -> Result<AuthInfo, AuthError> {
     let header = crate::session_key::parse_signed_key_header(header_rest)
         .map_err(|e| AuthError::Permanent(format!("Invalid signed key header: {e:#}")))?;
@@ -406,7 +401,7 @@ pub async fn verify_signed_key<A: App + HasDb + HasSqs>(
     )
     .map_err(|e| AuthError::Permanent(format!("{e:#}")))?;
 
-    touch_session(app, &session, client_version, true).await?;
+    touch_session(app, &session, client, true).await?;
 
     Ok(AuthInfo::Session {
         id: session.id,
@@ -465,7 +460,7 @@ async fn verify_token_with_api_token<A: App + HasDb>(
 async fn verify_token_with_jwt<A: App + HasDb + HasSqs>(
     app: &A,
     token: &str,
-    client_version: Option<&str>,
+    client: &ClientReport,
 ) -> Result<AuthInfo, AuthError> {
     let parsed_jwt = app
         .jwt()
@@ -474,7 +469,7 @@ async fn verify_token_with_jwt<A: App + HasDb + HasSqs>(
     match parsed_jwt.data {
         jwt::JwtData::User { user_id } => fetch_update_user_auth_info(app, user_id).await,
         jwt::JwtData::Session { session_id } => {
-            fetch_update_session_auth_info(app, session_id, client_version).await
+            fetch_update_session_auth_info(app, session_id, client).await
         }
     }
 }
@@ -562,7 +557,7 @@ async fn verify_token_with_period_link<A: App + HasDb>(
 pub async fn verify_token<A: App + HasDb + HasSqs>(
     app: &A,
     token: &str,
-    client_version: Option<&str>,
+    client: &ClientReport,
 ) -> Result<AuthInfo, AuthError> {
     if token.starts_with(API_TOKEN_PREFIX) {
         return verify_token_with_api_token(app, token).await;
@@ -576,7 +571,7 @@ pub async fn verify_token<A: App + HasDb + HasSqs>(
         return verify_token_with_period_link(app, token).await;
     }
 
-    verify_token_with_jwt(app, token, client_version).await
+    verify_token_with_jwt(app, token, client).await
 }
 
 /// Dispatch an `Authorization` header value to the right verifier by scheme:
@@ -588,13 +583,13 @@ pub async fn verify_authorization_header<A: App + HasDb + HasSqs>(
     app: &A,
     auth_header: Option<&str>,
     body_hash_hex: &str,
-    client_version: Option<&str>,
+    client: &ClientReport,
 ) -> Option<Result<AuthInfo, AuthError>> {
     let auth_header = auth_header?;
     if let Some(token) = auth_header.strip_prefix("Bearer ") {
-        Some(verify_token(app, token, client_version).await)
+        Some(verify_token(app, token, client).await)
     } else if let Some(rest) = auth_header.strip_prefix(crate::session_key::SESSION_KEY_SCHEME) {
-        Some(verify_signed_key(app, rest, body_hash_hex, client_version).await)
+        Some(verify_signed_key(app, rest, body_hash_hex, client).await)
     } else {
         None
     }

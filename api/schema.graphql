@@ -655,6 +655,11 @@ type Session {
 	lastContact: Int
 	clientVersion: String
 	"""
+	What this kiosk last reported about itself. Null for one that has never reported —
+	an old client, or a kiosk that has not authenticated since this was deployed.
+	"""
+	clientInfo: SessionClientInfo
+	"""
 	When this kiosk's enrolled key stops authenticating. Null for code-enrolled kiosks.
 	"""
 	keyExpiresAt: Int
@@ -684,6 +689,71 @@ type Session {
 	"""
 	reactivatable: Boolean!
 	createdAt: Int
+	updatedAt: Int
+}
+
+type SessionClientInfo {
+	"""
+	Build channel the client was deployed from: `prod`, `preprod`, `test` or `dev`.
+	Worth watching: `test` and `preprod` builds run against the production database,
+	so a kiosk reporting either is on live data from a non-production front-end.
+	"""
+	env: String
+	"""
+	The origin the client was actually loaded from, e.g. `https://new.seslogin.com`.
+	Unlike `env` this can't be stale or misconfigured at build time.
+	"""
+	origin: String
+	"""
+	The GraphQL endpoint the client believes it is talking to. A mismatch against
+	`origin` means a front-end pointed at another environment's API.
+	"""
+	apiUrl: String
+	"""
+	Kiosk profile from the `/kiosk/:profile` route — which stored identity a shared
+	device is running under.
+	"""
+	profile: String
+	"""
+	Browser and OS, taken from the request's `User-Agent` rather than self-reported.
+	"""
+	userAgent: String
+	"""
+	Viewport as `<width>x<height>@<devicePixelRatio>`.
+	"""
+	screen: String
+	"""
+	`standalone`, `fullscreen`, `minimal-ui` or `browser` — whether the kiosk is
+	installed as intended or running in a normal browser tab.
+	"""
+	displayMode: String
+	"""
+	IANA zone name the client's browser is set to.
+	"""
+	timezone: String
+	"""
+	Client clock minus server clock, in seconds; negative means the client is behind.
+	A large value predicts signed-key auth failures, whose timestamp window this
+	breaks before anything else does.
+	"""
+	clockSkewSecs: Int
+	"""
+	Seconds since the client page loaded. A kiosk whose uptime keeps resetting is
+	reloading or crash-looping.
+	"""
+	uptimeSecs: Int
+	"""
+	A newer build the client has seen but not yet reloaded into — the reason a
+	`clientVersion` can look stale on a perfectly healthy kiosk.
+	"""
+	pendingVersion: String
+	"""
+	Failed server contacts since the page loaded.
+	"""
+	contactFailures: Int
+	"""
+	When this snapshot was written, in Unix seconds.
+	"""
 	updatedAt: Int
 }
 

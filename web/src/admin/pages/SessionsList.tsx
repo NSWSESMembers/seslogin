@@ -2,6 +2,7 @@ import { useState } from "react";
 import { formatFullDateTime, formatSeconds } from "../../lib/time";
 import { graphql, useMutation } from "react-relay";
 import SessionStatus from "../components/SessionStatus";
+import SessionEnvironment from "../components/SessionEnvironment";
 import { useRetryableLazyLoadQuery } from "../../components/useRetryableLazyLoadQuery";
 import useSelectedLocation from "../components/useSelectedLocation";
 import { useUserInfo } from "../components/useUserInfo";
@@ -156,6 +157,9 @@ function Row({
       <Td>{timeSinceAccess}</Td>
       <Td>{session.code}</Td>
       <Td>{clientVersion}</Td>
+      <Td>
+        <SessionEnvironment clientInfo={session.clientInfo} />
+      </Td>
       <Td options>
         <div className="flex items-center justify-end gap-1">
           {session.reactivatable ? (
@@ -197,6 +201,9 @@ export default function SessionsList() {
   const { isDev } = useUserInfo();
   const selectedLocation = useSelectedLocation();
   const locationId = selectedLocation.id;
+  // `clientInfo` is handed to SessionEnvironment whole rather than read field by field,
+  // so the lint rule can't see the usage.
+  /* eslint-disable relay/unused-fields */
   const data = useRetryableLazyLoadQuery<SessionsListQuery>(
     graphql`
       query SessionsListQuery($location: ID!) @throwOnFieldError {
@@ -212,12 +219,17 @@ export default function SessionsList() {
             keyExpiresAt
             reactivatable
             keyReleasedAt
+            clientInfo {
+              env
+              origin
+            }
           }
         }
       }
     `,
     { location: locationId },
   );
+  /* eslint-enable relay/unused-fields */
 
   const location = data?.location;
   const sortedSessions = [...location.sessions]
@@ -269,6 +281,7 @@ export default function SessionsList() {
             <Th>Last contact</Th>
             <Th>Code</Th>
             <Th>Version</Th>
+            <Th>Environment</Th>
             <Th></Th>
           </tr>
         </thead>
