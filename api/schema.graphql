@@ -235,6 +235,14 @@ type MutationRoot {
 	`key_fingerprint`. The kiosk then authenticates every request by signing it (no
 	6-digit code, no JWT). Reached from the admin SessionEnroll page after scanning
 	the kiosk's QR code.
+	
+	Works whatever state the device's current enrollment is in — live, expired, or
+	deleted. Any session still holding the key has it released (`key_released_at`
+	stamped, key material dropped) before the new one takes it, so a kiosk set up as
+	the wrong kiosk, or at the wrong location, is fixed by re-enrolling the device
+	itself. The released record stays listed at its own location so the admins there
+	can see the kiosk was replaced; nothing about it is reported back to the caller,
+	who may have no access to that location.
 	"""
 	enrollSession(name: String!, locationId: ID!, config: String, healthcheckUrl: String, keyFingerprint: String!): Session!
 	createApiToken(name: String!, locationGrants: [String!]!, readOnly: Boolean!, expiresAt: Int): CreateApiTokenResult!
@@ -549,6 +557,9 @@ type QueryRoot {
 	Look up a pending kiosk enrollment by its key fingerprint (from the QR code).
 	Returns `None` if it never existed or has expired — the admin SessionEnroll page
 	uses this to tell the operator to rescan.
+	
+	Deliberately says nothing about the kiosk this device may already be enrolled as:
+	scanning a QR code is not a lookup tool for another location's kiosks.
 	"""
 	pendingEnrollmentKey(fingerprint: String!): PendingEnrollmentKey
 	category(
@@ -651,6 +662,14 @@ type Session {
 	with a 6-digit code. Only the former can be reactivated once it expires.
 	"""
 	keyEnrolled: Boolean!
+	"""
+	When this kiosk's key was released because its device was set up again by scanning
+	its QR code, which moved the key onto a new kiosk entry. Non-null only for such a
+	leftover: it no longer authenticates, can never come back online, and is safe to
+	delete. Null for every working kiosk — including a code-enrolled one, which looks
+	identical otherwise once its setup code has been used up.
+	"""
+	keyReleasedAt: Int
 	"""
 	Whether `reactivateSession` would succeed right now: a QR-enrolled kiosk that has
 	expired *and* is currently switched on showing its enrollment QR screen. Drives the

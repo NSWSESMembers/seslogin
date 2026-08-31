@@ -65,6 +65,50 @@ pub fn key_expired(key_expires_at: Option<u64>, now: u64) -> bool {
     key_expires_at.is_none_or(|exp| now >= exp)
 }
 
+/// What [`crate::graphql::MutationRoot::enroll_session`] should do about a session found
+/// already holding the fingerprint a kiosk is trying to enroll with.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FingerprintHolder {
+    /// Soft-deleted, so it isn't really holding the fingerprint: `SessionUpdateShape::Delete`
+    /// already dropped its key fields and its GSI row with them. Nothing to do.
+    Ignore,
+    /// Active but lapsed — the kiosk in front of the admin, expired after two weeks
+    /// offline. Release its key so the same device can enroll afresh.
+    ReleaseLapsed,
+    /// Active with a live key: a working kiosk genuinely holds this fingerprint, and is
+    /// being taken over. Release it too — a kiosk enrolled at the wrong location is fixed
+    /// by re-enrolling the device in front of you, and only that device could have
+    /// produced this enrollment request. The difference from `ReleaseLapsed` is what it
+    /// costs someone else, so the two are logged apart.
+    ReleaseLive,
+}
+
+impl FingerprintHolder {
+    /// Whether this holder's key has to be released before the new session can take the
+    /// fingerprint.
+    pub fn needs_release(self) -> bool {
+        matches!(self, Self::ReleaseLapsed | Self::ReleaseLive)
+    }
+}
+
+/// Decide what an enrollment attempt should do about an existing holder of its fingerprint.
+///
+/// Releasing is safe regardless of location: only the device holding the matching private
+/// key ever authenticated as that record, and that device is the one asking to enroll.
+pub fn classify_fingerprint_holder(
+    active: bool,
+    key_expires_at: Option<u64>,
+    now: u64,
+) -> FingerprintHolder {
+    if !active {
+        FingerprintHolder::Ignore
+    } else if key_expired(key_expires_at, now) {
+        FingerprintHolder::ReleaseLapsed
+    } else {
+        FingerprintHolder::ReleaseLive
+    }
+}
+
 /// New `key_expires_at` for a reactivation: a short redemption window. Never shortens an
 /// existing window, so a click that races a kiosk coming back online is a no-op rather
 /// than cutting a healthy 14-day window down to 10 minutes.
@@ -239,6 +283,56 @@ mod tests {
         assert!(key_expired(Some(now), now));
         assert!(key_expired(Some(now - 1), now));
         assert!(!key_expired(Some(now + 1), now));
+    }
+
+    #[test]
+    fn fingerprint_holder_classification() {
+        let now = 1_700_000_000;
+        // A working kiosk is taken over — re-enrolling the device in front of you is the
+        // way to fix a kiosk enrolled as the wrong one, or at the wrong location.
+        assert_eq!(
+            classify_fingerprint_holder(true, Some(now + 1), now),
+            FingerprintHolder::ReleaseLive
+        );
+        // A lapsed one is just this same kiosk's stale record.
+        assert_eq!(
+            classify_fingerprint_holder(true, Some(now - 1), now),
+            FingerprintHolder::ReleaseLapsed
+        );
+        // A soft-deleted session already gave its key fields up.
+        assert_eq!(
+            classify_fingerprint_holder(false, Some(now + 1), now),
+            FingerprintHolder::Ignore
+        );
+        assert_eq!(
+            classify_fingerprint_holder(false, None, now),
+            FingerprintHolder::Ignore
+        );
+    }
+
+    #[test]
+    fn every_holder_of_a_live_record_is_released() {
+        // The point of the merged rule: enrollment never dead-ends on an existing holder,
+        // whatever state it is in. Only a soft-deleted record needs nothing done.
+        let now = 1_700_000_000;
+        assert!(classify_fingerprint_holder(true, Some(now + 1), now).needs_release());
+        assert!(classify_fingerprint_holder(true, Some(now - 1), now).needs_release());
+        assert!(!classify_fingerprint_holder(false, Some(now + 1), now).needs_release());
+    }
+
+    #[test]
+    fn fingerprint_holder_boundaries_match_key_expired() {
+        let now = 1_700_000_000;
+        // Expiry is inclusive, exactly as `key_expired` has it.
+        assert_eq!(
+            classify_fingerprint_holder(true, Some(now), now),
+            FingerprintHolder::ReleaseLapsed
+        );
+        // No window at all counts as expired, not as a live holder.
+        assert_eq!(
+            classify_fingerprint_holder(true, None, now),
+            FingerprintHolder::ReleaseLapsed
+        );
     }
 
     #[test]

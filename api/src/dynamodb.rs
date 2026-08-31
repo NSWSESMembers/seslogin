@@ -370,6 +370,7 @@ impl TryInto<Session> for Item {
             public_key: self.string_field("public_key")?,
             key_fingerprint: self.string_field("key_fingerprint")?,
             key_expires_at: self.i64_field("key_expires_at")?.map(|i| i as u64),
+            key_released_at: self.i64_field("key_released_at")?.map(|i| i as u64),
             created_at: self.i64_field("created_at")?.map(|i| i as u64),
             updated_at: self.i64_field("updated_at")?.map(|i| i as u64),
         })
@@ -2404,6 +2405,7 @@ impl db::Handler for Handler {
             public_key: key.map(|k| k.public_key.to_string()),
             key_fingerprint: key.map(|k| k.fingerprint.to_string()),
             key_expires_at: key.map(|k| k.expires_at),
+            key_released_at: None,
             created_at: Some(unix_time),
             updated_at: Some(unix_time),
         })
@@ -2531,6 +2533,48 @@ impl db::Handler for Handler {
                     .await
                     .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
                 record_capacity("update_session", resp.consumed_capacity(), CapKind::Write);
+            }
+            db::SessionUpdateShape::ReleaseKey { fingerprint } => {
+                // Same REMOVE list as `Delete` minus `active`: the record stays in its
+                // location's kiosk list, it just stops holding the fingerprint, so the GSI
+                // row disappears and the device is free to enroll into a new session.
+                // `key_released_at` marks it as a leftover that can never come back
+                // online; `Session::is_live` reads that, which is what stops a JWT the old
+                // kiosk still holds from working.
+                //
+                // The condition keeps this honest against a race — `reactivateSession`, or
+                // another admin enrolling the same device: release only while the row still
+                // holds *this* fingerprint. A conditional-check failure surfaces as
+                // `NotFound`, which the caller reads as "this key has already moved on".
+                let now = crate::clock::now_sec();
+                let resp = self
+                    .client
+                    .update_item()
+                    .table_name(self.table_name("session"))
+                    .key("id", AttributeValue::S(id.to_string()))
+                    .condition_expression(
+                        "attribute_exists(key_fingerprint) AND key_fingerprint = :fp",
+                    )
+                    .update_expression(
+                        "SET updated_at = :now, key_released_at = :now \
+                         REMOVE key_fingerprint, public_key, key_expires_at",
+                    )
+                    .expression_attribute_values(":fp", AttributeValue::S(fingerprint.to_string()))
+                    .expression_attribute_values(":now", AttributeValue::N(now.to_string()))
+                    .return_consumed_capacity(ReturnConsumedCapacity::Total)
+                    .send()
+                    .await
+                    .map_err(|e| {
+                        map_update_err(
+                            e,
+                            format!("Session {id} no longer holds the key {fingerprint}"),
+                        )
+                    })?;
+                record_capacity(
+                    "release_session_key",
+                    resp.consumed_capacity(),
+                    CapKind::Write,
+                );
             }
             db::SessionUpdateShape::Delete => {
                 // Removing `active` soft-deletes the session. Also drop the key fields so

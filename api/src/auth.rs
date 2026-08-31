@@ -88,7 +88,7 @@ pub async fn resolve_dev_auth<A: App + HasDb>(
                 .pop()
                 .flatten()
                 .ok_or_else(|| AuthError::Permanent(format!("Dev auth session not found: {id}")))?;
-            if !session.active {
+            if !session.is_live() {
                 return Err(AuthError::Permanent(format!(
                     "Dev auth session is not active: {id}"
                 )));
@@ -168,7 +168,7 @@ pub async fn issue_token_for_scan_code<A: App + HasDb>(app: &A, code: &str) -> R
     let session_id = db::at_most_one(ids, || "Multiple sessions share this scan code".to_string())?
         .ok_or_else(|| anyhow!("Invalid code"))?;
 
-    // Verify the resolved session actually exists and is active (the code GSI still
+    // Verify the resolved session actually exists and is live (the code GSI still
     // contains soft-deleted sessions, since deletion only removes the `active` marker).
     let session = app
         .db()
@@ -177,7 +177,7 @@ pub async fn issue_token_for_scan_code<A: App + HasDb>(app: &A, code: &str) -> R
         .pop()
         .flatten()
         .ok_or_else(|| anyhow!("Invalid code"))?;
-    if !session.active {
+    if !session.is_live() {
         return Err(anyhow!("Invalid code"));
     }
 
@@ -326,8 +326,10 @@ async fn fetch_update_session_auth_info<A: App + HasDb + HasSqs>(
 
     // A soft-deleted session (the `active` marker removed) must not keep working
     // just because it still holds a valid 14-day JWT. Reject it so deleting a kiosk
-    // signs it out on its next request.
-    if !session.active {
+    // signs it out on its next request. Same for one whose key has been released, which
+    // keeps `active` to stay listed: its device now belongs to another kiosk, so any JWT
+    // it still holds has to stop working too.
+    if !session.is_live() {
         return Err(AuthError::Permanent("Session not found".into()));
     }
 
@@ -370,12 +372,13 @@ pub async fn verify_signed_key<A: App + HasDb + HasSqs>(
         .await
         .map_err(|e| classify_db_err("fetch sessions by key fingerprint", e))?;
 
-    // Only active sessions hold a fingerprint (Delete strips it), so at most one should
-    // match. Reject if none (disabled/re-enroll path) or, defensively, if more than one.
+    // Only live sessions hold a fingerprint (Delete and ReleaseKey both strip it), so at
+    // most one should match. Reject if none (disabled/re-enrolled path) or, defensively,
+    // if more than one.
     let mut active: Vec<db::Session> = sessions
         .into_iter()
         .flatten()
-        .filter(|s| s.active)
+        .filter(|s| s.is_live())
         .collect();
     if active.len() > 1 {
         return Err(AuthError::Permanent(
