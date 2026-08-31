@@ -947,6 +947,77 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
         Ok(Period::new(period))
     }
 
+    /// Admin edit of a guest (non-member) period: name, times, and comment.
+    /// A guest period has no person and no category, so those are never touched
+    /// here — member periods go through `update_period` /
+    /// `update_period_time_category`, which reject guests.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    async fn update_guest_period(
+        &self,
+        ctx: &Context<'_>,
+        id: ID,
+        guest_name: String,
+        start_time: i64,
+        end_time: i64,
+        // Three-state: omit to leave the comment unchanged, pass `null` to clear
+        // it, or pass a string to set it.
+        comment: MaybeUndefined<String>,
+    ) -> Result<Period<A>> {
+        require_writable(ctx)?;
+        if start_time >= end_time {
+            return Err(anyhow!("start_time must be before end_time"));
+        }
+        let guest_name = guest_name.trim();
+        if guest_name.is_empty() {
+            return Err(anyhow!("Guest name is required"));
+        }
+        if guest_name.chars().count() > 100 {
+            return Err(anyhow!("Guest name is too long"));
+        }
+        let existing = self
+            .app
+            .db()
+            .get_periods(&[&id])
+            .await?
+            .into_iter()
+            .next()
+            .flatten()
+            .ok_or_else(|| anyhow!("Period with ID {:?} missing", id))?;
+        if existing.guest_name.is_none() {
+            return Err(anyhow!("Not a guest period"));
+        }
+        require_location_access(ctx, &existing.location_id)?;
+
+        let comment = match &comment {
+            MaybeUndefined::Undefined => None,
+            MaybeUndefined::Null => Some(None),
+            MaybeUndefined::Value(comment) => Some(Some(comment.as_str())),
+        };
+        self.app
+            .db()
+            .update_period(
+                &id,
+                db::PeriodUpdateShape::Guest {
+                    guest_name,
+                    start_time,
+                    end_time,
+                    comment,
+                },
+            )
+            .await?;
+
+        let period = self
+            .app
+            .db()
+            .get_periods(&[&id])
+            .await?
+            .into_iter()
+            .next()
+            .flatten()
+            .ok_or_else(|| anyhow!("Period with ID {:?} missing", id))?;
+        Ok(Period::new(period))
+    }
+
     /// Email the member a reminder to check one of their time entries, with a
     /// short-lived link that lets them correct it themselves.
     ///

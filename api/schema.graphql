@@ -219,6 +219,13 @@ type MutationRoot {
 	updatePeriod(id: ID!, personId: ID!, locationId: ID!, categoryId: ID!, startTime: Int!, endTime: Int!, comment: String): Period!
 	updatePeriodTimeCategory(id: ID!, startTime: Int!, endTime: Int!, categoryId: ID!, comment: String): Period!
 	"""
+	Admin edit of a guest (non-member) period: name, times, and comment.
+	A guest period has no person and no category, so those are never touched
+	here — member periods go through `update_period` /
+	`update_period_time_category`, which reject guests.
+	"""
+	updateGuestPeriod(id: ID!, guestName: String!, startTime: Int!, endTime: Int!, comment: String): Period!
+	"""
 	Email the member a reminder to check one of their time entries, with a
 	short-lived link that lets them correct it themselves.
 	
