@@ -25,6 +25,7 @@ use hex;
 use super::auth::{
     AuthGuard, AuthRequirement, require_location_access, require_period_access, require_writable,
 };
+use super::error::{ApiError, ErrorCode};
 use super::query::{QuickPick, build_quick_pick};
 use super::{ApiToken, Category, Location, NitcGroup, PasskeyInfo, Period, Person, Session, User};
 
@@ -1109,6 +1110,14 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
     /// `key_fingerprint`. The kiosk then authenticates every request by signing it (no
     /// 6-digit code, no JWT). Reached from the admin SessionEnroll page after scanning
     /// the kiosk's QR code.
+    ///
+    /// Works whatever state the device's current enrollment is in — live, expired, or
+    /// deleted. Any session still holding the key has it released (`key_released_at`
+    /// stamped, key material dropped) before the new one takes it, so a kiosk set up as
+    /// the wrong kiosk, or at the wrong location, is fixed by re-enrolling the device
+    /// itself. The released record stays listed at its own location so the admins there
+    /// can see the kiosk was replaced; nothing about it is reported back to the caller,
+    /// who may have no access to that location.
     #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
     async fn enroll_session(
         &self,
@@ -1151,24 +1160,79 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
         let payload: crate::session_key::EnrollPayload = serde_json::from_str(&pending.payload)
             .map_err(|e| anyhow!("Corrupt enrollment record: {e}"))?;
 
-        // Refuse if an active session already holds this fingerprint. (Soft-deleted
-        // sessions release their fingerprint, so they won't appear here — checked
-        // defensively via `active`.)
+        // Deal with any session already holding this fingerprint. Enrollment never
+        // dead-ends here: a soft-deleted holder has already given its key up, and any
+        // other one — a stale record from a kiosk that sat offline past KEY_LIFETIME_S,
+        // or a working kiosk being re-enrolled because it was set up as the wrong kiosk
+        // or at the wrong location — has its key released so this device can enroll
+        // afresh. Only one session may hold a fingerprint at a time (`auth` rejects the
+        // key outright if two ever do), so this must happen before the create below.
+        //
+        // No location check on the old record, and nothing about it reported back: it may
+        // belong to a location this admin cannot see, and requiring rights there would
+        // block the very case this exists for. Releasing is safe regardless of location —
+        // only the device holding the matching private key ever authenticated as that
+        // record, and that device is the one in front of the admin asking to enroll. The
+        // record is left in place rather than deleted, so its own location's admins can
+        // see what became of it.
         let existing_ids = self
             .app
             .db()
             .get_session_id_by_key_fingerprint(&key_fingerprint)
             .await?;
-        let already_enrolled = self
+        for existing in self
             .app
             .db()
             .get_sessions(&existing_ids)
             .await?
             .into_iter()
             .flatten()
-            .any(|s| s.active);
-        if already_enrolled {
-            return Err(anyhow!("A kiosk is already enrolled with this key"));
+        {
+            let holder = crate::session_key::classify_fingerprint_holder(
+                existing.active,
+                existing.key_expires_at,
+                now,
+            );
+            if !holder.needs_release() {
+                continue;
+            }
+            match self
+                .app
+                .db()
+                .update_session(
+                    &existing.id,
+                    db::SessionUpdateShape::ReleaseKey {
+                        fingerprint: &key_fingerprint,
+                    },
+                )
+                .await
+            {
+                Ok(()) => info!(
+                    "Released {} key {} from kiosk session {} ({:?}) at location {} so its device \
+                     could enroll as {:?} at location {}",
+                    match holder {
+                        crate::session_key::FingerprintHolder::ReleaseLive => "live",
+                        _ => "expired",
+                    },
+                    key_fingerprint,
+                    existing.id,
+                    existing.name,
+                    existing.location_id,
+                    name,
+                    *location_id
+                ),
+                // The conditional write failed: the row stopped holding this fingerprint
+                // between our read and our write, so another enrollment of the same device
+                // got there first. Nothing sensible to take over any more.
+                Err(db::Error::NotFound(_)) => {
+                    return Err(ApiError::new(
+                        ErrorCode::Conflict,
+                        "This device was enrolled by someone else while you were setting it up — rescan its QR code and try again",
+                    )
+                    .into());
+                }
+                Err(e) => return Err(e.into()),
+            }
         }
 
         let item = self
@@ -1402,6 +1466,13 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
 
         if !existing.active {
             return Err(anyhow!("This kiosk has been deleted."));
+        }
+        // A record whose key was released has been stripped like a code-enrolled one, so
+        // answer it before the message below, which would be wrong about why.
+        if existing.key_released_at.is_some() {
+            return Err(anyhow!(
+                "This kiosk's computer has since been set up again by scanning its QR code, so this entry can't be brought back. Delete it, or set the computer up again here."
+            ));
         }
         // Code-enrolled kiosks have nothing to revive: their single-use code was wiped the
         // first time it was entered.

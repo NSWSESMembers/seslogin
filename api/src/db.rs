@@ -203,8 +203,29 @@ pub struct Session {
     /// Unix seconds after which the enrolled key no longer authenticates; extended on
     /// each verified request. A kiosk offline past this must re-enroll.
     pub key_expires_at: Option<u64>,
+    /// Unix seconds at which this session's key was released so its device could enroll
+    /// into a new session (see [`SessionUpdateShape::ReleaseKey`]). Set on such a
+    /// leftover, which can never come back online — and the only thing that tells one
+    /// apart from a healthy code-enrolled kiosk, since both end up with no `code` and no
+    /// key fields.
+    ///
+    /// Deliberately not a soft delete: the record keeps its `active` marker so it stays
+    /// listed at its own location, showing the admins there that the kiosk was replaced
+    /// rather than silently vanishing. It authenticates nothing —
+    /// [`is_live`](Self::is_live) is the test every caller that means "a working kiosk"
+    /// must use.
+    pub key_released_at: Option<u64>,
     pub created_at: Option<u64>,
     pub updated_at: Option<u64>,
+}
+
+impl Session {
+    /// Whether this record is a working kiosk: not soft-deleted, and not left over from a
+    /// re-enrollment of its device. An expired kiosk still counts — it can be reactivated
+    /// or re-enrolled, so it is dormant rather than finished.
+    pub fn is_live(&self) -> bool {
+        self.active && self.key_released_at.is_none()
+    }
 }
 
 /// Parameters for enrolling a public key onto a new session (the QR/public-key flow).
@@ -326,6 +347,17 @@ pub enum SessionUpdateShape<'a> {
     /// throttle in `auth::touch_session` stays open for the kiosk's redeeming request.
     ExtendKey {
         expires_at: u64,
+    },
+    /// Drop the key fields from a session that is *not* being deleted, freeing its
+    /// `key_fingerprint-index` slot so the same device can enroll into a fresh session,
+    /// and stamp `key_released_at` to mark the leftover. Deliberately leaves `active`
+    /// alone — that is what holds the record in `active-location_id-index` — so it stays
+    /// visible to its own location's admins, who can tidy it up.
+    ///
+    /// Fails with [`Error::NotFound`] if the row no longer holds `fingerprint`, meaning
+    /// the enrollment it was read for has been overtaken.
+    ReleaseKey {
+        fingerprint: &'a str,
     },
     Delete,
 }
@@ -1038,4 +1070,49 @@ pub trait Handler: Sync {
     ) -> impl Future<Output = Result<Option<EphemeralState>>> + Send;
 
     fn delete_ephemeral_state(&self, id: &str) -> impl Future<Output = Result<()>> + Send;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Session;
+
+    fn session(active: bool, key_released_at: Option<u64>) -> Session {
+        Session {
+            id: "s1".to_string(),
+            name: "Front Desk".to_string(),
+            location_id: "loc-a".to_string(),
+            active,
+            last_contact: Some(1_700_000_000),
+            client_version: None,
+            code: None,
+            config: serde_json::Map::new(),
+            healthcheck_url: None,
+            public_key: None,
+            key_fingerprint: None,
+            key_expires_at: None,
+            key_released_at,
+            created_at: None,
+            updated_at: None,
+        }
+    }
+
+    #[test]
+    fn a_normal_kiosk_is_live() {
+        assert!(session(true, None).is_live());
+    }
+
+    #[test]
+    fn a_soft_deleted_kiosk_is_not_live() {
+        assert!(!session(false, None).is_live());
+    }
+
+    #[test]
+    fn a_kiosk_whose_key_was_released_is_not_live_despite_keeping_active() {
+        // The whole point of `key_released_at`: the record keeps `active` so it stays in
+        // `active-location_id-index` and remains listed, but it must authenticate
+        // nothing and count as no kiosk.
+        let leftover = session(true, Some(1_700_000_100));
+        assert!(leftover.active);
+        assert!(!leftover.is_live());
+    }
 }

@@ -113,14 +113,27 @@ export default function KioskEnvironment({
     scanAuthTokenRef.current = null;
   }, [profile]);
 
+  const onEnrolled = useCallback(() => {
+    const currentSettings = readAppSettings(profile);
+    writeAppSettings(profile, {
+      ...currentSettings,
+      authMode: "key",
+      scanAuthToken: null,
+      scanAuthTokenIssuedAt: null,
+    });
+    scanAuthTokenRef.current = null;
+    setAuthState("authed-key");
+  }, [profile]);
+
   const contextValue = useMemo(
     () => ({
       setToken,
       profile,
       authMode:
         authState === "authed-key" ? ("key" as const) : ("jwt" as const),
+      onKeyEnrolled: onEnrolled,
     }),
-    [setToken, profile, authState],
+    [setToken, profile, authState, onEnrolled],
   );
 
   const onJwtUnauthorized = useCallback(() => {
@@ -133,18 +146,6 @@ export default function KioskEnvironment({
   const onKeyUnauthorized = useCallback(() => {
     setAuthState("enrolling");
   }, []);
-
-  const onEnrolled = useCallback(() => {
-    const currentSettings = readAppSettings(profile);
-    writeAppSettings(profile, {
-      ...currentSettings,
-      authMode: "key",
-      scanAuthToken: null,
-      scanAuthTokenIssuedAt: null,
-    });
-    scanAuthTokenRef.current = null;
-    setAuthState("authed-key");
-  }, [profile]);
 
   const startEnrollment = useCallback(() => setAuthState("enrolling"), []);
   const useCodeInstead = useCallback(() => setAuthState("setup-code"), []);

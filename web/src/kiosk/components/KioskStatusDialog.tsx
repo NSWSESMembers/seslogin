@@ -7,6 +7,7 @@ import { getCurrentClientVersion } from "../../lib/clientVersion";
 import { useEnvironmentInfo } from "../../lib/environmentInfo";
 import { formatFullDateTime, formatShortDuration } from "../../lib/time";
 import { getKioskServerStatus } from "../lib/kioskServerStatus";
+import KioskReEnrollPanel from "./KioskReEnrollPanel";
 import useKioskEnvironment from "./useKioskEnvironment";
 import { useKioskSession } from "./useKioskSession";
 import type { JsonValue } from "./KioskSessionContext";
@@ -155,6 +156,8 @@ export default function KioskStatusDialog({
 
         <Row label="Config">{formatConfigFlags(session?.config ?? {})}</Row>
       </dl>
+
+      <KioskReEnrollPanel currentKioskName={session?.name ?? null} />
 
       <DialogActions>
         <Button variant="secondary" onClick={onClose}>

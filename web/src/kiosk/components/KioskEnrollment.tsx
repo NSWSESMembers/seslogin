@@ -1,5 +1,4 @@
-import { useEffect, useState } from "react";
-import QRCode from "qrcode";
+import { useEffect } from "react";
 import {
   Panel,
   PanelBox,
@@ -8,68 +7,9 @@ import {
 } from "../../components/ui/Panel";
 import { Button } from "../../components/ui/Button";
 import LoadingIndicator from "../../components/LoadingIndicator";
-import { getGraphQLEndpoint } from "../../lib/api";
-import {
-  CLIENT_VERSION_HEADER,
-  getCurrentClientVersion,
-} from "../../lib/clientVersion";
-import {
-  buildSignedAuthHeader,
-  getOrCreateKioskKey,
-  type KioskKeyInfo,
-} from "../lib/kioskKey";
+import { fetchKeySessionId } from "../lib/enrollmentKey";
+import { useEnrollmentQr } from "../lib/useEnrollmentQr";
 import { pollDelayMs } from "../lib/enrollPolling";
-
-// Re-publish the public key this often while the kiosk waits to be enrolled. The
-// server keeps the pending record for 30 min, so 10 min keeps it comfortably alive.
-const SUBMIT_INTERVAL_MS = 10 * 60 * 1000;
-
-function baseHeaders(): Record<string, string> {
-  return {
-    "Content-Type": "application/json",
-    [CLIENT_VERSION_HEADER]: getCurrentClientVersion(),
-  };
-}
-
-/** Publish the public key as a pending enrollment (unauthenticated). */
-async function submitEnrollmentKey(info: KioskKeyInfo): Promise<void> {
-  const body = JSON.stringify({
-    query:
-      "mutation KioskSubmitEnrollmentKey($publicKey: String!) { submitEnrollmentKey(publicKey: $publicKey) }",
-    variables: { publicKey: info.publicKeySpkiB64 },
-  });
-  await fetch(getGraphQLEndpoint(), {
-    method: "POST",
-    headers: baseHeaders(),
-    body,
-    cache: "no-store",
-  });
-}
-
-/**
- * Attempt a signed request. Resolves true once the kiosk is enrolled (the signed
- * `session` query succeeds); false while still pending (a 401 is expected until then).
- */
-async function pollEnrolled(info: KioskKeyInfo): Promise<boolean> {
-  const body = JSON.stringify({
-    query: "query KioskEnrollPoll { session { id } }",
-  });
-  const authorization = await buildSignedAuthHeader(info, body);
-  const resp = await fetch(getGraphQLEndpoint(), {
-    method: "POST",
-    headers: { ...baseHeaders(), Authorization: authorization },
-    body,
-    cache: "no-store",
-  });
-  if (resp.status === 401) {
-    return false;
-  }
-  if (!resp.ok) {
-    return false;
-  }
-  const json = await resp.json();
-  return Boolean(json?.data?.session?.id);
-}
 
 export default function KioskEnrollment({
   profile,
@@ -80,73 +20,43 @@ export default function KioskEnrollment({
   onEnrolled: () => void;
   onUseCodeInstead: () => void;
 }) {
-  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
-  const [enrollUrl, setEnrollUrl] = useState<string | null>(null);
-  const [fingerprint, setFingerprint] = useState<string | null>(null);
+  const { info, fingerprint, enrollUrl, qrDataUrl } = useEnrollmentQr(profile);
 
   useEffect(() => {
+    if (info == null) return;
+
     let cancelled = false;
-    let submitTimeout: number | null = null;
     let pollTimeout: number | null = null;
     const startedAt = Date.now();
 
-    getOrCreateKioskKey(profile)
-      .then(async (info) => {
-        if (cancelled) return;
-        setFingerprint(info.fingerprint);
+    const runPoll = async () => {
+      if (cancelled) return;
+      let sessionId: string | null = null;
+      try {
+        sessionId = await fetchKeySessionId(info);
+      } catch (err) {
+        console.error("Enrollment poll failed:", err);
+      }
+      if (cancelled) return;
+      if (sessionId != null) {
+        onEnrolled();
+        return;
+      }
+      pollTimeout = window.setTimeout(
+        runPoll,
+        pollDelayMs(Date.now() - startedAt),
+      );
+    };
 
-        const enrollUrl = `${window.location.origin}/admin/sessions/enroll?fp=${info.fingerprint}`;
-        setEnrollUrl(enrollUrl);
-        QRCode.toDataURL(enrollUrl, { width: 320, margin: 2 })
-          .then((url) => {
-            if (!cancelled) setQrDataUrl(url);
-          })
-          .catch((err) => console.error("Failed to render QR code:", err));
-
-        const runSubmit = async () => {
-          if (cancelled) return;
-          try {
-            await submitEnrollmentKey(info);
-          } catch (err) {
-            console.error("Failed to submit enrollment key:", err);
-          }
-          if (!cancelled) {
-            submitTimeout = window.setTimeout(runSubmit, SUBMIT_INTERVAL_MS);
-          }
-        };
-
-        const runPoll = async () => {
-          if (cancelled) return;
-          let enrolled = false;
-          try {
-            enrolled = await pollEnrolled(info);
-          } catch (err) {
-            console.error("Enrollment poll failed:", err);
-          }
-          if (cancelled) return;
-          if (enrolled) {
-            onEnrolled();
-            return;
-          }
-          pollTimeout = window.setTimeout(
-            runPoll,
-            pollDelayMs(Date.now() - startedAt),
-          );
-        };
-
-        runSubmit();
-        runPoll();
-      })
-      .catch((err) => console.error("Failed to load kiosk signing key:", err));
+    runPoll();
 
     return () => {
       cancelled = true;
-      if (submitTimeout !== null) window.clearTimeout(submitTimeout);
       if (pollTimeout !== null) window.clearTimeout(pollTimeout);
     };
-    // `onEnrolled` is a stable useCallback from KioskEnvironment, so this effect (and
-    // its submit/poll loops) is set up once per profile, not on every render.
-  }, [profile, onEnrolled]);
+    // `onEnrolled` is a stable useCallback from KioskEnvironment and `info` is set once
+    // per profile, so this poll loop is set up once rather than on every render.
+  }, [info, onEnrolled]);
 
   return (
     <Panel>
