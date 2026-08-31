@@ -1,11 +1,13 @@
 import { useState } from "react";
 import { graphql, useMutation } from "react-relay";
+import type { RecordSourceSelectorProxy } from "relay-runtime";
 import { useNavigate, useParams } from "react-router";
 import { useRetryableLazyLoadQuery } from "../../components/useRetryableLazyLoadQuery";
 import { dateToInputDateTimeLocal } from "../../lib/time";
 import useSelectedLocation from "../components/useSelectedLocation";
 import type { ActivityEditQuery } from "./__generated__/ActivityEditQuery.graphql";
 import type { ActivityEditMutation } from "./__generated__/ActivityEditMutation.graphql";
+import type { ActivityEditGuestMutation } from "./__generated__/ActivityEditGuestMutation.graphql";
 import { useNotify } from "../components/useNotify";
 import { FieldList, FormField } from "../../components/ui/FormField";
 import TextInput from "../../components/ui/TextInput";
@@ -27,6 +29,7 @@ export default function ActivityEdit() {
           startTime
           endTime
           comment
+          guestName
           category {
             id
             name
@@ -70,6 +73,36 @@ export default function ActivityEdit() {
       }
     `);
 
+  const [commitGuestMutation, isGuestMutationInFlight] =
+    useMutation<ActivityEditGuestMutation>(graphql`
+      mutation ActivityEditGuestMutation(
+        $id: ID!
+        $guestName: String!
+        $startTime: Int!
+        $endTime: Int!
+        $comment: String
+      ) {
+        updateGuestPeriod(
+          id: $id
+          guestName: $guestName
+          startTime: $startTime
+          endTime: $endTime
+          comment: $comment
+        ) {
+          id
+          startTime
+          endTime
+          comment
+          guestName
+        }
+      }
+    `);
+
+  const isGuest = data.period.guestName != null;
+
+  const [guestNameValue, setGuestNameValue] = useState(
+    data.period.guestName ?? "",
+  );
   const [startValue, setStartValue] = useState(
     dateToInputDateTimeLocal(new Date(data.period.startTime * 1000)),
   );
@@ -94,9 +127,10 @@ export default function ActivityEdit() {
         "Warning: end date is more than 24h after start date - are you sure?";
   }
 
+  const inFlight = isMutationInFlight || isGuestMutationInFlight;
+
   async function handleSubmit(formData: FormData) {
     if (error) return;
-    const categoryId = formData.get("category")?.toString() || "";
     const start = formData.get("start")?.toString();
     const end = formData.get("end")?.toString();
     if (!start) {
@@ -112,24 +146,49 @@ export default function ActivityEdit() {
     // Send null to clear the comment when the field is emptied.
     const comment = formData.get("comment")?.toString().trim() || null;
 
+    const updater = (store: RecordSourceSelectorProxy) => {
+      const location = store.get(locationId);
+      location?.invalidateRecord();
+    };
+
     try {
-      await new Promise((resolve, reject) => {
-        commitMutation({
-          variables: {
-            id: data.period.id,
-            startTime,
-            endTime,
-            categoryId,
-            comment,
-          },
-          onCompleted: resolve,
-          onError: reject,
-          updater: (store) => {
-            const location = store.get(locationId);
-            location?.invalidateRecord();
-          },
+      if (isGuest) {
+        const guestName = formData.get("guestName")?.toString().trim() || "";
+        if (!guestName) {
+          notifyError("Guest name is required");
+          return;
+        }
+        await new Promise((resolve, reject) => {
+          commitGuestMutation({
+            variables: {
+              id: data.period.id,
+              guestName,
+              startTime,
+              endTime,
+              comment,
+            },
+            onCompleted: resolve,
+            onError: reject,
+            updater,
+          });
         });
-      });
+      } else {
+        const categoryId = formData.get("category")?.toString() || "";
+        await new Promise((resolve, reject) => {
+          commitMutation({
+            variables: {
+              id: data.period.id,
+              startTime,
+              endTime,
+              categoryId,
+              comment,
+            },
+            onCompleted: resolve,
+            onError: reject,
+            updater,
+          });
+        });
+      }
     } catch (err) {
       notifyError(err, "Couldn't save activity entry");
       return;
@@ -148,24 +207,40 @@ export default function ActivityEdit() {
 
   return (
     <>
-      <p>Edit the activity entry details, then click Save.</p>
+      <p>
+        Edit the {isGuest ? "guest " : ""}activity entry details, then click
+        Save.
+      </p>
       <form action={handleSubmit}>
         <FieldList>
-          <FormField label={<label htmlFor="category">Category</label>}>
-            <Select
-              name="category"
-              id="category"
-              required
-              defaultValue={data.period.category?.id || ""}
-            >
-              <option value="">-- Select category --</option>
-              {categories.map((cat) => (
-                <option value={cat.id} key={cat.id}>
-                  {cat.name}
-                </option>
-              ))}
-            </Select>
-          </FormField>
+          {isGuest ? (
+            <FormField label={<label htmlFor="guestName">Guest name</label>}>
+              <TextInput
+                name="guestName"
+                id="guestName"
+                required
+                maxLength={100}
+                value={guestNameValue}
+                onChange={(e) => setGuestNameValue(e.target.value)}
+              />
+            </FormField>
+          ) : (
+            <FormField label={<label htmlFor="category">Category</label>}>
+              <Select
+                name="category"
+                id="category"
+                required
+                defaultValue={data.period.category?.id || ""}
+              >
+                <option value="">-- Select category --</option>
+                {categories.map((cat) => (
+                  <option value={cat.id} key={cat.id}>
+                    {cat.name}
+                  </option>
+                ))}
+              </Select>
+            </FormField>
+          )}
           <FormField label={<label htmlFor="start">Start time</label>}>
             <TextInput
               type="datetime-local"
@@ -198,7 +273,7 @@ export default function ActivityEdit() {
             />
           </FormField>
           <FormField>
-            <Button type="submit" disabled={isMutationInFlight || !!error}>
+            <Button type="submit" disabled={inFlight || !!error}>
               Save
             </Button>
           </FormField>

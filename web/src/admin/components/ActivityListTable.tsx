@@ -291,12 +291,9 @@ function Row<T extends ActivityListTable_period$key>({
       </Td>
       <Td options>
         <div className="flex justify-end gap-1">
-          {/* Guests have no category; ActivityEdit forces one, so hide Edit for them. */}
-          {period.personId != null && (
-            <ButtonLink size="row" to={`/admin/activity/${period.id}`}>
-              Edit
-            </ButtonLink>
-          )}
+          <ButtonLink size="row" to={`/admin/activity/${period.id}`}>
+            Edit
+          </ButtonLink>
           {/* Still being trialled, so dev-tagged users only. The guest check is
               the same as Edit's: a guest has no member record to email. */}
           {isDev && period.personId != null && (
