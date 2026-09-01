@@ -42,7 +42,7 @@ resource "aws_lambda_function_url" "preprod_api" {
 
   cors {
     allow_credentials = true
-    allow_headers     = ["authorization", "content-type", "x-client-version"]
+    allow_headers     = ["authorization", "content-type", "x-client-version", "x-client-info"]
     allow_methods     = ["GET", "POST"]
     allow_origins     = ["https://preprod.seslogin.com"]
     max_age           = 600
