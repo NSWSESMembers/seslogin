@@ -683,12 +683,19 @@ pub trait Handler: Sync {
         period: &Period,
         signed_out_session_id: Option<&str>,
     ) -> impl Future<Output = Result<Period>> + Send;
-    /// Create a new period starting now for the given person at the given location
+    /// Create a new open (not yet signed-out) period for the given person at the
+    /// given location.
+    ///
+    /// `signed_in_session_id` is the originating kiosk; the scan flow always
+    /// supplies it, but a record created by hand (the `cli period create-signin`
+    /// test helper) may have none. `start_time` defaults to now — pass `Some` to
+    /// backdate it, e.g. to exercise the kiosk "forgot to sign out" interstitial.
     fn start_period_for_person_location(
         &self,
         person_id: &str,
         location_id: &str,
-        signed_in_session_id: &str,
+        signed_in_session_id: Option<&str>,
+        start_time: Option<u64>,
     ) -> impl Future<Output = Result<Period>> + Send;
     /// Create a new open guest period starting now at the given location.
     /// Writes no person_id attribute (sparse person GSI) and no category.
