@@ -1,6 +1,7 @@
 import "@testing-library/jest-dom/vitest";
 import { vi, describe, it, expect, beforeEach } from "vitest";
 import UserEvent from "@testing-library/user-event";
+import type { UserEvent as UserEventInstance } from "@testing-library/user-event";
 import { render, screen, waitFor } from "@testing-library/react";
 import { getGraphQLEndpoint } from "../lib/api";
 import { beforeAll, afterEach, afterAll } from "vitest";
@@ -357,6 +358,169 @@ describe("KioskMain quick pick categories", () => {
     await user.type(screen.getByRole("textbox"), SIGNOUT_USER + "{enter}");
 
     await waitFor(() => expect(seen).toEqual([false]));
+  });
+});
+
+describe("KioskMain forgot-to-sign-out interstitial", () => {
+  function longSignOutHandler() {
+    return relayEndpoint.mutation("ScanControllerRegister2Mutation", () =>
+      HttpResponse.json({
+        data: {
+          scanRegister2: {
+            id: SIGNOUT_USER,
+            state: "SIGN_OUT_PENDING",
+            period: {
+              id: "period-456",
+              // signed in well over 12 hours ago (unix seconds, as the API sends)
+              startTime: Math.floor(Date.now() / 1000) - 60 * 60 * 30,
+              endTime: null,
+              person: {
+                id: `person-${SIGNOUT_USER}`,
+                firstName: "Jamie",
+                lastName: "Smith",
+              },
+            },
+            quickPick: null,
+          },
+        },
+      }),
+    );
+  }
+
+  it("shows the interstitial for a long session, then proceeds to categories", async () => {
+    server.use(sessionConfigHandler({}), longSignOutHandler());
+    const user = await setupTest();
+    await user.type(screen.getByRole("textbox"), SIGNOUT_USER + "{enter}");
+
+    await waitFor(() =>
+      expect(
+        screen.getByText("Did you forget to sign out?"),
+      ).toBeInTheDocument(),
+    );
+
+    await user.click(screen.getByRole("button", { name: /Nope/i }));
+
+    await waitFor(() =>
+      expect(screen.getByText("Categories")).toBeInTheDocument(),
+    );
+  });
+
+  it("is not shown for a short session", async () => {
+    server.use(sessionConfigHandler({}), register2Handler());
+    const user = await setupTest();
+    await user.type(screen.getByRole("textbox"), SIGNOUT_USER + "{enter}");
+
+    await waitFor(() =>
+      expect(screen.getByText("Categories")).toBeInTheDocument(),
+    );
+    expect(
+      screen.queryByText("Did you forget to sign out?"),
+    ).not.toBeInTheDocument();
+  });
+
+  // Captures the signOut mutation vars so a test can inspect the times it sends.
+  function captureSignOut(): { current: Record<string, number> | undefined } {
+    const box: { current: Record<string, number> | undefined } = {
+      current: undefined,
+    };
+    server.use(
+      relayEndpoint.mutation(
+        "ScanControllerSignOutMutation",
+        ({ variables }) => {
+          box.current = variables as Record<string, number>;
+          return HttpResponse.json({
+            data: {
+              scanSignOut: {
+                id: "period-456",
+                person: {
+                  id: `person-${SIGNOUT_USER}`,
+                  firstName: "Jamie",
+                  lastName: "Smith",
+                },
+                startTime: variables.startTime,
+                endTime: variables.endTime,
+                category: { id: "RX2bfpU6ppvV", name: "AIIMS" },
+              },
+            },
+          });
+        },
+      ),
+    );
+    return box;
+  }
+
+  async function pickAiimsCategory(user: UserEventInstance) {
+    await waitFor(() =>
+      expect(screen.getByText("Categories")).toBeInTheDocument(),
+    );
+    await user.click(screen.getByText("Training"));
+    await user.click(screen.getByText("AIIMS"));
+    await waitFor(() =>
+      expect(screen.getByText("Confirm")).toBeInTheDocument(),
+    );
+  }
+
+  // The member-ID form on the main screen also has an accessible name of
+  // "Submit"; the confirm screen's is the one with visible text.
+  async function clickConfirmSubmit(user: UserEventInstance) {
+    const submit = screen
+      .getAllByRole("button", { name: "Submit" })
+      .find((b) => b.textContent?.trim() === "Submit");
+    await user.click(submit!);
+  }
+
+  it("'Yeah' back-dates the sign-out to one hour after sign-in", async () => {
+    server.use(
+      sessionConfigHandler({ easyTimeEntry: true }),
+      longSignOutHandler(),
+    );
+    const signOut = captureSignOut();
+    const user = await setupTest();
+    await user.type(screen.getByRole("textbox"), SIGNOUT_USER + "{enter}");
+
+    await waitFor(() =>
+      expect(
+        screen.getByText("Did you forget to sign out?"),
+      ).toBeInTheDocument(),
+    );
+    await user.click(screen.getByRole("button", { name: /Yeah/i }));
+
+    await pickAiimsCategory(user);
+    // A ~1h period is under the 12h "long session" threshold, so Submit goes
+    // straight through without the confirm dialog.
+    await clickConfirmSubmit(user);
+
+    await waitFor(() => expect(signOut.current).toBeDefined());
+    const { startTime, endTime } = signOut.current!;
+    expect(endTime - startTime).toBeGreaterThan(0);
+    expect(endTime - startTime).toBeLessThan(2 * 60 * 60);
+  });
+
+  it("'Nope' keeps the sign-out time as now", async () => {
+    server.use(
+      sessionConfigHandler({ easyTimeEntry: true }),
+      longSignOutHandler(),
+    );
+    const signOut = captureSignOut();
+    const user = await setupTest();
+    await user.type(screen.getByRole("textbox"), SIGNOUT_USER + "{enter}");
+
+    await waitFor(() =>
+      expect(
+        screen.getByText("Did you forget to sign out?"),
+      ).toBeInTheDocument(),
+    );
+    await user.click(screen.getByRole("button", { name: /Nope/i }));
+
+    await pickAiimsCategory(user);
+    await clickConfirmSubmit(user);
+
+    // ~30h period trips the long-session confirmation.
+    await user.click(await screen.findByRole("button", { name: "Confirm" }));
+
+    await waitFor(() => expect(signOut.current).toBeDefined());
+    const { startTime, endTime } = signOut.current!;
+    expect(endTime - startTime).toBeGreaterThan(20 * 60 * 60);
   });
 });
 
