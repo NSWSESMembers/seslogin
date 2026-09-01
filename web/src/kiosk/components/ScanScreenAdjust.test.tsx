@@ -16,6 +16,8 @@ function makeTransaction(hoursAgo: number): TransactionSignedOut {
     categoryId: "RX2bfpU6ppvV",
     adjusted: false,
     quickPickSkipped: false,
+    longSession: false,
+    forgotSignOutPrompted: false,
   };
 }
 

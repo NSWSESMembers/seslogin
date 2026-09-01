@@ -317,10 +317,18 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
 
     /// Request an email login code. Always returns true to avoid email enumeration.
     /// Requires a valid Cloudflare Turnstile token.
-    async fn request_auth_code(&self, email: String, turnstile_token: String) -> bool {
+    async fn request_auth_code(
+        &self,
+        ctx: &Context<'_>,
+        email: String,
+        turnstile_token: String,
+    ) -> bool {
         use sha2::{Digest, Sha256};
 
-        match crate::turnstile::verify(&turnstile_token).await {
+        let remote_ip = ctx
+            .data_opt::<super::ClientIp>()
+            .and_then(|ip| ip.0.as_deref());
+        match crate::turnstile::verify(&turnstile_token, remote_ip).await {
             Ok(true) => {}
             Ok(false) => {
                 info!("Turnstile challenge failed for request_auth_code");

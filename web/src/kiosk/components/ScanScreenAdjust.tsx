@@ -31,14 +31,12 @@ function combine(date: Date, time: TimeOfDay, end: boolean): Date {
   return result;
 }
 
-// if endTime is not set and startTime is more than 20h ago, default endTime to startTime + 1h
+// Default the sign-out to the end time the forgot-to-sign-out interstitial
+// stamped on ("Yeah, I left earlier"), otherwise to now. A long session with no
+// stamped time means the person picked "Nope, this is a long entry", i.e. they
+// really are leaving now.
 function defaultEndDateTime(transaction: TransactionSignedOut): Date {
-  return (
-    transaction.endTime ||
-    (transaction.startTime.getTime() < Date.now() - 20 * 60 * 60 * 1000
-      ? new Date(transaction.startTime.getTime() + 60 * 60 * 1000)
-      : new Date())
-  );
+  return transaction.endTime ?? new Date();
 }
 
 function Inner(props: {
@@ -394,7 +392,13 @@ function Inner(props: {
 }
 
 // we expose this wrapper just so we can reset inner state on UUID change without
-// causing the container <div> to remount and lose CSS transition state
+// causing the container <div> to remount and lose CSS transition state.
+//
+// The key also folds in `endTime`: the forgot-to-sign-out interstitial stamps an
+// end time onto the transaction *after* this screen has already mounted (off to
+// the side), and Inner only reads `defaultEndDateTime` in its state
+// initialisers. Without the remount it would keep the "now" default it captured
+// before the interstitial was answered.
 export default function ScanScreenAdjust(props: {
   transaction: TransactionSignedOut | null;
   uuid: string | null;
@@ -411,7 +415,7 @@ export default function ScanScreenAdjust(props: {
     >
       {props.transaction && (
         <Inner
-          key={props.transaction.uuid}
+          key={`${props.transaction.uuid}:${props.transaction.endTime?.getTime() ?? "open"}`}
           transaction={props.transaction}
           onEditCategory={props.onEditCategory}
           onSubmit={props.onSubmit}
