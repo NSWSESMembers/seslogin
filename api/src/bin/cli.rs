@@ -1,10 +1,9 @@
-//! seslogin `cli` — a thin, ergonomic read-only wrapper over the DB API.
+//! seslogin `cli` — a thin, ergonomic wrapper over the DB API.
 //!
 //! Each object type is a subcommand. `get <ids…>` shows one attribute per line
 //! (with referenced IDs decoded to names in parens); `list` renders a table with
-//! the ID in the first column. Almost all access is read-only; the two exceptions are
-//! `period-link issue` and `session set-config-key`, each called out in its own doc
-//! comment below.
+//! the ID in the first column. Commands that write do so straight away; pass the
+//! global `--dry-run` to have them report what they would change instead.
 
 use anyhow::{Result, anyhow};
 use chrono::{DateTime, Local, NaiveDate};
@@ -24,11 +23,17 @@ use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Parser, Debug)]
-#[command(about = "Read-only inspector for the seslogin DB API")]
+#[command(about = "Inspector and editor for the seslogin DB API")]
 struct Cli {
     /// DynamoDB table prefix (e.g. "seslogin"). Falls back to the DB_PREFIX env var.
     #[arg(long, global = true)]
     db_prefix: Option<String>,
+
+    /// Report what the command would change without writing anything. Only the
+    /// write commands (`session set-config-key`, `period-link issue`) act on it;
+    /// the inspectors never write either way.
+    #[arg(long, global = true, default_value_t = false)]
+    dry_run: bool,
 
     #[command(subcommand)]
     object: Object,
@@ -91,8 +96,8 @@ enum Object {
         #[command(subcommand)]
         cmd: ActivitySummaryCmd,
     },
-    /// Issue a secure single-period edit-link token. Unlike the read-only
-    /// inspectors, this WRITES a hashed record to the `ephemeral_state` table.
+    /// Issue a secure single-period edit-link token. WRITES a hashed record to the
+    /// `ephemeral_state` table.
     PeriodLink {
         #[command(subcommand)]
         cmd: PeriodLinkCmd,
@@ -254,9 +259,9 @@ enum SessionCmd {
     },
     /// Bulk-set (or clear) one JSON config key across active sessions (soft-deleted
     /// sessions are already invisible to `list_sessions`, which this uses). WRITES
-    /// to the `session` table. Defaults to dry-run — pass `--dry-run false` to
-    /// apply. Unlike `list`/`list-active`, walks every location including disabled
-    /// ones, so a session isn't skipped just because its location got disabled.
+    /// to the `session` table — pass the global `--dry-run` to preview instead.
+    /// Unlike `list`/`list-active`, walks every location including disabled ones,
+    /// so a session isn't skipped just because its location got disabled.
     SetConfigKey {
         /// Config key to set or clear, e.g. "theme".
         key: String,
@@ -272,8 +277,6 @@ enum SessionCmd {
         /// Restrict to one location instead of every location.
         #[arg(long)]
         location: Option<String>,
-        #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
-        dry_run: bool,
     },
 }
 
@@ -1081,14 +1084,13 @@ async fn main() -> Result<()> {
         .or_else(|| std::env::var("DB_PREFIX").ok())
         .ok_or_else(|| anyhow!("DB_PREFIX is required (flag or env var)"))?;
 
-    // Issuing a period-link token is a write path here, so it needs its own
-    // writable handler rather than the read-only one the inspectors share.
+    // Issuing a period-link token is a write path, so it opens its own handler
+    // (read-only under --dry-run) rather than the read-only one the inspectors share.
     if let Object::PeriodLink { cmd } = &cli.object {
-        return run_period_link(&db_prefix, cmd).await;
+        return run_period_link(&db_prefix, cmd, cli.dry_run).await;
     }
 
-    // Same story for the session config bulk-write: it opens its own handler (in
-    // read_only mode while dry-run) instead of the shared read-only one below.
+    // Same story for the session config bulk-write.
     if let Object::Session {
         cmd:
             SessionCmd::SetConfigKey {
@@ -1096,7 +1098,6 @@ async fn main() -> Result<()> {
                 value,
                 clear,
                 location,
-                dry_run,
             },
     } = &cli.object
     {
@@ -1106,7 +1107,7 @@ async fn main() -> Result<()> {
             value.as_deref(),
             *clear,
             location.clone(),
-            *dry_run,
+            cli.dry_run,
         )
         .await;
     }
@@ -1229,9 +1230,9 @@ fn run_jwt(jwt_secret: Option<String>, expire_s: Option<u64>, cmd: &JwtCmd) -> R
 }
 
 /// Bulk-set or clear one JSON config key across active sessions. Opens its own DB
-/// handler (unlike the read-only inspectors) since this writes to the `session`
-/// table when not in dry-run mode; `read_only` on the handler is set to `dry_run`
-/// itself, so a dry run cannot write even if a bug elsewhere tried to.
+/// handler since this writes to the `session` table when not in dry-run mode;
+/// `read_only` on the handler is set to `dry_run` itself, so a dry run cannot write
+/// even if a bug elsewhere tried to.
 ///
 /// `value_json` and `clear` are mutually exclusive and clap enforces that exactly
 /// one is given, so `value_json.is_some() == !clear` always holds here.
@@ -1341,16 +1342,39 @@ async fn run_session_set_config_key(
     Ok(())
 }
 
-/// Issue a period-link token. Opens a WRITABLE DB handler (unlike the read-only
-/// inspectors) because issuing persists a hashed record to `ephemeral_state`. The
-/// raw token is printed to stdout; a human-readable summary goes to stderr.
-async fn run_period_link(db_prefix: &str, cmd: &PeriodLinkCmd) -> Result<()> {
-    let db = dynamodb::Handler::new(db_prefix, false).await;
+/// Issue a period-link token. Opens a WRITABLE DB handler because issuing persists a
+/// hashed record to `ephemeral_state`. The raw token is printed to stdout; a
+/// human-readable summary goes to stderr.
+///
+/// A dry run prints no token at all: the token only works because its hash was
+/// persisted, so a token issued without the write would be a link that 404s.
+async fn run_period_link(db_prefix: &str, cmd: &PeriodLinkCmd, dry_run: bool) -> Result<()> {
+    let db = dynamodb::Handler::new(db_prefix, dry_run).await;
     match cmd {
         PeriodLinkCmd::Issue {
             period_id,
             base_url,
         } => {
+            if dry_run {
+                // Mirror the existence check the real path does first, so a dry run
+                // still catches the common mistake of a wrong or stale period ID.
+                if db
+                    .get_periods(&[period_id])
+                    .await?
+                    .first()
+                    .is_none_or(|p: &Option<Period>| p.is_none())
+                {
+                    return Err(anyhow!("Period {period_id} not found"));
+                }
+                eprintln!(
+                    "[dry-run] Would issue a link token for period {period_id} \
+                     (valid {}h; row TTL {}d). No token is printed: it would not \
+                     work without the `ephemeral_state` write.",
+                    seslogin::period_link::TOKEN_LIFETIME_S / 3600,
+                    seslogin::period_link::STATE_TTL_S / 86400,
+                );
+                return Ok(());
+            }
             let token = seslogin::period_link::issue_period_link_token(&db, period_id).await?;
             match base_url {
                 // The token goes in the fragment: browsers never send it to the
