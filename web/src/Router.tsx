@@ -13,9 +13,10 @@ import Home from "./home/Home";
 // Admin and kiosk are mutually-exclusive areas, lazily loaded as separate chunks.
 const AdminApp = lazyWithReload("admin", () => import("./admin/AdminApp"));
 const KioskMain = lazyWithReload("kiosk", () => import("./kiosk/KioskMain"));
-const StatusDemo = lazyWithReload(
-  "kiosk",
-  () => import("./kiosk/pages/StatusDemo"),
+const StatusDemo = lazyWithReload("demo", () => import("./demo/StatusDemo"));
+const TimeEntryDemo = lazyWithReload(
+  "demo",
+  () => import("./demo/TimeEntryDemo"),
 );
 const PeriodEdit = lazyWithReload(
   "period",
@@ -26,7 +27,7 @@ export default function Router() {
   return (
     <BrowserRouter>
       {/* Backstop for routes with no error boundary of their own (/scan,
-          /kiosk/status-demo, *) and for a throw before an area's own boundary
+          /demo/*, *) and for a throw before an area's own boundary
           mounts. Every area below installs a more specific boundary of its own;
           this one only sees what escapes those. */}
       <ErrorBoundary FallbackComponent={PageErrorFallback}>
@@ -42,9 +43,15 @@ export default function Router() {
 
             {/* Kiosk routes - auth required at /kiosk */}
             <Route path="/scan" element={<Navigate to="/kiosk" replace />} />
-            <Route path="/kiosk/status-demo" element={<StatusDemo />} />
             <Route path="/kiosk" element={<KioskMain />} />
             <Route path="/kiosk/:profile" element={<KioskMain />} />
+
+            {/* Component demos - no auth, no data. Deliberately outside /kiosk
+                so they can never be caught by kiosk enrolment or session
+                handling, even though the components they exercise are kiosk
+                ones. */}
+            <Route path="/demo/status" element={<StatusDemo />} />
+            <Route path="/demo/time" element={<TimeEntryDemo />} />
 
             {/* Member edit link - authenticated by the slp_ token in the URL
                 fragment, which browsers never send to the server */}
