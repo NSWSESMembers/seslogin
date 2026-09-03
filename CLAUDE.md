@@ -193,7 +193,9 @@ database — nothing is copied from any snapshot.
 DynamoDB Local runs either as a Java process or as a container; `local/dynamodb.sh` picks
 whichever the machine has, preferring Java (one process, no VM, native on Apple silicon).
 `LOCAL_DDB=java|docker` forces one. Java needs a JRE 17+ plus either the `dynamodb-local`
-brew cask or `make local-fetch` (downloads Amazon's JAR into `local/`, checksum-verified).
+brew cask or `make local-fetch`, which installs Amazon's checksum-verified tarball into
+`local/` and falls back to resolving the same program from Maven Central (needs `mvn`) when
+that download host is unreachable — so no Homebrew is required.
 
 DynamoDB is *not* mocked in `poem-local`: `DB_PREFIX` and `AWS_ENDPOINT_URL_DYNAMODB` still
 decide which database it talks to. Pointing it at a real table gives you a server that
@@ -204,7 +206,7 @@ make dev-local            # DynamoDB Local + tables + API + relay + web
 make local-up             # just DynamoDB Local
 make local-down           # stop it, keeping data
 make local-status         # report whether it's running, and how
-make local-fetch          # download Amazon's DynamoDB Local JAR into local/
+make local-fetch          # install DynamoDB Local into local/ (tarball, else Maven Central)
 make local-reset          # stop it and delete every local table and row
 make local-tables         # create any missing tables
 make local-tables-check   # fail if a table this codebase expects is missing
