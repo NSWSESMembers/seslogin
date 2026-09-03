@@ -13,8 +13,9 @@
 #           data with it — `make local-down` stops that separately.
 #   status  report what is up.
 #
-# The API is the ordinary `poem-local`, with no dev-auth override, so a script
-# authenticates the way any client does. See DEVELOPMENT.md §9.
+# The API is the ordinary `poem-local`, with no dev-auth override: the seeded
+# user token in local/seed/synthetic.json is how a script authenticates, which is
+# the same code path a real login produces. See DEVELOPMENT.md §9.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"

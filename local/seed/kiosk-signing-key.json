@@ -1,0 +1,8 @@
+{
+  "_comment": "Private signing key for the seeded key-enrolled kiosk session TestAKiosk02 in synthetic.json, whose public_key/key_fingerprint are the matching public half. NOT A SECRET: a throwaway P-256 keypair that authenticates nothing beyond a local database, committed so kiosk testing needs no enrolment step. Base64 DER (PKCS8/SPKI) because that is what WebCrypto importKey takes. Installed into the browser by local/examples/kiosk-scan.mjs; if you regenerate it, update both files.",
+  "profile": "default",
+  "session_id": "TestAKiosk02",
+  "private_key_pkcs8_b64": "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQg3eTQHjlN5x3drVlY3/qgee0xbOY1Lm4pzhZanZyuwMWhRANCAAS8AuQhrLmxhO5qwkxJXALPYBUyKHGkejCw+xqhyp3XQfydV3r0HKX/2xpF2PBIYMLT4ieXw6GBh/5cKrX+uJ3A",
+  "public_key_spki_b64": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEvALkIay5sYTuasJMSVwCz2AVMihxpHowsPsaocqd10H8nVd69Byl/9saRdjwSGDC0+Inl8OhgYf+XCq1/ridwA==",
+  "fingerprint": "23d64be11f5c92f98670c4326e88ff12b06ec78ce329145c6c3f3573bbbe5dba"
+}
