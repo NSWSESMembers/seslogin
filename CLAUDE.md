@@ -202,7 +202,10 @@ decide which database it talks to. Pointing it at a real table gives you a serve
 provably cannot send email or enqueue work, which is occasionally what you want.
 
 ```bash
-make dev-local            # DynamoDB Local + tables + API + relay + web
+make dev-local            # DynamoDB Local + tables + API + relay + web (holds the terminal)
+make local-e2e            # the same stack, detached; returns once both servers answer
+make local-e2e-down       # stop the detached API and web (database keeps running)
+make local-e2e-status     # what's up, and where the logs are
 make local-up             # just DynamoDB Local
 make local-down           # stop it, keeping data
 make local-status         # report whether it's running, and how
