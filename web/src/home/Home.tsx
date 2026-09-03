@@ -1,5 +1,6 @@
 import { Link } from "react-router";
 import logo from "../assets/logo.svg";
+import { AdminIcon, KioskIcon } from "./HomeIcons";
 
 export default function Home() {
   return (
@@ -23,11 +24,7 @@ export default function Home() {
               <p className="flex-1 text-navy group-hover:text-[#6c81c1]">
                 Allow members to sign in and out using this computer
               </p>
-              <img
-                src="/image/home-icons/scan.png"
-                alt="Kiosk"
-                className="box-content size-16.25 shrink-0 max-md:hidden"
-              />
+              <KioskIcon className="size-16.25 shrink-0 text-navy group-hover:text-[#6c81c1] max-md:hidden" />
             </Link>
           </li>
 
@@ -43,11 +40,7 @@ export default function Home() {
                 Use the administrator dashboard to administer your unit, create
                 reports and view activity
               </p>
-              <img
-                src="/image/home-icons/dash.png"
-                alt="Admin"
-                className="box-content size-16.25 shrink-0 max-md:hidden"
-              />
+              <AdminIcon className="size-16.25 shrink-0 text-navy group-hover:text-[#6c81c1] max-md:hidden" />
             </Link>
           </li>
         </ul>
