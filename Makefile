@@ -47,7 +47,7 @@ LOCAL_ENV = set -a; . ./local/local.env; set +a;
 # with LOCAL_DDB=java / LOCAL_DDB=docker.
 LOCAL_DDB_SH = ./local/dynamodb.sh
 
-dev-local: local-up local-tables
+dev-local: local-up local-tables local-seed
 	$(call run_dev,poem-local,$(LOCAL_ENV))
 
 local-up:
@@ -67,6 +67,15 @@ local-fetch:
 # Also discards the stored data — every local table and row goes with it.
 local-reset:
 	@$(LOCAL_DDB_SH) reset
+
+# Write local/seed/*.json into the local database. Needs no AWS access.
+local-seed:
+	@$(LOCAL_ENV) cd api && cargo run --quiet --bin local-seed -- apply
+
+# Refresh local/seed/from-prod.json from the real database. Needs AWS access, and
+# is the only part of the local stack that does — run it rarely, review the diff.
+local-seed-extract:
+	@cd api && cargo run --quiet --bin local-seed -- extract
 
 local-tables:
 	@$(LOCAL_ENV) cd api && cargo run --quiet --bin local-tables

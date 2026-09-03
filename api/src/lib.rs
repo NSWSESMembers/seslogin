@@ -9,6 +9,7 @@ pub mod environment;
 pub mod expire;
 pub mod graphql;
 pub mod jwt;
+pub mod local_dev;
 pub mod location_sync;
 pub mod mail;
 pub mod member_sync;

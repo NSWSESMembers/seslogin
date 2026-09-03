@@ -246,32 +246,6 @@ struct Cli {
     check: bool,
 }
 
-/// The endpoint the SDK will use, and whether it is unmistakably a local one.
-///
-/// This is the whole safety story for this binary: without an endpoint override the
-/// SDK would happily talk to real DynamoDB with whatever credentials are lying around.
-fn local_endpoint() -> Result<String> {
-    let endpoint = std::env::var("AWS_ENDPOINT_URL_DYNAMODB")
-        .or_else(|_| std::env::var("AWS_ENDPOINT_URL"))
-        .map_err(|_| {
-            anyhow!(
-                "AWS_ENDPOINT_URL_DYNAMODB is not set — refusing to run in case this would \
-                 create tables in a real AWS account. Use `make local-tables`, which points \
-                 it at the container in local/docker-compose.yml."
-            )
-        })?;
-    let url = url::Url::parse(&endpoint)
-        .map_err(|e| anyhow!("AWS_ENDPOINT_URL_DYNAMODB is not a URL: {e}"))?;
-    match url.host_str() {
-        Some("localhost" | "127.0.0.1" | "::1" | "[::1]") => Ok(endpoint),
-        other => bail!(
-            "DynamoDB endpoint {:?} is not local (host {:?}) — refusing to run.",
-            endpoint,
-            other.unwrap_or("<none>")
-        ),
-    }
-}
-
 async fn create(client: &Client, prefix: &str, table: &Table) -> Result<()> {
     let full_name = format!("{prefix}_{}", table.name);
     let mut req = client
@@ -345,16 +319,10 @@ async fn main() -> Result<()> {
     tracing_subscriber::fmt::init();
     let cli = Cli::parse();
 
-    let endpoint = local_endpoint()?;
+    let endpoint = seslogin::local_dev::require_local_dynamodb_endpoint()?;
     let prefix = std::env::var("DB_PREFIX").map_err(|_| anyhow!("DB_PREFIX must be set"))?;
 
-    let config = seslogin::aws_config_loader()
-        .region(aws_config::Region::new(
-            std::env::var("AWS_REGION").unwrap_or_else(|_| "ap-southeast-2".to_string()),
-        ))
-        .load()
-        .await;
-    let client = Client::new(&config);
+    let client = seslogin::local_dev::dynamodb_client().await;
 
     let existing: Vec<String> = client
         .list_tables()
