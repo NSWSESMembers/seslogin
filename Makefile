@@ -46,12 +46,26 @@ LOCAL_ENV = set -a; . ./local/local.env; set +a;
 # Runs DynamoDB Local via Java or Docker, whichever this machine has. Force one
 # with LOCAL_DDB=java / LOCAL_DDB=docker.
 LOCAL_DDB_SH = ./local/dynamodb.sh
+# Same stack as dev-local, started in the background. See local/e2e.sh.
+LOCAL_E2E_SH = ./local/e2e.sh
 
 dev-local: local-up local-tables local-seed
 	$(call run_dev,poem-local,$(LOCAL_ENV))
 
 local-up:
 	@$(LOCAL_DDB_SH) start
+
+# ── Detached stack, for scripts ───────────────────────────────────────────────
+# `dev-local` holds the terminal; these return once everything is answering, so a
+# browser test or CI job can drive the app. See local/e2e.sh.
+local-e2e:
+	@$(LOCAL_E2E_SH) up
+
+local-e2e-down:
+	@$(LOCAL_E2E_SH) down
+
+local-e2e-status:
+	@$(LOCAL_E2E_SH) status
 
 local-down:
 	@$(LOCAL_DDB_SH) stop

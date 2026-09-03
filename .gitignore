@@ -9,3 +9,4 @@ local/.dynamodb-data/
 local/.dynamodb.pid
 local/.dynamodb.log
 local/dynamodb-local/
+local/.e2e/

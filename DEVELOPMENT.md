@@ -400,10 +400,29 @@ Either way in works:
 - **The real email-code flow** — request a code and read it out of the API's own log, where
   `mockmail` prints the whole message. Nothing is sent anywhere.
 
+### Running the stack detached
+
+`make dev-local` holds the terminal, which is the wrong shape for a browser test or a CI
+job. `make local-e2e` starts the same stack in the background and returns once both servers
+actually answer:
+
+```bash
+make local-e2e           # database + tables + seed + API + web, detached
+make local-e2e-status    # what's up, and where the logs are
+make local-e2e-down      # stop the API and web; the database keeps running
+```
+
+Logs go to `local/.e2e/{api,web}.log`. The API runs without dev auth, so a script
+authenticates the way any client does. The build happens before anything is backgrounded,
+so a compile error fails the command rather than leaving a server that never comes up.
+
 ### Managing the stack
 
 | Command | What it does |
 | --- | --- |
+| `make local-e2e` | Start the whole stack detached and wait until it answers |
+| `make local-e2e-down` | Stop the detached API and web server |
+| `make local-e2e-status` | Report what is up, and where its logs are |
 | `make local-up` | Start DynamoDB Local (Java or Docker, whichever you have) |
 | `make local-down` | Stop it, keeping the data |
 | `make local-status` | Report whether it's running, and how |
