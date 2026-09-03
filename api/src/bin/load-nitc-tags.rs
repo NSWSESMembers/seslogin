@@ -11,9 +11,10 @@ struct Cli {
     #[arg(long)]
     db_prefix: Option<String>,
 
-    /// Print what would be written without actually writing to DynamoDB.
+    /// Write the tags to DynamoDB. Without it this is a dry run, which prints what
+    /// would be written without writing.
     #[arg(long, default_value_t = false)]
-    dry_run: bool,
+    apply: bool,
 }
 
 #[tokio::main]
@@ -54,7 +55,7 @@ async fn main() -> Result<()> {
 
     eprintln!("Fetched {} tags from SES API", tags.len());
 
-    if cli.dry_run {
+    if !cli.apply {
         for tag in &tags {
             println!("  [dry-run] id={} name={:?}", tag.id, tag.name);
         }

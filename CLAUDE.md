@@ -132,16 +132,23 @@ already runs `npm run typecheck` as its own step.
 
 ### Data Sync (local)
 
-Run the binaries directly with `cargo run`. All of them default to `--dry-run true`; pass
-`--dry-run false` to actually write.
+Run the binaries directly with `cargo run`. Every binary **except `cli`** is a dry run
+unless you pass `--apply`; their other defaults match how the corresponding Lambda is
+configured in production (see [infra/lambda_sync.tf](infra/lambda_sync.tf)), so a local
+run plans the same changes the deployed job would.
 
 ```bash
-cd api && RUST_LOG=info cargo run --bin sync-members --                     # Dry-run SES API member sync (print changes only)
-cd api && RUST_LOG=info cargo run --bin sync-members -- --dry-run false     # Apply member sync to database
-cd api && RUST_LOG=info cargo run --bin sync-locations --                   # Dry-run location sync
-cd api && RUST_LOG=info cargo run --bin sync-locations -- --dry-run false   # Apply location sync
-cd api && RUST_LOG=info cargo run --bin load-nitc-tags --                   # Load NITC tags
+cd api && RUST_LOG=info cargo run --bin sync-members --                # Dry-run SES API member sync (print changes only)
+cd api && RUST_LOG=info cargo run --bin sync-members -- --apply        # Apply member sync to database
+cd api && RUST_LOG=info cargo run --bin sync-locations --              # Dry-run location sync
+cd api && RUST_LOG=info cargo run --bin sync-locations -- --apply      # Apply location sync
+cd api && RUST_LOG=info cargo run --bin load-nitc-tags --              # Dry-run NITC tag load
+cd api && RUST_LOG=info cargo run --bin nitc-export -- backfill        # Dry-run NITC export backfill
+cd api && RUST_LOG=info cargo run --bin activity-summary --            # Print summary emails instead of sending
 ```
+
+`cli` is the exception: it writes immediately, and takes an optional global `--dry-run`
+to preview a write command instead.
 
 > ⚠️ Always review the dry-run output before applying. If you have switched to
 > `DB_PREFIX=seslogin_prod`, an apply writes to the **production** database.
@@ -216,7 +223,7 @@ Authorization uses an `AuthRequirement` guard enum per field: `Session`, `UserOr
 2. Any sync at any location that sees them again clears the marker. A transferring member is marked by the old unit, then matched by `ses_api_person_id` at the new unit within the same 24-hour cycle, moved by the normal update path, and cleared.
 3. Only once the marker is older than `SES_SYNC_ABSENCE_GRACE_SECS` (default 7 days) is the member soft-deleted.
 
-**Off by default** — set `SES_SYNC_ABSENCE_ENABLED=true` per environment after reviewing a dry run. Guards:
+**Enabled in production** (`SES_SYNC_ABSENCE_ENABLED=true` in `lambda_sync.tf`), and on by default in `sync-members` to match; pass `--absence-enabled false` to turn it off for a run. The `AbsencePolicy::default()` used by library callers stays disabled, so the lambda's own fallback is off if the env var is ever unset. Guards:
 
 - A payload whose rows all fail to parse skips the pass for that location (an *empty* payload does not — plenty of units are legitimately empty in SES, and the cap below covers the rest).
 - Candidates are capped at `max(SES_SYNC_ABSENCE_MIN, SES_SYNC_ABSENCE_PERCENT% of the synced roster)`. **Exceeding the cap is fatal**: the sync aborts the location before applying anything — no creates, no updates, no `last_successful_member_sync` stamp — so in the lambda the message retries and lands in the DLQ. Being over the cap means the local roster and SES have diverged too far to tell a genuine mass departure from a bad payload, so a human decides. Dry runs log the abort instead of taking it, so a review pass still covers every remaining location.
