@@ -11,9 +11,10 @@ struct Cli {
     #[arg(long)]
     date: Option<NaiveDate>,
 
-    /// Print email content to stdout instead of sending.
+    /// Send the emails. Without it this is a dry run, which prints the email
+    /// content to stdout instead of sending it.
     #[arg(long)]
-    dry_run: bool,
+    apply: bool,
 
     /// Only process this user's configuration (useful for single-user testing).
     #[arg(long)]
@@ -30,7 +31,8 @@ async fn main() -> anyhow::Result<()> {
     seslogin::load_cli_env();
     tracing_subscriber::fmt::init();
     let db_prefix = std::env::var("DB_PREFIX")?;
-    let db = dynamodb::Handler::new(&db_prefix, args.dry_run).await;
+    let dry_run = !args.apply;
+    let db = dynamodb::Handler::new(&db_prefix, dry_run).await;
     let metrics = Arc::new(RequestMetrics::default());
     request_metrics::METRICS
         .scope(
@@ -39,7 +41,7 @@ async fn main() -> anyhow::Result<()> {
                 &db,
                 activity_summary::SummaryArgs {
                     date: args.date.unwrap_or_else(activity_summary::yesterday_sydney),
-                    dry_run: args.dry_run,
+                    dry_run,
                     user_id_filter: args.user_id,
                     override_to: args.override_to,
                 },

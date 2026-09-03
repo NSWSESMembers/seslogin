@@ -36,7 +36,7 @@ resource "aws_lambda_function_url" "test_api" {
   cors {
     allow_origins = ["https://test.seslogin.com"]
     allow_methods = ["GET", "POST"]
-    allow_headers = ["authorization", "content-type", "x-client-version"]
+    allow_headers = ["authorization", "content-type", "x-client-version", "x-client-info"]
     max_age       = 600
   }
 }

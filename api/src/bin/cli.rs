@@ -1,10 +1,9 @@
-//! seslogin `cli` — a thin, ergonomic read-only wrapper over the DB API.
+//! seslogin `cli` — a thin, ergonomic wrapper over the DB API.
 //!
 //! Each object type is a subcommand. `get <ids…>` shows one attribute per line
 //! (with referenced IDs decoded to names in parens); `list` renders a table with
-//! the ID in the first column. Almost all access is read-only; the two exceptions are
-//! `period-link issue` and `session set-config-key`, each called out in its own doc
-//! comment below.
+//! the ID in the first column. Commands that write do so straight away; pass the
+//! global `--dry-run` to have them report what they would change instead.
 
 use anyhow::{Result, anyhow};
 use chrono::{DateTime, Local, NaiveDate};
@@ -24,11 +23,17 @@ use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Parser, Debug)]
-#[command(about = "Read-only inspector for the seslogin DB API")]
+#[command(about = "Inspector and editor for the seslogin DB API")]
 struct Cli {
     /// DynamoDB table prefix (e.g. "seslogin"). Falls back to the DB_PREFIX env var.
     #[arg(long, global = true)]
     db_prefix: Option<String>,
+
+    /// Report what the command would change without writing anything. Only the
+    /// write commands (`session set-config-key`, `period-link issue`) act on it;
+    /// the inspectors never write either way.
+    #[arg(long, global = true, default_value_t = false)]
+    dry_run: bool,
 
     #[command(subcommand)]
     object: Object,
@@ -91,8 +96,8 @@ enum Object {
         #[command(subcommand)]
         cmd: ActivitySummaryCmd,
     },
-    /// Issue a secure single-period edit-link token. Unlike the read-only
-    /// inspectors, this WRITES a hashed record to the `ephemeral_state` table.
+    /// Issue a secure single-period edit-link token. WRITES a hashed record to the
+    /// `ephemeral_state` table.
     PeriodLink {
         #[command(subcommand)]
         cmd: PeriodLinkCmd,
@@ -254,9 +259,9 @@ enum SessionCmd {
     },
     /// Bulk-set (or clear) one JSON config key across active sessions (soft-deleted
     /// sessions are already invisible to `list_sessions`, which this uses). WRITES
-    /// to the `session` table. Defaults to dry-run — pass `--dry-run false` to
-    /// apply. Unlike `list`/`list-active`, walks every location including disabled
-    /// ones, so a session isn't skipped just because its location got disabled.
+    /// to the `session` table — pass the global `--dry-run` to preview instead.
+    /// Unlike `list`/`list-active`, walks every location including disabled ones,
+    /// so a session isn't skipped just because its location got disabled.
     SetConfigKey {
         /// Config key to set or clear, e.g. "theme".
         key: String,
@@ -272,8 +277,6 @@ enum SessionCmd {
         /// Restrict to one location instead of every location.
         #[arg(long)]
         location: Option<String>,
-        #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
-        dry_run: bool,
     },
 }
 
@@ -312,6 +315,32 @@ enum PeriodCmd {
     /// db-check's missing_reference finding): a reference that no longer
     /// resolves is left blank rather than failing the whole export.
     ExportCsv,
+    /// Create an open sign-in period (no sign-out yet) for a person at a
+    /// location, optionally backdated and optionally attributed to a kiosk.
+    ///
+    /// Built for exercising the kiosk "forgot to sign out" interstitial, which
+    /// fires when someone scans to sign out more than 12h after signing in: run
+    /// this with `--hours-ago 13`, then scan that member's ID at a kiosk for the
+    /// same location. Unlike the read-only inspectors this WRITES to the
+    /// `period` table; defaults to dry-run — pass `--dry-run false` to apply.
+    CreateSignin {
+        /// Person ID to sign in.
+        #[arg(long)]
+        person: String,
+        /// Location the period is recorded at. The sign-out scan only sees it if
+        /// the scanning kiosk belongs to this same location.
+        #[arg(long)]
+        location: String,
+        /// Attribute the sign-in to this kiosk session. Optional.
+        #[arg(long)]
+        session: Option<String>,
+        /// Backdate the sign-in by this many hours (fractional allowed). Omit to
+        /// start the period now.
+        #[arg(long)]
+        hours_ago: Option<f64>,
+        #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
+        dry_run: bool,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -1081,14 +1110,13 @@ async fn main() -> Result<()> {
         .or_else(|| std::env::var("DB_PREFIX").ok())
         .ok_or_else(|| anyhow!("DB_PREFIX is required (flag or env var)"))?;
 
-    // Issuing a period-link token is a write path here, so it needs its own
-    // writable handler rather than the read-only one the inspectors share.
+    // Issuing a period-link token is a write path, so it opens its own handler
+    // (read-only under --dry-run) rather than the read-only one the inspectors share.
     if let Object::PeriodLink { cmd } = &cli.object {
-        return run_period_link(&db_prefix, cmd).await;
+        return run_period_link(&db_prefix, cmd, cli.dry_run).await;
     }
 
-    // Same story for the session config bulk-write: it opens its own handler (in
-    // read_only mode while dry-run) instead of the shared read-only one below.
+    // Same story for the session config bulk-write.
     if let Object::Session {
         cmd:
             SessionCmd::SetConfigKey {
@@ -1096,7 +1124,6 @@ async fn main() -> Result<()> {
                 value,
                 clear,
                 location,
-                dry_run,
             },
     } = &cli.object
     {
@@ -1106,6 +1133,30 @@ async fn main() -> Result<()> {
             value.as_deref(),
             *clear,
             location.clone(),
+            cli.dry_run,
+        )
+        .await;
+    }
+
+    // Another write path: creating a backdated open sign-in. Opens its own
+    // handler (read_only while dry-run) instead of the shared read-only one.
+    if let Object::Period {
+        cmd:
+            PeriodCmd::CreateSignin {
+                person,
+                location,
+                session,
+                hours_ago,
+                dry_run,
+            },
+    } = &cli.object
+    {
+        return run_period_create_signin(
+            &db_prefix,
+            person,
+            location,
+            session.as_deref(),
+            *hours_ago,
             *dry_run,
         )
         .await;
@@ -1229,9 +1280,9 @@ fn run_jwt(jwt_secret: Option<String>, expire_s: Option<u64>, cmd: &JwtCmd) -> R
 }
 
 /// Bulk-set or clear one JSON config key across active sessions. Opens its own DB
-/// handler (unlike the read-only inspectors) since this writes to the `session`
-/// table when not in dry-run mode; `read_only` on the handler is set to `dry_run`
-/// itself, so a dry run cannot write even if a bug elsewhere tried to.
+/// handler since this writes to the `session` table when not in dry-run mode;
+/// `read_only` on the handler is set to `dry_run` itself, so a dry run cannot write
+/// even if a bug elsewhere tried to.
 ///
 /// `value_json` and `clear` are mutually exclusive and clap enforces that exactly
 /// one is given, so `value_json.is_some() == !clear` always holds here.
@@ -1341,16 +1392,39 @@ async fn run_session_set_config_key(
     Ok(())
 }
 
-/// Issue a period-link token. Opens a WRITABLE DB handler (unlike the read-only
-/// inspectors) because issuing persists a hashed record to `ephemeral_state`. The
-/// raw token is printed to stdout; a human-readable summary goes to stderr.
-async fn run_period_link(db_prefix: &str, cmd: &PeriodLinkCmd) -> Result<()> {
-    let db = dynamodb::Handler::new(db_prefix, false).await;
+/// Issue a period-link token. Opens a WRITABLE DB handler because issuing persists a
+/// hashed record to `ephemeral_state`. The raw token is printed to stdout; a
+/// human-readable summary goes to stderr.
+///
+/// A dry run prints no token at all: the token only works because its hash was
+/// persisted, so a token issued without the write would be a link that 404s.
+async fn run_period_link(db_prefix: &str, cmd: &PeriodLinkCmd, dry_run: bool) -> Result<()> {
+    let db = dynamodb::Handler::new(db_prefix, dry_run).await;
     match cmd {
         PeriodLinkCmd::Issue {
             period_id,
             base_url,
         } => {
+            if dry_run {
+                // Mirror the existence check the real path does first, so a dry run
+                // still catches the common mistake of a wrong or stale period ID.
+                if db
+                    .get_periods(&[period_id])
+                    .await?
+                    .first()
+                    .is_none_or(|p: &Option<Period>| p.is_none())
+                {
+                    return Err(anyhow!("Period {period_id} not found"));
+                }
+                eprintln!(
+                    "[dry-run] Would issue a link token for period {period_id} \
+                     (valid {}h; row TTL {}d). No token is printed: it would not \
+                     work without the `ephemeral_state` write.",
+                    seslogin::period_link::TOKEN_LIFETIME_S / 3600,
+                    seslogin::period_link::STATE_TTL_S / 86400,
+                );
+                return Ok(());
+            }
             let token = seslogin::period_link::issue_period_link_token(&db, period_id).await?;
             match base_url {
                 // The token goes in the fragment: browsers never send it to the
@@ -1365,6 +1439,88 @@ async fn run_period_link(db_prefix: &str, cmd: &PeriodLinkCmd) -> Result<()> {
             );
         }
     }
+    Ok(())
+}
+
+/// Create an open (not yet signed-out) sign-in period, optionally backdated.
+/// Opens its own DB handler in `read_only = dry_run` mode, so a dry run cannot
+/// write even if a bug tried to; the write itself is also skipped while dry-run.
+async fn run_period_create_signin(
+    db_prefix: &str,
+    person_id: &str,
+    location_id: &str,
+    session_id: Option<&str>,
+    hours_ago: Option<f64>,
+    dry_run: bool,
+) -> Result<()> {
+    if hours_ago.is_some_and(|h| !h.is_finite() || h < 0.0) {
+        return Err(anyhow!("--hours-ago must be a non-negative number"));
+    }
+
+    let db = dynamodb::Handler::new(db_prefix, dry_run).await;
+
+    let person = db
+        .get_persons(&[person_id])
+        .await?
+        .into_iter()
+        .flatten()
+        .next()
+        .ok_or_else(|| anyhow!("no person with id {person_id}"))?;
+    let location = db
+        .get_locations(&[location_id])
+        .await?
+        .into_iter()
+        .flatten()
+        .next()
+        .ok_or_else(|| anyhow!("no location with id {location_id}"))?;
+
+    if let Some(sid) = session_id {
+        let session = db
+            .get_sessions(&[sid])
+            .await?
+            .into_iter()
+            .flatten()
+            .next()
+            .ok_or_else(|| anyhow!("no session with id {sid}"))?;
+        if session.location_id != location_id {
+            eprintln!(
+                "⚠ session {sid} belongs to location {} ({}), not {location_id}",
+                session.location_id, session.name,
+            );
+        }
+    }
+
+    let now = now_secs();
+    let start_time = match hours_ago {
+        Some(h) => now.saturating_sub((h * 3600.0).round() as u64),
+        None => now,
+    };
+
+    println!(
+        "{} open sign-in period:\n  person   {} ({} {})\n  location {} ({})\n  session  {}\n  start    {}",
+        if dry_run {
+            "[dry-run] would create"
+        } else {
+            "creating"
+        },
+        person.id,
+        person.first_name,
+        person.last_name,
+        location.id,
+        location.name,
+        session_id.unwrap_or("-"),
+        fmt_ts(start_time),
+    );
+
+    if dry_run {
+        println!("\ndry-run: nothing written. Re-run with --dry-run false to apply.");
+        return Ok(());
+    }
+
+    let period = db
+        .start_period_for_person_location(person_id, location_id, session_id, Some(start_time))
+        .await?;
+    println!("\ncreated period {}", period.id);
     Ok(())
 }
 
@@ -1698,6 +1854,10 @@ async fn run(db: &impl Handler, object: Object) -> Result<()> {
             }
             PeriodCmd::ExportCsv => {
                 export_periods_csv(db).await?;
+            }
+            // Handled in `main` before the shared read-only DB is opened.
+            PeriodCmd::CreateSignin { .. } => {
+                unreachable!("create-signin is handled before the read-only DB is opened")
             }
         },
 

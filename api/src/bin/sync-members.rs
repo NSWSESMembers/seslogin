@@ -7,13 +7,20 @@ use std::sync::Arc;
 #[derive(Parser, Debug)]
 #[command(author, version, about = "Sync members from SES into seslogin")]
 struct Cli {
-    /// Dry-run mode computes and prints changes without writing to DB.
-    #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
-    dry_run: bool,
+    /// Write the planned changes to the DB. Without it this is a dry run, which
+    /// computes and prints the changes without writing.
+    #[arg(long, default_value_t = false)]
+    apply: bool,
 
     /// Adopt SES IDs for existing members when location+registration number match.
-    #[arg(long, default_value_t = false)]
+    /// On by default, matching production (SES_SYNC_ADOPT=true), so this is only
+    /// needed to override SES_SYNC_ADOPT=false in the environment.
+    #[arg(long, conflicts_with = "no_adopt")]
     adopt: bool,
+
+    /// Disable SES ID adoption.
+    #[arg(long)]
+    no_adopt: bool,
 
     /// SES API base URL, for example https://example.ses.api
     #[arg(long)]
@@ -49,11 +56,12 @@ struct Cli {
 
     /// Abort apply mode when planned adopts+creates+updates+undeletes exceed this total.
     /// Absence marks and deletions are governed by the --absence-* caps instead.
+    /// Defaults to production's SES_SYNC_MAX_MUTATIONS (100).
     #[arg(long)]
     max_mutations: Option<usize>,
 
     /// Enable soft-deleting members who have stopped appearing in their location's SES
-    /// payload. Off by default.
+    /// payload. On by default, matching production (SES_SYNC_ABSENCE_ENABLED=true).
     #[arg(long, action = clap::ArgAction::Set)]
     absence_enabled: Option<bool>,
 
@@ -136,14 +144,25 @@ async fn main() -> Result<()> {
     let max_mutations = cli
         .max_mutations
         .or_else(|| parse_env_usize("SES_SYNC_MAX_MUTATIONS"))
-        .unwrap_or(10);
+        .unwrap_or(100);
+
+    // Adoption and the absence pass are both enabled in production, so they are the
+    // defaults here too; `AbsencePolicy::default()` stays conservative for library
+    // callers, and only the tuning knobs below are taken from it.
+    let adopt = if cli.adopt {
+        true
+    } else if cli.no_adopt {
+        false
+    } else {
+        parse_env_bool("SES_SYNC_ADOPT").unwrap_or(true)
+    };
 
     let defaults = member_sync::AbsencePolicy::default();
     let absence = member_sync::AbsencePolicy {
         enabled: cli
             .absence_enabled
             .or_else(|| parse_env_bool("SES_SYNC_ABSENCE_ENABLED"))
-            .unwrap_or(defaults.enabled),
+            .unwrap_or(true),
         grace_secs: cli
             .absence_grace_secs
             .or_else(|| parse_env_u64("SES_SYNC_ABSENCE_GRACE_SECS"))
@@ -167,8 +186,8 @@ async fn main() -> Result<()> {
         .scope(
             metrics.clone(),
             member_sync::run(SyncConfig {
-                dry_run: cli.dry_run,
-                adopt: cli.adopt,
+                dry_run: !cli.apply,
+                adopt,
                 ses_api_base_url,
                 ses_api_key,
                 ses_intranet_search_api_base_url,
@@ -191,8 +210,8 @@ async fn main() -> Result<()> {
 
     println!(
         "sync complete mode={} adopt={} absence={} processed_locations={} skipped_locations={} ses_people_seen={} adopts={} creates={} updates={} undeletes={} soft_deletes={} noops={} blocked_manual_conflicts={} total_mutations={} emails_seen={} emails_updated={} emails_unmatched={} emails_noops={} ses_deleted_flags_seen={} missing_marked={} missing_cleared={} missing_waiting={} absence_deletes_suppressed={} absence_skipped_locations={}",
-        if cli.dry_run { "dry-run" } else { "apply" },
-        cli.adopt,
+        if cli.apply { "apply" } else { "dry-run" },
+        adopt,
         absence.enabled,
         stats.processed_locations,
         stats.skipped_locations,
