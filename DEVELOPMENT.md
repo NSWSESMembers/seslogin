@@ -267,6 +267,7 @@ See [api/README.md](api/README.md) for more.
 | Schema diff failure in `make check` | Regenerate `schema.graphql` (see §6) |
 | Prettier / `cargo fmt` failures | `make format` |
 | Data missing or looks stale | Expected — the dev tables are an old partial snapshot (see §3) |
+| `make local-fetch` fails to download | Its download host is unreachable; the Maven Central fallback needs `mvn` on `PATH` (see §9) |
 
 ---
 
@@ -307,6 +308,18 @@ brew install colima docker docker-compose && colima start
 `make local-up` picks whichever it finds, preferring Java. Force one with `LOCAL_DDB=java`
 or `LOCAL_DDB=docker`. With neither installed it tells you what to install rather than
 failing obscurely.
+
+**No Homebrew, no Docker?** (A Linux box, a CI runner, a sandboxed agent.) `make
+local-fetch` needs only a JRE 17+: it downloads Amazon's tarball, and if that host is
+unreachable — it is behind a CDN that some networks refuse — it falls back to resolving the
+same program from Maven Central, which needs `mvn` on `PATH`. Either way the result lands
+in `local/dynamodb-local/` (gitignored) and `make local-up` picks it up with no further
+setup. No Homebrew required.
+
+```bash
+make local-fetch     # tarball, else Maven Central
+make local-up
+```
 
 ### Running
 
@@ -395,7 +408,7 @@ Either way in works:
 | `make local-down` | Stop it, keeping the data |
 | `make local-status` | Report whether it's running, and how |
 | `make local-reset` | Stop it and **delete every local table and row** |
-| `make local-fetch` | Download Amazon's DynamoDB Local JAR into `local/` |
+| `make local-fetch` | Install DynamoDB Local into `local/` (Amazon's tarball, else Maven Central) |
 | `make local-tables` | Create any missing tables |
 | `make local-tables-check` | Fail if the local database is missing a table this codebase expects |
 | `make local-seed` | Write `local/seed/*.json` into the database |

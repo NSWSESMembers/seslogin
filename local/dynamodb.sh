@@ -4,9 +4,10 @@
 #
 # Two ways to run it, because different machines have different things installed:
 #
-#   java    Amazon's DynamoDB Local JAR, run directly. One process, no VM.
-#           Either the `dynamodb-local` command (brew cask) or a JAR fetched by
-#           `fetch` below. Needs a JRE 17+.
+#   java    Amazon's DynamoDB Local, run directly. One process, no VM. Any of
+#           the `dynamodb-local` command (brew cask), a JAR fetched by `fetch`
+#           below, or a Maven-resolved distribution in dynamodb-local/lib (also
+#           `fetch`, when Amazon's download host is unreachable). Needs a JRE 17+.
 #   docker  The `amazon/dynamodb-local` image via local/docker-compose.yml.
 #
 # `start` picks whichever is available, preferring java. Set LOCAL_DDB=java or
@@ -25,6 +26,12 @@ PID_FILE="$HERE/.dynamodb.pid"
 LOG_FILE="$HERE/.dynamodb.log"
 DIST_DIR="$HERE/dynamodb-local"
 JAR="$DIST_DIR/DynamoDBLocal.jar"
+# The Maven fallback resolves the same program as a plain classpath: one directory
+# of jars plus the sqlite4java natives, with no launcher of its own.
+LIB_DIR="$DIST_DIR/lib"
+MAIN_CLASS="com.amazonaws.services.dynamodbv2.local.main.ServerRunner"
+# Published to Maven Central, unlike the tarball. Pinned so a fetch is repeatable.
+MAVEN_COORDS="com.amazonaws:DynamoDBLocal:2.6.1"
 COMPOSE=(docker compose -f "$HERE/docker-compose.yml")
 
 # Amazon's current distribution. The older s3.<region>.amazonaws.com/dynamodb-local
@@ -36,19 +43,24 @@ die() { echo "==> $*" >&2; exit 1; }
 have_docker() { command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; }
 have_java()   { command -v java >/dev/null 2>&1 && java -version >/dev/null 2>&1; }
 have_wrapper(){ command -v dynamodb-local >/dev/null 2>&1; }
+have_mvn()    { command -v mvn >/dev/null 2>&1; }
+# A Maven-resolved distribution: the DynamoDBLocal jar plus everything it needs.
+have_lib()    { compgen -G "$LIB_DIR/DynamoDBLocal-*.jar" >/dev/null 2>&1; }
+# Any of the three java routes, given a JRE for the two that need one.
+have_java_dist(){ have_wrapper || { have_java && { [ -f "$JAR" ] || have_lib; }; }; }
 
 # Which runtime to use: an explicit LOCAL_DDB, else whatever is installed.
 pick_runtime() {
   case "${LOCAL_DDB:-}" in
     java)
-      have_wrapper || { [ -f "$JAR" ] && have_java; } \
-        || die "LOCAL_DDB=java but neither the dynamodb-local command nor $JAR is usable. $(install_hint)"
+      have_java_dist \
+        || die "LOCAL_DDB=java but no usable DynamoDB Local was found (no dynamodb-local command, no $JAR, no $LIB_DIR). $(install_hint)"
       echo java ;;
     docker)
       have_docker || die "LOCAL_DDB=docker but the Docker daemon is not reachable."
       echo docker ;;
     "")
-      if have_wrapper || { [ -f "$JAR" ] && have_java; }; then echo java
+      if have_java_dist; then echo java
       elif have_docker; then echo docker
       else die "No way to run DynamoDB Local. $(install_hint)"
       fi ;;
@@ -62,8 +74,11 @@ install_hint() {
 Install one of:
   Java (lightest — one process, no VM; needs a JRE 17+):
       brew install --cask temurin dynamodb-local
-    or, to use a JAR in this repo instead of the brew cask:
-      brew install --cask temurin && make local-fetch
+    or, to fetch a distribution into this repo instead of the brew cask:
+      make local-fetch
+    `make local-fetch` needs only a JRE, and falls back to Maven Central when
+    Amazon's download host is unreachable — so on a Linux box, a CI runner or a
+    sandbox, a JRE 17+ and Maven are enough. No Homebrew required.
   Docker:
       brew install colima docker docker-compose && colima start
 HINT
@@ -88,24 +103,60 @@ wait_for_port() {
   return 1
 }
 
-cmd_fetch() {
-  have_java || die "A JRE 17+ is required to run the JAR. Install one: brew install --cask temurin"
-  mkdir -p "$DIST_DIR"
+# Amazon's tarball. Returns non-zero rather than dying, so fetch can fall back.
+fetch_tarball() {
   # Deliberately not `local`: the EXIT trap runs after the function returns, and
   # under `set -u` a local would be unbound by then.
   tmp="$(mktemp -d)"
   trap 'rm -rf "${tmp:-}"' EXIT
   echo "==> Downloading $TARBALL_URL"
-  curl -fSL --progress-bar -o "$tmp/ddb.tar.gz" "$TARBALL_URL"
+  curl -fSL --progress-bar -o "$tmp/ddb.tar.gz" "$TARBALL_URL" || return 1
   echo "==> Verifying checksum"
   local want got
-  want="$(curl -fsSL "$TARBALL_URL.sha256" | awk '{print $1}')"
+  want="$(curl -fsSL "$TARBALL_URL.sha256" | awk '{print $1}')" || return 1
   got="$(shasum -a 256 "$tmp/ddb.tar.gz" | awk '{print $1}')"
   [ -n "$want" ] || die "Could not fetch the published checksum."
+  # A mismatch is not a reachability problem, so it is fatal rather than a
+  # reason to try somewhere else.
   [ "$want" = "$got" ] || die "Checksum mismatch: expected $want, got $got. Refusing to install."
-  tar -xzf "$tmp/ddb.tar.gz" -C "$DIST_DIR"
+  tar -xzf "$tmp/ddb.tar.gz" -C "$DIST_DIR" || return 1
   [ -f "$JAR" ] || die "Tarball did not contain DynamoDBLocal.jar."
   echo "==> Installed $JAR"
+}
+
+# Maven Central publishes the same program, so a blocked or retired download host
+# is not the end of it. Maven verifies its own checksums on download.
+fetch_maven() {
+  have_mvn || return 1
+  echo "==> Resolving $MAVEN_COORDS from Maven Central"
+  mkdir -p "$LIB_DIR"
+  # A throwaway POM, because dependency:copy-dependencies resolves a project's
+  # dependencies -- it has no mode that takes coordinates directly.
+  cat >"$DIST_DIR/pom.xml" <<POM
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>local</groupId><artifactId>ddb-fetch</artifactId><version>1</version>
+  <dependencies><dependency>
+    <groupId>${MAVEN_COORDS%%:*}</groupId>
+    <artifactId>$(echo "$MAVEN_COORDS" | cut -d: -f2)</artifactId>
+    <version>${MAVEN_COORDS##*:}</version>
+  </dependency></dependencies>
+</project>
+POM
+  ( cd "$DIST_DIR" && mvn -q -B dependency:copy-dependencies -DoutputDirectory=lib ) || return 1
+  have_lib || return 1
+  echo "==> Installed $LIB_DIR"
+}
+
+cmd_fetch() {
+  have_java || die "A JRE 17+ is required to run DynamoDB Local. Install one: brew install --cask temurin"
+  mkdir -p "$DIST_DIR"
+  fetch_tarball && return 0
+  echo "==> Could not install from Amazon's download host; trying Maven Central" >&2
+  fetch_maven && return 0
+  die "Could not install DynamoDB Local. The download host was unreachable and $(have_mvn \
+    && echo "the Maven Central fallback also failed" \
+    || echo "the Maven Central fallback needs mvn on PATH"). $(install_hint)"
 }
 
 cmd_start() {
@@ -136,9 +187,14 @@ cmd_start() {
   local -a argv
   if have_wrapper; then
     argv=(dynamodb-local -sharedDb -port "$PORT" "${storage[@]}")
-  else
+  elif [ -f "$JAR" ]; then
     argv=(java "-Djava.library.path=$DIST_DIR/DynamoDBLocal_lib"
           -jar "$JAR" -sharedDb -port "$PORT" "${storage[@]}")
+  else
+    # Maven layout: no launcher jar to run with -jar (its manifest carries no
+    # Class-Path), so name the main class and hand it the whole directory.
+    argv=(java "-Djava.library.path=$LIB_DIR" -cp "$LIB_DIR/*"
+          "$MAIN_CLASS" -sharedDb -port "$PORT" "${storage[@]}")
   fi
   echo "==> Starting DynamoDB Local (java): ${argv[*]}"
   ( cd "$DIST_DIR" 2>/dev/null || cd "$HERE"; exec "${argv[@]}" ) >"$LOG_FILE" 2>&1 &
