@@ -202,7 +202,23 @@ Terraform uses the `seslogin` AWS profile by default (var `aws_profile`) — an 
 
 **GraphQL**: `api/src/graphql.rs` — All queries and mutations (~69KB). Mutations require `--enable-mutations` CLI flag.
 
-**Database abstraction**: `api/src/db.rs` defines traits; `api/src/dynamodb.rs` is the DynamoDB implementation. A `mockdb` implementation exists for tests.
+**Database abstraction**: `api/src/db.rs` defines traits; `api/src/dynamodb.rs` is the DynamoDB implementation. A `mockdb` implementation exists for tests — it fails every call, so its job is exercising error paths, not standing in for a database.
+
+**Queue and mail abstraction**: the same trait/impl/mock split.
+
+| Concern | Trait | AWS impl | Mock |
+|---|---|---|---|
+| DynamoDB | `db.rs` | `dynamodb.rs` | `mockdb.rs` (fails everything) |
+| SQS | `queue.rs` | `sqs.rs` | `mockqueue.rs` (records) |
+| SES email | `mail.rs` | `sesmail.rs` | `mockmail.rs` (logs) |
+
+Unlike `mockdb`, the queue and mail mocks *succeed* — they exist so the API can run with no AWS account. The app reaches all three through `app::HasDb` / `app::HasQueues` / `app::HasMail`, and `MyApp<DBH, Q, M>` is generic over each.
+
+**There is no runtime switch between them.** Which implementations exist is decided at compile time, by which binary you build: `bin/poem.rs` is DynamoDB + SQS + SES, `bin/poem-local.rs` is DynamoDB + the mocks. The shared server (handler, routes, CLI) lives in `server.rs` so the two can't drift; each binary is a ~15-line `main`. A cargo feature was rejected because `make check` runs `clippy --all-features`, which would enable it — the real SQS and SES paths would stop being linted, and any `--all-features` build would quietly produce a mocked server.
+
+`sqs.rs` also keeps free `enqueue_*` functions holding each message's wire format. The worker binaries (`dispatcher-lambda`, `nitc-export`) call those directly: each owns exactly one queue, so the three-queue `Queues` handle would be the wrong shape, and they need real AWS anyway.
+
+> **Optional attributes: omit, don't write `Null`.** When an optional field is absent, leave the attribute off the item entirely — on `put_item` skip the `.item(...)` call; on `update_item` put it in a `REMOVE` clause rather than `SET`ting it to `AttributeValue::Null`. This is mandatory for any attribute that backs a GSI key (DynamoDB rejects a `Null` GSI key with a `ValidationException` — this was the cause of the category-creation bug) and is also required for String/Number Sets (which cannot be stored empty). Apply it uniformly to all optional attributes for consistency; hydration in `dynamodb.rs` already treats a missing attribute and `Null` identically.
 
 > **Optional attributes: omit, don't write `Null`.** When an optional field is absent, leave the attribute off the item entirely — on `put_item` skip the `.item(...)` call; on `update_item` put it in a `REMOVE` clause rather than `SET`ting it to `AttributeValue::Null`. This is mandatory for any attribute that backs a GSI key (DynamoDB rejects a `Null` GSI key with a `ValidationException` — this was the cause of the category-creation bug) and is also required for String/Number Sets (which cannot be stored empty). Apply it uniformly to all optional attributes for consistency; hydration in `dynamodb.rs` already treats a missing attribute and `Null` identically.
 
@@ -256,7 +272,8 @@ Environment variables (loaded from `.env` and `.env.secret`; see
 - `JWT_SECRET` — JWT signing key
 - `SES_API_BASE_URL` / `SES_API_KEY` — External member sync API
 - `SES_INTRANET_SEARCH_API_BASE_URL` / `SES_INTRANET_SEARCH_API_KEY` — SES intranet contact-directory search, used to sync member emails. Separate credential from `SES_API_KEY` (uses the `Ocp-Apim-Subscription-Key` header).
-- `MEMBER_SYNC_QUEUE_URL` / `NITC_EXPORT_QUEUE_URL` / `HEALTHCHECK_QUEUE_URL` — SQS queue URLs
+- `MEMBER_SYNC_QUEUE_URL` / `NITC_EXPORT_QUEUE_URL` / `HEALTHCHECK_QUEUE_URL` — SQS queue URLs. All three are required by `poem` and by the API Lambda. `poem-local` never reads them.
+- `MOCK_MAIL_DIR` — `poem-local` only: also write each "sent" message to a file in this directory. Optional; messages are logged either way.
 - `TURNSTILE_SECRET_KEY` — Cloudflare Turnstile secret for verifying login CAPTCHA tokens
 - `TURNSTILE_DISABLED` — Set to `1` locally to bypass Turnstile (it can't work in local dev). Pair with `VITE_TURNSTILE_DISABLED=1` in `web/.env.local`.
 - `RUST_LOG` — Log level (e.g., `info`, `debug`)

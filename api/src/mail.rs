@@ -1,7 +1,12 @@
-use anyhow::Context;
+//! Outgoing-email abstraction.
+//!
+//! Mirrors the [`crate::db`] / [`crate::dynamodb`] / [`crate::mockdb`] split:
+//! this module holds the trait, [`crate::sesmail`] sends via AWS SES, and
+//! [`crate::mockmail`] logs the message instead, so the API can run — including
+//! the email-code login flow — with no AWS account.
+
 use anyhow::Result;
-use aws_sdk_ses::Client;
-use aws_sdk_ses::types::{Body, Content, Destination, Message};
+use std::future::Future;
 
 pub const FROM: &str = "no-reply@seslogin.com";
 pub const REPLY_TO: &str = "support@seslogin.com";
@@ -16,7 +21,10 @@ pub const REPLY_TO: &str = "support@seslogin.com";
 const OVERRIDE_TO_VAR: &str = "MAIL_OVERRIDE_TO";
 
 /// Resolve the address to actually send to, honouring [`OVERRIDE_TO_VAR`].
-fn resolve_recipient(to: &str) -> String {
+///
+/// Applied by every backend, mock included, so what the mock logs is what a real
+/// send would have done.
+pub fn resolve_recipient(to: &str) -> String {
     match std::env::var(OVERRIDE_TO_VAR) {
         Ok(override_to) if !override_to.trim().is_empty() => {
             let override_to = override_to.trim().to_string();
@@ -27,53 +35,21 @@ fn resolve_recipient(to: &str) -> String {
     }
 }
 
-async fn ses_client() -> Result<Client> {
-    let config = crate::aws_config_loader().load().await;
-    Ok(Client::new(&config))
-}
+/// `Sync` is required for the same reason as [`crate::db::Handler`]: a
+/// `&impl Handler` is held across `.await` inside the `Send` futures the
+/// GraphQL/Poem stack builds.
+pub trait Handler: Sync {
+    fn send_plain_text(
+        &self,
+        to: &str,
+        subject: &str,
+        content: &str,
+    ) -> impl Future<Output = Result<()>> + Send;
 
-/// Send a plain-text email via AWS SES.
-pub async fn send_plain_text(to: &str, subject: &str, content: &str) -> Result<()> {
-    let to = &resolve_recipient(to);
-    let client = ses_client().await?;
-    let destination = Destination::builder().to_addresses(to.to_string()).build();
-    let subject_content = Content::builder().data(subject).charset("UTF-8").build()?;
-    let text_content = Content::builder().data(content).charset("UTF-8").build()?;
-    let message = Message::builder()
-        .subject(subject_content)
-        .body(Body::builder().text(text_content).build())
-        .build();
-    client
-        .send_email()
-        .destination(destination)
-        .message(message)
-        .source(FROM)
-        .reply_to_addresses(REPLY_TO.to_string())
-        .send()
-        .await
-        .with_context(|| format!("failed to send email to {}", to))?;
-    Ok(())
-}
-
-/// Send an HTML email via AWS SES.
-pub async fn send_html(to: &str, subject: &str, html: &str) -> Result<()> {
-    let to = &resolve_recipient(to);
-    let client = ses_client().await?;
-    let destination = Destination::builder().to_addresses(to.to_string()).build();
-    let subject_content = Content::builder().data(subject).charset("UTF-8").build()?;
-    let html_content = Content::builder().data(html).charset("UTF-8").build()?;
-    let message = Message::builder()
-        .subject(subject_content)
-        .body(Body::builder().html(html_content).build())
-        .build();
-    client
-        .send_email()
-        .destination(destination)
-        .message(message)
-        .source(FROM)
-        .reply_to_addresses(REPLY_TO.to_string())
-        .send()
-        .await
-        .with_context(|| format!("failed to send email to {}", to))?;
-    Ok(())
+    fn send_html(
+        &self,
+        to: &str,
+        subject: &str,
+        html: &str,
+    ) -> impl Future<Output = Result<()>> + Send;
 }

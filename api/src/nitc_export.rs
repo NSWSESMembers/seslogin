@@ -9,7 +9,7 @@ use crate::ses_api::{
     SesClient, SesNonIncidentCreate, SesNonIncidentUpdate, SesParticipantUpsert, SesPersonRef,
     SesTagRef,
 };
-use crate::sqs_dispatch;
+use crate::sqs;
 
 #[derive(Debug, Clone)]
 pub struct NitcConfig {
@@ -228,7 +228,7 @@ async fn skip_or_detach<D: db::Handler>(
             old_event_id, new_version
         );
     } else {
-        sqs_dispatch::enqueue_nitc_event_export(
+        sqs::enqueue_nitc_event_export(
             &clients.sqs.client,
             &clients.sqs.queue_url,
             old_event_id,
@@ -418,7 +418,7 @@ pub async fn assign_period<D: db::Handler>(
             );
             continue;
         }
-        sqs_dispatch::enqueue_nitc_event_export(
+        sqs::enqueue_nitc_event_export(
             &clients.sqs.client,
             &clients.sqs.queue_url,
             &event_id,
@@ -533,7 +533,7 @@ pub async fn backfill_unsynced_periods<D: db::Handler>(
                         period.id, location.id, period.version, period.nitc_exported_version
                     );
                 } else {
-                    sqs_dispatch::enqueue_period_nitc_export(
+                    sqs::enqueue_period_nitc_export(
                         &clients.sqs.client,
                         &clients.sqs.queue_url,
                         &period.id,
