@@ -1,10 +1,19 @@
 {
-  "_comment": "Hand-written seed records. Unlike from-prod.json these are invented, so edit them freely. IDs are 12 chars from the same alphabet as generated nanoids, but spelled to be readable.",
+  "_comment": "Hand-written seed records. Unlike from-prod.json these are invented, so edit them freely. IDs are 12 chars from the same alphabet as generated nanoids, but spelled to be readable. Every location, person, user, token and session the local stack has lives here — from-prod.json carries only reference data (categories and NITC groups).",
   "tables": {
     "location": [
       {
-        "id": { "S": "OtherTestUn1" },
-        "name": { "S": "Other Test Unit" },
+        "_comment": "The unit most testing happens in. Deliberately not a prefix or suffix of Test B Unit, so a selector matching on name text cannot hit both.",
+        "id": { "S": "TestAUnit001" },
+        "name": { "S": "Test A Unit" },
+        "enabled": { "BOOL": true },
+        "created_at": { "N": "1767225600" },
+        "updated_at": { "N": "1767225600" }
+      },
+      {
+        "_comment": "The second unit: for cross-unit sign-in, and for checking that a user granted only Test A Unit cannot reach it.",
+        "id": { "S": "TestBUnit001" },
+        "name": { "S": "Test B Unit" },
         "enabled": { "BOOL": true },
         "created_at": { "N": "1767225600" },
         "updated_at": { "N": "1767225600" }
@@ -12,13 +21,34 @@
     ],
     "person": [
       {
-        "_comment": "For testing a sign-in by someone from another unit. The SES id is what a kiosk scan resolves against.",
-        "id": { "S": "OtherUnitMbr" },
-        "location_id": { "S": "OtherTestUn1" },
+        "_comment": "Locally created: no ses_api_person_id, so member sync does not own this record and the admin UI offers Edit and Delete. Use this one for anything that changes a member. (These ids are invented; the extract refuses to copy a real ses_api_person_id into a fixture, which is a different concern.)",
+        "id": { "S": "TestAMember1" },
+        "location_id": { "S": "TestAUnit001" },
+        "first_name": { "S": "Alice" },
+        "last_name": { "S": "Anderson" },
+        "registration_number": { "S": "10000001" },
+        "created_at": { "N": "1767225600" },
+        "updated_at": { "N": "1767225600" }
+      },
+      {
+        "_comment": "Sync-owned: ses_api_person_id is set, so the admin UI hides Edit and Delete and shows the green synced bullet. Paired with Alice so both halves of that rule are on screen at once.",
+        "id": { "S": "TestAMember2" },
+        "location_id": { "S": "TestAUnit001" },
+        "first_name": { "S": "Bob" },
+        "last_name": { "S": "Brown" },
+        "registration_number": { "S": "10000002" },
+        "ses_api_person_id": { "S": "10000002" },
+        "created_at": { "N": "1767225600" },
+        "updated_at": { "N": "1767225600" }
+      },
+      {
+        "_comment": "For testing a sign-in at Test A Unit's kiosk by someone who belongs to Test B Unit. registration_number is what a scan resolves against (get_person_id_by_registration_number); ses_api_person_id is the separate sync identity.",
+        "id": { "S": "TestBMember1" },
+        "location_id": { "S": "TestBUnit001" },
         "first_name": { "S": "Crossunit" },
         "last_name": { "S": "Tester" },
-        "registration_number": { "S": "87654321" },
-        "ses_api_person_id": { "S": "87654321" },
+        "registration_number": { "S": "20000001" },
+        "ses_api_person_id": { "S": "20000001" },
         "created_at": { "N": "1767225600" },
         "updated_at": { "N": "1767225600" }
       }
@@ -34,12 +64,62 @@
         "updated_at": { "N": "1767225600" }
       },
       {
-        "_comment": "Ordinary user, granted Test Unit only — use this one to check that Other Test Unit is not reachable.",
+        "_comment": "Ordinary user, granted Test A Unit only — use this one to check that Test B Unit is not reachable.",
         "id": { "S": "TestUnitUser" },
         "email": { "S": "testunit@seslogin.test" },
         "super": { "BOOL": false },
         "enabled": { "N": "1" },
-        "location_grants": { "SS": ["wBsJHYxy9snR"] },
+        "location_grants": { "SS": ["TestAUnit001"] },
+        "created_at": { "N": "1767225600" },
+        "updated_at": { "N": "1767225600" }
+      }
+    ],
+    "user_token": [
+      {
+        "_comment": "Ready-made login for TestSuperUsr. token_hash is sha256 of the plaintext token 'slu_localdev0000000000000000000super', which is what a client presents; the plaintext is never stored, here or in production. Valid until 2100 so the fixture does not rot. Only ever valid against a local database — see DEVELOPMENT.md §9.",
+        "id": { "S": "TokenSuperUsr" },
+        "token_hash": {
+          "S": "c49f5952330f9b087d8629ba01167fa9a697aabea7bf3b4bd0d2d414d9d41bef"
+        },
+        "user_id": { "S": "TestSuperUsr" },
+        "created_at": { "N": "1767225600" },
+        "expires_at": { "N": "4102444800" }
+      },
+      {
+        "_comment": "Same, for TestUnitUser. Plaintext token 'slu_localdev0000000000000000testunit'.",
+        "id": { "S": "TokenUnitUser" },
+        "token_hash": {
+          "S": "546e0fbd6b5295d38262e53bd24bd1b3189660e778ed8e72d3cbc1b3ee02566c"
+        },
+        "user_id": { "S": "TestUnitUser" },
+        "created_at": { "N": "1767225600" },
+        "expires_at": { "N": "4102444800" }
+      }
+    ],
+    "session": [
+      {
+        "_comment": "A code-enrolled kiosk at Test A Unit, so kiosk testing does not have to start by creating one. Enrolling consumes the code and swaps it for a JWT — re-run `make local-seed` to put it back. `config` is a JSON document stored as a string; empty means kiosk defaults. A code-enrolled session must not also carry key_fingerprint: both back GSIs and the two enrolment styles are mutually exclusive.",
+        "id": { "S": "TestAKiosk01" },
+        "name": { "S": "Test A Unit kiosk" },
+        "location_id": { "S": "TestAUnit001" },
+        "code": { "S": "123456" },
+        "config": { "S": "{}" },
+        "active": { "N": "1" },
+        "last_contact": { "N": "1767225600" },
+        "created_at": { "N": "1767225600" },
+        "updated_at": { "N": "1767225600" }
+      },
+      {
+        "_comment": "A key-enrolled kiosk at Test A Unit — the other half of the pair. Instead of a code it carries the public key of a fixed keypair, and signs every request with the private half (SLKey scheme, see api/src/session_key.rs). local/seed/kiosk-signing-key.json holds the matching private key and local/examples/kiosk-scan.mjs installs it, so kiosk testing can start on the scan screen rather than at enrolment. key_expires_at is 2100 so the fixture does not rot. Must not also carry a code: `code` and `key_fingerprint` both back GSIs and the two enrolment styles are mutually exclusive.",
+        "id": { "S": "TestAKiosk02" },
+        "name": { "S": "Test A Unit key kiosk" },
+        "location_id": { "S": "TestAUnit001" },
+        "public_key": { "S": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEvALkIay5sYTuasJMSVwCz2AVMihxpHowsPsaocqd10H8nVd69Byl/9saRdjwSGDC0+Inl8OhgYf+XCq1/ridwA==" },
+        "key_fingerprint": { "S": "23d64be11f5c92f98670c4326e88ff12b06ec78ce329145c6c3f3573bbbe5dba" },
+        "key_expires_at": { "N": "4102444800" },
+        "config": { "S": "{}" },
+        "active": { "N": "1" },
+        "last_contact": { "N": "1767225600" },
         "created_at": { "N": "1767225600" },
         "updated_at": { "N": "1767225600" }
       }

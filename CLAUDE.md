@@ -217,18 +217,47 @@ make local-seed           # write local/seed/*.json into the database
 make local-seed-extract   # refresh local/seed/from-prod.json (the only step needing AWS)
 ```
 
-`make local-seed` (part of `dev-local`) loads Test Unit `wBsJHYxy9snR` and its two members
-with their real IDs, all 220 categories and the 99 NITC groups they reference, an invented
-"Other Test Unit" (`OtherTestUn1`) whose member `OtherUnitMbr` has SES id `87654321` for
-cross-unit sign-in tests, and two users — `super@seslogin.test` and `testunit@seslogin.test`
-(granted Test Unit only). No kiosk sessions; make those per test. Log in with
-`--dev-auth-user super@seslogin.test`, or use the real email-code flow and read the code out
-of the log.
+`make local-seed` (part of `dev-local`) loads two invented units — **Test A Unit**
+(`TestAUnit001`, members Alice Anderson `10000001` and Bob Brown `10000002`) and **Test B
+Unit** (`TestBUnit001`, member Crossunit Tester `20000001`, for cross-unit sign-in) — two
+users (`super@seslogin.test` and `testunit@seslogin.test`, granted Test A Unit only), a
+ready-made user token for each, two kiosk sessions at Test A Unit — `TestAKiosk01`
+(code-enrolled, code `123456`) and `TestAKiosk02` (key-enrolled) — and all 220 categories
+with the 99 NITC groups they reference. Neither unit name contains the other, so a selector
+matching on name text cannot hit both.
 
-Rows are raw DynamoDB items, not `db::Handler` calls, because `create_*` generates its own
-IDs and the fixture must preserve them. `local-seed-extract` skips soft-deleted rows and
-**refuses to write a fixture containing `email` or `ses_api_person_id`** — the repo is
-public.
+The two kiosks cover the two mutually exclusive enrolment styles (`code` and
+`key_fingerprint` both back GSIs, so a session has one or the other). `TestAKiosk02` holds
+the public half of a fixed P-256 keypair and signs each request with the private half
+(`SLKey`, see `api/src/session_key.rs`); the private half is committed in
+`local/seed/kiosk-signing-key.json` — a throwaway key valid only against a local database.
+Regenerating it means updating both files.
+
+`local/examples/` holds two Playwright scripts that put a browser into a state worth
+testing from: `admin-login.mjs` (dashboard, as a given user at a given location, passkey
+prompt dismissed) and `kiosk-scan.mjs` (installs the kiosk private key into IndexedDB and
+lands on the scan screen, ready for a sign-in). Both take options via environment
+variables; `HEADED=1 KEEP_OPEN=1` leaves the browser open.
+
+**Alice has no `ses_api_person_id` and Bob does**, deliberately: the admin UI offers Edit and
+Delete only for members member sync does not own, so Alice is the one to change and Bob is
+the read-only case. A fixture where every member is sync-owned makes the member edit form
+unreachable while looking perfectly fine.
+
+Log in with the seeded token — put `slu_localdev0000000000000000000super` (or
+`slu_localdev0000000000000000testunit`) in `localStorage` under `admin_auth_token`, or send
+it as a bearer token to the API. Only its sha256 is stored, as in production. Otherwise use
+`--dev-auth-user super@seslogin.test`, or the real email-code flow, reading the code out of
+the log.
+
+The two fixtures split by what the data is: `synthetic.json` holds everything that could
+describe a person or a place (locations, members, users, tokens, sessions), all invented;
+`from-prod.json` holds reference data only (categories, NITC groups). So no committed
+fixture describes a real unit or person. Rows are raw DynamoDB items, not `db::Handler`
+calls, because `create_*` generates its own IDs and the fixture must preserve them.
+`local-seed-extract` skips soft-deleted rows and still **refuses to write a fixture
+containing `email` or `ses_api_person_id`** — a backstop now, rather than the thing keeping
+production data out of a public repo.
 
 Config is `local/local.env`, which `make dev-local` exports. Exported variables beat
 `.env`, because dotenvy's `from_filename` never overrides an already-set variable — so that
