@@ -15,44 +15,32 @@ use seslogin::auth::AuthInfo;
 use seslogin::graphql;
 use seslogin::jwt;
 use seslogin::mockdb;
-use seslogin::sqs_dispatch::{SqsQueue, SqsQueues};
+use seslogin::mockmail;
+use seslogin::mockqueue;
 
 type TestSchema = async_graphql::Schema<
-    graphql::QueryRoot<MyApp<mockdb::Handler>>,
-    graphql::MutationRoot<MyApp<mockdb::Handler>>,
+    graphql::QueryRoot<MyApp<mockdb::Handler, mockqueue::Handler, mockmail::Handler>>,
+    graphql::MutationRoot<MyApp<mockdb::Handler, mockqueue::Handler, mockmail::Handler>>,
     async_graphql::EmptySubscription,
 >;
 
 struct Fixture {
     schema: TestSchema,
-    app: Arc<MyApp<mockdb::Handler>>,
+    app: Arc<MyApp<mockdb::Handler, mockqueue::Handler, mockmail::Handler>>,
 }
 
 fn fixture() -> Fixture {
     let key = jwt::Key::new("test", None, None).expect("valid test JWT key");
     let db = mockdb::Handler::new();
-    // Never sends a request — these queries don't touch SQS — so an unconfigured
-    // client is fine and avoids any network-dependent config resolution.
-    let sqs_client = aws_sdk_sqs::Client::from_conf(
-        aws_sdk_sqs::Config::builder()
-            .behavior_version(aws_sdk_sqs::config::BehaviorVersion::latest())
-            .build(),
-    );
-    let sqs = SqsQueues {
-        member_sync: SqsQueue {
-            client: sqs_client.clone(),
-            queue_url: String::new(),
-        },
-        nitc_export: SqsQueue {
-            client: sqs_client.clone(),
-            queue_url: String::new(),
-        },
-        healthcheck: SqsQueue {
-            client: sqs_client,
-            queue_url: String::new(),
-        },
-    };
-    let app = Arc::new(app::new(db, key, 0, sqs));
+    // The mock backends record instead of dispatching, so nothing here touches the
+    // network or needs AWS config resolution.
+    let app = Arc::new(app::new(
+        db,
+        key,
+        0,
+        mockqueue::Handler::new(),
+        mockmail::Handler::new(),
+    ));
     // No HTTP relying-party check is exercised by these queries, so a minimal fixed
     // origin is fine here — unlike `export-schema.rs`, this must not depend on
     // `WEBAUTHN_RP_ORIGIN` being set.

@@ -17,20 +17,31 @@ use crate::auth::{self, AuthInfo};
 use crate::db;
 use crate::errors::{ClientError, ServerError};
 use crate::graphql;
+use crate::mail;
+use crate::queue;
 
-type GraphQlSchema<H> = async_graphql::Schema<
-    graphql::QueryRoot<app::MyApp<H>>,
-    graphql::MutationRoot<app::MyApp<H>>,
+type GraphQlSchema<H, Q, M> = async_graphql::Schema<
+    graphql::QueryRoot<app::MyApp<H, Q, M>>,
+    graphql::MutationRoot<app::MyApp<H, Q, M>>,
     async_graphql::EmptySubscription,
 >;
 
-pub struct Handler<H: db::Handler + Send + Sync> {
-    app: Arc<app::MyApp<H>>,
-    schema: GraphQlSchema<H>,
+pub struct Handler<
+    H: db::Handler + Send + Sync,
+    Q: queue::Handler + Send + Sync,
+    M: mail::Handler + Send + Sync,
+> {
+    app: Arc<app::MyApp<H, Q, M>>,
+    schema: GraphQlSchema<H, Q, M>,
 }
 
-impl<H: db::Handler + Send + Sync + 'static> Handler<H> {
-    pub fn new(app: Arc<app::MyApp<H>>, schema: GraphQlSchema<H>) -> Self {
+impl<
+    H: db::Handler + Send + Sync + 'static,
+    Q: queue::Handler + Send + Sync + 'static,
+    M: mail::Handler + Send + Sync + 'static,
+> Handler<H, Q, M>
+{
+    pub fn new(app: Arc<app::MyApp<H, Q, M>>, schema: GraphQlSchema<H, Q, M>) -> Self {
         Self { app, schema }
     }
 

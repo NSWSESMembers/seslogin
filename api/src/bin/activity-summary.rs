@@ -1,7 +1,7 @@
 use chrono::NaiveDate;
 use clap::Parser;
 use seslogin::request_metrics::{self, RequestMetrics};
-use seslogin::{activity_summary, dynamodb};
+use seslogin::{activity_summary, dynamodb, sesmail};
 use std::sync::Arc;
 
 /// Run the activity summary email job manually.
@@ -33,12 +33,14 @@ async fn main() -> anyhow::Result<()> {
     let db_prefix = std::env::var("DB_PREFIX")?;
     let dry_run = !args.apply;
     let db = dynamodb::Handler::new(&db_prefix, dry_run).await;
+    let mailer = sesmail::Mailer::new().await;
     let metrics = Arc::new(RequestMetrics::default());
     request_metrics::METRICS
         .scope(
             metrics.clone(),
             activity_summary::run(
                 &db,
+                &mailer,
                 activity_summary::SummaryArgs {
                     date: args.date.unwrap_or_else(activity_summary::yesterday_sydney),
                     dry_run,

@@ -4,12 +4,12 @@ use tracing::warn;
 
 use crate::app::App;
 use crate::app::HasDb;
-use crate::app::HasSqs;
+use crate::app::HasQueues;
 use crate::client_info::ClientReport;
 use crate::db;
 use crate::db::Handler;
 use crate::jwt;
-use crate::sqs_dispatch;
+use crate::queue::Handler as _;
 
 #[derive(Debug, Error)]
 pub enum AuthError {
@@ -242,7 +242,7 @@ async fn fetch_update_user_auth_info<A: App + HasDb>(
 /// alive at no extra write cost. The client's self-reported [`ClientReport`] rides along
 /// in the same write, so the diagnostics cost nothing beyond what `last_contact` already
 /// spends.
-async fn touch_session<A: App + HasDb + HasSqs>(
+async fn touch_session<A: App + HasDb + HasQueues>(
     app: &A,
     session: &db::Session,
     client: &ClientReport,
@@ -286,27 +286,22 @@ async fn touch_session<A: App + HasDb + HasSqs>(
             }
             Err(e) => return Err(AuthError::Transient(e.to_string())),
         }
-        if let Some(healthcheck_url) = &session.healthcheck_url {
-            let q = &app.sqs().healthcheck;
-            if let Err(e) = sqs_dispatch::enqueue_healthcheck(
-                &q.client,
-                &q.queue_url,
-                &session.id,
-                healthcheck_url,
-            )
-            .await
-            {
-                warn!(
-                    "Failed to enqueue healthcheck for session {}: {:?}",
-                    session.id, e
-                );
-            }
+        if let Some(healthcheck_url) = &session.healthcheck_url
+            && let Err(e) = app
+                .queues()
+                .enqueue_healthcheck(&session.id, healthcheck_url)
+                .await
+        {
+            warn!(
+                "Failed to enqueue healthcheck for session {}: {:?}",
+                session.id, e
+            );
         }
     }
     Ok(())
 }
 
-async fn fetch_update_session_auth_info<A: App + HasDb + HasSqs>(
+async fn fetch_update_session_auth_info<A: App + HasDb + HasQueues>(
     app: &A,
     session_id: String,
     client: &ClientReport,
@@ -343,7 +338,7 @@ async fn fetch_update_session_auth_info<A: App + HasDb + HasSqs>(
 /// Every failure here is [`AuthError::Permanent`] (→ 401), so a kiosk whose session was
 /// disabled, whose key expired, or whose fingerprint no longer resolves falls back to
 /// the enrollment screen on its next request.
-pub async fn verify_signed_key<A: App + HasDb + HasSqs>(
+pub async fn verify_signed_key<A: App + HasDb + HasQueues>(
     app: &A,
     header_rest: &str,
     body_hash_hex: &str,
@@ -457,7 +452,7 @@ async fn verify_token_with_api_token<A: App + HasDb>(
     })
 }
 
-async fn verify_token_with_jwt<A: App + HasDb + HasSqs>(
+async fn verify_token_with_jwt<A: App + HasDb + HasQueues>(
     app: &A,
     token: &str,
     client: &ClientReport,
@@ -554,7 +549,7 @@ async fn verify_token_with_period_link<A: App + HasDb>(
     }
 }
 
-pub async fn verify_token<A: App + HasDb + HasSqs>(
+pub async fn verify_token<A: App + HasDb + HasQueues>(
     app: &A,
     token: &str,
     client: &ClientReport,
@@ -579,7 +574,7 @@ pub async fn verify_token<A: App + HasDb + HasSqs>(
 /// (binds `body_hash_hex`). Returns `None` when there is no recognized header, so the
 /// request proceeds unauthenticated (the guards then reject anything that requires auth).
 /// Shared by the poem server and the Lambda handler.
-pub async fn verify_authorization_header<A: App + HasDb + HasSqs>(
+pub async fn verify_authorization_header<A: App + HasDb + HasQueues>(
     app: &A,
     auth_header: Option<&str>,
     body_hash_hex: &str,

@@ -5,8 +5,9 @@ use lambda_runtime::{Error as LambdaError, LambdaEvent, run, service_fn, tracing
 use serde_json::{Value, json};
 use seslogin::db::Handler as _;
 use seslogin::dynamodb;
+use seslogin::queue;
 use seslogin::request_metrics::{self, RequestMetrics};
-use seslogin::sqs_dispatch;
+use seslogin::sqs;
 use std::sync::Arc;
 
 async fn handler(_event: LambdaEvent<Value>) -> Result<Value, LambdaError> {
@@ -36,10 +37,10 @@ async fn handler(_event: LambdaEvent<Value>) -> Result<Value, LambdaError> {
                 if hq_id.trim().is_empty() {
                     continue;
                 }
-                if sqs_dispatch::location_hour_bucket(&location.id) != current_hour {
+                if queue::location_hour_bucket(&location.id) != current_hour {
                     continue;
                 }
-                sqs_dispatch::enqueue_location_sync(&sqs, &queue_url, &location.id).await?;
+                sqs::enqueue_location_sync(&sqs, &queue_url, &location.id).await?;
                 sent += 1;
             }
 

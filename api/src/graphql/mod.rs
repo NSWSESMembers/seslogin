@@ -8,7 +8,8 @@ use std::sync::Arc;
 
 use crate::app::App;
 use crate::app::HasDb;
-use crate::app::HasSqs;
+use crate::app::HasMail;
+use crate::app::HasQueues;
 use crate::auth::AuthInfo;
 use crate::request_metrics;
 use crate::telemetry::{self, OperationKind};
@@ -151,7 +152,7 @@ impl Extension for RequestMetricsExtImpl {
     }
 }
 
-pub fn build_schema<A: App + HasDb + HasSqs + Send + Sync + 'static>(
+pub fn build_schema<A: App + HasDb + HasQueues + HasMail + Send + Sync + 'static>(
     app: Arc<A>,
     webauthn: Arc<webauthn_rs::prelude::Webauthn>,
 ) -> Schema<QueryRoot<A>, MutationRoot<A>, EmptySubscription> {
@@ -176,7 +177,7 @@ pub fn build_schema<A: App + HasDb + HasSqs + Send + Sync + 'static>(
     builder.finish()
 }
 
-pub fn get_dataloader<A: App + HasDb + HasSqs + Send + Sync + 'static>(
+pub fn get_dataloader<A: App + HasDb + HasQueues + HasMail + Send + Sync + 'static>(
     app: Arc<A>,
 ) -> DataLoader<DatabaseLoader<A>> {
     DataLoader::new(DatabaseLoader::new(app), request_metrics::metrics_spawner)

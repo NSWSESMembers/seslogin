@@ -14,11 +14,14 @@ use tracing::warn;
 
 use crate::app::App;
 use crate::app::HasDb;
-use crate::app::HasSqs;
+use crate::app::HasMail;
+use crate::app::HasQueues;
 use crate::auth;
 use crate::auth::AuthInfo;
 use crate::db;
 use crate::db::Handler;
+use crate::mail::Handler as _;
+use crate::queue::Handler as _;
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use hex;
 
@@ -164,11 +167,11 @@ struct CreateApiTokenResult {
     secret: String,
 }
 
-pub struct MutationRoot<A: App + HasDb + HasSqs + Send + Sync> {
+pub struct MutationRoot<A: App + HasDb + HasQueues + HasMail + Send + Sync> {
     pub(super) app: Arc<A>,
 }
 
-impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
+impl<A: App + HasDb + HasQueues + HasMail + Send + Sync + 'static> MutationRoot<A> {
     /// Enqueue a Phase 1 (period) NITC export for a mutated period.
     ///
     /// `old_nitc_event_id` is the event the period was assigned to *before* this mutation (read
@@ -198,10 +201,11 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
                     )
                 })?;
         }
-        let sqs = &self.app.sqs().nitc_export;
-        if let Err(e) =
-            crate::sqs_dispatch::enqueue_period_nitc_export(&sqs.client, &sqs.queue_url, period_id)
-                .await
+        if let Err(e) = self
+            .app
+            .queues()
+            .enqueue_period_nitc_export(period_id)
+            .await
         {
             warn!(
                 "Failed to enqueue NITC export for period {}: {}",
@@ -257,7 +261,7 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
 }
 
 #[Object]
-impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
+impl<A: App + HasDb + HasQueues + HasMail + Send + Sync + 'static> MutationRoot<A> {
     async fn auth_session(&self, code: String) -> Option<String> {
         let res = auth::issue_token_for_scan_code(&*self.app, &code).await;
 
@@ -414,7 +418,12 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
         );
 
         tracing::info!(user_id = %user_id, "Sending login code to {}", email);
-        if let Err(e) = crate::mail::send_plain_text(&email, subject, &body).await {
+        if let Err(e) = self
+            .app
+            .mail()
+            .send_plain_text(&email, subject, &body)
+            .await
+        {
             warn!("Failed to send login code email to {}: {:#}", email, e);
         }
 
@@ -1106,7 +1115,9 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
         );
 
         info!(period_id = %id.as_str(), "Sending period edit link to {}", email);
-        crate::mail::send_plain_text(&email, PERIOD_REMINDER_SUBJECT, &body)
+        self.app
+            .mail()
+            .send_plain_text(&email, PERIOD_REMINDER_SUBJECT, &body)
             .await
             .map_err(|e| anyhow!("Couldn't send the email: {e:#}"))?;
 
@@ -1995,8 +2006,9 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
             .next()
             .flatten()
             .ok_or_else(|| anyhow!("Location {:?} not found", location_id))?;
-        let sqs = &self.app.sqs().member_sync;
-        crate::sqs_dispatch::enqueue_location_sync(&sqs.client, &sqs.queue_url, &location_id)
+        self.app
+            .queues()
+            .enqueue_location_sync(&location_id)
             .await?;
         Ok(true)
     }

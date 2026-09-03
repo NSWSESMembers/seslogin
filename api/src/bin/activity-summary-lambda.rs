@@ -2,18 +2,20 @@ use anyhow::anyhow;
 use lambda_runtime::{Error as LambdaError, LambdaEvent, run, service_fn, tracing};
 use serde_json::{Value, json};
 use seslogin::request_metrics::{self, RequestMetrics};
-use seslogin::{activity_summary, dynamodb};
+use seslogin::{activity_summary, dynamodb, sesmail};
 use std::sync::Arc;
 
 async fn handler(_event: LambdaEvent<Value>) -> Result<Value, LambdaError> {
     let db_prefix = std::env::var("DB_PREFIX").map_err(|_| anyhow!("DB_PREFIX must be set"))?;
     let db = dynamodb::Handler::new(&db_prefix, false).await;
+    let mailer = sesmail::Mailer::new().await;
     let metrics = Arc::new(RequestMetrics::default());
     let result = request_metrics::METRICS
         .scope(
             metrics.clone(),
             activity_summary::run(
                 &db,
+                &mailer,
                 activity_summary::SummaryArgs {
                     date: activity_summary::yesterday_sydney(),
                     dry_run: false,
