@@ -23,11 +23,16 @@ seslogin v2 is a member attendance tracking system for managing check-in/check-o
 > Local dev can also be pointed at prod by setting `DB_PREFIX=seslogin_prod`. If you do:
 > prefer read-only work, use dry-runs, avoid destructive mutations, and double-check
 > `DB_PREFIX` before running anything that writes.
+>
+> `make dev-local` is the third option: `DB_PREFIX=seslogin_local` against DynamoDB Local
+> in a container, with SQS and SES mocked in-process. No AWS account, no credentials, and
+> an empty database. See "Running without AWS" below.
 
 ### Development
 
 ```bash
 make dev                    # Start everything: API + Relay compiler watch + web dev server
+make dev-local              # Same, but runs the AWS-free `poem-local` binary instead
 ```
 
 Or individually:
@@ -179,6 +184,47 @@ The following Lambdas are only deployed from the `workers` branch, not from `tes
 
 `main` is the stable integration branch and is **not** force-pushed. It may be ahead of or behind the deployment branches at any given time. Always fork PR branches from `main` (never from a deployment branch) so your work sits on top of stable, non-rewritten history.
 
+### Running without AWS
+
+`make dev-local` runs the `poem-local` binary and the web app against DynamoDB Local on port
+8100. No AWS credentials, no `.env.secret`, `DB_PREFIX=seslogin_local`, and an **empty**
+database — nothing is copied from any snapshot.
+
+DynamoDB Local runs either as a Java process or as a container; `local/dynamodb.sh` picks
+whichever the machine has, preferring Java (one process, no VM, native on Apple silicon).
+`LOCAL_DDB=java|docker` forces one. Java needs a JRE 17+ plus either the `dynamodb-local`
+brew cask or `make local-fetch` (downloads Amazon's JAR into `local/`, checksum-verified).
+
+DynamoDB is *not* mocked in `poem-local`: `DB_PREFIX` and `AWS_ENDPOINT_URL_DYNAMODB` still
+decide which database it talks to. Pointing it at a real table gives you a server that
+provably cannot send email or enqueue work, which is occasionally what you want.
+
+```bash
+make dev-local            # DynamoDB Local + tables + API + relay + web
+make local-up             # just DynamoDB Local
+make local-down           # stop it, keeping data
+make local-status         # report whether it's running, and how
+make local-fetch          # download Amazon's DynamoDB Local JAR into local/
+make local-reset          # stop it and delete every local table and row
+make local-tables         # create any missing tables
+make local-tables-check   # fail if a table this codebase expects is missing
+```
+
+Config is `local/local.env`, which `make dev-local` exports. Exported variables beat
+`.env`, because dotenvy's `from_filename` never overrides an already-set variable — so that
+file, not `.env`, decides where a local run points. Dummy `AWS_ACCESS_KEY_ID` matters:
+without it `aws_config_loader()` falls back to the `seslogin` SSO profile and tries to reach
+real AWS. There is no variable selecting the mocks — that's what `poem-local` is.
+
+> **Schema drift is the one maintenance cost.** The table definitions in
+> `api/src/bin/local-tables.rs` are transcribed by hand from `infra/dynamodb_test.tf`, which
+> remains the source of truth. Add a table or GSI there and it must be added here too.
+> `local-tables` refuses to run unless the DynamoDB endpoint is on localhost, so it can
+> never create tables in a real AWS account.
+
+The sync binaries are not part of this: they need the real SES headquarters endpoint and
+credential.
+
 ### Infrastructure (Terraform)
 
 ```bash
@@ -217,8 +263,6 @@ Unlike `mockdb`, the queue and mail mocks *succeed* — they exist so the API ca
 **There is no runtime switch between them.** Which implementations exist is decided at compile time, by which binary you build: `bin/poem.rs` is DynamoDB + SQS + SES, `bin/poem-local.rs` is DynamoDB + the mocks. The shared server (handler, routes, CLI) lives in `server.rs` so the two can't drift; each binary is a ~15-line `main`. A cargo feature was rejected because `make check` runs `clippy --all-features`, which would enable it — the real SQS and SES paths would stop being linted, and any `--all-features` build would quietly produce a mocked server.
 
 `sqs.rs` also keeps free `enqueue_*` functions holding each message's wire format. The worker binaries (`dispatcher-lambda`, `nitc-export`) call those directly: each owns exactly one queue, so the three-queue `Queues` handle would be the wrong shape, and they need real AWS anyway.
-
-> **Optional attributes: omit, don't write `Null`.** When an optional field is absent, leave the attribute off the item entirely — on `put_item` skip the `.item(...)` call; on `update_item` put it in a `REMOVE` clause rather than `SET`ting it to `AttributeValue::Null`. This is mandatory for any attribute that backs a GSI key (DynamoDB rejects a `Null` GSI key with a `ValidationException` — this was the cause of the category-creation bug) and is also required for String/Number Sets (which cannot be stored empty). Apply it uniformly to all optional attributes for consistency; hydration in `dynamodb.rs` already treats a missing attribute and `Null` identically.
 
 > **Optional attributes: omit, don't write `Null`.** When an optional field is absent, leave the attribute off the item entirely — on `put_item` skip the `.item(...)` call; on `update_item` put it in a `REMOVE` clause rather than `SET`ting it to `AttributeValue::Null`. This is mandatory for any attribute that backs a GSI key (DynamoDB rejects a `Null` GSI key with a `ValidationException` — this was the cause of the category-creation bug) and is also required for String/Number Sets (which cannot be stored empty). Apply it uniformly to all optional attributes for consistency; hydration in `dynamodb.rs` already treats a missing attribute and `Null` identically.
 
@@ -274,6 +318,7 @@ Environment variables (loaded from `.env` and `.env.secret`; see
 - `SES_INTRANET_SEARCH_API_BASE_URL` / `SES_INTRANET_SEARCH_API_KEY` — SES intranet contact-directory search, used to sync member emails. Separate credential from `SES_API_KEY` (uses the `Ocp-Apim-Subscription-Key` header).
 - `MEMBER_SYNC_QUEUE_URL` / `NITC_EXPORT_QUEUE_URL` / `HEALTHCHECK_QUEUE_URL` — SQS queue URLs. All three are required by `poem` and by the API Lambda. `poem-local` never reads them.
 - `MOCK_MAIL_DIR` — `poem-local` only: also write each "sent" message to a file in this directory. Optional; messages are logged either way.
+- `AWS_ENDPOINT_URL_DYNAMODB` — read natively by the AWS SDK; points DynamoDB traffic at the local container. Set by `local/local.env`.
 - `TURNSTILE_SECRET_KEY` — Cloudflare Turnstile secret for verifying login CAPTCHA tokens
 - `TURNSTILE_DISABLED` — Set to `1` locally to bypass Turnstile (it can't work in local dev). Pair with `VITE_TURNSTILE_DISABLED=1` in `web/.env.local`.
 - `RUST_LOG` — Log level (e.g., `info`, `debug`)

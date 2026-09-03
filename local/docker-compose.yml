@@ -1,0 +1,46 @@
+# Local, AWS-free backing services for the API.
+#
+# Only DynamoDB is here: SQS and SES are mocked in-process by the `poem-local`
+# binary, because nothing local consumes those queues and nobody wants the mail
+# actually delivered.
+# DynamoDB is different — the API's whole data layer is written against real
+# DynamoDB semantics (GSI key validation, empty sets, BatchGetItem unprocessed
+# keys), so a stand-in that merely stores rows would hide the bugs this codebase
+# actually hits.
+#
+# This is the container route. `local/dynamodb.sh` prefers running the same
+# program as a plain Java process, which needs no VM; this file is for machines
+# that already run containers. `LOCAL_DDB=docker` forces it.
+#
+# Ports are deliberately not 8000: that's the API itself.
+
+services:
+  dynamodb:
+    image: amazon/dynamodb-local:latest
+    container_name: seslogin-dynamodb-local
+    # -sharedDb is required. Without it DynamoDB Local partitions data by access
+    # key id + region, so rows written by one credential are invisible to another.
+    command:
+      ["-jar", "DynamoDBLocal.jar", "-sharedDb", "-dbPath", "/home/dynamodblocal/data"]
+    working_dir: /home/dynamodblocal
+    ports:
+      - "8100:8000"
+    volumes:
+      - dynamodb-data:/home/dynamodblocal/data
+
+  # Browser UI for poking at the local tables. Not required by anything.
+  dynamodb-admin:
+    image: aaronshaf/dynamodb-admin:latest
+    container_name: seslogin-dynamodb-admin
+    environment:
+      DYNAMO_ENDPOINT: http://dynamodb:8000
+      AWS_REGION: ap-southeast-2
+      AWS_ACCESS_KEY_ID: local
+      AWS_SECRET_ACCESS_KEY: local
+    ports:
+      - "8101:8001"
+    depends_on:
+      - dynamodb
+
+volumes:
+  dynamodb-data:
