@@ -247,6 +247,22 @@ The impersonated caller keeps its real permissions (`is_super`, `location_grants
 location), so authorization still applies normally. A missing or inactive record yields
 `401`.
 
+**The admin UI needs one more step.** The flag bypasses the *server's* token check, but the
+admin SPA decides whether to show the login page by looking for a token in `localStorage`
+— a purely client-side test that never asks the server. With nothing stored you get the
+login form even though every request behind it would have succeeded. Seed any non-empty
+value once per browser profile; the server never reads it:
+
+```js
+// devtools console at http://localhost:5173, then reload
+localStorage.setItem("admin_auth_token", "dev");
+```
+
+The kiosk keeps its session token the same way — as `scanAuthToken` inside its own
+per-profile settings entry, in
+[KioskEnvironment.tsx](web/src/kiosk/components/KioskEnvironment.tsx) — so expect the same
+kind of gate there.
+
 > ⚠️ Dev only — this exists solely in the `poem` binary, not the deployed Lambda, and the
 > server logs a loud warning at startup. If you've also set `DB_PREFIX=seslogin_prod`,
 > you're impersonating a real caller against production data. Only impersonate records you
@@ -267,6 +283,8 @@ See [api/README.md](api/README.md) for more.
 | Schema diff failure in `make check` | Regenerate `schema.graphql` (see §6) |
 | Prettier / `cargo fmt` failures | `make format` |
 | Data missing or looks stale | Expected — the dev tables are an old partial snapshot (see §3) |
+| Admin UI shows the login page despite `--dev-auth-user` | The gate is client-side — seed `admin_auth_token` in `localStorage` (see §7) |
+| `make local-fetch` fails to download | Use the Maven Central route in §9, or the Docker one |
 
 ---
 
@@ -307,6 +325,43 @@ brew install colima docker docker-compose && colima start
 `make local-up` picks whichever it finds, preferring Java. Force one with `LOCAL_DDB=java`
 or `LOCAL_DDB=docker`. With neither installed it tells you what to install rather than
 failing obscurely.
+
+**No Homebrew, no Docker?** (A Linux box, a CI runner, a sandboxed agent.) Any JRE 17+ plus
+Maven is enough: DynamoDB Local is published to Maven Central, so you can resolve it and
+its native libraries without reaching Amazon's CDN — useful when egress is restricted, and
+faster than it looks, since nothing here is compiled.
+
+```bash
+mkdir -p local/dynamodb-local && cd local/dynamodb-local
+cat > pom.xml <<'EOF'
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>local</groupId><artifactId>ddb-fetch</artifactId><version>1</version>
+  <dependencies><dependency>
+    <groupId>com.amazonaws</groupId>
+    <artifactId>DynamoDBLocal</artifactId>
+    <version>2.6.1</version>
+  </dependency></dependencies>
+</project>
+EOF
+mvn -q -B dependency:copy-dependencies -DoutputDirectory=lib
+```
+
+That leaves the JAR and the `sqlite4java` natives in `local/dynamodb-local/lib` (already
+gitignored). `local/dynamodb.sh` looks for a `dynamodb-local` command on `PATH` before it
+looks for anything else, so give it one and the rest of the stack works unmodified:
+
+```bash
+sudo tee /usr/local/bin/dynamodb-local >/dev/null <<EOF
+#!/usr/bin/env bash
+exec java -Djava.library.path="$PWD/lib" -cp "$PWD/lib/*" \
+  com.amazonaws.services.dynamodbv2.local.main.ServerRunner "\$@"
+EOF
+sudo chmod +x /usr/local/bin/dynamodb-local
+```
+
+`make local-fetch` is the supported path and stays the right one on a laptop; this is the
+fallback for when its download host is unreachable.
 
 ### Running
 
@@ -386,6 +441,86 @@ Either way in works:
   real permissions, so authorization still applies.
 - **The real email-code flow** — request a code and read it out of the API's own log, where
   `mockmail` prints the whole message. Nothing is sent anywhere.
+
+### Driving the UI from a script
+
+The local stack plus dev auth gets you a browser check of a real change — not a unit test's
+idea of one — in about a minute. Any browser automation works; this is Playwright, which
+needs no repo changes because it isn't a dependency of `web/`:
+
+```bash
+npm i playwright && npx playwright install chromium    # once, outside the repo
+```
+
+Point it at a Chromium you already have with `executablePath` if downloading one is
+awkward (CI images and sandboxes usually ship one; `PLAYWRIGHT_BROWSERS_PATH` is the
+other half of that).
+
+```js
+import { chromium } from "playwright";
+
+const browser = await chromium.launch();
+const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+page.on("pageerror", (e) => console.log(`[pageerror] ${e.message}`));
+
+// 1. Satisfy the client-side token gate (see §7) before the app decides anything.
+await page.goto("http://localhost:5173/admin");
+await page.evaluate(() => localStorage.setItem("admin_auth_token", "dev"));
+await page.goto("http://localhost:5173/admin", { waitUntil: "networkidle" });
+
+// 2. Dismiss the passkey enrolment prompt, which greets every fresh profile.
+const later = page.getByRole("button", { name: /maybe later/i });
+if (await later.count()) await later.click();
+
+// 3. Choose a unit. `exact` matters: "Test Unit" is a substring of "Other Test Unit".
+await page.getByText("Test Unit", { exact: true }).click();
+await page.waitForLoadState("networkidle");
+
+// 4. Do the thing. Seeded ids are committed, so they're safe to hard-code.
+await page.goto("http://localhost:5173/admin/members/80Z5no1XBZBz");
+await page.locator("#givenname").fill("Renamed");
+await page.getByRole("button", { name: "Save" }).click();
+
+// 5. Wait on outcomes, never a timeout. These are two different events: the toast
+//    means the mutation returned, the cell means the list re-queried and shows it.
+await page.getByText("Member saved").waitFor();
+await page.getByRole("cell", { name: "Renamed User" }).waitFor();
+await page.screenshot({ path: "/tmp/after.png", fullPage: true });
+console.log(await page.locator("body").innerText());   // assert against text, not pixels
+await browser.close();
+```
+
+Four things cost more time than they should the first time:
+
+- **The token gate in step 1** is the big one — without it you get the login page and no
+  clue that the server would have accepted every request.
+- **The passkey prompt** covers the page on a fresh browser profile, so a click meant for
+  the app silently lands on the overlay instead.
+- **Exact text matching** for the location, per the comment above.
+- **`page.locator("body").innerText()`** is worth more than the screenshot while iterating:
+  it diffs cleanly, and it tells you what a blank-looking page actually rendered.
+
+Three independent ways to confirm a mutation really landed, in ascending order of trust:
+the success toast, a full `page.reload()` (which proves it isn't just Relay store state),
+and the row itself — see below. The API log is the fastest place to see a mutation fail:
+each request prints one `api request` line carrying `operation_name`, `status`,
+`graphql_error_count` and `mutation_failures`.
+
+### Reading the local database directly
+
+The AWS CLI is the obvious way in, but it isn't required — DynamoDB Local doesn't verify
+signatures, so `curl` with a placeholder `Authorization` header is enough to read a row:
+
+```bash
+curl -s -X POST http://localhost:8100/ \
+  -H 'Content-Type: application/x-amz-json-1.0' \
+  -H 'X-Amz-Target: DynamoDB_20120810.GetItem' \
+  -H 'Authorization: AWS4-HMAC-SHA256 Credential=local/x/ap-southeast-2/dynamodb/aws4_request, SignedHeaders=host, Signature=x' \
+  -d '{"TableName":"seslogin_local_person","Key":{"id":{"S":"80Z5no1XBZBz"}}}'
+```
+
+Swap `GetItem` for `Scan` (and drop `Key`) to dump a table. `npx dynamodb-admin` is the
+friendlier option when you're browsing rather than scripting.
 
 ### Managing the stack
 
