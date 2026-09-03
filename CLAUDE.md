@@ -208,7 +208,22 @@ make local-fetch          # download Amazon's DynamoDB Local JAR into local/
 make local-reset          # stop it and delete every local table and row
 make local-tables         # create any missing tables
 make local-tables-check   # fail if a table this codebase expects is missing
+make local-seed           # write local/seed/*.json into the database
+make local-seed-extract   # refresh local/seed/from-prod.json (the only step needing AWS)
 ```
+
+`make local-seed` (part of `dev-local`) loads Test Unit `wBsJHYxy9snR` and its two members
+with their real IDs, all 220 categories and the 99 NITC groups they reference, an invented
+"Other Test Unit" (`OtherTestUn1`) whose member `OtherUnitMbr` has SES id `87654321` for
+cross-unit sign-in tests, and two users — `super@seslogin.test` and `testunit@seslogin.test`
+(granted Test Unit only). No kiosk sessions; make those per test. Log in with
+`--dev-auth-user super@seslogin.test`, or use the real email-code flow and read the code out
+of the log.
+
+Rows are raw DynamoDB items, not `db::Handler` calls, because `create_*` generates its own
+IDs and the fixture must preserve them. `local-seed-extract` skips soft-deleted rows and
+**refuses to write a fixture containing `email` or `ses_api_person_id`** — the repo is
+public.
 
 Config is `local/local.env`, which `make dev-local` exports. Exported variables beat
 `.env`, because dotenvy's `from_filename` never overrides an already-set variable — so that
