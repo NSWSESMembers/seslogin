@@ -4,3 +4,8 @@ CLAUDE.local.md
 infra/terraform.tfvars
 infra/.terraform/
 infra/.terraform.lock.hcl
+local/mail/
+local/.dynamodb-data/
+local/.dynamodb.pid
+local/.dynamodb.log
+local/dynamodb-local/

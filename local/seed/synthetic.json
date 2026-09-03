@@ -1,0 +1,48 @@
+{
+  "_comment": "Hand-written seed records. Unlike from-prod.json these are invented, so edit them freely. IDs are 12 chars from the same alphabet as generated nanoids, but spelled to be readable.",
+  "tables": {
+    "location": [
+      {
+        "id": { "S": "OtherTestUn1" },
+        "name": { "S": "Other Test Unit" },
+        "enabled": { "BOOL": true },
+        "created_at": { "N": "1767225600" },
+        "updated_at": { "N": "1767225600" }
+      }
+    ],
+    "person": [
+      {
+        "_comment": "For testing a sign-in by someone from another unit. The SES id is what a kiosk scan resolves against.",
+        "id": { "S": "OtherUnitMbr" },
+        "location_id": { "S": "OtherTestUn1" },
+        "first_name": { "S": "Crossunit" },
+        "last_name": { "S": "Tester" },
+        "registration_number": { "S": "99887766" },
+        "ses_api_person_id": { "S": "87654321" },
+        "created_at": { "N": "1767225600" },
+        "updated_at": { "N": "1767225600" }
+      }
+    ],
+    "user": [
+      {
+        "_comment": "Super user: every location, all admin. No location_grants attribute — a String Set cannot be empty, so it is omitted rather than written empty.",
+        "id": { "S": "TestSuperUsr" },
+        "email": { "S": "super@seslogin.test" },
+        "super": { "BOOL": true },
+        "enabled": { "N": "1" },
+        "created_at": { "N": "1767225600" },
+        "updated_at": { "N": "1767225600" }
+      },
+      {
+        "_comment": "Ordinary user, granted Test Unit only — use this one to check that Other Test Unit is not reachable.",
+        "id": { "S": "TestUnitUser" },
+        "email": { "S": "testunit@seslogin.test" },
+        "super": { "BOOL": false },
+        "enabled": { "N": "1" },
+        "location_grants": { "SS": ["wBsJHYxy9snR"] },
+        "created_at": { "N": "1767225600" },
+        "updated_at": { "N": "1767225600" }
+      }
+    ]
+  }
+}

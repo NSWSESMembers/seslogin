@@ -20,7 +20,11 @@ pub fn yesterday_sydney() -> NaiveDate {
     chrono::Utc::now().with_timezone(&Sydney).date_naive() - Duration::days(1)
 }
 
-pub async fn run(db: &impl db::Handler, args: SummaryArgs) -> Result<()> {
+pub async fn run(
+    db: &impl db::Handler,
+    mailer: &impl mail::Handler,
+    args: SummaryArgs,
+) -> Result<()> {
     let date = args.date;
 
     let start_sydney = Sydney
@@ -169,7 +173,7 @@ pub async fn run(db: &impl db::Handler, args: SummaryArgs) -> Result<()> {
             println!("--- END ---");
         } else {
             info!("Sending activity summary to {}", effective_to);
-            mail::send_html(effective_to, &subject, &html).await?;
+            mailer.send_html(effective_to, &subject, &html).await?;
         }
     }
 

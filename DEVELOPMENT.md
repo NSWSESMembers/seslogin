@@ -8,8 +8,12 @@ If you just want to know how to submit a change, see [CONTRIBUTING.md](CONTRIBUT
 
 ## 1. Get AWS access
 
-The app talks to DynamoDB directly, so you need AWS credentials before anything will run
-locally — there is no local DynamoDB or offline mode.
+The normal setup talks to DynamoDB in AWS, so you need AWS credentials before anything will
+run locally.
+
+> If you can't get AWS access — or you're working with someone you'd rather not hand
+> credentials to — skip to [§9, Running without AWS](#9-running-without-aws). That path
+> needs no AWS account at all, at the cost of starting from an empty database.
 
 1. **Ask for an AWS IAM Identity Center account to be created.** Provide your preferred
    username and email address.
@@ -98,6 +102,9 @@ Note that the deployed `test`, `preprod`, and `prod` environments all point at t
 production database — so this local default is *safer* than any deployed environment, not
 representative of them.
 
+There is a third option: `DB_PREFIX=seslogin_local`, a database in a container on your own
+machine, holding nothing you didn't put there. See [§9](#9-running-without-aws).
+
 ---
 
 ## 4. Install the toolchain
@@ -170,6 +177,9 @@ Open <http://localhost:5173>.
 
 The first `make dev` compiles the whole Rust API and will take a few minutes. Subsequent
 runs are fast.
+
+`make dev-local` is the same thing against a local DynamoDB container and mocked AWS
+services, with no credentials at all — see [§9](#9-running-without-aws).
 
 To run a piece on its own:
 
@@ -257,6 +267,162 @@ See [api/README.md](api/README.md) for more.
 | Schema diff failure in `make check` | Regenerate `schema.graphql` (see §6) |
 | Prettier / `cargo fmt` failures | `make format` |
 | Data missing or looks stale | Expected — the dev tables are an old partial snapshot (see §3) |
+
+---
+
+## 9. Running without AWS
+
+`make dev-local` runs the whole app against a real DynamoDB Local plus in-process stand-ins
+for the two other AWS services the API uses. No AWS account, no credentials, no
+`.env.secret`.
+
+It runs a **different binary**, `poem-local`, rather than `poem` with a flag. The mocks
+aren't compiled into `poem` at all, so no environment variable or misconfiguration can talk
+the real server into mocking its own email.
+
+### One-time setup
+
+DynamoDB Local is a Java program that Amazon also ships as a container image. You need one
+of the two; **Java is the lighter choice** — a single process rather than a Linux VM, and
+native on Apple silicon:
+
+```bash
+brew install --cask temurin dynamodb-local     # JRE 17+ and Amazon's launcher
+```
+
+If you would rather not install the `dynamodb-local` cask, a JRE alone is enough — fetch
+Amazon's JAR into this repo instead (checksum-verified, gitignored):
+
+```bash
+brew install --cask temurin
+make local-fetch
+```
+
+Or use containers, if you already run them for something else:
+
+```bash
+brew install colima docker docker-compose && colima start
+```
+
+`make local-up` picks whichever it finds, preferring Java. Force one with `LOCAL_DDB=java`
+or `LOCAL_DDB=docker`. With neither installed it tells you what to install rather than
+failing obscurely.
+
+### Running
+
+```bash
+make dev-local
+```
+
+That starts DynamoDB Local, creates the tables if they're missing, then starts the same
+three processes `make dev` does. Open <http://localhost:5173> as usual.
+
+You still need the frontend config from [§2](#2-get-the-remaining-secrets) — `cp
+web/.env.local.example web/.env.local` — but not `.env.secret`.
+
+### What's real and what isn't
+
+| Service | Locally | Why |
+| --- | --- | --- |
+| DynamoDB | **Real** — [DynamoDB Local](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/DynamoDBLocal.html) on **:8100** | The data layer is written against real DynamoDB semantics (GSI key validation, empty sets, `BatchGetItem` unprocessed keys). A stand-in that merely stored rows would hide the bugs this codebase actually hits. |
+| SQS | Mocked (`mockqueue`) | Every queue feeds a worker Lambda that needs real AWS regardless, so locally the honest behaviour is to log the message that would have been sent. |
+| SES (email) | Mocked (`mockmail`) | The message is logged in full, which is how you read your own login code. Set `MOCK_MAIL_DIR` in [local/local.env](local/local.env) to also write each one to a file — easier for HTML emails. |
+| SQS queue URLs | Not needed | `poem` requires all three `*_QUEUE_URL` variables; `poem-local` never reads them, which is why it needs no `.env.secret`. |
+| SES headquarters API | Not available | `sync-members` / `sync-locations` / `nitc-export` need the real endpoint and credential. They aren't part of the local stack. |
+| Turnstile | Disabled | Already the case for all local dev. |
+
+The mocks are ordinary implementations of the [`queue::Handler`](api/src/queue.rs) and
+[`mail::Handler`](api/src/mail.rs) traits — the same shape as `db::Handler` / `dynamodb` /
+`mockdb`. `MyApp<DBH, Q, M>` is generic over all three, so each binary compiles exactly the
+implementations it uses; the shared server code lives in [api/src/server.rs](api/src/server.rs)
+and both `main`s are a dozen lines. Deployed environments are unaffected — the API Lambda
+builds against SQS and SES like it always did.
+
+Note that **DynamoDB is not mocked** in `poem-local`: `DB_PREFIX` and
+`AWS_ENDPOINT_URL_DYNAMODB` still decide which database it talks to. Pointing it at a real
+table gives you a server that provably cannot send email or enqueue work.
+
+### The local database
+
+`DB_PREFIX=seslogin_local`, a database of its own — it can't be confused with the
+`seslogin_test` snapshot (which holds real member data), let alone production.
+
+It starts empty; `make local-seed` fills it. That is part of `make dev-local`, so normally
+you don't run it yourself.
+
+### Seed data
+
+`make local-seed` writes [local/seed/](local/seed/) into the local database. It needs no AWS
+access — the fixtures are committed — and re-running it is safe, since every row is written
+by primary key.
+
+| | |
+| --- | --- |
+| **Test Unit** (`wBsJHYxy9snR`) | Real record and its two members, IDs unchanged, so ids you already use in testing still work |
+| **Other Test Unit** (`OtherTestUn1`) | Invented, with one member (`OtherUnitMbr`, SES id `87654321`) for testing a sign-in by someone from another unit |
+| **Categories** | All 220, plus the 99 NITC groups they point at |
+| **Users** | `super@seslogin.test` (super) and `testunit@seslogin.test` (Test Unit only) |
+
+No kiosk sessions — set those up per test.
+
+Two files, with different rules:
+
+- `from-prod.json` is generated by `make local-seed-extract`, the only part of this stack
+  that needs AWS access. It skips soft-deleted rows, and **refuses to write anything
+  carrying an `email` or `ses_api_person_id`** — this repo is public, so a future
+  re-extract must not quietly publish a real member. Review the diff before committing.
+- `synthetic.json` is hand-written and safe to edit. Keys beginning with `_` are notes,
+  not attributes.
+
+Rows are stored as raw DynamoDB items rather than going through `db::Handler`, because the
+trait's `create_*` methods generate their own IDs, and the fixture needs to preserve them.
+
+### Logging in
+
+Either way in works:
+
+- **Dev auth bypass** — `--dev-auth-user super@seslogin.test` (see
+  [§7](#7-bypassing-auth-for-local-ui-work)). Fastest, and the impersonated user keeps its
+  real permissions, so authorization still applies.
+- **The real email-code flow** — request a code and read it out of the API's own log, where
+  `mockmail` prints the whole message. Nothing is sent anywhere.
+
+### Managing the stack
+
+| Command | What it does |
+| --- | --- |
+| `make local-up` | Start DynamoDB Local (Java or Docker, whichever you have) |
+| `make local-down` | Stop it, keeping the data |
+| `make local-status` | Report whether it's running, and how |
+| `make local-reset` | Stop it and **delete every local table and row** |
+| `make local-fetch` | Download Amazon's DynamoDB Local JAR into `local/` |
+| `make local-tables` | Create any missing tables |
+| `make local-tables-check` | Fail if the local database is missing a table this codebase expects |
+| `make local-seed` | Write `local/seed/*.json` into the database |
+| `make local-seed-extract` | Refresh `from-prod.json` from the real database (**needs AWS**) |
+
+Environment knobs: `LOCAL_DDB=java|docker` forces a runtime, `LOCAL_DDB_PORT` moves the
+port (match it in `local/local.env`), and `LOCAL_DDB_MEMORY=1` runs in memory so nothing
+survives a restart — sensible in a throwaway sandbox, not on a laptop.
+
+On the Docker route only, `local/docker-compose.yml` also brings up a DynamoDB browser UI
+on <http://localhost:8101>. With the Java route, `npx dynamodb-admin` gives you the same
+thing without a container.
+
+Config lives in [local/local.env](local/local.env), which `make dev-local` exports before
+starting anything. Exported variables beat `.env` — dotenvy never overrides a variable that
+is already set — so that file, not `.env`, decides where local runs point. There is no
+variable selecting the mocks; that is what the `poem-local` binary is.
+
+### Schema drift
+
+The table definitions live in [api/src/bin/local-tables.rs](api/src/bin/local-tables.rs),
+transcribed by hand from [infra/dynamodb_test.tf](infra/dynamodb_test.tf). **That Terraform
+file is the source of truth.** If you add a table or a GSI there, add it here too, or local
+runs will fail with a `ValidationException` that doesn't obviously point at the cause.
+
+`local-tables` refuses to run unless the DynamoDB endpoint is on localhost, so a stray
+`DB_PREFIX` can't create tables in a real AWS account.
 
 ---
 

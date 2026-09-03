@@ -3,7 +3,7 @@ use clap::{Parser, Subcommand};
 use seslogin::db::Handler as _;
 use seslogin::nitc_export::{self, NitcConfig};
 use seslogin::request_metrics::{self, RequestMetrics};
-use seslogin::sqs_dispatch;
+use seslogin::sqs;
 use std::sync::Arc;
 
 #[derive(Parser, Debug)]
@@ -215,7 +215,7 @@ async fn main() -> Result<()> {
                         return anyhow::Ok(());
                     }
                     let new_version = clients.db.bump_period_version(period_id).await?;
-                    sqs_dispatch::enqueue_period_nitc_export(
+                    sqs::enqueue_period_nitc_export(
                         &clients.sqs.client,
                         &clients.sqs.queue_url,
                         period_id,
@@ -236,7 +236,7 @@ async fn main() -> Result<()> {
                         return anyhow::Ok(());
                     }
                     let new_version = clients.db.bump_nitc_event_version(event_id).await?;
-                    sqs_dispatch::enqueue_nitc_event_export(
+                    sqs::enqueue_nitc_event_export(
                         &clients.sqs.client,
                         &clients.sqs.queue_url,
                         event_id,
