@@ -160,7 +160,10 @@ pub async fn make_dynamodb_clients(
     config: &NitcConfig,
     db_prefix: String,
 ) -> Result<NitcClients<crate::dynamodb::Handler>> {
-    let db = crate::dynamodb::Handler::new(&db_prefix, false).await;
+    // Every write in this module is already gated on `config.dry_run`; opening the
+    // handler read-only during a dry run makes that a hard guarantee rather than a
+    // convention, so a missed gate fails loudly instead of writing.
+    let db = crate::dynamodb::Handler::new(&db_prefix, config.dry_run).await;
     let ses = SesClient::new(
         config.ses_api_base_url.clone(),
         config.ses_api_key.clone(),

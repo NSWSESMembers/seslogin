@@ -154,13 +154,13 @@ DB_PREFIX=seslogin_test \
 cargo run --bin sync-members --
 ```
 
-Run sync in apply mode by passing `--dry-run false`:
+Run sync in apply mode by passing `--apply`:
 
 ```bash
 SES_API_BASE_URL=https://your-ses-api.example.com \
 SES_API_KEY=your-static-token \
 DB_PREFIX=seslogin_test \
-cargo run --bin sync-members -- --dry-run false
+cargo run --bin sync-members -- --apply
 ```
 
 Lambda binary (consumes one SQS message per location from the dispatcher; reads config from env vars):
@@ -174,7 +174,16 @@ Optional flags:
 - `--location-id L10 --location-id L22` limits syncing to specific locations.
 - `--page-limit 100` overrides SES API page size.
 - `--max-retries 3` controls retries for transient SES API failures.
-- `--max-mutations 500` aborts apply mode if planned writes exceed threshold.
+- `--max-mutations 500` aborts apply mode if planned writes exceed threshold (default 100).
+- `--no-adopt` disables SES ID adoption, which is on by default.
+- `--absence-enabled false` disables the departed-member pass, which is on by default.
+
+The defaults for adoption, the absence pass, page size, retries and the mutation cap all
+match the `seslogin-sync-members` Lambda's environment in
+[`infra/lambda_sync.tf`](../infra/lambda_sync.tf), so a local dry run plans the same
+changes the deployed job would. Any of them can still be overridden by the same env var
+the Lambda uses (`SES_SYNC_ADOPT`, `SES_SYNC_ABSENCE_ENABLED`, …); an explicit flag wins
+over the env var.
 
 Behavior notes:
 

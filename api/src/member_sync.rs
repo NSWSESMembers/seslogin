@@ -49,7 +49,9 @@ pub struct AbsencePolicy {
 
 pub const DEFAULT_ABSENCE_GRACE_SECS: u64 = 7 * 24 * 3600;
 pub const DEFAULT_ABSENCE_MIN_CANDIDATES: usize = 5;
-pub const DEFAULT_ABSENCE_MAX_CANDIDATE_PERCENT: usize = 20;
+/// Raised from 20% after a unit hit the cap on a genuine round of departures. Note the
+/// floor above is what binds for any roster under 20 members, not this percentage.
+pub const DEFAULT_ABSENCE_MAX_CANDIDATE_PERCENT: usize = 25;
 /// 36h: the checker lambda alarms on a location that has not synced for 30h, so anything
 /// beyond this is already a known-bad location.
 pub const DEFAULT_ABSENCE_MAX_SYNC_STALENESS_SECS: u64 = 36 * 3600;
@@ -1659,15 +1661,22 @@ mod tests {
         assert_eq!(absence_candidate_cap(10, &policy), 5);
     }
 
+    /// Pins the shipped default: a 100-member roster may shed 25 in one cycle.
     #[test]
     fn cap_uses_percentage_for_large_rosters() {
-        assert_eq!(absence_candidate_cap(100, &AbsencePolicy::default()), 20);
+        assert_eq!(absence_candidate_cap(100, &AbsencePolicy::default()), 25);
     }
 
-    /// 20% of 26 is 5.2; integer arithmetic must land on 5, not 6.
+    /// 20% of 26 is 5.2; integer arithmetic must land on 5, not 6. Uses an explicit
+    /// percentage rather than the default so it keeps testing the arithmetic if the
+    /// shipped cap is retuned.
     #[test]
     fn cap_truncates_rather_than_rounds() {
-        assert_eq!(absence_candidate_cap(26, &AbsencePolicy::default()), 5);
+        let policy = AbsencePolicy {
+            max_candidate_percent: 20,
+            ..AbsencePolicy::default()
+        };
+        assert_eq!(absence_candidate_cap(26, &policy), 5);
     }
 
     // ── guards ──────────────────────────────────────────────────────────────
@@ -1718,7 +1727,7 @@ mod tests {
             outcome.skipped,
             Some(AbsenceSkip::OverCap {
                 candidates: 100,
-                cap: 20,
+                cap: 25,
                 synced_roster: 100
             })
         );
@@ -1757,7 +1766,7 @@ mod tests {
             outcome.skipped,
             Some(AbsenceSkip::OverCap {
                 candidates: 30,
-                cap: 20,
+                cap: 25,
                 synced_roster: 100
             })
         );
@@ -1842,7 +1851,9 @@ mod tests {
         let roster: Vec<db::Person> = (0..100)
             .map(|i| person(&format!("p{i}"), Some(&format!("{i}")), None, None))
             .collect();
-        let present: Vec<String> = (20..100).map(|i| i.to_string()).collect();
+        // 25 absent out of a synced roster of 100 lands exactly on the cap, which is
+        // allowed — only *exceeding* it trips the guard.
+        let present: Vec<String> = (25..100).map(|i| i.to_string()).collect();
         let f = Fixture {
             roster,
             present_ses_ids: present.iter().cloned().collect(),
@@ -1850,7 +1861,7 @@ mod tests {
         };
         let outcome = f.plan();
         assert_eq!(outcome.skipped, None);
-        assert_eq!(count_marks(&outcome), 20);
+        assert_eq!(count_marks(&outcome), 25);
     }
 
     /// A three-person unit losing everyone is within the floor and must still work.

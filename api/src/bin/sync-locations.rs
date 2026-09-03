@@ -11,9 +11,10 @@ use std::sync::Arc;
     about = "Sync SES headquarters units into seslogin locations"
 )]
 struct Cli {
-    /// Dry-run mode computes and prints changes without writing to DB.
-    #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
-    dry_run: bool,
+    /// Write the planned changes to the DB. Without it this is a dry run, which
+    /// computes and prints the changes without writing.
+    #[arg(long, default_value_t = false)]
+    apply: bool,
 
     /// SES API base URL, for example https://example.ses.api
     #[arg(long)]
@@ -79,7 +80,7 @@ async fn main() -> Result<()> {
         .scope(
             metrics.clone(),
             location_sync::run(SyncConfig {
-                dry_run: cli.dry_run,
+                dry_run: !cli.apply,
                 ses_api_base_url,
                 ses_api_key,
                 db_prefix,
@@ -97,7 +98,7 @@ async fn main() -> Result<()> {
 
     println!(
         "location sync complete mode={} ses_units_seen={} creates={} name_updates={} noops={}",
-        if cli.dry_run { "dry-run" } else { "apply" },
+        if cli.apply { "apply" } else { "dry-run" },
         stats.ses_units_seen,
         stats.creates,
         stats.name_updates,

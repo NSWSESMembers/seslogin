@@ -1,4 +1,4 @@
-import StatusCurrentDisplay from "../components/StatusCurrentDisplay";
+import StatusCurrentDisplay from "../kiosk/components/StatusCurrentDisplay";
 
 const now = Date.now() / 1000;
 const h = (hours: number) => now - hours * 3600;

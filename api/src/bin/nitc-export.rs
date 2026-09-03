@@ -12,9 +12,10 @@ struct Cli {
     #[command(subcommand)]
     command: Command,
 
-    /// Print what would happen without making any changes.
+    /// Make the changes. Without it this is a dry run, which prints what would
+    /// happen without writing to the DB, calling SES, or enqueuing SQS messages.
     #[arg(long, default_value_t = false, global = true)]
-    dry_run: bool,
+    apply: bool,
 
     /// Re-sync periods/events even if they are already synced.
     #[arg(long, default_value_t = false, global = true)]
@@ -114,7 +115,7 @@ fn build_config(cli: &Cli) -> Result<(NitcConfig, String)> {
 
     Ok((
         NitcConfig {
-            dry_run: cli.dry_run,
+            dry_run: !cli.apply,
             force: cli.force,
             skip_queue: cli.skip_queue,
             ses_api_base_url,
@@ -206,6 +207,13 @@ async fn main() -> Result<()> {
                 }
 
                 Command::BumpPeriod { period_id } => {
+                    if config.dry_run {
+                        println!(
+                            "[dry-run] period {} → would bump its version and enqueue a Phase 1 SQS message",
+                            period_id
+                        );
+                        return anyhow::Ok(());
+                    }
                     let new_version = clients.db.bump_period_version(period_id).await?;
                     sqs_dispatch::enqueue_period_nitc_export(
                         &clients.sqs.client,
@@ -220,6 +228,13 @@ async fn main() -> Result<()> {
                 }
 
                 Command::BumpEvent { event_id } => {
+                    if config.dry_run {
+                        println!(
+                            "[dry-run] event {} → would bump its version and enqueue a Phase 2 SQS message",
+                            event_id
+                        );
+                        return anyhow::Ok(());
+                    }
                     let new_version = clients.db.bump_nitc_event_version(event_id).await?;
                     sqs_dispatch::enqueue_nitc_event_export(
                         &clients.sqs.client,
