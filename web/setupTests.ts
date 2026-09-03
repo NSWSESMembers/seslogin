@@ -1,3 +1,7 @@
+// Registers toBeInTheDocument and friends for every test file. Without this each
+// test file has to import it itself, and the ones that forget fail with the
+// unhelpful "Invalid Chai property: toBeInTheDocument".
+import "@testing-library/jest-dom/vitest";
 import { vi } from "vitest";
 
 const localStorageMock = (() => {

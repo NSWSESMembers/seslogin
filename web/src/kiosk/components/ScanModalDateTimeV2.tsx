@@ -230,6 +230,19 @@ export function Inner(props: {
     return () => window.removeEventListener("keydown", onKeyDown);
   });
 
+  // "Now" is offered on the sign-out field only: signing out is the one entry
+  // whose right answer is almost always the current moment, and on the sign-in
+  // field the same chip would invite backdating a start to now.
+  const offerNow = props.field === "endTime";
+
+  function setToNow() {
+    const now = new Date();
+    setDate(dateOnly(now));
+    setDigits(toDigits(to12HourDigits(now.getHours(), now.getMinutes())));
+    setAmpm(now.getHours() >= 12 ? "PM" : "AM");
+    setCaret(0);
+  }
+
   function changeDay(delta: number) {
     const next = new Date(date);
     next.setDate(next.getDate() + delta);
@@ -285,6 +298,14 @@ export function Inner(props: {
             >
               Today
             </button>
+            {offerNow && (
+              <button
+                className={`${dateChipBase} ${dateChipOff}`}
+                onClick={setToNow}
+              >
+                Now
+              </button>
+            )}
           </div>
         </div>
         <div className="grid grid-cols-3 gap-2.5">

@@ -1,7 +1,9 @@
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it, vitest } from "vitest";
+import "@testing-library/jest-dom/vitest";
+import { cleanup, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vitest } from "vitest";
 import UserEvent from "@testing-library/user-event";
 import { Inner } from "./ScanModalDateTimeV2";
+import { isSameDay } from "../../lib/time";
 
 // The digit boxes are the only elements carrying the caret ring, so "which box
 // has border-accent" is the assertion for where the caret is.
@@ -27,13 +29,14 @@ function caretIndex(): number {
 }
 
 function renderInner(overrides?: {
+  field?: string;
   initialValue?: string;
   onSave?: (field: string, date: Date, value: string) => void;
   onClose?: () => void;
 }) {
   render(
     <Inner
-      field="startTime"
+      field={overrides?.field ?? "startTime"}
       initialDate={new Date(2026, 0, 15)}
       initialAmPm="AM"
       initialValue={overrides?.initialValue ?? "0930"}
@@ -44,6 +47,12 @@ function renderInner(overrides?: {
 }
 
 describe("ScanModalDateTimeV2", () => {
+  // setToNow reads the wall clock, so the "Now" test freezes it; nothing in the
+  // vitest config restores that, so put the real clock back by hand.
+  afterEach(() => {
+    vitest.useRealTimers();
+  });
+
   it("opens with the caret on the first digit even when prefilled", () => {
     renderInner();
     expect(digitText()).toBe("0930");
@@ -177,5 +186,34 @@ describe("ScanModalDateTimeV2", () => {
     renderInner({ onClose });
     await user.keyboard("{Escape}");
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("offers Now on the sign-out field only", () => {
+    renderInner({ field: "startTime" });
+    expect(screen.queryByText("Now")).toBeNull();
+    cleanup();
+    renderInner({ field: "endTime" });
+    expect(screen.getByText("Now")).toBeInTheDocument();
+  });
+
+  it("Now fills the current time and confirms to it", async () => {
+    const user = UserEvent.setup();
+    const onSave = vitest.fn();
+    // 14:07 today, so the 12-hour entry (0207 PM) has to resolve back to 1407.
+    const now = new Date();
+    now.setHours(14, 7, 0, 0);
+    vitest.setSystemTime(now);
+
+    renderInner({ field: "endTime", initialValue: "", onSave });
+    await user.click(screen.getByText("Now"));
+    expect(digitText()).toBe("0207");
+    expect(caretIndex()).toBe(0);
+
+    await user.click(screen.getByText("Confirm"));
+    expect(onSave).toHaveBeenCalledTimes(1);
+    expect(onSave.mock.calls[0][0]).toBe("endTime");
+    expect(onSave.mock.calls[0][2]).toBe("1407");
+    // and it moved the date off the initial 2026-01-15 onto today
+    expect(isSameDay(onSave.mock.calls[0][1], new Date())).toBe(true);
   });
 });
