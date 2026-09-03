@@ -4,6 +4,54 @@ import { Dialog } from "../../components/ui/Dialog";
 
 type AmPm = "AM" | "PM";
 
+// The four time digits, HHMM. `null` is a digit that hasn't been entered yet —
+// holes are possible in the middle, since the caret can be moved anywhere and a
+// digit deleted in place.
+type Digits = [string | null, string | null, string | null, string | null];
+
+// Index of the digit the orange ring sits on. There is always exactly one: the
+// ring wraps from the last digit back to the first rather than going away, so
+// the field is never in a state where pressing a number has no visible target.
+type Caret = 0 | 1 | 2 | 3;
+
+function toDigits(value: string): Digits {
+  return [0, 1, 2, 3].map((i) =>
+    i < value.length ? value.charAt(i) : null,
+  ) as Digits;
+}
+
+function isComplete(digits: Digits): boolean {
+  return digits.every((d) => d !== null);
+}
+
+// Where the ring starts: on the first blank digit, or on the first digit when
+// the field opens already full (which it normally does — it prefills with the
+// current time), so it is visible up front that pressing a number overwrites
+// the leading digit.
+function initialCaret(digits: Digits): Caret {
+  const first = digits.findIndex((d) => d === null);
+  return first === -1 ? 0 : (first as Caret);
+}
+
+// Whether `key` is allowed as the digit at `index`, given the digits around it.
+// Hours run 00-23 and minutes 00-59, and the hour rule cuts both ways now that
+// digits can be edited out of order: typing a 2 into the hour tens is only legal
+// if the hour units is 3 or less (or still blank).
+function isValidDigit(digits: Digits, index: number, key: number): boolean {
+  if (index === 0) {
+    if (key > 2) return false;
+    if (key === 2 && digits[1] !== null && Number(digits[1]) > 3) return false;
+    return true;
+  }
+  if (index === 1) {
+    return !(digits[0] === "2" && key > 3);
+  }
+  if (index === 2) {
+    return key <= 5;
+  }
+  return true;
+}
+
 function dateOnly(d: Date): Date {
   const result = new Date(d);
   result.setHours(0, 0, 0, 0);
@@ -30,10 +78,16 @@ const dateChipBase = "flex-1 rounded-[10px] border-2 p-2.5 text-xl shadow-sm";
 const dateChipOff =
   "border-neutral-300 bg-white text-neutral-700 dark:border-line dark:bg-surface-raised dark:text-ink";
 const dateChipSelected = "border-accent bg-accent text-white";
-// digitSpanBase / ampmMini* sit on the always-dark time "screen" (the neutral-800
+// digitBoxBase / ampmMini* sit on the always-dark time "screen" (the neutral-800
 // <th> below), so they stay light-on-dark in both themes — no dark: variants.
-const digitSpanBase =
-  "mx-1 inline-block box-border w-[52px] rounded-[10px] border-4 border-transparent bg-white text-center text-neutral-800";
+const digitBoxBase =
+  "mx-1 box-border w-[52px] cursor-pointer rounded-[10px] border-4 bg-white text-center text-neutral-800";
+// The orange caret ring, always on exactly one digit. The border *colour* lives
+// entirely in these two, never in digitBoxBase — two border-colour utilities in
+// one class string resolve by stylesheet order rather than by the order they are
+// written, so the ring would lose to the transparent default.
+const digitBoxCurrent = "border-accent";
+const digitBoxIdle = "border-transparent hover:border-accent-light";
 const ampmMiniBase = "rounded-lg border-2 px-3 py-[3px] text-base shadow-none";
 const ampmMiniOff = "border-neutral-300 bg-white text-neutral-700";
 const ampmMiniSelected = "border-accent bg-accent text-white";
@@ -52,59 +106,129 @@ export function Inner(props: {
   initialAmPm: AmPm;
   initialValue: string;
 }) {
-  const [value, setValue] = useState<string>(props.initialValue);
+  const [digits, setDigits] = useState<Digits>(() =>
+    toDigits(props.initialValue),
+  );
+  const [caret, setCaret] = useState<Caret>(() =>
+    initialCaret(toDigits(props.initialValue)),
+  );
   const [ampm, setAmpm] = useState<AmPm>(props.initialAmPm);
   const [date, setDate] = useState<Date>(props.initialDate);
 
   const isToday = isSameDay(date, new Date());
   const isYesterday = isSameDay(date, yesterday());
+  const complete = isComplete(digits);
 
   // "00" or "13"-"23" can only mean 24-hour time; "01"-"12" is ambiguous and
   // needs the AM/PM toggle to resolve
   const hourEntered =
-    value.length >= 2 ? parseInt(value.slice(0, 2), 10) : null;
+    digits[0] !== null && digits[1] !== null
+      ? Number(digits[0] + digits[1])
+      : null;
   const isUnambiguous24Hour =
     hourEntered !== null && (hourEntered === 0 || hourEntered >= 13);
 
   function button(key: string) {
     if (key === "DEL") {
-      setValue(value.slice(0, -1));
+      del();
       return;
     }
-    // field opens prefilled with the current time — typing a digit while it's
-    // still full starts a fresh entry rather than being a no-op
-    if (value.length >= 4) {
-      if (Number(key) <= 2) {
-        setValue(key);
-      }
-      return;
-    }
-    if (validate(Number(key))) {
-      setValue(value + key);
-    }
+    const digit = Number(key);
+    // A digit is always replaced in place — entering one never disturbs the
+    // others.
+    if (!isValidDigit(digits, caret, digit)) return;
+    const next = [...digits] as Digits;
+    next[caret] = key;
+    setDigits(next);
+    // Move right, wrapping past the last digit back to the first so a second
+    // pass over the same field can start straight away.
+    setCaret(caret === 3 ? 0 : ((caret + 1) as Caret));
   }
 
-  function validate(key: number): boolean {
-    const position = value.length;
-    // hour digits: 00-23 ("00" and "13"-"23" mean 24-hour time)
-    if (position === 0 && key > 2) return false;
-    if (position === 1 && value.charAt(0) === "2" && key > 3) return false;
-    // minute digits: 00-59
-    if (position === 2 && key > 5) return false;
+  // Backspace: clear the digit under the ring if there is one, otherwise the one
+  // to its left.
+  function del() {
+    const target = digits[caret] !== null ? caret : caret - 1;
+    if (target < 0) return;
+    const next = [...digits] as Digits;
+    next[target] = null;
+    setDigits(next);
+    setCaret(target as Caret);
+  }
 
-    return true;
+  // Arrow keys clamp rather than wrap: unlike entering a digit, moving the ring
+  // is a deliberate aim at one box, and wrapping off an end would overshoot it.
+  function moveCaret(delta: -1 | 1) {
+    setCaret(Math.min(3, Math.max(0, caret + delta)) as Caret);
   }
 
   function char(index: number): string {
-    if (index < value.length) {
-      return value.charAt(index);
-    }
-    return "\xa0"; // non-breaking space
+    return digits[index] ?? "\xa0"; // non-breaking space
   }
 
   function current(index: number): boolean {
-    return index === value.length;
+    return index === caret;
   }
+
+  // Tapping a digit parks the ring on it, so the next key press replaces it.
+  // Kept out of the tab order and denied focus on press: the keypad and the
+  // window-level key handler below are the input surface, and a focused digit
+  // would swallow Enter.
+  function digitBox(index: number) {
+    return (
+      <button
+        type="button"
+        tabIndex={-1}
+        aria-label={`${index < 2 ? "Hour" : "Minute"} digit ${(index % 2) + 1}`}
+        className={`${digitBoxBase} ${current(index) ? digitBoxCurrent : digitBoxIdle}`}
+        onMouseDown={(event) => event.preventDefault()}
+        onClick={() => setCaret(index as Caret)}
+      >
+        {char(index)}
+      </button>
+    );
+  }
+
+  // Not scoped to a ref/focus: the modal owns the screen while it is open, and
+  // the on-screen keypad is the primary input, so nothing else should be
+  // listening. No dependency array — every render re-registers a handler closed
+  // over the current digits, caret and date.
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      let handled = true;
+      if (event.key.length === 1 && event.key >= "0" && event.key <= "9") {
+        button(event.key);
+      } else if (event.key === "Backspace" || event.key === "Delete") {
+        del();
+      } else if (event.key === "ArrowLeft") {
+        moveCaret(-1);
+      } else if (event.key === "ArrowRight") {
+        moveCaret(1);
+      } else if (event.key === "Enter") {
+        if (complete) confirm();
+      } else if (event.key === "Escape") {
+        props.onClose();
+      } else if (
+        !isUnambiguous24Hour &&
+        (event.key === "a" || event.key === "A")
+      ) {
+        setAmpm("AM");
+      } else if (
+        !isUnambiguous24Hour &&
+        (event.key === "p" || event.key === "P")
+      ) {
+        setAmpm("PM");
+      } else {
+        handled = false;
+      }
+      // Swallowing Enter/Space-alikes also stops a keypad button that happens to
+      // have focus from firing a second time.
+      if (handled) event.preventDefault();
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  });
 
   function changeDay(delta: number) {
     const next = new Date(date);
@@ -116,8 +240,8 @@ export function Inner(props: {
   }
 
   function confirm() {
-    const hourTyped = parseInt(value.slice(0, 2), 10);
-    const minutes = parseInt(value.slice(2, 4), 10);
+    const hourTyped = Number(`${digits[0]}${digits[1]}`);
+    const minutes = Number(`${digits[2]}${digits[3]}`);
     const hour24 =
       hourTyped === 0 || hourTyped >= 13
         ? hourTyped
@@ -167,27 +291,9 @@ export function Inner(props: {
           <div className="col-span-3 rounded-[14px] bg-neutral-800 px-2.5 py-3.5 text-center font-bold text-white">
             <div className="flex items-center justify-center gap-4">
               <div className="flex items-center text-[56px]">
-                <span
-                  className={`${digitSpanBase} ${current(0) ? "border-accent" : ""}`}
-                >
-                  {char(0)}
-                </span>
-                <span
-                  className={`${digitSpanBase} ${current(1) ? "border-accent" : ""}`}
-                >
-                  {char(1)}
-                </span>
-                :
-                <span
-                  className={`${digitSpanBase} ${current(2) ? "border-accent" : ""}`}
-                >
-                  {char(2)}
-                </span>
-                <span
-                  className={`${digitSpanBase} ${current(3) ? "border-accent" : ""}`}
-                >
-                  {char(3)}
-                </span>
+                {digitBox(0)}
+                {digitBox(1)}:{digitBox(2)}
+                {digitBox(3)}
               </div>
               {isUnambiguous24Hour ? (
                 <span className="rounded-lg bg-white px-2.5 py-2 text-sm font-bold tracking-wider text-neutral-800">
@@ -249,7 +355,7 @@ export function Inner(props: {
           </button>
           <button
             className={`col-span-3 ${keyConfirmBtn}`}
-            disabled={value.length < 4}
+            disabled={!complete}
             onClick={confirm}
           >
             Confirm
