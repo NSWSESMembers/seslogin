@@ -1761,31 +1761,39 @@ impl db::Handler for Handler {
         &self,
         person_id: &str,
         location_id: &str,
-        signed_in_session_id: &str,
+        signed_in_session_id: Option<&str>,
+        start_time: Option<u64>,
     ) -> db::Result<Period> {
         if self.read_only {
             return Err(db::Error::MutationDisabled);
         }
         let id = new_id();
-        let unix_time = crate::clock::now_sec();
+        let now = crate::clock::now_sec();
+        // The record is created now; only the attendance start_time is backdated.
+        let start_time = start_time.unwrap_or(now);
 
-        let resp = self
+        let mut req = self
             .client
             .put_item()
             .table_name(self.table_name("period"))
             .item("id", AttributeValue::S(id.clone()))
             .item("person_id", AttributeValue::S(person_id.to_string()))
             .item("location_id", AttributeValue::S(location_id.to_string()))
-            .item("start_time", AttributeValue::N(unix_time.to_string()))
-            .item(
-                "signed_in_session_id",
-                AttributeValue::S(signed_in_session_id.to_string()),
-            )
+            .item("start_time", AttributeValue::N(start_time.to_string()))
             .item("location_open", AttributeValue::S(location_id.to_string()))
             .item("location_live", AttributeValue::S(location_id.to_string()))
             .item("v", AttributeValue::N("1".to_string()))
-            .item("created_at", AttributeValue::N(unix_time.to_string()))
-            .item("updated_at", AttributeValue::N(unix_time.to_string()))
+            .item("created_at", AttributeValue::N(now.to_string()))
+            .item("updated_at", AttributeValue::N(now.to_string()));
+        // Omit the attribute entirely when there's no originating kiosk — never write Null.
+        if let Some(session_id) = signed_in_session_id {
+            req = req.item(
+                "signed_in_session_id",
+                AttributeValue::S(session_id.to_string()),
+            );
+        }
+
+        let resp = req
             .return_consumed_capacity(ReturnConsumedCapacity::Total)
             .send()
             .await
@@ -1803,17 +1811,17 @@ impl db::Handler for Handler {
             comment: None,
             location_id: location_id.to_string(),
             category_id: None,
-            start_time: unix_time,
+            start_time,
             end_time: None,
-            signed_in_session_id: Some(signed_in_session_id.to_string()),
+            signed_in_session_id: signed_in_session_id.map(str::to_string),
             signed_out_session_id: None,
             version: 1,
             nitc_event_id: None,
             nitc_participant_id: None,
             nitc_exported_version: None,
             deleted: None,
-            created_at: Some(unix_time),
-            updated_at: Some(unix_time),
+            created_at: Some(now),
+            updated_at: Some(now),
         })
     }
 

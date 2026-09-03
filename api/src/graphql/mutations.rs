@@ -1831,7 +1831,7 @@ impl<A: App + HasDb + HasSqs + Send + Sync + 'static> MutationRoot<A> {
             let rec = self
                 .app
                 .db()
-                .start_period_for_person_location(&person_id, location_id, session_id)
+                .start_period_for_person_location(&person_id, location_id, Some(session_id), None)
                 .await?;
 
             Ok(RegisterResult {
