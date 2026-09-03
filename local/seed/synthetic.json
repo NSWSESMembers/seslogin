@@ -110,14 +110,14 @@
         "updated_at": { "N": "1767225600" }
       },
       {
-        "_comment": "A key-enrolled kiosk at Test A Unit — the other half of the pair. Instead of a code it carries the public key of a fixed keypair, and signs every request with the private half (SLKey scheme, see api/src/session_key.rs). local/seed/kiosk-signing-key.json holds the matching private key and local/examples/kiosk-scan.mjs installs it, so kiosk testing can start on the scan screen rather than at enrolment. key_expires_at is 2100 so the fixture does not rot. Must not also carry a code: `code` and `key_fingerprint` both back GSIs and the two enrolment styles are mutually exclusive.",
+        "_comment": "A key-enrolled kiosk at Test A Unit — the other half of the pair. Instead of a code it carries the public key of a fixed keypair, and signs every request with the private half (SLKey scheme, see api/src/session_key.rs). local/seed/kiosk-signing-key.json holds the matching private key and local/examples/kiosk-scan.mjs installs it, so kiosk testing can start on the scan screen rather than at enrolment. key_expires_at is 2100 so the fixture does not rot. Must not also carry a code: `code` and `key_fingerprint` both back GSIs and the two enrolment styles are mutually exclusive. Its `config` turns on easyTimeEntry, so this kiosk reaches the V2 time-entry modal (ScanModalDateTimeV2) on the sign-out adjust screen; TestAKiosk01 leaves it off and keeps the legacy picker, so both branches are reachable from the seed without editing a session first.",
         "id": { "S": "TestAKiosk02" },
         "name": { "S": "Test A Unit key kiosk" },
         "location_id": { "S": "TestAUnit001" },
         "public_key": { "S": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEvALkIay5sYTuasJMSVwCz2AVMihxpHowsPsaocqd10H8nVd69Byl/9saRdjwSGDC0+Inl8OhgYf+XCq1/ridwA==" },
         "key_fingerprint": { "S": "23d64be11f5c92f98670c4326e88ff12b06ec78ce329145c6c3f3573bbbe5dba" },
         "key_expires_at": { "N": "4102444800" },
-        "config": { "S": "{}" },
+        "config": { "S": "{\"easyTimeEntry\":true}" },
         "active": { "N": "1" },
         "last_contact": { "N": "1767225600" },
         "created_at": { "N": "1767225600" },
