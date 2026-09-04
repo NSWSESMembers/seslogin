@@ -212,7 +212,9 @@ fn kiosk_signing_key_matches_its_session() {
         .find(|s_| id(s_) == session_id)
         .unwrap_or_else(|| panic!("kiosk-signing-key.json names missing session {session_id}"));
 
-    let spki_b64 = key["public_key_spki_b64"].as_str().expect("public_key_spki_b64");
+    let spki_b64 = key["public_key_spki_b64"]
+        .as_str()
+        .expect("public_key_spki_b64");
     let spki = BASE64.decode(spki_b64).expect("public key is base64 DER");
 
     assert_eq!(
