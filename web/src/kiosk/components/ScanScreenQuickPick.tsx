@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import type { QuickPickSuggestions } from "../ScanState";
-import { categories, categoryIconSrc } from "../../lib/categories";
+import { categoryIconSrc, findLeafCategory } from "../../lib/categories";
 import { scanViewProps, type ScreenPosition } from "../../styles";
 import { Button } from "../../components/ui/Button";
 
@@ -11,25 +11,6 @@ type QuickPickItem = {
   icon: string;
   peopleNames?: string[];
 };
-
-// The DB `Category` only carries id/name; icon + top-level grouping still live in
-// the static kiosk category tree, so look leaf entries up by id (same lookup
-// ScanScreenAdjust does to show the confirm-screen category icon). The group
-// name is included so e.g. "Training > AIIMS" and "Trainer > AIIMS" — leaf
-// names that repeat under different top-level groups — aren't shown as
-// identical, indistinguishable buttons.
-function findLeafCategory(
-  categoryId: string,
-): { groupName: string; name: string; icon: string } | null {
-  for (const top of categories) {
-    for (const sub of top.subcategories || []) {
-      if (sub.id === categoryId) {
-        return { groupName: top.name, name: sub.name, icon: sub.icon };
-      }
-    }
-  }
-  return null;
-}
 
 function QuickPickButton(props: {
   item: QuickPickItem;

@@ -906,3 +906,21 @@ export const categories: Category[] = [
 export function categoryIconSrc(icon: string): string {
   return `/image/categories/${icon}.svg`;
 }
+
+// The DB `Category` only carries id/name; icon + top-level grouping still live in
+// this static kiosk category tree, so look leaf entries up by id (used by the
+// quick-pick screen and the confirm-screen icon). The group name is included so
+// e.g. "Training > AIIMS" and "Trainer > AIIMS" — leaf names that repeat under
+// different top-level groups — aren't shown as identical, indistinguishable buttons.
+export function findLeafCategory(
+  categoryId: string,
+): { groupName: string; name: string; icon: string } | null {
+  for (const top of categories) {
+    for (const sub of top.subcategories || []) {
+      if (sub.id === categoryId) {
+        return { groupName: top.name, name: sub.name, icon: sub.icon };
+      }
+    }
+  }
+  return null;
+}

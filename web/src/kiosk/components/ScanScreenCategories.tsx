@@ -3,7 +3,7 @@ import { categories, categoryIconSrc } from "../../lib/categories";
 import type { Category } from "../../lib/categories";
 import { scanViewProps, type ScreenPosition } from "../../styles";
 
-function CategoryButton(props: {
+export function CategoryButton(props: {
   id: string;
   name: string;
   icon: string;
