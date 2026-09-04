@@ -60,7 +60,7 @@ describe("useEnrollmentQr", () => {
     await waitFor(() => expect(result.current.qrDataUrl).not.toBeNull());
     expect(result.current.fingerprint).toBe("abc123");
     expect(result.current.enrollUrl).toBe(
-      `${window.location.origin}/admin/sessions/enroll?fp=abc123`,
+      `${window.location.origin}/enroll?fp=abc123`,
     );
     expect(toDataURL.mock.calls[0][0]).toBe(result.current.enrollUrl);
     await waitFor(() =>

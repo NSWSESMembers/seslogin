@@ -18,9 +18,9 @@ export function enrollHeaders(): Record<string, string> {
   };
 }
 
-/** The admin page a scanned enrollment QR code opens, pre-filled for this device. */
+/** The page a scanned enrollment QR code opens, pre-filled for this device. */
 export function enrollUrlForFingerprint(fingerprint: string): string {
-  return `${window.location.origin}/admin/sessions/enroll?fp=${fingerprint}`;
+  return `${window.location.origin}/enroll?fp=${fingerprint}`;
 }
 
 /**

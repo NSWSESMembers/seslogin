@@ -1,5 +1,11 @@
 import { Suspense } from "react";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router";
+import {
+  BrowserRouter,
+  Routes,
+  Route,
+  Navigate,
+  useLocation,
+} from "react-router";
 import { ErrorBoundary } from "react-error-boundary";
 
 import { lazyWithReload } from "./lib/lazyWithReload";
@@ -12,6 +18,7 @@ import Home from "./home/Home";
 
 // Admin and kiosk are mutually-exclusive areas, lazily loaded as separate chunks.
 const AdminApp = lazyWithReload("admin", () => import("./admin/AdminApp"));
+const EnrollApp = lazyWithReload("enroll", () => import("./enroll/EnrollApp"));
 const KioskMain = lazyWithReload("kiosk", () => import("./kiosk/KioskMain"));
 const StatusDemo = lazyWithReload("demo", () => import("./demo/StatusDemo"));
 const TimeEntryDemo = lazyWithReload(
@@ -22,6 +29,14 @@ const PeriodEdit = lazyWithReload(
   "period",
   () => import("./period/PeriodEdit"),
 );
+
+/** Preserves `?fp=...` while sending an old enrollment link to its new home. */
+function RedirectToEnroll() {
+  const location = useLocation();
+  return (
+    <Navigate to={{ pathname: "/enroll", search: location.search }} replace />
+  );
+}
 
 export default function Router() {
   return (
@@ -40,6 +55,16 @@ export default function Router() {
 
             {/* Admin routes - auth required at /admin/* */}
             <Route path="/admin/*" element={<AdminApp />} />
+
+            {/* Kiosk enrollment - auth required, but a standalone mobile-first
+                page rather than part of the admin dashboard (see EnrollApp.tsx).
+                The old path redirects for any enrollment link/QR code shown by a
+                kiosk that hasn't reloaded since this moved. */}
+            <Route path="/enroll" element={<EnrollApp />} />
+            <Route
+              path="/admin/sessions/enroll"
+              element={<RedirectToEnroll />}
+            />
 
             {/* Kiosk routes - auth required at /kiosk */}
             <Route path="/scan" element={<Navigate to="/kiosk" replace />} />
