@@ -17,6 +17,20 @@ export function formatFullDateTime(date: Date): string {
   return fullDateTimeFormatter.format(date);
 }
 
+const longDateTimeWithWeekdayFormatter = new Intl.DateTimeFormat(undefined, {
+  weekday: "long",
+  year: "numeric",
+  month: "long",
+  day: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+});
+
+export function formatLongDateTimeWithWeekday(date: Date): string {
+  return longDateTimeWithWeekdayFormatter.format(date);
+}
+
 export function formatTimeDiff(start: Date, end: Date): string {
   const diffMs = end.getTime() - start.getTime();
   const diffSecs = Math.round(diffMs / 1000);

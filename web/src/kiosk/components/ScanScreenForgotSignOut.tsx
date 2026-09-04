@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { TransactionSignedOut } from "../ScanState";
-import { formatFullDateTime, formatSeconds } from "../../lib/time";
+import { formatLongDateTimeWithWeekday, formatSeconds } from "../../lib/time";
 import { scanViewProps, type ScreenPosition } from "../../styles";
 import { Button } from "../../components/ui/Button";
 
@@ -25,7 +25,7 @@ function Inner(props: {
       <h1 className="m-0 mb-4 text-[3em]">Did you forget to sign out?</h1>
       <p className="m-0 mb-2 text-[1.6em]">You&apos;ve been signed in since</p>
       <p className="m-0 mb-6 text-[2em] font-bold">
-        {formatFullDateTime(transaction.startTime)}
+        {formatLongDateTimeWithWeekday(transaction.startTime)}
       </p>
       <p className="m-0 mb-8 max-w-3xl text-[1.4em]">
         That&apos;s about {signedInFor} ago. If you pick "Yeah", we&apos;ll
