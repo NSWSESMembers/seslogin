@@ -29,7 +29,7 @@ import {
   kioskKey,
   launch,
   finish,
-  settle,
+  settleKiosk,
   requireStack,
 } from "./fixtures.mjs";
 
@@ -107,7 +107,7 @@ await page.goto(`${BASE_URL}/kiosk/${PROFILE}`, { waitUntil: "networkidle" });
 
 // The signing key is loaded from IndexedDB before the first request can be signed, so the
 // kiosk renders its loading state first. Wait that out rather than guessing a delay.
-await settle(page);
+await settleKiosk(page);
 
 const body = await page.locator("body").innerText();
 if (/enter the .*code|enrol/i.test(body)) {

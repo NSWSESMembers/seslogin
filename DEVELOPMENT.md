@@ -527,12 +527,17 @@ your own. Any browser automation works; this is Playwright, which
 needs no repo changes because it isn't a dependency of `web/`:
 
 ```bash
-npm i playwright && npx playwright install chromium    # once, outside the repo
+npm i playwright --no-save && npx playwright install chromium    # once, at the repo root
 ```
+
+Install it at the **repo root**: the scripts are ES modules, and Node ignores `NODE_PATH`
+for ESM, so it resolves `playwright` only from a `node_modules` beside them or above them.
+`/node_modules/` is gitignored for this.
 
 Point it at a Chromium you already have with `executablePath` if downloading one is
 awkward (CI images and sandboxes usually ship one; `PLAYWRIGHT_BROWSERS_PATH` is the
-other half of that).
+other half of that, and `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1` stops the install fetching a
+second copy).
 
 ```js
 import { chromium } from "playwright";
@@ -582,6 +587,34 @@ Four things cost more time than they should the first time:
 - **`page.locator("body").innerText()`** is worth more than the screenshot while iterating:
   it diffs cleanly, and it tells you what a blank-looking page actually rendered.
 
+**Starting from a screen the scripts don't reach.** `kiosk-scan.mjs` leaves you ready to
+sign a member *in*; the sign-out screens need someone already signed in. Write the open
+period straight into the database rather than clicking a sign-in first:
+
+```bash
+# 3h ago: the ordinary sign-out flow. 13h ago crosses the 12h threshold and hits
+# the forgot-to-sign-out interstitial instead.
+make local-cli ARGS="period create-signin --person TestAMember1 \
+  --location TestAUnit001 --session TestAKiosk02 --hours-ago 3 --dry-run false"
+```
+
+`make local-cli ARGS="..."` is `cli` pointed at the local database; on its own `cli` reads
+`.env` and talks to the dev snapshot in AWS. It writes, so `--dry-run false` is what makes
+it real, and the scanning kiosk must be at the same location or the period is invisible to
+it. `session set-config-key` works the same way when you want to flip a kiosk setting
+without going through the admin UI.
+
+**Clean up between runs.** A script that stops halfway leaves its period open, and that
+changes what the next run does — scanning a member who is already signed in signs them
+*out*. `make local-seed` won't clear it (it only writes the fixtures back, and no fixture
+describes a period); `make local-clear` will.
+
+**On the kiosk specifically**, every scan screen stays mounted and parked off-side with a
+CSS transform. So `body.innerText()` returns text from screens that aren't showing, and a
+loose selector can resolve to an off-screen copy of a control. Scope to
+`page.locator("div.translate-x-0")`, and use `settleKiosk(page)` rather than `settle(page)`
+so the 500ms slide finishes before you touch anything.
+
 Three independent ways to confirm a mutation really landed, in ascending order of trust:
 the success toast, a full `page.reload()` (which proves it isn't just Relay store state),
 and the row itself — see below. The API log is the fastest place to see a mutation fail:
@@ -619,6 +652,8 @@ friendlier option when you're browsing rather than scripting.
 | `make local-tables` | Create any missing tables |
 | `make local-tables-check` | Fail if the local database is missing a table this codebase expects |
 | `make local-seed` | Write `local/seed/*.json` into the database |
+| `make local-clear` | Delete the rows the app writes (periods, ephemeral state, passkeys), keeping the fixtures |
+| `make local-cli ARGS="..."` | Run the `cli` inspector/editor against the local database |
 | `node local/examples/*.mjs` | Put a browser into a state worth testing from (see [local/examples/](local/examples/)) |
 | `make local-seed-extract` | Refresh `from-prod.json` from the real database (**needs AWS**) |
 
