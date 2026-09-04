@@ -9,7 +9,7 @@ import {
 } from "../../lib/time";
 import type { TransactionSignedOut } from "../ScanState";
 import { categories, categoryIconSrc } from "../../lib/categories";
-import { scanView, scanViewPosition, type ScreenPosition } from "../../styles";
+import { scanViewProps, type ScreenPosition } from "../../styles";
 import { Button } from "../../components/ui/Button";
 import { Dialog, DialogActions, DialogTitle } from "../../components/ui/Dialog";
 
@@ -411,7 +411,10 @@ export default function ScanScreenAdjust(props: {
 }) {
   return (
     <div
-      className={`${scanView} ${scanViewPosition[props.screenPosition]} inset-y-0 flex flex-col items-center justify-center`}
+      {...scanViewProps(
+        props.screenPosition,
+        "inset-y-0 flex flex-col items-center justify-center",
+      )}
     >
       {props.transaction && (
         <Inner
