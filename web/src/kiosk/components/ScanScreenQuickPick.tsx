@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import type { QuickPickSuggestions } from "../ScanState";
 import { categoryIconSrc, findLeafCategory } from "../../lib/categories";
-import { scanView, scanViewPosition, type ScreenPosition } from "../../styles";
+import { scanViewProps, type ScreenPosition } from "../../styles";
 import { Button } from "../../components/ui/Button";
 
 type QuickPickItem = {
@@ -180,7 +180,7 @@ export default function ScanScreenQuickPick(props: {
   const { uuid, suggestions, onSelectCategory } = props;
 
   return (
-    <div className={`${scanView} ${scanViewPosition[props.screenPosition]}`}>
+    <div {...scanViewProps(props.screenPosition)}>
       {uuid && suggestions && (
         <Inner
           key={uuid}

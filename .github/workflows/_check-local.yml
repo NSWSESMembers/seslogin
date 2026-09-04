@@ -1,0 +1,67 @@
+name: Local stack check (reusable)
+on:
+  workflow_call:
+
+env:
+  RUSTFLAGS: "-Dwarnings"
+
+jobs:
+  local_check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Rust toolchain (pinned by api/rust-toolchain.toml)
+        run: |
+          channel=$(sed -nE 's/^channel *= *"(.*)"/\1/p' api/rust-toolchain.toml)
+          rustup toolchain install "$channel" --profile minimal
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: api
+
+      # The scripts are plain ESM run with bare node, not part of the web build, so they
+      # get no formatter or linter from web/'s config. Borrow web/'s prettier for them.
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Install web dependencies (for prettier)
+        run: cd web && npm ci
+      # Deliberately local/examples only, not all of local/: local/seed/*.json is written
+      # by `local-seed extract` in serde_json's pretty format, so prettier would fight the
+      # generator and fail after every legitimate re-extract.
+      - name: Check local/examples formatting
+        run: cd web && npx prettier --check ../local/examples
+      - name: Check local/ scripts parse
+        run: for f in local/examples/*.mjs; do node --check "$f"; done
+
+      # dynamodb.sh and e2e.sh are the two pieces of the local stack with no other
+      # coverage at all: nothing compiles them and nothing type-checks them.
+      - name: Shellcheck the local stack scripts
+        run: shellcheck local/*.sh
+
+      # Fixture invariants: paired values agreeing, references resolving, docs and
+      # fixtures naming the same ids. Needs no database.
+      - name: Check seed fixture invariants
+        run: cd api && cargo test --locked --test seed_fixtures
+
+      # The part that genuinely needs a database. api/src/bin/local-tables.rs is
+      # transcribed by hand from infra/dynamodb_test.tf, so this is what catches the two
+      # drifting apart — and it seeds for real, which no other job does.
+      - name: Install DynamoDB Local
+        run: make local-fetch
+      - name: Start DynamoDB Local
+        run: make local-up
+      - name: Create tables
+        run: make local-tables
+      - name: Every expected table exists
+        run: make local-tables-check
+      - name: Seed the fixtures into a real database
+        run: make local-seed
+      - name: Stop DynamoDB Local
+        if: always()
+        run: make local-down

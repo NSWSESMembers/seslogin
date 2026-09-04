@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { TransactionSignedOut } from "../ScanState";
 import { formatFullDateTime, formatSeconds } from "../../lib/time";
-import { scanView, scanViewPosition, type ScreenPosition } from "../../styles";
+import { scanViewProps, type ScreenPosition } from "../../styles";
 import { Button } from "../../components/ui/Button";
 
 const ONE_HOUR_MS = 60 * 60 * 1000;
@@ -67,7 +67,10 @@ export default function ScanScreenForgotSignOut(props: {
 }) {
   return (
     <div
-      className={`${scanView} ${scanViewPosition[props.screenPosition]} inset-y-0 flex flex-col items-center justify-center text-center`}
+      {...scanViewProps(
+        props.screenPosition,
+        "inset-y-0 flex flex-col items-center justify-center text-center",
+      )}
     >
       {props.uuid && props.transaction && (
         <Inner

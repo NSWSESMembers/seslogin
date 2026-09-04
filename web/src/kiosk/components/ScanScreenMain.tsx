@@ -15,7 +15,7 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import { scanView, scanViewPosition, type ScreenPosition } from "../../styles";
+import { scanViewProps, type ScreenPosition } from "../../styles";
 import { inputBase } from "../../components/ui/inputStyles";
 import { Button } from "../../components/ui/Button";
 import {
@@ -307,7 +307,7 @@ export default function ScanScreenMain(props: {
   }
 
   return (
-    <div className={`${scanView} ${scanViewPosition[screenPosition]}`}>
+    <div {...scanViewProps(screenPosition)}>
       <p className="mt-25 text-[2em]">Please enter or scan your SES ID</p>
 
       <form

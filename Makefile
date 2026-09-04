@@ -91,6 +91,23 @@ local-seed:
 local-seed-extract:
 	@cd api && cargo run --quiet --bin local-seed -- extract
 
+# Delete the rows the app itself writes — periods, ephemeral state, passkeys —
+# keeping the seeded fixtures. `local-seed` cannot do this: it only put_items the
+# fixture rows, and no fixture describes a period, so a sign-in a script left
+# behind survives every reseed and changes what the next run does (scanning a
+# member who is already signed in signs them out, not in). Cheaper than
+# local-reset, which destroys and rebuilds every table.
+local-clear:
+	@$(LOCAL_ENV) cd api && cargo run --quiet --bin local-seed -- clear
+
+# Run the `cli` inspector/editor against the local database rather than whatever
+# .env points at. Everything after ARGS= is passed straight through:
+#   make local-cli ARGS="period list --location TestAUnit001"
+#   make local-cli ARGS="period create-signin --person TestAMember1 \
+#       --location TestAUnit001 --hours-ago 13 --dry-run false"
+local-cli:
+	@$(LOCAL_ENV) cd api && cargo run --quiet --bin cli -- $(ARGS)
+
 local-tables:
 	@$(LOCAL_ENV) cd api && cargo run --quiet --bin local-tables
 
@@ -109,6 +126,7 @@ gha-lint:
 format:
 	(cd api && cargo fmt)
 	(cd web && npm run format)
+	(cd web && npx prettier --write ../local/examples)
 	(cd infra && terraform fmt -recursive)
 
 test:
@@ -124,6 +142,12 @@ check:
 	@cd web && npm run lint
 	@cd web && npm run typecheck
 	@cd web && npm run build
+	@echo "Running local stack checks..."
+	@cd web && npx prettier --check ../local/examples
+	@for f in local/examples/*.mjs; do node --check "$$f" || exit 1; done
+	@if command -v shellcheck >/dev/null 2>&1; then shellcheck local/*.sh; \
+	else echo "  (shellcheck not installed; skipping local/*.sh)"; fi
+	@cd api && cargo test --locked --test seed_fixtures
 	@echo "Running infra checks..."
 	@cd infra && terraform fmt -recursive -check -diff
 	@echo "Running API checks..."

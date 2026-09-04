@@ -59,6 +59,16 @@ enum Command {
     },
     /// Write the fixtures into the local database. Needs no AWS access.
     Apply,
+    /// Delete every row the app itself writes — periods, ephemeral state, passkeys —
+    /// leaving the seeded fixtures alone. Needs no AWS access.
+    ///
+    /// `apply` cannot do this: it only ever `put_item`s the fixture rows, and no
+    /// fixture describes a period, so a sign-in left behind by a script survives
+    /// every reseed. That matters because an open period changes what the *next*
+    /// run does — scanning a member who is already signed in signs them out
+    /// instead of in — so a script that half-finished quietly breaks the one after
+    /// it. `local-reset` fixes it too, by destroying and rebuilding every table.
+    Clear,
 }
 
 // ── DynamoDB item <-> JSON ────────────────────────────────────────────────────
@@ -294,6 +304,57 @@ fn load_tables(path: &Path) -> Result<Map<String, Value>> {
         .clone())
 }
 
+/// Tables the running app writes into that no fixture owns. Anything seeded is
+/// left alone: `apply` overwrites those, so wiping them would only mean a
+/// mandatory reseed. Keep this in step with `local-tables`.
+const TRANSIENT_TABLES: &[&str] = &["period", "ephemeral_state", "webauthn_credential"];
+
+async fn clear() -> Result<()> {
+    let endpoint = seslogin::local_dev::require_local_dynamodb_endpoint()?;
+    let prefix = std::env::var("DB_PREFIX").map_err(|_| anyhow!("DB_PREFIX must be set"))?;
+    let client = seslogin::local_dev::dynamodb_client().await;
+    println!("clearing {prefix}_* at {endpoint}");
+
+    let mut total = 0usize;
+    for table in TRANSIENT_TABLES {
+        let name = format!("{prefix}_{table}");
+        let mut deleted = 0usize;
+        let mut start_key = None;
+        loop {
+            let page = client
+                .scan()
+                .table_name(&name)
+                // Only the key is needed to delete, and a period row is large.
+                .projection_expression("id")
+                .set_exclusive_start_key(start_key.clone())
+                .send()
+                .await
+                .with_context(|| format!("scanning {name}"))?;
+            for item in page.items() {
+                let id = item
+                    .get("id")
+                    .ok_or_else(|| anyhow!("{name}: a row has no `id`"))?;
+                client
+                    .delete_item()
+                    .table_name(&name)
+                    .key("id", id.clone())
+                    .send()
+                    .await
+                    .with_context(|| format!("deleting from {name}"))?;
+                deleted += 1;
+            }
+            start_key = page.last_evaluated_key().cloned();
+            if start_key.is_none() {
+                break;
+            }
+        }
+        println!("    {:>20}: {} row(s) deleted", table, deleted);
+        total += deleted;
+    }
+    println!("{total} row(s) deleted");
+    Ok(())
+}
+
 async fn apply() -> Result<()> {
     let endpoint = seslogin::local_dev::require_local_dynamodb_endpoint()?;
     let prefix = std::env::var("DB_PREFIX").map_err(|_| anyhow!("DB_PREFIX must be set"))?;
@@ -340,5 +401,6 @@ async fn main() -> Result<()> {
             allow_personal_data,
         } => extract(&source_prefix, allow_personal_data).await,
         Command::Apply => apply().await,
+        Command::Clear => clear().await,
     }
 }
