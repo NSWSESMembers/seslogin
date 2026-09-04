@@ -12,7 +12,8 @@ export type Subcategory = {
 };
 
 /**
- * Category data for the kiosk sign-out screens, paired with the SVG icon set.
+ * Category data for the kiosk sign-out screens, paired with the icon set in
+ * `assets/categories/` (rendered via the `CategoryIcon` component).
  */
 export const categories: Category[] = [
   {
@@ -901,11 +902,6 @@ export const categories: Category[] = [
     ],
   },
 ];
-
-/** Build the icon URL for a category. */
-export function categoryIconSrc(icon: string): string {
-  return `/image/categories/${icon}.svg`;
-}
 
 // The DB `Category` only carries id/name; icon + top-level grouping still live in
 // this static kiosk category tree, so look leaf entries up by id (used by the

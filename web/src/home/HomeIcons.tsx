@@ -5,7 +5,7 @@
  * `currentColor`, so the icons follow the `--color-navy` token into dark mode
  * and pick up the row's hover colour along with its text. Drawn on the same
  * 48-unit grid, 2.4 stroke and `#fb6c0d` accent as the category icons in
- * `public/image/categories/`, so the two sets read as one family.
+ * `assets/categories/`, so the two sets read as one family.
  */
 
 type IconProps = { className?: string };

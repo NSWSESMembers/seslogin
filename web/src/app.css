@@ -142,6 +142,41 @@
   src: url("/fonts/atkinson-hyperlegible-bold.woff2");
 }
 
+/* Icon color channels shared by the category icon set (`src/assets/categories/`)
+ * and the homepage icons (`home/HomeIcons.tsx`). Each icon file keeps its original
+ * navy/orange hex values as literal attributes (so it still looks right opened
+ * standalone in a design tool) and layers one of these classes on top; a real
+ * stylesheet rule always outranks a presentation attribute, so the class wins
+ * once the icon is rendered in the app. `icon-stroke`/`icon-fill` ride the
+ * ordinary `color` cascade (`currentColor`), so a `text-navy` (or
+ * `group-hover:text-...`) class on the icon's wrapper drives them the same way
+ * text color already does elsewhere. The accent channel can't also use `color`
+ * (currentColor is a single channel and `icon-stroke`/`icon-fill` already claim
+ * it), so it reads a dedicated `--icon-accent` custom property instead, falling
+ * back to the standard `--color-accent` token when nothing overrides it -
+ * override it per instance with an arbitrary-property utility, e.g.
+ * `group-hover:[--icon-accent:var(--color-accent-light)]`.
+ *
+ * Defined via `@utility` (Tailwind's own custom-utility mechanism) rather
+ * than a plain `@layer base` class: `eslint-plugin-better-tailwindcss`'s
+ * `no-unknown-classes` rule only recognizes classes it can see in Tailwind's
+ * own utility set, so a plain custom class passes lint right up until the
+ * first `className="icon-stroke"` literal (the category icons only ever hit
+ * these classes from inside injected raw SVG text, invisible to that rule -
+ * `HomeIcons.tsx` writes them directly in JSX). */
+@utility icon-stroke {
+  stroke: currentColor;
+}
+@utility icon-fill {
+  fill: currentColor;
+}
+@utility icon-accent {
+  fill: var(--icon-accent, var(--color-accent));
+}
+@utility icon-accent-stroke {
+  stroke: var(--icon-accent, var(--color-accent));
+}
+
 /* Legacy global typography the whole app was built around; Preflight zeroes these. */
 @layer base {
   body {

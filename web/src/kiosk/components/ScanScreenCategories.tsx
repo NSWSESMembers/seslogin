@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { categories, categoryIconSrc } from "../../lib/categories";
+import { categories } from "../../lib/categories";
 import type { Category } from "../../lib/categories";
 import { scanViewProps, type ScreenPosition } from "../../styles";
+import { CategoryIcon } from "../../components/CategoryIcon";
 
 export function CategoryButton(props: {
   id: string;
@@ -11,7 +12,6 @@ export function CategoryButton(props: {
   small?: boolean;
 }) {
   const { name, icon, onSelect, small } = props;
-  const iconSrc = categoryIconSrc(icon);
 
   return (
     <li className="inline-block list-none align-bottom">
@@ -23,8 +23,8 @@ export function CategoryButton(props: {
             : "m-3 box-content flex h-28.75 w-37.5 cursor-pointer flex-col content-start rounded-lg border-2 border-line-strong bg-surface-raised p-2.5 text-lg wrap-break-word text-ink active:bg-menu"
         }
       >
-        <img
-          src={iconSrc}
+        <CategoryIcon
+          icon={icon}
           className={`mx-auto block ${small ? "max-h-12 max-w-12" : ""}`}
         />
         {name}
