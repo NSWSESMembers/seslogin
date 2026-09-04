@@ -121,7 +121,9 @@ if (/enter the .*code|enrol/i.test(body)) {
 }
 
 console.log(`Kiosk ready at ${BASE_URL}/kiosk/${PROFILE}`);
-console.log(`  session TestAKiosk02 at Test A Unit, key ${kioskKey.fingerprint}`);
+console.log(
+  `  session TestAKiosk02 at Test A Unit, key ${kioskKey.fingerprint}`,
+);
 console.log("  scan a member: 10000001 (Alice) or 10000002 (Bob)");
 console.log("  from the other unit: 20000001 (Crossunit Tester)");
 console.log(`\n${body.slice(0, 600)}`);

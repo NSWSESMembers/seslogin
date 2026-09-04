@@ -3,10 +3,10 @@
 Two scripts that put a browser into a state worth testing from, so you don't spend the
 first ten minutes of every session logging in by hand.
 
-| Script | Leaves you at |
-| --- | --- |
-| [`kiosk-scan.mjs`](kiosk-scan.mjs) | The kiosk scan screen, signed in as the seeded key-enrolled kiosk — ready to sign a member in or out |
-| [`admin-login.mjs`](admin-login.mjs) | The admin dashboard, as a chosen user with a chosen location selected |
+| Script                               | Leaves you at                                                                                        |
+| ------------------------------------ | ---------------------------------------------------------------------------------------------------- |
+| [`kiosk-scan.mjs`](kiosk-scan.mjs)   | The kiosk scan screen, signed in as the seeded key-enrolled kiosk — ready to sign a member in or out |
+| [`admin-login.mjs`](admin-login.mjs) | The admin dashboard, as a chosen user with a chosen location selected                                |
 
 Both assume the local stack is up and seeded:
 

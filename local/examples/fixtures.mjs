@@ -73,7 +73,10 @@ export async function finish(browser, page, screenshotPath) {
 
 /** Fail loudly and early rather than after a confusing timeout deep in a script. */
 export async function requireStack() {
-  for (const url of [BASE_URL, process.env.API_URL ?? "http://localhost:8000"]) {
+  for (const url of [
+    BASE_URL,
+    process.env.API_URL ?? "http://localhost:8000",
+  ]) {
     try {
       await fetch(url, { method: "GET" });
     } catch {

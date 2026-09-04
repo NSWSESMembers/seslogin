@@ -496,6 +496,16 @@ authenticates with the seeded token above — the same code path a real login pr
 build happens before anything is backgrounded, so a compile error fails the command rather
 than leaving a server that never comes up.
 
+**`make local-e2e` does not create `web/.env.local`**, and unlike `make dev-local` it
+mostly doesn't need one: authenticating with a seeded token skips the login page, which is
+the only thing `VITE_TURNSTILE_DISABLED` affects. Both example scripts work on a fresh
+clone without it. You want it as soon as you use the **real email-code login**, since
+Turnstile can't work against localhost:
+
+```bash
+cp web/.env.local.example web/.env.local     # only needed for the real login flow
+```
+
 ### Driving the UI from a script
 
 The local stack plus the seeded token gets you a browser check of a real change — not a unit
@@ -624,6 +634,26 @@ Config lives in [local/local.env](local/local.env), which `make dev-local` expor
 starting anything. Exported variables beat `.env` — dotenvy never overrides a variable that
 is already set — so that file, not `.env`, decides where local runs point. There is no
 variable selecting the mocks; that is what the `poem-local` binary is.
+
+### What guards the fixtures
+
+The seed carries several *paired* values — a token's plaintext and its sha256, the kiosk's
+private key and the public half on its session, an id in a fixture and the same id in these
+docs. Change one side and nothing complained; the break surfaced later as a puzzling 401.
+[api/tests/seed_fixtures.rs](api/tests/seed_fixtures.rs) now checks each pairing, that
+references resolve, that every kiosk has exactly one enrolment style, and that the ids the
+examples hard-code still exist. It reads JSON only — no database, no AWS — so it runs in
+`cargo test` with everything else.
+
+The rest of the stack is covered by [the local-stack workflow](.github/workflows/_check-local.yml),
+which on any change under `local/` formats and parses the example scripts, shellchecks
+`local/*.sh`, and then does the part that needs a real database: create the tables, run
+`local-tables-check`, and seed the fixtures. That last group is what catches
+[api/src/bin/local-tables.rs](api/src/bin/local-tables.rs) drifting from
+[infra/dynamodb_test.tf](infra/dynamodb_test.tf), which is transcribed by hand.
+
+`local/seed/*.json` is deliberately **not** under prettier: `local-seed extract` writes it
+from Rust, so a formatter would fight the generator on every re-extract.
 
 ### Schema drift
 

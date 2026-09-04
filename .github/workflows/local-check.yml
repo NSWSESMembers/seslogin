@@ -1,0 +1,15 @@
+name: Local stack check
+on:
+  pull_request:
+    paths:
+      - 'local/**'
+      - 'api/src/bin/local-*.rs'
+      - 'api/tests/seed_fixtures.rs'
+      - 'infra/dynamodb_test.tf'
+      - 'Makefile'
+      - '.github/workflows/local-check.yml'
+      - '.github/workflows/_check-local.yml'
+
+jobs:
+  local_check:
+    uses: ./.github/workflows/_check-local.yml
