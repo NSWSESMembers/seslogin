@@ -84,6 +84,19 @@ export async function fetchGraphQL(
   }
   const responseBody = await resp.json();
 
+  if (Array.isArray(responseBody?.errors) && responseBody.errors.length > 0) {
+    const errors: ReadonlyArray<{ message?: string; path?: unknown }> =
+      responseBody.errors;
+    if (errors.length === 1) {
+      console.log(`GraphQL field error for ${request.name}:`, errors[0]);
+    } else {
+      console.log(
+        `GraphQL field errors for ${request.name}: ${errors.length} errors`,
+        errors.map((e) => ({ path: e?.path, message: e?.message })),
+      );
+    }
+  }
+
   // A mutation that reports a field error is a failure, not a partial success:
   // the write already happened (data is non-null), but some nested field on the
   // result couldn't be read back. Routing this into the same MutationFieldError
