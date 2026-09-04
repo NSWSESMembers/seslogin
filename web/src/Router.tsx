@@ -18,6 +18,10 @@ const TimeEntryDemo = lazyWithReload(
   "demo",
   () => import("./demo/TimeEntryDemo"),
 );
+const CategoryButtonDemo = lazyWithReload(
+  "demo",
+  () => import("./demo/CategoryButtonDemo"),
+);
 const PeriodEdit = lazyWithReload(
   "period",
   () => import("./period/PeriodEdit"),
@@ -52,6 +56,10 @@ export default function Router() {
                 ones. */}
             <Route path="/demo/status" element={<StatusDemo />} />
             <Route path="/demo/time" element={<TimeEntryDemo />} />
+            <Route
+              path="/demo/category/:id?"
+              element={<CategoryButtonDemo />}
+            />
 
             {/* Member edit link - authenticated by the slp_ token in the URL
                 fragment, which browsers never send to the server */}
