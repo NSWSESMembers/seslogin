@@ -109,6 +109,7 @@ gha-lint:
 format:
 	(cd api && cargo fmt)
 	(cd web && npm run format)
+	(cd web && npx prettier --write ../local/examples)
 	(cd infra && terraform fmt -recursive)
 
 test:
@@ -124,6 +125,12 @@ check:
 	@cd web && npm run lint
 	@cd web && npm run typecheck
 	@cd web && npm run build
+	@echo "Running local stack checks..."
+	@cd web && npx prettier --check ../local/examples
+	@for f in local/examples/*.mjs; do node --check "$$f" || exit 1; done
+	@if command -v shellcheck >/dev/null 2>&1; then shellcheck local/*.sh; \
+	else echo "  (shellcheck not installed; skipping local/*.sh)"; fi
+	@cd api && cargo test --locked --test seed_fixtures
 	@echo "Running infra checks..."
 	@cd infra && terraform fmt -recursive -check -diff
 	@echo "Running API checks..."
