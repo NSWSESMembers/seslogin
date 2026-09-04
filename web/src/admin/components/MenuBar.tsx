@@ -20,6 +20,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: "/admin/locations", label: "Locations", superOnly: true },
   { to: "/admin/users", label: "Users", superOnly: true },
   { to: "/admin/categories", label: "Categories", superOnly: true },
+  { to: "/admin/api-tokens", label: "API Tokens", superOnly: true },
 ];
 
 interface MenuBarProps {

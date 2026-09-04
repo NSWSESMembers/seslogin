@@ -14,6 +14,9 @@ import CategoryEdit from "./pages/CategoryEdit";
 import NitcGroupList from "./pages/NitcGroupList";
 import NitcGroupNew from "./pages/NitcGroupNew";
 import NitcGroupEdit from "./pages/NitcGroupEdit";
+import ApiTokenList from "./pages/ApiTokenList";
+import ApiTokenNew from "./pages/ApiTokenNew";
+import ApiTokenEdit from "./pages/ApiTokenEdit";
 import MembersList from "./pages/MembersList";
 import MembersNew from "./pages/MembersNew";
 import MembersEdit from "./pages/MembersEdit";
@@ -61,6 +64,11 @@ export default function AdminApp() {
             <Route path=":nitcGroupId" element={<NitcGroupEdit />} />
           </Route>
           <Route path=":categoryId" element={<CategoryEdit />} />
+        </Route>
+        <Route path="api-tokens">
+          <Route index element={<ApiTokenList />} />
+          <Route path="new" element={<ApiTokenNew />} />
+          <Route path=":apiTokenId" element={<ApiTokenEdit />} />
         </Route>
         <Route path="members">
           <Route index element={<MembersList />} />

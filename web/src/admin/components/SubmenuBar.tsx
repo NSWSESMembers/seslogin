@@ -68,6 +68,7 @@ export default function SubmenuBar({ isSuper }: SubmenuBarProps) {
   const isLocationsSection = useMatch("/admin/locations/*");
   const isUsersSection = useMatch("/admin/users/*");
   const isCategoriesSection = useMatch("/admin/categories/*");
+  const isApiTokensSection = useMatch("/admin/api-tokens/*");
   const isSettingsSection = useMatch("/admin/settings/*");
 
   if (isMembersSection) {
@@ -142,6 +143,17 @@ export default function SubmenuBar({ isSuper }: SubmenuBarProps) {
             to: "/admin/categories/nitc-groups/new",
             label: "New NITC group",
           },
+        ]}
+      />
+    );
+  }
+
+  if (isSuper && isApiTokensSection) {
+    return (
+      <Submenu
+        items={[
+          { to: "/admin/api-tokens", label: "List" },
+          { to: "/admin/api-tokens/new", label: "New" },
         ]}
       />
     );
