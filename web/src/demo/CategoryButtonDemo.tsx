@@ -1,10 +1,7 @@
 import { useNavigate, useParams } from "react-router";
 import { CategoryButton } from "../kiosk/components/ScanScreenCategories";
-import {
-  categories,
-  categoryIconSrc,
-  findLeafCategory,
-} from "../lib/categories";
+import { categories, findLeafCategory } from "../lib/categories";
+import { CategoryIcon } from "../components/CategoryIcon";
 
 // Standalone preview of the kiosk category button (CategoryButton, from
 // ScanScreenCategories) and its icon, for a given category id — every size,
@@ -77,9 +74,11 @@ export default function CategoryButtonDemo() {
           Renders the real kiosk <code>CategoryButton</code> (from{" "}
           <code>ScanScreenCategories</code>) for a category id, at every size,
           theme and state it supports on the scan screen, plus the icon alone on
-          a few backgrounds. The icon's own stroke color is baked into the SVG
-          and does not adapt to dark mode — that's expected, not a bug in this
-          demo.
+          a few backgrounds. The icon is inlined SVG (see{" "}
+          <code>CategoryIcon</code>), so its navy follows{" "}
+          <code>currentColor</code> (dark mode included) and its orange accent
+          follows the <code>--icon-accent</code> custom property — the "Dark
+          surface" tile below is what that looks like without any per-icon work.
         </p>
       </div>
 
@@ -187,10 +186,9 @@ export default function CategoryButtonDemo() {
                             className={`flex items-center justify-center rounded-sm ${bg.className}`}
                             style={{ width: size + 32, height: size + 32 }}
                           >
-                            <img
-                              src={categoryIconSrc(match.icon)}
-                              width={size}
-                              height={size}
+                            <CategoryIcon
+                              icon={match.icon}
+                              style={{ width: size, height: size }}
                             />
                           </div>
                         </td>

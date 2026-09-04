@@ -1,8 +1,9 @@
 import { useEffect } from "react";
 import type { QuickPickSuggestions } from "../ScanState";
-import { categoryIconSrc, findLeafCategory } from "../../lib/categories";
+import { findLeafCategory } from "../../lib/categories";
 import { scanViewProps, type ScreenPosition } from "../../styles";
 import { Button } from "../../components/ui/Button";
+import { CategoryIcon } from "../../components/CategoryIcon";
 
 type QuickPickItem = {
   categoryId: string;
@@ -18,7 +19,6 @@ function QuickPickButton(props: {
   onSelect: () => void;
 }) {
   const { item, small, onSelect } = props;
-  const iconSrc = categoryIconSrc(item.icon);
 
   return (
     <li className="flex list-none">
@@ -30,8 +30,8 @@ function QuickPickButton(props: {
             : "m-2 box-content flex min-h-28.75 w-37.5 cursor-pointer flex-col content-start rounded-lg border-2 border-line-strong bg-surface-raised p-2.5 text-lg wrap-break-word text-ink active:bg-menu"
         }
       >
-        <img
-          src={iconSrc}
+        <CategoryIcon
+          icon={item.icon}
           className={`mx-auto block ${small ? "max-h-12 max-w-12" : ""}`}
         />
         <span className={`opacity-60 ${small ? "text-xs" : "text-sm"}`}>

@@ -8,10 +8,11 @@ import {
   isSameDay,
 } from "../../lib/time";
 import type { TransactionSignedOut } from "../ScanState";
-import { categories, categoryIconSrc } from "../../lib/categories";
+import { categories } from "../../lib/categories";
 import { scanViewProps, type ScreenPosition } from "../../styles";
 import { Button } from "../../components/ui/Button";
 import { Dialog, DialogActions, DialogTitle } from "../../components/ui/Dialog";
+import { CategoryIcon } from "../../components/CategoryIcon";
 
 const LONG_PERIOD_CONFIRM_THRESHOLD_MS = 12 * 60 * 60 * 1000;
 
@@ -315,7 +316,7 @@ function Inner(props: {
         <div className="flex items-center">
           <div className="min-w-48.75 p-2.5 text-right">Category:</div>
           <div className="flex flex-1 items-center justify-center gap-2.5 p-2.5">
-            <img src={categoryIconSrc(categoryIcon)} />
+            <CategoryIcon icon={categoryIcon} />
             <div className="pr-5 text-left text-xl whitespace-nowrap">
               <div>{categoryName}</div>
               <div>{subcategoryName}</div>
