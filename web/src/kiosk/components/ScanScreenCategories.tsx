@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { categories, categoryIconSrc } from "../../lib/categories";
 import type { Category } from "../../lib/categories";
-import { scanView, scanViewPosition, type ScreenPosition } from "../../styles";
+import { scanViewProps, type ScreenPosition } from "../../styles";
 
 function CategoryButton(props: {
   id: string;
@@ -111,7 +111,7 @@ export default function ScanScreenCategories(props: {
   smallCategories?: boolean;
 }) {
   return (
-    <div className={`${scanView} ${scanViewPosition[props.screenPosition]}`}>
+    <div {...scanViewProps(props.screenPosition)}>
       <Inner
         onSelectCategory={props.onSelectCategory}
         key={props.uuid}
