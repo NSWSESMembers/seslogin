@@ -10,6 +10,10 @@ local/.dynamodb.pid
 local/.dynamodb.log
 local/dynamodb-local/
 local/.e2e/
+# Toolchain the session-start hook downloads (actionlint, terraform) so `make check`
+# can run in a fresh cloud container.
+/.claude/tools/
+
 # Only web/ has a package.json, but the Playwright examples in local/examples are
 # run with a playwright installed wherever Node can resolve it -- often here.
 /node_modules/

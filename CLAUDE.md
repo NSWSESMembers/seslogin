@@ -214,6 +214,8 @@ make local-reset          # stop it and delete every local table and row
 make local-tables         # create any missing tables
 make local-tables-check   # fail if a table this codebase expects is missing
 make local-seed           # write local/seed/*.json into the database
+make local-clear          # delete rows the app writes (periods, ephemeral state, passkeys)
+make local-cli ARGS="..." # run the `cli` inspector/editor against the local database
 make local-seed-extract   # refresh local/seed/from-prod.json (the only step needing AWS)
 ```
 
@@ -255,6 +257,21 @@ describe a person or a place (locations, members, users, tokens, sessions), all 
 `from-prod.json` holds reference data only (categories, NITC groups). So no committed
 fixture describes a real unit or person. Rows are raw DynamoDB items, not `db::Handler`
 calls, because `create_*` generates its own IDs and the fixture must preserve them.
+`make local-seed` only *writes* the fixture rows, so it cannot undo anything the running
+app wrote — and no fixture describes a `period`. A script that stops halfway therefore
+leaves an open sign-in behind, which changes what the next run does: scanning a member who
+is already signed in signs them **out**, not in. `make local-clear` drops those rows and
+keeps the fixtures; `make local-reset` is the bigger hammer that rebuilds every table.
+
+To reach the sign-out screens without clicking through a sign-in first, write the open
+period directly — `--hours-ago 13` crosses the 12h threshold and lands on the
+forgot-to-sign-out interstitial instead of the ordinary flow:
+
+```bash
+make local-cli ARGS="period create-signin --person TestAMember1 \
+  --location TestAUnit001 --session TestAKiosk02 --hours-ago 3 --dry-run false"
+```
+
 `local-seed-extract` skips soft-deleted rows and still **refuses to write a fixture
 containing `email` or `ses_api_person_id`** — a backstop now, rather than the thing keeping
 production data out of a public repo.
