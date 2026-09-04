@@ -22,7 +22,7 @@ vitest.mock("../lib/useEnrollmentQr", () => ({
       ? {
           info: null,
           fingerprint: "abcdef0123456789ffff",
-          enrollUrl: "https://example.test/admin/sessions/enroll?fp=abcdef",
+          enrollUrl: "https://example.test/enroll?fp=abcdef",
           qrDataUrl: "data:image/png;base64,QR",
           error: null,
         }

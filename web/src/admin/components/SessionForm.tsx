@@ -2,6 +2,7 @@ import { useState, type ChangeEvent } from "react";
 import { FieldList, FormField } from "../../components/ui/FormField";
 import { OptionList, OptionRow } from "../../components/ui/OptionList";
 import TextInput from "../../components/ui/TextInput";
+import Select from "../../components/ui/Select";
 import { Button } from "../../components/ui/Button";
 
 interface SessionFormProps {
@@ -10,6 +11,13 @@ interface SessionFormProps {
   initialHealthcheckUrl: string;
   isMutationInFlight: boolean;
   onSubmit: (formData: FormData) => void | Promise<void>;
+  /**
+   * When set, renders a Location <select> as the first field (name
+   * "locationId") for the caller to read from the submitted FormData. Only the
+   * QR-code kiosk enrollment form passes this — every other caller already has
+   * a location from context and keeps it out of the form entirely.
+   */
+  locations?: ReadonlyArray<{ readonly id: string; readonly name: string }>;
 }
 
 type ConfigEditorMode = "basic" | "advanced";
@@ -192,6 +200,27 @@ function initializeConfigState(initialConfig: string): InitialConfigState {
   return {
     normalizedConfigJson: JSON.stringify(normalizedConfig, null, 2),
   };
+}
+
+function LocationField({
+  locations,
+}: {
+  locations: ReadonlyArray<{ readonly id: string; readonly name: string }>;
+}) {
+  return (
+    <FormField label={<label htmlFor="locationId">Location</label>}>
+      <Select name="locationId" id="locationId" required defaultValue="">
+        <option value="" disabled>
+          Select a location…
+        </option>
+        {locations.map((location) => (
+          <option key={location.id} value={location.id}>
+            {location.name}
+          </option>
+        ))}
+      </Select>
+    </FormField>
+  );
 }
 
 function NameField({ initialName }: { initialName: string }) {
@@ -465,6 +494,7 @@ export default function SessionForm({
   initialHealthcheckUrl,
   isMutationInFlight,
   onSubmit,
+  locations,
 }: SessionFormProps) {
   const initialState = initializeConfigState(initialConfig);
   const [configEditorMode, setConfigEditorMode] =
@@ -534,6 +564,7 @@ export default function SessionForm({
   return (
     <form action={onSubmit}>
       <FieldList>
+        {locations != null && <LocationField locations={locations} />}
         <NameField initialName={initialName} />
         <ConfigEditorModeControl
           configEditorMode={configEditorMode}
