@@ -21,9 +21,9 @@ export default function LocationPicker({
   );
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-surface-raised">
-      <div className="w-full max-w-150 rounded-lg bg-surface p-10 shadow-md">
-        <h1 className="mt-0 mb-2.5 font-title text-3xl text-ink">
+    <div className="flex min-h-screen items-center justify-center bg-surface px-4 py-8 sm:bg-surface-raised sm:px-6 sm:py-12">
+      <div className="w-full max-w-150 rounded-none bg-surface p-6 shadow-none sm:rounded-lg sm:p-10 sm:shadow-md">
+        <h1 className="mt-0 mb-2.5 font-title text-2xl text-ink sm:text-3xl">
           Select Your Location
         </h1>
         <p className="mb-8 text-ink-muted">

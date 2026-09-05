@@ -18,7 +18,7 @@ export function Dialog(props: {
         onClick={props.onDismiss}
       ></div>
       <div
-        className={`relative z-10 flex ${props.width ?? "w-150"} max-w-[90vw] animate-dialog-in flex-col gap-4 rounded-xl bg-surface p-6 shadow-2xl motion-reduce:animate-none ${props.className ?? ""}`}
+        className={`relative z-10 flex ${props.width ?? "w-150"} max-w-[92vw] animate-dialog-in flex-col gap-4 rounded-xl bg-surface p-4 shadow-2xl motion-reduce:animate-none sm:p-6 ${props.className ?? ""}`}
       >
         {props.children}
       </div>
