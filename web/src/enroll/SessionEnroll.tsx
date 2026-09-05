@@ -156,6 +156,7 @@ function SessionEnrollForm({ fingerprint }: { fingerprint: string }) {
           initialConfig={NEW_SESSION_CONFIG}
           initialHealthcheckUrl=""
           locations={enabledLocations}
+          showHealthcheckUrl={false}
           isMutationInFlight={isMutationInFlight}
           onSubmit={handleSubmit}
         />
