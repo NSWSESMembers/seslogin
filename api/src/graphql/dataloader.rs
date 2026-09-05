@@ -5,6 +5,7 @@ use std::iter::zip;
 use std::sync::Arc;
 
 use crate::app::App;
+use crate::app::HasCache;
 use crate::app::HasDb;
 use crate::db;
 use crate::db::Handler;
@@ -12,17 +13,17 @@ use crate::db::Handler;
 use super::query::{Category, Location, Person, Session, User};
 use super::{CategoryId, LocationId, NitcEventId, PersonId, SessionId, UserId};
 
-pub struct DatabaseLoader<A: App + HasDb + Send + Sync> {
+pub struct DatabaseLoader<A: App + HasDb + HasCache + Send + Sync> {
     app: Arc<A>,
 }
 
-impl<A: App + HasDb + Send + Sync> DatabaseLoader<A> {
+impl<A: App + HasDb + HasCache + Send + Sync> DatabaseLoader<A> {
     pub fn new(app: Arc<A>) -> Self {
         DatabaseLoader { app }
     }
 }
 
-impl<A: App + HasDb + Send + Sync + 'static> Loader<PersonId> for DatabaseLoader<A> {
+impl<A: App + HasDb + HasCache + Send + Sync + 'static> Loader<PersonId> for DatabaseLoader<A> {
     type Value = Option<Person<A>>;
     type Error = Arc<anyhow::Error>;
 
@@ -44,7 +45,7 @@ impl<A: App + HasDb + Send + Sync + 'static> Loader<PersonId> for DatabaseLoader
     }
 }
 
-impl<A: App + HasDb + Send + Sync + 'static> Loader<LocationId> for DatabaseLoader<A> {
+impl<A: App + HasDb + HasCache + Send + Sync + 'static> Loader<LocationId> for DatabaseLoader<A> {
     type Value = Option<Location<A>>;
     type Error = Arc<anyhow::Error>;
 
@@ -55,8 +56,8 @@ impl<A: App + HasDb + Send + Sync + 'static> Loader<LocationId> for DatabaseLoad
         let str_keys = keys.iter().map(|k| &k.0.0).collect::<Vec<&String>>();
         let recs = self
             .app
-            .db()
-            .get_locations(&str_keys)
+            .cache()
+            .get_locations(self.app.db(), &str_keys)
             .await
             .map_err(|e| Arc::new(anyhow!("DB error: {:?}", e)))?;
         let map: HashMap<_, _> = zip(keys.iter().cloned(), recs)
@@ -66,7 +67,7 @@ impl<A: App + HasDb + Send + Sync + 'static> Loader<LocationId> for DatabaseLoad
     }
 }
 
-impl<A: App + HasDb + Send + Sync + 'static> Loader<CategoryId> for DatabaseLoader<A> {
+impl<A: App + HasDb + HasCache + Send + Sync + 'static> Loader<CategoryId> for DatabaseLoader<A> {
     type Value = Option<Category<A>>;
     type Error = Arc<anyhow::Error>;
 
@@ -77,8 +78,8 @@ impl<A: App + HasDb + Send + Sync + 'static> Loader<CategoryId> for DatabaseLoad
         let str_keys = keys.iter().map(|k| &k.0.0).collect::<Vec<&String>>();
         let recs = self
             .app
-            .db()
-            .get_categories(&str_keys)
+            .cache()
+            .get_categories(self.app.db(), &str_keys)
             .await
             .map_err(|e| Arc::new(anyhow!("DB error: {:?}", e)))?;
         let map: HashMap<_, _> = zip(keys.iter().cloned(), recs)
@@ -88,7 +89,7 @@ impl<A: App + HasDb + Send + Sync + 'static> Loader<CategoryId> for DatabaseLoad
     }
 }
 
-impl<A: App + HasDb + Send + Sync + 'static> Loader<UserId> for DatabaseLoader<A> {
+impl<A: App + HasDb + HasCache + Send + Sync + 'static> Loader<UserId> for DatabaseLoader<A> {
     type Value = Option<User<A>>;
     type Error = Arc<anyhow::Error>;
 
@@ -110,7 +111,7 @@ impl<A: App + HasDb + Send + Sync + 'static> Loader<UserId> for DatabaseLoader<A
     }
 }
 
-impl<A: App + HasDb + Send + Sync + 'static> Loader<SessionId> for DatabaseLoader<A> {
+impl<A: App + HasDb + HasCache + Send + Sync + 'static> Loader<SessionId> for DatabaseLoader<A> {
     type Value = Option<Session<A>>;
     type Error = Arc<anyhow::Error>;
 
@@ -132,7 +133,7 @@ impl<A: App + HasDb + Send + Sync + 'static> Loader<SessionId> for DatabaseLoade
     }
 }
 
-impl<A: App + HasDb + Send + Sync + 'static> Loader<NitcEventId> for DatabaseLoader<A> {
+impl<A: App + HasDb + HasCache + Send + Sync + 'static> Loader<NitcEventId> for DatabaseLoader<A> {
     type Value = db::NitcEvent;
     type Error = Arc<anyhow::Error>;
 

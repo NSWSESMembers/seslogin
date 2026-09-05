@@ -13,6 +13,7 @@ use tracing::info;
 use tracing::warn;
 
 use crate::app::App;
+use crate::app::HasCache;
 use crate::app::HasDb;
 use crate::app::HasMail;
 use crate::app::HasQueues;
@@ -146,7 +147,7 @@ enum RegisterState {
 }
 
 #[derive(SimpleObject)]
-struct RegisterResult<A: App + HasDb + Send + Sync + 'static> {
+struct RegisterResult<A: App + HasDb + HasCache + Send + Sync + 'static> {
     state: RegisterState,
     period: Option<Period<A>>,
     /// Shortcuts for the sign-out category screen, saving the kiosk a round trip.
@@ -261,7 +262,7 @@ impl<A: App + HasDb + HasQueues + HasMail + Send + Sync + 'static> MutationRoot<
 }
 
 #[Object]
-impl<A: App + HasDb + HasQueues + HasMail + Send + Sync + 'static> MutationRoot<A> {
+impl<A: App + HasDb + HasQueues + HasMail + HasCache + Send + Sync + 'static> MutationRoot<A> {
     async fn auth_session(&self, code: String) -> Option<String> {
         let res = auth::issue_token_for_scan_code(&*self.app, &code).await;
 
@@ -1619,6 +1620,7 @@ impl<A: App + HasDb + HasQueues + HasMail + Send + Sync + 'static> MutationRoot<
             .db()
             .create_location(&name, nitc_enabled, None)
             .await?;
+        self.app.cache().invalidate_locations();
 
         Ok(Location::new_db(rec))
     }
@@ -1649,6 +1651,7 @@ impl<A: App + HasDb + HasQueues + HasMail + Send + Sync + 'static> MutationRoot<
                 },
             )
             .await?;
+        self.app.cache().invalidate_locations();
 
         let rec = self.app.db().get_locations(&[&id]).await?;
         Ok(Location::new_db(
@@ -1674,6 +1677,7 @@ impl<A: App + HasDb + HasQueues + HasMail + Send + Sync + 'static> MutationRoot<
             .db()
             .create_category(&name, is_virtual, nitc_group_id, nitc_participant_type)
             .await?;
+        self.app.cache().invalidate_categories();
         Ok(Category::new(item))
     }
 
@@ -1700,6 +1704,7 @@ impl<A: App + HasDb + HasQueues + HasMail + Send + Sync + 'static> MutationRoot<
                 nitc_participant_type,
             )
             .await?;
+        self.app.cache().invalidate_categories();
 
         let rec = self.app.db().get_categories(&[&id]).await?;
         Ok(Category::new(rec.into_iter().next().flatten().ok_or_else(
@@ -1720,6 +1725,7 @@ impl<A: App + HasDb + HasQueues + HasMail + Send + Sync + 'static> MutationRoot<
             .db()
             .create_nitc_group(id_ref, &nitc_type, &nitc_tag_ids)
             .await?;
+        self.app.cache().invalidate_nitc_groups();
         Ok(NitcGroup::new(rec))
     }
 
@@ -1734,6 +1740,7 @@ impl<A: App + HasDb + HasQueues + HasMail + Send + Sync + 'static> MutationRoot<
             .db()
             .update_nitc_group(&id, &nitc_type, &nitc_tag_ids)
             .await?;
+        self.app.cache().invalidate_nitc_groups();
         let rec = self
             .app
             .db()
@@ -1746,6 +1753,7 @@ impl<A: App + HasDb + HasQueues + HasMail + Send + Sync + 'static> MutationRoot<
     #[graphql(guard = "AuthGuard::new(AuthRequirement::SuperUser)")]
     async fn delete_nitc_group(&self, id: ID) -> Result<bool> {
         self.app.db().delete_nitc_group(&id).await?;
+        self.app.cache().invalidate_nitc_groups();
         Ok(true)
     }
 
