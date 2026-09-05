@@ -116,6 +116,19 @@ describe("KioskStatusDialog", () => {
     expect(screen.getByText("NOT production")).toBeDefined();
   });
 
+  it("shortens a full-length server git SHA so it doesn't wrap", () => {
+    setEnvironmentInfo({
+      gitRev: "a1b2c3d4e5f6789012345678901234567890abcd",
+      isProdDb: true,
+    });
+    renderDialog();
+
+    expect(screen.getByText("a1b2c3d")).toBeDefined();
+    expect(
+      screen.queryByText("a1b2c3d4e5f6789012345678901234567890abcd"),
+    ).toBeNull();
+  });
+
   it("lists only the enabled config flags", () => {
     renderDialog();
     expect(screen.getByText('guests, theme="dark"')).toBeDefined();
