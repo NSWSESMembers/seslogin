@@ -78,7 +78,7 @@ export default function KioskEnrollment({
             <img
               src={qrDataUrl}
               alt="Kiosk enrollment QR code"
-              className="size-70"
+              className="aspect-square w-70 max-w-full"
             />
           </a>
         ) : (
