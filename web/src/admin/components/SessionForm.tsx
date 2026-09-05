@@ -18,6 +18,13 @@ interface SessionFormProps {
    * a location from context and keeps it out of the form entirely.
    */
   locations?: ReadonlyArray<{ readonly id: string; readonly name: string }>;
+  /**
+   * Set to false to omit the Health Check URL field entirely. The QR-code kiosk
+   * enrollment form hides it: the kiosk isn't provisioned yet at that point, so
+   * there's nothing to health-check, and the field can be added later from the
+   * session's edit page.
+   */
+  showHealthcheckUrl?: boolean;
 }
 
 type ConfigEditorMode = "basic" | "advanced";
@@ -495,6 +502,7 @@ export default function SessionForm({
   isMutationInFlight,
   onSubmit,
   locations,
+  showHealthcheckUrl = true,
 }: SessionFormProps) {
   const initialState = initializeConfigState(initialConfig);
   const [configEditorMode, setConfigEditorMode] =
@@ -593,7 +601,9 @@ export default function SessionForm({
             onChange={handleAdvancedConfigChange}
           />
         )}
-        <HealthcheckUrlField initialHealthcheckUrl={initialHealthcheckUrl} />
+        {showHealthcheckUrl && (
+          <HealthcheckUrlField initialHealthcheckUrl={initialHealthcheckUrl} />
+        )}
         <SubmitRow isMutationInFlight={isMutationInFlight} />
       </FieldList>
     </form>
