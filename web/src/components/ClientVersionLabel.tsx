@@ -1,17 +1,13 @@
-import { getCurrentClientVersion, GITHUB_REPO_URL } from "../lib/clientVersion";
-
-function formatClientVersion(version: string): string {
-  const normalized = version.trim();
-  if (/^[0-9a-f]{40}$/i.test(normalized)) {
-    return normalized.slice(0, 7);
-  }
-  return normalized;
-}
+import {
+  getCurrentClientVersion,
+  GITHUB_REPO_URL,
+  shortenGitRev,
+} from "../lib/clientVersion";
 
 export default function ClientVersionLabel({ noLink }: { noLink?: boolean }) {
   const currentVersion = getCurrentClientVersion();
   const normalized = currentVersion.trim();
-  const displayVersion = formatClientVersion(currentVersion);
+  const displayVersion = shortenGitRev(currentVersion);
 
   if (!noLink && /^[0-9a-f]{40}$/i.test(normalized)) {
     return (
