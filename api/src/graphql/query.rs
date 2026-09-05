@@ -1354,7 +1354,9 @@ fn rank_recent_categories<'a>(
 /// The categories a quick-pick is allowed to suggest. Disabled (and deleted)
 /// categories are dropped here so a retired activity is never offered as a
 /// shortcut.
-async fn enabled_category_ids<A: App + HasDb + HasCache + Send + Sync>(app: &A) -> Result<HashSet<String>> {
+async fn enabled_category_ids<A: App + HasDb + HasCache + Send + Sync>(
+    app: &A,
+) -> Result<HashSet<String>> {
     Ok(app
         .db()
         .list_categories()

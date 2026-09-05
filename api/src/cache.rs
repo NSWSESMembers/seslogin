@@ -89,9 +89,7 @@ impl Cache {
         let all = self.all_locations(db).await?;
         Ok(match filter {
             db::ListLocationsFilter::All => all,
-            db::ListLocationsFilter::EnabledOnly => {
-                all.into_iter().filter(|l| l.enabled).collect()
-            }
+            db::ListLocationsFilter::EnabledOnly => all.into_iter().filter(|l| l.enabled).collect(),
         })
     }
 
@@ -101,8 +99,7 @@ impl Cache {
         ids: &[T],
     ) -> db::Result<Vec<Option<db::Location>>> {
         let all = self.all_locations(db).await?;
-        let by_id: HashMap<&str, &db::Location> =
-            all.iter().map(|l| (l.id.as_str(), l)).collect();
+        let by_id: HashMap<&str, &db::Location> = all.iter().map(|l| (l.id.as_str(), l)).collect();
         Ok(ids
             .iter()
             .map(|id| by_id.get(id.as_ref()).map(|l| (*l).clone()))
@@ -133,8 +130,7 @@ impl Cache {
         ids: &[T],
     ) -> db::Result<Vec<Option<db::Category>>> {
         let all = self.all_categories(db).await?;
-        let by_id: HashMap<&str, &db::Category> =
-            all.iter().map(|c| (c.id.as_str(), c)).collect();
+        let by_id: HashMap<&str, &db::Category> = all.iter().map(|c| (c.id.as_str(), c)).collect();
         Ok(ids
             .iter()
             .map(|id| by_id.get(id.as_ref()).map(|c| (*c).clone()))
