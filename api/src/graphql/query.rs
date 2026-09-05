@@ -18,6 +18,7 @@ use tracing::warn;
 use xxhash_rust::xxh64::xxh64;
 
 use crate::app::App;
+use crate::app::HasCache;
 use crate::app::HasDb;
 use crate::auth;
 use crate::auth::AuthInfo;
@@ -31,12 +32,12 @@ use super::dataloader::DatabaseLoader;
 use super::{CategoryId, LocationId, NitcEventId, PersonId, SessionId, UserId};
 
 #[derive(Debug, PartialEq)]
-pub struct User<A: App + HasDb + Send + Sync> {
+pub struct User<A: App + HasDb + HasCache + Send + Sync> {
     _marker: std::marker::PhantomData<A>,
     pub(super) rec: db::User,
 }
 
-impl<A: App + HasDb + Send + Sync> User<A> {
+impl<A: App + HasDb + HasCache + Send + Sync> User<A> {
     pub fn new(rec: db::User) -> Self {
         Self {
             _marker: Default::default(),
@@ -45,7 +46,7 @@ impl<A: App + HasDb + Send + Sync> User<A> {
     }
 }
 
-impl<A: App + HasDb + Send + Sync> Clone for User<A> {
+impl<A: App + HasDb + HasCache + Send + Sync> Clone for User<A> {
     fn clone(&self) -> Self {
         Self {
             _marker: Default::default(),
@@ -55,7 +56,7 @@ impl<A: App + HasDb + Send + Sync> Clone for User<A> {
 }
 
 #[Object]
-impl<A: App + HasDb + Send + Sync + 'static> User<A> {
+impl<A: App + HasDb + HasCache + Send + Sync + 'static> User<A> {
     async fn id(&self) -> ID {
         async_graphql::ID(self.rec.id.clone())
     }
@@ -113,8 +114,8 @@ impl<A: App + HasDb + Send + Sync + 'static> User<A> {
             // superusers have access to all locations, so fetch full list of locations
             let app = ctx.data_unchecked::<Arc<A>>();
             let items = app
-                .db()
-                .list_locations(crate::db::ListLocationsFilter::EnabledOnly)
+                .cache()
+                .list_locations(app.db(), crate::db::ListLocationsFilter::EnabledOnly)
                 .await?;
 
             return Ok(items.into_iter().map(|rec| Location::new_db(rec)).collect());
@@ -243,12 +244,12 @@ pub struct LocationDashboardSummary {
 }
 
 #[derive(Debug, PartialEq)]
-pub struct Category<A: App + HasDb + 'static> {
+pub struct Category<A: App + HasDb + HasCache + 'static> {
     _marker: std::marker::PhantomData<A>,
     pub rec: db::Category,
 }
 
-impl<A: App + HasDb + Send + Sync> Category<A> {
+impl<A: App + HasDb + HasCache + Send + Sync> Category<A> {
     pub fn new(rec: db::Category) -> Self {
         Self {
             _marker: Default::default(),
@@ -257,7 +258,7 @@ impl<A: App + HasDb + Send + Sync> Category<A> {
     }
 }
 
-impl<A: App + HasDb + Send + Sync> Clone for Category<A> {
+impl<A: App + HasDb + HasCache + Send + Sync> Clone for Category<A> {
     fn clone(&self) -> Self {
         Self {
             _marker: Default::default(),
@@ -267,7 +268,7 @@ impl<A: App + HasDb + Send + Sync> Clone for Category<A> {
 }
 
 #[Object]
-impl<A: App + HasDb + Send + Sync + 'static> Category<A> {
+impl<A: App + HasDb + HasCache + Send + Sync + 'static> Category<A> {
     async fn id(&self) -> ID {
         async_graphql::ID(self.rec.id.clone())
     }
@@ -291,7 +292,11 @@ impl<A: App + HasDb + Send + Sync + 'static> Category<A> {
             return Ok(None);
         };
         let app = ctx.data_unchecked::<Arc<A>>();
-        Ok(app.db().get_nitc_group(gid).await?.map(NitcGroup::new))
+        Ok(app
+            .cache()
+            .get_nitc_group(app.db(), gid)
+            .await?
+            .map(NitcGroup::new))
     }
 
     async fn created_at(&self) -> i64 {
@@ -305,12 +310,12 @@ impl<A: App + HasDb + Send + Sync + 'static> Category<A> {
 
 /// A category recently used at a location, ranked by frequency, along with the
 /// people who most recently picked it — powers the kiosk sign-out quick-pick.
-pub struct LocationRecentCategory<A: App + HasDb + 'static> {
+pub struct LocationRecentCategory<A: App + HasDb + HasCache + 'static> {
     _marker: std::marker::PhantomData<A>,
     agg: RecentCategoryAgg,
 }
 
-impl<A: App + HasDb + Send + Sync> LocationRecentCategory<A> {
+impl<A: App + HasDb + HasCache + Send + Sync> LocationRecentCategory<A> {
     fn new(agg: RecentCategoryAgg) -> Self {
         Self {
             _marker: Default::default(),
@@ -320,7 +325,7 @@ impl<A: App + HasDb + Send + Sync> LocationRecentCategory<A> {
 }
 
 #[Object]
-impl<A: App + HasDb + Send + Sync + 'static> LocationRecentCategory<A> {
+impl<A: App + HasDb + HasCache + Send + Sync + 'static> LocationRecentCategory<A> {
     async fn category(&self, ctx: &Context<'_>) -> Result<Category<A>> {
         let loader = ctx.data_unchecked::<DataLoader<DatabaseLoader<A>>>();
         loader
@@ -369,12 +374,12 @@ impl<A: App + HasDb + Send + Sync + 'static> LocationRecentCategory<A> {
 
 /// A category recently used by a person, ranked by frequency — powers the kiosk
 /// sign-out quick-pick.
-pub struct PersonRecentCategory<A: App + HasDb + 'static> {
+pub struct PersonRecentCategory<A: App + HasDb + HasCache + 'static> {
     _marker: std::marker::PhantomData<A>,
     agg: RecentCategoryAgg,
 }
 
-impl<A: App + HasDb + Send + Sync> PersonRecentCategory<A> {
+impl<A: App + HasDb + HasCache + Send + Sync> PersonRecentCategory<A> {
     fn new(agg: RecentCategoryAgg) -> Self {
         Self {
             _marker: Default::default(),
@@ -384,7 +389,7 @@ impl<A: App + HasDb + Send + Sync> PersonRecentCategory<A> {
 }
 
 #[Object]
-impl<A: App + HasDb + Send + Sync + 'static> PersonRecentCategory<A> {
+impl<A: App + HasDb + HasCache + Send + Sync + 'static> PersonRecentCategory<A> {
     async fn category(&self, ctx: &Context<'_>) -> Result<Category<A>> {
         let loader = ctx.data_unchecked::<DataLoader<DatabaseLoader<A>>>();
         loader
@@ -405,12 +410,12 @@ impl<A: App + HasDb + Send + Sync + 'static> PersonRecentCategory<A> {
 }
 
 #[derive(Debug, PartialEq)]
-pub struct Person<A: App + HasDb + 'static> {
+pub struct Person<A: App + HasDb + HasCache + 'static> {
     _marker: std::marker::PhantomData<A>,
     pub(super) rec: db::Person,
 }
 
-impl<A: App + HasDb + Send + Sync> Person<A> {
+impl<A: App + HasDb + HasCache + Send + Sync> Person<A> {
     pub fn new(rec: db::Person) -> Self {
         Self {
             _marker: Default::default(),
@@ -419,7 +424,7 @@ impl<A: App + HasDb + Send + Sync> Person<A> {
     }
 }
 
-impl<A: App + HasDb + Send + Sync> Clone for Person<A> {
+impl<A: App + HasDb + HasCache + Send + Sync> Clone for Person<A> {
     fn clone(&self) -> Self {
         Self {
             _marker: Default::default(),
@@ -429,7 +434,7 @@ impl<A: App + HasDb + Send + Sync> Clone for Person<A> {
 }
 
 #[Object]
-impl<A: App + HasDb + Send + Sync> Person<A> {
+impl<A: App + HasDb + HasCache + Send + Sync> Person<A> {
     async fn id(&self) -> ID {
         async_graphql::ID(self.rec.id.clone())
     }
@@ -562,12 +567,12 @@ impl<A: App + HasDb + Send + Sync> Person<A> {
 }
 
 #[derive(Debug, PartialEq)]
-pub struct Period<A: App + HasDb + 'static> {
+pub struct Period<A: App + HasDb + HasCache + 'static> {
     _marker: std::marker::PhantomData<A>,
     pub(super) rec: db::Period,
 }
 
-impl<A: App + HasDb + Send + Sync> Period<A> {
+impl<A: App + HasDb + HasCache + Send + Sync> Period<A> {
     pub(crate) fn new(rec: db::Period) -> Self {
         Self {
             _marker: Default::default(),
@@ -581,7 +586,7 @@ impl<A: App + HasDb + Send + Sync> Period<A> {
 /// or admin-edited periods that have no kiosk session). Deleted sessions are
 /// soft-deleted and still resolve, so a recorded id normally hydrates fine; the
 /// final `flatten()` is just defensive against a genuinely missing row.
-async fn load_optional_session<A: App + HasDb + Send + Sync + 'static>(
+async fn load_optional_session<A: App + HasDb + HasCache + Send + Sync + 'static>(
     ctx: &Context<'_>,
     session_id: &Option<String>,
 ) -> Result<Option<Session<A>>> {
@@ -597,7 +602,7 @@ async fn load_optional_session<A: App + HasDb + Send + Sync + 'static>(
 }
 
 #[Object]
-impl<A: App + HasDb + Send + Sync> Period<A> {
+impl<A: App + HasDb + HasCache + Send + Sync> Period<A> {
     async fn id(&self) -> ID {
         ID(self.rec.id.clone())
     }
@@ -766,7 +771,7 @@ pub enum NitcExportStatus {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct MemberPeriodSummary<A: App + HasDb + Send + Sync> {
+pub struct MemberPeriodSummary<A: App + HasDb + HasCache + Send + Sync> {
     _marker: std::marker::PhantomData<A>,
     person_id: String,
     total_time: i64,
@@ -778,7 +783,7 @@ pub struct MemberPeriodSummary<A: App + HasDb + Send + Sync> {
     total_time_virtual: Option<i64>,
 }
 
-impl<A: App + HasDb + Send + Sync> MemberPeriodSummary<A> {
+impl<A: App + HasDb + HasCache + Send + Sync> MemberPeriodSummary<A> {
     fn new(person_id: String, total_time: i64, total_time_virtual: Option<i64>) -> Self {
         Self {
             _marker: Default::default(),
@@ -790,7 +795,7 @@ impl<A: App + HasDb + Send + Sync> MemberPeriodSummary<A> {
 }
 
 #[Object]
-impl<A: App + HasDb + Send + Sync + 'static> MemberPeriodSummary<A> {
+impl<A: App + HasDb + HasCache + Send + Sync + 'static> MemberPeriodSummary<A> {
     async fn person_id(&self) -> ID {
         ID(self.person_id.clone())
     }
@@ -815,13 +820,13 @@ impl<A: App + HasDb + Send + Sync + 'static> MemberPeriodSummary<A> {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct CategoryPeriodSummary<A: App + HasDb + Send + Sync> {
+pub struct CategoryPeriodSummary<A: App + HasDb + HasCache + Send + Sync> {
     _marker: std::marker::PhantomData<A>,
     category_id: String,
     total_time: i64,
 }
 
-impl<A: App + HasDb + Send + Sync> CategoryPeriodSummary<A> {
+impl<A: App + HasDb + HasCache + Send + Sync> CategoryPeriodSummary<A> {
     fn new(category_id: String, total_time: i64) -> Self {
         Self {
             _marker: Default::default(),
@@ -832,7 +837,7 @@ impl<A: App + HasDb + Send + Sync> CategoryPeriodSummary<A> {
 }
 
 #[Object]
-impl<A: App + HasDb + Send + Sync + 'static> CategoryPeriodSummary<A> {
+impl<A: App + HasDb + HasCache + Send + Sync + 'static> CategoryPeriodSummary<A> {
     async fn category_id(&self) -> ID {
         ID(self.category_id.clone())
     }
@@ -853,14 +858,14 @@ impl<A: App + HasDb + Send + Sync + 'static> CategoryPeriodSummary<A> {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct MemberCategoryPeriodSummary<A: App + HasDb + Send + Sync> {
+pub struct MemberCategoryPeriodSummary<A: App + HasDb + HasCache + Send + Sync> {
     _marker: std::marker::PhantomData<A>,
     person_id: String,
     total_time: i64,
     categories: Vec<CategoryPeriodSummary<A>>,
 }
 
-impl<A: App + HasDb + Send + Sync> MemberCategoryPeriodSummary<A> {
+impl<A: App + HasDb + HasCache + Send + Sync> MemberCategoryPeriodSummary<A> {
     fn new(person_id: String, total_time: i64, categories: Vec<CategoryPeriodSummary<A>>) -> Self {
         Self {
             _marker: Default::default(),
@@ -872,7 +877,7 @@ impl<A: App + HasDb + Send + Sync> MemberCategoryPeriodSummary<A> {
 }
 
 #[Object]
-impl<A: App + HasDb + Send + Sync + 'static> MemberCategoryPeriodSummary<A> {
+impl<A: App + HasDb + HasCache + Send + Sync + 'static> MemberCategoryPeriodSummary<A> {
     async fn person_id(&self) -> ID {
         ID(self.person_id.clone())
     }
@@ -897,14 +902,14 @@ impl<A: App + HasDb + Send + Sync + 'static> MemberCategoryPeriodSummary<A> {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct CategoryMemberPeriodSummary<A: App + HasDb + Send + Sync> {
+pub struct CategoryMemberPeriodSummary<A: App + HasDb + HasCache + Send + Sync> {
     _marker: std::marker::PhantomData<A>,
     category_id: String,
     total_time: i64,
     members: Vec<MemberPeriodSummary<A>>,
 }
 
-impl<A: App + HasDb + Send + Sync> CategoryMemberPeriodSummary<A> {
+impl<A: App + HasDb + HasCache + Send + Sync> CategoryMemberPeriodSummary<A> {
     fn new(category_id: String, total_time: i64, members: Vec<MemberPeriodSummary<A>>) -> Self {
         Self {
             _marker: Default::default(),
@@ -916,7 +921,7 @@ impl<A: App + HasDb + Send + Sync> CategoryMemberPeriodSummary<A> {
 }
 
 #[Object]
-impl<A: App + HasDb + Send + Sync + 'static> CategoryMemberPeriodSummary<A> {
+impl<A: App + HasDb + HasCache + Send + Sync + 'static> CategoryMemberPeriodSummary<A> {
     async fn category_id(&self) -> ID {
         ID(self.category_id.clone())
     }
@@ -941,14 +946,14 @@ impl<A: App + HasDb + Send + Sync + 'static> CategoryMemberPeriodSummary<A> {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct DayCategoryPeriodSummary<A: App + HasDb + Send + Sync> {
+pub struct DayCategoryPeriodSummary<A: App + HasDb + HasCache + Send + Sync> {
     _marker: std::marker::PhantomData<A>,
     date: String,
     total_time: i64,
     categories: Vec<CategoryMemberPeriodSummary<A>>,
 }
 
-impl<A: App + HasDb + Send + Sync> DayCategoryPeriodSummary<A> {
+impl<A: App + HasDb + HasCache + Send + Sync> DayCategoryPeriodSummary<A> {
     fn new(date: String, total_time: i64, categories: Vec<CategoryMemberPeriodSummary<A>>) -> Self {
         Self {
             _marker: Default::default(),
@@ -960,7 +965,7 @@ impl<A: App + HasDb + Send + Sync> DayCategoryPeriodSummary<A> {
 }
 
 #[Object]
-impl<A: App + HasDb + Send + Sync + 'static> DayCategoryPeriodSummary<A> {
+impl<A: App + HasDb + HasCache + Send + Sync + 'static> DayCategoryPeriodSummary<A> {
     async fn date(&self) -> &str {
         &self.date
     }
@@ -975,14 +980,14 @@ impl<A: App + HasDb + Send + Sync + 'static> DayCategoryPeriodSummary<A> {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct MemberDayPeriodSummary<A: App + HasDb + Send + Sync> {
+pub struct MemberDayPeriodSummary<A: App + HasDb + HasCache + Send + Sync> {
     _marker: std::marker::PhantomData<A>,
     person_id: String,
     total_time: i64,
     period_count: i32,
 }
 
-impl<A: App + HasDb + Send + Sync> MemberDayPeriodSummary<A> {
+impl<A: App + HasDb + HasCache + Send + Sync> MemberDayPeriodSummary<A> {
     fn new(person_id: String, total_time: i64, period_count: i32) -> Self {
         Self {
             _marker: Default::default(),
@@ -994,7 +999,7 @@ impl<A: App + HasDb + Send + Sync> MemberDayPeriodSummary<A> {
 }
 
 #[Object]
-impl<A: App + HasDb + Send + Sync + 'static> MemberDayPeriodSummary<A> {
+impl<A: App + HasDb + HasCache + Send + Sync + 'static> MemberDayPeriodSummary<A> {
     async fn person_id(&self) -> ID {
         ID(self.person_id.clone())
     }
@@ -1019,13 +1024,13 @@ impl<A: App + HasDb + Send + Sync + 'static> MemberDayPeriodSummary<A> {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct DayMemberPeriodSummary<A: App + HasDb + Send + Sync> {
+pub struct DayMemberPeriodSummary<A: App + HasDb + HasCache + Send + Sync> {
     _marker: std::marker::PhantomData<A>,
     date: String,
     members: Vec<MemberDayPeriodSummary<A>>,
 }
 
-impl<A: App + HasDb + Send + Sync> DayMemberPeriodSummary<A> {
+impl<A: App + HasDb + HasCache + Send + Sync> DayMemberPeriodSummary<A> {
     fn new(date: String, members: Vec<MemberDayPeriodSummary<A>>) -> Self {
         Self {
             _marker: Default::default(),
@@ -1036,7 +1041,7 @@ impl<A: App + HasDb + Send + Sync> DayMemberPeriodSummary<A> {
 }
 
 #[Object]
-impl<A: App + HasDb + Send + Sync + 'static> DayMemberPeriodSummary<A> {
+impl<A: App + HasDb + HasCache + Send + Sync + 'static> DayMemberPeriodSummary<A> {
     async fn date(&self) -> &str {
         &self.date
     }
@@ -1231,7 +1236,7 @@ fn period_duration(period: &db::Period) -> Option<u64> {
 /// with any row-level `category` field resolution). Avoids a full-table scan of
 /// the category table. Unknown ids are simply absent from the returned map, so
 /// callers treat missing lookups as non-virtual.
-async fn load_category_virtual_map<A: App + HasDb + Send + Sync + 'static>(
+async fn load_category_virtual_map<A: App + HasDb + HasCache + Send + Sync + 'static>(
     ctx: &Context<'_>,
     category_ids: impl IntoIterator<Item = String>,
 ) -> Result<HashMap<String, bool>> {
@@ -1349,7 +1354,7 @@ fn rank_recent_categories<'a>(
 /// The categories a quick-pick is allowed to suggest. Disabled (and deleted)
 /// categories are dropped here so a retired activity is never offered as a
 /// shortcut.
-async fn enabled_category_ids<A: App + HasDb + Send + Sync>(app: &A) -> Result<HashSet<String>> {
+async fn enabled_category_ids<A: App + HasDb + HasCache + Send + Sync>(app: &A) -> Result<HashSet<String>> {
     Ok(app
         .db()
         .list_categories()
@@ -1365,7 +1370,7 @@ async fn enabled_category_ids<A: App + HasDb + Send + Sync>(app: &A) -> Result<H
 }
 
 /// The candidate pool for a location's quick-pick: its most recent periods.
-async fn recent_periods_for_location<A: App + HasDb + Send + Sync>(
+async fn recent_periods_for_location<A: App + HasDb + HasCache + Send + Sync>(
     app: &A,
     location_id: &str,
 ) -> Result<Vec<db::Period>> {
@@ -1390,7 +1395,7 @@ async fn recent_periods_for_location<A: App + HasDb + Send + Sync>(
 
 /// The candidate pool for a person's quick-pick: their most recent periods, at
 /// any location.
-async fn recent_periods_for_person<A: App + HasDb + Send + Sync>(
+async fn recent_periods_for_person<A: App + HasDb + HasCache + Send + Sync>(
     app: &A,
     person_id: &str,
 ) -> Result<Vec<db::Period>> {
@@ -1420,7 +1425,7 @@ async fn recent_periods_for_person<A: App + HasDb + Send + Sync>(
 /// Deliberately has no field arguments: it is built eagerly by the mutation, so
 /// there is nothing to resolve lazily and nothing for a caller to tune.
 #[derive(SimpleObject)]
-pub struct QuickPick<A: App + HasDb + Send + Sync + 'static> {
+pub struct QuickPick<A: App + HasDb + HasCache + Send + Sync + 'static> {
     /// Categories recently used at the kiosk's own location.
     location_categories: Vec<LocationRecentCategory<A>>,
     /// Categories recently used by the person signing out, at any location.
@@ -1437,7 +1442,7 @@ pub struct QuickPick<A: App + HasDb + Send + Sync + 'static> {
 ///
 /// The three reads run concurrently: this sits on the scan path, with a member
 /// waiting at the screen.
-pub(super) async fn build_quick_pick<A: App + HasDb + Send + Sync + 'static>(
+pub(super) async fn build_quick_pick<A: App + HasDb + HasCache + Send + Sync + 'static>(
     app: &A,
     location_id: &str,
     person_id: &str,
@@ -1656,12 +1661,12 @@ fn decode_period_cursor(cursor: &str) -> Result<db::PeriodCursor> {
 }
 
 #[derive(Debug, PartialEq)]
-pub struct Location<A: App + HasDb + 'static> {
+pub struct Location<A: App + HasDb + HasCache + 'static> {
     _marker: std::marker::PhantomData<A>,
     rec: db::Location,
 }
 
-impl<A: App + HasDb + Send + Sync> Location<A> {
+impl<A: App + HasDb + HasCache + Send + Sync> Location<A> {
     pub fn new_db(rec: db::Location) -> Self {
         Self {
             _marker: Default::default(),
@@ -1670,14 +1675,14 @@ impl<A: App + HasDb + Send + Sync> Location<A> {
     }
 }
 
-impl<A: App + HasDb + Send + Sync> Clone for Location<A> {
+impl<A: App + HasDb + HasCache + Send + Sync> Clone for Location<A> {
     fn clone(&self) -> Self {
         Location::new_db(self.rec.clone())
     }
 }
 
 #[Object]
-impl<A: App + HasDb + Send + Sync> Location<A> {
+impl<A: App + HasDb + HasCache + Send + Sync> Location<A> {
     async fn id(&self) -> ID {
         ID(self.rec.id.clone())
     }
@@ -2279,7 +2284,7 @@ impl<A: App + HasDb + Send + Sync> Location<A> {
                 e
             })?;
 
-        let categories = app.db().list_categories().await.map_err(|e| {
+        let categories = app.cache().list_categories(app.db()).await.map_err(|e| {
             warn!("db error: {:?}", e);
             e
         })?;
@@ -2635,12 +2640,12 @@ impl SessionClientInfo {
 }
 
 #[derive(Debug, PartialEq)]
-pub struct Session<A: App + HasDb + Send + Sync> {
+pub struct Session<A: App + HasDb + HasCache + Send + Sync> {
     _marker: std::marker::PhantomData<A>,
     pub(super) rec: db::Session,
 }
 
-impl<A: App + HasDb + Send + Sync> Session<A> {
+impl<A: App + HasDb + HasCache + Send + Sync> Session<A> {
     pub(crate) fn new(rec: db::Session) -> Self {
         Self {
             _marker: Default::default(),
@@ -2649,7 +2654,7 @@ impl<A: App + HasDb + Send + Sync> Session<A> {
     }
 }
 
-impl<A: App + HasDb + Send + Sync> Clone for Session<A> {
+impl<A: App + HasDb + HasCache + Send + Sync> Clone for Session<A> {
     fn clone(&self) -> Self {
         Self {
             _marker: Default::default(),
@@ -2659,7 +2664,7 @@ impl<A: App + HasDb + Send + Sync> Clone for Session<A> {
 }
 
 #[Object]
-impl<A: App + HasDb + Send + Sync + 'static> Session<A> {
+impl<A: App + HasDb + HasCache + Send + Sync + 'static> Session<A> {
     async fn id(&self) -> ID {
         ID(self.rec.id.clone())
     }
@@ -2893,12 +2898,12 @@ impl SesNonIncidentTag {
     }
 }
 
-pub struct NitcGroup<A: App + HasDb + Send + Sync> {
+pub struct NitcGroup<A: App + HasDb + HasCache + Send + Sync> {
     _marker: std::marker::PhantomData<A>,
     pub rec: db::NitcGroup,
 }
 
-impl<A: App + HasDb + Send + Sync> NitcGroup<A> {
+impl<A: App + HasDb + HasCache + Send + Sync> NitcGroup<A> {
     pub fn new(rec: db::NitcGroup) -> Self {
         Self {
             _marker: Default::default(),
@@ -2908,7 +2913,7 @@ impl<A: App + HasDb + Send + Sync> NitcGroup<A> {
 }
 
 #[Object]
-impl<A: App + HasDb + Send + Sync + 'static> NitcGroup<A> {
+impl<A: App + HasDb + HasCache + Send + Sync + 'static> NitcGroup<A> {
     async fn id(&self) -> &str {
         &self.rec.id
     }
@@ -2954,11 +2959,11 @@ pub struct PersonRef {
     member_number: String,
 }
 
-pub struct QueryRoot<A: App + HasDb + Send + Sync> {
+pub struct QueryRoot<A: App + HasDb + HasCache + Send + Sync> {
     _marker: std::marker::PhantomData<A>,
 }
 
-impl<A: App + HasDb + Send + Sync> QueryRoot<A> {
+impl<A: App + HasDb + HasCache + Send + Sync> QueryRoot<A> {
     pub fn new() -> Self {
         Self {
             _marker: Default::default(),
@@ -2966,7 +2971,7 @@ impl<A: App + HasDb + Send + Sync> QueryRoot<A> {
     }
 }
 
-impl<A: App + HasDb + Send + Sync> Default for QueryRoot<A> {
+impl<A: App + HasDb + HasCache + Send + Sync> Default for QueryRoot<A> {
     fn default() -> Self {
         Self::new()
     }
@@ -2988,7 +2993,7 @@ fn make_ses_client() -> Result<ses_api::SesClient> {
 }
 
 #[Object]
-impl<A: App + HasDb + Send + Sync + 'static> QueryRoot<A> {
+impl<A: App + HasDb + HasCache + Send + Sync + 'static> QueryRoot<A> {
     /// Build and deployment information about this API server.
     ///
     /// Deliberately unauthenticated — the only root field that is. The home page is
@@ -3274,8 +3279,8 @@ impl<A: App + HasDb + Send + Sync + 'static> QueryRoot<A> {
     async fn locations(&self, ctx: &Context<'_>) -> Result<Vec<Location<A>>> {
         let app = ctx.data_unchecked::<Arc<A>>();
         let items = app
-            .db()
-            .list_locations(crate::db::ListLocationsFilter::EnabledOnly)
+            .cache()
+            .list_locations(app.db(), crate::db::ListLocationsFilter::EnabledOnly)
             .await?;
 
         Ok(items.into_iter().map(|rec| Location::new_db(rec)).collect())
@@ -3296,14 +3301,14 @@ impl<A: App + HasDb + Send + Sync + 'static> QueryRoot<A> {
     )]
     async fn categories(&self, ctx: &Context<'_>) -> Result<Vec<Category<A>>> {
         let app = ctx.data_unchecked::<Arc<A>>();
-        let items = app.db().list_categories().await?;
+        let items = app.cache().list_categories(app.db()).await?;
         Ok(items.into_iter().map(Category::new).collect())
     }
 
     #[graphql(guard = "AuthGuard::new(AuthRequirement::SuperUser)")]
     async fn nitc_groups(&self, ctx: &Context<'_>) -> Result<Vec<NitcGroup<A>>> {
         let app = ctx.data_unchecked::<Arc<A>>();
-        let items = app.db().list_nitc_groups().await?;
+        let items = app.cache().list_nitc_groups(app.db()).await?;
         Ok(items.into_iter().map(NitcGroup::new).collect())
     }
 
@@ -3314,8 +3319,8 @@ impl<A: App + HasDb + Send + Sync + 'static> QueryRoot<A> {
         #[graphql(desc = "ID for the NITC group to look up")] id: ID,
     ) -> Result<NitcGroup<A>> {
         let app = ctx.data_unchecked::<Arc<A>>();
-        app.db()
-            .get_nitc_group(&id)
+        app.cache()
+            .get_nitc_group(app.db(), &id)
             .await?
             .map(NitcGroup::new)
             .ok_or_else(|| anyhow!("NitcGroup with ID {:?} not found", id))
