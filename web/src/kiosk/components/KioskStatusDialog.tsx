@@ -3,7 +3,10 @@ import { Dialog, DialogActions, DialogTitle } from "../../components/ui/Dialog";
 import { Button } from "../../components/ui/Button";
 import { getClientUpdateState } from "../../lib/clientUpdate";
 import { getClientUpdateLeases } from "../../lib/clientUpdateLeases";
-import { getCurrentClientVersion } from "../../lib/clientVersion";
+import {
+  getCurrentClientVersion,
+  shortenGitRev,
+} from "../../lib/clientVersion";
 import { useEnvironmentInfo } from "../../lib/environmentInfo";
 import { formatFullDateTime, formatShortDuration } from "../../lib/time";
 import { getKioskServerStatus } from "../lib/kioskServerStatus";
@@ -130,10 +133,14 @@ export default function KioskStatusDialog({
         </Row>
 
         <Row label="Version">
-          <Mono>{getCurrentClientVersion()}</Mono>
+          <Mono>{shortenGitRev(getCurrentClientVersion())}</Mono>
         </Row>
         <Row label="Server">
-          <Mono>{environmentInfo?.gitRev ?? "unknown"}</Mono>
+          <Mono>
+            {environmentInfo == null
+              ? "unknown"
+              : shortenGitRev(environmentInfo.gitRev)}
+          </Mono>
         </Row>
         <Row label="Database">
           {environmentInfo == null ? (
