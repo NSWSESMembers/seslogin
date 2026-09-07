@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<1326ae5ba6d385d7fe2715a0e110ee7a>>
+ * @generated SignedSource<<3e15e32a54b6f4c4d1b6d5f133e4ce02>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -14,6 +14,7 @@ export type UserListQuery$variables = Record<PropertyKey, never>;
 export type UserListQuery$data = {
   readonly users: ReadonlyArray<{
     readonly accessTime: number | null | undefined;
+    readonly email: string;
     readonly enabled: boolean;
     readonly id: string;
     readonly " $fragmentSpreads": FragmentRefs<"UserList_user">;
@@ -45,6 +46,13 @@ v2 = {
   "kind": "ScalarField",
   "name": "enabled",
   "storageKey": null
+},
+v3 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
+  "name": "email",
+  "storageKey": null
 };
 return {
   "fragment": {
@@ -66,6 +74,7 @@ return {
           (v0/*: any*/),
           (v1/*: any*/),
           (v2/*: any*/),
+          (v3/*: any*/),
           {
             "args": null,
             "kind": "FragmentSpread",
@@ -95,13 +104,7 @@ return {
           (v0/*: any*/),
           (v1/*: any*/),
           (v2/*: any*/),
-          {
-            "alias": null,
-            "args": null,
-            "kind": "ScalarField",
-            "name": "email",
-            "storageKey": null
-          },
+          (v3/*: any*/),
           {
             "alias": null,
             "args": null,
@@ -148,16 +151,16 @@ return {
     ]
   },
   "params": {
-    "cacheID": "22a1d63edaaaea3b65cd8a890bbb1e8b",
+    "cacheID": "ef022a68ab570bd9f8e6daa4153419ab",
     "id": null,
     "metadata": {},
     "name": "UserListQuery",
     "operationKind": "query",
-    "text": "query UserListQuery {\n  users {\n    id\n    accessTime\n    enabled\n    ...UserList_user\n  }\n}\n\nfragment UserList_user on User {\n  id\n  email\n  accessTime\n  isSuper\n  isDev\n  locationGrantIds\n  locations {\n    id\n    name\n  }\n  enabled\n}\n"
+    "text": "query UserListQuery {\n  users {\n    id\n    accessTime\n    enabled\n    email\n    ...UserList_user\n  }\n}\n\nfragment UserList_user on User {\n  id\n  email\n  accessTime\n  isSuper\n  isDev\n  locationGrantIds\n  locations {\n    id\n    name\n  }\n  enabled\n}\n"
   }
 };
 })();
 
-(node as any).hash = "35966beda30d0293278eada5e1927386";
+(node as any).hash = "72038d1d4132429ed8e5bcfaf16af2a1";
 
 export default node;
