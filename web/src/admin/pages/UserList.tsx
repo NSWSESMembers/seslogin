@@ -124,8 +124,20 @@ function Row(props: { user: UserList_user$key; idx: number; isDev: boolean }) {
   );
 }
 
+// Excludes @sdunster.com addresses from mass-email copies, since those are
+// test/personal accounts rather than real members of the org — except this
+// one real admin's account, which happens to sit on that domain.
+const ADMIN_USER_ID = "8Wmqg9e47Ang";
+function isMassEmailable(user: { id: string; email: string }): boolean {
+  return (
+    user.id === ADMIN_USER_ID ||
+    !user.email.toLowerCase().endsWith("@sdunster.com")
+  );
+}
+
 export default function UserList() {
   const { isDev } = useUserInfo();
+  const { notify, notifySuccess } = useNotify();
   const [showDisabled, setShowDisabled] = useState(false);
   const data = useRetryableLazyLoadQuery<UserListQuery>(
     graphql`
@@ -134,6 +146,7 @@ export default function UserList() {
           id
           accessTime
           enabled
+          email
           ...UserList_user
         }
       }
@@ -149,9 +162,21 @@ export default function UserList() {
       return bAccessTime - aAccessTime;
     });
 
+  async function copyEmails() {
+    const emails = users.filter(isMassEmailable).map((u) => u.email);
+    try {
+      await navigator.clipboard.writeText(emails.join(", "));
+      notifySuccess(
+        `Copied ${emails.length} email address${emails.length === 1 ? "" : "es"}`,
+      );
+    } catch {
+      notify("Couldn't copy emails to clipboard");
+    }
+  }
+
   return (
     <>
-      <p>
+      <p className="flex items-center justify-between">
         <label>
           <input
             type="checkbox"
@@ -160,6 +185,9 @@ export default function UserList() {
           />{" "}
           Show disabled
         </label>
+        <Button size="row" onClick={copyEmails}>
+          Copy Emails
+        </Button>
       </p>
       <AdminTable>
         <thead>
