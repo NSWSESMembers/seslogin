@@ -18,8 +18,8 @@ type AppSettingsStorage = {
 };
 
 /**
- * - `setup-code`: default; the 6-digit code entry screen (with a QR-enroll option).
- * - `enrolling`: showing the QR code, waiting for an admin to enroll this key.
+ * - `enrolling`: default; showing the QR code, waiting for an admin to enroll this key.
+ * - `setup-code`: the 6-digit code entry screen, reached via "use a setup code instead".
  * - `authed-jwt`: authenticated via the legacy code→JWT flow.
  * - `authed-key`: authenticated by signing each request with the enrolled key.
  */
@@ -78,7 +78,7 @@ export default function KioskEnvironment({
     // Optimistic: assume the enrolled key still works; the first request 401s into
     // `enrolling` if the session was disabled.
     if (initialSettings.authMode === "key") return "authed-key";
-    return "setup-code";
+    return "enrolling";
   });
 
   const getToken = useCallback(() => scanAuthTokenRef.current, []);

@@ -11,7 +11,7 @@
  *      The real kiosk generates a non-extractable key and never exports it; we *import*
  *      the seeded one, also non-extractable, which is indistinguishable to the app.
  *   2. localStorage `kiosk_<profile>` records `authMode: "key"`, which is what makes
- *      KioskEnvironment start in the authed-key state instead of the code entry screen.
+ *      KioskEnvironment start in the authed-key state instead of the QR enrollment screen.
  *
  * The matching public key is on session TestAKiosk02 at Test A Unit in synthetic.json.
  *
