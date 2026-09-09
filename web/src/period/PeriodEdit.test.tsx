@@ -99,6 +99,30 @@ describe("PeriodEdit", () => {
     expect(seenAuthHeaders).toContain(`Bearer ${TOKEN}`);
   });
 
+  it("frames a still-open entry as a forgotten sign-out", async () => {
+    server.use(
+      relayEndpoint.query("PeriodEditFormQuery", () =>
+        HttpResponse.json({
+          data: {
+            linkedPeriod: {
+              ...PERIOD_RESPONSE.data.linkedPeriod,
+              endTime: null,
+            },
+            categories: PERIOD_RESPONSE.data.categories,
+          },
+        }),
+      ),
+    );
+
+    renderAt(`/period#${TOKEN}`);
+
+    expect(await screen.findByText("Forgot to sign out?")).toBeInTheDocument();
+    expect(
+      screen.getByText(/don't have a sign-out time recorded/i),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText<HTMLInputElement>("End time").value).toBe("");
+  });
+
   it("omits retired activities but keeps the entry's own", async () => {
     renderAt(`/period#${TOKEN}`);
 

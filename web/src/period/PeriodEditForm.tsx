@@ -173,13 +173,30 @@ export default function PeriodEditForm() {
     ? `${period.person.firstName} ${period.person.lastName}`.trim()
     : null;
 
+  // No end time means this is the "did you forget to sign out" link, which
+  // implies a different framing than the ordinary "check your entry" one.
+  const isOpen = !period.endTime;
+
   return (
     <Panel>
       <PanelBox>
-        <PanelTitle>Check your time entry</PanelTitle>
+        <PanelTitle>
+          {isOpen ? "Forgot to sign out?" : "Check your time entry"}
+        </PanelTitle>
         <PanelIntro>
-          {name ? `${name}, if ` : "If "}the times or activity below aren't
-          right, correct them and save. Recorded at {period.location.name}.
+          {isOpen ? (
+            <>
+              {name ? `${name}, we ` : "We "}don't have a sign-out time recorded
+              for you at {period.location.name} — you may have forgotten to sign
+              out. Please complete your sign-out below by confirming the time
+              and activity.
+            </>
+          ) : (
+            <>
+              {name ? `${name}, if ` : "If "}the times or activity below aren't
+              right, correct them and save. Recorded at {period.location.name}.
+            </>
+          )}
         </PanelIntro>
 
         {submitError && <PanelMessage>{submitError}</PanelMessage>}
