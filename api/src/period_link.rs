@@ -159,10 +159,11 @@ pub async fn issue_period_link_token(db: &impl Handler, period_id: &str) -> Resu
 
 /// Env var holding the public site origin used to build edit links.
 ///
-/// Falls back to the first `WEBAUTHN_RP_ORIGIN`, which is already exactly the
-/// site origin in every environment (`http://localhost:5173` locally,
-/// `https://new.seslogin.com` in prod), so no new configuration is required to
-/// deploy this — set `WEB_BASE_URL` only if the two ever need to differ.
+/// Falls back to the first `WEBAUTHN_RP_ORIGIN`, which is already a valid site
+/// origin in every environment (`http://localhost:5173` locally). Every deployed
+/// environment sets this explicitly (prod/preprod → `https://seslogin.com`, test
+/// → `https://test.seslogin.com`) rather than relying on the fallback, whose
+/// first prod entry is the `new.` alias, not the apex we want in member links.
 const BASE_URL_VAR: &str = "WEB_BASE_URL";
 
 /// Build the member-facing edit URL for a freshly issued token.
