@@ -1,12 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import ScanModalDateTime from "./ScanModalDateTime";
-import ScanModalDateTimeV2 from "./ScanModalDateTimeV2";
-import {
-  formatDayDate,
-  formatTimeDiff,
-  formatTimeOfDay,
-  isSameDay,
-} from "../../lib/time";
+import { formatDayDate, formatTimeDiff, formatTimeOfDay } from "../../lib/time";
 import type { TransactionSignedOut } from "../ScanState";
 import { categories } from "../../lib/categories";
 import { scanViewProps, type ScreenPosition } from "../../styles";
@@ -46,12 +40,8 @@ function Inner(props: {
   onError: () => void;
   onEditCategory: () => void;
   isSubmitting: boolean;
-  easyTimeEntry: boolean;
 }) {
   const transaction = props.transaction;
-  // "date" + rollover-on-save is used by the legacy (non-easyTimeEntry) picker only;
-  // easyTimeEntry tracks a date per field instead, since each field gets its own picker
-  const [date, setDate] = useState<Date>(() => dateOnly(transaction.startTime));
   const [startTime, setStartTime] = useState<TimeOfDay>({
     hours: transaction.startTime.getHours(),
     minutes: transaction.startTime.getMinutes(),
@@ -67,8 +57,7 @@ function Inner(props: {
     dateOnly(defaultEndDateTime(transaction)),
   );
   const [confirmingLongPeriod, setConfirmingLongPeriod] = useState(false);
-  const showDateTimeModal = useRef<(field: string) => void | null>(null);
-  const showDateTimeModalV2 = useRef<
+  const showDateTimeModal = useRef<
     | ((
         field: string,
         currentDate: Date,
@@ -106,59 +95,23 @@ function Inner(props: {
 
   const startTimeStr = formatTimeOfDay(startTime.hours, startTime.minutes);
   const endTimeStr = formatTimeOfDay(endTime.hours, endTime.minutes);
-  const startDayStr = formatDayDate(date);
-  const isStartToday = isSameDay(date, new Date());
-
-  function changeStartDay(delta: number) {
-    const newDate = new Date(date);
-    newDate.setDate(newDate.getDate() + delta);
-
-    const today = new Date();
-    if (
-      newDate.getFullYear() > today.getFullYear() ||
-      (newDate.getFullYear() === today.getFullYear() &&
-        newDate.getMonth() > today.getMonth()) ||
-      (newDate.getFullYear() === today.getFullYear() &&
-        newDate.getMonth() === today.getMonth() &&
-        newDate.getDate() > today.getDate())
-    ) {
-      return;
-    }
-
-    setDate(newDate);
-  }
 
   function showModalForField(field: string) {
-    if (props.easyTimeEntry) {
-      const currentDate = field === "startTime" ? startDate : endDate;
-      const currentHours =
-        field === "startTime" ? startTime.hours : endTime.hours;
-      const currentMinutes =
-        field === "startTime" ? startTime.minutes : endTime.minutes;
-      // this might not be set due to a race relating to the useEffect in ScanModalDateTimeV2
-      showDateTimeModalV2.current!(
-        field,
-        currentDate,
-        currentHours,
-        currentMinutes,
-      );
-    } else {
-      // this might not be set due to a race relating to the useEffect in ScanModalDateTime
-      showDateTimeModal.current!(field);
-    }
+    const currentDate = field === "startTime" ? startDate : endDate;
+    const currentHours =
+      field === "startTime" ? startTime.hours : endTime.hours;
+    const currentMinutes =
+      field === "startTime" ? startTime.minutes : endTime.minutes;
+    // this might not be set due to a race relating to the useEffect in ScanModalDateTime
+    showDateTimeModal.current!(
+      field,
+      currentDate,
+      currentHours,
+      currentMinutes,
+    );
   }
 
-  function uponModalSave(field: string, value: string) {
-    const hours = parseInt(value.slice(0, 2), 10);
-    const minutes = parseInt(value.slice(2, 4), 10);
-    if (field === "startTime") {
-      setStartTime({ hours, minutes });
-    } else if (field === "endTime") {
-      setEndTime({ hours, minutes });
-    }
-  }
-
-  function uponModalSaveV2(field: string, newDate: Date, value: string) {
+  function uponModalSave(field: string, newDate: Date, value: string) {
     const hours = parseInt(value.slice(0, 2), 10);
     const minutes = parseInt(value.slice(2, 4), 10);
     if (field === "startTime") {
@@ -171,24 +124,11 @@ function Inner(props: {
   }
 
   function buildStartDate(): Date {
-    if (props.easyTimeEntry) {
-      return combine(startDate, startTime, false);
-    }
-    return combine(date, startTime, false);
+    return combine(startDate, startTime, false);
   }
 
   function buildEndDate(): Date {
-    if (props.easyTimeEntry) {
-      return combine(endDate, endTime, true);
-    }
-    const endSameDay = combine(date, endTime, true);
-    const start = buildStartDate();
-    if (endSameDay > start) {
-      return endSameDay;
-    }
-    const endNextDay = new Date(endSameDay);
-    endNextDay.setDate(endNextDay.getDate() + 1);
-    return endNextDay;
+    return combine(endDate, endTime, true);
   }
 
   let categoryName = "Unknown";
@@ -235,54 +175,18 @@ function Inner(props: {
 
   return (
     <>
-      {props.easyTimeEntry ? (
-        <ScanModalDateTimeV2
-          getShowFunction={(show) => {
-            showDateTimeModalV2.current = show;
-          }}
-          onSave={uponModalSaveV2}
-        />
-      ) : (
-        <ScanModalDateTime
-          getShowFunction={(show) => {
-            showDateTimeModal.current = show;
-          }}
-          onSave={uponModalSave}
-        />
-      )}
+      <ScanModalDateTime
+        getShowFunction={(show) => {
+          showDateTimeModal.current = show;
+        }}
+        onSave={uponModalSave}
+      />
       <h1 className="m-0 mb-6 text-[3em]">Confirm</h1>
       <div className="mx-auto flex w-fit min-w-175 flex-col text-[2em]">
-        {!props.easyTimeEntry && (
-          <div className="flex items-center">
-            <div className="min-w-48.75 p-2.5 text-right">Day:</div>
-            <div className="flex flex-1 items-center justify-between p-2.5">
-              <Button
-                variant="kiosk"
-                size="bare"
-                className="px-3.5 py-1.5 text-[1em]"
-                onClick={() => changeStartDay(-1)}
-              >
-                &#8592;
-              </Button>
-              <span className="flex-1 text-center">{startDayStr}</span>
-              <Button
-                variant="kiosk"
-                size="bare"
-                className="px-3.5 py-1.5 text-[1em]"
-                onClick={() => changeStartDay(1)}
-                disabled={isStartToday}
-              >
-                &#8594;
-              </Button>
-            </div>
-          </div>
-        )}
         <div className="flex items-center">
           <div className="min-w-48.75 p-2.5 text-right">Start time:</div>
           <div className="flex-1 p-2.5 font-mono text-[1.5em]">
-            {props.easyTimeEntry
-              ? `${formatDayDate(startDate)} ${startTimeStr}`
-              : startTimeStr}
+            {`${formatDayDate(startDate)} ${startTimeStr}`}
           </div>
           <div className="ml-auto p-2.5">
             <Button
@@ -298,9 +202,7 @@ function Inner(props: {
         <div className="flex items-center">
           <div className="min-w-48.75 p-2.5 text-right">End time:</div>
           <div className="flex-1 p-2.5 font-mono text-[1.5em]">
-            {props.easyTimeEntry
-              ? `${formatDayDate(endDate)} ${endTimeStr}`
-              : endTimeStr}
+            {`${formatDayDate(endDate)} ${endTimeStr}`}
           </div>
           <div className="ml-auto p-2.5">
             <Button
@@ -408,7 +310,6 @@ export default function ScanScreenAdjust(props: {
   onSubmit: (startTime: Date, endTime: Date) => void;
   onError: () => void;
   isSubmitting: boolean;
-  easyTimeEntry: boolean;
 }) {
   return (
     <div
@@ -425,7 +326,6 @@ export default function ScanScreenAdjust(props: {
           onSubmit={props.onSubmit}
           onError={props.onError}
           isSubmitting={props.isSubmitting}
-          easyTimeEntry={props.easyTimeEntry}
         />
       )}
     </div>

@@ -1,8 +1,8 @@
 import { useRef, useState } from "react";
-import ScanModalDateTimeV2 from "../kiosk/components/ScanModalDateTimeV2";
+import ScanModalDateTime from "../kiosk/components/ScanModalDateTime";
 import { formatDayDate } from "../lib/time";
 
-// Standalone harness for the kiosk time-entry modal (ScanModalDateTimeV2), so
+// Standalone harness for the kiosk time-entry modal (ScanModalDateTime), so
 // the caret ring, tap-to-edit and keyboard entry can be exercised without
 // walking a scan through to the adjust screen. Route: /demo/time.
 
@@ -27,7 +27,7 @@ export default function TimeEntryDemo() {
 
   return (
     <div className="mx-auto flex min-h-screen max-w-200 flex-col gap-6 bg-surface p-8 text-ink">
-      <ScanModalDateTimeV2
+      <ScanModalDateTime
         getShowFunction={(show) => {
           showModal.current = show;
         }}

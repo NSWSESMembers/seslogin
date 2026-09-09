@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vitest } from "vitest";
 import UserEvent from "@testing-library/user-event";
-import { Inner } from "./ScanModalDateTimeV2";
+import { Inner } from "./ScanModalDateTime";
 
 // The digit boxes are the only elements carrying the caret ring, so "which box
 // has border-accent" is the assertion for where the caret is.
@@ -43,7 +43,7 @@ function renderInner(overrides?: {
   );
 }
 
-describe("ScanModalDateTimeV2", () => {
+describe("ScanModalDateTime", () => {
   it("opens with the caret on the first digit even when prefilled", () => {
     renderInner();
     expect(digitText()).toBe("0930");

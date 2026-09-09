@@ -77,7 +77,7 @@ admin UI:
 
 ```bash
 make local-cli ARGS="period list --location TestAUnit001"
-make local-cli ARGS="session set-config-key easyTimeEntry true --location TestAUnit001"
+make local-cli ARGS="session set-config-key smallCategories true --location TestAUnit001"
 ```
 
 ## Between runs
