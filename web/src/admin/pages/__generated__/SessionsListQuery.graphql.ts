@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<ae7e233e3d4e866ec21d3310bd63f49a>>
+ * @generated SignedSource<<514c0e142b30f6725b18bac6771ae0c9>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -25,6 +25,7 @@ export type SessionsListQuery$data = {
       readonly id: string;
       readonly keyEnrolled: boolean;
       readonly keyExpiresAt: number | null | undefined;
+      readonly keyFingerprint: string | null | undefined;
       readonly keyReleasedAt: number | null | undefined;
       readonly lastContact: number | null | undefined;
       readonly name: string;
@@ -123,6 +124,13 @@ v2 = [
             "alias": null,
             "args": null,
             "kind": "ScalarField",
+            "name": "keyFingerprint",
+            "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
             "name": "reactivatable",
             "storageKey": null
           },
@@ -185,16 +193,16 @@ return {
     "selections": (v2/*: any*/)
   },
   "params": {
-    "cacheID": "8782af731a987d97abbfd14269347213",
+    "cacheID": "f798ce5b8098ada2e0251fbc3e78929f",
     "id": null,
     "metadata": {},
     "name": "SessionsListQuery",
     "operationKind": "query",
-    "text": "query SessionsListQuery(\n  $location: ID!\n) {\n  location(id: $location) {\n    id\n    sessions {\n      id\n      name\n      code\n      lastContact\n      clientVersion\n      keyEnrolled\n      keyExpiresAt\n      reactivatable\n      keyReleasedAt\n      clientInfo {\n        env\n        origin\n      }\n    }\n  }\n}\n"
+    "text": "query SessionsListQuery(\n  $location: ID!\n) {\n  location(id: $location) {\n    id\n    sessions {\n      id\n      name\n      code\n      lastContact\n      clientVersion\n      keyEnrolled\n      keyExpiresAt\n      keyFingerprint\n      reactivatable\n      keyReleasedAt\n      clientInfo {\n        env\n        origin\n      }\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "0826238207169ed8a3b1c2245f3e6dba";
+(node as any).hash = "5ee3f0afd43c90a54e1a8ab05c295410";
 
 export default node;
