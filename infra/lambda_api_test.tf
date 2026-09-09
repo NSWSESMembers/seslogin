@@ -26,6 +26,9 @@ resource "aws_lambda_function" "test_api" {
       TURNSTILE_SECRET_KEY  = var.turnstile_secret_key_test
       WEBAUTHN_RP_ID        = "seslogin.com"
       WEBAUTHN_RP_ORIGIN    = "https://test.seslogin.com"
+      # Member-facing period edit links stay on the test frontend so the edit page
+      # can be exercised there. Matches the WEBAUTHN_RP_ORIGIN fallback; set explicitly.
+      WEB_BASE_URL = "https://test.seslogin.com"
     }
   }
 }
