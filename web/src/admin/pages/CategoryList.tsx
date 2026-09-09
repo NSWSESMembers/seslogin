@@ -7,6 +7,7 @@ import { useRetryableLazyLoadQuery } from "../../components/useRetryableLazyLoad
 import { useNotify } from "../components/useNotify";
 import { AdminTable, Th, Td } from "../../components/ui/Table";
 import { Button, ButtonLink } from "../../components/ui/Button";
+import { categories as kioskCategoryTree } from "../../lib/categories";
 
 type CategoryData = {
   id: string;
@@ -25,6 +26,23 @@ type CategoryData = {
     | undefined;
 };
 
+// Only leaf (subcategory) ids from categories.ts ever get selected as a real
+// category on the kiosk — the top-level entries (`C1`-`C10`) are pure
+// navigation groupings and are never themselves a DB category id (see
+// ScanScreenCategories: selecting one always drills into its subcategories
+// rather than submitting it). So the leaves are what has to line up with the
+// DB's enabled categories for the scan interface to work.
+type KioskLeaf = { id: string; groupName: string; name: string };
+
+const KIOSK_LEAVES: KioskLeaf[] = kioskCategoryTree.flatMap((top) =>
+  (top.subcategories || []).map((sub) => ({
+    id: sub.id,
+    groupName: top.name,
+    name: sub.name,
+  })),
+);
+const KIOSK_LEAF_IDS = new Set(KIOSK_LEAVES.map((leaf) => leaf.id));
+
 function Row({
   category,
   idx,
@@ -34,6 +52,8 @@ function Row({
   idx: number;
   isDev: boolean;
 }) {
+  const inKioskList = KIOSK_LEAF_IDS.has(category.id);
+  const missingFromKioskList = category.enabled && !inKioskList;
   const { notifyError, notifySuccess } = useNotify();
   const [commitMutation, isMutationInFlight] =
     useMutation<CategoryListDisableMutation>(graphql`
@@ -91,7 +111,15 @@ function Row({
   const tagNames = category.nitcGroup?.sesTags.map((t) => t.name).join(", ");
 
   return (
-    <tr className={idx % 2 === 0 ? "bg-surface-raised" : undefined}>
+    <tr
+      className={
+        missingFromKioskList
+          ? "bg-red-100 dark:bg-red-950/50"
+          : idx % 2 === 0
+            ? "bg-surface-raised"
+            : undefined
+      }
+    >
       {isDev && <Td className="font-mono text-[0.85em]">{category.id}</Td>}
       <Td nowrap>
         <div className={category.enabled ? undefined : "line-through"}>
@@ -103,6 +131,17 @@ function Row({
       <Td className="font-mono text-[0.85em]">{category.nitcGroupId ?? ""}</Td>
       <Td>{category.nitcGroup?.nitcType ?? ""}</Td>
       <Td>{tagNames ?? ""}</Td>
+      <Td>
+        {missingFromKioskList ? (
+          <span className="font-bold text-red-700 dark:text-red-400">
+            ✗ Missing!
+          </span>
+        ) : inKioskList ? (
+          "✓"
+        ) : (
+          ""
+        )}
+      </Td>
       <Td options>
         <div className="flex justify-end gap-1">
           <ButtonLink size="row" to={`/admin/categories/${category.id}`}>
@@ -119,6 +158,58 @@ function Row({
             </Button>
           )}
         </div>
+      </Td>
+    </tr>
+  );
+}
+
+// A leaf entry from categories.ts that the scan interface can offer but that
+// isn't a usable category in the DB right now — either there's no matching
+// category at all, or there is one but it's disabled. Either way a member
+// picking this on the kiosk would fail, so it's surfaced above the normal
+// listing rather than mixed in (and shown regardless of "Show disabled").
+function KioskOnlyRow({
+  leaf,
+  dbCategory,
+  isDev,
+}: {
+  leaf: KioskLeaf;
+  dbCategory: CategoryData | undefined;
+  isDev: boolean;
+}) {
+  const reason = dbCategory ? "Disabled in DB" : "Not in DB";
+  const tagNames = dbCategory?.nitcGroup?.sesTags.map((t) => t.name).join(", ");
+
+  return (
+    <tr className="bg-amber-100 dark:bg-amber-950/50">
+      {isDev && (
+        <Td className="font-mono text-[0.85em]">{dbCategory?.id ?? leaf.id}</Td>
+      )}
+      <Td nowrap>
+        <span className="font-bold text-amber-800 dark:text-amber-300">
+          {leaf.groupName} &gt; {leaf.name}
+        </span>
+      </Td>
+      <Td>{dbCategory?.isVirtual ? "Yes" : ""}</Td>
+      <Td>{dbCategory?.nitcParticipantType ?? ""}</Td>
+      <Td className="font-mono text-[0.85em]">
+        {dbCategory?.nitcGroupId ?? ""}
+      </Td>
+      <Td>{dbCategory?.nitcGroup?.nitcType ?? ""}</Td>
+      <Td>{tagNames ?? ""}</Td>
+      <Td>
+        <span className="font-bold text-amber-800 dark:text-amber-300">
+          ⚠ {reason}
+        </span>
+      </Td>
+      <Td options>
+        {dbCategory && (
+          <div className="flex justify-end gap-1">
+            <ButtonLink size="row" to={`/admin/categories/${dbCategory.id}`}>
+              Edit
+            </ButtonLink>
+          </div>
+        )}
       </Td>
     </tr>
   );
@@ -156,6 +247,14 @@ export default function CategoryList() {
     .filter((c) => showDisabled || c.enabled)
     .sort((a, b) => a.name.localeCompare(b.name));
 
+  const dbCategoriesById = new Map(data.categories.map((c) => [c.id, c]));
+  const kioskOnlyLeaves = KIOSK_LEAVES.filter((leaf) => {
+    const dbCategory = dbCategoriesById.get(leaf.id);
+    return !dbCategory || !dbCategory.enabled;
+  }).sort((a, b) =>
+    `${a.groupName} > ${a.name}`.localeCompare(`${b.groupName} > ${b.name}`),
+  );
+
   return (
     <>
       <p>
@@ -186,10 +285,19 @@ export default function CategoryList() {
             <Th>NITC Group ID</Th>
             <Th>NITC Type</Th>
             <Th>SES Tags</Th>
+            <Th>Scan Screen</Th>
             <Th style={{ width: 100 }}></Th>
           </tr>
         </thead>
         <tbody>
+          {kioskOnlyLeaves.map((leaf) => (
+            <KioskOnlyRow
+              key={leaf.id}
+              leaf={leaf}
+              dbCategory={dbCategoriesById.get(leaf.id)}
+              isDev={isDev}
+            />
+          ))}
           {categories.map((category, idx) => (
             <Row
               key={category.id}
