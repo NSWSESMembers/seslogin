@@ -4,6 +4,7 @@ import { fetchKeySessionId } from "../lib/enrollmentKey";
 import { pollDelayMs } from "../lib/enrollPolling";
 import { useEnrollmentQr } from "../lib/useEnrollmentQr";
 import useKioskEnvironment from "./useKioskEnvironment";
+import { FingerprintChip } from "../../components/FingerprintChip";
 
 /**
  * The enrollment QR code, on demand, from inside the kiosk status dialog — the way to
@@ -104,8 +105,8 @@ export default function KioskReEnrollPanel({
       )}
 
       {fingerprint && (
-        <p className="m-0 text-center font-mono text-xs break-all opacity-60">
-          {fingerprint.slice(0, 16)}…
+        <p className="m-0 text-center text-xs opacity-60">
+          <FingerprintChip fingerprint={fingerprint} className="text-xs" />
         </p>
       )}
 

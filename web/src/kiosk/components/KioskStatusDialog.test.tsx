@@ -74,14 +74,14 @@ describe("KioskStatusDialog", () => {
 
   it("shows the kiosk, location and check-in details", () => {
     recordServerContactSuccess(null);
-    const { container } = renderDialog();
+    renderDialog();
 
     expect(screen.getByText("Front Desk")).toBeDefined();
     expect(screen.getByText("sess123")).toBeDefined();
     expect(screen.getByText("Test Unit")).toBeDefined();
     expect(screen.getByText("loc456")).toBeDefined();
     expect(
-      container.textContent?.includes("Last server check-in"),
+      document.body.textContent?.includes("Last server check-in"),
     ).toBeTruthy();
     expect(screen.getByText(/0s ago/)).toBeDefined();
     expect(screen.getByText("enrolled key")).toBeDefined();
@@ -95,9 +95,9 @@ describe("KioskStatusDialog", () => {
   it("shows the last failure alongside the last success", () => {
     recordServerContactSuccess(null);
     recordServerContactFailure(new Error("Failed to fetch"));
-    const { container } = renderDialog();
+    renderDialog();
 
-    expect(container.textContent?.includes("Last failure")).toBeTruthy();
+    expect(document.body.textContent?.includes("Last failure")).toBeTruthy();
     expect(screen.getByText(/Failed to fetch/)).toBeDefined();
   });
 
@@ -136,8 +136,8 @@ describe("KioskStatusDialog", () => {
 
   it("contains no links that could navigate the kiosk away", () => {
     recordServerContactSuccess(null);
-    const { container } = renderDialog();
-    expect(container.querySelectorAll("a")).toHaveLength(0);
+    renderDialog();
+    expect(document.body.querySelectorAll("a")).toHaveLength(0);
   });
 
   it("only shows the enrollment QR code once it is asked for", async () => {
@@ -170,12 +170,12 @@ describe("KioskStatusDialog", () => {
 
   it("still shows no links once the QR code is displayed", async () => {
     const user = UserEvent.setup();
-    const { container } = renderDialog();
+    renderDialog();
 
     await user.click(screen.getByText("Re-enroll this kiosk"));
     await screen.findByAltText("Kiosk enrollment QR code");
 
-    expect(container.querySelectorAll("a")).toHaveLength(0);
+    expect(document.body.querySelectorAll("a")).toHaveLength(0);
   });
 
   it("closes when Close is tapped", async () => {
