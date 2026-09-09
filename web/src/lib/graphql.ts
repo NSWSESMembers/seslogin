@@ -7,6 +7,35 @@ import {
 import { type RequestParameters, type Variables } from "relay-runtime";
 import { MutationFieldError } from "./relayErrors";
 
+const FIELD_ERROR_EVENT = "graphql-field-error";
+
+export interface GraphQLFieldErrorDetail {
+  /** Relay operation name, shown in the toast for error reporting. */
+  operationName: string;
+  /** Number of entries in the response's `errors` array. */
+  errorCount: number;
+}
+
+/**
+ * Fired when a **query** response comes back with a populated `errors` array —
+ * a partial response: `data` is (at least partly) present but one or more fields
+ * failed to resolve. Mutations don't emit this; their field errors throw
+ * `MutationFieldError` and are surfaced through the normal `onError` path.
+ */
+function emitFieldError(detail: GraphQLFieldErrorDetail): void {
+  window.dispatchEvent(new CustomEvent(FIELD_ERROR_EVENT, { detail }));
+}
+
+/** Subscribe to query field errors; returns an unsubscribe function. */
+export function onGraphQLFieldError(
+  handler: (detail: GraphQLFieldErrorDetail) => void,
+): () => void {
+  const listener = (e: Event) =>
+    handler((e as CustomEvent<GraphQLFieldErrorDetail>).detail);
+  window.addEventListener(FIELD_ERROR_EVENT, listener);
+  return () => window.removeEventListener(FIELD_ERROR_EVENT, listener);
+}
+
 let requestLeaseCounter = 0;
 
 function nextRequestLeaseId(): string {
@@ -94,6 +123,16 @@ export async function fetchGraphQL(
         `GraphQL field errors for ${request.name}: ${errors.length} errors`,
         errors.map((e) => ({ path: e?.path, message: e?.message })),
       );
+    }
+
+    // Queries return the partial response to Relay (the field errors don't
+    // throw), so nothing else tells the user their view may be incomplete.
+    // Mutations are handled by the MutationFieldError path below instead.
+    if (request.operationKind !== "mutation") {
+      emitFieldError({
+        operationName: request.name ?? "unknown",
+        errorCount: errors.length,
+      });
     }
   }
 

@@ -1,6 +1,6 @@
 import { createContext, useContext } from "react";
 
-export type ToastKind = "error" | "success";
+export type ToastKind = "error" | "success" | "warning";
 
 export type Toast = {
   id: number;
