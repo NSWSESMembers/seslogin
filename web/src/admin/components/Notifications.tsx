@@ -1,5 +1,13 @@
-import { useCallback, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { getErrorMessage } from "../../lib/relayErrors";
+import { onGraphQLFieldError } from "../../lib/graphql";
 import { NotifyContext, type Toast, type ToastKind } from "./useNotify";
 
 const AUTO_DISMISS_MS = 10_000;
@@ -41,11 +49,33 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     [notify, notifySuccess, notifyError, dismiss],
   );
 
+  // Surface partial GraphQL responses (a query field failed to resolve) as one
+  // warning toast per operation: the page rendered, but some data is missing.
+  // Deduped within the auto-dismiss window so a refetching query can't stack
+  // identical toasts.
+  const recentFieldErrors = useRef<Map<string, number>>(new Map());
+  useEffect(
+    () =>
+      onGraphQLFieldError(({ operationName }) => {
+        const now = Date.now();
+        const last = recentFieldErrors.current.get(operationName) ?? 0;
+        if (now - last < AUTO_DISMISS_MS) return;
+        recentFieldErrors.current.set(operationName, now);
+        notify(
+          `Some data couldn't be loaded, so what you see may be incomplete. Error occurred in: ${operationName}`,
+          "warning",
+        );
+      }),
+    [notify],
+  );
+
   const kindClasses: Record<ToastKind, string> = {
     error:
       "border border-red-900/25 bg-red-50 text-red-900 dark:border-red-400/30 dark:bg-red-950 dark:text-red-200",
     success:
       "border border-green-800/25 bg-green-50 text-green-900 dark:border-green-400/30 dark:bg-green-950 dark:text-green-200",
+    warning:
+      "border border-amber-900/25 bg-amber-50 text-amber-900 dark:border-amber-400/30 dark:bg-amber-950 dark:text-amber-200",
   };
 
   return (
