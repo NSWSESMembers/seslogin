@@ -7,6 +7,7 @@ import {
 } from "../../components/ui/Panel";
 import { Button } from "../../components/ui/Button";
 import LoadingIndicator from "../../components/LoadingIndicator";
+import { FingerprintChip } from "../../components/FingerprintChip";
 import { fetchKeySessionId } from "../lib/enrollmentKey";
 import { useEnrollmentQr } from "../lib/useEnrollmentQr";
 import { pollDelayMs } from "../lib/enrollPolling";
@@ -138,8 +139,8 @@ export default function KioskEnrollment({
         )}
 
         {fingerprint && (
-          <p className="mb-5 text-center font-mono text-xs break-all opacity-60">
-            {fingerprint.slice(0, 16)}…
+          <p className="mb-5 text-center text-xs opacity-60">
+            <FingerprintChip fingerprint={fingerprint} className="text-xs" />
           </p>
         )}
 

@@ -19,6 +19,9 @@ import type { SessionsListReactivateMutation } from "./__generated__/SessionsLis
 import { useNotify } from "../components/useNotify";
 import { AdminTable, Th, Td } from "../../components/ui/Table";
 import { Button, ButtonLink } from "../../components/ui/Button";
+import { Dialog, DialogActions, DialogTitle } from "../../components/ui/Dialog";
+import { FingerprintChip } from "../../components/FingerprintChip";
+import { shortFingerprint } from "../../lib/fingerprint";
 
 type Session = SessionsListQuery$data["location"]["sessions"][number];
 
@@ -32,6 +35,7 @@ function Row({
   isDev: boolean;
 }) {
   const [now] = useState(() => Math.round(Date.now() / 1000));
+  const [confirmingReactivate, setConfirmingReactivate] = useState(false);
   const { notifyError, notifySuccess } = useNotify();
   // Its computer was set up again by scanning its QR code, which moved the key onto a new
   // entry. Nothing here can revive this one — it's a leftover kept so the change is
@@ -85,6 +89,7 @@ function Row({
   }
 
   async function reactivateSession() {
+    setConfirmingReactivate(false);
     try {
       await new Promise((resolve, reject) => {
         commitReactivate({
@@ -156,6 +161,14 @@ function Row({
       </Td>
       <Td>{timeSinceAccess}</Td>
       <Td>{session.code}</Td>
+      <Td
+        className="font-mono text-[0.85em]"
+        title={session.keyFingerprint ?? undefined}
+      >
+        {session.keyFingerprint
+          ? shortFingerprint(session.keyFingerprint)
+          : "-"}
+      </Td>
       <Td>{clientVersion}</Td>
       <Td>
         <SessionEnvironment clientInfo={session.clientInfo} />
@@ -165,7 +178,7 @@ function Row({
           {session.reactivatable ? (
             <Button
               size="row"
-              onClick={reactivateSession}
+              onClick={() => setConfirmingReactivate(true)}
               disabled={isReactivateInFlight}
             >
               Reactivate
@@ -192,8 +205,58 @@ function Row({
             Delete
           </Button>
         </div>
+        {confirmingReactivate && (
+          <ReactivateDialog
+            session={session}
+            onConfirm={reactivateSession}
+            onCancel={() => setConfirmingReactivate(false)}
+          />
+        )}
       </Td>
     </tr>
+  );
+}
+
+// Reactivation grants a lapsed key a fresh window, so it has to be the right device:
+// the admin checks the fingerprint here against the one on the kiosk's QR screen before
+// confirming.
+function ReactivateDialog({
+  session,
+  onConfirm,
+  onCancel,
+}: {
+  session: Session;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <Dialog onDismiss={onCancel} width="w-120">
+      <DialogTitle>Reactivate {session.name}?</DialogTitle>
+      <p className="m-0 text-left">
+        Check the device key shown under the QR code on the kiosk screen. It
+        must match:
+      </p>
+      <p className="m-0 text-center text-lg">
+        {session.keyFingerprint ? (
+          <FingerprintChip
+            fingerprint={session.keyFingerprint}
+            className="text-lg"
+          />
+        ) : (
+          "-"
+        )}
+      </p>
+      <p className="m-0 text-left text-sm text-ink-muted">
+        If it doesn't match, cancel — you would be reactivating a different
+        computer.
+      </p>
+      <DialogActions>
+        <Button variant="secondary" onClick={onCancel}>
+          Cancel
+        </Button>
+        <Button onClick={onConfirm}>Reactivate</Button>
+      </DialogActions>
+    </Dialog>
   );
 }
 
@@ -217,6 +280,7 @@ export default function SessionsList() {
             clientVersion
             keyEnrolled
             keyExpiresAt
+            keyFingerprint
             reactivatable
             keyReleasedAt
             clientInfo {
@@ -280,6 +344,7 @@ export default function SessionsList() {
             <Th>Name</Th>
             <Th>Last contact</Th>
             <Th>Code</Th>
+            <Th>Device key</Th>
             <Th>Version</Th>
             <Th>Environment</Th>
             <Th></Th>
