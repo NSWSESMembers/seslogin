@@ -7,6 +7,7 @@ use async_graphql::{EmptySubscription, Schema, ServerError, ServerResult, Value}
 use std::sync::Arc;
 
 use crate::app::App;
+use crate::app::HasCache;
 use crate::app::HasDb;
 use crate::app::HasMail;
 use crate::app::HasQueues;
@@ -152,7 +153,7 @@ impl Extension for RequestMetricsExtImpl {
     }
 }
 
-pub fn build_schema<A: App + HasDb + HasQueues + HasMail + Send + Sync + 'static>(
+pub fn build_schema<A: App + HasDb + HasQueues + HasMail + HasCache + Send + Sync + 'static>(
     app: Arc<A>,
     webauthn: Arc<webauthn_rs::prelude::Webauthn>,
 ) -> Schema<QueryRoot<A>, MutationRoot<A>, EmptySubscription> {
@@ -177,7 +178,7 @@ pub fn build_schema<A: App + HasDb + HasQueues + HasMail + Send + Sync + 'static
     builder.finish()
 }
 
-pub fn get_dataloader<A: App + HasDb + HasQueues + HasMail + Send + Sync + 'static>(
+pub fn get_dataloader<A: App + HasDb + HasQueues + HasMail + HasCache + Send + Sync + 'static>(
     app: Arc<A>,
 ) -> DataLoader<DatabaseLoader<A>> {
     DataLoader::new(DatabaseLoader::new(app), request_metrics::metrics_spawner)
