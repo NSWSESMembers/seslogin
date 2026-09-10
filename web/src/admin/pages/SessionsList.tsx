@@ -21,7 +21,6 @@ import { AdminTable, Th, Td } from "../../components/ui/Table";
 import { Button, ButtonLink } from "../../components/ui/Button";
 import { Dialog, DialogActions, DialogTitle } from "../../components/ui/Dialog";
 import { FingerprintChip } from "../../components/FingerprintChip";
-import { shortFingerprint } from "../../lib/fingerprint";
 
 type Session = SessionsListQuery$data["location"]["sessions"][number];
 
@@ -161,13 +160,15 @@ function Row({
       </Td>
       <Td>{timeSinceAccess}</Td>
       <Td>{session.code}</Td>
-      <Td
-        className="font-mono text-[0.85em]"
-        title={session.keyFingerprint ?? undefined}
-      >
-        {session.keyFingerprint
-          ? shortFingerprint(session.keyFingerprint)
-          : "-"}
+      <Td className="text-[0.85em]">
+        {session.keyFingerprint ? (
+          <FingerprintChip
+            fingerprint={session.keyFingerprint}
+            className="text-[0.85em]"
+          />
+        ) : (
+          "-"
+        )}
       </Td>
       <Td>{clientVersion}</Td>
       <Td>
