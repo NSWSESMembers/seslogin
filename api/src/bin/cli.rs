@@ -30,8 +30,8 @@ struct Cli {
     db_prefix: Option<String>,
 
     /// Report what the command would change without writing anything. Only the
-    /// write commands (`session set-config-key`, `period-link issue`) act on it;
-    /// the inspectors never write either way.
+    /// write commands (`session set-config-key`, `session edit`, `period-link
+    /// issue`) act on it; the inspectors never write either way.
     #[arg(long, global = true, default_value_t = false)]
     dry_run: bool,
 
@@ -277,6 +277,24 @@ enum SessionCmd {
         /// Restrict to one location instead of every location.
         #[arg(long)]
         location: Option<String>,
+    },
+    /// Edit a single key-enrolled session's key-lifecycle state. WRITES to the
+    /// `session` table (and, for --require-reactivation, the `ephemeral_state`
+    /// table) — pass the global `--dry-run` to preview instead.
+    Edit {
+        /// Session ID to edit.
+        id: String,
+        /// Put the kiosk into the state `reactivateSession` expects: expire its
+        /// key window (like two weeks offline) and publish a live pending-enrollment
+        /// record for its fingerprint (like the kiosk switched on and showing its
+        /// enrollment QR code). Makes `reactivatable` true and the admin "Reactivate"
+        /// button appear, so a click goes through the real mutation instead of being
+        /// faked. Fails for a code-enrolled, soft-deleted, or already-released session
+        /// — same as a real reactivation attempt would.
+        #[arg(long)]
+        require_reactivation: bool,
+        #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
+        dry_run: bool,
     },
 }
 
@@ -1162,6 +1180,20 @@ async fn main() -> Result<()> {
         .await;
     }
 
+    // Another write path: forcing a session into the reactivation state. Opens
+    // its own handler (read_only while dry-run) instead of the shared read-only one.
+    if let Object::Session {
+        cmd:
+            SessionCmd::Edit {
+                id,
+                require_reactivation,
+                dry_run,
+            },
+    } = &cli.object
+    {
+        return run_session_edit(&db_prefix, id, *require_reactivation, *dry_run).await;
+    }
+
     let db = dynamodb::Handler::new(&db_prefix, true).await;
 
     let metrics = Arc::new(RequestMetrics::default());
@@ -1524,6 +1556,106 @@ async fn run_period_create_signin(
     Ok(())
 }
 
+/// Force a key-enrolled session into the state `reactivateSession` expects, for
+/// exercising the admin "Reactivate" flow without waiting two weeks for a real kiosk
+/// to lapse. Opens its own DB handler in `read_only = dry_run` mode, so a dry run
+/// cannot write even if a bug tried to; the writes themselves are also skipped while
+/// dry-run.
+async fn run_session_edit(
+    db_prefix: &str,
+    id: &str,
+    require_reactivation: bool,
+    dry_run: bool,
+) -> Result<()> {
+    if !require_reactivation {
+        return Err(anyhow!(
+            "nothing to do: pass --require-reactivation (the only edit `session edit` supports today)"
+        ));
+    }
+
+    let db = dynamodb::Handler::new(db_prefix, dry_run).await;
+
+    let session = db
+        .get_sessions(&[id])
+        .await?
+        .into_iter()
+        .next()
+        .flatten()
+        .ok_or_else(|| anyhow!("no session with id {id}"))?;
+
+    // Mirror `reactivateSession`'s own preconditions so a failure here reads the same
+    // way it would from the admin UI, rather than surfacing as a raw DynamoDB
+    // conditional-check failure out of `ExtendKey`.
+    if !session.active {
+        return Err(anyhow!("session {id} has been deleted"));
+    }
+    if session.key_released_at.is_some() {
+        return Err(anyhow!(
+            "session {id}'s key was already released (its device was re-enrolled as another session) — it can't be reactivated"
+        ));
+    }
+    let (Some(fingerprint), Some(public_key)) =
+        (session.key_fingerprint.clone(), session.public_key.clone())
+    else {
+        return Err(anyhow!(
+            "session {id} was set up with a setup code, not a key — it can't be reactivated"
+        ));
+    };
+
+    let now = now_secs();
+    // now - 1 rather than now: `key_expired` treats `now >= exp` as expired, but a
+    // strictly-past timestamp reads unambiguously as "already expired" in output.
+    let key_expires_at = now.saturating_sub(1);
+    let enroll_id = seslogin::session_key::enroll_state_id(&fingerprint);
+    let enroll_expires_at = now + seslogin::session_key::PENDING_ENROLLMENT_TTL_S;
+    let payload = serde_json::to_string(&seslogin::session_key::EnrollPayload {
+        public_key,
+        submitted_at: now,
+    })?;
+
+    println!(
+        "{} session {} ({}) reactivatable:\n  key_expires_at    {} (was {})\n  pending enrollment {} (fingerprint {}, expires {})",
+        if dry_run {
+            "[dry-run] would make"
+        } else {
+            "making"
+        },
+        session.id,
+        session.name,
+        fmt_ts(key_expires_at),
+        session
+            .key_expires_at
+            .map(fmt_ts)
+            .unwrap_or_else(|| "never set".to_string()),
+        enroll_id,
+        fingerprint,
+        fmt_ts(enroll_expires_at),
+    );
+
+    if dry_run {
+        println!("\ndry-run: nothing written. Re-run with --dry-run false to apply.");
+        return Ok(());
+    }
+
+    db.update_session(
+        id,
+        SessionUpdateShape::ExtendKey {
+            expires_at: key_expires_at,
+        },
+    )
+    .await?;
+    db.put_ephemeral_state(
+        &enroll_id,
+        seslogin::session_key::ENROLL_STATE_KIND,
+        &payload,
+        enroll_expires_at,
+    )
+    .await?;
+
+    println!("\ndone — session {id} should now show as reactivatable in the admin kiosk list.");
+    Ok(())
+}
+
 /// Fetch records by ID, warning (to stderr) about any IDs that weren't found.
 async fn fetch_present<T, F, Fut>(ids: &[String], f: F) -> Result<Vec<T>>
 where
@@ -1772,6 +1904,10 @@ async fn run(db: &impl Handler, object: Object) -> Result<()> {
             // Handled in `main` before the shared read-only DB is opened.
             SessionCmd::SetConfigKey { .. } => {
                 unreachable!("set-config-key is handled before the read-only DB is opened")
+            }
+            // Handled in `main` before the shared read-only DB is opened.
+            SessionCmd::Edit { .. } => {
+                unreachable!("edit is handled before the read-only DB is opened")
             }
         },
 
