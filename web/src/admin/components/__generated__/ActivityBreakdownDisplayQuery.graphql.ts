@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<361aa6b0739b4f5b734746e9a48e37e8>>
+ * @generated SignedSource<<64f1f307aa6dff7f76a9b68f7e3588ad>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -28,6 +28,10 @@ export type ActivityBreakdownDisplayQuery$data = {
           readonly firstName: string;
           readonly id: string;
           readonly lastName: string;
+          readonly location: {
+            readonly id: string;
+            readonly name: string;
+          };
         };
         readonly totalTime: number;
       }>;
@@ -46,6 +50,10 @@ export type ActivityBreakdownDisplayQuery$data = {
         readonly firstName: string;
         readonly id: string;
         readonly lastName: string;
+        readonly location: {
+          readonly id: string;
+          readonly name: string;
+        };
       };
       readonly totalTime: number;
     }>;
@@ -94,6 +102,13 @@ v4 = [
 v5 = {
   "alias": null,
   "args": null,
+  "kind": "ScalarField",
+  "name": "name",
+  "storageKey": null
+},
+v6 = {
+  "alias": null,
+  "args": null,
   "concreteType": "Person",
   "kind": "LinkedField",
   "name": "person",
@@ -113,18 +128,31 @@ v5 = {
       "kind": "ScalarField",
       "name": "lastName",
       "storageKey": null
+    },
+    {
+      "alias": null,
+      "args": null,
+      "concreteType": "Location",
+      "kind": "LinkedField",
+      "name": "location",
+      "plural": false,
+      "selections": [
+        (v3/*: any*/),
+        (v5/*: any*/)
+      ],
+      "storageKey": null
     }
   ],
   "storageKey": null
 },
-v6 = {
+v7 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
   "name": "totalTime",
   "storageKey": null
 },
-v7 = {
+v8 = {
   "alias": null,
   "args": null,
   "concreteType": "Category",
@@ -133,13 +161,7 @@ v7 = {
   "plural": false,
   "selections": [
     (v3/*: any*/),
-    {
-      "alias": null,
-      "args": null,
-      "kind": "ScalarField",
-      "name": "name",
-      "storageKey": null
-    },
+    (v5/*: any*/),
     {
       "alias": null,
       "args": null,
@@ -150,7 +172,7 @@ v7 = {
   ],
   "storageKey": null
 },
-v8 = [
+v9 = [
   {
     "alias": null,
     "args": [
@@ -174,8 +196,8 @@ v8 = [
         "name": "periodSummaryByMemberByCategory",
         "plural": true,
         "selections": [
-          (v5/*: any*/),
           (v6/*: any*/),
+          (v7/*: any*/),
           {
             "alias": null,
             "args": null,
@@ -184,8 +206,8 @@ v8 = [
             "name": "categories",
             "plural": true,
             "selections": [
-              (v7/*: any*/),
-              (v6/*: any*/)
+              (v8/*: any*/),
+              (v7/*: any*/)
             ],
             "storageKey": null
           }
@@ -200,8 +222,8 @@ v8 = [
         "name": "periodSummaryByCategoryByMember",
         "plural": true,
         "selections": [
+          (v8/*: any*/),
           (v7/*: any*/),
-          (v6/*: any*/),
           {
             "alias": null,
             "args": null,
@@ -210,8 +232,8 @@ v8 = [
             "name": "members",
             "plural": true,
             "selections": [
-              (v5/*: any*/),
-              (v6/*: any*/)
+              (v6/*: any*/),
+              (v7/*: any*/)
             ],
             "storageKey": null
           }
@@ -234,7 +256,7 @@ return {
       "throwOnFieldError": true
     },
     "name": "ActivityBreakdownDisplayQuery",
-    "selections": (v8/*: any*/),
+    "selections": (v9/*: any*/),
     "type": "QueryRoot",
     "abstractKey": null
   },
@@ -247,19 +269,19 @@ return {
     ],
     "kind": "Operation",
     "name": "ActivityBreakdownDisplayQuery",
-    "selections": (v8/*: any*/)
+    "selections": (v9/*: any*/)
   },
   "params": {
-    "cacheID": "c20aac6553353734efad036dfabf37b6",
+    "cacheID": "d0eddfa011816ba916ad8d585eb08a63",
     "id": null,
     "metadata": {},
     "name": "ActivityBreakdownDisplayQuery",
     "operationKind": "query",
-    "text": "query ActivityBreakdownDisplayQuery(\n  $location: ID!\n  $startTime: Int!\n  $endTime: Int!\n) {\n  location(id: $location) {\n    id\n    periodSummaryByMemberByCategory(startTime: $startTime, endTime: $endTime) {\n      person {\n        id\n        firstName\n        lastName\n      }\n      totalTime\n      categories {\n        category {\n          id\n          name\n          isVirtual\n        }\n        totalTime\n      }\n    }\n    periodSummaryByCategoryByMember(startTime: $startTime, endTime: $endTime) {\n      category {\n        id\n        name\n        isVirtual\n      }\n      totalTime\n      members {\n        person {\n          id\n          firstName\n          lastName\n        }\n        totalTime\n      }\n    }\n  }\n}\n"
+    "text": "query ActivityBreakdownDisplayQuery(\n  $location: ID!\n  $startTime: Int!\n  $endTime: Int!\n) {\n  location(id: $location) {\n    id\n    periodSummaryByMemberByCategory(startTime: $startTime, endTime: $endTime) {\n      person {\n        id\n        firstName\n        lastName\n        location {\n          id\n          name\n        }\n      }\n      totalTime\n      categories {\n        category {\n          id\n          name\n          isVirtual\n        }\n        totalTime\n      }\n    }\n    periodSummaryByCategoryByMember(startTime: $startTime, endTime: $endTime) {\n      category {\n        id\n        name\n        isVirtual\n      }\n      totalTime\n      members {\n        person {\n          id\n          firstName\n          lastName\n          location {\n            id\n            name\n          }\n        }\n        totalTime\n      }\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "3df6e008241e18d4ebbb0ef3d42a340c";
+(node as any).hash = "318937614fc676bff354be466bc2e57e";
 
 export default node;

@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<7c1549f9af8a50273f6108ffabebce30>>
+ * @generated SignedSource<<ab8f090150be36ac84e130f5169cc6ee>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -199,6 +199,16 @@ v18 = {
       "args": null,
       "kind": "ScalarField",
       "name": "lastName",
+      "storageKey": null
+    },
+    {
+      "alias": null,
+      "args": null,
+      "concreteType": "Location",
+      "kind": "LinkedField",
+      "name": "location",
+      "plural": false,
+      "selections": (v13/*: any*/),
       "storageKey": null
     }
   ],
@@ -407,12 +417,12 @@ return {
     ]
   },
   "params": {
-    "cacheID": "119c0684c847324a2ff81980a5969dc2",
+    "cacheID": "2e2adbec4d5b2576485129f15823da3a",
     "id": null,
     "metadata": {},
     "name": "ActivityListQuery",
     "operationKind": "query",
-    "text": "query ActivityListQuery(\n  $location: ID!\n  $first: Int!\n  $after: String\n) {\n  location(id: $location) {\n    id\n    periods(first: $first, after: $after) {\n      edges {\n        node {\n          ...ActivityListTable_period\n          ...ActivityList_periodName\n          id\n        }\n      }\n      pageInfo {\n        hasNextPage\n        endCursor\n      }\n    }\n  }\n}\n\nfragment ActivityListTable_period on Period {\n  id\n  personId\n  startTime\n  endTime\n  comment\n  nitcExportStatus\n  nitcEventId\n  signedInSession {\n    id\n    name\n  }\n  signedOutSession {\n    id\n    name\n  }\n  category {\n    id\n    name\n    isVirtual\n  }\n}\n\nfragment ActivityList_periodName on Period {\n  guestName\n  person {\n    id\n    firstName\n    lastName\n  }\n}\n"
+    "text": "query ActivityListQuery(\n  $location: ID!\n  $first: Int!\n  $after: String\n) {\n  location(id: $location) {\n    id\n    periods(first: $first, after: $after) {\n      edges {\n        node {\n          ...ActivityListTable_period\n          ...ActivityList_periodName\n          id\n        }\n      }\n      pageInfo {\n        hasNextPage\n        endCursor\n      }\n    }\n  }\n}\n\nfragment ActivityListTable_period on Period {\n  id\n  personId\n  startTime\n  endTime\n  comment\n  nitcExportStatus\n  nitcEventId\n  signedInSession {\n    id\n    name\n  }\n  signedOutSession {\n    id\n    name\n  }\n  category {\n    id\n    name\n    isVirtual\n  }\n}\n\nfragment ActivityList_periodName on Period {\n  guestName\n  person {\n    id\n    firstName\n    lastName\n    location {\n      id\n      name\n    }\n  }\n}\n"
   }
 };
 })();

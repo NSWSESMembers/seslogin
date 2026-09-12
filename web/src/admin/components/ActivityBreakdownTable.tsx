@@ -4,6 +4,8 @@ import { formatSeconds } from "../../lib/time";
 export type ActivityBreakdownChildRow = {
   id: string;
   name: string;
+  /** The member's home location, shown only when it differs from the one being viewed. */
+  locationName?: string | null;
   totalTime: number;
   isVirtual?: boolean;
 };
@@ -11,6 +13,8 @@ export type ActivityBreakdownChildRow = {
 export type ActivityBreakdownGroupRow = {
   id: string;
   name: string;
+  /** The member's home location, shown only when it differs from the one being viewed. */
+  locationName?: string | null;
   totalTime: number;
   children: ReadonlyArray<ActivityBreakdownChildRow>;
   /** Optional "X virtual · Y non-virtual" line shown under the group's total. */
@@ -30,7 +34,14 @@ export default function ActivityBreakdownTable({ title, rows }: Props) {
         {rows.map((entry) => (
           <Fragment key={entry.id}>
             <div className="flex justify-between gap-3 border-b border-line p-1.5">
-              <div className="min-w-0">{entry.name}</div>
+              <div className="min-w-0 text-left">
+                {entry.name}
+                {entry.locationName && (
+                  <div className="text-xs text-ink-muted">
+                    {entry.locationName}
+                  </div>
+                )}
+              </div>
               <div className="text-right">
                 <div className="whitespace-nowrap">
                   {formatSeconds(entry.totalTime)}
@@ -47,12 +58,17 @@ export default function ActivityBreakdownTable({ title, rows }: Props) {
                 key={`${entry.id}-${child.id}`}
                 className="flex justify-between gap-3 border-b border-line p-1.5 text-ink-muted"
               >
-                <div className="min-w-0 pl-6">
+                <div className="min-w-0 pl-6 text-left">
                   {child.name}
                   {child.isVirtual && (
                     <span className="ml-1.5 inline-flex items-center rounded-full bg-blue-100 px-1.5 py-0.25 text-[0.7em] font-semibold text-blue-700 dark:bg-blue-500/15 dark:text-blue-300">
                       Virtual
                     </span>
+                  )}
+                  {child.locationName && (
+                    <div className="text-xs text-ink-muted">
+                      {child.locationName}
+                    </div>
                   )}
                 </div>
                 <div className="whitespace-nowrap">

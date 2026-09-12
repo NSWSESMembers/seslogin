@@ -45,6 +45,10 @@ export default function ActivityTotalsDisplay({
               id
               firstName
               lastName
+              location {
+                id
+                name
+              }
             }
             totalTime
             totalTimeVirtual
@@ -77,6 +81,10 @@ export default function ActivityTotalsDisplay({
       return {
         id: entry.person.id,
         name: `${entry.person.firstName} ${entry.person.lastName}`,
+        locationName:
+          entry.person.location.id !== locationId
+            ? entry.person.location.name
+            : null,
         totalTime: hideVirtual ? totalTimeNonVirtual : entry.totalTime,
         totalTimeVirtual,
         totalTimeNonVirtual,

@@ -3,6 +3,8 @@ import { formatSeconds } from "../../lib/time";
 export type ActivityTotalsRow = {
   id: string;
   name: string;
+  /** The member's home location, shown only when it differs from the one being viewed. */
+  locationName?: string | null;
   totalTime: number;
   totalTimeVirtual?: number;
   totalTimeNonVirtual?: number;
@@ -31,7 +33,14 @@ export default function ActivityTotalsTable({ title, rows, showSplit }: Props) {
             className="flex justify-between gap-3 border-b border-line p-1.5"
             key={entry.id}
           >
-            <div className="min-w-0">{entry.name}</div>
+            <div className="min-w-0 text-left">
+              {entry.name}
+              {entry.locationName && (
+                <div className="text-xs text-ink-muted">
+                  {entry.locationName}
+                </div>
+              )}
+            </div>
             {showSplit ? (
               <div className="flex gap-3 whitespace-nowrap">
                 <div className="min-w-15 text-right">
