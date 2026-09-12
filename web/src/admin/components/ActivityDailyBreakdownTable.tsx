@@ -3,6 +3,8 @@ import { formatDayDate, formatSeconds } from "../../lib/time";
 export type ActivityDailyBreakdownMemberRow = {
   id: string;
   name: string;
+  /** The member's home location, shown only when it differs from the one being viewed. */
+  locationName?: string | null;
   totalTime: number;
 };
 
@@ -100,7 +102,14 @@ export default function ActivityDailyBreakdownTable({ days }: Props) {
                       key={member.id}
                       className="flex justify-between gap-3 border-b border-line p-1.5 text-ink-muted"
                     >
-                      <div className="min-w-0 pl-6">{member.name}</div>
+                      <div className="min-w-0 pl-6 text-left">
+                        {member.name}
+                        {member.locationName && (
+                          <div className="text-xs text-ink-muted">
+                            {member.locationName}
+                          </div>
+                        )}
+                      </div>
                       <div className="whitespace-nowrap">
                         {formatSeconds(member.totalTime)}
                       </div>

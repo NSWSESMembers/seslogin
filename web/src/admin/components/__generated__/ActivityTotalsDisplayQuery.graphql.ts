@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<099586105e562bc803abca11eeeb8e89>>
+ * @generated SignedSource<<7ed755f11e701d8aff7443346dc9e6d8>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -31,6 +31,10 @@ export type ActivityTotalsDisplayQuery$data = {
         readonly firstName: string;
         readonly id: string;
         readonly lastName: string;
+        readonly location: {
+          readonly id: string;
+          readonly name: string;
+        };
       };
       readonly totalTime: number;
       readonly totalTimeVirtual: number | null | undefined;
@@ -84,10 +88,17 @@ v7 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
+  "name": "name",
+  "storageKey": null
+},
+v8 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
   "name": "totalTime",
   "storageKey": null
 },
-v8 = [
+v9 = [
   {
     "alias": null,
     "args": [
@@ -141,11 +152,24 @@ v8 = [
                 "kind": "ScalarField",
                 "name": "lastName",
                 "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "concreteType": "Location",
+                "kind": "LinkedField",
+                "name": "location",
+                "plural": false,
+                "selections": [
+                  (v4/*: any*/),
+                  (v7/*: any*/)
+                ],
+                "storageKey": null
               }
             ],
             "storageKey": null
           },
-          (v7/*: any*/),
+          (v8/*: any*/),
           {
             "alias": null,
             "args": null,
@@ -176,13 +200,7 @@ v8 = [
             "plural": false,
             "selections": [
               (v4/*: any*/),
-              {
-                "alias": null,
-                "args": null,
-                "kind": "ScalarField",
-                "name": "name",
-                "storageKey": null
-              },
+              (v7/*: any*/),
               {
                 "alias": null,
                 "args": null,
@@ -193,7 +211,7 @@ v8 = [
             ],
             "storageKey": null
           },
-          (v7/*: any*/)
+          (v8/*: any*/)
         ],
         "storageKey": null
       }
@@ -214,7 +232,7 @@ return {
       "throwOnFieldError": true
     },
     "name": "ActivityTotalsDisplayQuery",
-    "selections": (v8/*: any*/),
+    "selections": (v9/*: any*/),
     "type": "QueryRoot",
     "abstractKey": null
   },
@@ -228,19 +246,19 @@ return {
     ],
     "kind": "Operation",
     "name": "ActivityTotalsDisplayQuery",
-    "selections": (v8/*: any*/)
+    "selections": (v9/*: any*/)
   },
   "params": {
-    "cacheID": "7d8ea958446192415d9c632d642d7ad8",
+    "cacheID": "1d71240303b4b9f27222bbb4a713f6f6",
     "id": null,
     "metadata": {},
     "name": "ActivityTotalsDisplayQuery",
     "operationKind": "query",
-    "text": "query ActivityTotalsDisplayQuery(\n  $location: ID!\n  $startTime: Int!\n  $endTime: Int!\n  $categories: [ID!]\n) {\n  location(id: $location) {\n    id\n    periodSummaryByMember(startTime: $startTime, endTime: $endTime, categories: $categories) {\n      person {\n        id\n        firstName\n        lastName\n      }\n      totalTime\n      totalTimeVirtual\n    }\n    periodSummaryByCategory(startTime: $startTime, endTime: $endTime) {\n      category {\n        id\n        name\n        isVirtual\n      }\n      totalTime\n    }\n  }\n}\n"
+    "text": "query ActivityTotalsDisplayQuery(\n  $location: ID!\n  $startTime: Int!\n  $endTime: Int!\n  $categories: [ID!]\n) {\n  location(id: $location) {\n    id\n    periodSummaryByMember(startTime: $startTime, endTime: $endTime, categories: $categories) {\n      person {\n        id\n        firstName\n        lastName\n        location {\n          id\n          name\n        }\n      }\n      totalTime\n      totalTimeVirtual\n    }\n    periodSummaryByCategory(startTime: $startTime, endTime: $endTime) {\n      category {\n        id\n        name\n        isVirtual\n      }\n      totalTime\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "5d8a580b4d2dfc148fac9c728681f301";
+(node as any).hash = "817df7bfb7a3c71d2e8ec82e941342fb";
 
 export default node;

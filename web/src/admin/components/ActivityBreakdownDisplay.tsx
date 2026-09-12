@@ -42,6 +42,10 @@ export default function ActivityBreakdownDisplay({
               id
               firstName
               lastName
+              location {
+                id
+                name
+              }
             }
             totalTime
             categories {
@@ -68,6 +72,10 @@ export default function ActivityBreakdownDisplay({
                 id
                 firstName
                 lastName
+                location {
+                  id
+                  name
+                }
               }
               totalTime
             }
@@ -95,6 +103,10 @@ export default function ActivityBreakdownDisplay({
       return {
         id: entry.person.id,
         name: `${entry.person.firstName} ${entry.person.lastName}`,
+        locationName:
+          entry.person.location.id !== locationId
+            ? entry.person.location.name
+            : null,
         totalTime: hideVirtual ? nonVirtualTime : entry.totalTime,
         splitLine: showSplit
           ? `${formatSeconds(virtualTime)} virtual · ${formatSeconds(nonVirtualTime)} non-virtual`
@@ -118,6 +130,10 @@ export default function ActivityBreakdownDisplay({
       children: entry.members.map((member) => ({
         id: member.person.id,
         name: `${member.person.firstName} ${member.person.lastName}`,
+        locationName:
+          member.person.location.id !== locationId
+            ? member.person.location.name
+            : null,
         totalTime: member.totalTime,
       })),
     };

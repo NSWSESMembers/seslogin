@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<ebafaefb5befe3488a960fd9c77e3b6f>>
+ * @generated SignedSource<<34e5a696895403e59fd6cdafd16a82d5>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -29,6 +29,10 @@ export type ActivityDailyBreakdownDisplayQuery$data = {
             readonly firstName: string;
             readonly id: string;
             readonly lastName: string;
+            readonly location: {
+              readonly id: string;
+              readonly name: string;
+            };
           };
           readonly totalTime: number;
         }>;
@@ -74,7 +78,14 @@ v4 = {
   "name": "totalTime",
   "storageKey": null
 },
-v5 = [
+v5 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
+  "name": "name",
+  "storageKey": null
+},
+v6 = [
   {
     "alias": null,
     "args": [
@@ -134,13 +145,7 @@ v5 = [
                 "plural": false,
                 "selections": [
                   (v3/*: any*/),
-                  {
-                    "alias": null,
-                    "args": null,
-                    "kind": "ScalarField",
-                    "name": "name",
-                    "storageKey": null
-                  },
+                  (v5/*: any*/),
                   {
                     "alias": null,
                     "args": null,
@@ -182,6 +187,19 @@ v5 = [
                         "kind": "ScalarField",
                         "name": "lastName",
                         "storageKey": null
+                      },
+                      {
+                        "alias": null,
+                        "args": null,
+                        "concreteType": "Location",
+                        "kind": "LinkedField",
+                        "name": "location",
+                        "plural": false,
+                        "selections": [
+                          (v3/*: any*/),
+                          (v5/*: any*/)
+                        ],
+                        "storageKey": null
                       }
                     ],
                     "storageKey": null
@@ -212,7 +230,7 @@ return {
       "throwOnFieldError": true
     },
     "name": "ActivityDailyBreakdownDisplayQuery",
-    "selections": (v5/*: any*/),
+    "selections": (v6/*: any*/),
     "type": "QueryRoot",
     "abstractKey": null
   },
@@ -225,19 +243,19 @@ return {
     ],
     "kind": "Operation",
     "name": "ActivityDailyBreakdownDisplayQuery",
-    "selections": (v5/*: any*/)
+    "selections": (v6/*: any*/)
   },
   "params": {
-    "cacheID": "b18974865e8dfd8184a24ac7653e97c0",
+    "cacheID": "321bd233a4a2816a161aaf2c9124e1e9",
     "id": null,
     "metadata": {},
     "name": "ActivityDailyBreakdownDisplayQuery",
     "operationKind": "query",
-    "text": "query ActivityDailyBreakdownDisplayQuery(\n  $location: ID!\n  $startTime: Int!\n  $endTime: Int!\n) {\n  location(id: $location) {\n    id\n    periodSummaryByDayByCategoryByMember(startTime: $startTime, endTime: $endTime) {\n      date\n      totalTime\n      categories {\n        category {\n          id\n          name\n          isVirtual\n        }\n        totalTime\n        members {\n          person {\n            id\n            firstName\n            lastName\n          }\n          totalTime\n        }\n      }\n    }\n  }\n}\n"
+    "text": "query ActivityDailyBreakdownDisplayQuery(\n  $location: ID!\n  $startTime: Int!\n  $endTime: Int!\n) {\n  location(id: $location) {\n    id\n    periodSummaryByDayByCategoryByMember(startTime: $startTime, endTime: $endTime) {\n      date\n      totalTime\n      categories {\n        category {\n          id\n          name\n          isVirtual\n        }\n        totalTime\n        members {\n          person {\n            id\n            firstName\n            lastName\n            location {\n              id\n              name\n            }\n          }\n          totalTime\n        }\n      }\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "0e700053591625eae004720709eda878";
+(node as any).hash = "ffce67d8b84efb6be14674d357c97b67";
 
 export default node;
