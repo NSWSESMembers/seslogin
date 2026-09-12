@@ -10,7 +10,7 @@ import { useNotify } from "../components/useNotify";
 import { FieldList, FormField } from "../../components/ui/FormField";
 import TextInput from "../../components/ui/TextInput";
 import Textarea from "../../components/ui/Textarea";
-import Select from "../../components/ui/Select";
+import Combobox from "../../components/ui/Combobox";
 import { Button } from "../../components/ui/Button";
 
 export default function ActivityNew() {
@@ -29,6 +29,7 @@ export default function ActivityNew() {
             id
             firstName
             lastName
+            memberNumber
           }
         }
         categories {
@@ -139,23 +140,32 @@ export default function ActivityNew() {
       <form action={handleSubmit}>
         <FieldList>
           <FormField label={<label htmlFor="person">Member</label>}>
-            <Select name="person" id="person" required>
-              {people.map((person) => (
-                <option value={person.id} key={person.id}>
-                  {person.firstName} {person.lastName}
-                </option>
-              ))}
-            </Select>
+            <Combobox
+              id="person"
+              name="person"
+              required
+              placeholder="-- Select member --"
+              emptyText="No members match"
+              options={people.map((person) => ({
+                value: person.id,
+                label: `${person.firstName} ${person.lastName}`,
+                // Searchable by member number as well as by name.
+                description: person.memberNumber ?? undefined,
+              }))}
+            />
           </FormField>
           <FormField label={<label htmlFor="category">Category</label>}>
-            <Select name="category" id="category" required>
-              <option value="">-- Select category --</option>
-              {categories.map((cat) => (
-                <option value={cat.id} key={cat.id}>
-                  {cat.name}
-                </option>
-              ))}
-            </Select>
+            <Combobox
+              id="category"
+              name="category"
+              required
+              placeholder="-- Select category --"
+              emptyText="No categories match"
+              options={categories.map((cat) => ({
+                value: cat.id,
+                label: cat.name,
+              }))}
+            />
           </FormField>
           <FormField label={<label htmlFor="start">Start time</label>}>
             <TextInput
