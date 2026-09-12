@@ -73,12 +73,14 @@ function Section<T extends ActivityListTable_period$key>({
   day,
   entries,
   getRowLabel,
+  getRowSubLabel,
   isDev,
   showSplit,
 }: {
   day: string;
   entries: ReadonlyArray<Entry<T>>;
   getRowLabel: (p: T) => string;
+  getRowSubLabel?: (p: T) => string | null;
   isDev: boolean;
   showSplit: boolean;
 }) {
@@ -137,6 +139,7 @@ function Section<T extends ActivityListTable_period$key>({
             entry={entry}
             idx={idx}
             getRowLabel={getRowLabel}
+            getRowSubLabel={getRowSubLabel}
             isDev={isDev}
           />
         </ErrorBoundary>
@@ -149,14 +152,17 @@ function Row<T extends ActivityListTable_period$key>({
   entry,
   idx,
   getRowLabel,
+  getRowSubLabel,
   isDev,
 }: {
   entry: Entry<T>;
   idx: number;
   getRowLabel: (p: T) => string;
+  getRowSubLabel?: (p: T) => string | null;
   isDev: boolean;
 }) {
   const period = entry.data;
+  const subLabel = getRowSubLabel?.(entry.ref) ?? null;
   // Throwing unwraps: a failure here is caught by the per-row ErrorBoundary
   // this Row is always rendered inside (see Section), degrading just this row.
   const category = unwrapCatch(period.category);
@@ -269,7 +275,10 @@ function Row<T extends ActivityListTable_period$key>({
         ) : null}
       </Td>
       {isDev && <Td className="font-mono text-[0.85em]">{period.id}</Td>}
-      <Td>{getRowLabel(entry.ref)}</Td>
+      <Td>
+        {getRowLabel(entry.ref)}
+        {subLabel && <div className="text-xs text-ink-muted">{subLabel}</div>}
+      </Td>
       <Td
         title={signedInSession?.name ?? undefined}
         style={signedInSession ? sessionHintStyle : undefined}
@@ -326,6 +335,7 @@ export default function ActivityListTable<
   periods,
   firstcol,
   getRowLabel,
+  getRowSubLabel,
   hasNextPage,
   isLoadingMore,
   onLoadMore,
@@ -334,6 +344,7 @@ export default function ActivityListTable<
   periods: ReadonlyArray<T>;
   firstcol: Firstcol;
   getRowLabel: (p: T) => string;
+  getRowSubLabel?: (p: T) => string | null;
   hasNextPage?: boolean;
   isLoadingMore?: boolean;
   onLoadMore?: () => void;
@@ -403,6 +414,7 @@ export default function ActivityListTable<
               day={day}
               entries={entries}
               getRowLabel={getRowLabel}
+              getRowSubLabel={getRowSubLabel}
               isDev={isDev}
               showSplit={showSplit}
             />

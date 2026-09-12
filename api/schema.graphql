@@ -475,6 +475,8 @@ type Person {
 	missingSince: Int
 	createdAt: Int
 	updatedAt: Int
+	locationId: ID!
+	location: Location!
 	periods(categories: [ID!], after: String, before: String, first: Int, last: Int): PeriodConnection!
 	"""
 	The person's most recent period (by start time), or null if they have none.

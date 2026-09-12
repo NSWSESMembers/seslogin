@@ -32,6 +32,10 @@ const activityListPeriodName = graphql`
       id
       firstName
       lastName
+      location {
+        id
+        name
+      }
     }
   }
 `;
@@ -103,6 +107,18 @@ export default function ActivityList() {
       : `${guestName ?? "Guest"} (Guest)`;
   }
 
+  function getRowSubLabel(periodRef: PeriodRef) {
+    const { person } = readInlineData<ActivityList_periodName$key>(
+      activityListPeriodName,
+      periodRef,
+    );
+    const personValue = unwrapCatch(person);
+    const location = personValue?.location;
+    return location && location.id !== settings?.locationId
+      ? location.name
+      : null;
+  }
+
   async function onLoadMore() {
     if (!hasNextPage || !endCursor || isLoadingMore) {
       return;
@@ -167,6 +183,7 @@ export default function ActivityList() {
       firstcol="person"
       periods={periods}
       getRowLabel={getRowLabel}
+      getRowSubLabel={getRowSubLabel}
       hasNextPage={hasNextPage}
       isLoadingMore={isLoadingMore}
       onLoadMore={onLoadMore}
