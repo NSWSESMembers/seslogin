@@ -62,6 +62,8 @@ interface BasicSessionModeFieldsProps {
   onGuestsChange: (next: boolean) => void;
   quickPickCategories: boolean;
   onQuickPickCategoriesChange: (next: boolean) => void;
+  numberPad: boolean;
+  onNumberPadChange: (next: boolean) => void;
   configJson: string;
 }
 
@@ -199,6 +201,20 @@ function getQuickPickCategoriesFromConfig(config: ConfigObject): boolean {
   return !!config.quickPickCategories;
 }
 
+function withNumberPad(config: ConfigObject, enabled: boolean): ConfigObject {
+  const next = { ...config };
+  if (enabled) {
+    next.numberPad = true;
+  } else {
+    delete next.numberPad;
+  }
+  return next;
+}
+
+function getNumberPadFromConfig(config: ConfigObject): boolean {
+  return !!config.numberPad;
+}
+
 function initializeConfigState(initialConfig: string): InitialConfigState {
   const parsed = parseConfigObject(initialConfig);
   const sessionMode = getSessionModeFromConfig(parsed);
@@ -323,6 +339,8 @@ function BasicSessionModeFields({
   onGuestsChange,
   quickPickCategories,
   onQuickPickCategoriesChange,
+  numberPad,
+  onNumberPadChange,
   configJson,
   theme,
   onThemeChange,
@@ -423,6 +441,18 @@ function BasicSessionModeFields({
               title="Quick pick categories"
               description="on the sign-out screen, show quick-pick buttons for the location's and the member's own recently-used categories before the full category list, so people converge on the same categories instead of picking slightly different ones each time"
             />
+            <OptionRow
+              input={
+                <input
+                  type="checkbox"
+                  checked={numberPad}
+                  onChange={(e) => onNumberPadChange(e.target.checked)}
+                  className="mt-0.5"
+                />
+              }
+              title="On-screen number pad"
+              description="show a keypad under the SES ID box so members can enter their ID by touch — for a touchscreen kiosk with no barcode scanner or keyboard"
+            />
           </OptionList>
         </FormField>
       )}
@@ -516,6 +546,7 @@ export default function SessionForm({
   const easyTimeEntry = getEasyTimeEntryFromConfig(parsedConfig);
   const guests = getGuestsFromConfig(parsedConfig);
   const quickPickCategories = getQuickPickCategoriesFromConfig(parsedConfig);
+  const numberPad = getNumberPadFromConfig(parsedConfig);
   const theme = getThemeFromConfig(parsedConfig);
 
   function setEditorMode(nextEditorMode: ConfigEditorMode) {
@@ -559,6 +590,11 @@ export default function SessionForm({
     setConfigJson(JSON.stringify(nextConfig, null, 2));
   }
 
+  function handleNumberPadChange(enabled: boolean) {
+    const nextConfig = withNumberPad(parseConfigObject(configJson), enabled);
+    setConfigJson(JSON.stringify(nextConfig, null, 2));
+  }
+
   function handleThemeChange(nextTheme: KioskTheme) {
     const nextConfig = withTheme(parseConfigObject(configJson), nextTheme);
     setConfigJson(JSON.stringify(nextConfig, null, 2));
@@ -590,6 +626,8 @@ export default function SessionForm({
             onGuestsChange={handleGuestsChange}
             quickPickCategories={quickPickCategories}
             onQuickPickCategoriesChange={handleQuickPickCategoriesChange}
+            numberPad={numberPad}
+            onNumberPadChange={handleNumberPadChange}
             configJson={configJson}
             theme={theme}
             onThemeChange={handleThemeChange}
