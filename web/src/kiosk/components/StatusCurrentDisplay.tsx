@@ -1,5 +1,6 @@
 import { formatTimeDiff } from "../../lib/time";
 import ClientVersionLabel from "../../components/ClientVersionLabel";
+import { signInColorClass } from "../lib/signInColor";
 
 // Presentational component: takes plain data so it can be driven by a Relay query
 // (Status.tsx) or by mock data (StatusDemo.tsx). The display shape is exported so
@@ -9,16 +10,6 @@ export type StatusPeriod = {
   startTime: number;
   name: string;
 };
-
-function getSignInColor(startTime: number): string {
-  const elapsedSeconds = Date.now() / 1000 - startTime;
-  if (elapsedSeconds <= 60 * 60 * 6)
-    return "text-green-700 dark:text-green-400";
-  if (elapsedSeconds <= 60 * 60 * 8) return "text-[#ffcc11]";
-  if (elapsedSeconds <= 60 * 60 * 10) return "text-[#ff8000]";
-  if (elapsedSeconds <= 60 * 60 * 12) return "text-[#ee4000]";
-  return "text-[#880000] dark:text-red-500";
-}
 
 type Props = {
   periods: StatusPeriod[];
@@ -38,7 +29,7 @@ export default function StatusCurrentDisplay({ periods }: Props) {
             >
               <span className="min-w-0 text-left">{period.name}</span>
               <span
-                className={`shrink-0 text-right ${getSignInColor(period.startTime)}`}
+                className={`shrink-0 text-right ${signInColorClass(period.startTime)}`}
               >
                 {formatTimeDiff(new Date(period.startTime * 1000), new Date())}
               </span>

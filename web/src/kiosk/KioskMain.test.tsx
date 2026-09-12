@@ -665,3 +665,109 @@ describe("KioskMain status screen", () => {
     expect(screen.getByText("Random Guy (Guest)")).toBeInTheDocument();
   });
 });
+
+describe("KioskMain signed-in status", () => {
+  function statusDialogHandler(
+    nodes: Array<{
+      id: string;
+      startTime: number;
+      guestName: string | null;
+      person: { id: string; firstName: string; lastName: string } | null;
+    }>,
+  ) {
+    return relayEndpoint.query("ScanStatusDialogQuery", () =>
+      HttpResponse.json({
+        data: {
+          session: {
+            location: { periods: { edges: nodes.map((node) => ({ node })) } },
+          },
+        },
+      }),
+    );
+  }
+
+  const nowSecs = Math.floor(Date.now() / 1000);
+  const TWO_PEOPLE = [
+    {
+      id: "period-1",
+      startTime: nowSecs - 60 * 60,
+      guestName: null,
+      person: { id: "person-1", firstName: "Alice", lastName: "Anderson" },
+    },
+    {
+      id: "period-2",
+      startTime: nowSecs - 60 * 30,
+      guestName: "Jamie Visitor",
+      person: null,
+    },
+  ];
+
+  it("hides the button when the kiosk does not have it enabled", async () => {
+    server.use(sessionConfigHandler({}));
+    await setupTest();
+
+    expect(
+      screen.queryByRole("button", { name: "Who's signed in" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("lists members and guests with the total when the button is pressed", async () => {
+    server.use(
+      sessionConfigHandler({ signedInStatus: true }),
+      statusDialogHandler(TWO_PEOPLE),
+    );
+    const user = await setupTest();
+
+    await user.click(screen.getByRole("button", { name: "Who's signed in" }));
+
+    await waitFor(() =>
+      expect(screen.getByText("Alice Anderson")).toBeInTheDocument(),
+    );
+    expect(screen.getByText("Jamie Visitor (Guest)")).toBeInTheDocument();
+    expect(screen.getByText("2 signed in")).toBeInTheDocument();
+  });
+
+  it("says so when nobody is signed in", async () => {
+    server.use(
+      sessionConfigHandler({ signedInStatus: true }),
+      statusDialogHandler([]),
+    );
+    const user = await setupTest();
+
+    await user.click(screen.getByRole("button", { name: "Who's signed in" }));
+
+    await waitFor(() =>
+      expect(
+        screen.getByText("Nobody is currently signed in here."),
+      ).toBeInTheDocument(),
+    );
+  });
+
+  it("gets out of the way when someone scans while it is open", async () => {
+    // The list holds no scan focus lease precisely so this works: the member ID
+    // input keeps focus underneath it, and the scan closes the list rather than
+    // having its result hidden behind it. Typed with `keyboard` rather than
+    // `type` so it goes wherever focus actually is — pressing the button leaves
+    // focus on the button unless opening the list hands it straight back, and a
+    // scanner's keystrokes have no say in the matter.
+    server.use(
+      sessionConfigHandler({ signedInStatus: true }),
+      statusDialogHandler(TWO_PEOPLE),
+      register2Handler(),
+    );
+    const user = await setupTest();
+
+    await user.click(screen.getByRole("button", { name: "Who's signed in" }));
+    await waitFor(() =>
+      expect(screen.getByText("Alice Anderson")).toBeInTheDocument(),
+    );
+    expect(screen.getByRole("textbox")).toHaveFocus();
+
+    await user.keyboard(FOUND_USER + "{Enter}");
+
+    await waitFor(() =>
+      expect(screen.queryByText("Alice Anderson")).not.toBeInTheDocument(),
+    );
+    expect(await screen.findByText("Random Guy")).toBeInTheDocument();
+  });
+});

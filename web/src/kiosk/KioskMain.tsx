@@ -27,9 +27,10 @@ export default function KioskMain() {
   return (
     <Suspense fallback={<LoadingIndicator />}>
       <KioskEnvironment profile={profile}>
-        {/* canRetry: the two useLazyLoadQuery call sites reachable here —
-            Status and ScanGuestDialog's GuestList — both thread
-            useRelayRetryFetchKey() into their query. */}
+        {/* canRetry: the three useLazyLoadQuery call sites reachable here —
+            Status, ScanGuestDialog's GuestList and ScanStatusDialog's
+            SignedInList — all thread useRelayRetryFetchKey() into their
+            query. */}
         <RelayErrorBoundary canRetry>
           <Suspense fallback={<LoadingIndicator />}>
             <Router />

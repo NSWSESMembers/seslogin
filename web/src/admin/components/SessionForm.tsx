@@ -62,6 +62,8 @@ interface BasicSessionModeFieldsProps {
   onGuestsChange: (next: boolean) => void;
   quickPickCategories: boolean;
   onQuickPickCategoriesChange: (next: boolean) => void;
+  signedInStatus: boolean;
+  onSignedInStatusChange: (next: boolean) => void;
   configJson: string;
 }
 
@@ -199,6 +201,23 @@ function getQuickPickCategoriesFromConfig(config: ConfigObject): boolean {
   return !!config.quickPickCategories;
 }
 
+function withSignedInStatus(
+  config: ConfigObject,
+  enabled: boolean,
+): ConfigObject {
+  const next = { ...config };
+  if (enabled) {
+    next.signedInStatus = true;
+  } else {
+    delete next.signedInStatus;
+  }
+  return next;
+}
+
+function getSignedInStatusFromConfig(config: ConfigObject): boolean {
+  return !!config.signedInStatus;
+}
+
 function initializeConfigState(initialConfig: string): InitialConfigState {
   const parsed = parseConfigObject(initialConfig);
   const sessionMode = getSessionModeFromConfig(parsed);
@@ -323,6 +342,8 @@ function BasicSessionModeFields({
   onGuestsChange,
   quickPickCategories,
   onQuickPickCategoriesChange,
+  signedInStatus,
+  onSignedInStatusChange,
   configJson,
   theme,
   onThemeChange,
@@ -423,6 +444,18 @@ function BasicSessionModeFields({
               title="Quick pick categories"
               description="on the sign-out screen, show quick-pick buttons for the location's and the member's own recently-used categories before the full category list, so people converge on the same categories instead of picking slightly different ones each time"
             />
+            <OptionRow
+              input={
+                <input
+                  type="checkbox"
+                  checked={signedInStatus}
+                  onChange={(e) => onSignedInStatusChange(e.target.checked)}
+                  className="mt-0.5"
+                />
+              }
+              title="Who's signed in"
+              description="show a button on the scan screen that lists everyone currently signed in at this location and how long they have been signed in for — the Status mode's information without giving up the kiosk to it"
+            />
           </OptionList>
         </FormField>
       )}
@@ -516,6 +549,7 @@ export default function SessionForm({
   const easyTimeEntry = getEasyTimeEntryFromConfig(parsedConfig);
   const guests = getGuestsFromConfig(parsedConfig);
   const quickPickCategories = getQuickPickCategoriesFromConfig(parsedConfig);
+  const signedInStatus = getSignedInStatusFromConfig(parsedConfig);
   const theme = getThemeFromConfig(parsedConfig);
 
   function setEditorMode(nextEditorMode: ConfigEditorMode) {
@@ -559,6 +593,14 @@ export default function SessionForm({
     setConfigJson(JSON.stringify(nextConfig, null, 2));
   }
 
+  function handleSignedInStatusChange(enabled: boolean) {
+    const nextConfig = withSignedInStatus(
+      parseConfigObject(configJson),
+      enabled,
+    );
+    setConfigJson(JSON.stringify(nextConfig, null, 2));
+  }
+
   function handleThemeChange(nextTheme: KioskTheme) {
     const nextConfig = withTheme(parseConfigObject(configJson), nextTheme);
     setConfigJson(JSON.stringify(nextConfig, null, 2));
@@ -590,6 +632,8 @@ export default function SessionForm({
             onGuestsChange={handleGuestsChange}
             quickPickCategories={quickPickCategories}
             onQuickPickCategoriesChange={handleQuickPickCategoriesChange}
+            signedInStatus={signedInStatus}
+            onSignedInStatusChange={handleSignedInStatusChange}
             configJson={configJson}
             theme={theme}
             onThemeChange={handleThemeChange}
