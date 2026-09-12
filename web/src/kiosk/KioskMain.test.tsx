@@ -361,6 +361,89 @@ describe("KioskMain quick pick categories", () => {
   });
 });
 
+describe("KioskMain number pad", () => {
+  async function setupNumberPadTest() {
+    server.use(sessionConfigHandler({ numberPad: true }));
+    return await setupTest();
+  }
+
+  function tap(user: UserEventInstance, label: string) {
+    return user.click(screen.getByRole("button", { name: label }));
+  }
+
+  it("is not shown unless the session config enables it", async () => {
+    await setupTest();
+    expect(
+      screen.queryByRole("group", { name: "Number pad" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("types into the member ID input and signs a member in", async () => {
+    const user = await setupNumberPadTest();
+    const textbox = screen.getByRole("textbox");
+
+    for (const digit of FOUND_USER) {
+      await tap(user, digit);
+    }
+    expect(textbox).toHaveValue(FOUND_USER);
+
+    await tap(user, "Enter");
+    await waitFor(() =>
+      expect(
+        screen.getByText(
+          FOUND_USER_RESPONSE.data.scanRegister2.period.person.firstName +
+            " " +
+            FOUND_USER_RESPONSE.data.scanRegister2.period.person.lastName,
+        ),
+      ).toBeInTheDocument(),
+    );
+    expect(textbox).toHaveValue("");
+  });
+
+  it("deletes the last digit", async () => {
+    const user = await setupNumberPadTest();
+    const textbox = screen.getByRole("textbox");
+
+    await tap(user, "1");
+    await tap(user, "2");
+    await tap(user, "Delete");
+    expect(textbox).toHaveValue("1");
+
+    // Deleting past the start is a no-op rather than an error.
+    await tap(user, "Delete");
+    await tap(user, "Delete");
+    expect(textbox).toHaveValue("");
+  });
+
+  it("stops at the length of a member ID", async () => {
+    const user = await setupNumberPadTest();
+    const textbox = screen.getByRole("textbox");
+
+    for (const digit of "0123456789") {
+      await tap(user, digit);
+    }
+    expect(textbox).toHaveValue("01234567");
+  });
+
+  it("leaves focus in the member ID input so a scan is never lost", async () => {
+    const user = await setupNumberPadTest();
+    const textbox = screen.getByRole("textbox");
+
+    await tap(user, "7");
+    expect(document.activeElement).toBe(textbox);
+  });
+
+  it("ignores Enter on an empty input", async () => {
+    const user = await setupNumberPadTest();
+
+    await tap(user, "Enter");
+    expect(audioPlaySpy).not.toHaveBeenCalled();
+    expect(
+      screen.queryByText("Member ID must be at least 8 digits long"),
+    ).not.toBeInTheDocument();
+  });
+});
+
 describe("KioskMain forgot-to-sign-out interstitial", () => {
   function longSignOutHandler() {
     return relayEndpoint.mutation("ScanControllerRegister2Mutation", () =>

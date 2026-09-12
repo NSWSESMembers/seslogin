@@ -22,10 +22,15 @@ import {
   isScanFocusSuspended,
   onScanFocusSuspendedChange,
 } from "../lib/scanFocusLeases";
+import ScanNumberPad from "./ScanNumberPad";
 
 // ensure this is less than the transaction timeout in ScanState
 const FINALIZED_TRANSACTION_TIMEOUT_MS = 10_000;
 const FINALIZED_TRANSACTION_FADE_MS = 1_000;
+// Member IDs are a fixed 8 digits (see isValidMemberIdText). The input caps
+// typing at this length, and the number pad has to enforce it itself because
+// setting `value` from script bypasses `maxLength`.
+const MEMBER_ID_MAX_LENGTH = 8;
 // How long a half-typed member ID is left in the input before it is discarded.
 const SCAN_INPUT_CLEAR_TIMEOUT_MS = 10_000;
 // How long after the input loses focus before the scan screen takes it back, so
@@ -38,7 +43,12 @@ const transactionBase =
 const loadingSpinnerBase =
   "-mt-1.5 ml-2 inline-block size-[18px] rounded-full border-2 border-line border-t-menu align-middle opacity-0";
 
-function TransactionList(props: { transactionState: TransactionState }) {
+function TransactionList(props: {
+  transactionState: TransactionState;
+  // The number pad eats most of a short kiosk screen's height, so the gap above
+  // the log is tightened when it is shown to keep a couple of rows visible.
+  compact?: boolean;
+}) {
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
@@ -52,7 +62,7 @@ function TransactionList(props: { transactionState: TransactionState }) {
   }, []);
 
   return (
-    <div className="mt-12.5">
+    <div className={props.compact ? "mt-6" : "mt-12.5"}>
       {props.transactionState.transactions
         .filter((t) => {
           if (
@@ -209,6 +219,7 @@ export default function ScanScreenMain(props: {
   onFocusInputReady?: (focusInput: () => void) => void;
   guestsEnabled?: boolean;
   onOpenGuestDialog?: () => void;
+  numberPadEnabled?: boolean;
 }) {
   const {
     onFocusInputReady,
@@ -218,6 +229,7 @@ export default function ScanScreenMain(props: {
     validateMemberId,
     guestsEnabled,
     onOpenGuestDialog,
+    numberPadEnabled,
   } = props;
   const inputRef = useRef<HTMLInputElement>(null);
   const refocusTimeoutIdRef = useRef<number | null>(null);
@@ -285,8 +297,8 @@ export default function ScanScreenMain(props: {
     onFocusInputReady?.(focusInput);
   }, [focusInput, onFocusInputReady]);
 
-  async function handleSubmit(data: FormData) {
-    const memberId = ((data.get("id") as string) ?? "").trim();
+  async function submitMemberId(rawMemberId: string) {
+    const memberId = rawMemberId.trim();
     if (memberId === "") {
       // Ignore empty submissions (e.g. Enter pressed on a blank/whitespace input)
       // so we never fire scanRegister2 with an empty registration number.
@@ -306,9 +318,49 @@ export default function ScanScreenMain(props: {
     await onSubmit(memberId);
   }
 
+  async function handleSubmit(data: FormData) {
+    await submitMemberId((data.get("id") as string) ?? "");
+  }
+
+  // The number pad edits the input's value directly rather than holding the
+  // typed ID in state: the input stays the single source of truth, so a pad
+  // press, a barcode scan and a keyboard can be mixed on the same entry. Each
+  // press also restarts the clear timeout, which only an `onChange` from real
+  // typing would otherwise do — a half-tapped ID left on screen is discarded on
+  // the same timer as a half-typed one.
+  function handleNumberPadDigit(digit: string) {
+    const input = inputRef.current;
+    if (input === null || input.value.length >= MEMBER_ID_MAX_LENGTH) {
+      return;
+    }
+    input.value = input.value + digit;
+    scheduleInputClearTimeout();
+    focusInput();
+  }
+
+  function handleNumberPadDelete() {
+    const input = inputRef.current;
+    if (input === null) {
+      return;
+    }
+    input.value = input.value.slice(0, -1);
+    scheduleInputClearTimeout();
+    focusInput();
+  }
+
+  function handleNumberPadSubmit() {
+    clearInputTimeout();
+    submitMemberId(inputRef.current?.value ?? "");
+  }
+
   return (
     <div {...scanViewProps(screenPosition)}>
-      <p className="mt-25 text-[2em]">Please enter or scan your SES ID</p>
+      {/* The pad is tall enough that the usual top margin would push the
+          transaction list off a short kiosk screen, so it is tightened when the
+          pad is shown. */}
+      <p className={`${numberPadEnabled ? "mt-10" : "mt-25"} text-[2em]`}>
+        Please enter or scan your SES ID
+      </p>
 
       <form
         autoComplete="off"
@@ -321,7 +373,7 @@ export default function ScanScreenMain(props: {
           ref={inputRef}
           type="text"
           name="id"
-          maxLength={8}
+          maxLength={MEMBER_ID_MAX_LENGTH}
           className={`${inputBase} mr-3.75 w-80 py-3 text-center align-middle font-mono text-[3em] leading-snug transition-colors duration-500`}
           onBlur={() => {
             clearRefocusTimeout();
@@ -374,6 +426,15 @@ export default function ScanScreenMain(props: {
         </Button>
       </form>
 
+      {numberPadEnabled && (
+        <ScanNumberPad
+          onDigit={handleNumberPadDigit}
+          onDelete={handleNumberPadDelete}
+          onSubmit={handleNumberPadSubmit}
+          submitDisabled={submitDisabled}
+        />
+      )}
+
       {guestsEnabled && onOpenGuestDialog && (
         <div className="mt-6">
           <Button variant="kiosk" type="button" onClick={onOpenGuestDialog}>
@@ -382,7 +443,10 @@ export default function ScanScreenMain(props: {
         </div>
       )}
 
-      <TransactionList transactionState={props.transactionState} />
+      <TransactionList
+        transactionState={props.transactionState}
+        compact={numberPadEnabled}
+      />
     </div>
   );
 }
