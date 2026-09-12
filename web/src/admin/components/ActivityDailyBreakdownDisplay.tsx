@@ -52,6 +52,10 @@ export default function ActivityDailyBreakdownDisplay({
                   id
                   firstName
                   lastName
+                  location {
+                    id
+                    name
+                  }
                 }
                 totalTime
               }
@@ -92,6 +96,10 @@ export default function ActivityDailyBreakdownDisplay({
             members: category.members.map((member) => ({
               id: member.person.id,
               name: `${member.person.firstName} ${member.person.lastName}`,
+              locationName:
+                member.person.location.id !== locationId
+                  ? member.person.location.name
+                  : null,
               totalTime: member.totalTime,
             })),
           })),
