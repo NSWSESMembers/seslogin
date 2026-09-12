@@ -25,7 +25,6 @@ function renderAdjust(
   transaction: TransactionSignedOut,
   onSubmit: () => void,
   onError: () => void,
-  easyTimeEntry: boolean = false,
 ) {
   return render(
     <ScanScreenAdjust
@@ -36,7 +35,6 @@ function renderAdjust(
       onSubmit={onSubmit}
       onError={onError}
       isSubmitting={false}
-      easyTimeEntry={easyTimeEntry}
     />,
   );
 }
@@ -117,7 +115,7 @@ describe("ScanScreenAdjust", () => {
     const onSubmit = vi.fn();
     const onError = vi.fn();
     const user = UserEvent.setup();
-    renderAdjust(makeTransaction(0), onSubmit, onError, true);
+    renderAdjust(makeTransaction(0), onSubmit, onError);
 
     const [startTimeEdit, endTimeEdit] = screen.getAllByRole("button", {
       name: "Edit",

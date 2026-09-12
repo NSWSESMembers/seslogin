@@ -164,26 +164,6 @@ fn sessions_pick_exactly_one_enrolment_style() {
 }
 
 #[test]
-fn both_kiosk_time_entry_branches_are_seeded() {
-    let doc = synthetic();
-    let easy: Vec<bool> = rows(&doc, "session")
-        .iter()
-        .map(|session| {
-            let config: Value =
-                serde_json::from_str(&s(session, "config").expect("config")).unwrap();
-            config["easyTimeEntry"].as_bool().unwrap_or(false)
-        })
-        .collect();
-
-    // ScanScreenAdjust picks the V2 or the legacy time picker on this flag, so the seed
-    // keeps a kiosk on each side and neither branch needs a session edited by hand first.
-    assert!(
-        easy.iter().any(|&e| e) && easy.iter().any(|&e| !e),
-        "seed should have a kiosk with easyTimeEntry on and one with it off, got {easy:?}"
-    );
-}
-
-#[test]
 fn user_token_hashes_match_their_documented_plaintexts() {
     let doc = synthetic();
     for (user_id, plaintext) in USER_TOKENS {

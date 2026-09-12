@@ -470,10 +470,7 @@ describe("KioskMain forgot-to-sign-out interstitial", () => {
   }
 
   it("'Yeah' back-dates the sign-out to one hour after sign-in", async () => {
-    server.use(
-      sessionConfigHandler({ easyTimeEntry: true }),
-      longSignOutHandler(),
-    );
+    server.use(sessionConfigHandler({}), longSignOutHandler());
     const signOut = captureSignOut();
     const user = await setupTest();
     await user.type(screen.getByRole("textbox"), SIGNOUT_USER + "{enter}");
@@ -497,10 +494,7 @@ describe("KioskMain forgot-to-sign-out interstitial", () => {
   });
 
   it("'Nope' keeps the sign-out time as now", async () => {
-    server.use(
-      sessionConfigHandler({ easyTimeEntry: true }),
-      longSignOutHandler(),
-    );
+    server.use(sessionConfigHandler({}), longSignOutHandler());
     const signOut = captureSignOut();
     const user = await setupTest();
     await user.type(screen.getByRole("textbox"), SIGNOUT_USER + "{enter}");
