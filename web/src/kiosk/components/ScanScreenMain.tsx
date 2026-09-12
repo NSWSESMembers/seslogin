@@ -214,6 +214,8 @@ export default function ScanScreenMain(props: {
   guestsEnabled?: boolean;
   onOpenGuestDialog?: () => void;
   numberPadEnabled?: boolean;
+  statusEnabled?: boolean;
+  onOpenStatusDialog?: () => void;
 }) {
   const {
     onFocusInputReady,
@@ -224,6 +226,8 @@ export default function ScanScreenMain(props: {
     guestsEnabled,
     onOpenGuestDialog,
     numberPadEnabled,
+    statusEnabled,
+    onOpenStatusDialog,
   } = props;
   const inputRef = useRef<HTMLInputElement>(null);
   const refocusTimeoutIdRef = useRef<number | null>(null);
@@ -485,11 +489,19 @@ export default function ScanScreenMain(props: {
         />
       )}
 
-      {guestsEnabled && onOpenGuestDialog && (
-        <div className="mt-6">
-          <Button variant="kiosk" type="button" onClick={onOpenGuestDialog}>
-            Guest sign in / out
-          </Button>
+      {((guestsEnabled && onOpenGuestDialog) ||
+        (statusEnabled && onOpenStatusDialog)) && (
+        <div className="mt-6 flex flex-wrap justify-center gap-3">
+          {guestsEnabled && onOpenGuestDialog && (
+            <Button variant="kiosk" type="button" onClick={onOpenGuestDialog}>
+              Guest sign in / out
+            </Button>
+          )}
+          {statusEnabled && onOpenStatusDialog && (
+            <Button variant="kiosk" type="button" onClick={onOpenStatusDialog}>
+              Who's here
+            </Button>
+          )}
         </div>
       )}
 

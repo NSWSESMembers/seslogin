@@ -5,6 +5,16 @@ import TextInput from "../../components/ui/TextInput";
 import Select from "../../components/ui/Select";
 import { Button } from "../../components/ui/Button";
 
+/** Marks an option still finding its shape — shared so two options flagged
+ * beta don't drift into two different-looking badges. */
+function BetaBadge() {
+  return (
+    <span className="rounded-full bg-blue-600 px-1.5 py-0.5 text-[0.625rem] font-semibold tracking-wide text-white uppercase dark:bg-blue-500">
+      Beta
+    </span>
+  );
+}
+
 interface SessionFormProps {
   initialName: string;
   initialConfig: string;
@@ -62,6 +72,8 @@ interface BasicSessionModeFieldsProps {
   onQuickPickCategoriesChange: (next: boolean) => void;
   numberPad: boolean;
   onNumberPadChange: (next: boolean) => void;
+  signedInStatus: boolean;
+  onSignedInStatusChange: (next: boolean) => void;
   configJson: string;
 }
 
@@ -196,6 +208,23 @@ function getNumberPadFromConfig(config: ConfigObject): boolean {
   return !!config.numberPad;
 }
 
+function withSignedInStatus(
+  config: ConfigObject,
+  enabled: boolean,
+): ConfigObject {
+  const next = { ...config };
+  if (enabled) {
+    next.signedInStatus = true;
+  } else {
+    delete next.signedInStatus;
+  }
+  return next;
+}
+
+function getSignedInStatusFromConfig(config: ConfigObject): boolean {
+  return !!config.signedInStatus;
+}
+
 function initializeConfigState(initialConfig: string): InitialConfigState {
   const parsed = parseConfigObject(initialConfig);
   const sessionMode = getSessionModeFromConfig(parsed);
@@ -320,6 +349,8 @@ function BasicSessionModeFields({
   onQuickPickCategoriesChange,
   numberPad,
   onNumberPadChange,
+  signedInStatus,
+  onSignedInStatusChange,
   configJson,
   theme,
   onThemeChange,
@@ -387,9 +418,7 @@ function BasicSessionModeFields({
               title={
                 <span className="inline-flex items-center gap-2">
                   Guests
-                  <span className="rounded-full bg-blue-600 px-1.5 py-0.5 text-[0.625rem] font-semibold tracking-wide text-white uppercase dark:bg-blue-500">
-                    Beta
-                  </span>
+                  <BetaBadge />
                 </span>
               }
               description="show a Guest button so non-members can be signed in and out by name without a membership record"
@@ -419,6 +448,23 @@ function BasicSessionModeFields({
               }
               title="On-screen number pad"
               description="show a keypad under the SES ID box so members can enter their ID by touch — for a touchscreen kiosk with no barcode scanner or keyboard"
+            />
+            <OptionRow
+              input={
+                <input
+                  type="checkbox"
+                  checked={signedInStatus}
+                  onChange={(e) => onSignedInStatusChange(e.target.checked)}
+                  className="mt-0.5"
+                />
+              }
+              title={
+                <span className="inline-flex items-center gap-2">
+                  Who's here
+                  <BetaBadge />
+                </span>
+              }
+              description="show a button on the scan screen that lists everyone currently signed in at this location and how long they have been signed in for — the Status mode's information without giving up the kiosk to it"
             />
           </OptionList>
         </FormField>
@@ -513,6 +559,7 @@ export default function SessionForm({
   const guests = getGuestsFromConfig(parsedConfig);
   const quickPickCategories = getQuickPickCategoriesFromConfig(parsedConfig);
   const numberPad = getNumberPadFromConfig(parsedConfig);
+  const signedInStatus = getSignedInStatusFromConfig(parsedConfig);
   const theme = getThemeFromConfig(parsedConfig);
 
   function setEditorMode(nextEditorMode: ConfigEditorMode) {
@@ -553,6 +600,14 @@ export default function SessionForm({
     setConfigJson(JSON.stringify(nextConfig, null, 2));
   }
 
+  function handleSignedInStatusChange(enabled: boolean) {
+    const nextConfig = withSignedInStatus(
+      parseConfigObject(configJson),
+      enabled,
+    );
+    setConfigJson(JSON.stringify(nextConfig, null, 2));
+  }
+
   function handleThemeChange(nextTheme: KioskTheme) {
     const nextConfig = withTheme(parseConfigObject(configJson), nextTheme);
     setConfigJson(JSON.stringify(nextConfig, null, 2));
@@ -584,6 +639,8 @@ export default function SessionForm({
             onQuickPickCategoriesChange={handleQuickPickCategoriesChange}
             numberPad={numberPad}
             onNumberPadChange={handleNumberPadChange}
+            signedInStatus={signedInStatus}
+            onSignedInStatusChange={handleSignedInStatusChange}
             configJson={configJson}
             theme={theme}
             onThemeChange={handleThemeChange}
