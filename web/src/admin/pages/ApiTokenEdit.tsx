@@ -10,6 +10,7 @@ import { useNotify } from "../components/useNotify";
 import { FieldList, FormField } from "../../components/ui/FormField";
 import TextInput from "../../components/ui/TextInput";
 import { Button } from "../../components/ui/Button";
+import MultiSelectList from "../../components/ui/MultiSelectList";
 
 export default function ApiTokenEdit() {
   const navigate = useNavigate();
@@ -125,14 +126,14 @@ export default function ApiTokenEdit() {
     }
   }
 
-  const locations = [...data.locations].sort((a, b) =>
-    a.name.localeCompare(b.name),
-  );
+  const locations = [...data.locations]
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map((location) => ({ id: location.id, name: location.name }));
   const token = data.apiToken;
   const [readOnly, setReadOnly] = useState(token.readOnly);
-  const [selectedLocations, setSelectedLocations] = useState(
-    () => new Set(token.locationGrants),
-  );
+  const [selectedLocations, setSelectedLocations] = useState<
+    ReadonlySet<string>
+  >(() => new Set(token.locationGrants));
   const [expiresValue, setExpiresValue] = useState(
     token.expiresAt
       ? dateToInputDateTimeLocal(new Date(token.expiresAt * 1000))
@@ -192,41 +193,13 @@ export default function ApiTokenEdit() {
             />
           </FormField>
           <FormField label="Locations">
-            <a
-              href="#"
-              onClick={(e) => {
-                e.preventDefault();
-                setSelectedLocations(new Set());
-              }}
-            >
-              Deselect all
-            </a>
-            {locations.map((location: { id: string; name: string }) => (
-              <div key={location.id}>
-                <input
-                  type="checkbox"
-                  name="locations"
-                  id={`location-${location.id}`}
-                  value={location.id}
-                  checked={selectedLocations.has(location.id)}
-                  onChange={(e) =>
-                    setSelectedLocations((prev) => {
-                      const next = new Set(prev);
-                      if (e.target.checked) {
-                        next.add(location.id);
-                      } else {
-                        next.delete(location.id);
-                      }
-                      return next;
-                    })
-                  }
-                />
-                &nbsp;
-                <label htmlFor={`location-${location.id}`}>
-                  {location.name}
-                </label>
-              </div>
-            ))}
+            <MultiSelectList
+              options={locations}
+              value={selectedLocations}
+              onChange={setSelectedLocations}
+              name="locations"
+              itemLabel="locations"
+            />
           </FormField>
           <FormField>
             <div className="flex justify-end gap-2 md:justify-start">

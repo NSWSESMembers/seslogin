@@ -8,6 +8,7 @@ import { useNotify } from "../components/useNotify";
 import { FieldList, FormField } from "../../components/ui/FormField";
 import TextInput from "../../components/ui/TextInput";
 import { Button } from "../../components/ui/Button";
+import MultiSelectList from "../../components/ui/MultiSelectList";
 
 export default function UserEdit() {
   const navigate = useNavigate();
@@ -99,16 +100,16 @@ export default function UserEdit() {
     navigate("/admin/users");
   }
 
-  const locations = [...data.locations].sort((a, b) =>
-    a.name.localeCompare(b.name),
-  );
+  const locations = [...data.locations]
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map((location) => ({ id: location.id, name: location.name }));
   const user = data.user;
   const [isSuper, setIsSuper] = useState(user.isSuper);
   const [isDev, setIsDev] = useState(user.isDev);
   const [enabled, setEnabled] = useState(user.enabled);
-  const [selectedLocations, setSelectedLocations] = useState(
-    () => new Set(user.locationGrantIds),
-  );
+  const [selectedLocations, setSelectedLocations] = useState<
+    ReadonlySet<string>
+  >(() => new Set(user.locationGrantIds));
 
   return (
     <>
@@ -155,41 +156,13 @@ export default function UserEdit() {
           </FormField>
           {!isSuper && (
             <FormField label="Locations">
-              <a
-                href="#"
-                onClick={(e) => {
-                  e.preventDefault();
-                  setSelectedLocations(new Set());
-                }}
-              >
-                Deselect all
-              </a>
-              {locations.map((location: { id: string; name: string }) => (
-                <div key={location.id}>
-                  <input
-                    type="checkbox"
-                    name="locations"
-                    id={`location-${location.id}`}
-                    value={location.id}
-                    checked={selectedLocations.has(location.id)}
-                    onChange={(e) =>
-                      setSelectedLocations((prev) => {
-                        const next = new Set(prev);
-                        if (e.target.checked) {
-                          next.add(location.id);
-                        } else {
-                          next.delete(location.id);
-                        }
-                        return next;
-                      })
-                    }
-                  />
-                  &nbsp;
-                  <label htmlFor={`location-${location.id}`}>
-                    {location.name}
-                  </label>
-                </div>
-              ))}
+              <MultiSelectList
+                options={locations}
+                value={selectedLocations}
+                onChange={setSelectedLocations}
+                name="locations"
+                itemLabel="locations"
+              />
             </FormField>
           )}
           <FormField>

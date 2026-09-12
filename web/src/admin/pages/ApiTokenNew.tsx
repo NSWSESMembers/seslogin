@@ -8,6 +8,7 @@ import { useNotify } from "../components/useNotify";
 import { FieldList, FormField } from "../../components/ui/FormField";
 import TextInput from "../../components/ui/TextInput";
 import { Button } from "../../components/ui/Button";
+import MultiSelectList from "../../components/ui/MultiSelectList";
 import CopyableSecret from "../components/CopyableSecret";
 
 export default function ApiTokenNew() {
@@ -16,6 +17,9 @@ export default function ApiTokenNew() {
     name: string;
     secret: string;
   } | null>(null);
+  const [selectedLocations, setSelectedLocations] = useState<
+    ReadonlySet<string>
+  >(() => new Set());
 
   const data = useRetryableLazyLoadQuery<ApiTokenNewQuery>(
     graphql`
@@ -103,9 +107,9 @@ export default function ApiTokenNew() {
     );
   }
 
-  const locations = [...data.locations].sort((a, b) =>
-    a.name.localeCompare(b.name),
-  );
+  const locations = [...data.locations]
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map((location) => ({ id: location.id, name: location.name }));
 
   return (
     <>
@@ -128,20 +132,13 @@ export default function ApiTokenNew() {
             />
           </FormField>
           <FormField label="Locations">
-            {locations.map((location: { id: string; name: string }) => (
-              <div key={location.id}>
-                <input
-                  type="checkbox"
-                  name="locations"
-                  id={`location-${location.id}`}
-                  value={location.id}
-                />
-                &nbsp;
-                <label htmlFor={`location-${location.id}`}>
-                  {location.name}
-                </label>
-              </div>
-            ))}
+            <MultiSelectList
+              options={locations}
+              value={selectedLocations}
+              onChange={setSelectedLocations}
+              name="locations"
+              itemLabel="locations"
+            />
           </FormField>
           <FormField>
             <Button type="submit" disabled={isMutationInFlight}>
