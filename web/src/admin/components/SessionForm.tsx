@@ -30,6 +30,7 @@ interface SessionFormProps {
 type ConfigEditorMode = "basic" | "advanced";
 type SessionMode = "scan" | "status";
 type KioskTheme = "auto" | "light" | "dark";
+type SignedInStatusMode = "off" | "button" | "inline";
 type ConfigObject = Record<string, unknown>;
 
 interface SegmentedControlProps<T extends string> {
@@ -62,6 +63,8 @@ interface BasicSessionModeFieldsProps {
   onGuestsChange: (next: boolean) => void;
   quickPickCategories: boolean;
   onQuickPickCategoriesChange: (next: boolean) => void;
+  signedInStatusMode: SignedInStatusMode;
+  onSignedInStatusModeChange: (next: SignedInStatusMode) => void;
   configJson: string;
 }
 
@@ -199,6 +202,37 @@ function getQuickPickCategoriesFromConfig(config: ConfigObject): boolean {
   return !!config.quickPickCategories;
 }
 
+/**
+ * `signedInStatus` and `signedInStatusInline` (see ScanController) are two
+ * independent config keys, but a button that opens the list you're already
+ * looking at would be pointless, so the admin UI presents them as one
+ * mutually-exclusive three-way choice rather than two checkboxes whose
+ * combination would need a hidden precedence rule.
+ */
+function withSignedInStatusMode(
+  config: ConfigObject,
+  mode: SignedInStatusMode,
+): ConfigObject {
+  const next = { ...config };
+  delete next.signedInStatus;
+  delete next.signedInStatusInline;
+  if (mode === "button") {
+    next.signedInStatus = true;
+  } else if (mode === "inline") {
+    next.signedInStatusInline = true;
+  }
+  return next;
+}
+
+function getSignedInStatusModeFromConfig(
+  config: ConfigObject,
+): SignedInStatusMode {
+  if (config.signedInStatusInline) {
+    return "inline";
+  }
+  return config.signedInStatus ? "button" : "off";
+}
+
 function initializeConfigState(initialConfig: string): InitialConfigState {
   const parsed = parseConfigObject(initialConfig);
   const sessionMode = getSessionModeFromConfig(parsed);
@@ -323,6 +357,8 @@ function BasicSessionModeFields({
   onGuestsChange,
   quickPickCategories,
   onQuickPickCategoriesChange,
+  signedInStatusMode,
+  onSignedInStatusModeChange,
   configJson,
   theme,
   onThemeChange,
@@ -426,6 +462,27 @@ function BasicSessionModeFields({
           </OptionList>
         </FormField>
       )}
+      {sessionMode === "scan" && (
+        <FormField label={<span>Who's signed in</span>}>
+          <SegmentedControl
+            label="Who's signed in"
+            value={signedInStatusMode}
+            options={[
+              { value: "off", label: "Off" },
+              { value: "button", label: "Button" },
+              { value: "inline", label: "Always visible" },
+            ]}
+            onChange={onSignedInStatusModeChange}
+          />
+          <p className="mt-1.5 mb-0 text-ink-muted">
+            Who's currently signed in at this location and how long they've been
+            signed in for — the Status mode's information without giving up the
+            kiosk to it. "Button" adds a button on the scan screen that opens
+            the list; "Always visible" shows it beside the scan screen
+            permanently, so it's visible at a glance without pressing anything.
+          </p>
+        </FormField>
+      )}
     </>
   );
 }
@@ -516,6 +573,7 @@ export default function SessionForm({
   const easyTimeEntry = getEasyTimeEntryFromConfig(parsedConfig);
   const guests = getGuestsFromConfig(parsedConfig);
   const quickPickCategories = getQuickPickCategoriesFromConfig(parsedConfig);
+  const signedInStatusMode = getSignedInStatusModeFromConfig(parsedConfig);
   const theme = getThemeFromConfig(parsedConfig);
 
   function setEditorMode(nextEditorMode: ConfigEditorMode) {
@@ -559,6 +617,14 @@ export default function SessionForm({
     setConfigJson(JSON.stringify(nextConfig, null, 2));
   }
 
+  function handleSignedInStatusModeChange(mode: SignedInStatusMode) {
+    const nextConfig = withSignedInStatusMode(
+      parseConfigObject(configJson),
+      mode,
+    );
+    setConfigJson(JSON.stringify(nextConfig, null, 2));
+  }
+
   function handleThemeChange(nextTheme: KioskTheme) {
     const nextConfig = withTheme(parseConfigObject(configJson), nextTheme);
     setConfigJson(JSON.stringify(nextConfig, null, 2));
@@ -590,6 +656,8 @@ export default function SessionForm({
             onGuestsChange={handleGuestsChange}
             quickPickCategories={quickPickCategories}
             onQuickPickCategoriesChange={handleQuickPickCategoriesChange}
+            signedInStatusMode={signedInStatusMode}
+            onSignedInStatusModeChange={handleSignedInStatusModeChange}
             configJson={configJson}
             theme={theme}
             onThemeChange={handleThemeChange}

@@ -15,6 +15,7 @@ import ScanScreenMain from "./ScanScreenMain";
 import ScanScreenAdjust from "./ScanScreenAdjust";
 import ScanScreenForgotSignOut from "./ScanScreenForgotSignOut";
 import ScanGuestDialog from "./ScanGuestDialog";
+import ScanStatusDialog from "./ScanStatusDialog";
 import ScanScreenQuickPick from "./ScanScreenQuickPick";
 import {
   blockClientUpdates,
@@ -47,12 +48,37 @@ export default function ScanController(props: {
   const easyTimeEntry = !!session?.config?.easyTimeEntry;
   const guestsEnabled = !!session?.config?.guests;
   const quickPickCategories = !!session?.config?.quickPickCategories;
+  const signedInStatus = !!session?.config?.signedInStatus;
+  const signedInStatusInline = !!session?.config?.signedInStatusInline;
+  // A button that opens the very list already sitting on screen would be
+  // pointless, so inline mode takes over from the button rather than the two
+  // stacking (see SessionForm, which presents them as one three-way choice).
+  const signedInStatusButton = signedInStatus && !signedInStatusInline;
 
   const [transactionState, dispatchTransaction] = useReducer(reducer, {
     transactions: [],
   });
   const focusMainInputRef = useRef<(() => void) | null>(null);
   const [guestDialogOpen, setGuestDialogOpen] = useState(false);
+  const [statusDialogOpen, setStatusDialogOpen] = useState(false);
+
+  // Opening the list must hand focus straight back to the member ID input: the
+  // press that opened it left focus on the button, and the list holds no scan
+  // focus lease precisely so a scan still lands while it is up. Without this,
+  // the input only takes focus back on its own blur timer, and a scan in the
+  // couple of seconds after the press would be typed into the button.
+  const openStatusDialog = useCallback(() => {
+    setStatusDialogOpen(true);
+    focusMainInputRef.current?.();
+  }, []);
+
+  // Stable so ScanStatusDialog's auto-close timer isn't restarted by every
+  // re-render of this controller — of which there are plenty, the transaction
+  // purge timer alone firing once a second.
+  const closeStatusDialog = useCallback(() => {
+    setStatusDialogOpen(false);
+    focusMainInputRef.current?.();
+  }, []);
 
   // start periodically clearing old transactions
   useEffect(() => {
@@ -271,6 +297,10 @@ export default function ScanController(props: {
   async function handleMemberIdEntered(memberId: string) {
     const uuid = crypto.randomUUID();
 
+    // The signed-in list holds no scan focus lease, so a scan can land while it
+    // is up. Get it out of the way before the result it would cover appears.
+    setStatusDialogOpen(false);
+
     dispatchTransaction({ type: "LOAD_PERSON", uuid, memberId });
 
     // purposefully not awaited - we want the form submission to be considered complete
@@ -472,6 +502,9 @@ export default function ScanController(props: {
         }}
         guestsEnabled={guestsEnabled}
         onOpenGuestDialog={() => setGuestDialogOpen(true)}
+        statusEnabled={signedInStatusButton}
+        onOpenStatusDialog={openStatusDialog}
+        signedInInline={signedInStatusInline}
       />
       <ScanScreenForgotSignOut
         screenPosition={forgotSignOutPos}
@@ -503,6 +536,7 @@ export default function ScanController(props: {
         isSubmitting={signOutIsInFlight}
         easyTimeEntry={easyTimeEntry}
       />
+      {statusDialogOpen && <ScanStatusDialog onClose={closeStatusDialog} />}
       {guestDialogOpen && (
         <ScanGuestDialog
           onClose={() => {
