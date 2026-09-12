@@ -482,6 +482,20 @@ impl<A: App + HasDb + Send + Sync> Person<A> {
         self.rec.updated_at.map(|t| t as i64)
     }
 
+    async fn location_id(&self) -> ID {
+        ID(self.rec.location_id.clone())
+    }
+
+    async fn location(&self, ctx: &Context<'_>) -> Result<Location<A>> {
+        let loader = ctx.data_unchecked::<DataLoader<DatabaseLoader<A>>>();
+        loader
+            .load_one(LocationId(ID(self.rec.location_id.clone())))
+            .await
+            .map_err(|e| anyhow!("Failed to load location via DataLoader: {}", e))?
+            .flatten()
+            .ok_or_else(|| anyhow!("Location with ID {} missing", self.rec.location_id))
+    }
+
     async fn periods<'ctx>(
         &self,
         ctx: &Context<'ctx>,
