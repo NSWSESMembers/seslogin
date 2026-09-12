@@ -15,7 +15,7 @@ import { pollDelayMs } from "../lib/enrollPolling";
 const STEPS: { icon: ReactNode; text: ReactNode }[] = [
   {
     icon: (
-      <path d="M4 7V5a1 1 0 0 1 1-1h2M17 4h2a1 1 0 0 1 1 1v2M20 17v2a1 1 0 0 1-1 1h-2M7 20H5a1 1 0 0 1-1-1v-2M7 8h2v2H7zM15 8h2v2h-2zM7 14h2v2H7zM12 8v2M15 14h.01M15 17h2v2h-2zM12 14v6" />
+      <path d="M3 9V5a2 2 0 0 1 2-2h4M15 3h4a2 2 0 0 1 2 2v4M21 15v4a2 2 0 0 1-2 2h-4M9 21H5a2 2 0 0 1-2-2v-4M7 7h3v3H7zM14 7h3v3h-3zM7 14h3v3H7zM14.5 14.5h.01M17 14.5h.01M14.5 17h.01M17 17h.01" />
     ),
     text: (
       <>
@@ -26,7 +26,7 @@ const STEPS: { icon: ReactNode; text: ReactNode }[] = [
   },
   {
     icon: (
-      <path d="M9 12l2 2 4-4M7 4h10a2 2 0 0 1 2 2v13.5a.5.5 0 0 1-.74.44L15 18l-3 2-3-2-3.26 1.94A.5.5 0 0 1 5 19.5V6a2 2 0 0 1 2-2z" />
+      <path d="M13.5 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8.5zM13.5 3v5.5H19M8.5 12h7M9 16.5l2 2 4-4" />
     ),
     text: (
       <>
@@ -37,7 +37,7 @@ const STEPS: { icon: ReactNode; text: ReactNode }[] = [
   },
   {
     icon: (
-      <path d="M4 12a8 8 0 0 1 14.5-4.5M20 12a8 8 0 0 1-14.5 4.5M8 7.5H4V3.5M16 16.5h4v4" />
+      <path d="M3 12a9 9 0 0 1 15.4-6.4L21 8M21 3v5h-5M21 12a9 9 0 0 1-15.4 6.4L3 16M3 21v-5h5" />
     ),
     text: (
       <>
