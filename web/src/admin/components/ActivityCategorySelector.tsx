@@ -3,6 +3,7 @@ import { graphql } from "relay-runtime";
 import type { ActivityCategorySelectorQuery } from "./__generated__/ActivityCategorySelectorQuery.graphql";
 import { inputBase } from "../../components/ui/inputStyles";
 import { Button } from "../../components/ui/Button";
+import MultiSelectList from "../../components/ui/MultiSelectList";
 import { useRetryableLazyLoadQuery } from "../../components/useRetryableLazyLoadQuery";
 
 interface ActivityCategorySelectorProps {
@@ -26,32 +27,28 @@ export default function ActivityCategorySelector({
     {},
   );
 
-  const categories = data.categories.toSorted((a, b) =>
-    a.name.localeCompare(b.name),
-  );
+  const categories = data.categories
+    .toSorted((a, b) => a.name.localeCompare(b.name))
+    .map((category) => ({ id: category.id, name: category.name }));
 
   const detailsRef = useRef<HTMLDetailsElement>(null);
   // Local, unapplied selection edited while the dropdown is open. Only
   // committed to `onChange` (and thus re-fetches the report) when the user
   // clicks Apply, so ticking several boxes doesn't trigger a query per click.
-  const [pending, setPending] = useState<string[]>([...value]);
-
-  function toggle(categoryId: string, checked: boolean) {
-    setPending((prev) =>
-      checked ? [...prev, categoryId] : prev.filter((id) => id !== categoryId),
-    );
-  }
+  const [pending, setPending] = useState<ReadonlySet<string>>(
+    () => new Set(value),
+  );
 
   function handleToggle() {
     // Re-sync pending selection from the applied value whenever the dropdown
     // opens, so a close-without-applying discards any edits made last time.
     if (detailsRef.current?.open) {
-      setPending([...value]);
+      setPending(new Set(value));
     }
   }
 
   function apply() {
-    onChange(pending);
+    onChange([...pending]);
     if (detailsRef.current) {
       detailsRef.current.open = false;
     }
@@ -71,42 +68,13 @@ export default function ActivityCategorySelector({
         Categories: {value.length === 0 ? "All" : `${value.length} selected`}
       </summary>
       <div className="mt-2 flex w-max min-w-64 flex-col gap-1">
-        <div className="flex gap-3 text-sm">
-          <a
-            href="#"
-            onClick={(e) => {
-              e.preventDefault();
-              setPending(categories.map((category) => category.id));
-            }}
-          >
-            Select all
-          </a>
-          <a
-            href="#"
-            onClick={(e) => {
-              e.preventDefault();
-              setPending([]);
-            }}
-          >
-            Clear
-          </a>
-        </div>
-        <div className="flex max-h-56 flex-col gap-1 overflow-y-auto rounded-md border border-line p-2 text-sm">
-          {categories.map((category) => (
-            <div key={category.id} className="whitespace-nowrap">
-              <input
-                type="checkbox"
-                id={`activity-category-${category.id}`}
-                checked={pending.includes(category.id)}
-                onChange={(e) => toggle(category.id, e.target.checked)}
-              />
-              &nbsp;
-              <label htmlFor={`activity-category-${category.id}`}>
-                {category.name}
-              </label>
-            </div>
-          ))}
-        </div>
+        <MultiSelectList
+          options={categories}
+          value={pending}
+          onChange={setPending}
+          itemLabel="categories"
+          rows={6}
+        />
         <div className="flex justify-end">
           <Button size="row" onClick={apply}>
             Apply

@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useNavigate } from "react-router";
 import { graphql, useMutation } from "react-relay";
 import { useRetryableLazyLoadQuery } from "../../components/useRetryableLazyLoadQuery";
@@ -7,6 +8,7 @@ import { useNotify } from "../components/useNotify";
 import { FieldList, FormField } from "../../components/ui/FormField";
 import TextInput from "../../components/ui/TextInput";
 import { Button } from "../../components/ui/Button";
+import MultiSelectList from "../../components/ui/MultiSelectList";
 
 export default function NewUser() {
   const navigate = useNavigate();
@@ -69,9 +71,12 @@ export default function NewUser() {
     navigate("/admin/users");
   }
 
-  const locations = [...data.locations].sort((a, b) =>
-    a.name.localeCompare(b.name),
-  );
+  const locations = [...data.locations]
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map((location) => ({ id: location.id, name: location.name }));
+  const [selectedLocations, setSelectedLocations] = useState<
+    ReadonlySet<string>
+  >(() => new Set());
 
   return (
     <>
@@ -87,20 +92,13 @@ export default function NewUser() {
             <input type="checkbox" name="super" id="super" />
           </FormField>
           <FormField label="Locations">
-            {locations.map((location: { id: string; name: string }) => (
-              <div key={location.id}>
-                <input
-                  type="checkbox"
-                  name="locations"
-                  id={`location-${location.id}`}
-                  value={location.id}
-                />
-                &nbsp;
-                <label htmlFor={`location-${location.id}`}>
-                  {location.name}
-                </label>
-              </div>
-            ))}
+            <MultiSelectList
+              options={locations}
+              value={selectedLocations}
+              onChange={setSelectedLocations}
+              name="locations"
+              itemLabel="locations"
+            />
           </FormField>
           <FormField>
             <Button type="submit" disabled={isMutationInFlight}>
