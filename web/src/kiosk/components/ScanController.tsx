@@ -49,6 +49,11 @@ export default function ScanController(props: {
   const guestsEnabled = !!session?.config?.guests;
   const quickPickCategories = !!session?.config?.quickPickCategories;
   const signedInStatus = !!session?.config?.signedInStatus;
+  const signedInStatusInline = !!session?.config?.signedInStatusInline;
+  // A button that opens the very list already sitting on screen would be
+  // pointless, so inline mode takes over from the button rather than the two
+  // stacking (see SessionForm, which presents them as one three-way choice).
+  const signedInStatusButton = signedInStatus && !signedInStatusInline;
 
   const [transactionState, dispatchTransaction] = useReducer(reducer, {
     transactions: [],
@@ -497,8 +502,9 @@ export default function ScanController(props: {
         }}
         guestsEnabled={guestsEnabled}
         onOpenGuestDialog={() => setGuestDialogOpen(true)}
-        statusEnabled={signedInStatus}
+        statusEnabled={signedInStatusButton}
         onOpenStatusDialog={openStatusDialog}
+        signedInInline={signedInStatusInline}
       />
       <ScanScreenForgotSignOut
         screenPosition={forgotSignOutPos}

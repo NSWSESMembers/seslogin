@@ -771,3 +771,108 @@ describe("KioskMain signed-in status", () => {
     expect(await screen.findByText("Random Guy")).toBeInTheDocument();
   });
 });
+
+describe("KioskMain signed-in status inline panel", () => {
+  function panelHandler(
+    nodes: Array<{
+      id: string;
+      startTime: number;
+      guestName: string | null;
+      person: { id: string; firstName: string; lastName: string } | null;
+    }>,
+  ) {
+    return relayEndpoint.query("ScanSignedInPanelQuery", () =>
+      HttpResponse.json({
+        data: {
+          session: {
+            location: { periods: { edges: nodes.map((node) => ({ node })) } },
+          },
+        },
+      }),
+    );
+  }
+
+  const nowSecs = Math.floor(Date.now() / 1000);
+  const TWO_PEOPLE = [
+    {
+      id: "period-1",
+      startTime: nowSecs - 60 * 60,
+      guestName: null,
+      person: { id: "person-1", firstName: "Alice", lastName: "Anderson" },
+    },
+    {
+      id: "period-2",
+      startTime: nowSecs - 60 * 30,
+      guestName: "Jamie Visitor",
+      person: null,
+    },
+  ];
+
+  it("is not shown when the kiosk does not have it enabled", async () => {
+    server.use(sessionConfigHandler({}));
+    await setupTest();
+
+    expect(screen.queryByText("Currently signed in")).not.toBeInTheDocument();
+  });
+
+  it("shows the list on the main screen without pressing anything, and hides the button", async () => {
+    server.use(
+      sessionConfigHandler({ signedInStatusInline: true }),
+      panelHandler(TWO_PEOPLE),
+    );
+    await setupTest();
+
+    await waitFor(() =>
+      expect(screen.getByText("Alice Anderson")).toBeInTheDocument(),
+    );
+    expect(screen.getByText("Jamie Visitor (Guest)")).toBeInTheDocument();
+    expect(screen.getByText("2 signed in")).toBeInTheDocument();
+    // Redundant next to a list that's already on screen.
+    expect(
+      screen.queryByRole("button", { name: "Who's signed in" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("prefers inline over the button when both flags are somehow set", async () => {
+    server.use(
+      sessionConfigHandler({
+        signedInStatus: true,
+        signedInStatusInline: true,
+      }),
+      panelHandler([]),
+    );
+    await setupTest();
+
+    await waitFor(() =>
+      expect(screen.getByText("Currently signed in")).toBeInTheDocument(),
+    );
+    expect(
+      screen.queryByRole("button", { name: "Who's signed in" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("says so when nobody is signed in", async () => {
+    server.use(
+      sessionConfigHandler({ signedInStatusInline: true }),
+      panelHandler([]),
+    );
+    await setupTest();
+
+    await waitFor(() =>
+      expect(screen.getByText("Nobody signed in here.")).toBeInTheDocument(),
+    );
+  });
+
+  it("does not steal focus from the member ID input", async () => {
+    server.use(
+      sessionConfigHandler({ signedInStatusInline: true }),
+      panelHandler(TWO_PEOPLE),
+    );
+    await setupTest();
+
+    await waitFor(() =>
+      expect(screen.getByText("Alice Anderson")).toBeInTheDocument(),
+    );
+    expect(screen.getByRole("textbox")).toHaveFocus();
+  });
+});

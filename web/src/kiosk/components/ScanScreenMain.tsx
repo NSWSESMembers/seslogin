@@ -22,6 +22,7 @@ import {
   isScanFocusSuspended,
   onScanFocusSuspendedChange,
 } from "../lib/scanFocusLeases";
+import ScanSignedInPanel from "./ScanSignedInPanel";
 
 // ensure this is less than the transaction timeout in ScanState
 const FINALIZED_TRANSACTION_TIMEOUT_MS = 10_000;
@@ -211,6 +212,7 @@ export default function ScanScreenMain(props: {
   onOpenGuestDialog?: () => void;
   statusEnabled?: boolean;
   onOpenStatusDialog?: () => void;
+  signedInInline?: boolean;
 }) {
   const {
     onFocusInputReady,
@@ -222,6 +224,7 @@ export default function ScanScreenMain(props: {
     onOpenGuestDialog,
     statusEnabled,
     onOpenStatusDialog,
+    signedInInline,
   } = props;
   const inputRef = useRef<HTMLInputElement>(null);
   const refocusTimeoutIdRef = useRef<number | null>(null);
@@ -310,8 +313,8 @@ export default function ScanScreenMain(props: {
     await onSubmit(memberId);
   }
 
-  return (
-    <div {...scanViewProps(screenPosition)}>
+  const mainColumn = (
+    <>
       <p className="mt-25 text-[2em]">Please enter or scan your SES ID</p>
 
       <form
@@ -395,6 +398,24 @@ export default function ScanScreenMain(props: {
       )}
 
       <TransactionList transactionState={props.transactionState} />
+    </>
+  );
+
+  if (!signedInInline) {
+    return <div {...scanViewProps(screenPosition)}>{mainColumn}</div>;
+  }
+
+  // The panel sits beside the input rather than the input's usual centred
+  // column growing to fill the screen, so a wide kiosk doesn't stretch the
+  // member ID field across it — the field's width is fixed either way.
+  return (
+    <div {...scanViewProps(screenPosition)}>
+      <div className="mx-auto flex max-w-6xl items-start justify-center gap-10">
+        <div className="min-w-0 flex-1">{mainColumn}</div>
+        <div className="w-80 shrink-0 border-l border-line pt-25 pl-8">
+          <ScanSignedInPanel />
+        </div>
+      </div>
     </div>
   );
 }
