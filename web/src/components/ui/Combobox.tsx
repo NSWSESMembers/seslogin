@@ -335,7 +335,15 @@ export default function Combobox({
       : `${matches.length} option${matches.length === 1 ? "" : "s"} available.`;
 
   return (
-    <div ref={wrapperRef} className="relative" onBlur={handleBlur}>
+    // The width lives on the wrapper, not the input: the chevron, the clear
+    // button and the measured listbox width are all relative to it, and a
+    // narrower input inside a full-width wrapper would leave all three hanging
+    // off the right-hand edge.
+    <div
+      ref={wrapperRef}
+      className={["relative inline-block", inputWidths[width]].join(" ")}
+      onBlur={handleBlur}
+    >
       <input
         ref={inputRef}
         id={id}
@@ -361,7 +369,7 @@ export default function Combobox({
         onChange={handleChange}
         onKeyDown={handleKeyDown}
         onClick={() => (open ? close() : setOpen(true))}
-        className={[inputBase, comboboxInput, inputWidths[width], className]
+        className={[inputBase, comboboxInput, "w-full", className]
           .filter(Boolean)
           .join(" ")}
       />
@@ -405,8 +413,10 @@ export default function Combobox({
               top: position.top,
               bottom: position.bottom,
               left: position.left,
-              minWidth: position.width,
-              maxWidth: "min(32rem, 92vw)",
+              // Exactly the field's width, so the two always line up. Long
+              // labels wrap rather than widening the popup past its anchor.
+              width: position.width,
+              minWidth: "16rem",
               maxHeight: position.maxHeight,
             }}
           >
@@ -432,7 +442,9 @@ export default function Combobox({
                 <Highlighted text={option.label} query={query} />
                 {option.description && (
                   <span className={comboboxDescription}>
-                    {option.description}
+                    {/* Highlighted too: the description is searchable, so a
+                        member found by number should show which number. */}
+                    <Highlighted text={option.description} query={query} />
                   </span>
                 )}
               </li>

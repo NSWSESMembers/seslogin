@@ -12,7 +12,7 @@ import { useNotify } from "../components/useNotify";
 import { FieldList, FormField } from "../../components/ui/FormField";
 import TextInput from "../../components/ui/TextInput";
 import Textarea from "../../components/ui/Textarea";
-import Select from "../../components/ui/Select";
+import Combobox from "../../components/ui/Combobox";
 import { Button } from "../../components/ui/Button";
 
 export default function ActivityEdit() {
@@ -226,19 +226,18 @@ export default function ActivityEdit() {
             </FormField>
           ) : (
             <FormField label={<label htmlFor="category">Category</label>}>
-              <Select
-                name="category"
+              <Combobox
                 id="category"
+                name="category"
                 required
-                defaultValue={data.period.category?.id || ""}
-              >
-                <option value="">-- Select category --</option>
-                {categories.map((cat) => (
-                  <option value={cat.id} key={cat.id}>
-                    {cat.name}
-                  </option>
-                ))}
-              </Select>
+                placeholder="-- Select category --"
+                emptyText="No categories match"
+                defaultValue={data.period.category?.id ?? ""}
+                options={categories.map((cat) => ({
+                  value: cat.id,
+                  label: cat.name,
+                }))}
+              />
             </FormField>
           )}
           <FormField label={<label htmlFor="start">Start time</label>}>

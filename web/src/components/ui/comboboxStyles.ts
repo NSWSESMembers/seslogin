@@ -13,7 +13,12 @@ export const comboboxChevron = tw`pointer-events-none absolute top-1/2 right-2 -
 
 export const comboboxClear = tw`absolute top-1/2 right-6 -translate-y-1/2 cursor-pointer rounded px-1 text-ink-muted transition-colors hover:text-ink focus:ring-2 focus:ring-menu/25 focus:outline-none`;
 
-export const comboboxListbox = tw`z-50 m-0 list-none overflow-y-auto rounded-md border border-line bg-surface-raised p-1 shadow-lg`;
+/**
+ * `text-left` is not redundant: the listbox is portalled to `<body>`, which this
+ * app centres, so it inherits the page's centring rather than the form field's
+ * alignment and has to set its own.
+ */
+export const comboboxListbox = tw`z-50 m-0 list-none overflow-y-auto rounded-md border border-line bg-surface-raised p-1 text-left shadow-lg`;
 
 /**
  * Labels wrap rather than truncate — a 40-character category name does not fit
