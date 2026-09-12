@@ -40,6 +40,7 @@ interface SessionFormProps {
 type ConfigEditorMode = "basic" | "advanced";
 type SessionMode = "scan" | "status";
 type KioskTheme = "auto" | "light" | "dark";
+type SignedInStatusMode = "off" | "button" | "inline";
 type ConfigObject = Record<string, unknown>;
 
 interface SegmentedControlProps<T extends string> {
@@ -72,8 +73,8 @@ interface BasicSessionModeFieldsProps {
   onQuickPickCategoriesChange: (next: boolean) => void;
   numberPad: boolean;
   onNumberPadChange: (next: boolean) => void;
-  signedInStatus: boolean;
-  onSignedInStatusChange: (next: boolean) => void;
+  signedInStatusMode: SignedInStatusMode;
+  onSignedInStatusModeChange: (next: SignedInStatusMode) => void;
   configJson: string;
 }
 
@@ -208,21 +209,35 @@ function getNumberPadFromConfig(config: ConfigObject): boolean {
   return !!config.numberPad;
 }
 
-function withSignedInStatus(
+/**
+ * `signedInStatus` and `signedInStatusInline` (see ScanController) are two
+ * independent config keys, but a button that opens the list you're already
+ * looking at would be pointless, so the admin UI presents them as one
+ * mutually-exclusive three-way choice rather than two checkboxes whose
+ * combination would need a hidden precedence rule.
+ */
+function withSignedInStatusMode(
   config: ConfigObject,
-  enabled: boolean,
+  mode: SignedInStatusMode,
 ): ConfigObject {
   const next = { ...config };
-  if (enabled) {
+  delete next.signedInStatus;
+  delete next.signedInStatusInline;
+  if (mode === "button") {
     next.signedInStatus = true;
-  } else {
-    delete next.signedInStatus;
+  } else if (mode === "inline") {
+    next.signedInStatusInline = true;
   }
   return next;
 }
 
-function getSignedInStatusFromConfig(config: ConfigObject): boolean {
-  return !!config.signedInStatus;
+function getSignedInStatusModeFromConfig(
+  config: ConfigObject,
+): SignedInStatusMode {
+  if (config.signedInStatusInline) {
+    return "inline";
+  }
+  return config.signedInStatus ? "button" : "off";
 }
 
 function initializeConfigState(initialConfig: string): InitialConfigState {
@@ -349,8 +364,8 @@ function BasicSessionModeFields({
   onQuickPickCategoriesChange,
   numberPad,
   onNumberPadChange,
-  signedInStatus,
-  onSignedInStatusChange,
+  signedInStatusMode,
+  onSignedInStatusModeChange,
   configJson,
   theme,
   onThemeChange,
@@ -449,24 +464,35 @@ function BasicSessionModeFields({
               title="On-screen number pad"
               description="show a keypad under the SES ID box so members can enter their ID by touch — for a touchscreen kiosk with no barcode scanner or keyboard"
             />
-            <OptionRow
-              input={
-                <input
-                  type="checkbox"
-                  checked={signedInStatus}
-                  onChange={(e) => onSignedInStatusChange(e.target.checked)}
-                  className="mt-0.5"
-                />
-              }
-              title={
-                <span className="inline-flex items-center gap-2">
-                  Who's here
-                  <BetaBadge />
-                </span>
-              }
-              description="show a button on the scan screen that lists everyone currently signed in at this location and how long they have been signed in for — the Status mode's information without giving up the kiosk to it"
-            />
           </OptionList>
+        </FormField>
+      )}
+      {sessionMode === "scan" && (
+        <FormField
+          label={
+            <span className="inline-flex items-center gap-2">
+              Who's here
+              <BetaBadge />
+            </span>
+          }
+        >
+          <SegmentedControl
+            label="Who's here"
+            value={signedInStatusMode}
+            options={[
+              { value: "off", label: "Off" },
+              { value: "button", label: "Button" },
+              { value: "inline", label: "Always visible" },
+            ]}
+            onChange={onSignedInStatusModeChange}
+          />
+          <p className="mt-1.5 mb-0 text-ink-muted">
+            Who's currently signed in at this location and how long they've been
+            signed in for — the Status mode's information without giving up the
+            kiosk to it. "Button" adds a button on the scan screen that opens
+            the list; "Always visible" shows it beside the scan screen
+            permanently, so it's visible at a glance without pressing anything.
+          </p>
         </FormField>
       )}
     </>
@@ -559,7 +585,7 @@ export default function SessionForm({
   const guests = getGuestsFromConfig(parsedConfig);
   const quickPickCategories = getQuickPickCategoriesFromConfig(parsedConfig);
   const numberPad = getNumberPadFromConfig(parsedConfig);
-  const signedInStatus = getSignedInStatusFromConfig(parsedConfig);
+  const signedInStatusMode = getSignedInStatusModeFromConfig(parsedConfig);
   const theme = getThemeFromConfig(parsedConfig);
 
   function setEditorMode(nextEditorMode: ConfigEditorMode) {
@@ -600,10 +626,10 @@ export default function SessionForm({
     setConfigJson(JSON.stringify(nextConfig, null, 2));
   }
 
-  function handleSignedInStatusChange(enabled: boolean) {
-    const nextConfig = withSignedInStatus(
+  function handleSignedInStatusModeChange(mode: SignedInStatusMode) {
+    const nextConfig = withSignedInStatusMode(
       parseConfigObject(configJson),
-      enabled,
+      mode,
     );
     setConfigJson(JSON.stringify(nextConfig, null, 2));
   }
@@ -639,8 +665,8 @@ export default function SessionForm({
             onQuickPickCategoriesChange={handleQuickPickCategoriesChange}
             numberPad={numberPad}
             onNumberPadChange={handleNumberPadChange}
-            signedInStatus={signedInStatus}
-            onSignedInStatusChange={handleSignedInStatusChange}
+            signedInStatusMode={signedInStatusMode}
+            onSignedInStatusModeChange={handleSignedInStatusModeChange}
             configJson={configJson}
             theme={theme}
             onThemeChange={handleThemeChange}
