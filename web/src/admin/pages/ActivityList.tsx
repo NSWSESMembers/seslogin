@@ -179,15 +179,22 @@ export default function ActivityList() {
   }
 
   return (
-    <ActivityListTable
-      firstcol="person"
-      periods={periods}
-      getRowLabel={getRowLabel}
-      getRowSubLabel={getRowSubLabel}
-      hasNextPage={hasNextPage}
-      isLoadingMore={isLoadingMore}
-      onLoadMore={onLoadMore}
-      loadMoreError={loadMoreError}
-    />
+    <>
+      <p>
+        This list shows everyone who has signed in or out at this location,
+        including members visiting from other units (their home unit is shown
+        under their name).
+      </p>
+      <ActivityListTable
+        firstcol="person"
+        periods={periods}
+        getRowLabel={getRowLabel}
+        getRowSubLabel={getRowSubLabel}
+        hasNextPage={hasNextPage}
+        isLoadingMore={isLoadingMore}
+        onLoadMore={onLoadMore}
+        loadMoreError={loadMoreError}
+      />
+    </>
   );
 }

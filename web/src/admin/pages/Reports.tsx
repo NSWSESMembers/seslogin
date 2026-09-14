@@ -389,6 +389,11 @@ export default function Reports() {
 
   return (
     <>
+      <p>
+        This report includes every sign-in/out recorded at this location,
+        including visits by members from other units. The export does not
+        indicate a visitor's home unit.
+      </p>
       <form onSubmit={onSubmit}>
         <ActivityTimeRange
           startInput={startInput}

@@ -40,6 +40,10 @@ export default function ActivityTotals() {
 
   return (
     <>
+      <p>
+        Totals include everyone who signed in at this location, including
+        members visiting from other units.
+      </p>
       <ActivityTimeRange
         startInput={startInput}
         endInput={endInput}
