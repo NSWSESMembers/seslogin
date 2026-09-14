@@ -11,6 +11,7 @@ import type { ActivityEditGuestMutation } from "./__generated__/ActivityEditGues
 import { useNotify } from "../components/useNotify";
 import { FieldList, FormField } from "../../components/ui/FormField";
 import TextInput from "../../components/ui/TextInput";
+import TimeInputWithControls from "../../components/ui/TimeInputWithControls";
 import Textarea from "../../components/ui/Textarea";
 import Select from "../../components/ui/Select";
 import { Button } from "../../components/ui/Button";
@@ -242,23 +243,22 @@ export default function ActivityEdit() {
             </FormField>
           )}
           <FormField label={<label htmlFor="start">Start time</label>}>
-            <TextInput
-              type="datetime-local"
+            <TimeInputWithControls
               name="start"
               id="start"
               required
               value={startValue}
-              onChange={(e) => setStartValue(e.target.value)}
+              onChange={setStartValue}
             />
           </FormField>
           <FormField label={<label htmlFor="end">End time</label>}>
-            <TextInput
-              type="datetime-local"
+            <TimeInputWithControls
               name="end"
               id="end"
               required
               value={endValue}
-              onChange={(e) => setEndValue(e.target.value)}
+              onChange={setEndValue}
+              copyFrom={{ label: "Copy start time", value: startValue }}
             />
             {error && <p className="font-bold text-red-600">{error}</p>}
             {warning && <p className="font-bold text-orange-600">{warning}</p>}

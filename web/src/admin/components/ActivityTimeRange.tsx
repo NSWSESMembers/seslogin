@@ -1,4 +1,4 @@
-import TextInput from "../../components/ui/TextInput";
+import TimeInputWithControls from "../../components/ui/TimeInputWithControls";
 
 type Props = {
   startInput: string;
@@ -15,20 +15,16 @@ export default function ActivityTimeRange({
 }: Props) {
   return (
     <div className="mb-4 flex justify-center gap-5 max-md:flex-col max-md:items-center">
-      <label>
+      <label className="flex items-center gap-2">
         Start time:&nbsp;
-        <TextInput
-          type="datetime-local"
-          value={startInput}
-          onChange={(e) => onStartChange(e.target.value)}
-        />
+        <TimeInputWithControls value={startInput} onChange={onStartChange} />
       </label>
-      <label>
+      <label className="flex items-center gap-2">
         End time:&nbsp;
-        <TextInput
-          type="datetime-local"
+        <TimeInputWithControls
           value={endInput}
-          onChange={(e) => onEndChange(e.target.value)}
+          onChange={onEndChange}
+          copyFrom={{ label: "Copy start time", value: startInput }}
         />
       </label>
     </div>
