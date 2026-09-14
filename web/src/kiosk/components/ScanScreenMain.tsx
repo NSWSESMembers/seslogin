@@ -22,6 +22,10 @@ import {
   isScanFocusSuspended,
   onScanFocusSuspendedChange,
 } from "../lib/scanFocusLeases";
+import ScanNumberPadDialog from "./ScanNumberPadDialog";
+// The input caps typing at the member ID length; the number pad has to enforce
+// it itself, because setting `value` from script bypasses `maxLength`.
+import { MEMBER_ID_LENGTH } from "../../lib/memberId";
 
 // ensure this is less than the transaction timeout in ScanState
 const FINALIZED_TRANSACTION_TIMEOUT_MS = 10_000;
@@ -209,6 +213,7 @@ export default function ScanScreenMain(props: {
   onFocusInputReady?: (focusInput: () => void) => void;
   guestsEnabled?: boolean;
   onOpenGuestDialog?: () => void;
+  numberPadEnabled?: boolean;
 }) {
   const {
     onFocusInputReady,
@@ -218,10 +223,17 @@ export default function ScanScreenMain(props: {
     validateMemberId,
     guestsEnabled,
     onOpenGuestDialog,
+    numberPadEnabled,
   } = props;
   const inputRef = useRef<HTMLInputElement>(null);
   const refocusTimeoutIdRef = useRef<number | null>(null);
   const clearTimeoutIdRef = useRef<number | null>(null);
+  const [padOpen, setPadOpen] = useState(false);
+  // A mirror of the input's text, kept only for what React has to render from
+  // it: the pad's own digit display, and whether the button beside the input is
+  // the submit arrow or the one that opens the pad. The input itself stays the
+  // source of truth — every edit goes through it first.
+  const [memberIdText, setMemberIdText] = useState("");
   const focusSuspended = useSyncExternalStore(
     onScanFocusSuspendedChange,
     isScanFocusSuspended,
@@ -251,11 +263,16 @@ export default function ScanScreenMain(props: {
     inputRef.current?.focus();
   }, [clearRefocusTimeout]);
 
+  const syncMemberIdText = useCallback(() => {
+    setMemberIdText(inputRef.current?.value ?? "");
+  }, []);
+
   const clearInput = useCallback(() => {
     if (inputRef.current !== null) {
       inputRef.current.value = "";
     }
-  }, []);
+    syncMemberIdText();
+  }, [syncMemberIdText]);
 
   const scheduleInputClearTimeout = useCallback(() => {
     clearInputTimeout();
@@ -285,8 +302,13 @@ export default function ScanScreenMain(props: {
     onFocusInputReady?.(focusInput);
   }, [focusInput, onFocusInputReady]);
 
-  async function handleSubmit(data: FormData) {
-    const memberId = ((data.get("id") as string) ?? "").trim();
+  // Every way of submitting ends up here — the button beside the input, Enter in
+  // the input (a barcode scanner's trailing newline included) and the pad's own
+  // Enter key — so the pad closing on submit is a property of submitting rather
+  // than of the key that was pressed.
+  async function submitMemberId(rawMemberId: string) {
+    const memberId = rawMemberId.trim();
+    setPadOpen(false);
     if (memberId === "") {
       // Ignore empty submissions (e.g. Enter pressed on a blank/whitespace input)
       // so we never fire scanRegister2 with an empty registration number.
@@ -306,6 +328,45 @@ export default function ScanScreenMain(props: {
     await onSubmit(memberId);
   }
 
+  async function handleSubmit(data: FormData) {
+    await submitMemberId((data.get("id") as string) ?? "");
+  }
+
+  // The number pad edits the input's value directly rather than holding the
+  // typed ID in state: the input stays the single source of truth, so a pad
+  // press, a barcode scan and a keyboard can be mixed on the same entry. Each
+  // press also restarts the clear timeout, which only an `onChange` from real
+  // typing would otherwise do — a half-tapped ID left on screen is discarded on
+  // the same timer as a half-typed one.
+  function handleNumberPadDigit(digit: string) {
+    const input = inputRef.current;
+    if (input === null || input.value.length >= MEMBER_ID_LENGTH) {
+      return;
+    }
+    input.value = input.value + digit;
+    syncMemberIdText();
+    scheduleInputClearTimeout();
+    focusInput();
+  }
+
+  function handleNumberPadDelete() {
+    const input = inputRef.current;
+    if (input === null) {
+      return;
+    }
+    input.value = input.value.slice(0, -1);
+    syncMemberIdText();
+    scheduleInputClearTimeout();
+    focusInput();
+  }
+
+  function handleNumberPadSubmit() {
+    clearInputTimeout();
+    submitMemberId(inputRef.current?.value ?? "");
+  }
+
+  const showPadButton = !!numberPadEnabled && memberIdText === "";
+
   return (
     <div {...scanViewProps(screenPosition)}>
       <p className="mt-25 text-[2em]">Please enter or scan your SES ID</p>
@@ -321,7 +382,7 @@ export default function ScanScreenMain(props: {
           ref={inputRef}
           type="text"
           name="id"
-          maxLength={8}
+          maxLength={MEMBER_ID_LENGTH}
           className={`${inputBase} mr-3.75 w-80 py-3 text-center align-middle font-mono text-[3em] leading-snug transition-colors duration-500`}
           onBlur={() => {
             clearRefocusTimeout();
@@ -348,31 +409,81 @@ export default function ScanScreenMain(props: {
             clearRefocusTimeout();
           }}
           onChange={() => {
+            syncMemberIdText();
             scheduleInputClearTimeout();
           }}
         />
-        <Button
-          variant="kiosk"
-          size="bare"
-          type="submit"
-          className="inline-flex h-16 w-17.5 items-center justify-center"
-          disabled={submitDisabled}
-          aria-label="Submit"
-        >
-          <svg
-            aria-hidden="true"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth={3}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            className="size-8"
+        {/* With nothing typed there is nothing to submit, so the button offers
+            the pad instead — which is the only way in on a kiosk with no
+            keyboard and no scanner. It turns back into Submit as soon as there
+            is an ID, whether that came from the pad, a keyboard or a scan. */}
+        {showPadButton ? (
+          <Button
+            variant="kiosk"
+            size="bare"
+            type="button"
+            className="inline-flex h-16 w-17.5 items-center justify-center"
+            aria-label="Number pad"
+            onClick={() => {
+              setPadOpen(true);
+              focusInput();
+            }}
           >
-            <path d="M9 5l7 7-7 7" />
-          </svg>
-        </Button>
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 24 24"
+              fill="currentColor"
+              className="size-8"
+            >
+              <circle cx="6" cy="6" r="1.9" />
+              <circle cx="12" cy="6" r="1.9" />
+              <circle cx="18" cy="6" r="1.9" />
+              <circle cx="6" cy="12" r="1.9" />
+              <circle cx="12" cy="12" r="1.9" />
+              <circle cx="18" cy="12" r="1.9" />
+              <circle cx="6" cy="18" r="1.9" />
+              <circle cx="12" cy="18" r="1.9" />
+              <circle cx="18" cy="18" r="1.9" />
+            </svg>
+          </Button>
+        ) : (
+          <Button
+            variant="kiosk"
+            size="bare"
+            type="submit"
+            className="inline-flex h-16 w-17.5 items-center justify-center"
+            disabled={submitDisabled}
+            aria-label="Submit"
+          >
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={3}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="size-8"
+            >
+              <path d="M9 5l7 7-7 7" />
+            </svg>
+          </Button>
+        )}
       </form>
+
+      {padOpen && (
+        <ScanNumberPadDialog
+          value={memberIdText}
+          onDigit={handleNumberPadDigit}
+          onDelete={handleNumberPadDelete}
+          onSubmit={handleNumberPadSubmit}
+          onClose={() => {
+            setPadOpen(false);
+            focusInput();
+          }}
+          submitDisabled={submitDisabled || memberIdText === ""}
+        />
+      )}
 
       {guestsEnabled && onOpenGuestDialog && (
         <div className="mt-6">

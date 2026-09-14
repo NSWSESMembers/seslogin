@@ -361,6 +361,144 @@ describe("KioskMain quick pick categories", () => {
   });
 });
 
+describe("KioskMain number pad", () => {
+  async function setupNumberPadTest() {
+    server.use(sessionConfigHandler({ numberPad: true }));
+    return await setupTest();
+  }
+
+  function tap(user: UserEventInstance, label: string) {
+    return user.click(screen.getByRole("button", { name: label }));
+  }
+
+  async function openPad(user: UserEventInstance) {
+    await tap(user, "Number pad");
+    await waitFor(() =>
+      expect(screen.getByText("Enter your SES ID")).toBeInTheDocument(),
+    );
+  }
+
+  it("offers no number pad unless the session config enables it", async () => {
+    await setupTest();
+    expect(
+      screen.queryByRole("button", { name: "Number pad" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Submit" })).toBeInTheDocument();
+  });
+
+  it("opens the pad dialog from the button beside the input", async () => {
+    const user = await setupNumberPadTest();
+    expect(
+      screen.queryByRole("button", { name: "Submit" }),
+    ).not.toBeInTheDocument();
+
+    await openPad(user);
+    expect(screen.getByRole("button", { name: "5" })).toBeInTheDocument();
+  });
+
+  it("types into the member ID input, then submits and closes on Enter", async () => {
+    const user = await setupNumberPadTest();
+    await openPad(user);
+    const textbox = screen.getByRole("textbox");
+
+    for (const digit of FOUND_USER) {
+      await tap(user, digit);
+    }
+    expect(textbox).toHaveValue(FOUND_USER);
+
+    await tap(user, "Enter");
+    await waitFor(() =>
+      expect(screen.queryByText("Enter your SES ID")).not.toBeInTheDocument(),
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByText(
+          FOUND_USER_RESPONSE.data.scanRegister2.period.person.firstName +
+            " " +
+            FOUND_USER_RESPONSE.data.scanRegister2.period.person.lastName,
+        ),
+      ).toBeInTheDocument(),
+    );
+    expect(textbox).toHaveValue("");
+  });
+
+  it("swaps the pad button for Submit once an ID has been entered", async () => {
+    const user = await setupNumberPadTest();
+    await openPad(user);
+    await tap(user, "1");
+    await tap(user, "Close");
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Submit" }),
+      ).toBeInTheDocument(),
+    );
+    expect(
+      screen.queryByRole("button", { name: "Number pad" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("closes the pad when the entry is submitted from the input", async () => {
+    const user = await setupNumberPadTest();
+    await openPad(user);
+
+    // What a barcode scanner does: the keystrokes and their trailing newline go
+    // to the member ID input, which still has focus behind the dialog.
+    await user.type(screen.getByRole("textbox"), FOUND_USER + "{enter}");
+
+    await waitFor(() =>
+      expect(screen.queryByText("Enter your SES ID")).not.toBeInTheDocument(),
+    );
+    await waitFor(() =>
+      expect(screen.getByText(/signed in at/)).toBeInTheDocument(),
+    );
+  });
+
+  it("deletes the last digit", async () => {
+    const user = await setupNumberPadTest();
+    await openPad(user);
+    const textbox = screen.getByRole("textbox");
+
+    await tap(user, "1");
+    await tap(user, "2");
+    await tap(user, "Delete");
+    expect(textbox).toHaveValue("1");
+
+    // Deleting past the start is a no-op rather than an error.
+    await tap(user, "Delete");
+    await tap(user, "Delete");
+    expect(textbox).toHaveValue("");
+  });
+
+  it("stops at the length of a member ID", async () => {
+    const user = await setupNumberPadTest();
+    await openPad(user);
+    const textbox = screen.getByRole("textbox");
+
+    for (const digit of "0123456789") {
+      await tap(user, digit);
+    }
+    expect(textbox).toHaveValue("01234567");
+  });
+
+  it("leaves focus in the member ID input so a scan is never lost", async () => {
+    const user = await setupNumberPadTest();
+    await openPad(user);
+    const textbox = screen.getByRole("textbox");
+
+    await tap(user, "7");
+    expect(document.activeElement).toBe(textbox);
+  });
+
+  it("cannot submit an empty entry", async () => {
+    const user = await setupNumberPadTest();
+    await openPad(user);
+
+    expect(screen.getByRole("button", { name: "Enter" })).toBeDisabled();
+    expect(audioPlaySpy).not.toHaveBeenCalled();
+  });
+});
+
 describe("KioskMain forgot-to-sign-out interstitial", () => {
   function longSignOutHandler() {
     return relayEndpoint.mutation("ScanControllerRegister2Mutation", () =>

@@ -46,6 +46,7 @@ export default function ScanController(props: {
   const smallCategories = !!session?.config?.smallCategories;
   const guestsEnabled = !!session?.config?.guests;
   const quickPickCategories = !!session?.config?.quickPickCategories;
+  const numberPad = !!session?.config?.numberPad;
 
   const [transactionState, dispatchTransaction] = useReducer(reducer, {
     transactions: [],
@@ -471,6 +472,7 @@ export default function ScanController(props: {
         }}
         guestsEnabled={guestsEnabled}
         onOpenGuestDialog={() => setGuestDialogOpen(true)}
+        numberPadEnabled={numberPad}
       />
       <ScanScreenForgotSignOut
         screenPosition={forgotSignOutPos}
