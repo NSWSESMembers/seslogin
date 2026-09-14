@@ -6,6 +6,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 seslogin v2 is a member attendance tracking system for managing check-in/check-out sessions across locations. It replaces a legacy v1 system and syncs member data from an external SES API (headquarters system).
 
+## Pull requests
+
+One commit per PR. Keep PRs small and focused, splitting larger work into a stack of small PRs
+that build on each other rather than one large PR. Every PR/commit must be safe to deploy on its
+own — it must pass CI (`make check` && `make test`) and be correct by itself, not just once a
+later PR in the stack lands. See [CONTRIBUTING.md](CONTRIBUTING.md#opening-a-pull-request) for
+the full policy.
+
 ## Commands
 
 > **Full local setup guide: [DEVELOPMENT.md](DEVELOPMENT.md)** — AWS access, secrets,
