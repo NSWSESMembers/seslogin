@@ -5,6 +5,7 @@ import {
   expect,
   vi,
   beforeAll,
+  beforeEach,
   afterEach,
   afterAll,
 } from "vitest";
@@ -71,7 +72,25 @@ function renderAt(path: string) {
   );
 }
 
+/**
+ * The category id the form would submit. The Activity control is a `Combobox`,
+ * whose visible box holds the category *name* while the id rides a hidden input.
+ */
+function submittedCategoryId(): string | null {
+  return (
+    document.querySelector<HTMLInputElement>(
+      'input[type="hidden"][name="category"]',
+    )?.value ?? null
+  );
+}
+
 describe("PeriodEdit", () => {
+  beforeEach(() => {
+    // Above the `md` breakpoint, so the Activity field is the typeahead. The
+    // narrow viewport gets the native picker instead — pinned at the end.
+    window.innerWidth = 1024;
+  });
+
   it("refuses to call the API when the link has no token", async () => {
     const requests = vi.fn();
     server.events.on("request:start", requests);
@@ -93,9 +112,10 @@ describe("PeriodEdit", () => {
     expect(screen.getByLabelText<HTMLInputElement>("End time").value).toBe(
       "2026-03-04T12:00",
     );
-    expect(screen.getByLabelText<HTMLSelectElement>("Activity").value).toBe(
-      "cat-training",
+    expect(screen.getByLabelText<HTMLInputElement>("Activity").value).toBe(
+      "Training",
     );
+    expect(submittedCategoryId()).toBe("cat-training");
     expect(seenAuthHeaders).toContain(`Bearer ${TOKEN}`);
   });
 
@@ -123,14 +143,43 @@ describe("PeriodEdit", () => {
     expect(screen.getByLabelText<HTMLInputElement>("End time").value).toBe("");
   });
 
-  it("omits retired activities but keeps the entry's own", async () => {
+  it("omits retired activities", async () => {
+    const user = UserEvent.setup();
     renderAt(`/period#${TOKEN}`);
 
-    await screen.findByLabelText("Activity");
+    await user.click(await screen.findByLabelText("Activity"));
     expect(screen.getByRole("option", { name: "Storm" })).toBeInTheDocument();
     expect(
       screen.queryByRole("option", { name: "Retired Activity" }),
     ).not.toBeInTheDocument();
+  });
+
+  it("keeps a retired activity offered when it is the entry's own", async () => {
+    server.use(
+      relayEndpoint.query("PeriodEditFormQuery", () =>
+        HttpResponse.json({
+          data: {
+            linkedPeriod: {
+              ...PERIOD_RESPONSE.data.linkedPeriod,
+              category: { id: "cat-retired", name: "Retired Activity" },
+            },
+            categories: PERIOD_RESPONSE.data.categories,
+          },
+        }),
+      ),
+    );
+
+    const user = UserEvent.setup();
+    renderAt(`/period#${TOKEN}`);
+
+    // Correcting a time must not force a category change, and the retired option
+    // must stay choosable — not merely visible — so it can be picked again after
+    // the member clears the box.
+    const activity = await screen.findByLabelText<HTMLInputElement>("Activity");
+    expect(activity.value).toBe("Retired Activity");
+    await user.click(activity);
+    const option = screen.getByRole("option", { name: "Retired Activity" });
+    expect(option).not.toHaveAttribute("aria-disabled");
   });
 
   it("blocks submission when the end time precedes the start", async () => {
@@ -168,10 +217,14 @@ describe("PeriodEdit", () => {
     const user = UserEvent.setup();
     renderAt(`/period#${TOKEN}`);
 
-    await user.selectOptions(
-      await screen.findByLabelText("Activity"),
-      "cat-storm",
-    );
+    // Drive the typeahead the way a member would: type a fragment, take the
+    // match. This is the whole point of the control on a 171-activity list.
+    const activity = await screen.findByLabelText("Activity");
+    await user.click(activity);
+    await user.type(activity, "storm");
+    await user.keyboard("{Enter}");
+    expect(submittedCategoryId()).toBe("cat-storm");
+
     await user.click(screen.getByRole("button", { name: "Save" }));
 
     expect(await screen.findByText("Thank you")).toBeInTheDocument();
@@ -239,6 +292,19 @@ describe("PeriodEdit", () => {
     expect(
       screen.queryByText("Invalid or expired token"),
     ).not.toBeInTheDocument();
+  });
+
+  // This page is reached from an emailed link, so most visits are on a phone,
+  // where the OS picker beats a typeahead with a virtual keyboard over it.
+  it("uses the native picker on a phone-width viewport", async () => {
+    window.innerWidth = 375;
+    renderAt(`/period#${TOKEN}`);
+
+    const activity =
+      await screen.findByLabelText<HTMLSelectElement>("Activity");
+    expect(activity.tagName).toBe("SELECT");
+    expect(activity.value).toBe("cat-training");
+    expect(screen.getByRole("option", { name: "Storm" })).toBeInTheDocument();
   });
 
   it("shows a load-problem message, not raw GraphQL text, when a field fails to resolve", async () => {
