@@ -5,6 +5,7 @@ import type { SettingsDailyEmailMutation } from "./__generated__/SettingsDailyEm
 import { useNotify } from "../components/useNotify";
 import { FieldList, FormField } from "../../components/ui/FormField";
 import { Button } from "../../components/ui/Button";
+import MultiSelectList from "../../components/ui/MultiSelectList";
 import { useRetryableLazyLoadQuery } from "../../components/useRetryableLazyLoadQuery";
 
 export default function SettingsDailyEmail() {
@@ -37,13 +38,13 @@ export default function SettingsDailyEmail() {
 
   const { notifyError, notifySuccess } = useNotify();
   const user = data.user;
-  const [selectedLocations, setSelectedLocations] = useState(
-    () => new Set(user.emailSummaryLocationIds),
-  );
+  const [selectedLocations, setSelectedLocations] = useState<
+    ReadonlySet<string>
+  >(() => new Set(user.emailSummaryLocationIds));
 
-  const locations = [...user.locations].sort((a, b) =>
-    a.name.localeCompare(b.name),
-  );
+  const locations = [...user.locations]
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map((location) => ({ id: location.id, name: location.name }));
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -75,28 +76,13 @@ export default function SettingsDailyEmail() {
       <form onSubmit={handleSubmit}>
         <FieldList>
           <FormField label="Daily email — locations">
-            {locations.length === 0 && (
-              <p>No locations available to your account.</p>
-            )}
-            {locations.map((loc) => (
-              <div key={loc.id}>
-                <input
-                  type="checkbox"
-                  id={`loc-${loc.id}`}
-                  checked={selectedLocations.has(loc.id)}
-                  onChange={(e) =>
-                    setSelectedLocations((prev) => {
-                      const next = new Set(prev);
-                      if (e.target.checked) next.add(loc.id);
-                      else next.delete(loc.id);
-                      return next;
-                    })
-                  }
-                />
-                &nbsp;
-                <label htmlFor={`loc-${loc.id}`}>{loc.name}</label>
-              </div>
-            ))}
+            <MultiSelectList
+              options={locations}
+              value={selectedLocations}
+              onChange={setSelectedLocations}
+              itemLabel="locations"
+              emptyMessage="No locations available to your account."
+            />
           </FormField>
           <FormField>
             <Button type="submit" disabled={isMutationInFlight}>
