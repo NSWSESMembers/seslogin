@@ -49,9 +49,10 @@ pub struct AbsencePolicy {
 
 pub const DEFAULT_ABSENCE_GRACE_SECS: u64 = 7 * 24 * 3600;
 pub const DEFAULT_ABSENCE_MIN_CANDIDATES: usize = 5;
-/// Raised from 20% after a unit hit the cap on a genuine round of departures. Note the
-/// floor above is what binds for any roster under 20 members, not this percentage.
-pub const DEFAULT_ABSENCE_MAX_CANDIDATE_PERCENT: usize = 25;
+/// Raised 20% -> 25% -> 40%, each time after a unit hit the cap on a genuine round of
+/// departures. Note the floor above is what binds for any roster of 12 or fewer members
+/// (5 is more than 40% of 12), not this percentage.
+pub const DEFAULT_ABSENCE_MAX_CANDIDATE_PERCENT: usize = 40;
 /// 36h: the checker lambda alarms on a location that has not synced for 30h, so anything
 /// beyond this is already a known-bad location.
 pub const DEFAULT_ABSENCE_MAX_SYNC_STALENESS_SECS: u64 = 36 * 3600;
@@ -1661,10 +1662,10 @@ mod tests {
         assert_eq!(absence_candidate_cap(10, &policy), 5);
     }
 
-    /// Pins the shipped default: a 100-member roster may shed 25 in one cycle.
+    /// Pins the shipped default: a 100-member roster may shed 40 in one cycle.
     #[test]
     fn cap_uses_percentage_for_large_rosters() {
-        assert_eq!(absence_candidate_cap(100, &AbsencePolicy::default()), 25);
+        assert_eq!(absence_candidate_cap(100, &AbsencePolicy::default()), 40);
     }
 
     /// 20% of 26 is 5.2; integer arithmetic must land on 5, not 6. Uses an explicit
@@ -1727,7 +1728,7 @@ mod tests {
             outcome.skipped,
             Some(AbsenceSkip::OverCap {
                 candidates: 100,
-                cap: 25,
+                cap: 40,
                 synced_roster: 100
             })
         );
@@ -1749,6 +1750,8 @@ mod tests {
         assert_eq!(count_marks(&outcome), 0);
     }
 
+    /// Uses an explicit percentage rather than the shipped default so it keeps testing the
+    /// guard itself if the default cap is retuned.
     #[test]
     fn too_many_candidates_trips_the_cap() {
         let roster: Vec<db::Person> = (0..100)
@@ -1759,6 +1762,11 @@ mod tests {
         let f = Fixture {
             roster,
             present_ses_ids,
+            policy: AbsencePolicy {
+                enabled: true,
+                max_candidate_percent: 25,
+                ..AbsencePolicy::default()
+            },
             ..Default::default()
         };
         let outcome = f.plan();
