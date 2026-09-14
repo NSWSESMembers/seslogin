@@ -1,6 +1,7 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useRef } from "react";
 import type { ReactNode, RefObject } from "react";
 import { createPortal } from "react-dom";
+import { useAnchoredPopup } from "./useAnchoredPopup";
 
 // A small floating panel anchored under a trigger element — a click-toggled
 // popover, not a Dialog: no backdrop, positioned next to the trigger rather
@@ -12,6 +13,10 @@ import { createPortal } from "react-dom";
 // state and passes `onDismiss` to close it. Closes itself on outside
 // click, Escape, or any scroll/resize (a fixed-position panel would
 // otherwise detach from its anchor).
+//
+// The measuring and dismissing is `useAnchoredPopup`, shared with Combobox's
+// listbox. This is the tooltip half of it: centred on the anchor, sized to its
+// content, and closing rather than following when the viewport moves.
 export function Popover({
   anchorRef,
   onDismiss,
@@ -28,39 +33,15 @@ export function Popover({
   children: ReactNode;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
-  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
-
-  useLayoutEffect(() => {
-    const anchor = anchorRef.current;
-    if (!anchor) return;
-    const rect = anchor.getBoundingClientRect();
-    setPos({ top: rect.bottom + gap, left: rect.left + rect.width / 2 });
-  }, [anchorRef, gap]);
-
-  useEffect(() => {
-    function onPointerDown(e: MouseEvent) {
-      const target = e.target as Node;
-      if (
-        !anchorRef.current?.contains(target) &&
-        !panelRef.current?.contains(target)
-      ) {
-        onDismiss();
-      }
-    }
-    function onKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") onDismiss();
-    }
-    document.addEventListener("mousedown", onPointerDown);
-    document.addEventListener("keydown", onKeyDown);
-    window.addEventListener("scroll", onDismiss, true);
-    window.addEventListener("resize", onDismiss);
-    return () => {
-      document.removeEventListener("mousedown", onPointerDown);
-      document.removeEventListener("keydown", onKeyDown);
-      window.removeEventListener("scroll", onDismiss, true);
-      window.removeEventListener("resize", onDismiss);
-    };
-  }, [anchorRef, onDismiss]);
+  const pos = useAnchoredPopup({
+    open: true,
+    onClose: onDismiss,
+    anchorRef,
+    popupRef: panelRef,
+    align: "center",
+    closeOnEscape: true,
+    gap,
+  });
 
   if (!pos) return null;
 

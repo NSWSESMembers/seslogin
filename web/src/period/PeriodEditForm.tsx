@@ -5,7 +5,7 @@ import { dateToInputDateTimeLocal } from "../lib/time";
 import { getErrorMessage } from "../lib/relayErrors";
 import { FieldList, FormField } from "../components/ui/FormField";
 import TextInput from "../components/ui/TextInput";
-import Select from "../components/ui/Select";
+import Combobox from "../components/ui/Combobox";
 import { Button } from "../components/ui/Button";
 import {
   Panel,
@@ -204,20 +204,22 @@ export default function PeriodEditForm() {
         <form action={handleSubmit}>
           <FieldList>
             <FormField label={<label htmlFor="category">Activity</label>}>
-              <Select
-                name="category"
+              <Combobox
                 id="category"
+                name="category"
                 required
+                placeholder="-- Select activity --"
+                emptyText="No activities match"
+                // This page is reached from an emailed link, so mostly phones:
+                // below `md` the OS picker is the better control.
+                nativeOnSmallScreens
                 value={categoryValue}
-                onChange={(e) => setCategoryValue(e.target.value)}
-              >
-                <option value="">-- Select activity --</option>
-                {categories.map((cat) => (
-                  <option value={cat.id} key={cat.id}>
-                    {cat.name}
-                  </option>
-                ))}
-              </Select>
+                onChange={setCategoryValue}
+                options={categories.map((cat) => ({
+                  value: cat.id,
+                  label: cat.name,
+                }))}
+              />
             </FormField>
             <FormField label={<label htmlFor="start">Start time</label>}>
               <TextInput

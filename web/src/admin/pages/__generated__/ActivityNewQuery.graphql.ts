@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<6b50924e6c01ab11bec726f5e062b0d9>>
+ * @generated SignedSource<<5a7898826f9a03fc0355b32c20b6e516>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -24,6 +24,7 @@ export type ActivityNewQuery$data = {
       readonly firstName: string;
       readonly id: string;
       readonly lastName: string;
+      readonly memberNumber: string | null | undefined;
     }>;
   };
 };
@@ -85,6 +86,13 @@ v2 = [
             "kind": "ScalarField",
             "name": "lastName",
             "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "memberNumber",
+            "storageKey": null
           }
         ],
         "storageKey": null
@@ -139,16 +147,16 @@ return {
     "selections": (v2/*: any*/)
   },
   "params": {
-    "cacheID": "226b5b487199dd718c1d59c579cd2fa7",
+    "cacheID": "be35f0612f3bb228090881ae6f447344",
     "id": null,
     "metadata": {},
     "name": "ActivityNewQuery",
     "operationKind": "query",
-    "text": "query ActivityNewQuery(\n  $location: ID!\n) {\n  location(id: $location) {\n    id\n    people {\n      id\n      firstName\n      lastName\n    }\n  }\n  categories {\n    id\n    name\n    enabled\n  }\n}\n"
+    "text": "query ActivityNewQuery(\n  $location: ID!\n) {\n  location(id: $location) {\n    id\n    people {\n      id\n      firstName\n      lastName\n      memberNumber\n    }\n  }\n  categories {\n    id\n    name\n    enabled\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "80ba152a01f49daedb861ec6251e5852";
+(node as any).hash = "e2e7185a9e71f80b938a6eb9752bc7e7";
 
 export default node;
