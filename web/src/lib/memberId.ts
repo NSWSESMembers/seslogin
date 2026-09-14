@@ -1,3 +1,8 @@
+/** Member IDs are a fixed-length run of digits. */
+export const MEMBER_ID_LENGTH = 8;
+
+const MEMBER_ID_PATTERN = new RegExp(`^\\d{${MEMBER_ID_LENGTH}}$`);
+
 export function isValidMemberIdText(memberId: string): boolean {
-  return /^\d{8}$/.test(memberId);
+  return MEMBER_ID_PATTERN.test(memberId);
 }
