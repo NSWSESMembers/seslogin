@@ -37,8 +37,10 @@ cd web && npm run relay
 
 ## Opening a pull request
 
-- Keep PRs focused — one logical change per PR makes review easier.
-- Write a clear description of what the change does and why.
+- **One commit per PR.** Squash your branch down to a single commit before opening the PR (or before merge, if review feedback added fixup commits along the way).
+- **Keep PRs small and focused** — one logical change per commit/PR makes review easier. For larger work, prefer a stack of small PRs that build on each other (each branched from the previous one, merged in order) over one large PR.
+- **Every PR/commit must be safe to deploy on its own.** It must pass CI (`make check` && `make test`) and stand correctly by itself — don't leave a PR in a half-working state that only becomes correct once a later PR in the stack lands. If a change genuinely can't be split into independently-deployable steps, that's a signal to reconsider the approach before opening the PR.
+- Write a clear commit message / PR description explaining what the change does and why.
 - If the change is non-trivial, include a short note on how you tested it.
 
 There's no formal issue requirement for small fixes, but for larger changes it's worth opening an issue first to discuss the approach.
