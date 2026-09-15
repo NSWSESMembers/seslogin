@@ -145,6 +145,10 @@ export default function ActivityHeatmap() {
 
   return (
     <>
+      <p>
+        This heatmap covers only this unit's own members — it does not include
+        members visiting from other units.
+      </p>
       <div className="mb-2 flex flex-wrap justify-center gap-2">
         {PRESET_ORDER.map((p) => (
           <Button
