@@ -462,7 +462,7 @@ function BasicSessionModeFields({
                 />
               }
               title="On-screen number pad"
-              description="show a keypad under the SES ID box so members can enter their ID by touch — for a touchscreen kiosk with no barcode scanner or keyboard"
+              description="show a keypad button so members can enter their ID by touch — for a touchscreen kiosk with no barcode scanner or keyboard"
             />
           </OptionList>
         </FormField>
