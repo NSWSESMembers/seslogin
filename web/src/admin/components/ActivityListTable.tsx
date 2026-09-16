@@ -1,4 +1,4 @@
-import { useState, type CSSProperties } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { ErrorBoundary } from "react-error-boundary";
 import { formatTime, formatTimeDiff } from "../../lib/time";
 import { unwrapCatch } from "../../lib/relayCatch";
@@ -19,6 +19,7 @@ import { useUserInfo } from "./useUserInfo";
 import { useNotify } from "./useNotify";
 import { AdminTable, Th, Td } from "../../components/ui/Table";
 import { Button, ButtonLink } from "../../components/ui/Button";
+import { Popover } from "../../components/ui/Popover";
 import CommentIndicator from "./CommentIndicator";
 
 type Firstcol = "location" | "person";
@@ -56,13 +57,6 @@ const activityListTablePeriod = graphql`
     }
   }
 `;
-
-// Dotted underline hint shown on a sign-in/out time when a session name is
-// available in its `title` tooltip, signalling there's more to see on hover.
-const sessionHintStyle: CSSProperties = {
-  textDecoration: "underline dotted",
-  cursor: "help",
-};
 
 type Period = ActivityListTable_period$data;
 // Each row keeps the original fragment ref (passed to the page's getRowLabel) alongside
@@ -144,6 +138,47 @@ function Section<T extends ActivityListTable_period$key>({
           />
         </ErrorBoundary>
       ))}
+    </>
+  );
+}
+
+// Dotted underline on a sign-in/out time when a session name is known for it.
+// The name is on the `title` (hover) and in a popover on press/click, so it
+// also works on a touch kiosk with no pointer — same pattern as CommentIndicator.
+function SessionHint({
+  session,
+  children,
+}: {
+  session: { readonly name: string } | null | undefined;
+  children: ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+
+  if (!session) return <>{children}</>;
+
+  return (
+    <>
+      <button
+        ref={buttonRef}
+        type="button"
+        title={session.name}
+        aria-label={open ? "Hide kiosk" : "Show kiosk"}
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+        className="cursor-help underline decoration-dotted underline-offset-2"
+      >
+        {children}
+      </button>
+      {open && (
+        <Popover
+          anchorRef={buttonRef}
+          onDismiss={() => setOpen(false)}
+          className="max-w-xs px-2 py-1.5 text-sm"
+        >
+          {session.name}
+        </Popover>
+      )}
     </>
   );
 }
@@ -279,17 +314,13 @@ function Row<T extends ActivityListTable_period$key>({
         {getRowLabel(entry.ref)}
         {subLabel && <div className="text-xs text-ink-muted">{subLabel}</div>}
       </Td>
-      <Td
-        title={signedInSession?.name ?? undefined}
-        style={signedInSession ? sessionHintStyle : undefined}
-      >
-        {formatTime(start)}
+      <Td>
+        <SessionHint session={signedInSession}>{formatTime(start)}</SessionHint>
       </Td>
-      <Td
-        title={signedOutSession?.name ?? undefined}
-        style={signedOutSession ? sessionHintStyle : undefined}
-      >
-        {end ? formatTime(end) : ""}
+      <Td>
+        <SessionHint session={signedOutSession}>
+          {end ? formatTime(end) : ""}
+        </SessionHint>
       </Td>
       <Td>{timeDiff}</Td>
       <Td>
