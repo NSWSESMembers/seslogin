@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { formatFullDateTime, formatSeconds } from "../../lib/time";
 import { graphql, useMutation } from "react-relay";
 import SessionStatus from "../components/SessionStatus";
@@ -21,8 +21,46 @@ import { AdminTable, Th, Td } from "../../components/ui/Table";
 import { Button, ButtonLink } from "../../components/ui/Button";
 import { Dialog, DialogActions, DialogTitle } from "../../components/ui/Dialog";
 import { FingerprintChip } from "../../components/FingerprintChip";
+import { Popover } from "../../components/ui/Popover";
 
 type Session = SessionsListQuery$data["location"]["sessions"][number];
+
+// The "Replaced" badge as a trigger: the explanation is on the `title` (hover) and in a
+// popover on click, so it also works on touch — same pattern as CommentIndicator.
+function ReplacedBadge({ keyReleasedAt }: { keyReleasedAt: number }) {
+  const [open, setOpen] = useState(false);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const explanation = `This computer was set up again as a different kiosk on ${formatFullDateTime(
+    new Date(keyReleasedAt * 1000),
+  )}, so this entry no longer works. Delete it once you don't need the record.`;
+
+  return (
+    <>
+      <button
+        ref={buttonRef}
+        type="button"
+        title={explanation}
+        aria-label={
+          open ? "Hide replacement details" : "Show replacement details"
+        }
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+        className="ml-2 cursor-help rounded-sm border border-current px-1 py-px text-[0.7em] uppercase"
+      >
+        Replaced
+      </button>
+      {open && (
+        <Popover
+          anchorRef={buttonRef}
+          onDismiss={() => setOpen(false)}
+          className="max-w-xs px-2 py-1.5 text-sm"
+        >
+          {explanation}
+        </Popover>
+      )}
+    </>
+  );
+}
 
 function Row({
   session,
@@ -148,14 +186,7 @@ function Row({
       <Td>
         {session.name}
         {isReplacedKiosk && (
-          <span
-            className="ml-2 rounded-sm border border-current px-1 py-px text-[0.7em] uppercase"
-            title={`This computer was set up again as a different kiosk on ${formatFullDateTime(
-              new Date(session.keyReleasedAt! * 1000),
-            )}, so this entry no longer works. Delete it once you don't need the record.`}
-          >
-            Replaced
-          </span>
+          <ReplacedBadge keyReleasedAt={session.keyReleasedAt!} />
         )}
       </Td>
       <Td>{timeSinceAccess}</Td>

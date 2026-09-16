@@ -1,3 +1,4 @@
+import { useRef, useState } from "react";
 import { graphql, useMutation } from "react-relay";
 import { useRetryableLazyLoadQuery } from "../../components/useRetryableLazyLoadQuery";
 import type { NitcGroupListQuery } from "./__generated__/NitcGroupListQuery.graphql";
@@ -5,6 +6,7 @@ import type { NitcGroupListDeleteMutation } from "./__generated__/NitcGroupListD
 import { useNotify } from "../components/useNotify";
 import { AdminTable, Th, Td } from "../../components/ui/Table";
 import { Button, ButtonLink } from "../../components/ui/Button";
+import { Popover } from "../../components/ui/Popover";
 
 type NitcGroupData = {
   id: string;
@@ -17,6 +19,48 @@ type CategoryData = {
   name: string;
   nitcGroupId: string | null | undefined;
 };
+
+// The category-usage count as a trigger: the category names are on the `title` (hover)
+// and in a popover on click, so it also works on touch — same pattern as CommentIndicator.
+function CategoryCountHint({
+  categories,
+}: {
+  categories: ReadonlyArray<CategoryData>;
+}) {
+  const [open, setOpen] = useState(false);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+
+  if (categories.length === 0) {
+    return <>0</>;
+  }
+
+  const names = categories.map((c) => c.name).join(", ");
+
+  return (
+    <>
+      <button
+        ref={buttonRef}
+        type="button"
+        title={names}
+        aria-label={open ? "Hide categories" : "Show categories"}
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+        className="cursor-help underline decoration-dotted underline-offset-2"
+      >
+        {categories.length}
+      </button>
+      {open && (
+        <Popover
+          anchorRef={buttonRef}
+          onDismiss={() => setOpen(false)}
+          className="max-w-xs px-2 py-1.5 text-sm"
+        >
+          {names}
+        </Popover>
+      )}
+    </>
+  );
+}
 
 function Row({
   group,
@@ -60,14 +104,15 @@ function Row({
 
   const tagNames = group.sesTags.map((t) => t.name).join(", ");
   const usingCategories = categories.filter((c) => c.nitcGroupId === group.id);
-  const categoryNames = usingCategories.map((c) => c.name).join(", ");
 
   return (
     <tr className={idx % 2 === 0 ? "bg-surface-raised" : undefined}>
       <Td className="font-mono text-[0.85em]">{group.id}</Td>
       <Td>{group.nitcType}</Td>
       <Td>{tagNames}</Td>
-      <Td title={categoryNames || undefined}>{usingCategories.length}</Td>
+      <Td>
+        <CategoryCountHint categories={usingCategories} />
+      </Td>
       <Td options>
         <div className="flex justify-end gap-1">
           <ButtonLink

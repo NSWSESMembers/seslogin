@@ -1,4 +1,6 @@
+import { useRef, useState } from "react";
 import { getCurrentEnvironment } from "../../lib/clientInfo";
+import { Popover } from "../../components/ui/Popover";
 
 /**
  * The build channel a kiosk last reported, flagged when it isn't the one this admin page
@@ -28,6 +30,50 @@ function hostOf(origin: string | null | undefined): string | null {
   }
 }
 
+// The environment-mismatch badge as a trigger: the explanation is on the `title`
+// (hover) and in a popover on click, so it also works on touch — same pattern as
+// CommentIndicator.
+function EnvironmentMismatch({
+  env,
+  expected,
+  origin,
+}: {
+  env: string;
+  expected: string;
+  origin: string | null | undefined;
+}) {
+  const [open, setOpen] = useState(false);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const explanation = `This kiosk is running the "${env}" build, but you are viewing the "${expected}" admin site.${
+    origin ? ` It loaded from ${origin}.` : ""
+  } Non-production builds still read and write the production database.`;
+
+  return (
+    <>
+      <button
+        ref={buttonRef}
+        type="button"
+        title={explanation}
+        aria-label={open ? "Hide details" : "Show details"}
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+        className="cursor-help font-semibold text-amber-700 underline decoration-dotted underline-offset-2 dark:text-amber-400"
+      >
+        {env} ⚠
+      </button>
+      {open && (
+        <Popover
+          anchorRef={buttonRef}
+          onDismiss={() => setOpen(false)}
+          className="max-w-xs px-2 py-1.5 text-sm"
+        >
+          {explanation}
+        </Popover>
+      )}
+    </>
+  );
+}
+
 export default function SessionEnvironment({
   clientInfo,
 }: {
@@ -54,13 +100,10 @@ export default function SessionEnvironment({
   }
 
   return (
-    <span
-      className="font-semibold text-amber-700 dark:text-amber-400"
-      title={`This kiosk is running the "${env}" build, but you are viewing the "${expected}" admin site.${
-        clientInfo?.origin ? ` It loaded from ${clientInfo.origin}.` : ""
-      } Non-production builds still read and write the production database.`}
-    >
-      {env} ⚠
-    </span>
+    <EnvironmentMismatch
+      env={env}
+      expected={expected}
+      origin={clientInfo?.origin}
+    />
   );
 }

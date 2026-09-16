@@ -1,6 +1,7 @@
-import type { ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { formatSeconds } from "../../lib/time";
 import { getCurrentEnvironment } from "../../lib/clientInfo";
+import { Popover } from "../../components/ui/Popover";
 
 /**
  * Structurally compatible with what Relay generates for the `clientInfo` selection, so
@@ -43,6 +44,47 @@ function Warn({ children, title }: { children: ReactNode; title: string }) {
     >
       {children}
     </span>
+  );
+}
+
+// The environment-mismatch warning as a trigger: the explanation is on the `title`
+// (hover) and in a popover on click, so it also works on touch — same pattern as
+// CommentIndicator. A plain Warn suffices for the other rows below, whose text already
+// says everything the title would add; this one's text doesn't, so it gets the popover.
+function EnvironmentWarning({
+  env,
+  expectedEnv,
+}: {
+  env: string;
+  expectedEnv: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const explanation = `You are viewing the "${expectedEnv}" admin site. Non-production builds still read and write the production database.`;
+
+  return (
+    <>
+      <button
+        ref={buttonRef}
+        type="button"
+        title={explanation}
+        aria-label={open ? "Hide details" : "Show details"}
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+        className="cursor-help font-semibold text-amber-700 underline decoration-dotted underline-offset-2 dark:text-amber-400"
+      >
+        {env} — not this environment
+      </button>
+      {open && (
+        <Popover
+          anchorRef={buttonRef}
+          onDismiss={() => setOpen(false)}
+          className="max-w-xs px-2 py-1.5 text-sm"
+        >
+          {explanation}
+        </Popover>
+      )}
+    </>
   );
 }
 
@@ -90,11 +132,10 @@ export default function SessionClientInfo({
           {clientInfo.env === expectedEnv ? (
             clientInfo.env
           ) : (
-            <Warn
-              title={`You are viewing the "${expectedEnv}" admin site. Non-production builds still read and write the production database.`}
-            >
-              {clientInfo.env} — not this environment
-            </Warn>
+            <EnvironmentWarning
+              env={clientInfo.env}
+              expectedEnv={expectedEnv}
+            />
           )}
         </Row>
       )}
