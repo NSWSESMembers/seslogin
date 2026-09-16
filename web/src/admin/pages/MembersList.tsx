@@ -10,13 +10,60 @@ import useSelectedLocation from "../components/useSelectedLocation";
 import { formatFullDateTime } from "../../lib/time";
 import bulletGreen from "../../assets/bullet-green.svg";
 import bulletOrange from "../../assets/bullet-orange.svg";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useUserInfo } from "../components/useUserInfo";
 import { useNotify } from "../components/useNotify";
 import { AdminTable, Th, Td } from "../../components/ui/Table";
 import { Button, ButtonLink } from "../../components/ui/Button";
+import { Popover } from "../../components/ui/Popover";
 
 type Person = MembersListQuery$data["location"]["people"][number];
+
+// The status bullet as a trigger: its explanation is on the `title` (hover) and in a
+// popover on click, so it also works on touch — same pattern as CommentIndicator.
+function StatusBullet({
+  src,
+  label,
+  detail,
+}: {
+  src: string;
+  label: string;
+  detail: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+
+  return (
+    <>
+      <button
+        ref={buttonRef}
+        type="button"
+        title={detail}
+        aria-label={open ? `Hide ${label}` : `Show ${label}`}
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+        className="cursor-help align-middle"
+      >
+        <img
+          src={src}
+          alt=""
+          width={12}
+          height={12}
+          className="max-w-none align-middle"
+        />
+      </button>
+      {open && (
+        <Popover
+          anchorRef={buttonRef}
+          onDismiss={() => setOpen(false)}
+          className="max-w-xs px-2 py-1.5 text-sm"
+        >
+          {detail}
+        </Popover>
+      )}
+    </>
+  );
+}
 
 function Row({
   person,
@@ -72,24 +119,18 @@ function Row({
     <tr className={idx % 2 === 0 ? "bg-surface-raised" : undefined}>
       <Td center>
         {missingSince ? (
-          <img
+          <StatusBullet
             src={bulletOrange}
-            alt="Pending deletion"
-            title={`Missing from SES since ${formatFullDateTime(
+            label="sync status"
+            detail={`Missing from SES since ${formatFullDateTime(
               new Date(missingSince * 1000),
             )} — pending deletion`}
-            width={12}
-            height={12}
-            className="max-w-none align-middle"
           />
         ) : sesApiPersonId ? (
-          <img
+          <StatusBullet
             src={bulletGreen}
-            alt=""
-            title={sesApiPersonId}
-            width={12}
-            height={12}
-            className="max-w-none align-middle"
+            label="SES ID"
+            detail={sesApiPersonId}
           />
         ) : null}
       </Td>
