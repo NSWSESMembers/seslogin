@@ -1,22 +1,15 @@
 import { useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import { inputBase, inputWidths, type InputWidth } from "./inputStyles";
 import {
   comboboxChevron,
   comboboxClear,
-  comboboxDescription,
-  comboboxEmpty,
-  comboboxHighlight,
   comboboxInput,
-  comboboxListbox,
-  comboboxOption,
-  comboboxOptionDisabled,
-  comboboxOptionSelected,
   comboboxWarning,
 } from "./comboboxStyles";
-import { filterOptions, matchRanges } from "./comboboxMatch";
+import { filterOptions } from "./comboboxMatch";
 import type { ComboboxOption } from "./comboboxMatch";
-import { useAnchoredPopup } from "./useAnchoredPopup";
+import ComboboxListbox from "./ComboboxListbox";
+import { useComboboxList } from "./useComboboxList";
 import { useMediaQuery } from "../useMediaQuery";
 import Select from "./Select";
 
@@ -30,11 +23,18 @@ export type { ComboboxOption } from "./comboboxMatch";
  * fixed set defined in code, or when there are 15 or fewer of them with short
  * scannable labels. Use `Combobox` when the options come from the database, or
  * when the user knows the value *by name* rather than by scanning the list —
- * whichever the count. Prefer `SegmentedControl` at two or three options.
+ * whichever the count. Prefer `SegmentedControl` at two or three options. Use
+ * `MultiCombobox` — its sibling — when more than one value can be chosen.
  *
  * It works with the house form convention (`<form action>` reading `FormData`):
  * pass `name` and the selected option's `value` is submitted under it. See the
  * note on `required` below — it is the part most easily broken.
+ *
+ * The list-navigation plumbing (open/query/filtering/active row/popup
+ * position) lives in `useComboboxList`, shared with `MultiCombobox`. What
+ * stays here is specific to a *single* value: `Enter` and `Backspace` commit
+ * or clear it, picking a row closes the list, and there is exactly one hidden
+ * input.
  */
 export interface ComboboxProps {
   /** Also the base for the listbox and option ids, so it must be unique. */
@@ -76,9 +76,6 @@ export interface ComboboxProps {
 /** Tracks Tailwind's `md` breakpoint — keep the two in step. */
 const DESKTOP_QUERY = "(min-width: 48rem)";
 
-/** How far PageUp/PageDown move the active option. */
-const PAGE = 10;
-
 export default function Combobox({
   id,
   name,
@@ -98,15 +95,20 @@ export default function Combobox({
   nativeOnSmallScreens = false,
 }: ComboboxProps) {
   const [internal, setInternal] = useState(defaultValue ?? "");
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
-  const [requestedActive, setRequestedActive] = useState(0);
 
   const wrapperRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const listboxRef = useRef<HTMLUListElement>(null);
 
   const isDesktop = useMediaQuery(DESKTOP_QUERY);
+
+  const list = useComboboxList({
+    options,
+    filter,
+    idBase: id,
+    anchorRef: wrapperRef,
+    listboxRef,
+  });
 
   const selected = value !== undefined ? value : internal;
   const selectedOption = options.find((o) => o.value === selected) ?? null;
@@ -115,24 +117,11 @@ export default function Combobox({
   // user could save a different value without noticing, so say so instead.
   const missingOption = selected !== "" && selectedOption === null;
 
-  const matches = query.trim() === "" ? options : filter(query, options);
-  // Derived rather than corrected in an effect: the list shrinks as the user
-  // types, and the active row has to stay inside it on the very same render.
-  const activeIndex = Math.min(requestedActive, matches.length - 1);
-
   // Closed, the box shows what is selected; open, it shows what you are typing.
   // Every close path resets `query`, so the label always comes back on its own.
-  const displayValue = open ? query : (selectedOption?.label ?? selected);
-
-  const position = useAnchoredPopup({
-    open,
-    onClose: () => close(),
-    anchorRef: wrapperRef,
-    popupRef: listboxRef,
-    onViewportChange: "reposition",
-    // A 288px-tall listbox on a field low in the viewport has to go above it.
-    flip: true,
-  });
+  const displayValue = list.open
+    ? list.query
+    : (selectedOption?.label ?? selected);
 
   // Two cases where the box looks filled in but the value behind it isn't usable,
   // so native `required` — which only sees an empty box — would let them through.
@@ -147,33 +136,17 @@ export default function Combobox({
   }, [missingOption, required, selected, displayValue]);
 
   // React 19 resets an uncontrolled form once its action resolves, but the
-  // selection lives in React state and would survive that.
+  // selection lives in React state and would survive that. `useComboboxList`
+  // resets its own open/query state on the same event.
   useEffect(() => {
     const form = wrapperRef.current?.closest("form");
     if (!form) return;
     function onReset() {
       setInternal(defaultValue ?? "");
-      setQuery("");
-      setOpen(false);
     }
     form.addEventListener("reset", onReset);
     return () => form.removeEventListener("reset", onReset);
   }, [defaultValue]);
-
-  useEffect(() => {
-    if (!open || activeIndex < 0) return;
-    // `nearest` only: `center` yanks the list on every arrow press. Optional
-    // call because jsdom does not implement scrollIntoView.
-    document
-      .getElementById(`${id}-opt-${activeIndex}`)
-      ?.scrollIntoView?.({ block: "nearest" });
-  }, [open, activeIndex, id]);
-
-  function close() {
-    setOpen(false);
-    setQuery("");
-    setRequestedActive(0);
-  }
 
   function commit(next: string, option: ComboboxOption | null) {
     if (value === undefined) setInternal(next);
@@ -183,81 +156,40 @@ export default function Combobox({
   function select(option: ComboboxOption) {
     if (option.disabled) return;
     commit(option.value, option);
-    close();
+    list.close();
   }
 
   function clear() {
     commit("", null);
-    setQuery("");
+    list.search("");
     inputRef.current?.focus();
   }
 
-  function moveActive(delta: number) {
-    setRequestedActive((current) => {
-      const from = Math.min(current, matches.length - 1);
-      // No wrap-around: a native <select>, which these users are coming from,
-      // doesn't wrap either, and jumping between the ends of 171 rows is
-      // disorienting.
-      return Math.max(0, Math.min(matches.length - 1, from + delta));
-    });
-  }
-
-  function openAtSelection(fallbackToLast: boolean) {
+  function getOpenIndex(fallbackToLast: boolean): number {
     const at = options.findIndex((o) => o.value === selected);
-    setRequestedActive(
-      at >= 0 ? at : fallbackToLast ? Math.max(0, options.length - 1) : 0,
-    );
-    setOpen(true);
+    if (at >= 0) return at;
+    return fallbackToLast ? Math.max(0, options.length - 1) : 0;
   }
 
   function handleKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
     if (disabled) return;
+    if (list.handleNavigationKey(event, getOpenIndex)) return;
 
     switch (event.key) {
-      case "ArrowDown":
-        event.preventDefault();
-        if (open) moveActive(1);
-        else openAtSelection(false);
-        return;
-      case "ArrowUp":
-        event.preventDefault();
-        if (!open) openAtSelection(true);
-        else if (event.altKey) close();
-        else moveActive(-1);
-        return;
-      case "PageDown":
-        if (!open) return;
-        event.preventDefault();
-        moveActive(PAGE);
-        return;
-      case "PageUp":
-        if (!open) return;
-        event.preventDefault();
-        moveActive(-PAGE);
-        return;
       case "Enter":
         // Closed, Enter belongs to the form, exactly as with a native <select>.
-        if (!open) return;
+        if (!list.open) return;
         event.preventDefault();
         // `activeIndex` is only negative when nothing matched, in which case
         // there is nothing to commit and Enter just dismisses the list.
-        if (activeIndex >= 0) select(matches[activeIndex]);
-        else close();
-        return;
-      case "Escape":
-        // Only swallowed while the list is open, so it can still dismiss an
-        // enclosing Dialog when it isn't. Closing resets the query, so there is
-        // never a stale-text case to unwind here.
-        if (!open) return;
-        event.preventDefault();
-        event.stopPropagation();
-        close();
+        if (list.activeIndex >= 0) select(list.matches[list.activeIndex]);
+        else list.close();
         return;
       case "Backspace":
-        if (query === "" && allowClear && selected !== "") {
+        if (list.query === "" && allowClear && selected !== "") {
           event.preventDefault();
           commit("", null);
-          setOpen(true);
+          list.search("");
         }
         return;
       // Home/End move the text caret: this is an *editable* combobox, so they
@@ -270,30 +202,21 @@ export default function Combobox({
     // that is sitting in the box, which is what a native <select>'s type-ahead
     // does and what the label being there would otherwise fight.
     if (
-      !open &&
+      !list.open &&
       event.key.length === 1 &&
       !event.ctrlKey &&
       !event.metaKey &&
       !event.altKey
     ) {
       event.preventDefault();
-      setQuery(event.key);
-      setRequestedActive(0);
-      setOpen(true);
+      list.search(event.key);
     }
   }
 
   function handleChange(event: React.ChangeEvent<HTMLInputElement>) {
     // Reachable while closed only by pasting over the displayed label, in which
     // case the pasted text becomes the query verbatim — visible, and editable.
-    setQuery(event.target.value);
-    setRequestedActive(0);
-    setOpen(true);
-  }
-
-  function handleBlur(event: React.FocusEvent<HTMLDivElement>) {
-    if (event.currentTarget.contains(event.relatedTarget)) return;
-    close();
+    list.search(event.target.value);
   }
 
   if (nativeOnSmallScreens && !isDesktop) {
@@ -330,11 +253,11 @@ export default function Combobox({
     );
   }
 
-  const statusText = !open
+  const statusText = !list.open
     ? ""
-    : matches.length === 0
+    : list.matches.length === 0
       ? `${emptyText}.`
-      : `${matches.length} option${matches.length === 1 ? "" : "s"} available.`;
+      : `${list.matches.length} option${list.matches.length === 1 ? "" : "s"} available.`;
 
   return (
     // The width lives on the wrapper, not the input: the chevron, the clear
@@ -344,19 +267,17 @@ export default function Combobox({
     <div
       ref={wrapperRef}
       className={["relative inline-block", inputWidths[width]].join(" ")}
-      onBlur={handleBlur}
+      onBlur={list.handleBlur}
     >
       <input
         ref={inputRef}
         id={id}
         type="text"
         role="combobox"
-        aria-expanded={open}
-        aria-controls={open ? `${id}-listbox` : undefined}
+        aria-expanded={list.open}
+        aria-controls={list.open ? `${id}-listbox` : undefined}
         aria-autocomplete="list"
-        aria-activedescendant={
-          open && activeIndex >= 0 ? `${id}-opt-${activeIndex}` : undefined
-        }
+        aria-activedescendant={list.activeId}
         aria-invalid={missingOption || undefined}
         aria-label={ariaLabel}
         value={displayValue}
@@ -370,7 +291,7 @@ export default function Combobox({
         spellCheck={false}
         onChange={handleChange}
         onKeyDown={handleKeyDown}
-        onClick={() => (open ? close() : setOpen(true))}
+        onClick={() => (list.open ? list.close() : list.search(""))}
         className={[inputBase, comboboxInput, "w-full", className]
           .filter(Boolean)
           .join(" ")}
@@ -401,88 +322,15 @@ export default function Combobox({
         {statusText}
       </span>
 
-      {open &&
-        position &&
-        createPortal(
-          <ul
-            ref={listboxRef}
-            id={`${id}-listbox`}
-            role="listbox"
-            aria-label={ariaLabel}
-            className={comboboxListbox}
-            style={{
-              position: "fixed",
-              top: position.top,
-              bottom: position.bottom,
-              left: position.left,
-              // Exactly the field's width, so the two always line up. Long
-              // labels wrap rather than widening the popup past its anchor.
-              width: position.width,
-              minWidth: "16rem",
-              maxHeight: position.maxHeight,
-            }}
-          >
-            {matches.map((option, index) => (
-              <li
-                key={option.value}
-                id={`${id}-opt-${index}`}
-                role="option"
-                aria-selected={option.value === selected}
-                aria-disabled={option.disabled || undefined}
-                data-active={index === activeIndex || undefined}
-                // Keep focus in the input, so clicking never closes via blur.
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => select(option)}
-                className={[
-                  comboboxOption,
-                  option.value === selected && comboboxOptionSelected,
-                  option.disabled && comboboxOptionDisabled,
-                ]
-                  .filter(Boolean)
-                  .join(" ")}
-              >
-                <Highlighted text={option.label} query={query} />
-                {option.description && (
-                  <span className={comboboxDescription}>
-                    {/* Highlighted too: the description is searchable, so a
-                        member found by number should show which number. */}
-                    <Highlighted text={option.description} query={query} />
-                  </span>
-                )}
-              </li>
-            ))}
-            {matches.length === 0 && (
-              <li role="presentation" className={comboboxEmpty}>
-                {emptyText} “{query}”.
-              </li>
-            )}
-          </ul>,
-          document.body,
-        )}
+      <ComboboxListbox
+        idBase={id}
+        list={list}
+        listboxRef={listboxRef}
+        isSelected={(option) => option.value === selected}
+        onSelect={select}
+        emptyText={emptyText}
+        aria-label={ariaLabel}
+      />
     </div>
   );
-}
-
-/**
- * Emphasises the runs of `text` that `query` matched. These labels differ mostly
- * in their tail — twenty of them open "Workshop - Participant -" — so marking
- * the part that made a row a hit is what makes a filtered list scannable.
- */
-function Highlighted({ text, query }: { text: string; query: string }) {
-  const ranges = matchRanges(query, text);
-  if (ranges.length === 0) return text;
-
-  const parts: React.ReactNode[] = [];
-  let at = 0;
-  for (const [start, end] of ranges) {
-    if (start > at) parts.push(text.slice(at, start));
-    parts.push(
-      <span key={start} className={comboboxHighlight}>
-        {text.slice(start, end)}
-      </span>,
-    );
-    at = end;
-  }
-  if (at < text.length) parts.push(text.slice(at));
-  return parts;
 }

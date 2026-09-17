@@ -140,6 +140,17 @@ export function useAnchoredPopup({
     window.visualViewport?.addEventListener("resize", handleViewportChange);
     window.visualViewport?.addEventListener("scroll", handleViewportChange);
     if (closeOnEscape) document.addEventListener("keydown", handleKeyDown);
+    // The anchor can resize on its own while open with none of the above
+    // firing — e.g. a token box growing a second line as pills are added.
+    // Without this, `position` keeps the anchor's old (shorter) rect and the
+    // popup stays put, now overlapping the anchor's newly-grown content.
+    // Unimplemented in jsdom, so this is a no-op there — geometry isn't
+    // asserted in tests either way (see `Combobox.test.tsx`).
+    const resizeObserver =
+      typeof ResizeObserver === "function"
+        ? new ResizeObserver(() => measure())
+        : undefined;
+    resizeObserver?.observe(anchor);
     return () => {
       window.removeEventListener("scroll", handleViewportChange, true);
       window.removeEventListener("resize", handleViewportChange);
@@ -152,6 +163,7 @@ export function useAnchoredPopup({
         handleViewportChange,
       );
       document.removeEventListener("keydown", handleKeyDown);
+      resizeObserver?.disconnect();
     };
   }, [
     open,
