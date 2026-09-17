@@ -9,11 +9,17 @@ import { useRetryableLazyLoadQuery } from "../../components/useRetryableLazyLoad
 interface ActivityCategorySelectorProps {
   value: ReadonlyArray<string>;
   onChange: (categoryIds: string[]) => void;
+  // When true, each checkbox/select-all/clear edit calls onChange right
+  // away and no inner Apply button is shown — for callers that already
+  // gate the actual query behind their own "Update results" button, so a
+  // second, inner Apply would just be a confusing extra step.
+  applyImmediately?: boolean;
 }
 
 export default function ActivityCategorySelector({
   value,
   onChange,
+  applyImmediately = false,
 }: ActivityCategorySelectorProps) {
   const data = useRetryableLazyLoadQuery<ActivityCategorySelectorQuery>(
     graphql`
@@ -32,12 +38,22 @@ export default function ActivityCategorySelector({
     .map((category) => ({ id: category.id, name: category.name }));
 
   const detailsRef = useRef<HTMLDetailsElement>(null);
-  // Local, unapplied selection edited while the dropdown is open. Only
-  // committed to `onChange` (and thus re-fetches the report) when the user
-  // clicks Apply, so ticking several boxes doesn't trigger a query per click.
+  // Local selection edited while the dropdown is open. When !applyImmediately,
+  // it's only committed to `onChange` (and thus re-fetches the report) when
+  // the user clicks Apply, so ticking several boxes doesn't trigger a query
+  // per click. When applyImmediately, it's committed on every edit instead —
+  // for callers with their own outer "Update results" gate, where this is
+  // just the draft value and doesn't itself trigger a fetch.
   const [pending, setPending] = useState<ReadonlySet<string>>(
     () => new Set(value),
   );
+
+  function commit(next: ReadonlySet<string>) {
+    setPending(next);
+    if (applyImmediately) {
+      onChange([...next]);
+    }
+  }
 
   function handleToggle() {
     // Re-sync pending selection from the applied value whenever the dropdown
@@ -71,15 +87,17 @@ export default function ActivityCategorySelector({
         <MultiSelectList
           options={categories}
           value={pending}
-          onChange={setPending}
+          onChange={commit}
           itemLabel="categories"
           rows={6}
         />
-        <div className="flex justify-end">
-          <Button size="row" onClick={apply}>
-            Apply
-          </Button>
-        </div>
+        {!applyImmediately && (
+          <div className="flex justify-end">
+            <Button size="row" onClick={apply}>
+              Apply
+            </Button>
+          </div>
+        )}
       </div>
     </details>
   );

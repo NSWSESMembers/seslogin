@@ -55,6 +55,7 @@ export default function ActivityTotals() {
           <ActivityCategorySelector
             value={categoryIds}
             onChange={setCategoryIds}
+            applyImmediately
           />
         </Suspense>
         <Button
