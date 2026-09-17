@@ -31,6 +31,11 @@ export const comboboxOptionDisabled = tw`cursor-default text-ink-muted opacity-6
 
 export const comboboxOptionSelected = tw`font-semibold`;
 
+/** The ✓ marker on a selected row in a multi-select listbox. Reserves its
+ * width even when empty, so unselected rows don't shift left of selected
+ * ones. */
+export const comboboxOptionCheck = tw`mr-1 inline-block w-3.5 text-brand`;
+
 /** The run of a label that the query matched, per `comboboxMatch.matchRanges`. */
 export const comboboxHighlight = tw`font-semibold text-ink-strong`;
 
@@ -39,3 +44,18 @@ export const comboboxDescription = tw`block text-xs text-ink-muted`;
 export const comboboxEmpty = tw`px-2 py-2 text-center text-sm text-ink-muted`;
 
 export const comboboxWarning = tw`mt-1 text-sm text-red-600`;
+
+/**
+ * `MultiCombobox`'s wrapper: a flex-wrap row of pills plus the bare text
+ * input, styled to read as one text box. `pr-12` matches `comboboxInput`,
+ * leaving room for the clear button and chevron on the right edge.
+ */
+export const comboboxTokenBox = tw`flex min-h-7.5 flex-wrap items-center gap-1 pr-12 max-sm:min-h-9`;
+
+/** The borderless input nested inside `comboboxTokenBox`. It has no visible
+ * edges of its own — the wrapper supplies the box look and the focus ring. */
+export const comboboxTokenInput = tw`min-w-24 flex-1 border-0 bg-transparent p-0 text-sm outline-none max-sm:text-base`;
+
+export const comboboxPill = tw`inline-flex items-center gap-1 rounded-sm border border-line-strong bg-surface-sunken px-1.5 py-0.5 text-xs text-ink max-sm:text-sm`;
+
+export const comboboxPillRemove = tw`cursor-pointer rounded-sm px-0.5 text-ink-muted transition-colors hover:text-ink focus:ring-2 focus:ring-menu/25 focus:outline-none`;

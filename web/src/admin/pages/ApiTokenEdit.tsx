@@ -10,6 +10,7 @@ import { useNotify } from "../components/useNotify";
 import { FieldList, FormField } from "../../components/ui/FormField";
 import TextInput from "../../components/ui/TextInput";
 import { Button } from "../../components/ui/Button";
+import MultiCombobox from "../../components/ui/MultiCombobox";
 
 export default function ApiTokenEdit() {
   const navigate = useNavigate();
@@ -130,9 +131,6 @@ export default function ApiTokenEdit() {
   );
   const token = data.apiToken;
   const [readOnly, setReadOnly] = useState(token.readOnly);
-  const [selectedLocations, setSelectedLocations] = useState(
-    () => new Set(token.locationGrants),
-  );
   const [expiresValue, setExpiresValue] = useState(
     token.expiresAt
       ? dateToInputDateTimeLocal(new Date(token.expiresAt * 1000))
@@ -191,42 +189,18 @@ export default function ApiTokenEdit() {
               onChange={(e) => setExpiresValue(e.target.value)}
             />
           </FormField>
-          <FormField label="Locations">
-            <a
-              href="#"
-              onClick={(e) => {
-                e.preventDefault();
-                setSelectedLocations(new Set());
-              }}
-            >
-              Deselect all
-            </a>
-            {locations.map((location: { id: string; name: string }) => (
-              <div key={location.id}>
-                <input
-                  type="checkbox"
-                  name="locations"
-                  id={`location-${location.id}`}
-                  value={location.id}
-                  checked={selectedLocations.has(location.id)}
-                  onChange={(e) =>
-                    setSelectedLocations((prev) => {
-                      const next = new Set(prev);
-                      if (e.target.checked) {
-                        next.add(location.id);
-                      } else {
-                        next.delete(location.id);
-                      }
-                      return next;
-                    })
-                  }
-                />
-                &nbsp;
-                <label htmlFor={`location-${location.id}`}>
-                  {location.name}
-                </label>
-              </div>
-            ))}
+          <FormField label={<label htmlFor="locations">Locations</label>}>
+            <MultiCombobox
+              id="locations"
+              name="locations"
+              options={locations.map((location) => ({
+                value: location.id,
+                label: location.name,
+              }))}
+              defaultValue={token.locationGrants ?? undefined}
+              placeholder="Search locations…"
+              emptyText="No locations match"
+            />
           </FormField>
           <FormField>
             <div className="flex justify-end gap-2 md:justify-start">

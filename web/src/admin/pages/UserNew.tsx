@@ -7,6 +7,7 @@ import { useNotify } from "../components/useNotify";
 import { FieldList, FormField } from "../../components/ui/FormField";
 import TextInput from "../../components/ui/TextInput";
 import { Button } from "../../components/ui/Button";
+import MultiCombobox from "../../components/ui/MultiCombobox";
 
 export default function NewUser() {
   const navigate = useNavigate();
@@ -86,21 +87,17 @@ export default function NewUser() {
           <FormField label={<label htmlFor="super">Super</label>}>
             <input type="checkbox" name="super" id="super" />
           </FormField>
-          <FormField label="Locations">
-            {locations.map((location: { id: string; name: string }) => (
-              <div key={location.id}>
-                <input
-                  type="checkbox"
-                  name="locations"
-                  id={`location-${location.id}`}
-                  value={location.id}
-                />
-                &nbsp;
-                <label htmlFor={`location-${location.id}`}>
-                  {location.name}
-                </label>
-              </div>
-            ))}
+          <FormField label={<label htmlFor="locations">Locations</label>}>
+            <MultiCombobox
+              id="locations"
+              name="locations"
+              options={locations.map((location) => ({
+                value: location.id,
+                label: location.name,
+              }))}
+              placeholder="Search locations…"
+              emptyText="No locations match"
+            />
           </FormField>
           <FormField>
             <Button type="submit" disabled={isMutationInFlight}>

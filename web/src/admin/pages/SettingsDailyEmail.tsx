@@ -1,11 +1,18 @@
-import { useState } from "react";
 import { graphql, useMutation } from "react-relay";
 import type { SettingsDailyEmailQuery } from "./__generated__/SettingsDailyEmailQuery.graphql";
 import type { SettingsDailyEmailMutation } from "./__generated__/SettingsDailyEmailMutation.graphql";
 import { useNotify } from "../components/useNotify";
 import { FieldList, FormField } from "../../components/ui/FormField";
 import { Button } from "../../components/ui/Button";
+import MultiCombobox from "../../components/ui/MultiCombobox";
 import { useRetryableLazyLoadQuery } from "../../components/useRetryableLazyLoadQuery";
+
+/**
+ * Below this many locations the checkbox list is faster than a filter box:
+ * every option is on screen at once and each is one click, with nothing to
+ * type.
+ */
+const CHECKBOX_LIMIT = 10;
 
 export default function SettingsDailyEmail() {
   const data = useRetryableLazyLoadQuery<SettingsDailyEmailQuery>(
@@ -37,20 +44,20 @@ export default function SettingsDailyEmail() {
 
   const { notifyError, notifySuccess } = useNotify();
   const user = data.user;
-  const [selectedLocations, setSelectedLocations] = useState(
-    () => new Set(user.emailSummaryLocationIds),
-  );
 
   const locations = [...user.locations].sort((a, b) =>
     a.name.localeCompare(b.name),
   );
+  const useCombobox = locations.length > CHECKBOX_LIMIT;
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  async function handleSubmit(formData: FormData) {
+    const dailyLocationIds = formData
+      .getAll("dailyLocations")
+      .map((v) => v.toString());
     try {
       await new Promise<void>((resolve, reject) => {
         commitMutation({
-          variables: { dailyLocationIds: Array.from(selectedLocations) },
+          variables: { dailyLocationIds },
           onCompleted: () => resolve(),
           onError: reject,
           updater: (store) => {
@@ -72,31 +79,49 @@ export default function SettingsDailyEmail() {
         email. Emails are sent just after midnight with the previous day&apos;s
         activity.
       </p>
-      <form onSubmit={handleSubmit}>
+      <form action={handleSubmit}>
         <FieldList>
-          <FormField label="Daily email — locations">
+          <FormField
+            label={
+              useCombobox ? (
+                <label htmlFor="dailyLocations">Daily email — locations</label>
+              ) : (
+                "Daily email — locations"
+              )
+            }
+          >
             {locations.length === 0 && (
               <p>No locations available to your account.</p>
             )}
-            {locations.map((loc) => (
-              <div key={loc.id}>
-                <input
-                  type="checkbox"
-                  id={`loc-${loc.id}`}
-                  checked={selectedLocations.has(loc.id)}
-                  onChange={(e) =>
-                    setSelectedLocations((prev) => {
-                      const next = new Set(prev);
-                      if (e.target.checked) next.add(loc.id);
-                      else next.delete(loc.id);
-                      return next;
-                    })
-                  }
-                />
-                &nbsp;
-                <label htmlFor={`loc-${loc.id}`}>{loc.name}</label>
-              </div>
-            ))}
+            {useCombobox ? (
+              <MultiCombobox
+                id="dailyLocations"
+                name="dailyLocations"
+                options={locations.map((loc) => ({
+                  value: loc.id,
+                  label: loc.name,
+                }))}
+                defaultValue={user.emailSummaryLocationIds}
+                placeholder="Search locations…"
+                emptyText="No locations match"
+              />
+            ) : (
+              locations.map((loc) => (
+                <div key={loc.id}>
+                  <input
+                    type="checkbox"
+                    name="dailyLocations"
+                    id={`loc-${loc.id}`}
+                    value={loc.id}
+                    defaultChecked={user.emailSummaryLocationIds.includes(
+                      loc.id,
+                    )}
+                  />
+                  &nbsp;
+                  <label htmlFor={`loc-${loc.id}`}>{loc.name}</label>
+                </div>
+              ))
+            )}
           </FormField>
           <FormField>
             <Button type="submit" disabled={isMutationInFlight}>

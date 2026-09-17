@@ -8,6 +8,7 @@ import { useNotify } from "../components/useNotify";
 import { FieldList, FormField } from "../../components/ui/FormField";
 import TextInput from "../../components/ui/TextInput";
 import { Button } from "../../components/ui/Button";
+import MultiCombobox from "../../components/ui/MultiCombobox";
 
 export default function UserEdit() {
   const navigate = useNavigate();
@@ -106,9 +107,6 @@ export default function UserEdit() {
   const [isSuper, setIsSuper] = useState(user.isSuper);
   const [isDev, setIsDev] = useState(user.isDev);
   const [enabled, setEnabled] = useState(user.enabled);
-  const [selectedLocations, setSelectedLocations] = useState(
-    () => new Set(user.locationGrantIds),
-  );
 
   return (
     <>
@@ -154,42 +152,18 @@ export default function UserEdit() {
             />
           </FormField>
           {!isSuper && (
-            <FormField label="Locations">
-              <a
-                href="#"
-                onClick={(e) => {
-                  e.preventDefault();
-                  setSelectedLocations(new Set());
-                }}
-              >
-                Deselect all
-              </a>
-              {locations.map((location: { id: string; name: string }) => (
-                <div key={location.id}>
-                  <input
-                    type="checkbox"
-                    name="locations"
-                    id={`location-${location.id}`}
-                    value={location.id}
-                    checked={selectedLocations.has(location.id)}
-                    onChange={(e) =>
-                      setSelectedLocations((prev) => {
-                        const next = new Set(prev);
-                        if (e.target.checked) {
-                          next.add(location.id);
-                        } else {
-                          next.delete(location.id);
-                        }
-                        return next;
-                      })
-                    }
-                  />
-                  &nbsp;
-                  <label htmlFor={`location-${location.id}`}>
-                    {location.name}
-                  </label>
-                </div>
-              ))}
+            <FormField label={<label htmlFor="locations">Locations</label>}>
+              <MultiCombobox
+                id="locations"
+                name="locations"
+                options={locations.map((location) => ({
+                  value: location.id,
+                  label: location.name,
+                }))}
+                defaultValue={user.locationGrantIds}
+                placeholder="Search locations…"
+                emptyText="No locations match"
+              />
             </FormField>
           )}
           <FormField>
