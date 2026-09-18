@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<1e9261d4cbfa0a45f51e503ab4e856ec>>
+ * @generated SignedSource<<62bc7d344d2e8d6fe240ee64c08a9084>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -17,7 +17,10 @@ export type SessionsEditMutation$variables = {
 };
 export type SessionsEditMutation$data = {
   readonly updateSession: {
-    readonly __typename: "Session";
+    readonly config: any;
+    readonly healthcheckUrl: string | null | undefined;
+    readonly id: string;
+    readonly name: string;
   };
 };
 export type SessionsEditMutation = {
@@ -48,33 +51,66 @@ v3 = {
 },
 v4 = [
   {
-    "kind": "Variable",
-    "name": "config",
-    "variableName": "config"
-  },
-  {
-    "kind": "Variable",
-    "name": "healthcheckUrl",
-    "variableName": "healthcheckUrl"
-  },
-  {
-    "kind": "Variable",
-    "name": "id",
-    "variableName": "id"
-  },
-  {
-    "kind": "Variable",
-    "name": "name",
-    "variableName": "name"
+    "alias": null,
+    "args": [
+      {
+        "kind": "Variable",
+        "name": "config",
+        "variableName": "config"
+      },
+      {
+        "kind": "Variable",
+        "name": "healthcheckUrl",
+        "variableName": "healthcheckUrl"
+      },
+      {
+        "kind": "Variable",
+        "name": "id",
+        "variableName": "id"
+      },
+      {
+        "kind": "Variable",
+        "name": "name",
+        "variableName": "name"
+      }
+    ],
+    "concreteType": "Session",
+    "kind": "LinkedField",
+    "name": "updateSession",
+    "plural": false,
+    "selections": [
+      {
+        "alias": null,
+        "args": null,
+        "kind": "ScalarField",
+        "name": "id",
+        "storageKey": null
+      },
+      {
+        "alias": null,
+        "args": null,
+        "kind": "ScalarField",
+        "name": "name",
+        "storageKey": null
+      },
+      {
+        "alias": null,
+        "args": null,
+        "kind": "ScalarField",
+        "name": "config",
+        "storageKey": null
+      },
+      {
+        "alias": null,
+        "args": null,
+        "kind": "ScalarField",
+        "name": "healthcheckUrl",
+        "storageKey": null
+      }
+    ],
+    "storageKey": null
   }
-],
-v5 = {
-  "alias": null,
-  "args": null,
-  "kind": "ScalarField",
-  "name": "__typename",
-  "storageKey": null
-};
+];
 return {
   "fragment": {
     "argumentDefinitions": [
@@ -86,20 +122,7 @@ return {
     "kind": "Fragment",
     "metadata": null,
     "name": "SessionsEditMutation",
-    "selections": [
-      {
-        "alias": null,
-        "args": (v4/*: any*/),
-        "concreteType": "Session",
-        "kind": "LinkedField",
-        "name": "updateSession",
-        "plural": false,
-        "selections": [
-          (v5/*: any*/)
-        ],
-        "storageKey": null
-      }
-    ],
+    "selections": (v4/*: any*/),
     "type": "MutationRoot",
     "abstractKey": null
   },
@@ -113,39 +136,19 @@ return {
     ],
     "kind": "Operation",
     "name": "SessionsEditMutation",
-    "selections": [
-      {
-        "alias": null,
-        "args": (v4/*: any*/),
-        "concreteType": "Session",
-        "kind": "LinkedField",
-        "name": "updateSession",
-        "plural": false,
-        "selections": [
-          (v5/*: any*/),
-          {
-            "alias": null,
-            "args": null,
-            "kind": "ScalarField",
-            "name": "id",
-            "storageKey": null
-          }
-        ],
-        "storageKey": null
-      }
-    ]
+    "selections": (v4/*: any*/)
   },
   "params": {
-    "cacheID": "1d21e9205ffc84e59015e7064a72b136",
+    "cacheID": "5f7ef9c36dd29cdbbed6b0187f97a0ff",
     "id": null,
     "metadata": {},
     "name": "SessionsEditMutation",
     "operationKind": "mutation",
-    "text": "mutation SessionsEditMutation(\n  $id: ID!\n  $name: String!\n  $config: String\n  $healthcheckUrl: String\n) {\n  updateSession(id: $id, name: $name, config: $config, healthcheckUrl: $healthcheckUrl) {\n    __typename\n    id\n  }\n}\n"
+    "text": "mutation SessionsEditMutation(\n  $id: ID!\n  $name: String!\n  $config: String\n  $healthcheckUrl: String\n) {\n  updateSession(id: $id, name: $name, config: $config, healthcheckUrl: $healthcheckUrl) {\n    id\n    name\n    config\n    healthcheckUrl\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "10b16b1f99c4a6b6a7db9dc5d61867f6";
+(node as any).hash = "e6eb77940e556aade487853850c91e3b";
 
 export default node;
