@@ -1,6 +1,6 @@
 import { Link, type LinkProps } from "react-router";
 import type { ButtonHTMLAttributes } from "react";
-import { tw } from "../../lib/tw";
+import { cn, tw } from "../../lib/tw";
 import {
   buttonVariants,
   buttonSizes,
@@ -15,9 +15,7 @@ function classNames(
   size: ButtonSize,
   className?: string,
 ) {
-  return [base, buttonVariants[variant], buttonSizes[size], className]
-    .filter(Boolean)
-    .join(" ");
+  return cn(base, buttonVariants[variant], buttonSizes[size], className);
 }
 
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
