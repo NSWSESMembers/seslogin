@@ -75,7 +75,7 @@ function Row(props: {
 
   return (
     <tr className={props.idx % 2 === 0 ? "bg-surface-raised" : undefined}>
-      {isDev && <Td className="font-mono text-[0.85em]">{token.id}</Td>}
+      {isDev && <Td className="font-mono text-sm">{token.id}</Td>}
       <Td>
         <span className={isExpired ? "line-through" : undefined}>
           {token.name}

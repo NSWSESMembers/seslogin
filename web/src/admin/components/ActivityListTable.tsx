@@ -309,7 +309,7 @@ function Row<T extends ActivityListTable_period$key>({
           )
         ) : null}
       </Td>
-      {isDev && <Td className="font-mono text-[0.85em]">{period.id}</Td>}
+      {isDev && <Td className="font-mono text-sm">{period.id}</Td>}
       <Td>
         {getRowLabel(entry.ref)}
         {subLabel && <div className="text-xs text-ink-muted">{subLabel}</div>}

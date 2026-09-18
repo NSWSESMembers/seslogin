@@ -107,7 +107,7 @@ function Row({
 
   return (
     <tr className={idx % 2 === 0 ? "bg-surface-raised" : undefined}>
-      <Td className="font-mono text-[0.85em]">{group.id}</Td>
+      <Td className="font-mono text-sm">{group.id}</Td>
       <Td>{group.nitcType}</Td>
       <Td>{tagNames}</Td>
       <Td>
