@@ -60,7 +60,10 @@ export default function SessionsEdit() {
           config: $config
           healthcheckUrl: $healthcheckUrl
         ) {
-          __typename
+          id
+          name
+          config
+          healthcheckUrl
         }
       }
     `);
