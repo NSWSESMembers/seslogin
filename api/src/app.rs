@@ -1,3 +1,4 @@
+use crate::cache::Cache;
 use crate::db;
 use crate::jwt;
 use crate::mail;
@@ -51,6 +52,10 @@ pub trait HasMail {
     fn mail(&self) -> &impl mail::Handler;
 }
 
+pub trait HasCache {
+    fn cache(&self) -> &Cache;
+}
+
 /// struct for holding our global singletons
 ///
 /// Every backend is a type parameter, so each binary compiles exactly the
@@ -64,6 +69,7 @@ pub struct MyApp<DBH: db::Handler, Q: queue::Handler, M: mail::Handler> {
     pub response_lag: u64,
     pub queues: Q,
     pub mail: M,
+    pub cache: Cache,
 }
 
 pub fn new<DBH: db::Handler, Q: queue::Handler, M: mail::Handler>(
@@ -79,6 +85,7 @@ pub fn new<DBH: db::Handler, Q: queue::Handler, M: mail::Handler>(
         response_lag,
         queues,
         mail,
+        cache: Cache::new(),
     }
 }
 
@@ -106,5 +113,11 @@ impl<DBH: db::Handler, Q: queue::Handler, M: mail::Handler> HasQueues for MyApp<
 impl<DBH: db::Handler, Q: queue::Handler, M: mail::Handler> HasMail for MyApp<DBH, Q, M> {
     fn mail(&self) -> &impl mail::Handler {
         &self.mail
+    }
+}
+
+impl<DBH: db::Handler, Q: queue::Handler, M: mail::Handler> HasCache for MyApp<DBH, Q, M> {
+    fn cache(&self) -> &Cache {
+        &self.cache
     }
 }
