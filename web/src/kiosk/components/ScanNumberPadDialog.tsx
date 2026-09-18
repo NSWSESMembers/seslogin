@@ -13,7 +13,7 @@ const keyBase =
   "flex h-20 w-28 cursor-pointer items-center justify-center rounded-[14px] leading-none shadow-md disabled:cursor-default disabled:opacity-30 disabled:shadow-none";
 const keyDigit = `${keyBase} bg-neutral-800 text-4xl text-white active:bg-neutral-600 dark:bg-neutral-700 dark:active:bg-neutral-500`;
 const keyAux = `${keyBase} bg-neutral-200 text-3xl text-neutral-700 active:bg-neutral-300 dark:bg-neutral-800 dark:text-neutral-300 dark:active:bg-neutral-700`;
-const keyConfirm = `${keyBase} bg-[#2f7d4f] text-3xl text-white active:bg-[#276a43] disabled:bg-neutral-300 disabled:text-neutral-500 dark:disabled:bg-neutral-700 dark:disabled:text-neutral-500`;
+const keyConfirm = `${keyBase} bg-confirm text-3xl text-white active:bg-confirm-active disabled:bg-neutral-300 disabled:text-neutral-500 dark:disabled:bg-neutral-700 dark:disabled:text-neutral-500`;
 // The digit boxes sit on the always-dark display strip, so they stay
 // light-on-dark in both themes — no dark: variants.
 const digitBoxBase =

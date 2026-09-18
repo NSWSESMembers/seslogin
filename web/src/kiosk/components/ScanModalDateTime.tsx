@@ -96,7 +96,7 @@ const keyDigitBtn =
 const keyAuxBtn =
   "block w-40 cursor-pointer rounded-[14px] bg-neutral-200 px-2.5 py-[18px] text-[32px] text-neutral-700 no-underline shadow-md active:bg-neutral-300 dark:bg-neutral-800 dark:text-neutral-300 dark:active:bg-neutral-700";
 const keyConfirmBtn =
-  "block w-full cursor-pointer rounded-[14px] bg-[#2f7d4f] px-2.5 py-[18px] text-[40px] text-white no-underline shadow-md active:bg-[#276a43] disabled:cursor-default disabled:bg-neutral-300 disabled:text-neutral-500 disabled:shadow-none dark:disabled:bg-neutral-700 dark:disabled:text-neutral-500";
+  "block w-full cursor-pointer rounded-[14px] bg-confirm px-2.5 py-[18px] text-[40px] text-white no-underline shadow-md active:bg-confirm-active disabled:cursor-default disabled:bg-neutral-300 disabled:text-neutral-500 disabled:shadow-none dark:disabled:bg-neutral-700 dark:disabled:text-neutral-500";
 
 export function Inner(props: {
   onSave: (field: string, date: Date, value: string) => void;
