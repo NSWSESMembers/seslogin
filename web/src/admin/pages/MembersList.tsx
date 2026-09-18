@@ -134,7 +134,7 @@ function Row({
           />
         ) : null}
       </Td>
-      {isDev && <Td className="font-mono text-[0.85em]">{person.id}</Td>}
+      {isDev && <Td className="font-mono text-sm">{person.id}</Td>}
       <Td>{person.memberNumber}</Td>
       <Td nowrap>
         {person.firstName} {person.lastName}

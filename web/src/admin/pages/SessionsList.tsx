@@ -182,7 +182,7 @@ function Row({
           <SessionStatus lastContact={session.lastContact} />
         )}
       </Td>
-      {isDev && <Td className="font-mono text-[0.85em]">{session.id}</Td>}
+      {isDev && <Td className="font-mono text-sm">{session.id}</Td>}
       <Td>
         {session.name}
         {isReplacedKiosk && (
@@ -191,11 +191,11 @@ function Row({
       </Td>
       <Td>{timeSinceAccess}</Td>
       <Td>{session.code}</Td>
-      <Td className="text-[0.85em]">
+      <Td className="text-sm">
         {session.keyFingerprint ? (
           <FingerprintChip
             fingerprint={session.keyFingerprint}
-            className="text-[0.85em]"
+            className="text-sm"
           />
         ) : (
           "-"
