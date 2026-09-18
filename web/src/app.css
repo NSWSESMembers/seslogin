@@ -32,7 +32,10 @@
   --color-submenu-active: #bf5a3b;
   --color-submenu-hover: #c66c51;
   --color-navy: #1f3d79; /* headings / segmented control */
+  --color-navy-light: #6c81c1; /* navy hover state, e.g. text-navy group-hover:text-navy-light */
   --color-danger-env: #7f1d1d; /* chrome background when the API is on a non-prod DB */
+  --color-confirm: #2f7d4f; /* confirm/proceed button base (unchanged look in both themes) */
+  --color-confirm-active: #276a43; /* confirm/proceed button pressed */
 
   /* Semantic surface/text/line tokens. Light values match the previous
    * hard-coded colors, so light mode is unchanged; the dark values below flip
@@ -88,6 +91,7 @@
     :root:not([data-theme]) {
       color-scheme: dark;
       --color-navy: #93a9d6;
+      --color-navy-light: #485889;
       --color-surface: #17181a;
       --color-surface-raised: #202225;
       --color-surface-sunken: #2a2c30;
@@ -115,6 +119,7 @@
   [data-theme="dark"] {
     color-scheme: dark;
     --color-navy: #93a9d6;
+    --color-navy-light: #485889;
     --color-surface: #17181a;
     --color-surface-raised: #202225;
     --color-surface-sunken: #2a2c30;

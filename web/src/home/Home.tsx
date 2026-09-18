@@ -21,10 +21,10 @@ export default function Home() {
               <span className="shrink-0 font-title text-4xl font-bold whitespace-nowrap text-accent group-hover:text-accent-light">
                 Kiosk
               </span>
-              <p className="flex-1 text-navy group-hover:text-[#6c81c1]">
+              <p className="flex-1 text-navy group-hover:text-navy-light">
                 Allow members to sign in and out using this computer
               </p>
-              <KioskIcon className="size-16.25 shrink-0 text-navy group-hover:text-[#6c81c1] group-hover:[--icon-accent:var(--color-accent-light)] max-md:hidden" />
+              <KioskIcon className="size-16.25 shrink-0 text-navy group-hover:text-navy-light group-hover:[--icon-accent:var(--color-accent-light)] max-md:hidden" />
             </Link>
           </li>
 
@@ -36,11 +36,11 @@ export default function Home() {
               <span className="shrink-0 font-title text-4xl font-bold whitespace-nowrap text-accent group-hover:text-accent-light">
                 Admin
               </span>
-              <p className="flex-1 text-navy group-hover:text-[#6c81c1]">
+              <p className="flex-1 text-navy group-hover:text-navy-light">
                 Use the administrator dashboard to administer your unit, create
                 reports and view activity
               </p>
-              <AdminIcon className="size-16.25 shrink-0 text-navy group-hover:text-[#6c81c1] group-hover:[--icon-accent:var(--color-accent-light)] max-md:hidden" />
+              <AdminIcon className="size-16.25 shrink-0 text-navy group-hover:text-navy-light group-hover:[--icon-accent:var(--color-accent-light)] max-md:hidden" />
             </Link>
           </li>
         </ul>
