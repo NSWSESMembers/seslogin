@@ -68,7 +68,7 @@ export function Inner(props: {
 
   return (
     <>
-      <div className="mt-5 flex items-center justify-center gap-3.75 text-[2em]">
+      <div className="mt-5 flex items-center justify-center gap-3.75 text-3xl">
         {selectedCategoryData ? (
           <>
             <button
