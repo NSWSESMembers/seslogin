@@ -61,7 +61,7 @@ export default function ActivityBreakdownTable({ title, rows }: Props) {
                 <div className="min-w-0 pl-6 text-left">
                   {child.name}
                   {child.isVirtual && (
-                    <span className="ml-1.5 inline-flex items-center rounded-full bg-blue-100 px-1.5 py-0.25 text-[0.7em] font-semibold text-blue-700 dark:bg-blue-500/15 dark:text-blue-300">
+                    <span className="ml-1.5 inline-flex items-center rounded-full bg-blue-100 px-1.5 py-0.25 text-xs font-semibold text-blue-700 dark:bg-blue-500/15 dark:text-blue-300">
                       Virtual
                     </span>
                   )}
