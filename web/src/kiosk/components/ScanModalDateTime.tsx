@@ -73,8 +73,9 @@ function to12HourDigits(hours24: number, minutes: number): string {
 }
 
 const dateBtnClasses =
-  "shrink-0 rounded-xl bg-neutral-800 px-4 py-2.5 text-2xl text-white shadow-md disabled:cursor-default disabled:opacity-30 dark:bg-neutral-700";
-const dateChipBase = "flex-1 rounded-[10px] border-2 p-2.5 text-xl shadow-sm";
+  "shrink-0 cursor-pointer rounded-xl bg-neutral-800 px-4 py-2.5 text-2xl text-white shadow-md disabled:cursor-default disabled:opacity-30 dark:bg-neutral-700";
+const dateChipBase =
+  "flex-1 cursor-pointer rounded-[10px] border-2 p-2.5 text-xl shadow-sm";
 const dateChipOff =
   "border-neutral-300 bg-white text-neutral-700 dark:border-line dark:bg-surface-raised dark:text-ink";
 const dateChipSelected = "border-accent bg-accent text-white";
@@ -88,7 +89,8 @@ const digitBoxBase =
 // written, so the ring would lose to the transparent default.
 const digitBoxCurrent = "border-accent";
 const digitBoxIdle = "border-transparent hover:border-accent-light";
-const ampmMiniBase = "rounded-lg border-2 px-3 py-[3px] text-base shadow-none";
+const ampmMiniBase =
+  "cursor-pointer rounded-lg border-2 px-3 py-[3px] text-base shadow-none";
 const ampmMiniOff = "border-neutral-300 bg-white text-neutral-700";
 const ampmMiniSelected = "border-accent bg-accent text-white";
 const keyDigitBtn =

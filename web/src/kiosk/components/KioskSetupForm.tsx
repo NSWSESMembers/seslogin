@@ -85,7 +85,7 @@ export default function KioskSetupForm({
         <button
           type="button"
           onClick={onEnrollWithQr}
-          className="mt-4 text-sm underline opacity-70 hover:opacity-100"
+          className="mt-4 cursor-pointer text-sm underline opacity-70 hover:opacity-100"
         >
           Enroll with QR code instead
         </button>
