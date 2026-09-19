@@ -27,6 +27,7 @@ import ScanNumberPadDialog from "./ScanNumberPadDialog";
 // it itself, because setting `value` from script bypasses `maxLength`.
 import { MEMBER_ID_LENGTH } from "../../lib/memberId";
 import ScanSignedInPanel from "./ScanSignedInPanel";
+import { useNonProdDb } from "../../lib/environmentInfo";
 
 // ensure this is less than the transaction timeout in ScanState
 const FINALIZED_TRANSACTION_TIMEOUT_MS = 10_000;
@@ -232,6 +233,7 @@ export default function ScanScreenMain(props: {
     onOpenStatusDialog,
     signedInInline,
   } = props;
+  const nonProdDb = useNonProdDb();
   const inputRef = useRef<HTMLInputElement>(null);
   const refocusTimeoutIdRef = useRef<number | null>(null);
   const clearTimeoutIdRef = useRef<number | null>(null);
@@ -518,12 +520,19 @@ export default function ScanScreenMain(props: {
 
   // The panel sits beside the input rather than the input's usual centred
   // column growing to fill the screen, so a wide kiosk doesn't stretch the
-  // member ID field across it — the field's width is fixed either way.
+  // member ID field across it — the field's width is fixed either way. The
+  // row itself is left uncapped (no max-w/mx-auto) and cancels scanView's
+  // shared px-2.5 with -mx-2.5, so the panel reaches the screen's true right
+  // edge instead of leaving a gap there; the main column's own px-2.5 puts
+  // that inset back on both sides, since there's no gap left to separate it
+  // from the divider.
   return (
-    <div {...scanViewProps(screenPosition)}>
-      <div className="mx-auto flex max-w-6xl items-start justify-center gap-10">
-        <div className="min-w-0 flex-1">{mainColumn}</div>
-        <div className="w-80 shrink-0 border-l border-line pt-25 pl-8">
+    <div {...scanViewProps(screenPosition, "inset-y-0")}>
+      <div className="-mx-2.5 flex h-full">
+        <div className="min-w-0 flex-7 px-2.5">{mainColumn}</div>
+        <div
+          className={`min-w-0 flex-3 border-l-[4.5px] p-4 ${nonProdDb ? "border-danger-env" : "border-brand"}`}
+        >
           <ScanSignedInPanel />
         </div>
       </div>
