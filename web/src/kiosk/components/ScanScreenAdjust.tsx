@@ -181,11 +181,11 @@ function Inner(props: {
         }}
         onSave={uponModalSave}
       />
-      <h1 className="m-0 mb-6 text-[3em]">Confirm</h1>
-      <div className="mx-auto flex w-fit min-w-175 flex-col text-[2em]">
+      <h1 className="m-0 mb-6 text-5xl">Confirm</h1>
+      <div className="mx-auto flex w-fit min-w-175 flex-col text-3xl">
         <div className="flex items-center">
           <div className="min-w-48.75 p-2.5 text-right">Start time:</div>
-          <div className="flex-1 p-2.5 font-mono text-[1.5em]">
+          <div className="flex-1 p-2.5 font-mono text-5xl">
             {`${formatDayDate(startDate)} ${startTimeStr}`}
           </div>
           <div className="ml-auto p-2.5">
@@ -201,7 +201,7 @@ function Inner(props: {
         </div>
         <div className="flex items-center">
           <div className="min-w-48.75 p-2.5 text-right">End time:</div>
-          <div className="flex-1 p-2.5 font-mono text-[1.5em]">
+          <div className="flex-1 p-2.5 font-mono text-5xl">
             {`${formatDayDate(endDate)} ${endTimeStr}`}
           </div>
           <div className="ml-auto p-2.5">
@@ -254,7 +254,7 @@ function Inner(props: {
       <div className={"mt-2 min-h-18"}>
         {endTimeBeforeStartTime && (
           <span
-            className={`inline-block w-200 max-w-full rounded-md bg-red-300 p-2.5 text-[1.2em] transition-opacity duration-1000 dark:bg-red-700 dark:text-white ${isErrorFading ? "opacity-0" : ""}`}
+            className={`inline-block w-200 max-w-full rounded-md bg-red-300 p-2.5 text-xl transition-opacity duration-1000 dark:bg-red-700 dark:text-white ${isErrorFading ? "opacity-0" : ""}`}
           >
             <span className="font-bold">
               Error: End time cannot be before start time.
