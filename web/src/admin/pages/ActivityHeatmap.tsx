@@ -7,6 +7,7 @@ import LoadingIndicator from "../../components/LoadingIndicator";
 import RelayErrorBoundary from "../../components/RelayErrorBoundary";
 import { Button } from "../../components/ui/Button";
 import Select from "../../components/ui/Select";
+import { StatusMessage } from "../../components/ui/StatusMessage";
 import { dateToInputDateTimeLocal } from "../../lib/time";
 import {
   MAX_DAY_SCALE_RANGE_DAYS,
@@ -200,7 +201,9 @@ export default function ActivityHeatmap() {
         </div>
       </details>
 
-      {rangeError && <p className="font-bold text-red-600">{rangeError}</p>}
+      {rangeError && (
+        <StatusMessage variant="error">{rangeError}</StatusMessage>
+      )}
 
       <div className="mb-4 flex flex-wrap items-center justify-center gap-5 max-md:flex-col">
         <label className="flex items-center justify-center gap-2">
@@ -246,10 +249,10 @@ export default function ActivityHeatmap() {
       </div>
 
       {!canRenderResults && (
-        <p className="font-bold text-red-600">
+        <StatusMessage variant="error">
           The applied range is too wide for {scale} scale — narrow the range or
           switch scale, then click "Update results".
-        </p>
+        </StatusMessage>
       )}
 
       {canRenderResults && (

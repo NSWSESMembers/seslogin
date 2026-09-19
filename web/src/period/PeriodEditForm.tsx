@@ -14,6 +14,7 @@ import {
   PanelMessage,
   PanelTitle,
 } from "../components/ui/Panel";
+import { StatusMessage } from "../components/ui/StatusMessage";
 import PeriodEditConfirmation from "./PeriodEditConfirmation";
 import type { PeriodEditFormQuery } from "./__generated__/PeriodEditFormQuery.graphql";
 import type { PeriodEditFormMutation } from "./__generated__/PeriodEditFormMutation.graphql";
@@ -240,9 +241,9 @@ export default function PeriodEditForm() {
                 value={endValue}
                 onChange={(e) => setEndValue(e.target.value)}
               />
-              {error && <p className="font-bold text-red-600">{error}</p>}
+              {error && <StatusMessage variant="error">{error}</StatusMessage>}
               {warning && (
-                <p className="font-bold text-orange-600">{warning}</p>
+                <StatusMessage variant="warning">{warning}</StatusMessage>
               )}
             </FormField>
             <FormField>

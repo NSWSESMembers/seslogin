@@ -77,7 +77,6 @@ export default function NewUser() {
   return (
     <>
       <p>Enter the details of the new user in the form below.</p>
-      {/* {error && <p className="font-bold text-red-600">Error: {error.message}</p>} */}
 
       <form action={handleSubmit}>
         <FieldList>
