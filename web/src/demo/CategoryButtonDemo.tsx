@@ -118,7 +118,7 @@ export default function CategoryButtonDemo() {
       ) : (
         <>
           <section className="flex flex-col gap-3">
-            <h2 className="text-xl font-bold">
+            <h2 className="mt-2 text-xl font-bold">
               Button — {match.groupName} &gt; {match.name}
             </h2>
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
@@ -154,7 +154,7 @@ export default function CategoryButtonDemo() {
           </section>
 
           <section className="flex flex-col gap-3">
-            <h2 className="text-xl font-bold">
+            <h2 className="mt-2 text-xl font-bold">
               Icon alone ({match.icon}.svg) — sizes × backgrounds
             </h2>
             <div className="overflow-x-auto">
