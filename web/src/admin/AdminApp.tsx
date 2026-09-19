@@ -1,5 +1,6 @@
 import { Routes, Route } from "react-router";
 
+import NotFound from "../components/NotFound";
 import AdminLayout from "./Layout";
 import AdminHome from "./pages/AdminHome";
 import LocationsList from "./pages/LocationList";
@@ -102,7 +103,7 @@ export default function AdminApp() {
             element={<SettingsActivityDisplay />}
           />
         </Route>
-        <Route path="*" element={<h1>Not Found</h1>} />
+        <Route path="*" element={<NotFound />} />
       </Route>
     </Routes>
   );
