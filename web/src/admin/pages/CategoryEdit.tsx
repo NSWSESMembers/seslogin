@@ -104,7 +104,7 @@ export default function CategoryEdit() {
 
   return (
     <>
-      <p>Edit the category&apos;s details, then click Save.</p>
+      <p className="my-4">Edit the category&apos;s details, then click Save.</p>
       <form action={handleSubmit}>
         <FieldList>
           <FormField label={<label htmlFor="name">Name</label>}>

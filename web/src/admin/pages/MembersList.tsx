@@ -230,7 +230,9 @@ export default function MembersList() {
 
   return (
     <>
-      <p>This list shows only members who belong to this unit.</p>
+      <p className="my-4">
+        This list shows only members who belong to this unit.
+      </p>
       {location.sesApiHeadquartersId ? (
         <div className="mb-2">
           Last successful member sync: {lastSyncText}{" "}

@@ -180,7 +180,7 @@ export default function ActivityList() {
 
   return (
     <>
-      <p>
+      <p className="my-4">
         This list shows everyone who has signed in or out at this location,
         including members visiting from other units (their home unit is shown
         under their name).

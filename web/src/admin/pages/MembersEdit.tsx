@@ -83,7 +83,7 @@ export default function MembersEdit() {
 
   return (
     <>
-      <p>Edit the member's details, then click Save.</p>
+      <p className="my-4">Edit the member's details, then click Save.</p>
       {person.missingSince ? (
         <StatusMessage variant="warning">
           Member sync has not seen this member in SES since{" "}

@@ -255,7 +255,7 @@ export default function AdminLoginPage({
           </form>
         )}
 
-        {step === "sending" && <p>Sending code to {email}…</p>}
+        {step === "sending" && <p className="my-4">Sending code to {email}…</p>}
 
         {step === "awaiting_code" && (
           <form onSubmit={handleVerifyCode}>
@@ -302,7 +302,7 @@ export default function AdminLoginPage({
           </form>
         )}
 
-        {step === "verifying" && <p>Verifying…</p>}
+        {step === "verifying" && <p className="my-4">Verifying…</p>}
       </PanelBox>
     </Panel>
   );

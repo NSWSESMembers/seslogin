@@ -84,7 +84,9 @@ export default function NitcGroupEdit() {
 
   return (
     <>
-      <p>Edit the NITC group&apos;s details, then click Save.</p>
+      <p className="my-4">
+        Edit the NITC group&apos;s details, then click Save.
+      </p>
       <form action={handleSubmit}>
         <FieldList>
           <FormField label="ID">
