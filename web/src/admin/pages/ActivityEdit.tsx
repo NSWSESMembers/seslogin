@@ -209,7 +209,7 @@ export default function ActivityEdit() {
 
   return (
     <>
-      <p>
+      <p className="my-4">
         Edit the {isGuest ? "guest " : ""}activity entry details, then click
         Save.
       </p>

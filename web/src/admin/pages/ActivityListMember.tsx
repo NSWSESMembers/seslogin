@@ -193,7 +193,7 @@ function ActivityListMemberContent({
 
   return (
     <>
-      <p>
+      <p className="my-4">
         Activity report for: {data.person.firstName} {data.person.lastName}.
         This shows their activity at every location they've signed in at, not
         only the currently selected location.

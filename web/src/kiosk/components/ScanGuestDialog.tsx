@@ -49,7 +49,9 @@ function GuestList(props: {
     .filter((node) => node.guestName != null);
 
   if (guests.length === 0) {
-    return <p className="text-ink-muted">No guests are currently signed in.</p>;
+    return (
+      <p className="my-4 text-ink-muted">No guests are currently signed in.</p>
+    );
   }
 
   return (
@@ -203,7 +205,7 @@ export default function ScanGuestDialog(props: { onClose: () => void }) {
 
       <div className="flex flex-col gap-2">
         <h3 className="m-0 text-lg font-bold">Currently signed in guests</h3>
-        <Suspense fallback={<p className="text-ink-muted">Loading…</p>}>
+        <Suspense fallback={<p className="my-4 text-ink-muted">Loading…</p>}>
           <GuestList
             onSignOut={handleSignOut}
             signOutInFlightId={signOutInFlightId}

@@ -255,7 +255,7 @@ export default function CategoryList() {
 
   return (
     <>
-      <p>
+      <p className="my-4">
         <span className="font-bold text-red-600 dark:text-red-400">
           Warning:
         </span>{" "}
@@ -263,7 +263,7 @@ export default function CategoryList() {
         gets compiled into the JS frontend or else the listing of categories in
         the scan interface will not be updated.
       </p>
-      <p>
+      <p className="my-4">
         <label>
           <input
             type="checkbox"

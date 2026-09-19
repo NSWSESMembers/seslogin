@@ -454,7 +454,7 @@ export default function ActivityListTable<
         </tbody>
       </AdminTable>
       {hasNextPage && onLoadMore && (
-        <p>
+        <p className="my-4">
           <Button onClick={onLoadMore} disabled={isLoadingMore}>
             {isLoadingMore ? "Loading..." : "Load More"}
           </Button>
