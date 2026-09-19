@@ -35,7 +35,7 @@ export default function LocationPicker({
         </Muted>
 
         {locations.length === 0 ? (
-          <p className="rounded-sm bg-red-50 p-2.5 text-red-700">
+          <p className="my-4 rounded-sm bg-red-50 p-2.5 text-red-700">
             No locations available. Please contact an administrator.
           </p>
         ) : (

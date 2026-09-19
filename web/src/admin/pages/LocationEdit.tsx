@@ -93,7 +93,7 @@ export default function EditLocation() {
 
   return (
     <>
-      <p>Edit the location's details, then click Save.</p>
+      <p className="my-4">Edit the location's details, then click Save.</p>
 
       <form action={handleSubmit}>
         <FieldList>

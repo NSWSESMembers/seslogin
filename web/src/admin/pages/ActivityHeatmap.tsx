@@ -148,7 +148,7 @@ export default function ActivityHeatmap() {
 
   return (
     <>
-      <p>
+      <p className="my-4">
         This heatmap covers only this unit's own members — it does not include
         members visiting from other units.
       </p>

@@ -96,7 +96,7 @@ export default function SessionsEdit() {
 
   return (
     <>
-      <p>
+      <p className="my-4">
         Edit this kiosk's configuration, then click Save. The configuration
         update will be automatically applied within 5 minutes. Refresh the
         kiosk's webpage to reload the configuration immediately.

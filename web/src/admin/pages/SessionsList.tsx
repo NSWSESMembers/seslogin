@@ -339,27 +339,27 @@ export default function SessionsList() {
 
   return (
     <>
-      <p>
+      <p className="my-4">
         Use this page to create and manage access to the system through the
         kiosk module. Once a kiosk setup code has been entered into a computer,
         that computer will have access until the entry here is deleted or it
         expires. Kiosks expire if the computer using it does not access the
         system for a period of 2 weeks.
       </p>
-      <p>
+      <p className="my-4">
         An expired kiosk that was set up by scanning a QR code can be brought
         back with the <strong>Reactivate</strong> button: switch the kiosk on,
         wait for it to show its QR code screen, then reactivate it here. A kiosk
         set up with a setup code has to be set up again from scratch.
       </p>
-      <p>
+      <p className="my-4">
         A kiosk marked <strong>Replaced</strong> is one whose computer has since
         been set up again by scanning its QR code, which moved it onto a
         different kiosk entry — possibly at another location. The entry stops
         working at that point and stays here only so the change is visible;
         delete it once you don't need the record.
       </p>
-      <p>
+      <p className="my-4">
         <img src={bulletGreen} alt="" className="inline-block align-middle" />{" "}
         OK{" "}
         <img src={bulletOrange} alt="" className="inline-block align-middle" />{" "}

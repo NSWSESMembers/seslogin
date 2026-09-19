@@ -69,7 +69,7 @@ export default function NitcGroupNew() {
 
   return (
     <>
-      <p>Enter the details of the new NITC group below.</p>
+      <p className="my-4">Enter the details of the new NITC group below.</p>
       <form action={handleSubmit}>
         <FieldList>
           <FormField label={<label htmlFor="id">ID</label>}>

@@ -109,7 +109,7 @@ export default function CategoryButtonDemo() {
       </label>
 
       {!match ? (
-        <p className="text-danger-env">
+        <p className="my-4 text-danger-env">
           No leaf category with id "{id}" in the static kiosk icon set (
           <code>src/lib/categories.ts</code>). Only leaf categories carry an
           icon — top-level group ids (e.g. "C6") don't. Pick one from the

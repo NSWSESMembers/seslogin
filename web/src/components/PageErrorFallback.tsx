@@ -25,7 +25,7 @@ export default function PageErrorFallback({
 
   return (
     <div role="alert" className="p-6 text-center">
-      <p>Something went wrong</p>
+      <p className="my-4">Something went wrong</p>
       {showDetails ? <pre className="text-red-600">{message}</pre> : null}
       {reloadInstead ? (
         <Button onClick={() => window.location.reload()}>Reload page</Button>

@@ -181,7 +181,7 @@ export default function ActivityCurrent() {
 
   return (
     <>
-      <p>
+      <p className="my-4">
         This list shows members currently signed in at this location, including
         members visiting from other units (their home unit is shown under their
         name).

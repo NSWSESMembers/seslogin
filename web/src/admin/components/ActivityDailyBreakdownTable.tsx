@@ -38,7 +38,7 @@ function formatBreakdownDate(iso: string): string {
 
 export default function ActivityDailyBreakdownTable({ days }: Props) {
   if (days.length === 0) {
-    return <p>No activity in this range.</p>;
+    return <p className="my-4">No activity in this range.</p>;
   }
 
   return (

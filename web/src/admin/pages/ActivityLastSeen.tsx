@@ -60,7 +60,7 @@ export default function ActivityLastSeen() {
 
   return (
     <>
-      <p>
+      <p className="my-4">
         This list shows members of this unit only. "Last seen" reflects each
         member's most recent sign-in at any location, not only this one.
       </p>

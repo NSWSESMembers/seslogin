@@ -105,7 +105,7 @@ function TransactionList(props: { transactionState: TransactionState }) {
 
 function TransactionLoading(props: { transaction: TransactionLoadingType }) {
   return (
-    <p>
+    <p className="my-4">
       <span
         className={`${transactionBase} bg-yellow-300 dark:bg-yellow-700 dark:text-white`}
       >
@@ -124,7 +124,7 @@ function TransactionSignedIn(props: {
 }) {
   const { transaction: txn, isFading } = props;
   return (
-    <p>
+    <p className="my-4">
       <span
         className={`${transactionBase} bg-green-300 dark:bg-green-700 dark:text-white ${isFading ? "opacity-0" : ""}`}
       >
@@ -155,7 +155,7 @@ function TransactionSignedOut(props: {
         ? formatTime(txn.endTime)
         : formatDayDateTime(txn.endTime);
   return (
-    <p>
+    <p className="my-4">
       <span
         className={`${transactionBase} bg-green-300 dark:bg-green-700 dark:text-white ${isFading ? "opacity-0" : ""}`}
       >
@@ -175,7 +175,7 @@ function TransactionError(props: {
 }) {
   const { transaction: txn, isFading } = props;
   return (
-    <p>
+    <p className="my-4">
       <span
         className={`${transactionBase} bg-red-300 dark:bg-red-700 dark:text-white ${isFading ? "opacity-0" : ""}`}
       >
@@ -376,7 +376,7 @@ export default function ScanScreenMain(props: {
 
   const mainColumn = (
     <>
-      <p className="mt-25 text-[2em]">Please enter or scan your SES ID</p>
+      <p className="mt-25 mb-4 text-[2em]">Please enter or scan your SES ID</p>
 
       <form
         autoComplete="off"

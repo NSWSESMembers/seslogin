@@ -110,7 +110,7 @@ export default function UserEdit() {
 
   return (
     <>
-      <p>Edit the member's details, then click Save.</p>
+      <p className="my-4">Edit the member's details, then click Save.</p>
 
       <form action={handleSubmit}>
         <FieldList>
