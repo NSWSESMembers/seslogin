@@ -8,7 +8,7 @@ export default function Home() {
       <div className="bg-surface">
         <img className="mx-auto box-content pt-15 pb-5" src={logo} alt="" />
 
-        <p className="mx-4 my-10 text-2xl md:mx-10">
+        <p className="mx-4 my-10 text-center text-2xl md:mx-10">
           Welcome, please choose an option to continue...
         </p>
 

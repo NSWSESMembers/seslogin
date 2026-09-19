@@ -27,7 +27,7 @@ export default function TimeEntryDemo() {
   }
 
   return (
-    <div className="mx-auto flex min-h-screen max-w-200 flex-col gap-6 bg-surface p-8 text-ink">
+    <div className="mx-auto flex min-h-screen max-w-200 flex-col gap-6 bg-surface p-8 text-center text-ink">
       <ScanModalDateTime
         getShowFunction={(show) => {
           showModal.current = show;
