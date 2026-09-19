@@ -62,16 +62,18 @@ function SignedInPanelList(props: { refreshKey: number }) {
     .sort((a, b) => a.startTime - b.startTime);
 
   if (signedIn.length === 0) {
-    return <p className="m-0 text-sm text-ink-muted">Nobody signed in here.</p>;
+    return (
+      <p className="m-0 text-base text-ink-muted">Nobody signed in here.</p>
+    );
   }
 
   return (
     <>
-      <ul className="m-0 flex max-h-[55vh] list-none flex-col gap-1 overflow-y-auto p-0 text-sm">
+      <ul className="m-0 flex max-h-[55vh] list-none flex-col gap-0.5 overflow-y-auto p-0 text-base">
         {signedIn.map((entry) => (
           <li
             key={entry.id}
-            className="flex items-baseline justify-between gap-3 py-0.5"
+            className="flex items-baseline justify-between gap-3"
           >
             <span className="min-w-0 truncate text-left">{entry.name}</span>
             <span
@@ -82,7 +84,9 @@ function SignedInPanelList(props: { refreshKey: number }) {
           </li>
         ))}
       </ul>
-      <p className="m-0 mt-2 text-sm font-bold">{signedIn.length} signed in</p>
+      <p className="m-0 mt-auto pt-2 text-base font-bold">
+        {signedIn.length} signed in
+      </p>
     </>
   );
 }
@@ -110,12 +114,12 @@ export default function ScanSignedInPanel() {
   }, []);
 
   return (
-    <div>
+    <div className="flex h-full flex-col">
       <h2 className="m-0 mb-2 text-left text-lg font-bold">
         Currently signed in
       </h2>
       <Suspense
-        fallback={<p className="m-0 text-sm text-ink-muted">Loading…</p>}
+        fallback={<p className="m-0 text-base text-ink-muted">Loading…</p>}
       >
         <SignedInPanelList refreshKey={refreshKey} />
       </Suspense>
