@@ -1388,6 +1388,7 @@ async fn recent_periods_for_location<A: App + HasDb + Send + Sync>(
             location_id,
             false,
             None,
+            None,
             db::ListPeriodsPage {
                 after: None,
                 before: None,
@@ -1749,6 +1750,7 @@ impl<A: App + HasDb + Send + Sync> Location<A> {
         only_active: Option<bool>,
         start_time: Option<i64>,
         end_time: Option<i64>,
+        categories: Option<Vec<ID>>,
         after: Option<String>,
         before: Option<String>,
         first: Option<i32>,
@@ -1762,6 +1764,8 @@ impl<A: App + HasDb + Send + Sync> Location<A> {
             pagination_args(first, last, DEFAULT_PERIOD_PAGE_SIZE, MAX_PERIOD_PAGE_SIZE)?;
         let fetch_limit = i32::try_from(page_size.saturating_add(1))
             .map_err(|_| anyhow!("Requested page is too large"))?;
+        let category_ids: Option<Vec<String>> =
+            categories.map(|cs| cs.into_iter().map(|c| c.0).collect());
 
         let range = match (start_time, end_time) {
             (None, None) => None,
@@ -1788,6 +1792,7 @@ impl<A: App + HasDb + Send + Sync> Location<A> {
                 &self.rec.id,
                 only_active.unwrap_or(false),
                 range,
+                category_ids.as_deref(),
                 db::ListPeriodsPage {
                     after: after_cursor,
                     before: before_cursor,
@@ -1835,6 +1840,7 @@ impl<A: App + HasDb + Send + Sync> Location<A> {
                 &self.rec.id,
                 false,
                 Some((range_start, range_end)),
+                None,
                 db::ListPeriodsPage {
                     after: None,
                     before: None,
@@ -1919,6 +1925,7 @@ impl<A: App + HasDb + Send + Sync> Location<A> {
                 &self.rec.id,
                 false,
                 Some((range_start, range_end)),
+                None,
                 db::ListPeriodsPage {
                     after: None,
                     before: None,
@@ -1973,6 +1980,7 @@ impl<A: App + HasDb + Send + Sync> Location<A> {
                 &self.rec.id,
                 false,
                 Some((range_start, range_end)),
+                None,
                 db::ListPeriodsPage {
                     after: None,
                     before: None,
@@ -2043,6 +2051,7 @@ impl<A: App + HasDb + Send + Sync> Location<A> {
                 &self.rec.id,
                 false,
                 Some((range_start, range_end)),
+                None,
                 db::ListPeriodsPage {
                     after: None,
                     before: None,
@@ -2115,6 +2124,7 @@ impl<A: App + HasDb + Send + Sync> Location<A> {
                 &self.rec.id,
                 false,
                 Some((range_start, range_end)),
+                None,
                 db::ListPeriodsPage {
                     after: None,
                     before: None,
@@ -2214,6 +2224,7 @@ impl<A: App + HasDb + Send + Sync> Location<A> {
                 &self.rec.id,
                 false,
                 Some((range_start, range_end)),
+                None,
                 db::ListPeriodsPage {
                     after: None,
                     before: None,
@@ -2312,6 +2323,7 @@ impl<A: App + HasDb + Send + Sync> Location<A> {
                 &self.rec.id,
                 false,
                 Some((range_30d_start, as_of_ts)),
+                None,
                 db::ListPeriodsPage {
                     after: None,
                     before: None,
