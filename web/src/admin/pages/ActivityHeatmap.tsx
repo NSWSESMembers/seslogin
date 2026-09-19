@@ -8,6 +8,7 @@ import RelayErrorBoundary from "../../components/RelayErrorBoundary";
 import { Button } from "../../components/ui/Button";
 import Select from "../../components/ui/Select";
 import { StatusMessage } from "../../components/ui/StatusMessage";
+import { Muted } from "../../components/ui/Muted";
 import { dateToInputDateTimeLocal } from "../../lib/time";
 import {
   MAX_DAY_SCALE_RANGE_DAYS,
@@ -163,7 +164,7 @@ export default function ActivityHeatmap() {
         ))}
       </div>
 
-      <p className="mb-3 text-center text-sm text-ink-muted">
+      <Muted className="mb-3 text-center text-sm">
         Showing{" "}
         <strong className="text-ink">
           {formatRangeSummary(appliedRange.startTime, appliedRange.endTime)}
@@ -173,7 +174,7 @@ export default function ActivityHeatmap() {
             (unapplied changes — click "Update results")
           </span>
         )}
-      </p>
+      </Muted>
 
       <details className="mb-4 text-center text-sm">
         <summary className="cursor-pointer text-ink-muted">

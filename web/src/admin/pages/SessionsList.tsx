@@ -18,6 +18,7 @@ import type { SessionsListDeleteMutation } from "./__generated__/SessionsListDel
 import type { SessionsListReactivateMutation } from "./__generated__/SessionsListReactivateMutation.graphql";
 import { useNotify } from "../components/useNotify";
 import { AdminTable, Th, Td } from "../../components/ui/Table";
+import { Muted } from "../../components/ui/Muted";
 import { Button, ButtonLink } from "../../components/ui/Button";
 import { Dialog, DialogActions, DialogTitle } from "../../components/ui/Dialog";
 import { FingerprintChip } from "../../components/FingerprintChip";
@@ -278,10 +279,10 @@ function ReactivateDialog({
           "-"
         )}
       </p>
-      <p className="m-0 text-left text-sm text-ink-muted">
+      <Muted className="text-left text-sm">
         If it doesn't match, cancel — you would be reactivating a different
         computer.
-      </p>
+      </Muted>
       <DialogActions>
         <Button variant="secondary" onClick={onCancel}>
           Cancel

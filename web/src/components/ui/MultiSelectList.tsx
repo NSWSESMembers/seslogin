@@ -8,6 +8,7 @@ import {
 } from "react";
 import { tw } from "../../lib/tw";
 import { inputBase } from "./inputStyles";
+import { Muted } from "./Muted";
 
 export interface MultiSelectOption {
   id: string;
@@ -324,9 +325,9 @@ export default function MultiSelectList({
             </div>
 
             {emptyRowsMessage !== null ? (
-              <p className="p-3 text-center text-sm text-ink-muted">
+              <Muted className="p-3 text-center text-sm">
                 {emptyRowsMessage}
-              </p>
+              </Muted>
             ) : (
               <div
                 id={listId}

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import TextInput from "../../components/ui/TextInput";
 import { OptionList, OptionButtonRow } from "../../components/ui/OptionList";
+import { Muted } from "../../components/ui/Muted";
 
 interface LocationPickerProps {
   locations: ReadonlyArray<{ readonly id: string; readonly name: string }>;
@@ -26,12 +27,12 @@ export default function LocationPicker({
         <h1 className="mt-0 mb-2.5 font-title text-2xl text-ink sm:text-3xl">
           Select Your Location
         </h1>
-        <p className="mb-8 text-ink-muted">
+        <Muted className="mb-8">
           You are logging in for the first time or your location has been reset.
           Please select the unit you would like to administer. You can always
           swap to a different location by clicking the unit name in the menu
           bar.
-        </p>
+        </Muted>
 
         {locations.length === 0 ? (
           <p className="rounded-sm bg-red-50 p-2.5 text-red-700">
@@ -48,9 +49,9 @@ export default function LocationPicker({
               autoFocus
             />
             {filteredLocations.length === 0 ? (
-              <p className="py-2 text-center text-ink-muted">
+              <Muted className="py-2 text-center">
                 No locations match “{filter}”.
-              </p>
+              </Muted>
             ) : (
               <OptionList>
                 {filteredLocations.map((location) => (

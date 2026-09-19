@@ -11,6 +11,7 @@ import { FieldList, FormField } from "../../components/ui/FormField";
 import TextInput from "../../components/ui/TextInput";
 import { Button } from "../../components/ui/Button";
 import MultiCombobox from "../../components/ui/MultiCombobox";
+import { Muted } from "../../components/ui/Muted";
 
 export default function ApiTokenEdit() {
   const navigate = useNavigate();
@@ -142,7 +143,7 @@ export default function ApiTokenEdit() {
   return (
     <>
       <p>Edit the API token's details, then click Save.</p>
-      <p className="text-sm text-ink-muted">
+      <Muted className="text-sm">
         Created {formatFullDateTime(new Date(token.createdAt * 1000))} · Last
         used{" "}
         {token.lastUsedAt
@@ -157,7 +158,7 @@ export default function ApiTokenEdit() {
             </span>
           </>
         )}
-      </p>
+      </Muted>
 
       <form action={handleSubmit}>
         <FieldList>

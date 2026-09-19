@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { groupFingerprint, shortFingerprint } from "../lib/fingerprint";
 import { Popover } from "./ui/Popover";
+import { Muted } from "./ui/Muted";
 
 // The truncated fingerprint as an inline control: the full value is on the
 // `title` (hover) and in a popover on click, so it also works on a touch kiosk
@@ -34,9 +35,9 @@ export function FingerprintChip({
           onDismiss={() => setOpen(false)}
           className="max-w-[min(20rem,92vw)] px-3 py-2"
         >
-          <p className="m-0 text-xs font-semibold text-ink-muted uppercase">
+          <Muted className="text-xs font-semibold uppercase">
             Full device key
-          </p>
+          </Muted>
           {/* No `break-all`: `groupFingerprint` puts a space between every
               4-hex group, so normal word wrapping breaks the line at those
               spaces and never mid-group. */}

@@ -4,6 +4,7 @@ import { OptionList, OptionRow } from "../../components/ui/OptionList";
 import TextInput from "../../components/ui/TextInput";
 import Select from "../../components/ui/Select";
 import { Button } from "../../components/ui/Button";
+import { Muted } from "../../components/ui/Muted";
 
 /** Marks an option still finding its shape — shared so two options flagged
  * beta don't drift into two different-looking badges. */
@@ -344,11 +345,11 @@ function ThemeControl({ theme, onChange }: ThemeControlProps) {
         ]}
         onChange={onChange}
       />
-      <p className="mt-1.5 mb-0 text-ink-muted">
+      <Muted className="mt-1.5">
         Auto follows the device's own light/dark setting, which may require
         configuration of the browser and/or the operating system to work. Light
         and Dark pin the kiosk to that theme regardless of the device.
-      </p>
+      </Muted>
     </FormField>
   );
 }
@@ -486,13 +487,13 @@ function BasicSessionModeFields({
             ]}
             onChange={onSignedInStatusModeChange}
           />
-          <p className="mt-1.5 mb-0 text-ink-muted">
+          <Muted className="mt-1.5">
             Who's currently signed in at this location and how long they've been
             signed in for — the Status mode's information without giving up the
             kiosk to it. "Button" adds a button on the scan screen that opens
             the list; "Always visible" shows it beside the scan screen
             permanently, so it's visible at a glance without pressing anything.
-          </p>
+          </Muted>
         </FormField>
       )}
     </>
@@ -517,7 +518,7 @@ function HealthcheckUrlField({
         autoComplete="url"
         inputMode="url"
       />
-      <p className="mt-1.5 mb-0 text-ink-muted">
+      <Muted className="mt-1.5">
         Optional. SES Activity can ping this URL approximately every 5 minutes
         or so while the kiosk using this session remains connected to the
         system. Perfect for use with something like{" "}
@@ -530,7 +531,7 @@ function HealthcheckUrlField({
           healthchecks.io
         </a>{" "}
         to automatically notify you when the kiosk isn't working.
-      </p>
+      </Muted>
     </FormField>
   );
 }
