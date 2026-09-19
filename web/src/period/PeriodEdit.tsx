@@ -11,6 +11,7 @@ import {
   PanelIntro,
   PanelTitle,
 } from "../components/ui/Panel";
+import { Muted } from "../components/ui/Muted";
 import PeriodEditForm from "./PeriodEditForm";
 
 /**
@@ -28,9 +29,7 @@ function LinkProblem({ children }: { children: string }) {
       <PanelBox>
         <PanelTitle>Link not valid</PanelTitle>
         <PanelIntro>{children}</PanelIntro>
-        <p className="text-ink-muted">
-          Ask your unit to send you a new link, then try again.
-        </p>
+        <Muted>Ask your unit to send you a new link, then try again.</Muted>
       </PanelBox>
     </Panel>
   );

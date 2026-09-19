@@ -9,6 +9,7 @@ import PeriodsLineChart from "../components/PeriodsLineChart";
 import useSelectedLocation from "../components/useSelectedLocation";
 import { useUserInfo } from "../components/useUserInfo";
 import { formatFullDateTime } from "../../lib/time";
+import { Muted } from "../../components/ui/Muted";
 
 interface DayBucket {
   key: string;
@@ -245,9 +246,7 @@ export default function AdminHome() {
       <section className={CARD_CLASS}>
         <div className={SECTION_TITLE_CLASS}>Top categories (last 7 days)</div>
         {topCategories.length === 0 ? (
-          <p className="m-0 text-ink-muted">
-            No categorised periods in this window.
-          </p>
+          <Muted>No categorised periods in this window.</Muted>
         ) : (
           <div className="grid grid-cols-1 gap-2.5 min-[781px]:grid-cols-[repeat(auto-fit,minmax(210px,1fr))]">
             {topCategories.map((entry, idx) => {
