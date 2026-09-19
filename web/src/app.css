@@ -177,7 +177,12 @@
   stroke: var(--icon-accent, var(--color-accent));
 }
 
-/* Legacy global typography the whole app was built around; Preflight zeroes these. */
+/* Token-driven theming, not legacy typography: background-color/color follow
+ * the --color-surface/--color-ink tokens (load-bearing for dark mode, since
+ * both flip via the @custom-variant dark rules above), and font-size pins
+ * the root text size explicitly (in rem, so it still respects a user's
+ * browser zoom/font-size preference) rather than leaving every em-based
+ * size elsewhere in the app anchored to an unstated default. */
 @layer base {
   body {
     font-size: 1rem;
