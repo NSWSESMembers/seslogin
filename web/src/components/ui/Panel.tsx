@@ -41,7 +41,7 @@ export function PanelMessage({
 }) {
   const variantClasses =
     variant === "warning"
-      ? "border-submenu/25 bg-brand/15 text-[#7a350f] dark:text-accent-light"
+      ? "border-submenu/25 bg-brand/15 text-warning-ink dark:text-accent-light"
       : "border-red-900/20 bg-red-900/10 text-red-900 dark:border-red-400/25 dark:bg-red-500/15 dark:text-red-300";
   return (
     <div
