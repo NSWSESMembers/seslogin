@@ -505,6 +505,7 @@ pub async fn backfill_unsynced_periods<D: db::Handler>(
                     &location.id,
                     false,
                     Some((nitc_cutover, u64::MAX)),
+                    None,
                     page,
                 )
                 .await?;

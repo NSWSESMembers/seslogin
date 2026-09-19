@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<ee3242f52a0969e99e8d74e493a87e65>>
+ * @generated SignedSource<<6a8f81486e01ac69e218dd0b6eb5ed8f>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -20,6 +20,7 @@ export type ActivityCurrent_periodName$data = {
       readonly id: string;
       readonly name: string;
     };
+    readonly memberNumber: string | null | undefined;
   } | null | undefined, unknown>;
   readonly " $fragmentType": "ActivityCurrent_periodName";
 };
@@ -33,6 +34,6 @@ const node: ReaderInlineDataFragment = {
   "name": "ActivityCurrent_periodName"
 };
 
-(node as any).hash = "f57cd236318d9873f5c5322f724f00ec";
+(node as any).hash = "5ad044ce7bcfe2303a7f25c88bc9fffd";
 
 export default node;

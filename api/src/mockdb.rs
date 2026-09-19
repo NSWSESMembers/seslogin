@@ -102,6 +102,7 @@ impl db::Handler for Handler {
         _location_id: &str,
         _only_active: bool,
         _timestamp_range: Option<(u64, u64)>,
+        _category_ids: Option<&[String]>,
         _page: db::ListPeriodsPage,
     ) -> db::Result<Vec<Period>> {
         Self::unsupported()
