@@ -69,7 +69,7 @@ function SignedInPanelList(props: { refreshKey: number }) {
 
   return (
     <>
-      <ul className="m-0 flex max-h-[55vh] list-none flex-col gap-0.5 overflow-y-auto p-0 text-base">
+      <ul className="m-0 flex flex-1 list-none flex-col gap-0.5 overflow-y-auto p-0 text-base">
         {signedIn.map((entry) => (
           <li
             key={entry.id}
