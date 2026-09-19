@@ -94,7 +94,6 @@ export default function EditLocation() {
   return (
     <>
       <p>Edit the location's details, then click Save.</p>
-      {/* {updateError && <p className="font-bold text-red-600">Error: {updateError.message}</p>} */}
 
       <form action={handleSubmit}>
         <FieldList>

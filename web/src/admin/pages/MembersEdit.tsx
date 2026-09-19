@@ -8,6 +8,7 @@ import { useNotify } from "../components/useNotify";
 import { FieldList, FormField } from "../../components/ui/FormField";
 import TextInput from "../../components/ui/TextInput";
 import { Button } from "../../components/ui/Button";
+import { StatusMessage } from "../../components/ui/StatusMessage";
 import { formatFullDateTime } from "../../lib/time";
 
 export default function MembersEdit() {
@@ -84,13 +85,12 @@ export default function MembersEdit() {
     <>
       <p>Edit the member's details, then click Save.</p>
       {person.missingSince ? (
-        <p className="font-bold text-orange-600">
+        <StatusMessage variant="warning">
           Member sync has not seen this member in SES since{" "}
           {formatFullDateTime(new Date(person.missingSince * 1000))}. They will
           be removed automatically unless a later sync finds them again.
-        </p>
+        </StatusMessage>
       ) : null}
-      {/* {updateError && <p className="font-bold text-red-600">Error: {updateError.message}</p>} */}
 
       <form action={handleSubmit}>
         <FieldList>
