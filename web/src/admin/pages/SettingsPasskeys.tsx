@@ -14,6 +14,7 @@ import {
 import { PanelMessage } from "../../components/ui/Panel";
 import { AdminTable, Th, Td } from "../../components/ui/Table";
 import { Button } from "../../components/ui/Button";
+import { SectionHeading } from "../../components/ui/SectionHeading";
 
 const MAX_PASSKEYS = 10;
 
@@ -126,7 +127,7 @@ export default function SettingsPasskeys() {
 
   return (
     <div>
-      <h2>Passkeys</h2>
+      <SectionHeading>Passkeys</SectionHeading>
       <p>
         Passkeys let you sign in with Face ID, Touch ID, or your device PIN
         instead of an email code. You can save up to {MAX_PASSKEYS}.

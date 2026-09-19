@@ -1,5 +1,6 @@
 import { Fragment } from "react";
 import { formatSeconds } from "../../lib/time";
+import { SectionHeading } from "../../components/ui/SectionHeading";
 
 export type ActivityBreakdownChildRow = {
   id: string;
@@ -29,7 +30,7 @@ type Props = {
 export default function ActivityBreakdownTable({ title, rows }: Props) {
   return (
     <div className="flex-1">
-      <h2>{title}</h2>
+      <SectionHeading>{title}</SectionHeading>
       <div className="border-t border-line-strong">
         {rows.map((entry) => (
           <Fragment key={entry.id}>
