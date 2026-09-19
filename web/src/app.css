@@ -49,6 +49,9 @@
   --color-line: #d4d4d4; /* default borders (was neutral-300) */
   --color-line-strong: #a3a3a3; /* emphasised borders (was neutral-400) */
   --color-line-faint: #e8e8e8; /* faint dividers (was neutral-100/200) */
+  --color-ink-panel: #40342d; /* PanelIntro copy on the warm panel surface */
+  /* Translucent Panel/PanelBox background. */
+  --color-surface-panel: rgb(255 252 248 / 0.94);
 
   /* Sequential activity-intensity ramp (heatmap cells): one hue, light->dark,
    * validated with the dataviz skill's palette validator (--ordinal) against
@@ -101,6 +104,8 @@
       --color-line: #34363b;
       --color-line-strong: #494c52;
       --color-line-faint: #2a2c31;
+      --color-ink-panel: #e6e6e4;
+      --color-surface-panel: rgb(32 30 28 / 0.94);
       --color-heat-1: #863100;
       --color-heat-2: #a24613;
       --color-heat-3: #bd5c2b;
@@ -129,6 +134,8 @@
     --color-line: #34363b;
     --color-line-strong: #494c52;
     --color-line-faint: #2a2c31;
+    --color-ink-panel: #e6e6e4;
+    --color-surface-panel: rgb(32 30 28 / 0.94);
     --color-heat-1: #863100;
     --color-heat-2: #a24613;
     --color-heat-3: #bd5c2b;
