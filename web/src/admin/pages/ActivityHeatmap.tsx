@@ -16,6 +16,7 @@ import {
   SCALE_MAX_RANGE_DAYS,
   nearestValidScale,
 } from "../components/activityHeatmapBuckets";
+import { INVALID_TIME_RANGE_MESSAGE } from "../components/useActivityTimeRange";
 import type {
   HeatmapScale,
   HeatmapSortBy,
@@ -106,7 +107,7 @@ export default function ActivityHeatmap() {
   const rangeDays = (endTime - startTime) / DAY_SECONDS;
   const rangeError =
     startTime >= endTime
-      ? "Start time must be before end time."
+      ? INVALID_TIME_RANGE_MESSAGE
       : rangeDays > maxRangeDays
         ? scale === "day"
           ? `Day scale supports at most ${MAX_DAY_SCALE_RANGE_DAYS} days at a time — narrow the range or switch to week/month scale.`
