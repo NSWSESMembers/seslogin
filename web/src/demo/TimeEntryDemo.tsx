@@ -49,19 +49,19 @@ export default function TimeEntryDemo() {
 
       <div className="flex flex-wrap gap-3">
         <button
-          className="rounded-xl bg-accent px-4 py-2.5 text-lg text-white shadow-md"
+          className="cursor-pointer rounded-xl bg-accent px-4 py-2.5 text-lg text-white shadow-md"
           onClick={() => open("startTime", 9, 30)}
         >
           Open prefilled (09:30)
         </button>
         <button
-          className="rounded-xl bg-accent px-4 py-2.5 text-lg text-white shadow-md"
+          className="cursor-pointer rounded-xl bg-accent px-4 py-2.5 text-lg text-white shadow-md"
           onClick={() => open("endTime", 22, 5)}
         >
           Open prefilled 24h (22:05)
         </button>
         <button
-          className="rounded-xl bg-accent px-4 py-2.5 text-lg text-white shadow-md"
+          className="cursor-pointer rounded-xl bg-accent px-4 py-2.5 text-lg text-white shadow-md"
           onClick={() => open("startTime", new Date().getHours(), 0)}
         >
           Open at this hour

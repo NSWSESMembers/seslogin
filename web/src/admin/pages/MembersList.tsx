@@ -235,7 +235,11 @@ export default function MembersList() {
         <div className="mb-2">
           Last successful member sync: {lastSyncText}{" "}
           {!syncedRecently && (
-            <button onClick={triggerSync} disabled={isSyncInFlight}>
+            <button
+              className="cursor-pointer"
+              onClick={triggerSync}
+              disabled={isSyncInFlight}
+            >
               Sync now
             </button>
           )}
