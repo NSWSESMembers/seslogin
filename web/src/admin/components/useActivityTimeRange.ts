@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { dateToInputDateTimeLocal } from "../../lib/time";
 
+export const INVALID_TIME_RANGE_MESSAGE = "Start time must be before end time.";
+
 export default function useActivityTimeRange() {
   const [defaultRange] = useState(() => {
     const endDate = new Date();

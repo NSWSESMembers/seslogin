@@ -2,7 +2,9 @@ import { graphql, isValueResult } from "relay-runtime";
 import { fetchQuery, useRelayEnvironment } from "react-relay";
 import { useSettings } from "../../lib/settings";
 import ActivityTimeRange from "../components/ActivityTimeRange";
-import useActivityTimeRange from "../components/useActivityTimeRange";
+import useActivityTimeRange, {
+  INVALID_TIME_RANGE_MESSAGE,
+} from "../components/useActivityTimeRange";
 import { useState } from "react";
 import type { ReportsQuery } from "./__generated__/ReportsQuery.graphql";
 import { Button } from "../../components/ui/Button";
@@ -132,7 +134,7 @@ export default function Reports() {
 
   async function exportReport(format: "csv" | "xlsx") {
     if (!hasValidRange) {
-      setErrorText("Start time must be before end time.");
+      setErrorText(INVALID_TIME_RANGE_MESSAGE);
       setSuccessText("");
       return;
     }
@@ -404,7 +406,7 @@ export default function Reports() {
         />
         {!hasValidRange && (
           <StatusMessage variant="error">
-            Start time must be before end time.
+            {INVALID_TIME_RANGE_MESSAGE}
           </StatusMessage>
         )}
         {errorText && (

@@ -11,6 +11,7 @@ import { ErrorBoundary } from "react-error-boundary";
 import { lazyWithReload } from "./lib/lazyWithReload";
 import LoadingIndicator from "./components/LoadingIndicator";
 import PageErrorFallback from "./components/PageErrorFallback";
+import NotFound from "./components/NotFound";
 
 // Home is the landing page — keep it eager for fast first paint.
 import HomeLayout from "./home/Layout";
@@ -91,7 +92,7 @@ export default function Router() {
             <Route path="/period" element={<PeriodEdit />} />
 
             {/* Catch all */}
-            <Route path="*" element={<h1>Not Found</h1>} />
+            <Route path="*" element={<NotFound />} />
           </Routes>
         </Suspense>
       </ErrorBoundary>
