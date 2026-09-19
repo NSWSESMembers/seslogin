@@ -141,12 +141,12 @@ export default function SessionClientInfo({
       )}
       {clientInfo.origin != null && (
         <Row label="Loaded from">
-          <span className="font-mono text-[0.9em]">{clientInfo.origin}</span>
+          <span className="font-mono text-sm">{clientInfo.origin}</span>
         </Row>
       )}
       {clientInfo.apiUrl != null && (
         <Row label="API endpoint">
-          <span className="font-mono text-[0.9em]">{clientInfo.apiUrl}</span>
+          <span className="font-mono text-sm">{clientInfo.apiUrl}</span>
         </Row>
       )}
       {clientInfo.profile != null && (
@@ -161,7 +161,7 @@ export default function SessionClientInfo({
       )}
       {clientInfo.userAgent != null && (
         <Row label="Browser">
-          <span className="text-[0.9em]">{clientInfo.userAgent}</span>
+          <span className="text-sm">{clientInfo.userAgent}</span>
         </Row>
       )}
       {clientInfo.screen != null && (
