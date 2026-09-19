@@ -6,6 +6,7 @@ import useActivityTimeRange from "../components/useActivityTimeRange";
 import { useState } from "react";
 import type { ReportsQuery } from "./__generated__/ReportsQuery.graphql";
 import { Button } from "../../components/ui/Button";
+import { StatusMessage } from "../../components/ui/StatusMessage";
 
 const REPORT_PAGE_SIZE = 1000;
 type ReportPeriodEdge = NonNullable<
@@ -402,18 +403,18 @@ export default function Reports() {
           onEndChange={setEndInput}
         />
         {!hasValidRange && (
-          <p className="font-bold text-red-600">
+          <StatusMessage variant="error">
             Start time must be before end time.
-          </p>
+          </StatusMessage>
         )}
-        {errorText && <p className="font-bold text-red-600">{errorText}</p>}
+        {errorText && (
+          <StatusMessage variant="error">{errorText}</StatusMessage>
+        )}
         {successText && (
-          <p className="font-bold text-green-700">{successText}</p>
+          <StatusMessage variant="success">{successText}</StatusMessage>
         )}
         {warningText && (
-          <p className="font-bold whitespace-pre-line text-orange-600">
-            {warningText}
-          </p>
+          <StatusMessage variant="warning">{warningText}</StatusMessage>
         )}
         <div className="flex justify-center gap-2.5 max-md:flex-col max-md:items-center">
           <Button

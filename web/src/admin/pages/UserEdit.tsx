@@ -111,7 +111,6 @@ export default function UserEdit() {
   return (
     <>
       <p>Edit the member's details, then click Save.</p>
-      {/* {updateError && <p className="font-bold text-red-600">Error: {updateError.message}</p>} */}
 
       <form action={handleSubmit}>
         <FieldList>
