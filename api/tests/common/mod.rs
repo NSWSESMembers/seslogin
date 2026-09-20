@@ -510,6 +510,9 @@ impl db::Handler for FakeDb {
             db::PersonUpdateShape::Delete => {
                 person.deleted = Some(seslogin::clock::now_sec());
             }
+            db::PersonUpdateShape::BadgeState { badge_state } => {
+                person.badge_state = badge_state;
+            }
             _ => return unsupported(),
         }
         Ok(())
