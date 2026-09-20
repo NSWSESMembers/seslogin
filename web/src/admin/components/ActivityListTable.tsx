@@ -20,6 +20,7 @@ import { useNotify } from "./useNotify";
 import { AdminTable, Th, Td } from "../../components/ui/Table";
 import { Button, ButtonLink } from "../../components/ui/Button";
 import { Popover } from "../../components/ui/Popover";
+import { StatusMessage } from "../../components/ui/StatusMessage";
 import CommentIndicator from "./CommentIndicator";
 
 type Firstcol = "location" | "person";
@@ -460,7 +461,7 @@ export default function ActivityListTable<
         </p>
       )}
       {loadMoreError && (
-        <p className="font-bold text-red-600">{loadMoreError}</p>
+        <StatusMessage variant="error">{loadMoreError}</StatusMessage>
       )}
     </>
   );

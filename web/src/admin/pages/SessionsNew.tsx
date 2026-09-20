@@ -72,8 +72,6 @@ export default function SessionsNew() {
         you are setting up to be a kiosk. This will help you identify it later
         if you set up more than one.
       </p>
-      {/* {error && <p className="font-bold text-red-600">Error: {error.message}</p>} */}
-
       <SessionForm
         initialName=""
         initialConfig={NEW_SESSION_CONFIG}

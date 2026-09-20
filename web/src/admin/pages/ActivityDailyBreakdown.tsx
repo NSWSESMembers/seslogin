@@ -6,6 +6,7 @@ import LoadingIndicator from "../../components/LoadingIndicator";
 import RelayErrorBoundary from "../../components/RelayErrorBoundary";
 import useActivityTimeRange from "../components/useActivityTimeRange";
 import { Button } from "../../components/ui/Button";
+import { StatusMessage } from "../../components/ui/StatusMessage";
 
 export default function ActivityDailyBreakdown() {
   const settings = useSettings();
@@ -44,9 +45,9 @@ export default function ActivityDailyBreakdown() {
         </Button>
       </div>
       {!hasValidRange && (
-        <p className="font-bold text-red-600">
+        <StatusMessage variant="error">
           Start time must be before end time.
-        </p>
+        </StatusMessage>
       )}
 
       {hasValidRange && (

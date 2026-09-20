@@ -3,6 +3,7 @@ import { graphql, useLazyLoadQuery, useMutation } from "react-relay";
 import { inputBase } from "../../components/ui/inputStyles";
 import { Button } from "../../components/ui/Button";
 import { Dialog, DialogActions, DialogTitle } from "../../components/ui/Dialog";
+import { StatusMessage } from "../../components/ui/StatusMessage";
 import { formatTime } from "../../lib/time";
 import { getServerErrorMessage } from "../../lib/relayErrors";
 import type { ScanGuestDialogQuery } from "./__generated__/ScanGuestDialogQuery.graphql";
@@ -162,7 +163,11 @@ export default function ScanGuestDialog(props: { onClose: () => void }) {
     <Dialog onDismiss={onClose}>
       <DialogTitle>Guest sign in / out</DialogTitle>
 
-      {error && <p className="m-0 font-bold text-red-600">{error}</p>}
+      {error && (
+        <StatusMessage variant="error" className="m-0">
+          {error}
+        </StatusMessage>
+      )}
 
       <div className="flex flex-col gap-3">
         <label className="flex flex-col gap-1">
