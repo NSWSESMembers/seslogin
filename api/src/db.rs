@@ -141,6 +141,10 @@ pub struct Person {
     pub registration_number: Option<String>,
     pub ses_api_person_id: Option<String>,
     pub email: Option<String>,
+    /// Badge counters and awards, as the JSON object `badges::state_from_map` reads.
+    /// Empty for a member who has never been evaluated, and for every member of a
+    /// location that has not opted into gamification.
+    pub badge_state: serde_json::Map<String, serde_json::Value>,
     pub deleted: Option<u64>,
     /// Unix seconds at which member sync first observed this person missing from their
     /// location's SES payload. Cleared by any sync that sees them again, and on
@@ -176,6 +180,11 @@ pub enum PersonUpdateShape<'a> {
     /// `Some` stamps the missing marker, `None` removes it.
     MissingSince {
         missing_since: Option<u64>,
+    },
+    /// Replaces the whole badge state. An empty map removes the attribute rather than
+    /// storing `{}`, so a member who has earned nothing carries no badge data at all.
+    BadgeState {
+        badge_state: serde_json::Map<String, serde_json::Value>,
     },
     Undelete,
     Delete,

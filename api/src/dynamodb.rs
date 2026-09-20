@@ -331,6 +331,15 @@ impl TryInto<Person> for Item {
             registration_number: self.string_field("registration_number")?,
             ses_api_person_id: self.string_field("ses_api_person_id")?,
             email: self.string_field("email")?,
+            // Stored as a JSON string rather than a DynamoDB map: the badge code owns
+            // the shape, and round-tripping it as text keeps hydration from having to
+            // mirror every nested counter as an AttributeValue.
+            badge_state: match self.string_field("badge_state")? {
+                None => serde_json::Map::new(),
+                Some(s) if s.trim().is_empty() => serde_json::Map::new(),
+                Some(s) => serde_json::from_str(&s)
+                    .map_err(|e| anyhow!("Person has invalid badge_state JSON: {e}"))?,
+            },
             deleted: self
                 .i64_field("deleted")?
                 .map(|i| i as u64)
@@ -1976,6 +1985,7 @@ impl db::Handler for Handler {
             registration_number: Some(registration_number.to_string()),
             ses_api_person_id: None,
             email: None,
+            badge_state: serde_json::Map::new(),
             deleted: None,
             missing_since: None,
             created_at: Some(now),
@@ -2114,6 +2124,41 @@ impl db::Handler for Handler {
                         )
                 } else {
                     request.update_expression("SET updated_at = :updated_at REMOVE missing_since")
+                };
+
+                let resp = request
+                    .return_consumed_capacity(ReturnConsumedCapacity::Total)
+                    .send()
+                    .await
+                    .map_err(|e| map_update_err(e, format!("Person {}", id)))?;
+                record_capacity("update_person", resp.consumed_capacity(), CapKind::Write);
+            }
+            db::PersonUpdateShape::BadgeState { badge_state } => {
+                let mut request = self
+                    .client
+                    .update_item()
+                    .table_name(self.table_name("person"))
+                    .key("id", AttributeValue::S(id.to_string()))
+                    .condition_expression("attribute_exists(id)")
+                    .expression_attribute_values(
+                        ":updated_at",
+                        AttributeValue::N(crate::clock::now_sec().to_string()),
+                    );
+
+                request = if badge_state.is_empty() {
+                    request.update_expression("SET updated_at = :updated_at REMOVE badge_state")
+                } else {
+                    request
+                        .update_expression(
+                            "SET badge_state = :badge_state, updated_at = :updated_at",
+                        )
+                        .expression_attribute_values(
+                            ":badge_state",
+                            AttributeValue::S(
+                                serde_json::to_string(&badge_state)
+                                    .map_err(|e| Error::TypeConversion(e.to_string()))?,
+                            ),
+                        )
                 };
 
                 let resp = request
