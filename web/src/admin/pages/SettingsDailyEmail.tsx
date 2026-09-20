@@ -5,6 +5,7 @@ import { useNotify } from "../components/useNotify";
 import { FieldList, FormField } from "../../components/ui/FormField";
 import { Button } from "../../components/ui/Button";
 import MultiCombobox from "../../components/ui/MultiCombobox";
+import { SectionHeading } from "../../components/ui/SectionHeading";
 import { useRetryableLazyLoadQuery } from "../../components/useRetryableLazyLoadQuery";
 
 /**
@@ -73,7 +74,7 @@ export default function SettingsDailyEmail() {
 
   return (
     <>
-      <h2>Daily email summary</h2>
+      <SectionHeading>Daily email summary</SectionHeading>
       <p>
         Choose which locations to include in your nightly activity summary
         email. Emails are sent just after midnight with the previous day&apos;s
