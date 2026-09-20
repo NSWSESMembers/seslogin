@@ -4,7 +4,9 @@ import ActivityTimeRange from "../components/ActivityTimeRange";
 import ActivityDailyBreakdownDisplay from "../components/ActivityDailyBreakdownDisplay";
 import LoadingIndicator from "../../components/LoadingIndicator";
 import RelayErrorBoundary from "../../components/RelayErrorBoundary";
-import useActivityTimeRange from "../components/useActivityTimeRange";
+import useActivityTimeRange, {
+  INVALID_TIME_RANGE_MESSAGE,
+} from "../components/useActivityTimeRange";
 import { Button } from "../../components/ui/Button";
 import { StatusMessage } from "../../components/ui/StatusMessage";
 
@@ -46,7 +48,7 @@ export default function ActivityDailyBreakdown() {
       </div>
       {!hasValidRange && (
         <StatusMessage variant="error">
-          Start time must be before end time.
+          {INVALID_TIME_RANGE_MESSAGE}
         </StatusMessage>
       )}
 
