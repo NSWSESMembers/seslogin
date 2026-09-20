@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<f9e9b2f896ba784a8bdef008aab89bb6>>
+ * @generated SignedSource<<fd941e02e4fc7d7f6db750b194b5f676>>
  * @lightSyntaxTransform
  */
 
@@ -10,6 +10,7 @@
 import { ConcreteRequest } from 'relay-runtime';
 export type LocationEditMutation$variables = {
   enabled: boolean;
+  gamificationEnabled?: boolean | null | undefined;
   id: string;
   name: string;
   nitcCompleteOnExport?: boolean | null | undefined;
@@ -18,6 +19,7 @@ export type LocationEditMutation$variables = {
 export type LocationEditMutation$data = {
   readonly updateLocation: {
     readonly enabled: boolean;
+    readonly gamificationEnabled: boolean;
     readonly id: string;
     readonly name: string;
     readonly nitcCompleteOnExport: boolean;
@@ -38,24 +40,29 @@ var v0 = {
 v1 = {
   "defaultValue": null,
   "kind": "LocalArgument",
-  "name": "id"
+  "name": "gamificationEnabled"
 },
 v2 = {
   "defaultValue": null,
   "kind": "LocalArgument",
-  "name": "name"
+  "name": "id"
 },
 v3 = {
   "defaultValue": null,
   "kind": "LocalArgument",
-  "name": "nitcCompleteOnExport"
+  "name": "name"
 },
 v4 = {
   "defaultValue": null,
   "kind": "LocalArgument",
+  "name": "nitcCompleteOnExport"
+},
+v5 = {
+  "defaultValue": null,
+  "kind": "LocalArgument",
   "name": "nitcEnabled"
 },
-v5 = [
+v6 = [
   {
     "alias": null,
     "args": [
@@ -63,6 +70,11 @@ v5 = [
         "kind": "Variable",
         "name": "enabled",
         "variableName": "enabled"
+      },
+      {
+        "kind": "Variable",
+        "name": "gamificationEnabled",
+        "variableName": "gamificationEnabled"
       },
       {
         "kind": "Variable",
@@ -124,6 +136,13 @@ v5 = [
         "kind": "ScalarField",
         "name": "nitcCompleteOnExport",
         "storageKey": null
+      },
+      {
+        "alias": null,
+        "args": null,
+        "kind": "ScalarField",
+        "name": "gamificationEnabled",
+        "storageKey": null
       }
     ],
     "storageKey": null
@@ -136,39 +155,41 @@ return {
       (v1/*:: as any*/),
       (v2/*:: as any*/),
       (v3/*:: as any*/),
-      (v4/*:: as any*/)
+      (v4/*:: as any*/),
+      (v5/*:: as any*/)
     ],
     "kind": "Fragment",
     "metadata": null,
     "name": "LocationEditMutation",
-    "selections": (v5/*:: as any*/),
+    "selections": (v6/*:: as any*/),
     "type": "MutationRoot",
     "abstractKey": null
   },
   "kind": "Request",
   "operation": {
     "argumentDefinitions": [
-      (v1/*:: as any*/),
       (v2/*:: as any*/),
+      (v3/*:: as any*/),
       (v0/*:: as any*/),
+      (v5/*:: as any*/),
       (v4/*:: as any*/),
-      (v3/*:: as any*/)
+      (v1/*:: as any*/)
     ],
     "kind": "Operation",
     "name": "LocationEditMutation",
-    "selections": (v5/*:: as any*/)
+    "selections": (v6/*:: as any*/)
   },
   "params": {
-    "cacheID": "ae452a62945900435b3905298154fb6f",
+    "cacheID": "00aae34dbd77a8cb2a8a0f75a205bb1b",
     "id": null,
     "metadata": {},
     "name": "LocationEditMutation",
     "operationKind": "mutation",
-    "text": "mutation LocationEditMutation(\n  $id: ID!\n  $name: String!\n  $enabled: Boolean!\n  $nitcEnabled: Int\n  $nitcCompleteOnExport: Boolean\n) {\n  updateLocation(id: $id, name: $name, enabled: $enabled, nitcEnabled: $nitcEnabled, nitcCompleteOnExport: $nitcCompleteOnExport) {\n    id\n    name\n    enabled\n    nitcEnabled\n    nitcCompleteOnExport\n  }\n}\n"
+    "text": "mutation LocationEditMutation(\n  $id: ID!\n  $name: String!\n  $enabled: Boolean!\n  $nitcEnabled: Int\n  $nitcCompleteOnExport: Boolean\n  $gamificationEnabled: Boolean\n) {\n  updateLocation(id: $id, name: $name, enabled: $enabled, nitcEnabled: $nitcEnabled, nitcCompleteOnExport: $nitcCompleteOnExport, gamificationEnabled: $gamificationEnabled) {\n    id\n    name\n    enabled\n    nitcEnabled\n    nitcCompleteOnExport\n    gamificationEnabled\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "e853a0d2fce53648f02872836615bee8";
+(node as any).hash = "3a0869e1cb3436054be50e96efb03300";
 
 export default node;

@@ -70,6 +70,7 @@ fn location(id: &str, name: &str) -> db::Location {
         enabled: true,
         nitc_enabled: None,
         nitc_complete_on_export: true,
+        gamification_enabled: false,
         ses_api_headquarters_id: None,
         last_successful_member_sync: None,
         created_at: 0,

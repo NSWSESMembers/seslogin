@@ -808,6 +808,7 @@ impl db::Handler for FakeDb {
             enabled: true,
             nitc_enabled,
             nitc_complete_on_export: true,
+            gamification_enabled: false,
             ses_api_headquarters_id: ses_api_headquarters_id.map(str::to_string),
             last_successful_member_sync: None,
             created_at: seslogin::clock::now_sec(),
@@ -847,12 +848,16 @@ impl db::Handler for FakeDb {
                 enabled,
                 nitc_enabled,
                 nitc_complete_on_export,
+                gamification_enabled,
             } => {
                 location.name = name.to_string();
                 location.enabled = enabled;
                 location.nitc_enabled = nitc_enabled;
                 if let Some(complete) = nitc_complete_on_export {
                     location.nitc_complete_on_export = complete;
+                }
+                if let Some(gamification) = gamification_enabled {
+                    location.gamification_enabled = gamification;
                 }
             }
             _ => return unsupported(),
@@ -1342,6 +1347,7 @@ pub(crate) fn seed_location(
             enabled: true,
             nitc_enabled: None,
             nitc_complete_on_export: true,
+            gamification_enabled: false,
             ses_api_headquarters_id: None,
             last_successful_member_sync: None,
             created_at: 0,
