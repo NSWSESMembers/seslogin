@@ -672,6 +672,7 @@ async fn show_locations(_db: &impl Handler, locs: &[Location]) {
             enabled,
             nitc_enabled,
             nitc_complete_on_export,
+            gamification_enabled,
             ses_api_headquarters_id,
             last_successful_member_sync,
             created_at,
@@ -686,6 +687,7 @@ async fn show_locations(_db: &impl Handler, locs: &[Location]) {
                 "nitc_complete_on_export",
                 bool_str(*nitc_complete_on_export),
             ),
+            ("gamification_enabled", bool_str(*gamification_enabled)),
             ("ses_api_headquarters_id", opt_str(ses_api_headquarters_id)),
             (
                 "last_successful_member_sync",

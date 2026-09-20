@@ -1714,6 +1714,11 @@ impl<A: App + HasDb + Send + Sync> Location<A> {
         self.rec.nitc_complete_on_export
     }
 
+    /// Whether members of this location earn badges.
+    async fn gamification_enabled(&self) -> bool {
+        self.rec.gamification_enabled
+    }
+
     async fn ses_api_headquarters_id(&self) -> Option<String> {
         self.rec.ses_api_headquarters_id.clone()
     }

@@ -266,6 +266,7 @@ impl TryInto<Location> for Item {
             },
             // Only stored when the location has opted out; absent means complete.
             nitc_complete_on_export: self.bool_field("nitc_complete_on_export")?.unwrap_or(true),
+            gamification_enabled: self.bool_field("gamification_enabled")?.unwrap_or(false),
             ses_api_headquarters_id,
             last_successful_member_sync: self
                 .i64_field("last_successful_member_sync")?
@@ -3093,6 +3094,9 @@ impl db::Handler for Handler {
             nitc_enabled,
             // Not stored on create — the attribute only appears if the location opts out.
             nitc_complete_on_export: true,
+            // Likewise not stored on create — the attribute only appears if the location
+            // opts in.
+            gamification_enabled: false,
             ses_api_headquarters_id: ses_api_headquarters_id.map(str::to_string),
             last_successful_member_sync: None,
             created_at: now,
@@ -3143,10 +3147,14 @@ impl db::Handler for Handler {
                 enabled,
                 nitc_enabled,
                 nitc_complete_on_export,
+                gamification_enabled,
             } => {
                 let mut update_expr = String::from(
                     "SET #name = :name, enabled = :enabled, nitc_enabled = :nitc_enabled, updated_at = :updated_at",
                 );
+                // DynamoDB allows a single REMOVE section per expression, so every
+                // attribute being cleared below is collected and appended once at the end.
+                let mut remove_attrs: Vec<&str> = Vec::new();
                 let mut req = base
                     .expression_attribute_names("#name", "name")
                     .expression_attribute_values(":name", AttributeValue::S(name.to_string()))
@@ -3172,8 +3180,28 @@ impl db::Handler for Handler {
                             AttributeValue::Bool(false),
                         );
                     }
-                    Some(true) => update_expr.push_str(" REMOVE nitc_complete_on_export"),
+                    Some(true) => remove_attrs.push("nitc_complete_on_export"),
                     None => {}
+                }
+
+                // Gamification is off by default, so only the opt-in is written and
+                // switching back off removes the attribute again. `None` leaves whatever
+                // is there untouched.
+                match gamification_enabled {
+                    Some(true) => {
+                        update_expr.push_str(", gamification_enabled = :gamification_enabled");
+                        req = req.expression_attribute_values(
+                            ":gamification_enabled",
+                            AttributeValue::Bool(true),
+                        );
+                    }
+                    Some(false) => remove_attrs.push("gamification_enabled"),
+                    None => {}
+                }
+
+                if !remove_attrs.is_empty() {
+                    update_expr.push_str(" REMOVE ");
+                    update_expr.push_str(&remove_attrs.join(", "));
                 }
 
                 req.update_expression(update_expr)

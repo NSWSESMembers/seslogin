@@ -101,6 +101,10 @@ type Location {
 	Whether NITC events exported for this location are marked completed in SES.
 	"""
 	nitcCompleteOnExport: Boolean!
+	"""
+	Whether members of this location earn badges.
+	"""
+	gamificationEnabled: Boolean!
 	sesApiHeadquartersId: String
 	lastSuccessfulMemberSync: Int
 	createdAt: Int!
@@ -268,7 +272,7 @@ type MutationRoot {
 	"""
 	reactivateSession(id: ID!): Session!
 	createLocation(name: String!, nitcEnabled: Int): Location!
-	updateLocation(id: ID!, name: String!, enabled: Boolean!, nitcEnabled: Int, nitcCompleteOnExport: Boolean): Location!
+	updateLocation(id: ID!, name: String!, enabled: Boolean!, nitcEnabled: Int, nitcCompleteOnExport: Boolean, gamificationEnabled: Boolean): Location!
 	createCategory(name: String!, isVirtual: Boolean!, nitcGroupId: String, nitcParticipantType: String): Category!
 	updateCategory(id: ID!, name: String!, enabled: Boolean!, isVirtual: Boolean!, nitcGroupId: String, nitcParticipantType: String): Category!
 	createNitcGroup(id: String, nitcType: String!, nitcTagIds: [Int!]!): NitcGroup!

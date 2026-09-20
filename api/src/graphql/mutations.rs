@@ -1684,6 +1684,8 @@ impl<A: App + HasDb + HasQueues + HasMail + Send + Sync + 'static> MutationRoot<
         // Omitting nitc_complete_on_export leaves the location's current preference unchanged,
         // so a client that doesn't know about the field can't silently reset it.
         nitc_complete_on_export: Option<bool>,
+        // Omitted for the same reason as nitc_complete_on_export above.
+        gamification_enabled: Option<bool>,
     ) -> Result<Location<A>> {
         let nitc_enabled = nitc_enabled
             .and_then(|ts| u64::try_from(ts).ok())
@@ -1697,6 +1699,7 @@ impl<A: App + HasDb + HasQueues + HasMail + Send + Sync + 'static> MutationRoot<
                     enabled,
                     nitc_enabled,
                     nitc_complete_on_export,
+                    gamification_enabled,
                 },
             )
             .await?;
