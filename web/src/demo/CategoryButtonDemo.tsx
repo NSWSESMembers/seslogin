@@ -68,7 +68,7 @@ export default function CategoryButtonDemo() {
   const match = findLeafCategory(id);
 
   return (
-    <div className="mx-auto flex min-h-screen max-w-350 flex-col gap-8 bg-surface p-8 text-ink">
+    <div className="mx-auto flex min-h-screen max-w-350 flex-col gap-8 bg-surface p-8 text-center text-ink">
       <div>
         <h1 className="m-0 text-3xl font-bold">Category button demo</h1>
         <Muted className="mt-1.5">
