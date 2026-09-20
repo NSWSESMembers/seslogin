@@ -67,13 +67,11 @@ export default function SessionsNew() {
 
   return (
     <>
-      <p>
+      <p className="my-4">
         Please enter a name to describe the location or type of computer that
         you are setting up to be a kiosk. This will help you identify it later
         if you set up more than one.
       </p>
-      {/* {error && <p className="font-bold text-red-600">Error: {error.message}</p>} */}
-
       <SessionForm
         initialName=""
         initialConfig={NEW_SESSION_CONFIG}

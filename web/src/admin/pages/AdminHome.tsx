@@ -9,6 +9,7 @@ import PeriodsLineChart from "../components/PeriodsLineChart";
 import useSelectedLocation from "../components/useSelectedLocation";
 import { useUserInfo } from "../components/useUserInfo";
 import { formatFullDateTime } from "../../lib/time";
+import { Muted } from "../../components/ui/Muted";
 
 interface DayBucket {
   key: string;
@@ -245,9 +246,7 @@ export default function AdminHome() {
       <section className={CARD_CLASS}>
         <div className={SECTION_TITLE_CLASS}>Top categories (last 7 days)</div>
         {topCategories.length === 0 ? (
-          <p className="m-0 text-ink-muted">
-            No categorised periods in this window.
-          </p>
+          <Muted>No categorised periods in this window.</Muted>
         ) : (
           <div className="grid grid-cols-1 gap-2.5 min-[781px]:grid-cols-[repeat(auto-fit,minmax(210px,1fr))]">
             {topCategories.map((entry, idx) => {
@@ -258,7 +257,7 @@ export default function AdminHome() {
                   className="grid gap-2 rounded-[10px] border border-line-faint bg-surface p-2.5"
                 >
                   <div className="grid grid-cols-[auto_1fr] items-center gap-2">
-                    <div className="inline-flex h-6 min-w-8.5 items-center justify-center rounded-full bg-[#f3ece8] text-xs font-bold text-[#aa4f1f] dark:bg-accent/15 dark:text-accent-light">
+                    <div className="inline-flex h-6 min-w-8.5 items-center justify-center rounded-full bg-rank-badge text-xs font-bold text-rank-badge-ink dark:bg-accent/15 dark:text-accent-light">
                       #{idx + 1}
                     </div>
                     <div className="min-w-0 leading-[1.3] font-semibold">
@@ -267,12 +266,12 @@ export default function AdminHome() {
                   </div>
                   <div className="h-2.5 overflow-hidden rounded-full bg-surface-sunken">
                     <div
-                      className="h-full min-w-0.5 rounded-full bg-linear-to-r from-[#c95522] to-[#e8945b]"
+                      className="h-full min-w-0.5 rounded-full bg-linear-to-r from-progress-start to-progress-end"
                       style={{ width: barWidth }}
                     />
                   </div>
                   <div className="flex flex-wrap gap-1.5">
-                    <span className="inline-flex items-center rounded-full bg-[#f8eee9] px-2.25 py-0.75 text-xs font-semibold text-[#953f16] dark:bg-accent/15 dark:text-accent-light">
+                    <span className="inline-flex items-center rounded-full bg-count-badge px-2.25 py-0.75 text-xs font-semibold text-count-badge-ink dark:bg-accent/15 dark:text-accent-light">
                       {entry.periodCount} periods
                     </span>
                     <span className="inline-flex items-center rounded-full bg-surface-raised px-2.25 py-0.75 text-xs font-semibold text-ink-muted">

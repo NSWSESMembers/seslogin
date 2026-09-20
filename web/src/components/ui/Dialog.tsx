@@ -1,16 +1,19 @@
 import type { ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { cn } from "../../lib/tw";
 
 // Centred modal dialog over a dimmed backdrop, both fading in on mount.
 // Clicking the backdrop calls onDismiss (omit it to make the dialog
-// non-dismissable). `width` overrides the default panel width — pass a width
-// utility rather than putting one in `className`, since two width classes in
-// one string resolve by stylesheet order, not prop order.
+// non-dismissable). `width` and `className` are merged via cn(), so a width
+// utility passed in `className` overrides the default `w-150` correctly.
 //
-// Portalled to <body> so the panel inherits page-level typography (the global
-// `body` centring, normal `white-space`) regardless of where it's rendered
-// from — a Dialog opened from inside e.g. a right-aligned, `whitespace-nowrap`
-// table cell would otherwise inherit those and mangle its own contents.
+// Portalled to <body> so the panel isn't affected by layout or `white-space`
+// in whatever DOM position it's opened from — a Dialog opened from inside
+// e.g. a `whitespace-nowrap` table cell would otherwise inherit that and
+// mangle its own contents. Sets `text-center` explicitly (rather than relying
+// on inherited page centring, which this codebase is phasing out — see #235)
+// so dialog content stays centred regardless of what text-align the page
+// behind it happens to use.
 export function Dialog(props: {
   onDismiss?: () => void;
   width?: string;
@@ -24,7 +27,11 @@ export function Dialog(props: {
         onClick={props.onDismiss}
       ></div>
       <div
-        className={`relative z-10 flex ${props.width ?? "w-150"} max-w-[92vw] animate-dialog-in flex-col gap-4 rounded-xl bg-surface p-4 shadow-2xl motion-reduce:animate-none sm:p-6 ${props.className ?? ""}`}
+        className={cn(
+          "relative z-10 flex max-w-[92vw] animate-dialog-in flex-col gap-4 rounded-xl bg-surface p-4 text-center shadow-2xl motion-reduce:animate-none sm:p-6",
+          props.width ?? "w-150",
+          props.className,
+        )}
       >
         {props.children}
       </div>

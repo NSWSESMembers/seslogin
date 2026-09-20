@@ -9,11 +9,11 @@ export default function SessionCreatedInterstitial({
 }: SessionCreatedInterstitialProps) {
   return (
     <div>
-      <p>
+      <p className="my-4">
         Your kiosk session has been created and can now be assigned to a
         computer.
       </p>
-      <p>
+      <p className="my-4">
         Please enter the following code on your kiosk computer by accessing the{" "}
         <b>SES Activity</b> (seslogin.com) system and selecting the <b>Kiosk</b>{" "}
         module.
@@ -23,7 +23,7 @@ export default function SessionCreatedInterstitial({
         {code || "Unavailable"}
       </p>
 
-      <p className="text-center">
+      <p className="my-4 text-center">
         <ButtonLink to="/admin/sessions">Continue</ButtonLink>
       </p>
     </div>

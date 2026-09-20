@@ -1,4 +1,5 @@
 import { formatSeconds } from "../../lib/time";
+import { SectionHeading } from "../../components/ui/SectionHeading";
 
 export type ActivityTotalsRow = {
   id: string;
@@ -20,7 +21,7 @@ type Props = {
 export default function ActivityTotalsTable({ title, rows, showSplit }: Props) {
   return (
     <div className="flex-1">
-      <h2>{title}</h2>
+      <SectionHeading>{title}</SectionHeading>
       {showSplit && (
         <div className="flex justify-end gap-3 text-xs text-ink-muted">
           <span>Virtual</span>

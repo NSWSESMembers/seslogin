@@ -2,10 +2,13 @@ import { graphql, isValueResult } from "relay-runtime";
 import { fetchQuery, useRelayEnvironment } from "react-relay";
 import { useSettings } from "../../lib/settings";
 import ActivityTimeRange from "../components/ActivityTimeRange";
-import useActivityTimeRange from "../components/useActivityTimeRange";
+import useActivityTimeRange, {
+  INVALID_TIME_RANGE_MESSAGE,
+} from "../components/useActivityTimeRange";
 import { useState } from "react";
 import type { ReportsQuery } from "./__generated__/ReportsQuery.graphql";
 import { Button } from "../../components/ui/Button";
+import { StatusMessage } from "../../components/ui/StatusMessage";
 
 const REPORT_PAGE_SIZE = 1000;
 type ReportPeriodEdge = NonNullable<
@@ -131,7 +134,7 @@ export default function Reports() {
 
   async function exportReport(format: "csv" | "xlsx") {
     if (!hasValidRange) {
-      setErrorText("Start time must be before end time.");
+      setErrorText(INVALID_TIME_RANGE_MESSAGE);
       setSuccessText("");
       return;
     }
@@ -389,7 +392,7 @@ export default function Reports() {
 
   return (
     <>
-      <p>
+      <p className="my-4">
         This report includes every sign-in/out recorded at this location,
         including visits by members from other units. The export does not
         indicate a visitor's home unit.
@@ -402,18 +405,18 @@ export default function Reports() {
           onEndChange={setEndInput}
         />
         {!hasValidRange && (
-          <p className="font-bold text-red-600">
-            Start time must be before end time.
-          </p>
+          <StatusMessage variant="error">
+            {INVALID_TIME_RANGE_MESSAGE}
+          </StatusMessage>
         )}
-        {errorText && <p className="font-bold text-red-600">{errorText}</p>}
+        {errorText && (
+          <StatusMessage variant="error">{errorText}</StatusMessage>
+        )}
         {successText && (
-          <p className="font-bold text-green-700">{successText}</p>
+          <StatusMessage variant="success">{successText}</StatusMessage>
         )}
         {warningText && (
-          <p className="font-bold whitespace-pre-line text-orange-600">
-            {warningText}
-          </p>
+          <StatusMessage variant="warning">{warningText}</StatusMessage>
         )}
         <div className="flex justify-center gap-2.5 max-md:flex-col max-md:items-center">
           <Button

@@ -5,6 +5,7 @@ import type { SettingsActivityDisplayMutation } from "./__generated__/SettingsAc
 import { useNotify } from "../components/useNotify";
 import { FieldList, FormField } from "../../components/ui/FormField";
 import { Button } from "../../components/ui/Button";
+import { SectionHeading } from "../../components/ui/SectionHeading";
 import { useRetryableLazyLoadQuery } from "../../components/useRetryableLazyLoadQuery";
 
 export default function SettingsActivityDisplay() {
@@ -56,8 +57,8 @@ export default function SettingsActivityDisplay() {
 
   return (
     <>
-      <h2>Activity display</h2>
-      <p>
+      <SectionHeading>Activity display</SectionHeading>
+      <p className="my-4">
         Choose how virtual-category activity is shown throughout the admin
         dashboard and Activity tab.
       </p>

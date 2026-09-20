@@ -11,9 +11,9 @@ const DIGIT_KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9"];
 // so the delete and enter keys line up with the digits.
 const keyBase =
   "flex h-20 w-28 cursor-pointer items-center justify-center rounded-[14px] leading-none shadow-md disabled:cursor-default disabled:opacity-30 disabled:shadow-none";
-const keyDigit = `${keyBase} bg-neutral-800 text-[2.25em] text-white active:bg-neutral-600 dark:bg-neutral-700 dark:active:bg-neutral-500`;
-const keyAux = `${keyBase} bg-neutral-200 text-[1.75em] text-neutral-700 active:bg-neutral-300 dark:bg-neutral-800 dark:text-neutral-300 dark:active:bg-neutral-700`;
-const keyConfirm = `${keyBase} bg-[#2f7d4f] text-[1.75em] text-white active:bg-[#276a43] disabled:bg-neutral-300 disabled:text-neutral-500 dark:disabled:bg-neutral-700 dark:disabled:text-neutral-500`;
+const keyDigit = `${keyBase} bg-neutral-800 text-4xl text-white active:bg-neutral-600 dark:bg-neutral-700 dark:active:bg-neutral-500`;
+const keyAux = `${keyBase} bg-neutral-200 text-3xl text-neutral-700 active:bg-neutral-300 dark:bg-neutral-800 dark:text-neutral-300 dark:active:bg-neutral-700`;
+const keyConfirm = `${keyBase} bg-confirm text-3xl text-white active:bg-confirm-active disabled:bg-neutral-300 disabled:text-neutral-500 dark:disabled:bg-neutral-700 dark:disabled:text-neutral-500`;
 // The digit boxes sit on the always-dark display strip, so they stay
 // light-on-dark in both themes — no dark: variants.
 const digitBoxBase =
@@ -76,7 +76,7 @@ export default function ScanNumberPadDialog(props: {
   return (
     <Dialog onDismiss={onClose} width="w-auto">
       <DialogTitle>Enter your SES ID</DialogTitle>
-      <div className="flex justify-center gap-1.5 rounded-[14px] bg-neutral-800 px-3 py-3.5 text-[2em] font-bold">
+      <div className="flex justify-center gap-1.5 rounded-[14px] bg-neutral-800 px-3 py-3.5 text-3xl font-bold">
         {Array.from({ length: MEMBER_ID_LENGTH }, (_, index) => (
           <span
             key={index}

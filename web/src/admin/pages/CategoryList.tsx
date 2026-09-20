@@ -120,7 +120,7 @@ function Row({
             : undefined
       }
     >
-      {isDev && <Td className="font-mono text-[0.85em]">{category.id}</Td>}
+      {isDev && <Td className="font-mono text-sm">{category.id}</Td>}
       <Td nowrap>
         <div className={category.enabled ? undefined : "line-through"}>
           {category.name}
@@ -128,7 +128,7 @@ function Row({
       </Td>
       <Td>{category.isVirtual ? "Yes" : ""}</Td>
       <Td>{category.nitcParticipantType ?? ""}</Td>
-      <Td className="font-mono text-[0.85em]">{category.nitcGroupId ?? ""}</Td>
+      <Td className="font-mono text-sm">{category.nitcGroupId ?? ""}</Td>
       <Td>{category.nitcGroup?.nitcType ?? ""}</Td>
       <Td>{tagNames ?? ""}</Td>
       <Td>
@@ -183,7 +183,7 @@ function KioskOnlyRow({
   return (
     <tr className="bg-amber-100 dark:bg-amber-950/50">
       {isDev && (
-        <Td className="font-mono text-[0.85em]">{dbCategory?.id ?? leaf.id}</Td>
+        <Td className="font-mono text-sm">{dbCategory?.id ?? leaf.id}</Td>
       )}
       <Td nowrap>
         <span className="font-bold text-amber-800 dark:text-amber-300">
@@ -192,9 +192,7 @@ function KioskOnlyRow({
       </Td>
       <Td>{dbCategory?.isVirtual ? "Yes" : ""}</Td>
       <Td>{dbCategory?.nitcParticipantType ?? ""}</Td>
-      <Td className="font-mono text-[0.85em]">
-        {dbCategory?.nitcGroupId ?? ""}
-      </Td>
+      <Td className="font-mono text-sm">{dbCategory?.nitcGroupId ?? ""}</Td>
       <Td>{dbCategory?.nitcGroup?.nitcType ?? ""}</Td>
       <Td>{tagNames ?? ""}</Td>
       <Td>
@@ -257,7 +255,7 @@ export default function CategoryList() {
 
   return (
     <>
-      <p>
+      <p className="my-4">
         <span className="font-bold text-red-600 dark:text-red-400">
           Warning:
         </span>{" "}
@@ -265,7 +263,7 @@ export default function CategoryList() {
         gets compiled into the JS frontend or else the listing of categories in
         the scan interface will not be updated.
       </p>
-      <p>
+      <p className="my-4">
         <label>
           <input
             type="checkbox"

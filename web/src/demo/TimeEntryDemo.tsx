@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import ScanModalDateTime from "../kiosk/components/ScanModalDateTime";
+import { Muted } from "../components/ui/Muted";
 import { formatDayDate } from "../lib/time";
 
 // Standalone harness for the kiosk time-entry modal (ScanModalDateTime), so
@@ -26,7 +27,7 @@ export default function TimeEntryDemo() {
   }
 
   return (
-    <div className="mx-auto flex min-h-screen max-w-200 flex-col gap-6 bg-surface p-8 text-ink">
+    <div className="mx-auto flex min-h-screen max-w-200 flex-col gap-6 bg-surface p-8 text-center text-ink">
       <ScanModalDateTime
         getShowFunction={(show) => {
           showModal.current = show;
@@ -39,28 +40,28 @@ export default function TimeEntryDemo() {
 
       <div>
         <h1 className="m-0 text-3xl font-bold">Time entry demo</h1>
-        <p className="text-ink-muted">
+        <Muted className="mt-1.5">
           Tap a digit to move the orange ring onto it, then type to replace it.
           Digits 0-9, Backspace, ←/→, A/P, Enter and Escape all work from a
           hardware keyboard.
-        </p>
+        </Muted>
       </div>
 
       <div className="flex flex-wrap gap-3">
         <button
-          className="rounded-xl bg-accent px-4 py-2.5 text-lg text-white shadow-md"
+          className="cursor-pointer rounded-xl bg-accent px-4 py-2.5 text-lg text-white shadow-md"
           onClick={() => open("startTime", 9, 30)}
         >
           Open prefilled (09:30)
         </button>
         <button
-          className="rounded-xl bg-accent px-4 py-2.5 text-lg text-white shadow-md"
+          className="cursor-pointer rounded-xl bg-accent px-4 py-2.5 text-lg text-white shadow-md"
           onClick={() => open("endTime", 22, 5)}
         >
           Open prefilled 24h (22:05)
         </button>
         <button
-          className="rounded-xl bg-accent px-4 py-2.5 text-lg text-white shadow-md"
+          className="cursor-pointer rounded-xl bg-accent px-4 py-2.5 text-lg text-white shadow-md"
           onClick={() => open("startTime", new Date().getHours(), 0)}
         >
           Open at this hour
@@ -68,11 +69,11 @@ export default function TimeEntryDemo() {
       </div>
 
       <div>
-        <h2 className="text-xl font-bold">
+        <h2 className="mt-2 text-xl font-bold">
           Saves ({saves.length}) · closes without saving ({closes})
         </h2>
         {saves.length === 0 ? (
-          <p className="text-ink-muted">Nothing saved yet.</p>
+          <p className="my-4 text-ink-muted">Nothing saved yet.</p>
         ) : (
           <ul className="m-0 list-none p-0">
             {saves.map((save, i) => (

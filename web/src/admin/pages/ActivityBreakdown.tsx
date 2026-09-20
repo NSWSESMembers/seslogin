@@ -4,8 +4,11 @@ import ActivityTimeRange from "../components/ActivityTimeRange";
 import ActivityBreakdownDisplay from "../components/ActivityBreakdownDisplay";
 import LoadingIndicator from "../../components/LoadingIndicator";
 import RelayErrorBoundary from "../../components/RelayErrorBoundary";
-import useActivityTimeRange from "../components/useActivityTimeRange";
+import useActivityTimeRange, {
+  INVALID_TIME_RANGE_MESSAGE,
+} from "../components/useActivityTimeRange";
 import { Button } from "../../components/ui/Button";
+import { StatusMessage } from "../../components/ui/StatusMessage";
 
 export default function ActivityBreakdown() {
   const settings = useSettings();
@@ -23,7 +26,7 @@ export default function ActivityBreakdown() {
 
   return (
     <>
-      <p>
+      <p className="my-4">
         Totals include everyone who signed in at this location, including
         members visiting from other units.
       </p>
@@ -44,9 +47,9 @@ export default function ActivityBreakdown() {
         </Button>
       </div>
       {!hasValidRange && (
-        <p className="font-bold text-red-600">
-          Start time must be before end time.
-        </p>
+        <StatusMessage variant="error">
+          {INVALID_TIME_RANGE_MESSAGE}
+        </StatusMessage>
       )}
 
       {hasValidRange && (

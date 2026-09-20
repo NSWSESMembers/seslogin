@@ -22,7 +22,7 @@ export default function Scan() {
           onSigningOutNameChange={setSigningOutName}
         />
       </div>
-      <div className="fixed right-2.5 bottom-1.5 text-[0.75em] text-neutral-400">
+      <div className="fixed right-2.5 bottom-1.5 text-xs text-neutral-400">
         <ClientVersionLabel noLink />
       </div>
       {statusOpen && <KioskStatusDialog onClose={() => setStatusOpen(false)} />}

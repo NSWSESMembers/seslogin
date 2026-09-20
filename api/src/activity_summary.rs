@@ -197,7 +197,7 @@ async fn fetch_all_periods_for_location(
             descending: false,
         };
         let batch = db
-            .list_periods_for_location(location_id, false, Some((start_ts, end_ts)), page)
+            .list_periods_for_location(location_id, false, Some((start_ts, end_ts)), None, page)
             .await?;
         let done = batch.len() < 500;
         if let Some(last) = batch.last() {

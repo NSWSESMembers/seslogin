@@ -20,6 +20,7 @@ import { useNotify } from "./useNotify";
 import { AdminTable, Th, Td } from "../../components/ui/Table";
 import { Button, ButtonLink } from "../../components/ui/Button";
 import { Popover } from "../../components/ui/Popover";
+import { StatusMessage } from "../../components/ui/StatusMessage";
 import CommentIndicator from "./CommentIndicator";
 
 type Firstcol = "location" | "person";
@@ -309,7 +310,7 @@ function Row<T extends ActivityListTable_period$key>({
           )
         ) : null}
       </Td>
-      {isDev && <Td className="font-mono text-[0.85em]">{period.id}</Td>}
+      {isDev && <Td className="font-mono text-sm">{period.id}</Td>}
       <Td>
         {getRowLabel(entry.ref)}
         {subLabel && <div className="text-xs text-ink-muted">{subLabel}</div>}
@@ -453,14 +454,14 @@ export default function ActivityListTable<
         </tbody>
       </AdminTable>
       {hasNextPage && onLoadMore && (
-        <p>
+        <p className="my-4">
           <Button onClick={onLoadMore} disabled={isLoadingMore}>
             {isLoadingMore ? "Loading..." : "Load More"}
           </Button>
         </p>
       )}
       {loadMoreError && (
-        <p className="font-bold text-red-600">{loadMoreError}</p>
+        <StatusMessage variant="error">{loadMoreError}</StatusMessage>
       )}
     </>
   );

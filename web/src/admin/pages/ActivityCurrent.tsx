@@ -1,15 +1,18 @@
-import { graphql, readInlineData } from "relay-runtime";
+import { graphql, isValueResult, readInlineData } from "relay-runtime";
 import { fetchQuery, useRelayEnvironment } from "react-relay";
 import { useSettings } from "../../lib/settings";
 import { useRetryableLazyLoadQuery } from "../../components/useRetryableLazyLoadQuery";
 import { unwrapCatch } from "../../lib/relayCatch";
-import { startTransition, useEffect, useState } from "react";
+import { Suspense, startTransition, useEffect, useState } from "react";
 import type {
   ActivityCurrentQuery,
   ActivityCurrentQuery$data,
 } from "./__generated__/ActivityCurrentQuery.graphql";
 import type { ActivityCurrent_periodName$key } from "./__generated__/ActivityCurrent_periodName.graphql";
 import ActivityListTable from "../components/ActivityListTable";
+import ActivityCategorySelector from "../components/ActivityCategorySelector";
+import LoadingIndicator from "../../components/LoadingIndicator";
+import TextInput from "../../components/ui/TextInput";
 
 const ACTIVITY_CURRENT_PAGE_SIZE = 100;
 
@@ -21,6 +24,7 @@ type PeriodRef = NonNullable<
 
 // The display name for this (per-location) view is the member's name. Colocate
 // that data dependency here, read inside getRowLabel from the same period ref.
+// memberNumber is only used for the text filter below, never displayed.
 const activityCurrentPeriodName = graphql`
   fragment ActivityCurrent_periodName on Period @inline {
     guestName
@@ -32,6 +36,7 @@ const activityCurrentPeriodName = graphql`
       id
       firstName
       lastName
+      memberNumber
       location {
         id
         name
@@ -41,15 +46,85 @@ const activityCurrentPeriodName = graphql`
 `;
 
 export default function ActivityCurrent() {
+  const [categoryIds, setCategoryIds] = useState<string[]>([]);
+  const [filterText, setFilterText] = useState("");
+
+  return (
+    <>
+      <p className="my-4">
+        This list shows members currently signed in at this location, including
+        members visiting from other units (their home unit is shown under their
+        name).
+      </p>
+      <div className="mb-3 flex flex-wrap items-center gap-3">
+        <TextInput
+          type="text"
+          width="half"
+          placeholder="Filter by name or member number…"
+          value={filterText}
+          onChange={(e) => setFilterText(e.target.value)}
+        />
+        <Suspense fallback={<LoadingIndicator />}>
+          <ActivityCategorySelector
+            value={categoryIds}
+            onChange={setCategoryIds}
+          />
+        </Suspense>
+      </div>
+      <Suspense fallback={<LoadingIndicator />}>
+        <ActivityCurrentContent
+          categoryIds={categoryIds}
+          filterText={filterText}
+        />
+      </Suspense>
+    </>
+  );
+}
+
+function matchesFilter(periodRef: PeriodRef, normalizedFilter: string) {
+  if (!normalizedFilter) return true;
+  const { person, guestName } = readInlineData<ActivityCurrent_periodName$key>(
+    activityCurrentPeriodName,
+    periodRef,
+  );
+  // Non-throwing: a failed person lookup shouldn't hide the row from an empty
+  // filter, nor crash filtering for the whole list — it just can't match on
+  // name/number, same as a guest can't match on member number.
+  if (isValueResult(person) && person.value) {
+    const { firstName, lastName, memberNumber } = person.value;
+    return (
+      `${firstName} ${lastName}`.toLowerCase().includes(normalizedFilter) ||
+      (memberNumber?.toLowerCase().includes(normalizedFilter) ?? false)
+    );
+  }
+  return guestName?.toLowerCase().includes(normalizedFilter) ?? false;
+}
+
+function ActivityCurrentContent({
+  categoryIds,
+  filterText,
+}: {
+  categoryIds: string[];
+  filterText: string;
+}) {
   const settings = useSettings();
   const relayEnvironment = useRelayEnvironment();
   const data = useRetryableLazyLoadQuery<ActivityCurrentQuery>(
     graphql`
-      query ActivityCurrentQuery($location: ID!, $first: Int!, $after: String)
-      @throwOnFieldError {
+      query ActivityCurrentQuery(
+        $location: ID!
+        $first: Int!
+        $after: String
+        $categories: [ID!]
+      ) @throwOnFieldError {
         location(id: $location) {
           id
-          periods(onlyActive: true, first: $first, after: $after) {
+          periods(
+            onlyActive: true
+            first: $first
+            after: $after
+            categories: $categories
+          ) {
             edges {
               node {
                 ...ActivityListTable_period
@@ -68,6 +143,7 @@ export default function ActivityCurrent() {
       location: settings?.locationId || "",
       first: ACTIVITY_CURRENT_PAGE_SIZE,
       after: null,
+      categories: categoryIds.length > 0 ? categoryIds : null,
     },
   );
 
@@ -135,10 +211,16 @@ export default function ActivityCurrent() {
             $location: ID!
             $first: Int!
             $after: String
+            $categories: [ID!]
           ) {
             location(id: $location) {
               id
-              periods(onlyActive: true, first: $first, after: $after) {
+              periods(
+                onlyActive: true
+                first: $first
+                after: $after
+                categories: $categories
+              ) {
                 edges {
                   node {
                     ...ActivityListTable_period
@@ -157,6 +239,7 @@ export default function ActivityCurrent() {
           location: settings?.locationId || "",
           first: ACTIVITY_CURRENT_PAGE_SIZE,
           after: endCursor,
+          categories: categoryIds.length > 0 ? categoryIds : null,
         },
       ).toPromise();
 
@@ -179,16 +262,25 @@ export default function ActivityCurrent() {
     }
   }
 
+  const normalizedFilter = filterText.trim().toLowerCase();
+  const filteredPeriods = normalizedFilter
+    ? periods.filter((p) => matchesFilter(p, normalizedFilter))
+    : periods;
+
   return (
     <>
-      <p>
-        This list shows members currently signed in at this location, including
-        members visiting from other units (their home unit is shown under their
-        name).
-      </p>
+      {normalizedFilter && filteredPeriods.length === 0 && (
+        <p className="my-4 text-ink-muted">No periods match “{filterText}”.</p>
+      )}
+      {normalizedFilter && hasNextPage && (
+        <p className="my-4 text-ink-muted">
+          Showing matches from the {periods.length} periods loaded so far — use
+          Load More below to search further back.
+        </p>
+      )}
       <ActivityListTable
         firstcol="person"
-        periods={periods}
+        periods={filteredPeriods}
         getRowLabel={getRowLabel}
         getRowSubLabel={getRowSubLabel}
         hasNextPage={hasNextPage}

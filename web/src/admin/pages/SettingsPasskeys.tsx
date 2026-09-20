@@ -14,6 +14,7 @@ import {
 import { PanelMessage } from "../../components/ui/Panel";
 import { AdminTable, Th, Td } from "../../components/ui/Table";
 import { Button } from "../../components/ui/Button";
+import { SectionHeading } from "../../components/ui/SectionHeading";
 
 const MAX_PASSKEYS = 10;
 
@@ -126,8 +127,8 @@ export default function SettingsPasskeys() {
 
   return (
     <div>
-      <h2>Passkeys</h2>
-      <p>
+      <SectionHeading>Passkeys</SectionHeading>
+      <p className="my-4">
         Passkeys let you sign in with Face ID, Touch ID, or your device PIN
         instead of an email code. You can save up to {MAX_PASSKEYS}.
       </p>
@@ -137,7 +138,7 @@ export default function SettingsPasskeys() {
         </PanelMessage>
       )}
       {error && <PanelMessage>{error}</PanelMessage>}
-      {passkeys.length === 0 && <p>No passkeys saved yet.</p>}
+      {passkeys.length === 0 && <p className="my-4">No passkeys saved yet.</p>}
       {passkeys.length > 0 && (
         <AdminTable>
           <thead>
@@ -179,7 +180,7 @@ export default function SettingsPasskeys() {
           </tbody>
         </AdminTable>
       )}
-      <p>
+      <p className="my-4">
         <Button onClick={handleAdd} disabled={busy || atCap || !supported}>
           {busy ? "Setting up…" : "Add a passkey"}
         </Button>

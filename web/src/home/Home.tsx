@@ -8,7 +8,7 @@ export default function Home() {
       <div className="bg-surface">
         <img className="mx-auto box-content pt-15 pb-5" src={logo} alt="" />
 
-        <p className="mx-4 my-10 text-2xl md:mx-10">
+        <p className="mx-4 my-10 text-center text-2xl md:mx-10">
           Welcome, please choose an option to continue...
         </p>
 
@@ -21,10 +21,10 @@ export default function Home() {
               <span className="shrink-0 font-title text-4xl font-bold whitespace-nowrap text-accent group-hover:text-accent-light">
                 Kiosk
               </span>
-              <p className="flex-1 text-navy group-hover:text-[#6c81c1]">
+              <p className="my-4 flex-1 text-navy group-hover:text-navy-light">
                 Allow members to sign in and out using this computer
               </p>
-              <KioskIcon className="size-16.25 shrink-0 text-navy group-hover:text-[#6c81c1] group-hover:[--icon-accent:var(--color-accent-light)] max-md:hidden" />
+              <KioskIcon className="size-16.25 shrink-0 text-navy group-hover:text-navy-light group-hover:[--icon-accent:var(--color-accent-light)] max-md:hidden" />
             </Link>
           </li>
 
@@ -36,11 +36,11 @@ export default function Home() {
               <span className="shrink-0 font-title text-4xl font-bold whitespace-nowrap text-accent group-hover:text-accent-light">
                 Admin
               </span>
-              <p className="flex-1 text-navy group-hover:text-[#6c81c1]">
+              <p className="my-4 flex-1 text-navy group-hover:text-navy-light">
                 Use the administrator dashboard to administer your unit, create
                 reports and view activity
               </p>
-              <AdminIcon className="size-16.25 shrink-0 text-navy group-hover:text-[#6c81c1] group-hover:[--icon-accent:var(--color-accent-light)] max-md:hidden" />
+              <AdminIcon className="size-16.25 shrink-0 text-navy group-hover:text-navy-light group-hover:[--icon-accent:var(--color-accent-light)] max-md:hidden" />
             </Link>
           </li>
         </ul>

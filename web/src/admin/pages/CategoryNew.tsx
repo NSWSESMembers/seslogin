@@ -79,7 +79,9 @@ export default function CategoryNew() {
 
   return (
     <>
-      <p>Enter the details of the new category in the form below.</p>
+      <p className="my-4">
+        Enter the details of the new category in the form below.
+      </p>
       <form action={handleSubmit}>
         <FieldList>
           <FormField label={<label htmlFor="name">Name</label>}>

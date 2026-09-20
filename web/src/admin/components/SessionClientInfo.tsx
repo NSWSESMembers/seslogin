@@ -2,6 +2,7 @@ import { useRef, useState, type ReactNode } from "react";
 import { formatSeconds } from "../../lib/time";
 import { getCurrentEnvironment } from "../../lib/clientInfo";
 import { Popover } from "../../components/ui/Popover";
+import { Muted } from "../../components/ui/Muted";
 
 /**
  * Structurally compatible with what Relay generates for the `clientInfo` selection, so
@@ -108,11 +109,11 @@ export default function SessionClientInfo({
 }) {
   if (clientInfo == null) {
     return (
-      <p className="text-ink-muted">
+      <Muted>
         This kiosk hasn't reported anything about itself yet. It will on its
         next check-in, unless it is running a client build older than this
         feature.
-      </p>
+      </Muted>
     );
   }
 
@@ -141,12 +142,12 @@ export default function SessionClientInfo({
       )}
       {clientInfo.origin != null && (
         <Row label="Loaded from">
-          <span className="font-mono text-[0.9em]">{clientInfo.origin}</span>
+          <span className="font-mono text-sm">{clientInfo.origin}</span>
         </Row>
       )}
       {clientInfo.apiUrl != null && (
         <Row label="API endpoint">
-          <span className="font-mono text-[0.9em]">{clientInfo.apiUrl}</span>
+          <span className="font-mono text-sm">{clientInfo.apiUrl}</span>
         </Row>
       )}
       {clientInfo.profile != null && (
@@ -161,7 +162,7 @@ export default function SessionClientInfo({
       )}
       {clientInfo.userAgent != null && (
         <Row label="Browser">
-          <span className="text-[0.9em]">{clientInfo.userAgent}</span>
+          <span className="text-sm">{clientInfo.userAgent}</span>
         </Row>
       )}
       {clientInfo.screen != null && (

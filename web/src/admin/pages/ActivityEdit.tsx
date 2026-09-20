@@ -15,6 +15,7 @@ import TimeInputWithControls from "../../components/ui/TimeInputWithControls";
 import Textarea from "../../components/ui/Textarea";
 import Combobox from "../../components/ui/Combobox";
 import { Button } from "../../components/ui/Button";
+import { StatusMessage } from "../../components/ui/StatusMessage";
 
 export default function ActivityEdit() {
   const params = useParams();
@@ -208,7 +209,7 @@ export default function ActivityEdit() {
 
   return (
     <>
-      <p>
+      <p className="my-4">
         Edit the {isGuest ? "guest " : ""}activity entry details, then click
         Save.
       </p>
@@ -259,8 +260,10 @@ export default function ActivityEdit() {
               onChange={setEndValue}
               copyFrom={{ label: "Copy start time", value: startValue }}
             />
-            {error && <p className="font-bold text-red-600">{error}</p>}
-            {warning && <p className="font-bold text-orange-600">{warning}</p>}
+            {error && <StatusMessage variant="error">{error}</StatusMessage>}
+            {warning && (
+              <StatusMessage variant="warning">{warning}</StatusMessage>
+            )}
           </FormField>
           <FormField label={<label htmlFor="comment">Comment</label>}>
             <Textarea

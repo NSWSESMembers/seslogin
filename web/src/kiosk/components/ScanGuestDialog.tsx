@@ -3,6 +3,7 @@ import { graphql, useLazyLoadQuery, useMutation } from "react-relay";
 import { inputBase } from "../../components/ui/inputStyles";
 import { Button } from "../../components/ui/Button";
 import { Dialog, DialogActions, DialogTitle } from "../../components/ui/Dialog";
+import { StatusMessage } from "../../components/ui/StatusMessage";
 import { formatTime } from "../../lib/time";
 import { getServerErrorMessage } from "../../lib/relayErrors";
 import type { ScanGuestDialogQuery } from "./__generated__/ScanGuestDialogQuery.graphql";
@@ -48,7 +49,9 @@ function GuestList(props: {
     .filter((node) => node.guestName != null);
 
   if (guests.length === 0) {
-    return <p className="text-ink-muted">No guests are currently signed in.</p>;
+    return (
+      <p className="my-4 text-ink-muted">No guests are currently signed in.</p>
+    );
   }
 
   return (
@@ -162,7 +165,11 @@ export default function ScanGuestDialog(props: { onClose: () => void }) {
     <Dialog onDismiss={onClose}>
       <DialogTitle>Guest sign in / out</DialogTitle>
 
-      {error && <p className="m-0 font-bold text-red-600">{error}</p>}
+      {error && (
+        <StatusMessage variant="error" className="m-0">
+          {error}
+        </StatusMessage>
+      )}
 
       <div className="flex flex-col gap-3">
         <label className="flex flex-col gap-1">
@@ -198,7 +205,7 @@ export default function ScanGuestDialog(props: { onClose: () => void }) {
 
       <div className="flex flex-col gap-2">
         <h3 className="m-0 text-lg font-bold">Currently signed in guests</h3>
-        <Suspense fallback={<p className="text-ink-muted">Loading…</p>}>
+        <Suspense fallback={<p className="my-4 text-ink-muted">Loading…</p>}>
           <GuestList
             onSignOut={handleSignOut}
             signOutInFlightId={signOutInFlightId}

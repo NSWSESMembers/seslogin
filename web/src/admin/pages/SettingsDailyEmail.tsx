@@ -5,6 +5,7 @@ import { useNotify } from "../components/useNotify";
 import { FieldList, FormField } from "../../components/ui/FormField";
 import { Button } from "../../components/ui/Button";
 import MultiCombobox from "../../components/ui/MultiCombobox";
+import { SectionHeading } from "../../components/ui/SectionHeading";
 import { useRetryableLazyLoadQuery } from "../../components/useRetryableLazyLoadQuery";
 
 /**
@@ -73,8 +74,8 @@ export default function SettingsDailyEmail() {
 
   return (
     <>
-      <h2>Daily email summary</h2>
-      <p>
+      <SectionHeading>Daily email summary</SectionHeading>
+      <p className="my-4">
         Choose which locations to include in your nightly activity summary
         email. Emails are sent just after midnight with the previous day&apos;s
         activity.
@@ -91,7 +92,7 @@ export default function SettingsDailyEmail() {
             }
           >
             {locations.length === 0 && (
-              <p>No locations available to your account.</p>
+              <p className="my-4">No locations available to your account.</p>
             )}
             {useCombobox ? (
               <MultiCombobox

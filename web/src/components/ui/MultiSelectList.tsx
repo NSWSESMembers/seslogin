@@ -8,6 +8,7 @@ import {
 } from "react";
 import { tw } from "../../lib/tw";
 import { inputBase } from "./inputStyles";
+import { Muted } from "./Muted";
 
 export interface MultiSelectOption {
   id: string;
@@ -74,7 +75,7 @@ const filterInputClassName = [inputBase, tw`w-full text-sm`].join(" ");
 const rowBase = tw`flex min-h-8 cursor-pointer items-start gap-2 border-b border-line-faint px-2 py-1.5 last:border-b-0 hover:bg-brand/5 has-checked:bg-brand/5`;
 const rowDisabled = tw`cursor-not-allowed opacity-50`;
 
-const bulkActionClassName = tw`text-ink-muted underline decoration-dotted hover:text-ink disabled:cursor-not-allowed disabled:no-underline disabled:opacity-50`;
+const bulkActionClassName = tw`cursor-pointer text-ink-muted underline decoration-dotted hover:text-ink disabled:cursor-not-allowed disabled:no-underline disabled:opacity-50`;
 
 /**
  * A search input that filters a native checkbox group. Native checkboxes
@@ -324,9 +325,9 @@ export default function MultiSelectList({
             </div>
 
             {emptyRowsMessage !== null ? (
-              <p className="p-3 text-center text-sm text-ink-muted">
+              <Muted className="p-3 text-center text-sm">
                 {emptyRowsMessage}
-              </p>
+              </Muted>
             ) : (
               <div
                 id={listId}

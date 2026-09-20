@@ -6,6 +6,7 @@ import { useRetryableLazyLoadQuery } from "../../components/useRetryableLazyLoad
 import type { SessionsEditMutation } from "./__generated__/SessionsEditMutation.graphql";
 import type { SessionsEditQuery } from "./__generated__/SessionsEditQuery.graphql";
 import { useNotify } from "../components/useNotify";
+import { Muted } from "../../components/ui/Muted";
 
 export default function SessionsEdit() {
   const navigate = useNavigate();
@@ -95,7 +96,7 @@ export default function SessionsEdit() {
 
   return (
     <>
-      <p>
+      <p className="my-4">
         Edit this kiosk's configuration, then click Save. The configuration
         update will be automatically applied within 5 minutes. Refresh the
         kiosk's webpage to reload the configuration immediately.
@@ -110,10 +111,10 @@ export default function SessionsEdit() {
       />
 
       <h2 className="mt-8 mb-2 text-lg font-semibold">Kiosk diagnostics</h2>
-      <p className="mb-4 text-ink-muted">
+      <Muted className="mb-4">
         What this kiosk last reported about itself, refreshed on its regular
         check-in. Read-only.
-      </p>
+      </Muted>
       <SessionClientInfo clientInfo={session.clientInfo} />
     </>
   );

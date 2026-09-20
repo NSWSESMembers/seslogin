@@ -16,6 +16,7 @@ import { useNotify } from "../components/useNotify";
 import { AdminTable, Th, Td } from "../../components/ui/Table";
 import { Button, ButtonLink } from "../../components/ui/Button";
 import { Popover } from "../../components/ui/Popover";
+import TextInput from "../../components/ui/TextInput";
 
 type Person = MembersListQuery$data["location"]["people"][number];
 
@@ -134,7 +135,7 @@ function Row({
           />
         ) : null}
       </Td>
-      {isDev && <Td className="font-mono text-[0.85em]">{person.id}</Td>}
+      {isDev && <Td className="font-mono text-sm">{person.id}</Td>}
       <Td>{person.memberNumber}</Td>
       <Td nowrap>
         {person.firstName} {person.lastName}
@@ -212,6 +213,8 @@ export default function MembersList() {
     });
   }
 
+  const [filter, setFilter] = useState("");
+
   const location = data?.location;
   const sortedPeople = [...location.people]
     .filter((person): person is NonNullable<typeof person> => person != null)
@@ -220,6 +223,17 @@ export default function MembersList() {
         `${b.firstName} ${b.lastName}`,
       ),
     );
+
+  const normalizedFilter = filter.trim().toLowerCase();
+  const filteredPeople = normalizedFilter
+    ? sortedPeople.filter(
+        (person) =>
+          `${person.firstName} ${person.lastName}`
+            .toLowerCase()
+            .includes(normalizedFilter) ||
+          person.memberNumber?.toLowerCase().includes(normalizedFilter),
+      )
+    : sortedPeople;
 
   const lastSync = location.lastSuccessfulMemberSync;
   const lastSyncText = lastSync
@@ -230,33 +244,51 @@ export default function MembersList() {
 
   return (
     <>
-      <p>This list shows only members who belong to this unit.</p>
+      <p className="my-4">
+        This list shows only members who belong to this unit.
+      </p>
       {location.sesApiHeadquartersId ? (
         <div className="mb-2">
           Last successful member sync: {lastSyncText}{" "}
           {!syncedRecently && (
-            <button onClick={triggerSync} disabled={isSyncInFlight}>
+            <button
+              className="cursor-pointer"
+              onClick={triggerSync}
+              disabled={isSyncInFlight}
+            >
               Sync now
             </button>
           )}
         </div>
       ) : null}
-      <AdminTable>
-        <thead>
-          <tr>
-            <Th style={{ width: 20 }}></Th>
-            {isDev && <Th>ID</Th>}
-            <Th style={{ width: 100 }}>SES ID</Th>
-            <Th>Name</Th>
-            <Th style={{ width: 100 }}></Th>
-          </tr>
-        </thead>
-        <tbody>
-          {sortedPeople.map((person, idx) => (
-            <Row key={person.id} person={person} idx={idx} isDev={isDev} />
-          ))}
-        </tbody>
-      </AdminTable>
+      <TextInput
+        type="text"
+        width="half"
+        className="mb-3"
+        placeholder="Filter by name or member number…"
+        value={filter}
+        onChange={(e) => setFilter(e.target.value)}
+      />
+      {filteredPeople.length === 0 ? (
+        <p className="text-ink-muted">No members match “{filter}”.</p>
+      ) : (
+        <AdminTable>
+          <thead>
+            <tr>
+              <Th style={{ width: 20 }}></Th>
+              {isDev && <Th>ID</Th>}
+              <Th style={{ width: 100 }}>SES ID</Th>
+              <Th>Name</Th>
+              <Th style={{ width: 100 }}></Th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredPeople.map((person, idx) => (
+              <Row key={person.id} person={person} idx={idx} isDev={isDev} />
+            ))}
+          </tbody>
+        </AdminTable>
+      )}
     </>
   );
 }

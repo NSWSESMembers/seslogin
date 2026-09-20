@@ -63,8 +63,9 @@ export default function MembersNew() {
 
   return (
     <>
-      <p>Enter the details of the new member in the form below.</p>
-      {/* {error && <p className="font-bold text-red-600">Error: {error.message}</p>} */}
+      <p className="my-4">
+        Enter the details of the new member in the form below.
+      </p>
 
       <form action={handleSubmit}>
         <FieldList>
