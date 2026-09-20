@@ -334,6 +334,11 @@ impl TryInto<Person> for Item {
             registration_number: self.string_field("registration_number")?,
             ses_api_person_id: self.string_field("ses_api_person_id")?,
             email: self.string_field("email")?,
+            // Stored as a JSON string rather than a DynamoDB map: the badge code owns
+            // the shape, and round-tripping it as text keeps hydration from having to
+            // mirror every nested counter as an AttributeValue. Not parsed here, so a
+            // corrupt blob cannot stop the member from loading (and signing in).
+            badge_state: self.string_field("badge_state")?,
             deleted: self
                 .i64_field("deleted")?
                 .map(|i| i as u64)
@@ -2247,6 +2252,7 @@ impl db::Handler for Handler {
             registration_number: Some(registration_number.to_string()),
             ses_api_person_id: None,
             email: None,
+            badge_state: None,
             deleted: None,
             missing_since: None,
             created_at: Some(now),
@@ -2392,6 +2398,62 @@ impl db::Handler for Handler {
                     .send()
                     .await
                     .map_err(|e| map_update_err(e, format!("Person {}", id)))?;
+                record_capacity("update_person", resp.consumed_capacity(), CapKind::Write);
+            }
+            db::PersonUpdateShape::BadgeState {
+                badge_state,
+                expected,
+            } => {
+                let mut request = self
+                    .client
+                    .update_item()
+                    .table_name(self.table_name("person"))
+                    .key("id", AttributeValue::S(id.to_string()))
+                    .expression_attribute_values(
+                        ":updated_at",
+                        AttributeValue::N(crate::clock::now_sec().to_string()),
+                    );
+
+                request = match expected {
+                    None => request.condition_expression(
+                        "attribute_exists(id) AND attribute_not_exists(badge_state)",
+                    ),
+                    Some(expected) => request
+                        .condition_expression("attribute_exists(id) AND badge_state = :expected")
+                        .expression_attribute_values(
+                            ":expected",
+                            AttributeValue::S(expected.to_string()),
+                        ),
+                };
+
+                request = match badge_state {
+                    None => {
+                        request.update_expression("SET updated_at = :updated_at REMOVE badge_state")
+                    }
+                    Some(badge_state) => request
+                        .update_expression(
+                            "SET badge_state = :badge_state, updated_at = :updated_at",
+                        )
+                        .expression_attribute_values(
+                            ":badge_state",
+                            AttributeValue::S(badge_state.to_string()),
+                        ),
+                };
+
+                let resp = request
+                    .return_consumed_capacity(ReturnConsumedCapacity::Total)
+                    .send()
+                    .await
+                    .map_err(|e| match e {
+                        // The row is there but its badge state has moved on (a missing row
+                        // fails the same condition, and is reported by the re-read).
+                        SdkError::ServiceError(ref se)
+                            if se.err().is_conditional_check_failed_exception() =>
+                        {
+                            db::Error::Conflict(format!("Person {} badge state changed", id))
+                        }
+                        e => db::Error::Infrastructure(sdk_err_msg(e)),
+                    })?;
                 record_capacity("update_person", resp.consumed_capacity(), CapKind::Write);
             }
             db::PersonUpdateShape::Undelete => {

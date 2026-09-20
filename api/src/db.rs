@@ -41,6 +41,10 @@ pub enum Error {
     /// type conversion error ie convert string ID to integer
     #[error("Data type conversion error: {0}")]
     TypeConversion(String),
+    /// returned when a conditional write finds the row changed since the caller read it
+    /// (a member's badge state)
+    #[error("Conflict: {0}")]
+    Conflict(String),
     #[error("Mutation disabled")]
     MutationDisabled,
 }
@@ -168,6 +172,12 @@ pub struct Person {
     pub registration_number: Option<String>,
     pub ses_api_person_id: Option<String>,
     pub email: Option<String>,
+    /// Badge counters and awards, exactly as stored: the JSON text `badges::read_state`
+    /// parses. Kept unparsed so that loading a person can never fail on it, and so a
+    /// badge write can be made conditional on it being unchanged since it was read.
+    /// `None` for a member who has never been evaluated, and for every member of a
+    /// location that has not opted into gamification.
+    pub badge_state: Option<String>,
     pub deleted: Option<u64>,
     /// Unix seconds at which member sync first observed this person missing from their
     /// location's SES payload. Cleared by any sync that sees them again, and on
@@ -203,6 +213,15 @@ pub enum PersonUpdateShape<'a> {
     /// `Some` stamps the missing marker, `None` removes it.
     MissingSince {
         missing_since: Option<u64>,
+    },
+    /// Replaces the whole badge state, but only if the stored state is still exactly
+    /// `expected` (`None`: there is none), failing with [`Error::Conflict`] otherwise, so
+    /// two writers racing on one member cannot overwrite each other's awards.
+    /// `badge_state: None` removes the attribute, so a member who has earned nothing
+    /// carries no badge data at all.
+    BadgeState {
+        badge_state: Option<&'a str>,
+        expected: Option<&'a str>,
     },
     Undelete,
     Delete,

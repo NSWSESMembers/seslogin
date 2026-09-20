@@ -477,6 +477,7 @@ impl db::Handler for FakeDb {
             registration_number: Some(registration_number.to_string()),
             ses_api_person_id: None,
             email: None,
+            badge_state: None,
             deleted: None,
             missing_since: None,
             created_at: Some(now),
@@ -508,6 +509,17 @@ impl db::Handler for FakeDb {
             }
             db::PersonUpdateShape::Delete => {
                 person.deleted = Some(seslogin::clock::now_sec());
+            }
+            db::PersonUpdateShape::BadgeState {
+                badge_state,
+                expected,
+            } => {
+                if person.badge_state.as_deref() != expected {
+                    return Err(db::Error::Conflict(format!(
+                        "Person {id} badge state changed"
+                    )));
+                }
+                person.badge_state = badge_state.map(str::to_string);
             }
             _ => return unsupported(),
         }
@@ -1377,6 +1389,7 @@ pub(crate) fn seed_person(
             registration_number: Some(member_number.to_string()),
             ses_api_person_id: ses_api_person_id.map(str::to_string),
             email: None,
+            badge_state: None,
             deleted: None,
             missing_since: None,
             created_at: Some(1_760_000_000),

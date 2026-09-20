@@ -9,6 +9,7 @@ use anyhow::{Result, anyhow};
 use chrono::{DateTime, Local, NaiveDate};
 use clap::{Parser, Subcommand};
 use seslogin::audit::{self, AuditContext, AuditingHandler};
+use seslogin::badges;
 use seslogin::db::{
     ApiToken, Category, Handler, ListApiTokensFilter, ListLocationsFilter, ListPeriodsPage,
     ListSessionsQuery, Location, NitcEvent, NitcGroup, Period, PeriodCursor, Person, ScanCursor,
@@ -636,6 +637,18 @@ fn decorate(value: &str, name: Option<&String>) -> String {
     }
 }
 
+/// How many badges a person has earned, "-" if they have no badge state at all, or
+/// "unreadable" if it is not in a shape this build understands.
+fn badges_earned_str(id: &str, badge_state: Option<&str>) -> String {
+    if badge_state.is_none() {
+        return "-".to_string();
+    }
+    match badges::read_state(id, badge_state) {
+        Some(state) => badges::awards_all_locations(&state).len().to_string(),
+        None => "unreadable".to_string(),
+    }
+}
+
 fn bool_str(b: bool) -> String {
     if b { "true" } else { "false" }.to_string()
 }
@@ -765,6 +778,7 @@ async fn show_persons(db: &impl Handler, persons: &[Person]) {
             registration_number,
             ses_api_person_id,
             email,
+            badge_state,
             deleted,
             missing_since,
             created_at,
@@ -778,6 +792,12 @@ async fn show_persons(db: &impl Handler, persons: &[Person]) {
             ("location_id", decorate(location_id, locs.get(location_id))),
             ("ses_api_person_id", opt_str(ses_api_person_id)),
             ("email", opt_str(email)),
+            // Summarised rather than dumped: the raw state is a JSON blob of per-location
+            // counters that would swamp the rest of the record.
+            (
+                "badges_earned",
+                badges_earned_str(id, badge_state.as_deref()),
+            ),
             ("deleted", opt_ts(*deleted)),
             ("missing_since", opt_ts(*missing_since)),
             ("created_at", opt_ts(*created_at)),

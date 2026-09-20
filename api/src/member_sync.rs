@@ -1524,6 +1524,7 @@ mod tests {
             registration_number: regnum.map(str::to_string),
             ses_api_person_id: ses_id.map(str::to_string),
             email: None,
+            badge_state: None,
             deleted: None,
             missing_since,
             created_at: None,

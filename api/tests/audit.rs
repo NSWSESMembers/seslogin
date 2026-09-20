@@ -89,6 +89,7 @@ fn seed_person(app: &TestApp, id: &str, first: &str, last: &str, number: &str) {
             registration_number: Some(number.to_string()),
             ses_api_person_id: None,
             email: None,
+            badge_state: None,
             deleted: None,
             missing_since: None,
             created_at: Some(0),
