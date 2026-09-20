@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import ScanModalDateTime from "../kiosk/components/ScanModalDateTime";
+import { Muted } from "../components/ui/Muted";
 import { formatDayDate } from "../lib/time";
 
 // Standalone harness for the kiosk time-entry modal (ScanModalDateTime), so
@@ -39,11 +40,11 @@ export default function TimeEntryDemo() {
 
       <div>
         <h1 className="m-0 text-3xl font-bold">Time entry demo</h1>
-        <p className="text-ink-muted">
+        <Muted className="mt-1.5">
           Tap a digit to move the orange ring onto it, then type to replace it.
           Digits 0-9, Backspace, ←/→, A/P, Enter and Escape all work from a
           hardware keyboard.
-        </p>
+        </Muted>
       </div>
 
       <div className="flex flex-wrap gap-3">

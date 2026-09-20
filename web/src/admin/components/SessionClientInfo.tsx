@@ -2,6 +2,7 @@ import { useRef, useState, type ReactNode } from "react";
 import { formatSeconds } from "../../lib/time";
 import { getCurrentEnvironment } from "../../lib/clientInfo";
 import { Popover } from "../../components/ui/Popover";
+import { Muted } from "../../components/ui/Muted";
 
 /**
  * Structurally compatible with what Relay generates for the `clientInfo` selection, so
@@ -108,11 +109,11 @@ export default function SessionClientInfo({
 }) {
   if (clientInfo == null) {
     return (
-      <p className="text-ink-muted">
+      <Muted>
         This kiosk hasn't reported anything about itself yet. It will on its
         next check-in, unless it is running a client build older than this
         feature.
-      </p>
+      </Muted>
     );
   }
 
