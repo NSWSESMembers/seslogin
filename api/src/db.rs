@@ -807,6 +807,7 @@ pub trait Handler: Sync {
     ) -> impl Future<Output = Result<Vec<Option<Category>>>> + Send;
     fn create_category(
         &self,
+        id: Option<&str>,
         name: &str,
         is_virtual: bool,
         nitc_group_id: Option<&str>,

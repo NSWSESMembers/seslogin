@@ -276,6 +276,7 @@ impl db::Handler for Handler {
 
     async fn create_category(
         &self,
+        _id: Option<&str>,
         _name: &str,
         _is_virtual: bool,
         _nitc_group_id: Option<&str>,

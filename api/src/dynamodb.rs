@@ -3219,6 +3219,7 @@ impl db::Handler for Handler {
 
     async fn create_category(
         &self,
+        id: Option<&str>,
         name: &str,
         is_virtual: bool,
         nitc_group_id: Option<&str>,
@@ -3227,14 +3228,21 @@ impl db::Handler for Handler {
         if self.read_only {
             return Err(db::Error::MutationDisabled);
         }
-        let id = new_id();
+        let generated;
+        let id = match id {
+            Some(s) if !s.is_empty() => s,
+            _ => {
+                generated = new_id();
+                &generated
+            }
+        };
         let now = crate::clock::now_sec();
 
         let mut put = self
             .client
             .put_item()
             .table_name(self.table_name("category"))
-            .item("id", AttributeValue::S(id.clone()))
+            .item("id", AttributeValue::S(id.to_string()))
             .item("name", AttributeValue::S(name.to_string()))
             .item("enabled", AttributeValue::Bool(true))
             .item("virtual", AttributeValue::Bool(is_virtual))
@@ -3260,7 +3268,7 @@ impl db::Handler for Handler {
         record_capacity("create_category", resp.consumed_capacity(), CapKind::Write);
 
         Ok(Category {
-            id,
+            id: id.to_string(),
             name: name.to_string(),
             enabled: true,
             is_virtual,

@@ -1723,7 +1723,13 @@ impl<A: App + HasDb + HasQueues + HasMail + Send + Sync + 'static> MutationRoot<
         let item = self
             .app
             .db()
-            .create_category(&name, is_virtual, nitc_group_id, nitc_participant_type)
+            .create_category(
+                None,
+                &name,
+                is_virtual,
+                nitc_group_id,
+                nitc_participant_type,
+            )
             .await?;
         Ok(Category::new(item))
     }

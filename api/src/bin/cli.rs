@@ -381,6 +381,9 @@ enum CategoryCmd {
     /// Create a category. WRITES to the `category` table — pass the global
     /// `--dry-run` to preview instead.
     Create {
+        /// Custom ID; auto-generated if omitted.
+        #[arg(long)]
+        id: Option<String>,
         name: String,
         /// Mark as a "virtual" category (aggregate/derived reporting, not a
         /// real sign-in activity).
@@ -1267,6 +1270,7 @@ async fn main() -> Result<()> {
     if let Object::Category {
         cmd:
             CategoryCmd::Create {
+                id,
                 name,
                 is_virtual,
                 nitc_group,
@@ -1276,6 +1280,7 @@ async fn main() -> Result<()> {
     {
         return run_category_create(
             &db_prefix,
+            id.as_deref(),
             name,
             *is_virtual,
             nitc_group.as_deref(),
@@ -1860,6 +1865,7 @@ async fn run_session_edit(
 /// while dry-run.
 async fn run_category_create(
     db_prefix: &str,
+    id: Option<&str>,
     name: &str,
     is_virtual: bool,
     nitc_group_id: Option<&str>,
@@ -1878,12 +1884,13 @@ async fn run_category_create(
     }
 
     println!(
-        "{} category {name:?}: virtual={is_virtual} nitc_group={} nitc_participant_type={}",
+        "{} category {} {name:?}: virtual={is_virtual} nitc_group={} nitc_participant_type={}",
         if dry_run {
             "[dry-run] would create"
         } else {
             "creating"
         },
+        id.unwrap_or("<auto>"),
         nitc_group_id.unwrap_or("-"),
         nitc_participant_type.unwrap_or("-"),
     );
@@ -1893,7 +1900,7 @@ async fn run_category_create(
     }
 
     let category = db
-        .create_category(name, is_virtual, nitc_group_id, nitc_participant_type)
+        .create_category(id, name, is_virtual, nitc_group_id, nitc_participant_type)
         .await?;
     println!("created category {}", category.id);
     Ok(())
