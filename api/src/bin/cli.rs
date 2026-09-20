@@ -16,6 +16,7 @@ use seslogin::db::{
 use seslogin::dynamodb;
 use seslogin::jwt::{ExpirePolicy, Key};
 use seslogin::request_metrics::{self, RequestMetrics};
+use seslogin::ses_api;
 use seslogin::text_table::{DIVIDER, print_detail, print_table};
 use std::collections::{HashMap, HashSet};
 use std::io::{BufRead, Write};
@@ -95,6 +96,16 @@ enum Object {
     ActivitySummary {
         #[command(subcommand)]
         cmd: ActivitySummaryCmd,
+    },
+    /// Live reference data from the SES headquarters API: the NITC types and
+    /// participant types NITC groups and categories point at by free-text value,
+    /// plus the tags backing NITC groups. None of these is mirrored in our DB
+    /// (unlike `nitc-tag list`, which reads the local mirror `load-nitc-tags`
+    /// populates), so this talks to SES directly. Needs SES_API_BASE_URL /
+    /// SES_API_KEY; touches no DB, so DB_PREFIX is not required.
+    Ses {
+        #[command(subcommand)]
+        cmd: SesCmd,
     },
     /// Issue a secure single-period edit-link token. WRITES a hashed record to the
     /// `ephemeral_state` table.
@@ -367,6 +378,46 @@ enum CategoryCmd {
     Get { ids: Vec<String> },
     /// List categories.
     List,
+    /// Create a category. WRITES to the `category` table — pass the global
+    /// `--dry-run` to preview instead.
+    Create {
+        name: String,
+        /// Mark as a "virtual" category (aggregate/derived reporting, not a
+        /// real sign-in activity).
+        #[arg(long = "virtual")]
+        is_virtual: bool,
+        /// Attach to an NITC group (see `nitc-group list`), enabling NITC
+        /// export for periods recorded under this category.
+        #[arg(long)]
+        nitc_group: Option<String>,
+        /// SES NITC participant type recorded for this category's periods
+        /// (see `ses participant-types` for valid values).
+        #[arg(long)]
+        nitc_participant_type: Option<String>,
+    },
+    /// Edit a category. Only the flags you pass are changed; every other field
+    /// keeps its current value. WRITES to the `category` table — pass the
+    /// global `--dry-run` to preview instead.
+    Edit {
+        id: String,
+        #[arg(long)]
+        name: Option<String>,
+        #[arg(long)]
+        enabled: Option<bool>,
+        #[arg(long = "virtual")]
+        is_virtual: Option<bool>,
+        #[arg(long)]
+        nitc_group: Option<String>,
+        /// Detach from its NITC group. Mutually exclusive with `--nitc-group`.
+        #[arg(long, conflicts_with = "nitc_group")]
+        clear_nitc_group: bool,
+        #[arg(long)]
+        nitc_participant_type: Option<String>,
+        /// Clear the NITC participant type. Mutually exclusive with
+        /// `--nitc-participant-type`.
+        #[arg(long, conflicts_with = "nitc_participant_type")]
+        clear_nitc_participant_type: bool,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -398,12 +449,61 @@ enum NitcGroupCmd {
     Get { ids: Vec<String> },
     /// List NITC groups.
     List,
+    /// Create an NITC group. WRITES to the `nitc_group` table — pass the
+    /// global `--dry-run` to preview instead.
+    Create {
+        /// Custom ID; auto-generated if omitted.
+        #[arg(long)]
+        id: Option<String>,
+        /// SES NITC type (see `ses nitc-types` for valid values).
+        nitc_type: String,
+        /// SES tag ID to include (see `ses nitc-tags` or `nitc-tag list`).
+        /// Repeat for multiple tags.
+        #[arg(long = "tag")]
+        tags: Vec<i32>,
+    },
+    /// Edit an NITC group's type and/or tags. Passing no `--tag` leaves the
+    /// existing tags untouched; pass `--clear-tags` to remove them all.
+    /// WRITES to the `nitc_group` table — pass the global `--dry-run` to
+    /// preview instead.
+    Edit {
+        id: String,
+        #[arg(long)]
+        nitc_type: Option<String>,
+        #[arg(long = "tag")]
+        tags: Vec<i32>,
+        /// Remove all tags. Mutually exclusive with `--tag`.
+        #[arg(long, conflicts_with = "tags")]
+        clear_tags: bool,
+    },
+    /// Delete an NITC group. This is a hard delete with no check for
+    /// categories still pointing at it (same gap the admin UI has) — the
+    /// command warns if any do, but does not block. WRITES to the
+    /// `nitc_group` table — pass the global `--dry-run` to preview instead.
+    Delete { id: String },
 }
 
 #[derive(Subcommand, Debug)]
 enum NitcTagCmd {
-    /// List NITC tags.
+    /// List NITC tags mirrored into our DB (the local copy `load-nitc-tags`
+    /// populates from the SES API).
     List,
+}
+
+#[derive(Subcommand, Debug)]
+enum SesCmd {
+    /// List valid NITC types from the SES API (live) — used by `nitc-group
+    /// create --nitc-type` / `edit --nitc-type`.
+    NitcTypes,
+    /// List valid NITC participant types from the SES API (live) — used by
+    /// `category create --nitc-participant-type` / `edit
+    /// --nitc-participant-type`.
+    ParticipantTypes,
+    /// List NITC tags directly from the SES API (live), rather than the local
+    /// mirror `nitc-tag list` reads. The two are normally identical since
+    /// `load-nitc-tags` syncs one from the other; this is for checking that
+    /// sync is current, or when it hasn't been run yet.
+    NitcTags,
 }
 
 #[derive(Subcommand, Debug)]
@@ -1122,6 +1222,12 @@ async fn main() -> Result<()> {
         return run_jwt(jwt_secret.clone(), *expire_s, cmd);
     }
 
+    // SES reference-data lookups talk to SES directly and touch no DB — handle
+    // before requiring DB_PREFIX, same as Jwt above.
+    if let Object::Ses { cmd } = &cli.object {
+        return run_ses(cmd).await;
+    }
+
     let db_prefix = cli
         .db_prefix
         .clone()
@@ -1154,6 +1260,99 @@ async fn main() -> Result<()> {
             cli.dry_run,
         )
         .await;
+    }
+
+    // Category and NITC group writes: same story, each opens its own handler
+    // (read-only under --dry-run) rather than the shared read-only one.
+    if let Object::Category {
+        cmd:
+            CategoryCmd::Create {
+                name,
+                is_virtual,
+                nitc_group,
+                nitc_participant_type,
+            },
+    } = &cli.object
+    {
+        return run_category_create(
+            &db_prefix,
+            name,
+            *is_virtual,
+            nitc_group.as_deref(),
+            nitc_participant_type.as_deref(),
+            cli.dry_run,
+        )
+        .await;
+    }
+
+    if let Object::Category {
+        cmd:
+            CategoryCmd::Edit {
+                id,
+                name,
+                enabled,
+                is_virtual,
+                nitc_group,
+                clear_nitc_group,
+                nitc_participant_type,
+                clear_nitc_participant_type,
+            },
+    } = &cli.object
+    {
+        return run_category_edit(
+            &db_prefix,
+            id,
+            name.clone(),
+            *enabled,
+            *is_virtual,
+            nitc_group.clone(),
+            *clear_nitc_group,
+            nitc_participant_type.clone(),
+            *clear_nitc_participant_type,
+            cli.dry_run,
+        )
+        .await;
+    }
+
+    if let Object::NitcGroup {
+        cmd:
+            NitcGroupCmd::Create {
+                id,
+                nitc_type,
+                tags,
+            },
+    } = &cli.object
+    {
+        return run_nitc_group_create(&db_prefix, id.as_deref(), nitc_type, tags, cli.dry_run)
+            .await;
+    }
+
+    if let Object::NitcGroup {
+        cmd:
+            NitcGroupCmd::Edit {
+                id,
+                nitc_type,
+                tags,
+                clear_tags,
+            },
+    } = &cli.object
+    {
+        return run_nitc_group_edit(
+            &db_prefix,
+            id,
+            nitc_type.as_deref(),
+            tags,
+            *clear_tags,
+            cli.dry_run,
+        )
+        .await;
+    }
+
+    if let Object::NitcGroup {
+        cmd: NitcGroupCmd::Delete { id },
+    } = &cli.object
+    {
+        return run_nitc_group_delete(&db_prefix, id, cli.dry_run).await;
     }
 
     // Another write path: creating a backdated open sign-in. Opens its own
@@ -1656,6 +1855,326 @@ async fn run_session_edit(
     Ok(())
 }
 
+/// Create a category. Opens its own DB handler in `read_only = dry_run` mode, so a
+/// dry run cannot write even if a bug tried to; the write itself is also skipped
+/// while dry-run.
+async fn run_category_create(
+    db_prefix: &str,
+    name: &str,
+    is_virtual: bool,
+    nitc_group_id: Option<&str>,
+    nitc_participant_type: Option<&str>,
+    dry_run: bool,
+) -> Result<()> {
+    let db = dynamodb::Handler::new(db_prefix, dry_run).await;
+
+    // Mirror `createCategory`'s implicit expectation (a category can only point at a
+    // group that exists) so a typo'd group ID is caught here rather than silently
+    // stored and only surfacing later when something tries to resolve it.
+    if let Some(gid) = nitc_group_id
+        && db.get_nitc_group(gid).await?.is_none()
+    {
+        return Err(anyhow!("no NITC group with id {gid}"));
+    }
+
+    println!(
+        "{} category {name:?}: virtual={is_virtual} nitc_group={} nitc_participant_type={}",
+        if dry_run {
+            "[dry-run] would create"
+        } else {
+            "creating"
+        },
+        nitc_group_id.unwrap_or("-"),
+        nitc_participant_type.unwrap_or("-"),
+    );
+
+    if dry_run {
+        return Ok(());
+    }
+
+    let category = db
+        .create_category(name, is_virtual, nitc_group_id, nitc_participant_type)
+        .await?;
+    println!("created category {}", category.id);
+    Ok(())
+}
+
+/// Edit a category. Only the fields passed as `Some`/`true` change; everything else
+/// keeps its current value, read back first since `update_category` (like the admin
+/// edit form) replaces the whole record. Opens its own DB handler in
+/// `read_only = dry_run` mode; the write itself is also skipped while dry-run.
+#[allow(clippy::too_many_arguments)]
+async fn run_category_edit(
+    db_prefix: &str,
+    id: &str,
+    name: Option<String>,
+    enabled: Option<bool>,
+    is_virtual: Option<bool>,
+    nitc_group: Option<String>,
+    clear_nitc_group: bool,
+    nitc_participant_type: Option<String>,
+    clear_nitc_participant_type: bool,
+    dry_run: bool,
+) -> Result<()> {
+    let db = dynamodb::Handler::new(db_prefix, dry_run).await;
+
+    let current = db
+        .get_categories(&[id])
+        .await?
+        .into_iter()
+        .next()
+        .flatten()
+        .ok_or_else(|| anyhow!("no category with id {id}"))?;
+
+    let new_name = name.unwrap_or_else(|| current.name.clone());
+    let new_enabled = enabled.unwrap_or(current.enabled);
+    let new_is_virtual = is_virtual.unwrap_or(current.is_virtual);
+    let new_nitc_group_id = if clear_nitc_group {
+        None
+    } else {
+        nitc_group.or_else(|| current.nitc_group_id.clone())
+    };
+    let new_nitc_participant_type = if clear_nitc_participant_type {
+        None
+    } else {
+        nitc_participant_type.or_else(|| current.nitc_participant_type.clone())
+    };
+
+    if let Some(gid) = &new_nitc_group_id
+        && db.get_nitc_group(gid).await?.is_none()
+    {
+        return Err(anyhow!("no NITC group with id {gid}"));
+    }
+
+    println!(
+        "{} category {id}:",
+        if dry_run {
+            "[dry-run] would update"
+        } else {
+            "updating"
+        },
+    );
+    println!("  name                   {} -> {}", current.name, new_name);
+    println!(
+        "  enabled                {} -> {}",
+        bool_str(current.enabled),
+        bool_str(new_enabled),
+    );
+    println!(
+        "  is_virtual             {} -> {}",
+        bool_str(current.is_virtual),
+        bool_str(new_is_virtual),
+    );
+    println!(
+        "  nitc_group_id          {} -> {}",
+        opt_str(&current.nitc_group_id),
+        new_nitc_group_id.as_deref().unwrap_or("-"),
+    );
+    println!(
+        "  nitc_participant_type  {} -> {}",
+        opt_str(&current.nitc_participant_type),
+        new_nitc_participant_type.as_deref().unwrap_or("-"),
+    );
+
+    if dry_run {
+        return Ok(());
+    }
+
+    db.update_category(
+        id,
+        &new_name,
+        new_enabled,
+        new_is_virtual,
+        new_nitc_group_id.as_deref(),
+        new_nitc_participant_type.as_deref(),
+    )
+    .await?;
+    println!("updated category {id}");
+    Ok(())
+}
+
+/// Create an NITC group. Opens its own DB handler in `read_only = dry_run` mode, so
+/// a dry run cannot write even if a bug tried to; the write itself is also skipped
+/// while dry-run.
+async fn run_nitc_group_create(
+    db_prefix: &str,
+    id: Option<&str>,
+    nitc_type: &str,
+    tags: &[i32],
+    dry_run: bool,
+) -> Result<()> {
+    let db = dynamodb::Handler::new(db_prefix, dry_run).await;
+
+    println!(
+        "{} NITC group {}: type={nitc_type:?} tags={tags:?}",
+        if dry_run {
+            "[dry-run] would create"
+        } else {
+            "creating"
+        },
+        id.unwrap_or("<auto>"),
+    );
+
+    if dry_run {
+        return Ok(());
+    }
+
+    let group = db.create_nitc_group(id, nitc_type, tags).await?;
+    println!("created NITC group {}", group.id);
+    Ok(())
+}
+
+/// Edit an NITC group's type and/or tags. `update_nitc_group` replaces the whole
+/// tag list, so an omitted `--tag` (and no `--clear-tags`) reads the current group
+/// back first and resends its existing tags unchanged. Opens its own DB handler in
+/// `read_only = dry_run` mode; the write itself is also skipped while dry-run.
+async fn run_nitc_group_edit(
+    db_prefix: &str,
+    id: &str,
+    nitc_type: Option<&str>,
+    tags: &[i32],
+    clear_tags: bool,
+    dry_run: bool,
+) -> Result<()> {
+    let db = dynamodb::Handler::new(db_prefix, dry_run).await;
+
+    let current = db
+        .get_nitc_group(id)
+        .await?
+        .ok_or_else(|| anyhow!("no NITC group with id {id}"))?;
+
+    let new_type = nitc_type.unwrap_or(&current.nitc_type).to_string();
+    let new_tags: Vec<i32> = if clear_tags {
+        Vec::new()
+    } else if !tags.is_empty() {
+        tags.to_vec()
+    } else {
+        current.nitc_tag_ids.clone()
+    };
+
+    println!(
+        "{} NITC group {id}:",
+        if dry_run {
+            "[dry-run] would update"
+        } else {
+            "updating"
+        },
+    );
+    println!("  nitc_type  {} -> {}", current.nitc_type, new_type);
+    println!("  tags       {:?} -> {:?}", current.nitc_tag_ids, new_tags);
+
+    if dry_run {
+        return Ok(());
+    }
+
+    db.update_nitc_group(id, &new_type, &new_tags).await?;
+    println!("updated NITC group {id}");
+    Ok(())
+}
+
+/// Delete an NITC group. Opens its own DB handler in `read_only = dry_run` mode; the
+/// write itself is also skipped while dry-run.
+async fn run_nitc_group_delete(db_prefix: &str, id: &str, dry_run: bool) -> Result<()> {
+    let db = dynamodb::Handler::new(db_prefix, dry_run).await;
+
+    let group = db
+        .get_nitc_group(id)
+        .await?
+        .ok_or_else(|| anyhow!("no NITC group with id {id}"))?;
+
+    // delete_nitc_group is a hard delete with no check for categories still
+    // pointing at it (the admin UI has the same gap) — warn rather than block.
+    let referencing: Vec<String> = db
+        .list_categories()
+        .await?
+        .into_iter()
+        .filter(|c| c.nitc_group_id.as_deref() == Some(id))
+        .map(|c| c.id)
+        .collect();
+    if !referencing.is_empty() {
+        eprintln!(
+            "⚠ {} categor{} still reference this group: {}",
+            referencing.len(),
+            if referencing.len() == 1 { "y" } else { "ies" },
+            referencing.join(", "),
+        );
+    }
+
+    println!(
+        "{} NITC group {id} (type={})",
+        if dry_run {
+            "[dry-run] would delete"
+        } else {
+            "deleting"
+        },
+        group.nitc_type,
+    );
+
+    if dry_run {
+        return Ok(());
+    }
+
+    db.delete_nitc_group(id).await?;
+    println!("deleted NITC group {id}");
+    Ok(())
+}
+
+/// List live SES reference data (NITC types/tags, participant types). Self-contained
+/// like `run_jwt`: no DB, just the SES API client built from env vars.
+async fn run_ses(cmd: &SesCmd) -> Result<()> {
+    let client = ses_client()?;
+    match cmd {
+        SesCmd::NitcTypes => {
+            let mut types = client.fetch_nonincident_types().await?;
+            types.sort();
+            for t in types {
+                println!("{t}");
+            }
+        }
+        SesCmd::ParticipantTypes => {
+            let mut types = client.fetch_participant_types().await?;
+            types.sort();
+            for t in types {
+                println!("{t}");
+            }
+        }
+        SesCmd::NitcTags => {
+            let tags = client.fetch_nonincident_tags_cached().await?;
+            let mut tags: Vec<_> = tags.values().collect();
+            tags.sort_by_key(|t| t.id);
+            let rows: Vec<Vec<String>> = tags
+                .iter()
+                .map(|t| {
+                    vec![
+                        t.id.to_string(),
+                        t.name.clone(),
+                        t.primary_activity_name.clone(),
+                    ]
+                })
+                .collect();
+            print_table(&["id", "name", "primary_activity"], &rows);
+        }
+    }
+    Ok(())
+}
+
+/// Build an SES API client from env vars, same defaults as the GraphQL resolvers'
+/// own `make_ses_client` (see `graphql/query.rs`).
+fn ses_client() -> Result<ses_api::SesClient> {
+    let base_url =
+        std::env::var("SES_API_BASE_URL").map_err(|_| anyhow!("SES_API_BASE_URL is required"))?;
+    let api_key = std::env::var("SES_API_KEY").map_err(|_| anyhow!("SES_API_KEY is required"))?;
+    let page_limit = std::env::var("SES_PAGE_LIMIT")
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+        .unwrap_or(500);
+    let max_retries = std::env::var("SES_SYNC_MAX_RETRIES")
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+        .unwrap_or(3);
+    ses_api::SesClient::new(base_url, api_key, page_limit, max_retries)
+}
+
 /// Fetch records by ID, warning (to stderr) about any IDs that weren't found.
 async fn fetch_present<T, F, Fut>(ids: &[String], f: F) -> Result<Vec<T>>
 where
@@ -2024,6 +2543,10 @@ async fn run(db: &impl Handler, object: Object) -> Result<()> {
                     .collect();
                 print_table(&["id", "name", "enabled", "nitc_group_id"], &rows);
             }
+            // Handled in `main` before the shared read-only DB is opened.
+            CategoryCmd::Create { .. } | CategoryCmd::Edit { .. } => {
+                unreachable!("category create/edit is handled before the read-only DB is opened")
+            }
         },
 
         Object::User { cmd } => match cmd {
@@ -2131,6 +2654,14 @@ async fn run(db: &impl Handler, object: Object) -> Result<()> {
                     .collect();
                 print_table(&["id", "nitc_type", "tags"], &rows);
             }
+            // Handled in `main` before the shared read-only DB is opened.
+            NitcGroupCmd::Create { .. }
+            | NitcGroupCmd::Edit { .. }
+            | NitcGroupCmd::Delete { .. } => {
+                unreachable!(
+                    "nitc-group create/edit/delete is handled before the read-only DB is opened"
+                )
+            }
         },
 
         Object::NitcTag { cmd } => match cmd {
@@ -2225,6 +2756,7 @@ async fn run(db: &impl Handler, object: Object) -> Result<()> {
 
         // Handled in `main` before the shared read-only DB is opened.
         Object::Jwt { .. } => unreachable!("jwt is handled before DB setup"),
+        Object::Ses { .. } => unreachable!("ses is handled before DB setup"),
         Object::PeriodLink { .. } => {
             unreachable!("period-link is handled before the read-only DB is opened")
         }
