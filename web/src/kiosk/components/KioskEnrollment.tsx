@@ -139,7 +139,7 @@ export default function KioskEnrollment({
         )}
 
         {fingerprint && (
-          <p className="mb-5 text-center text-xs opacity-60">
+          <p className="mt-4 mb-5 text-center text-xs opacity-60">
             <FingerprintChip fingerprint={fingerprint} className="text-xs" />
           </p>
         )}

@@ -51,7 +51,7 @@ export default function ActivityCurrent() {
 
   return (
     <>
-      <p>
+      <p className="my-4">
         This list shows members currently signed in at this location, including
         members visiting from other units (their home unit is shown under their
         name).
@@ -270,10 +270,10 @@ function ActivityCurrentContent({
   return (
     <>
       {normalizedFilter && filteredPeriods.length === 0 && (
-        <p className="text-ink-muted">No periods match “{filterText}”.</p>
+        <p className="my-4 text-ink-muted">No periods match “{filterText}”.</p>
       )}
       {normalizedFilter && hasNextPage && (
-        <p className="text-ink-muted">
+        <p className="my-4 text-ink-muted">
           Showing matches from the {periods.length} periods loaded so far — use
           Load More below to search further back.
         </p>

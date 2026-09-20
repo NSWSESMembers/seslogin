@@ -140,7 +140,7 @@ export default function ApiTokenList() {
 
   return (
     <>
-      <p>
+      <p className="my-4">
         API tokens grant programmatic access to the locations they're scoped to.
         The secret is shown only once, at creation — if it's lost, revoke the
         token and create a new one.

@@ -75,7 +75,7 @@ export default function ActivityHeatmapGrid({
   );
 
   if (rows.length === 0) {
-    return <p className="text-ink-muted">No members at this location.</p>;
+    return <p className="my-4 text-ink-muted">No members at this location.</p>;
   }
 
   // A single scroll listener keeps the frozen header/name-column panes in

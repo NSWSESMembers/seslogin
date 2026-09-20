@@ -91,13 +91,13 @@ export default function ApiTokenNew() {
   if (created) {
     return (
       <>
-        <p>
+        <p className="my-4">
           API token <strong>{created.name}</strong> was created. Copy the secret
           below now — for security, it's shown only this once and can't be
           retrieved again. If it's lost, revoke this token and create a new one.
         </p>
         <CopyableSecret secret={created.secret} />
-        <p>
+        <p className="my-4">
           <Link to="/admin/api-tokens">Back to API tokens</Link>
         </p>
       </>
@@ -110,7 +110,9 @@ export default function ApiTokenNew() {
 
   return (
     <>
-      <p>Enter the details of the new API token in the form below.</p>
+      <p className="my-4">
+        Enter the details of the new API token in the form below.
+      </p>
 
       <form action={handleSubmit}>
         <FieldList>

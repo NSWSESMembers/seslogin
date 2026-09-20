@@ -193,7 +193,7 @@ export default function LocationList() {
 
   return (
     <>
-      <p>
+      <p className="my-4">
         <label>
           <input
             type="checkbox"

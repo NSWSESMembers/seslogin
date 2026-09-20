@@ -43,7 +43,7 @@ export const comboboxDescription = tw`block text-xs text-ink-muted`;
 
 export const comboboxEmpty = tw`px-2 py-2 text-center text-sm text-ink-muted`;
 
-export const comboboxWarning = tw`mt-1 text-sm text-red-600`;
+export const comboboxWarning = tw`mt-1 mb-4 text-sm text-red-600`;
 
 /**
  * `MultiCombobox`'s wrapper: a flex-wrap row of pills plus the bare text

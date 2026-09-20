@@ -58,7 +58,7 @@ export default function SettingsActivityDisplay() {
   return (
     <>
       <SectionHeading>Activity display</SectionHeading>
-      <p>
+      <p className="my-4">
         Choose how virtual-category activity is shown throughout the admin
         dashboard and Activity tab.
       </p>

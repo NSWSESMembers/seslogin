@@ -73,7 +73,7 @@ export default function TimeEntryDemo() {
           Saves ({saves.length}) · closes without saving ({closes})
         </h2>
         {saves.length === 0 ? (
-          <p className="text-ink-muted">Nothing saved yet.</p>
+          <p className="my-4 text-ink-muted">Nothing saved yet.</p>
         ) : (
           <ul className="m-0 list-none p-0">
             {saves.map((save, i) => (

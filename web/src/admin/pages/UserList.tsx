@@ -176,7 +176,7 @@ export default function UserList() {
 
   return (
     <>
-      <p className="flex items-center justify-between">
+      <p className="my-4 flex items-center justify-between">
         <label>
           <input
             type="checkbox"

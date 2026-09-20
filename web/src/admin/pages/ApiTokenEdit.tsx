@@ -142,7 +142,7 @@ export default function ApiTokenEdit() {
 
   return (
     <>
-      <p>Edit the API token's details, then click Save.</p>
+      <p className="my-4">Edit the API token's details, then click Save.</p>
       <Muted className="text-sm">
         Created {formatFullDateTime(new Date(token.createdAt * 1000))} · Last
         used{" "}

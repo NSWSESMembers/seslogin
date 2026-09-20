@@ -26,7 +26,7 @@ export default function ActivityBreakdown() {
 
   return (
     <>
-      <p>
+      <p className="my-4">
         Totals include everyone who signed in at this location, including
         members visiting from other units.
       </p>
