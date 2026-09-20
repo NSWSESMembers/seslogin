@@ -134,7 +134,7 @@ function Inner(props: {
 
   return (
     <>
-      <div className="mt-5 flex items-center justify-center gap-3.75 text-[2em]">
+      <div className="mt-5 flex items-center justify-center gap-3.75 text-3xl">
         <span className="align-middle">Quick pick</span>
       </div>
       <QuickPickSection
@@ -155,7 +155,7 @@ function Inner(props: {
         <Button
           variant="kiosk"
           size="bare"
-          className="inline-flex items-center gap-2 px-7 py-3 text-[1.4em]"
+          className="inline-flex items-center gap-2 px-7 py-3 text-2xl"
           onClick={props.onSkip}
         >
           More categories

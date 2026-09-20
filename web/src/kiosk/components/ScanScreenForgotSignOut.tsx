@@ -22,12 +22,12 @@ function Inner(props: {
 
   return (
     <>
-      <h1 className="m-0 mb-4 text-[3em]">Did you forget to sign out?</h1>
-      <p className="m-0 mb-2 text-[1.6em]">You&apos;ve been signed in since</p>
-      <p className="m-0 mb-6 text-[2em] font-bold">
+      <h1 className="m-0 mb-4 text-5xl">Did you forget to sign out?</h1>
+      <p className="m-0 mb-2 text-2xl">You&apos;ve been signed in since</p>
+      <p className="m-0 mb-6 text-3xl font-bold">
         {formatLongDateTimeWithWeekday(transaction.startTime)}
       </p>
-      <p className="m-0 mb-8 max-w-3xl text-[1.4em]">
+      <p className="m-0 mb-8 max-w-3xl text-2xl">
         That&apos;s about {signedInFor} ago. If you pick "Yeah", we&apos;ll
         back-date your sign-out to one hour after you started this session.
         You&apos;ll still need to pick a category for the entry we're closing
@@ -39,7 +39,7 @@ function Inner(props: {
         <Button
           variant="kiosk"
           size="bare"
-          className="px-8 py-3 text-[1.6em]"
+          className="px-8 py-3 text-2xl"
           onClick={() => onResolve(oneHourAfter)}
         >
           Yeah, I forgot
@@ -47,7 +47,7 @@ function Inner(props: {
         <Button
           variant="kiosk"
           size="bare"
-          className="px-8 py-3 text-[1.6em]"
+          className="px-8 py-3 text-2xl"
           onClick={() => onResolve()}
         >
           Nope, this is a long entry

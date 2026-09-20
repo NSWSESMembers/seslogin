@@ -45,7 +45,7 @@ function ReplacedBadge({ keyReleasedAt }: { keyReleasedAt: number }) {
         }
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
-        className="ml-2 cursor-help rounded-sm border border-current px-1 py-px text-[0.7em] uppercase"
+        className="ml-2 cursor-help rounded-sm border border-current px-1 py-px text-xs uppercase"
       >
         Replaced
       </button>
