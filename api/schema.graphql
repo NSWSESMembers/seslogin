@@ -10,6 +10,11 @@ type ApiToken {
 	lastUsedAt: Int
 }
 
+type BadgeTierCount {
+	tier: String!
+	count: Int!
+}
+
 type Category {
 	id: ID!
 	name: String!
@@ -129,6 +134,16 @@ type Location {
 	periodSummaryByDayByMember(startTime: Int!, endTime: Int!, categories: [ID!]): [DayMemberPeriodSummary!]!
 	sessions: [Session!]!
 	dashboardSummary(asOf: Int): LocationDashboardSummary!
+	badgeLeaderboard(limit: Int): [LocationBadgeLeaderboardEntry!]!
+}
+
+type LocationBadgeLeaderboardEntry {
+	personId: ID!
+	person: Person!
+	badgeCount: Int!
+	recentBadgeCount7D: Int!
+	latestBadgeAwardAt: Int!
+	tierCounts: [BadgeTierCount!]!
 }
 
 type LocationDashboardSummary {
@@ -481,11 +496,60 @@ type Person {
 	updatedAt: Int
 	locationId: ID!
 	location: Location!
+	"""
+	Earned badges for this person across all locations.
+	
+	`location_id` is used only for access control.
+	"""
+	badges(locationId: ID!): [PersonBadge!]!
+	"""
+	Full badge catalog with earned status for this person across all
+	locations.
+	
+	`location_id` is used only for access control.
+	"""
+	badgeProgress(locationId: ID!): [PersonBadgeProgress!]!
 	periods(categories: [ID!], after: String, before: String, first: Int, last: Int): PeriodConnection!
 	"""
 	The person's most recent period (by start time), or null if they have none.
 	"""
 	lastPeriod: Period
+}
+
+type PersonBadge {
+	"""
+	Globally unique per (person, badge) pair; use `badge_id` for the badge type.
+	"""
+	id: String!
+	badgeId: String!
+	name: String!
+	description: String!
+	tier: String!
+	icon: String!
+	awardedAt: Int!
+}
+
+type PersonBadgeProgress {
+	"""
+	Globally unique per (person, badge) pair; use `badge_id` for the badge type.
+	"""
+	id: String!
+	badgeId: String!
+	name: String!
+	description: String!
+	tier: String!
+	icon: String!
+	source: String!
+	earned: Boolean!
+	awardedAt: Int
+	"""
+	Current progress toward `target`, when this badge's rule tracks a
+	countable metric. Null when the badge has no meaningful running total
+	(e.g. manual/nightly-awarded and fixed-date badges) — the client
+	should show a plain locked/earned state instead of a progress bar.
+	"""
+	current: Int
+	target: Int
 }
 
 type PersonRecentCategory {
