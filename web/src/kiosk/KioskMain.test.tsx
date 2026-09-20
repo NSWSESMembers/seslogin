@@ -569,15 +569,18 @@ describe("KioskMain forgot-to-sign-out interstitial", () => {
           return HttpResponse.json({
             data: {
               scanSignOut: {
-                id: "period-456",
-                person: {
-                  id: `person-${SIGNOUT_USER}`,
-                  firstName: "Jamie",
-                  lastName: "Smith",
+                period: {
+                  id: "period-456",
+                  person: {
+                    id: `person-${SIGNOUT_USER}`,
+                    firstName: "Jamie",
+                    lastName: "Smith",
+                  },
+                  startTime: variables.startTime,
+                  endTime: variables.endTime,
+                  category: { id: "RX2bfpU6ppvV", name: "AIIMS" },
                 },
-                startTime: variables.startTime,
-                endTime: variables.endTime,
-                category: { id: "RX2bfpU6ppvV", name: "AIIMS" },
+                awardedBadges: [],
               },
             },
           });

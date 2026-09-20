@@ -167,17 +167,19 @@ export default function ScanController(props: {
           endTime: $endTime
           categoryId: $categoryId
         ) {
-          id
-          person {
+          period {
             id
-            firstName
-            lastName
-          }
-          startTime
-          endTime
-          category {
-            id
-            name
+            person {
+              id
+              firstName
+              lastName
+            }
+            startTime
+            endTime
+            category {
+              id
+              name
+            }
           }
         }
       }

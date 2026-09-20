@@ -18,6 +18,7 @@ use crate::app::HasMail;
 use crate::app::HasQueues;
 use crate::auth;
 use crate::auth::AuthInfo;
+use crate::badges;
 use crate::db;
 use crate::db::Handler;
 use crate::mail::Handler as _;
@@ -193,6 +194,22 @@ struct RegisterResult<A: App + HasDb + Send + Sync + 'static> {
     /// also what a failed build returns, so the kiosk falls back to the full
     /// category tree rather than failing the scan.
     quick_pick: Option<QuickPick<A>>,
+    awarded_badges: Vec<BadgeAward>,
+}
+
+#[derive(SimpleObject)]
+struct BadgeAward {
+    id: String,
+    name: String,
+    description: String,
+    tier: String,
+    icon: String,
+}
+
+#[derive(SimpleObject)]
+struct ScanSignOutResult<A: App + HasDb + Send + Sync + 'static> {
+    period: Period<A>,
+    awarded_badges: Vec<BadgeAward>,
 }
 
 #[derive(SimpleObject)]
@@ -208,6 +225,228 @@ pub struct MutationRoot<A: App + HasDb + HasQueues + HasMail + Send + Sync> {
 }
 
 impl<A: App + HasDb + HasQueues + HasMail + Send + Sync + 'static> MutationRoot<A> {
+    // Badge math is gated by the member's home location, not the location where the
+    // scan happened — a member should still earn badges while signing in/out away
+    // from home as long as gamification is enabled at their home location.
+    async fn home_gamification_enabled(
+        &self,
+        person: &db::Person,
+        location: &db::Location,
+    ) -> Result<bool> {
+        if person.location_id == location.id {
+            Ok(location.gamification_enabled)
+        } else {
+            Ok(self
+                .app
+                .db()
+                .get_locations(&[&person.location_id])
+                .await?
+                .into_iter()
+                .next()
+                .flatten()
+                .map(|home_location| home_location.gamification_enabled)
+                .unwrap_or(false))
+        }
+    }
+
+    /// Apply a badge event and persist the updated state, without surfacing any
+    /// newly-earned badges for display. Used by non-kiosk mutations (e.g. `create_period`)
+    /// so that directly-created periods still count toward badge progress, but any award
+    /// stays undisplayed until the member actually uses a kiosk — there's no kiosk screen
+    /// here to pop a celebration on.
+    async fn apply_badge_event_silently(
+        &self,
+        person: &db::Person,
+        location: &db::Location,
+        event: badges::BadgeEvent,
+        event_time_sec: u64,
+        sign_out_category_id: Option<&str>,
+        sign_out_times: Option<(u64, u64)>,
+    ) -> Result<()> {
+        if !self.home_gamification_enabled(person, location).await? {
+            return Ok(());
+        }
+
+        let mut state = badges::state_from_map(&person.badge_state);
+        let _ = badges::apply_event(
+            &mut state,
+            &location.id,
+            event,
+            event_time_sec,
+            person.location_id != location.id,
+            sign_out_category_id,
+            sign_out_times,
+        );
+
+        self.app
+            .db()
+            .update_person(
+                &person.id,
+                db::PersonUpdateShape::BadgeState {
+                    badge_state: badges::state_to_map(&state),
+                },
+            )
+            .await?;
+
+        Ok(())
+    }
+
+    /// Apply both halves of a directly-created (non-kiosk) period to badge progress:
+    /// a check-in at `start_time` followed by a sign-out at `end_time`. Kept as two
+    /// separate `apply_event` calls (rather than a bespoke "period" event) so the same
+    /// counters, streaks and easter eggs that kiosk check-in/sign-out feed into stay in
+    /// sync for API-created periods too.
+    async fn apply_badge_events_for_period(
+        &self,
+        person: &db::Person,
+        location: &db::Location,
+        start_time: u64,
+        end_time: u64,
+        category_id: &str,
+    ) -> Result<()> {
+        // Checked once here rather than only inside each `apply_badge_event_silently`
+        // call: without it, a period created at a location with gamification off still
+        // costs the re-read below, on a path every admin-created period takes.
+        if !self.home_gamification_enabled(person, location).await? {
+            return Ok(());
+        }
+
+        self.apply_badge_event_silently(
+            person,
+            location,
+            badges::BadgeEvent::CheckIn,
+            start_time,
+            None,
+            None,
+        )
+        .await?;
+
+        // Re-read the person record: the check-in above may have just updated
+        // `badge_state`, and the sign-out event must build on that, not the stale
+        // snapshot the caller passed in.
+        let person = self
+            .app
+            .db()
+            .get_persons(&[&person.id])
+            .await?
+            .into_iter()
+            .next()
+            .flatten()
+            .ok_or_else(|| anyhow!("Person with ID {:?} missing", person.id))?;
+
+        self.apply_badge_event_silently(
+            &person,
+            location,
+            badges::BadgeEvent::SignOut,
+            end_time,
+            Some(category_id),
+            Some((start_time, end_time)),
+        )
+        .await
+    }
+
+    async fn apply_badge_event(
+        &self,
+        person: &db::Person,
+        location: &db::Location,
+        event: badges::BadgeEvent,
+        sign_out_category_id: Option<&str>,
+        sign_out_times: Option<(u64, u64)>,
+    ) -> Result<Vec<BadgeAward>> {
+        let home_gamification_enabled = self.home_gamification_enabled(person, location).await?;
+
+        let mut state = badges::state_from_map(&person.badge_state);
+        if home_gamification_enabled {
+            let _ = badges::apply_event(
+                &mut state,
+                &location.id,
+                event,
+                crate::clock::now_sec(),
+                person.location_id != location.id,
+                sign_out_category_id,
+                sign_out_times,
+            );
+        }
+
+        // Badges are global to the person, not scoped to a location (see
+        // `awards_all_locations`) — so even though earning is gated by the home location,
+        // the celebration prompt itself should never appear at a location that has
+        // gamification switched off. Leave any pending awards undisplayed so they surface
+        // next time the member is somewhere gamification is enabled, rather than marking
+        // them displayed here.
+        let awards_to_display = if location.gamification_enabled {
+            let undisplayed = badges::undisplayed_awards_all_locations(&state);
+            let badge_ids: Vec<String> = undisplayed
+                .iter()
+                .map(|award| award.badge.id.clone())
+                .collect();
+            badges::mark_awards_displayed_all_locations(&mut state, &badge_ids);
+            undisplayed
+        } else {
+            vec![]
+        };
+
+        self.app
+            .db()
+            .update_person(
+                &person.id,
+                db::PersonUpdateShape::BadgeState {
+                    badge_state: badges::state_to_map(&state),
+                },
+            )
+            .await?;
+
+        // A "passport" (first-signin-at-location) badge's display name is the name of the
+        // location it was earned at, which — now that awards can surface at a later,
+        // different location — is not necessarily `location` (the current scan location).
+        // Resolve each such badge's actual location by ID rather than assuming it's here.
+        let award_location_ids: Vec<&str> = awards_to_display
+            .iter()
+            .filter_map(|award| badges::first_signin_badge_location_id(&award.badge.id))
+            .collect();
+        let award_location_name_by_id: std::collections::HashMap<String, String> =
+            if award_location_ids.is_empty() {
+                std::collections::HashMap::new()
+            } else {
+                self.app
+                    .db()
+                    .get_locations(&award_location_ids)
+                    .await?
+                    .into_iter()
+                    .flatten()
+                    .map(|loc| (loc.id, loc.name))
+                    .collect()
+            };
+
+        Ok(awards_to_display
+            .into_iter()
+            .map(|award| {
+                let badge_id = award.badge.id.clone();
+                let (name, description) = if let Some(badge_location_id) =
+                    badges::first_signin_badge_location_id(&badge_id)
+                {
+                    match award_location_name_by_id.get(badge_location_id) {
+                        Some(badge_location_name) => (
+                            badge_location_name.clone(),
+                            format!("Visited {}", badge_location_name),
+                        ),
+                        None => (award.badge.name, award.badge.description),
+                    }
+                } else {
+                    (award.badge.name, award.badge.description)
+                };
+
+                BadgeAward {
+                    id: badge_id,
+                    name,
+                    description,
+                    tier: award.badge.tier,
+                    icon: award.badge.icon,
+                }
+            })
+            .collect())
+    }
+
     /// Enqueue a Phase 1 (period) NITC export for a mutated period.
     ///
     /// `old_nitc_event_id` is the event the period was assigned to *before* this mutation (read
@@ -765,7 +1004,8 @@ impl<A: App + HasDb + HasQueues + HasMail + Send + Sync + 'static> MutationRoot<
             return Err(anyhow!("start_time must be before end_time"));
         }
         require_location_access(ctx, &location_id)?;
-        self.app
+        let location = self
+            .app
             .db()
             .get_locations(&[&location_id])
             .await?
@@ -773,7 +1013,8 @@ impl<A: App + HasDb + HasQueues + HasMail + Send + Sync + 'static> MutationRoot<
             .next()
             .flatten()
             .ok_or_else(|| anyhow!("Location {:?} not found", location_id))?;
-        self.app
+        let person = self
+            .app
             .db()
             .get_persons(&[&person_id])
             .await?
@@ -805,6 +1046,20 @@ impl<A: App + HasDb + HasQueues + HasMail + Send + Sync + 'static> MutationRoot<
 
         // Newly created period is not yet assigned to any NITC event.
         self.enqueue_nitc_export(&rec.id, None).await?;
+
+        // A directly-created period represents a completed check-in/sign-out pair that
+        // never went through a kiosk, so feed both halves into badge progress here. Any
+        // award earned this way stays undisplayed until the member's next real kiosk
+        // visit — see `apply_badge_event_silently`.
+        self.apply_badge_events_for_period(
+            &person,
+            &location,
+            start_time as u64,
+            end_time as u64,
+            &category_id,
+        )
+        .await?;
+
         Ok(Period::new(rec))
     }
 
@@ -1844,8 +2099,28 @@ impl<A: App + HasDb + HasQueues + HasMail + Send + Sync + 'static> MutationRoot<
                 state: RegisterState::NotFound,
                 period: None,
                 quick_pick: None,
+                awarded_badges: vec![],
             });
         };
+
+        let person = self
+            .app
+            .db()
+            .get_persons(&[&person_id])
+            .await?
+            .into_iter()
+            .next()
+            .flatten()
+            .ok_or_else(|| anyhow!("Person with ID {:?} missing", person_id))?;
+        let location = self
+            .app
+            .db()
+            .get_locations(&[&location_id])
+            .await?
+            .into_iter()
+            .next()
+            .flatten()
+            .ok_or_else(|| anyhow!("Location with ID {:?} missing", location_id))?;
 
         // lookup most recent unfinished period for this person scoped to this session's location
         let existing_unfinished_period = self
@@ -1890,6 +2165,7 @@ impl<A: App + HasDb + HasQueues + HasMail + Send + Sync + 'static> MutationRoot<
                 state: RegisterState::SignOutPending,
                 period: Some(Period::new(period)),
                 quick_pick,
+                awarded_badges: vec![],
             })
         } else {
             // no existing unfinished period, so sign them in
@@ -1899,10 +2175,15 @@ impl<A: App + HasDb + HasQueues + HasMail + Send + Sync + 'static> MutationRoot<
                 .start_period_for_person_location(&person_id, location_id, Some(session_id), None)
                 .await?;
 
+            let awarded_badges = self
+                .apply_badge_event(&person, &location, badges::BadgeEvent::CheckIn, None, None)
+                .await?;
+
             Ok(RegisterResult {
                 state: RegisterState::SignedIn,
                 period: Some(Period::new(rec)),
                 quick_pick: None,
+                awarded_badges,
             })
         }
     }
@@ -1915,7 +2196,7 @@ impl<A: App + HasDb + HasQueues + HasMail + Send + Sync + 'static> MutationRoot<
         start_time: i64,
         end_time: i64,
         category_id: ID,
-    ) -> Result<Period<A>> {
+    ) -> Result<ScanSignOutResult<A>> {
         require_writable(ctx)?;
         if start_time >= end_time {
             // Surfaced verbatim on the kiosk transaction log, so keep it readable.
@@ -1963,7 +2244,47 @@ impl<A: App + HasDb + HasQueues + HasMail + Send + Sync + 'static> MutationRoot<
         // rec.nitc_event_id is still the event the period was assigned to before this sign-out.
         self.enqueue_nitc_export(&rec.id, rec.nitc_event_id.as_deref())
             .await?;
-        Ok(Period::new(rec))
+
+        // Guests sign out through this same mutation but carry no `person_id`, so there is
+        // nobody to credit — they skip badge evaluation entirely rather than failing the
+        // sign-out on a missing person.
+        let awarded_badges = match rec.person_id.as_deref() {
+            None => vec![],
+            Some(person_id) => {
+                let person = self
+                    .app
+                    .db()
+                    .get_persons(&[person_id])
+                    .await?
+                    .into_iter()
+                    .next()
+                    .flatten()
+                    .ok_or_else(|| anyhow!("Person with ID {:?} missing", person_id))?;
+                let location = self
+                    .app
+                    .db()
+                    .get_locations(&[&rec.location_id])
+                    .await?
+                    .into_iter()
+                    .next()
+                    .flatten()
+                    .ok_or_else(|| anyhow!("Location with ID {:?} missing", rec.location_id))?;
+
+                self.apply_badge_event(
+                    &person,
+                    &location,
+                    badges::BadgeEvent::SignOut,
+                    Some(category_id.as_ref()),
+                    Some((start_time as u64, end_time as u64)),
+                )
+                .await?
+            }
+        };
+
+        Ok(ScanSignOutResult {
+            period: Period::new(rec),
+            awarded_badges,
+        })
     }
 
     /// Sign in a guest (non-member) at the kiosk. Creates an open period with no
@@ -2091,7 +2412,6 @@ impl<A: App + HasDb + HasQueues + HasMail + Send + Sync + 'static> MutationRoot<
             );
             email_config.insert(loc_id, serde_json::Value::Object(inner));
         }
-
         self.app
             .db()
             .update_user(&user_id, db::UserUpdateShape::EmailConfig { email_config })

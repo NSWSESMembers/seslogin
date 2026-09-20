@@ -10,6 +10,14 @@ type ApiToken {
 	lastUsedAt: Int
 }
 
+type BadgeAward {
+	id: String!
+	name: String!
+	description: String!
+	tier: String!
+	icon: String!
+}
+
 type BadgeTierCount {
 	tier: String!
 	count: Int!
@@ -299,7 +307,7 @@ type MutationRoot {
 		"""
 		quickPick: Boolean
 	): RegisterResult!
-	scanSignOut(id: ID!, startTime: Int!, endTime: Int!, categoryId: ID!): Period!
+	scanSignOut(id: ID!, startTime: Int!, endTime: Int!, categoryId: ID!): ScanSignOutResult!
 	"""
 	Sign in a guest (non-member) at the kiosk. Creates an open period with no
 	person and no category, so it never enters per-person views or the NITC export.
@@ -694,12 +702,18 @@ type RegisterResult {
 	category tree rather than failing the scan.
 	"""
 	quickPick: QuickPick
+	awardedBadges: [BadgeAward!]!
 }
 
 enum RegisterState {
 	NOT_FOUND
 	SIGNED_IN
 	SIGN_OUT_PENDING
+}
+
+type ScanSignOutResult {
+	period: Period!
+	awardedBadges: [BadgeAward!]!
 }
 
 type SesHeadquarters {
