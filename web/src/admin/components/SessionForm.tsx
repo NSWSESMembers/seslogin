@@ -36,6 +36,12 @@ interface SessionFormProps {
    * session's edit page.
    */
   showHealthcheckUrl?: boolean;
+  /**
+   * Offer the Badges option. Only for a kiosk at a location with gamification
+   * on: anywhere else the server ignores the key, so a box that did nothing
+   * would only mislead. Off by default, so the enrollment form never shows it.
+   */
+  showGamification?: boolean;
 }
 
 type ConfigEditorMode = "basic" | "advanced";
@@ -75,6 +81,9 @@ interface BasicSessionModeFieldsProps {
   onCategorySearchChange: (next: boolean) => void;
   confirmVisitors: boolean;
   onConfirmVisitorsChange: (next: boolean) => void;
+  showGamification: boolean;
+  gamification: boolean;
+  onGamificationChange: (next: boolean) => void;
   interfaceMode: InterfaceMode;
   onInterfaceModeChange: (next: InterfaceMode) => void;
   signedInStatusMode: SignedInStatusMode;
@@ -214,6 +223,25 @@ function withConfirmVisitors(
 
 function getConfirmVisitorsFromConfig(config: ConfigObject): boolean {
   return !!config.confirmVisitors;
+}
+
+function withGamification(
+  config: ConfigObject,
+  enabled: boolean,
+): ConfigObject {
+  const next = { ...config };
+  if (enabled) {
+    next.gamification = true;
+  } else {
+    delete next.gamification;
+  }
+  return next;
+}
+
+// Strictly `true`: the server only counts a JSON boolean, so a stray truthy
+// value must not show as ticked when it does nothing.
+function getGamificationFromConfig(config: ConfigObject): boolean {
+  return config.gamification === true;
 }
 
 /**
@@ -404,6 +432,9 @@ function BasicSessionModeFields({
   onCategorySearchChange,
   confirmVisitors,
   onConfirmVisitorsChange,
+  showGamification,
+  gamification,
+  onGamificationChange,
   interfaceMode,
   onInterfaceModeChange,
   signedInStatusMode,
@@ -511,6 +542,25 @@ function BasicSessionModeFields({
               title="Confirm visitors"
               description="before signing in a member from another unit, ask them to confirm their name and unit, so a mistyped member ID doesn't sign in the wrong person"
             />
+            {showGamification && (
+              <OptionRow
+                input={
+                  <input
+                    type="checkbox"
+                    checked={gamification}
+                    onChange={(e) => onGamificationChange(e.target.checked)}
+                    className="mt-0.5"
+                  />
+                }
+                title={
+                  <span className="inline-flex items-center gap-2">
+                    Badges
+                    <BetaBadge />
+                  </span>
+                }
+                description="count sign-ins and sign-outs at this kiosk towards members' badges, for members whose own unit has badges turned on"
+              />
+            )}
           </OptionList>
         </FormField>
       )}
@@ -642,6 +692,7 @@ export default function SessionForm({
   onSubmit,
   locations,
   showHealthcheckUrl = true,
+  showGamification = false,
 }: SessionFormProps) {
   const initialState = initializeConfigState(initialConfig);
   const [configEditorMode, setConfigEditorMode] =
@@ -655,6 +706,7 @@ export default function SessionForm({
   const quickPickCategories = getQuickPickCategoriesFromConfig(parsedConfig);
   const categorySearch = getCategorySearchFromConfig(parsedConfig);
   const confirmVisitors = getConfirmVisitorsFromConfig(parsedConfig);
+  const gamification = getGamificationFromConfig(parsedConfig);
   const interfaceMode = getInterfaceModeFromConfig(parsedConfig);
   const signedInStatusMode = getSignedInStatusModeFromConfig(parsedConfig);
   const theme = getThemeFromConfig(parsedConfig);
@@ -697,6 +749,11 @@ export default function SessionForm({
       parseConfigObject(configJson),
       enabled,
     );
+    setConfigJson(JSON.stringify(nextConfig, null, 2));
+  }
+
+  function handleGamificationChange(enabled: boolean) {
+    const nextConfig = withGamification(parseConfigObject(configJson), enabled);
     setConfigJson(JSON.stringify(nextConfig, null, 2));
   }
 
@@ -744,6 +801,9 @@ export default function SessionForm({
             onCategorySearchChange={handleCategorySearchChange}
             confirmVisitors={confirmVisitors}
             onConfirmVisitorsChange={handleConfirmVisitorsChange}
+            showGamification={showGamification}
+            gamification={gamification}
+            onGamificationChange={handleGamificationChange}
             interfaceMode={interfaceMode}
             onInterfaceModeChange={handleInterfaceModeChange}
             signedInStatusMode={signedInStatusMode}

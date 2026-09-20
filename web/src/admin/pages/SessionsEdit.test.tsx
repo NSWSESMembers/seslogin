@@ -51,10 +51,14 @@ describe("SessionsEdit", () => {
     const environment = createMockEnvironment();
     const first = renderAt(environment);
 
+    // Every mock pins the same `id`: generated ids depend on the shape of each
+    // operation, so the query and the mutation would otherwise only agree on the
+    // kiosk's id by coincidence.
     act(() => {
       environment.mock.resolveMostRecentOperation((op) =>
         MockPayloadGenerator.generate(op, {
           Session: () => ({
+            id: "session1",
             name: "Old Name",
             config: {},
             healthcheckUrl: null,
@@ -81,6 +85,7 @@ describe("SessionsEdit", () => {
       environment.mock.resolveMostRecentOperation((op) =>
         MockPayloadGenerator.generate(op, {
           Session: () => ({
+            id: "session1",
             name: "New Name",
             config: {},
             healthcheckUrl: null,
@@ -113,6 +118,7 @@ describe("SessionsEdit", () => {
           op,
           MockPayloadGenerator.generate(op, {
             Session: () => ({
+              id: "session1",
               name: "New Name",
               config: {},
               healthcheckUrl: null,

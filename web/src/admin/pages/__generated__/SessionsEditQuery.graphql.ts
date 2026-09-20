@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<a8e00cd1fcf4a5e430a678de3d07cfa3>>
+ * @generated SignedSource<<532fb0435f542325cd060c964f503516>>
  * @lightSyntaxTransform
  */
 
@@ -30,6 +30,9 @@ export type SessionsEditQuery$data = {
     } | null | undefined;
     readonly config: any;
     readonly healthcheckUrl: string | null | undefined;
+    readonly location: {
+      readonly gamificationEnabled: boolean;
+    };
     readonly name: string;
   };
 };
@@ -75,6 +78,13 @@ v4 = {
   "storageKey": null
 },
 v5 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
+  "name": "gamificationEnabled",
+  "storageKey": null
+},
+v6 = {
   "alias": null,
   "args": null,
   "concreteType": "SessionClientInfo",
@@ -175,6 +185,13 @@ v5 = {
     }
   ],
   "storageKey": null
+},
+v7 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
+  "name": "id",
+  "storageKey": null
 };
 return {
   "fragment": {
@@ -196,7 +213,19 @@ return {
           (v2/*:: as any*/),
           (v3/*:: as any*/),
           (v4/*:: as any*/),
-          (v5/*:: as any*/)
+          {
+            "alias": null,
+            "args": null,
+            "concreteType": "Location",
+            "kind": "LinkedField",
+            "name": "location",
+            "plural": false,
+            "selections": [
+              (v5/*:: as any*/)
+            ],
+            "storageKey": null
+          },
+          (v6/*:: as any*/)
         ],
         "storageKey": null
       }
@@ -221,30 +250,37 @@ return {
           (v2/*:: as any*/),
           (v3/*:: as any*/),
           (v4/*:: as any*/),
-          (v5/*:: as any*/),
           {
             "alias": null,
             "args": null,
-            "kind": "ScalarField",
-            "name": "id",
+            "concreteType": "Location",
+            "kind": "LinkedField",
+            "name": "location",
+            "plural": false,
+            "selections": [
+              (v5/*:: as any*/),
+              (v7/*:: as any*/)
+            ],
             "storageKey": null
-          }
+          },
+          (v6/*:: as any*/),
+          (v7/*:: as any*/)
         ],
         "storageKey": null
       }
     ]
   },
   "params": {
-    "cacheID": "1432940f2edda3ca8e3123c73c53b5de",
+    "cacheID": "4fffafc57b8e82772cc018d58492de7c",
     "id": null,
     "metadata": {},
     "name": "SessionsEditQuery",
     "operationKind": "query",
-    "text": "query SessionsEditQuery(\n  $id: ID!\n) {\n  session(id: $id) {\n    name\n    config\n    healthcheckUrl\n    clientInfo {\n      env\n      origin\n      apiUrl\n      profile\n      userAgent\n      screen\n      displayMode\n      timezone\n      clockSkewSecs\n      uptimeSecs\n      pendingVersion\n      contactFailures\n      updatedAt\n    }\n    id\n  }\n}\n"
+    "text": "query SessionsEditQuery(\n  $id: ID!\n) {\n  session(id: $id) {\n    name\n    config\n    healthcheckUrl\n    location {\n      gamificationEnabled\n      id\n    }\n    clientInfo {\n      env\n      origin\n      apiUrl\n      profile\n      userAgent\n      screen\n      displayMode\n      timezone\n      clockSkewSecs\n      uptimeSecs\n      pendingVersion\n      contactFailures\n      updatedAt\n    }\n    id\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "b791db551ee1b50d513630d9669f8f13";
+(node as any).hash = "f5f69b15486e90644e21c159d17491e1";
 
 export default node;
