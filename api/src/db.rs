@@ -291,6 +291,8 @@ pub enum LocationUpdateShape<'a> {
         nitc_enabled: Option<u64>,
         /// `None` leaves the current preference untouched.
         nitc_complete_on_export: Option<bool>,
+        /// `None` leaves the current preference untouched.
+        gamification_enabled: Option<bool>,
     },
     LastSyncTime {
         time: u64,
@@ -491,6 +493,9 @@ pub struct Location {
     /// Whether exported NITC events are marked completed in SES. Defaults to true; locations
     /// that want to finish their NITCs themselves opt out.
     pub nitc_complete_on_export: bool,
+    /// Whether members of this location earn badges. Defaults to false; a location opts in
+    /// once it wants gamification, so the feature can be rolled out unit by unit.
+    pub gamification_enabled: bool,
     pub ses_api_headquarters_id: Option<String>,
     pub last_successful_member_sync: Option<u64>,
     pub created_at: u64,
