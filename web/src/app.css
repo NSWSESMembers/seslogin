@@ -207,9 +207,4 @@
     background-color: var(--color-surface);
     color: var(--color-ink);
   }
-  h1,
-  h2,
-  h3 {
-    margin-top: 0.5em;
-  }
 }

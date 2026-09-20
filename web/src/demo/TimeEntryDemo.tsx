@@ -69,7 +69,7 @@ export default function TimeEntryDemo() {
       </div>
 
       <div>
-        <h2 className="text-xl font-bold">
+        <h2 className="mt-2 text-xl font-bold">
           Saves ({saves.length}) · closes without saving ({closes})
         </h2>
         {saves.length === 0 ? (
