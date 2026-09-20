@@ -3,6 +3,7 @@ pub mod activity_summary;
 pub mod app;
 pub mod audit;
 pub mod auth;
+pub mod badges;
 pub mod base_url;
 pub mod client_info;
 pub mod clock;

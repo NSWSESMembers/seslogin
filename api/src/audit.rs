@@ -403,6 +403,13 @@ pub fn person_create_changes(p: &Person) -> Vec<AuditFieldChange> {
     creation(&person_fields(p))
 }
 
+/// Whether `update_person` with this shape is audited. `BadgeState` is derived from the
+/// member's periods and rewritten on every kiosk scan and nightly evaluation, so it is
+/// bookkeeping rather than a business change.
+pub fn person_shape_is_audited(shape: &db::PersonUpdateShape<'_>) -> bool {
+    !matches!(shape, db::PersonUpdateShape::BadgeState { .. })
+}
+
 /// What a person update does and the field changes it makes. `now` stamps the soft-delete
 /// time, which the database sets itself. `Undelete` is a [`AuditAction::Restore`] and
 /// `Delete` a [`AuditAction::Delete`]; everything else is an update.
@@ -436,6 +443,7 @@ pub fn person_update_changes(
         db::PersonUpdateShape::MissingSince { missing_since } => {
             after.set("missing_since", opt_num(*missing_since));
         }
+        db::PersonUpdateShape::BadgeState { .. } => {}
         db::PersonUpdateShape::Undelete => {
             action = AuditAction::Restore;
             after.set("deleted", None);
@@ -1164,6 +1172,9 @@ impl<D: db::Handler> db::Handler for AuditingHandler<D> {
     }
 
     async fn update_person(&self, id: &str, change: db::PersonUpdateShape<'_>) -> db::Result<()> {
+        if !person_shape_is_audited(&change) {
+            return self.inner.update_person(id, change).await;
+        }
         let before = self.before_person(id).await;
         let (action, changes) =
             person_update_changes(before.as_ref(), &change, crate::clock::now_sec());
@@ -2215,6 +2226,7 @@ mod tests {
             registration_number: Some("1001".to_string()),
             ses_api_person_id: None,
             email: None,
+            badge_state: serde_json::Map::new(),
             deleted: None,
             missing_since: None,
             created_at: Some(1),
