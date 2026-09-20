@@ -1494,14 +1494,21 @@ impl db::Handler for Handler {
         location_id: &str,
         only_active: bool,
         timestamp_range: Option<(u64, u64)>,
+        category_ids: Option<&[String]>,
         page: db::ListPeriodsPage,
     ) -> db::Result<Vec<Period>> {
+        // An explicit-but-empty category filter can never match anything.
+        if category_ids == Some(&[]) {
+            return Ok(Vec::new());
+        }
+
         let fetch_limit = page.limit as usize;
         let (scan_forward, reverse_output) =
             page_scan_direction(page.after.is_some(), page.before.is_some(), page.descending);
 
         // Sparse indexes: location_open contains only open non-deleted periods;
-        // location_live contains all non-deleted periods. No filter expression needed.
+        // location_live contains all non-deleted periods. No filter expression needed
+        // beyond the optional category filter below.
         let (index_name, location_key_attr) = if only_active {
             ("location_open-start_time-index", "location_open")
         } else {
@@ -1528,6 +1535,23 @@ impl db::Handler for Handler {
                     vec![(":location_id", AttributeValue::S(location_id.to_string()))],
                 )
             };
+
+        // Optional category filter, same IN-clause-chunked-and-OR'd pattern as
+        // list_periods_for_person: category_id is a plain attribute on the period
+        // item, not a key, so it's applied as a FilterExpression rather than via
+        // the index above.
+        let category_placeholders: Vec<String> = category_ids
+            .map(|ids| (0..ids.len()).map(|i| format!(":category{i}")).collect())
+            .unwrap_or_default();
+        let filter_expr: Option<String> = if category_placeholders.is_empty() {
+            None
+        } else {
+            let clauses: Vec<String> = category_placeholders
+                .chunks(100)
+                .map(|chunk| format!("category_id IN ({})", chunk.join(", ")))
+                .collect();
+            Some(clauses.join(" OR "))
+        };
 
         // Initial ExclusiveStartKey from the caller's cursor.
         // Must include the table hash key (id) and both GSI keys (location attr + start_time).
@@ -1560,6 +1584,17 @@ impl db::Handler for Handler {
                 .return_consumed_capacity(ReturnConsumedCapacity::Total);
             for (k, v) in &key_attrs {
                 builder = builder.expression_attribute_values(*k, v.clone());
+            }
+            if let Some(ref expr) = filter_expr {
+                builder = builder.filter_expression(expr.clone());
+                if let Some(ids) = category_ids {
+                    for (placeholder, id) in category_placeholders.iter().zip(ids) {
+                        builder = builder.expression_attribute_values(
+                            placeholder,
+                            AttributeValue::S(id.clone()),
+                        );
+                    }
+                }
             }
             if let Some(esk) = exclusive_start_key.take() {
                 builder = builder.set_exclusive_start_key(Some(esk));

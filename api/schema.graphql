@@ -106,7 +106,7 @@ type Location {
 	createdAt: Int!
 	updatedAt: Int!
 	people: [Person!]!
-	periods(onlyActive: Boolean, startTime: Int, endTime: Int, after: String, before: String, first: Int, last: Int): PeriodConnection!
+	periods(onlyActive: Boolean, startTime: Int, endTime: Int, categories: [ID!], after: String, before: String, first: Int, last: Int): PeriodConnection!
 	periodSummaryByMember(startTime: Int!, endTime: Int!, categories: [ID!]): [MemberPeriodSummary!]!
 	periodSummaryByCategory(startTime: Int!, endTime: Int!): [CategoryPeriodSummary!]!
 	periodSummaryByMemberByCategory(startTime: Int!, endTime: Int!): [MemberCategoryPeriodSummary!]!

@@ -659,6 +659,7 @@ pub trait Handler: Sync {
         location_id: &str,
         only_active: bool,
         timestamp_range: Option<(u64, u64)>,
+        category_ids: Option<&[String]>,
         page: ListPeriodsPage,
     ) -> impl Future<Output = Result<Vec<Period>>> + Send;
     fn list_test_pagination(
