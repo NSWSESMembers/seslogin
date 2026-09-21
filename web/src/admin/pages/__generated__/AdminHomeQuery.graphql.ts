@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<6716a0b11809d97117eebf5dcf264197>>
+ * @generated SignedSource<<acb0d21a233f27e9d6d1da2a3230587b>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -10,11 +10,23 @@
 
 import { ConcreteRequest } from 'relay-runtime';
 export type AdminHomeQuery$variables = {
+  includeBadgeLeaderboard: boolean;
   location: string;
   now: number;
 };
 export type AdminHomeQuery$data = {
   readonly location: {
+    readonly badgeLeaderboard?: ReadonlyArray<{
+      readonly badgeCount: number;
+      readonly latestBadgeAwardAt: number;
+      readonly person: {
+        readonly firstName: string;
+        readonly id: string;
+        readonly lastName: string;
+        readonly memberNumber: string | null | undefined;
+      };
+      readonly recentBadgeCount7D: number;
+    }>;
     readonly dashboardSummary: {
       readonly activeMembers24H: number;
       readonly activeMembers24HNonVirtual: number;
@@ -56,33 +68,43 @@ export type AdminHomeQuery = {
 };
 
 const node: ConcreteRequest = (function(){
-var v0 = [
-  {
-    "defaultValue": null,
-    "kind": "LocalArgument",
-    "name": "location"
-  },
-  {
-    "defaultValue": null,
-    "kind": "LocalArgument",
-    "name": "now"
-  }
-],
+var v0 = {
+  "defaultValue": null,
+  "kind": "LocalArgument",
+  "name": "includeBadgeLeaderboard"
+},
 v1 = {
+  "defaultValue": null,
+  "kind": "LocalArgument",
+  "name": "location"
+},
+v2 = {
+  "defaultValue": null,
+  "kind": "LocalArgument",
+  "name": "now"
+},
+v3 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
+  "name": "id",
+  "storageKey": null
+},
+v4 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
   "name": "periodCount",
   "storageKey": null
 },
-v2 = {
+v5 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
   "name": "totalTime",
   "storageKey": null
 },
-v3 = [
+v6 = [
   {
     "alias": null,
     "args": [
@@ -97,13 +119,7 @@ v3 = [
     "name": "location",
     "plural": false,
     "selections": [
-      {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "id",
-        "storageKey": null
-      },
+      (v3/*: any*/),
       {
         "alias": null,
         "args": null,
@@ -245,8 +261,8 @@ v3 = [
                 "name": "dayStart",
                 "storageKey": null
               },
-              (v1/*: any*/),
-              (v2/*: any*/),
+              (v4/*: any*/),
+              (v5/*: any*/),
               {
                 "alias": null,
                 "args": null,
@@ -286,8 +302,8 @@ v3 = [
                 "name": "categoryName",
                 "storageKey": null
               },
-              (v1/*: any*/),
-              (v2/*: any*/),
+              (v4/*: any*/),
+              (v5/*: any*/),
               {
                 "alias": null,
                 "args": null,
@@ -300,6 +316,84 @@ v3 = [
           }
         ],
         "storageKey": null
+      },
+      {
+        "condition": "includeBadgeLeaderboard",
+        "kind": "Condition",
+        "passingValue": true,
+        "selections": [
+          {
+            "alias": null,
+            "args": [
+              {
+                "kind": "Literal",
+                "name": "limit",
+                "value": 8
+              }
+            ],
+            "concreteType": "LocationBadgeLeaderboardEntry",
+            "kind": "LinkedField",
+            "name": "badgeLeaderboard",
+            "plural": true,
+            "selections": [
+              {
+                "alias": null,
+                "args": null,
+                "concreteType": "Person",
+                "kind": "LinkedField",
+                "name": "person",
+                "plural": false,
+                "selections": [
+                  (v3/*: any*/),
+                  {
+                    "alias": null,
+                    "args": null,
+                    "kind": "ScalarField",
+                    "name": "firstName",
+                    "storageKey": null
+                  },
+                  {
+                    "alias": null,
+                    "args": null,
+                    "kind": "ScalarField",
+                    "name": "lastName",
+                    "storageKey": null
+                  },
+                  {
+                    "alias": null,
+                    "args": null,
+                    "kind": "ScalarField",
+                    "name": "memberNumber",
+                    "storageKey": null
+                  }
+                ],
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "badgeCount",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "recentBadgeCount7D",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "latestBadgeAwardAt",
+                "storageKey": null
+              }
+            ],
+            "storageKey": "badgeLeaderboard(limit:8)"
+          }
+        ]
       }
     ],
     "storageKey": null
@@ -307,34 +401,42 @@ v3 = [
 ];
 return {
   "fragment": {
-    "argumentDefinitions": (v0/*: any*/),
+    "argumentDefinitions": [
+      (v0/*: any*/),
+      (v1/*: any*/),
+      (v2/*: any*/)
+    ],
     "kind": "Fragment",
     "metadata": {
       "throwOnFieldError": true
     },
     "name": "AdminHomeQuery",
-    "selections": (v3/*: any*/),
+    "selections": (v6/*: any*/),
     "type": "QueryRoot",
     "abstractKey": null
   },
   "kind": "Request",
   "operation": {
-    "argumentDefinitions": (v0/*: any*/),
+    "argumentDefinitions": [
+      (v1/*: any*/),
+      (v2/*: any*/),
+      (v0/*: any*/)
+    ],
     "kind": "Operation",
     "name": "AdminHomeQuery",
-    "selections": (v3/*: any*/)
+    "selections": (v6/*: any*/)
   },
   "params": {
-    "cacheID": "311329fb6f365fd832684d60f20dc2d4",
+    "cacheID": "2940339704e2b511b723b44f9629ea6c",
     "id": null,
     "metadata": {},
     "name": "AdminHomeQuery",
     "operationKind": "query",
-    "text": "query AdminHomeQuery(\n  $location: ID!\n  $now: Int!\n) {\n  location(id: $location) {\n    id\n    name\n    dashboardSummary(asOf: $now) {\n      totalMembers\n      activeMembers24H\n      activeMembers24HVirtual\n      activeMembers24HNonVirtual\n      activeMembers30D\n      checkIns24H\n      checkIns7D\n      checkIns7DVirtual\n      totalTime7D\n      totalTime7DVirtual\n      avgCompletedDuration7D\n      totalKiosks\n      onlineKiosks\n      recentlyActiveKiosks\n      lastSuccessfulMemberSync\n      dailyPeriods7D {\n        dayStart\n        periodCount\n        totalTime\n        periodCountVirtual\n        totalTimeVirtual\n      }\n      topCategories7D {\n        categoryId\n        categoryName\n        periodCount\n        totalTime\n        isVirtual\n      }\n    }\n  }\n}\n"
+    "text": "query AdminHomeQuery(\n  $location: ID!\n  $now: Int!\n  $includeBadgeLeaderboard: Boolean!\n) {\n  location(id: $location) {\n    id\n    name\n    dashboardSummary(asOf: $now) {\n      totalMembers\n      activeMembers24H\n      activeMembers24HVirtual\n      activeMembers24HNonVirtual\n      activeMembers30D\n      checkIns24H\n      checkIns7D\n      checkIns7DVirtual\n      totalTime7D\n      totalTime7DVirtual\n      avgCompletedDuration7D\n      totalKiosks\n      onlineKiosks\n      recentlyActiveKiosks\n      lastSuccessfulMemberSync\n      dailyPeriods7D {\n        dayStart\n        periodCount\n        totalTime\n        periodCountVirtual\n        totalTimeVirtual\n      }\n      topCategories7D {\n        categoryId\n        categoryName\n        periodCount\n        totalTime\n        isVirtual\n      }\n    }\n    badgeLeaderboard(limit: 8) @include(if: $includeBadgeLeaderboard) {\n      person {\n        id\n        firstName\n        lastName\n        memberNumber\n      }\n      badgeCount\n      recentBadgeCount7D\n      latestBadgeAwardAt\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "5764ac58011341bf866cdb7d49b9d73c";
+(node as any).hash = "e388decbbfc536a2d71688ab93524a45";
 
 export default node;

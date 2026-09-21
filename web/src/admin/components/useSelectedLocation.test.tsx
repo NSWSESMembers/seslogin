@@ -27,7 +27,9 @@ describe("useSelectedLocation", () => {
       isDev: false,
       disaggregateVirtualPeriods: false,
       passkeys: [],
-      locations: [{ id: "loc-1", name: "HQ", enabled: true }],
+      locations: [
+        { id: "loc-1", name: "HQ", enabled: true, gamificationEnabled: false },
+      ],
     });
 
     expect(() => renderHook(() => useSelectedLocation())).toThrow(
@@ -46,7 +48,9 @@ describe("useSelectedLocation", () => {
       isDev: false,
       disaggregateVirtualPeriods: false,
       passkeys: [],
-      locations: [{ id: "loc-1", name: "HQ", enabled: true }],
+      locations: [
+        { id: "loc-1", name: "HQ", enabled: true, gamificationEnabled: false },
+      ],
     });
 
     expect(() => renderHook(() => useSelectedLocation())).toThrow(
@@ -66,8 +70,13 @@ describe("useSelectedLocation", () => {
       disaggregateVirtualPeriods: false,
       passkeys: [],
       locations: [
-        { id: "loc-1", name: "HQ", enabled: true },
-        { id: "loc-2", name: "Downtown", enabled: true },
+        { id: "loc-1", name: "HQ", enabled: true, gamificationEnabled: false },
+        {
+          id: "loc-2",
+          name: "Downtown",
+          enabled: true,
+          gamificationEnabled: true,
+        },
       ],
     });
 
@@ -77,6 +86,7 @@ describe("useSelectedLocation", () => {
       id: "loc-2",
       name: "Downtown",
       enabled: true,
+      gamificationEnabled: true,
     });
   });
 });

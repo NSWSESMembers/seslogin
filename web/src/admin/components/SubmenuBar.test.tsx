@@ -1,9 +1,24 @@
 import "@testing-library/jest-dom/vitest";
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import UserEvent from "@testing-library/user-event";
 import { render, screen } from "@testing-library/react";
 import { MemoryRouter, Routes, Route } from "react-router";
 import SubmenuBar from "./SubmenuBar";
+
+vi.mock("./useSelectedLocation", () => ({
+  default: vi.fn(),
+}));
+
+import useSelectedLocation from "./useSelectedLocation";
+
+beforeEach(() => {
+  vi.mocked(useSelectedLocation).mockReturnValue({
+    id: "loc-1",
+    name: "HQ",
+    enabled: true,
+    gamificationEnabled: false,
+  });
+});
 
 function renderSubmenuBar(initialPath: string, isSuper = false) {
   return render(
@@ -64,5 +79,24 @@ describe("SubmenuBar", () => {
   it("shows super-admin submenus for super users", () => {
     renderSubmenuBar("/admin/locations", true);
     expect(screen.getByRole("button", { name: "List" })).toBeInTheDocument();
+  });
+
+  it("hides the reports submenu when gamification is disabled", () => {
+    const { container } = renderSubmenuBar("/admin/reports");
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it("shows a badge report link in the reports submenu when gamification is enabled", () => {
+    vi.mocked(useSelectedLocation).mockReturnValue({
+      id: "loc-1",
+      name: "HQ",
+      enabled: true,
+      gamificationEnabled: true,
+    });
+
+    renderSubmenuBar("/admin/reports");
+    expect(
+      screen.getByRole("button", { name: "Activity Export" }),
+    ).toBeInTheDocument();
   });
 });

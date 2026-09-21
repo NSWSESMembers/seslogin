@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { matchPath, useLocation, useMatch } from "react-router";
 import MenuLink from "../../components/ui/MenuLink";
+import useSelectedLocation from "./useSelectedLocation";
 
 type SubItem = { to: string; label: string };
 
@@ -62,6 +63,7 @@ interface SubmenuBarProps {
 }
 
 export default function SubmenuBar({ isSuper }: SubmenuBarProps) {
+  const selectedLocation = useSelectedLocation();
   const isMembersSection = useMatch("/admin/members/*");
   const isActivitySection = useMatch("/admin/activity/*");
   const isSessionsSection = useMatch("/admin/sessions/*");
@@ -69,6 +71,7 @@ export default function SubmenuBar({ isSuper }: SubmenuBarProps) {
   const isUsersSection = useMatch("/admin/users/*");
   const isCategoriesSection = useMatch("/admin/categories/*");
   const isApiTokensSection = useMatch("/admin/api-tokens/*");
+  const isReportsSection = useMatch("/admin/reports/*");
   const isSettingsSection = useMatch("/admin/settings/*");
 
   if (isMembersSection) {
@@ -154,6 +157,20 @@ export default function SubmenuBar({ isSuper }: SubmenuBarProps) {
         items={[
           { to: "/admin/api-tokens", label: "List" },
           { to: "/admin/api-tokens/new", label: "New" },
+        ]}
+      />
+    );
+  }
+
+  // A submenu is only worth showing once Reports has more than one
+  // destination — with gamification off, Activity Export is the whole of
+  // Reports and the top-level MenuBar link is enough on its own.
+  if (isReportsSection && selectedLocation.gamificationEnabled) {
+    return (
+      <Submenu
+        items={[
+          { to: "/admin/reports", label: "Activity Export" },
+          { to: "/admin/reports/badges", label: "Badge Report" },
         ]}
       />
     );

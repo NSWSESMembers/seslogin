@@ -44,6 +44,7 @@
   --color-count-badge-ink: #953f16; /* ...and its text */
   --color-progress-start: #c95522; /* AdminHome top-categories bar gradient start */
   --color-progress-end: #e8945b; /* ...and its end */
+  --color-badge-accent: #7f3f11; /* badge-program heading/stat-number/pill-bg accent, reused across admin + kiosk badge UI */
 
   /* Semantic surface/text/line tokens. Light values match the previous
    * hard-coded colors, so light mode is unchanged; the dark values below flip
@@ -70,6 +71,27 @@
   --color-heat-4: #a43a00;
   --color-heat-5: #8a0c00;
 
+  /* Badge tier pill background/ink/border: the gold/silver/bronze/starter/
+   * passport-stamps tiers used by the member badge cards, the members list
+   * tier-count pills, and the kiosk leaderboard's tier breakdown. Reused
+   * across admin and kiosk badge UI, so these are tokens rather than
+   * per-file arbitrary hex values. Dark values below flip automatically. */
+  --color-tier-gold: #fff4be;
+  --color-tier-gold-ink: #7a4e00;
+  --color-tier-gold-border: #b98a00;
+  --color-tier-silver: #f2f6fb;
+  --color-tier-silver-ink: #3a4c5e;
+  --color-tier-silver-border: #7b8794;
+  --color-tier-bronze: #f6dfcf;
+  --color-tier-bronze-ink: #5c2e0a;
+  --color-tier-bronze-border: #b06f3e;
+  --color-tier-starter: #f0f6ff;
+  --color-tier-starter-ink: #1a3a62;
+  --color-tier-starter-border: #6a90b8;
+  --color-tier-passport-stamps: #e9f7ef;
+  --color-tier-passport-stamps-ink: #1d5a3f;
+  --color-tier-passport-stamps-border: #3f8f68;
+
   /* Dialog entrance (see components/ui/Dialog.tsx). These are animations rather
    * than transitions on purpose: a dialog is mounted on open, so there is no
    * rendered starting style for a transition to run from and it would snap. */
@@ -86,6 +108,58 @@
     from {
       opacity: 0;
       transform: scale(0.97);
+    }
+  }
+
+  /* Badge tier icon idle flourishes (MemberBadgeProgressPanel's earned-badge
+   * icons). Paired with motion-reduce:animate-none at each call site. */
+  --animate-badge-tier-starter: badge-tier-starter 3.2s ease-in-out infinite;
+  --animate-badge-tier-bronze: badge-tier-bronze 4.2s ease-in-out infinite;
+  --animate-badge-tier-silver: badge-tier-silver 2.8s ease-in-out infinite;
+  --animate-badge-tier-gold: badge-tier-gold 2.2s ease-in-out infinite;
+
+  @keyframes badge-tier-starter {
+    0%,
+    100% {
+      transform: translateY(0);
+    }
+    50% {
+      transform: translateY(-2px);
+    }
+  }
+
+  @keyframes badge-tier-bronze {
+    0%,
+    100% {
+      transform: rotate(0deg);
+    }
+    25% {
+      transform: rotate(-2deg);
+    }
+    75% {
+      transform: rotate(2deg);
+    }
+  }
+
+  @keyframes badge-tier-silver {
+    0%,
+    100% {
+      filter: drop-shadow(0 0 0 rgba(139, 157, 180, 0));
+    }
+    50% {
+      filter: drop-shadow(0 0 4px rgba(139, 157, 180, 0.55));
+    }
+  }
+
+  @keyframes badge-tier-gold {
+    0%,
+    100% {
+      transform: scale(1);
+      filter: drop-shadow(0 0 1px rgba(215, 157, 16, 0.35));
+    }
+    50% {
+      transform: scale(1.05);
+      filter: drop-shadow(0 0 7px rgba(215, 157, 16, 0.7));
     }
   }
 }
@@ -120,6 +194,21 @@
       --color-heat-3: #bd5c2b;
       --color-heat-4: #da7240;
       --color-heat-5: #f78955;
+      --color-tier-gold: #3d2e00;
+      --color-tier-gold-ink: #ffdd7a;
+      --color-tier-gold-border: #caa53a;
+      --color-tier-silver: #262b31;
+      --color-tier-silver-ink: #cfd8e0;
+      --color-tier-silver-border: #8fa0af;
+      --color-tier-bronze: #3a2313;
+      --color-tier-bronze-ink: #f0c39c;
+      --color-tier-bronze-border: #c98a54;
+      --color-tier-starter: #1b2734;
+      --color-tier-starter-ink: #b7d0ea;
+      --color-tier-starter-border: #7ea0c4;
+      --color-tier-passport-stamps: #142a1f;
+      --color-tier-passport-stamps-ink: #a9e2c4;
+      --color-tier-passport-stamps-border: #4fae82;
     }
   }
 
@@ -151,6 +240,21 @@
     --color-heat-3: #bd5c2b;
     --color-heat-4: #da7240;
     --color-heat-5: #f78955;
+    --color-tier-gold: #3d2e00;
+    --color-tier-gold-ink: #ffdd7a;
+    --color-tier-gold-border: #caa53a;
+    --color-tier-silver: #262b31;
+    --color-tier-silver-ink: #cfd8e0;
+    --color-tier-silver-border: #8fa0af;
+    --color-tier-bronze: #3a2313;
+    --color-tier-bronze-ink: #f0c39c;
+    --color-tier-bronze-border: #c98a54;
+    --color-tier-starter: #1b2734;
+    --color-tier-starter-ink: #b7d0ea;
+    --color-tier-starter-border: #7ea0c4;
+    --color-tier-passport-stamps: #142a1f;
+    --color-tier-passport-stamps-ink: #a9e2c4;
+    --color-tier-passport-stamps-border: #4fae82;
   }
 }
 
