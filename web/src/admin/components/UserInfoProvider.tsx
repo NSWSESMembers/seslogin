@@ -28,6 +28,7 @@ const userInfoQuery = graphql`
         id
         name
         enabled
+        gamificationEnabled
       }
       passkeys {
         __typename

@@ -10,6 +10,7 @@ import TextInput from "../../components/ui/TextInput";
 import { Button } from "../../components/ui/Button";
 import { StatusMessage } from "../../components/ui/StatusMessage";
 import { formatFullDateTime } from "../../lib/time";
+import MemberBadgeProgressPanel from "../components/MemberBadgeProgressPanel";
 
 export default function MembersEdit() {
   const params = useParams();
@@ -17,20 +18,38 @@ export default function MembersEdit() {
   const { notifyError, notifySuccess } = useNotify();
   const selectedLocation = useSelectedLocation();
   const locationId = selectedLocation.id;
+  const showBadges = selectedLocation.gamificationEnabled;
+  // badgeProgress is rendered by MemberBadgeProgressPanel, which is outside this
+  // query file, so Relay cannot see the field usage here.
+  /* eslint-disable relay/unused-fields */
   const data = useRetryableLazyLoadQuery<MembersEditQuery>(
     graphql`
-      query MembersEditQuery($id: ID!) @throwOnFieldError {
+      query MembersEditQuery($id: ID!, $locationId: ID!, $showBadges: Boolean!)
+      @throwOnFieldError {
         person(id: $id) {
           id
           firstName
           lastName
           memberNumber
           missingSince
+          badgeProgress(locationId: $locationId) @include(if: $showBadges) {
+            id
+            badgeId
+            name
+            description
+            tier
+            source
+            earned
+            awardedAt
+            current
+            target
+          }
         }
       }
     `,
-    { id: params.memberId! },
+    { id: params.memberId!, locationId, showBadges },
   );
+  /* eslint-enable relay/unused-fields */
 
   const [commitMutation, isMutationInFlight] = useMutation<MembersEditMutation>(
     graphql`
@@ -129,6 +148,13 @@ export default function MembersEdit() {
           </FormField>
         </FieldList>
       </form>
+
+      {showBadges && person.badgeProgress ? (
+        <MemberBadgeProgressPanel
+          heading="Badge Progress"
+          badgeProgress={person.badgeProgress}
+        />
+      ) : null}
     </>
   );
 }
