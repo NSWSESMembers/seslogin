@@ -17,6 +17,13 @@ import { AdminTable, Th, Td } from "../../components/ui/Table";
 import { Button, ButtonLink } from "../../components/ui/Button";
 import { Popover } from "../../components/ui/Popover";
 import TextInput from "../../components/ui/TextInput";
+import {
+  TIER_ORDER_DESC,
+  TIER_PILL_CLASS,
+  tierCssClass,
+  tierKey,
+  tierLabel,
+} from "../../lib/badgeTiers";
 
 type Person = MembersListQuery$data["location"]["people"][number];
 
@@ -71,11 +78,13 @@ function Row({
   idx,
   isDev,
   canEdit,
+  showBadges,
 }: {
   person: Person;
   idx: number;
   isDev: boolean;
   canEdit: boolean;
+  showBadges: boolean;
 }) {
   const { notifyError, notifySuccess } = useNotify();
   const [commitMutation, isMutationInFlight] =
@@ -117,6 +126,17 @@ function Row({
   // Member sync has stopped seeing this person in SES. They are soft-deleted once the
   // marker ages past the grace window, unless a later sync finds them again.
   const missingSince = person.missingSince;
+  const badges = person.badges ?? [];
+
+  const countByTier = new Map<string, number>();
+  for (const badge of badges) {
+    const key = tierKey(badge.tier);
+    countByTier.set(key, (countByTier.get(key) ?? 0) + 1);
+  }
+  const tierCounts = TIER_ORDER_DESC.map((tier) => ({
+    tier,
+    count: countByTier.get(tier) ?? 0,
+  }));
 
   return (
     <tr className={idx % 2 === 0 ? "bg-surface-raised" : undefined}>
@@ -142,11 +162,31 @@ function Row({
       <Td nowrap>
         {person.firstName} {person.lastName}
       </Td>
+      {showBadges && (
+        <Td nowrap>
+          <span className="inline-flex gap-1 align-middle">
+            {tierCounts.map(({ tier, count }) => (
+              <span
+                key={tier}
+                className={`inline-block min-w-5 rounded-full border px-1.75 py-px text-center text-[0.82rem] leading-[1.4] font-bold ${TIER_PILL_CLASS[tierCssClass(tier)]}`}
+                title={tierLabel(tier)}
+              >
+                {count}
+              </span>
+            ))}
+          </span>
+        </Td>
+      )}
       <Td options>
         <div className="flex justify-end gap-1">
           <ButtonLink size="row" to={`/admin/members/activity/${person.id}`}>
             Activity
           </ButtonLink>
+          {showBadges && (
+            <ButtonLink size="row" to={`/admin/members/badges/${person.id}`}>
+              Badges
+            </ButtonLink>
+          )}
           {canEdit && !sesApiPersonId ? (
             <>
               <ButtonLink size="row" to={`/admin/members/${person.id}`}>
@@ -173,9 +213,11 @@ export default function MembersList() {
   const selectedLocation = useSelectedLocation();
   const locationId = selectedLocation.id;
   const canEdit = selectedLocation.viewerCanEdit;
+  const showBadges = selectedLocation.gamificationEnabled;
   const data = useRetryableLazyLoadQuery<MembersListQuery>(
     graphql`
-      query MembersListQuery($location: ID!) @throwOnFieldError {
+      query MembersListQuery($location: ID!, $showBadges: Boolean!)
+      @throwOnFieldError {
         location(id: $location) {
           id
           sesApiHeadquartersId
@@ -187,11 +229,15 @@ export default function MembersList() {
             memberNumber
             sesApiPersonId
             missingSince
+            badges(locationId: $location) @include(if: $showBadges) {
+              id
+              tier
+            }
           }
         }
       }
     `,
-    { location: locationId },
+    { location: locationId, showBadges },
     { fetchKey: locationId },
   );
 
@@ -282,6 +328,7 @@ export default function MembersList() {
               {isDev && <Th>ID</Th>}
               <Th style={{ width: 100 }}>SES ID</Th>
               <Th>Name</Th>
+              {showBadges && <Th style={{ width: 150 }}>Badges</Th>}
               <Th style={{ width: 100 }}></Th>
             </tr>
           </thead>
@@ -293,6 +340,7 @@ export default function MembersList() {
                 idx={idx}
                 isDev={isDev}
                 canEdit={canEdit}
+                showBadges={showBadges}
               />
             ))}
           </tbody>

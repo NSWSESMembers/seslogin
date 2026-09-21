@@ -28,7 +28,13 @@ describe("useSelectedLocation", () => {
       disaggregateVirtualPeriods: false,
       passkeys: [],
       locations: [
-        { id: "loc-1", name: "HQ", enabled: true, viewerCanEdit: true },
+        {
+          id: "loc-1",
+          name: "HQ",
+          enabled: true,
+          gamificationEnabled: false,
+          viewerCanEdit: true,
+        },
       ],
     });
 
@@ -49,7 +55,13 @@ describe("useSelectedLocation", () => {
       disaggregateVirtualPeriods: false,
       passkeys: [],
       locations: [
-        { id: "loc-1", name: "HQ", enabled: true, viewerCanEdit: true },
+        {
+          id: "loc-1",
+          name: "HQ",
+          enabled: true,
+          gamificationEnabled: false,
+          viewerCanEdit: true,
+        },
       ],
     });
 
@@ -70,8 +82,20 @@ describe("useSelectedLocation", () => {
       disaggregateVirtualPeriods: false,
       passkeys: [],
       locations: [
-        { id: "loc-1", name: "HQ", enabled: true, viewerCanEdit: true },
-        { id: "loc-2", name: "Downtown", enabled: true, viewerCanEdit: true },
+        {
+          id: "loc-1",
+          name: "HQ",
+          enabled: true,
+          gamificationEnabled: false,
+          viewerCanEdit: true,
+        },
+        {
+          id: "loc-2",
+          name: "Downtown",
+          enabled: true,
+          gamificationEnabled: true,
+          viewerCanEdit: true,
+        },
       ],
     });
 
@@ -81,6 +105,7 @@ describe("useSelectedLocation", () => {
       id: "loc-2",
       name: "Downtown",
       enabled: true,
+      gamificationEnabled: true,
       viewerCanEdit: true,
     });
   });

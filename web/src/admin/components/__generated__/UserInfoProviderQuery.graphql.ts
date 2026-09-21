@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<27013661663beb817320d3d6a2f02fa9>>
+ * @generated SignedSource<<59d1f8c202ed499e2d3e3b6d572dc4f1>>
  * @lightSyntaxTransform
  */
 
@@ -22,6 +22,7 @@ export type UserInfoProviderQuery$data = {
     readonly isSuper: boolean;
     readonly locations: ReadonlyArray<{
       readonly enabled: boolean;
+      readonly gamificationEnabled: boolean;
       readonly id: string;
       readonly name: string;
       readonly viewerCanEdit: boolean;
@@ -111,6 +112,13 @@ v1 = [
             "kind": "ScalarField",
             "name": "viewerCanEdit",
             "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "gamificationEnabled",
+            "storageKey": null
           }
         ],
         "storageKey": null
@@ -182,16 +190,16 @@ return {
     "selections": (v1/*:: as any*/)
   },
   "params": {
-    "cacheID": "f7eef8dabb3d1695696f4cfd1a2246ac",
+    "cacheID": "1427f95540bbbc9d1b8e941a0cd6672e",
     "id": null,
     "metadata": {},
     "name": "UserInfoProviderQuery",
     "operationKind": "query",
-    "text": "query UserInfoProviderQuery {\n  user {\n    id\n    email\n    isSuper\n    isDev\n    disaggregateVirtualPeriods\n    locations {\n      id\n      name\n      enabled\n      viewerCanEdit\n    }\n    passkeys {\n      __typename\n    }\n  }\n  environment {\n    gitRev\n    isProdDb\n  }\n}\n"
+    "text": "query UserInfoProviderQuery {\n  user {\n    id\n    email\n    isSuper\n    isDev\n    disaggregateVirtualPeriods\n    locations {\n      id\n      name\n      enabled\n      viewerCanEdit\n      gamificationEnabled\n    }\n    passkeys {\n      __typename\n    }\n  }\n  environment {\n    gitRev\n    isProdDb\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "3a91e36b99493e8954c3fdb724c0832d";
+(node as any).hash = "f4db9a5d5548d01d66c8082c2e310911";
 
 export default node;

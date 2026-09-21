@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<bdccc2674f139cd8e0321c919b61918e>>
+ * @generated SignedSource<<8341df38bbc2f8200cc2ffb02c92c303>>
  * @lightSyntaxTransform
  */
 
@@ -10,12 +10,17 @@
 import { ConcreteRequest } from 'relay-runtime';
 export type MembersListQuery$variables = {
   location: string;
+  showBadges: boolean;
 };
 export type MembersListQuery$data = {
   readonly location: {
     readonly id: string;
     readonly lastSuccessfulMemberSync: number | null | undefined;
     readonly people: ReadonlyArray<{
+      readonly badges?: ReadonlyArray<{
+        readonly id: string;
+        readonly tier: string;
+      }>;
       readonly firstName: string;
       readonly id: string;
       readonly lastName: string;
@@ -37,6 +42,11 @@ var v0 = [
     "defaultValue": null,
     "kind": "LocalArgument",
     "name": "location"
+  },
+  {
+    "defaultValue": null,
+    "kind": "LocalArgument",
+    "name": "showBadges"
   }
 ],
 v1 = {
@@ -119,6 +129,38 @@ v2 = [
             "kind": "ScalarField",
             "name": "missingSince",
             "storageKey": null
+          },
+          {
+            "condition": "showBadges",
+            "kind": "Condition",
+            "passingValue": true,
+            "selections": [
+              {
+                "alias": null,
+                "args": [
+                  {
+                    "kind": "Variable",
+                    "name": "locationId",
+                    "variableName": "location"
+                  }
+                ],
+                "concreteType": "PersonBadge",
+                "kind": "LinkedField",
+                "name": "badges",
+                "plural": true,
+                "selections": [
+                  (v1/*:: as any*/),
+                  {
+                    "alias": null,
+                    "args": null,
+                    "kind": "ScalarField",
+                    "name": "tier",
+                    "storageKey": null
+                  }
+                ],
+                "storageKey": null
+              }
+            ]
           }
         ],
         "storageKey": null
@@ -147,16 +189,16 @@ return {
     "selections": (v2/*:: as any*/)
   },
   "params": {
-    "cacheID": "af553320c4193d43740cf973dd2ffbda",
+    "cacheID": "fc8140028276fc9c11b1953e592738bc",
     "id": null,
     "metadata": {},
     "name": "MembersListQuery",
     "operationKind": "query",
-    "text": "query MembersListQuery(\n  $location: ID!\n) {\n  location(id: $location) {\n    id\n    sesApiHeadquartersId\n    lastSuccessfulMemberSync\n    people {\n      id\n      firstName\n      lastName\n      memberNumber\n      sesApiPersonId\n      missingSince\n    }\n  }\n}\n"
+    "text": "query MembersListQuery(\n  $location: ID!\n  $showBadges: Boolean!\n) {\n  location(id: $location) {\n    id\n    sesApiHeadquartersId\n    lastSuccessfulMemberSync\n    people {\n      id\n      firstName\n      lastName\n      memberNumber\n      sesApiPersonId\n      missingSince\n      badges(locationId: $location) @include(if: $showBadges) {\n        id\n        tier\n      }\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "a8cb1b33bcbbb8d8c1b78a3c88fc9548";
+(node as any).hash = "9005fc3c80d9a1ae071e825b5b36aec5";
 
 export default node;
