@@ -2393,6 +2393,15 @@ impl<A: App + HasDb + HasQueues + HasMail + Send + Sync + 'static> MutationRoot<
         &self,
         ctx: &Context<'_>,
         daily_location_ids: Vec<String>,
+        // Omitting weekly_badge_location_ids leaves the caller's weekly badge
+        // digest subscriptions unchanged — same reasoning as
+        // updateLocation's nitc_complete_on_export/gamification_enabled: this
+        // one mutation backs two independent settings pages (daily email,
+        // weekly badge digest), and making this required would mean a save
+        // from the daily-email page (which knows nothing about weekly badge
+        // locations) silently wipes them, since the resolver would otherwise
+        // have to build the whole email_config from scratch on every call.
+        weekly_badge_location_ids: Option<Vec<String>>,
     ) -> Result<User<A>> {
         require_writable(ctx)?;
         let user_id = match ctx.data_opt::<AuthInfo>() {
@@ -2400,17 +2409,87 @@ impl<A: App + HasDb + HasQueues + HasMail + Send + Sync + 'static> MutationRoot<
             _ => return Err(anyhow!("User auth required")),
         };
 
+        // Daily is always fully replaced by daily_location_ids (unchanged,
+        // existing behaviour — its one caller always knows its full desired
+        // list). Weekly badge is only touched when explicitly provided; when
+        // omitted, carry forward whatever locations currently have it set so
+        // a daily-only save can't drop them. Those carried-forward ids are
+        // re-filtered against the caller's current grants (like
+        // activity_summary's own daily-summary read path) rather than
+        // hard-erroring like the explicit-list path below, so a save the
+        // user *is* making (their daily list) can't be blocked by a stale
+        // weekly-badge entry for a location they've since lost access to.
+        let preserved_weekly_badge_location_ids = match &weekly_badge_location_ids {
+            Some(_) => Vec::new(),
+            None => {
+                let existing = self
+                    .app
+                    .db()
+                    .get_users(&[&user_id])
+                    .await?
+                    .into_iter()
+                    .next()
+                    .flatten()
+                    .ok_or_else(|| anyhow!("User missing"))?;
+                existing
+                    .email_config
+                    .iter()
+                    .filter_map(|(loc_id, val)| {
+                        val.as_object()
+                            .filter(|m| m.contains_key("weekly_badge"))
+                            .map(|_| loc_id.clone())
+                    })
+                    .filter(|loc_id| require_location_access(ctx, loc_id).is_ok())
+                    .collect()
+            }
+        };
+
         let mut email_config = serde_json::Map::new();
         for loc_id in daily_location_ids {
             // Only allow configuring summaries for locations the caller can access,
             // otherwise this becomes a push channel for cross-tenant data.
             require_location_access(ctx, &loc_id)?;
-            let mut inner = serde_json::Map::new();
-            inner.insert(
-                "daily".to_string(),
-                serde_json::Value::String("1".to_string()),
-            );
-            email_config.insert(loc_id, serde_json::Value::Object(inner));
+            email_config
+                .entry(loc_id)
+                .or_insert_with(|| serde_json::Value::Object(serde_json::Map::new()))
+                .as_object_mut()
+                .expect("just inserted as an object")
+                .insert(
+                    "daily".to_string(),
+                    serde_json::Value::String("1".to_string()),
+                );
+        }
+
+        match weekly_badge_location_ids {
+            Some(loc_ids) => {
+                for loc_id in loc_ids {
+                    // Explicit list: same hard-error-on-no-access rule as
+                    // daily_location_ids above.
+                    require_location_access(ctx, &loc_id)?;
+                    email_config
+                        .entry(loc_id)
+                        .or_insert_with(|| serde_json::Value::Object(serde_json::Map::new()))
+                        .as_object_mut()
+                        .expect("just inserted as an object")
+                        .insert(
+                            "weekly_badge".to_string(),
+                            serde_json::Value::String("1".to_string()),
+                        );
+                }
+            }
+            None => {
+                for loc_id in preserved_weekly_badge_location_ids {
+                    email_config
+                        .entry(loc_id)
+                        .or_insert_with(|| serde_json::Value::Object(serde_json::Map::new()))
+                        .as_object_mut()
+                        .expect("just inserted as an object")
+                        .insert(
+                            "weekly_badge".to_string(),
+                            serde_json::Value::String("1".to_string()),
+                        );
+                }
+            }
         }
         self.app
             .db()
