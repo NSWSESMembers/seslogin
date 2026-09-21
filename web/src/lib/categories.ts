@@ -68,18 +68,18 @@ export const categories: Category[] = [
       },
       {
         id: "Sam5VHGJHiK9",
-        name: "Flood Operator L3 (SWR)",
-        icon: "flood_l3",
+        name: "Flood Rescue: In Water",
+        icon: "flood_rescue_in_water",
       },
       {
         id: "aMNwgsYk8hwA",
-        name: "Flood Operator L2 (Boat)",
-        icon: "flood_l2",
+        name: "Flood Rescue: On Water",
+        icon: "flood_boat",
       },
       {
         id: "Na5anfu2SjxY",
-        name: "Flood Operator L1",
-        icon: "flood_l1",
+        name: "Flood Rescue: Land Based",
+        icon: "flood_rescue_land",
       },
       {
         id: "aW7d1yFParRV",
@@ -97,14 +97,29 @@ export const categories: Category[] = [
         icon: "dov",
       },
       {
+        id: "y9NOZQK71qKn",
+        name: "HCV: Logistics",
+        icon: "hcv_logistics",
+      },
+      {
+        id: "zR3BbJ5qzVkD",
+        name: "HCV: Operational",
+        icon: "hcv_operational",
+      },
+      {
         id: "YNAcvH3HtjdU",
         name: "USAR",
         icon: "usar",
       },
       {
-        id: "wXd1O7sNLChh",
-        name: "Storm & Water",
-        icon: "storm",
+        id: "a4nhHUkrXFEH",
+        name: "Storm & Water: Ground",
+        icon: "storm_water_ground",
+      },
+      {
+        id: "cQ8raY24VoPt",
+        name: "Storm & Water: Heights",
+        icon: "storm_water_heights",
       },
       {
         id: "HLdLk5jkxtns",
@@ -195,18 +210,18 @@ export const categories: Category[] = [
       },
       {
         id: "EnXtbYiMUD3g",
-        name: "Flood Operator L3 (SWR)",
-        icon: "flood_l3",
+        name: "Flood Rescue: In Water",
+        icon: "flood_rescue_in_water",
       },
       {
         id: "z4HrmoDyzpfh",
-        name: "Flood Operator L2 (Boat)",
-        icon: "flood_l2",
+        name: "Flood Rescue: On Water",
+        icon: "flood_boat",
       },
       {
         id: "AKinZhtlbvL1",
-        name: "Flood Operator L1",
-        icon: "flood_l1",
+        name: "Flood Rescue: Land Based",
+        icon: "flood_rescue_land",
       },
       {
         id: "2K3cfNuoTBYB",
@@ -224,14 +239,29 @@ export const categories: Category[] = [
         icon: "dov",
       },
       {
+        id: "mLS5y13rviWd",
+        name: "HCV: Logistics",
+        icon: "hcv_logistics",
+      },
+      {
+        id: "dZI5ChtSALlV",
+        name: "HCV: Operational",
+        icon: "hcv_operational",
+      },
+      {
         id: "B2nP2FfkxfIg",
         name: "USAR",
         icon: "usar",
       },
       {
-        id: "iDmbliqZlKMw",
-        name: "Storm & Water",
-        icon: "storm",
+        id: "diTqk82vnZxc",
+        name: "Storm & Water: Ground",
+        icon: "storm_water_ground",
+      },
+      {
+        id: "oqYjg2M9LKEl",
+        name: "Storm & Water: Heights",
+        icon: "storm_water_heights",
       },
       {
         id: "SOiIjTV9Jmow",
@@ -282,8 +312,8 @@ export const categories: Category[] = [
       },
       {
         id: "Iki2svFjFU48",
-        name: "Fitness",
-        icon: "fitness",
+        name: "Fit for Role",
+        icon: "fit_for_role",
       },
       {
         id: "lO7YmMpXj3Xu",
@@ -327,18 +357,18 @@ export const categories: Category[] = [
       },
       {
         id: "KoF18gOkiFM3",
-        name: "Flood Operator L3 (SWR)",
-        icon: "flood_l3",
+        name: "Flood Rescue: In Water",
+        icon: "flood_rescue_in_water",
       },
       {
         id: "5deKL3XPdfgN",
-        name: "Flood Operator L2 (Boat)",
-        icon: "flood_l2",
+        name: "Flood Rescue: On Water",
+        icon: "flood_boat",
       },
       {
         id: "hj9KzuwFbM13",
-        name: "Flood Operator L1",
-        icon: "flood_l1",
+        name: "Flood Rescue: Land Based",
+        icon: "flood_rescue_land",
       },
       {
         id: "1RwtdwX3JGc6",
@@ -356,14 +386,29 @@ export const categories: Category[] = [
         icon: "dov",
       },
       {
+        id: "Sptu5z1uHT3j",
+        name: "HCV: Logistics",
+        icon: "hcv_logistics",
+      },
+      {
+        id: "lD2ApJFJNgbd",
+        name: "HCV: Operational",
+        icon: "hcv_operational",
+      },
+      {
         id: "TiruXst14mbp",
         name: "USAR",
         icon: "usar",
       },
       {
-        id: "7OvMSXibYs3z",
-        name: "Storm & Water",
-        icon: "storm",
+        id: "TDK8NAUXx2e5",
+        name: "Storm & Water: Ground",
+        icon: "storm_water_ground",
+      },
+      {
+        id: "dCiJLtDOzm9n",
+        name: "Storm & Water: Heights",
+        icon: "storm_water_heights",
       },
       {
         id: "8kJBD0LHgqFr",
@@ -444,18 +489,18 @@ export const categories: Category[] = [
       },
       {
         id: "0hXmBudbE3O5",
-        name: "Flood Operator L3 (SWR)",
-        icon: "flood_l3",
+        name: "Flood Rescue: In Water",
+        icon: "flood_rescue_in_water",
       },
       {
         id: "y16O40k72vyn",
-        name: "Flood Operator L2 (Boat)",
-        icon: "flood_l2",
+        name: "Flood Rescue: On Water",
+        icon: "flood_boat",
       },
       {
         id: "lrBgqf7hQxK4",
-        name: "Flood Operator L1",
-        icon: "flood_l1",
+        name: "Flood Rescue: Land Based",
+        icon: "flood_rescue_land",
       },
       {
         id: "Fu6jyPNi47VY",
@@ -473,14 +518,29 @@ export const categories: Category[] = [
         icon: "dov",
       },
       {
+        id: "NThvjTmtJidl",
+        name: "HCV: Logistics",
+        icon: "hcv_logistics",
+      },
+      {
+        id: "uF7wJiQz5zH9",
+        name: "HCV: Operational",
+        icon: "hcv_operational",
+      },
+      {
         id: "Zge0zDSL33hg",
         name: "USAR",
         icon: "usar",
       },
       {
-        id: "lAXGAJcr6KS4",
-        name: "Storm & Water",
-        icon: "storm",
+        id: "lOVAJyWz53jK",
+        name: "Storm & Water: Ground",
+        icon: "storm_water_ground",
+      },
+      {
+        id: "JYHENWPl1cKB",
+        name: "Storm & Water: Heights",
+        icon: "storm_water_heights",
       },
       {
         id: "MLe9eJfdpdu8",
@@ -566,18 +626,18 @@ export const categories: Category[] = [
       },
       {
         id: "oG2K4hfdXDWQ",
-        name: "Flood Operator L3 (SWR)",
-        icon: "flood_l3",
+        name: "Flood Rescue: In Water",
+        icon: "flood_rescue_in_water",
       },
       {
         id: "DQR24Sl5Zs25",
-        name: "Flood Operator L2 (Boat)",
-        icon: "flood_l2",
+        name: "Flood Rescue: On Water",
+        icon: "flood_boat",
       },
       {
         id: "d51eXzmfIuXm",
-        name: "Flood Operator L1",
-        icon: "flood_l1",
+        name: "Flood Rescue: Land Based",
+        icon: "flood_rescue_land",
       },
       {
         id: "xIJbGAJvzkUF",
@@ -595,14 +655,29 @@ export const categories: Category[] = [
         icon: "dov",
       },
       {
+        id: "w4qQnuEEmudR",
+        name: "HCV: Logistics",
+        icon: "hcv_logistics",
+      },
+      {
+        id: "IqGj5X3nt3UX",
+        name: "HCV: Operational",
+        icon: "hcv_operational",
+      },
+      {
         id: "WlyrCxgloooJ",
         name: "USAR",
         icon: "usar",
       },
       {
-        id: "wt646enF5jlq",
-        name: "Storm & Water",
-        icon: "storm",
+        id: "i8tDOYEFstSy",
+        name: "Storm & Water: Ground",
+        icon: "storm_water_ground",
+      },
+      {
+        id: "Q2QydIou53oo",
+        name: "Storm & Water: Heights",
+        icon: "storm_water_heights",
       },
       {
         id: "F7qbkbbWPQF7",

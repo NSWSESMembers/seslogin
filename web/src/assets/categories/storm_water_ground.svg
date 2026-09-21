@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="70" height="70" viewBox="0 0 48 48" fill="none">
+<g stroke="#1f3d79" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" fill="none" class="icon-stroke">
+
+  <path d="M13 22 a6 6 0 0 1 1 -11.8 a7.6 7.6 0 0 1 14.6 -2 a6.3 6.3 0 0 1 -1.1 13.8 Z" />
+  <path d="M14 25 L12 29 M23 25 L21 29 M32 25 L30 29" stroke="#fb6c0d" class="icon-accent-stroke" stroke-width="1.6" />
+  <rect x="10" y="30" width="17" height="15" stroke-width="1.8" />
+  <path d="M18.5 30 V45 M10 37.5 H27" stroke-width="1.4" />
+  <path d="M13 33 L17.5 38 L14.5 41.5 L19 44.5" stroke="#fb6c0d" class="icon-accent-stroke" stroke-width="1.5" />
+  <polygon points="27,30 33,28.5 30,35" fill="#fb6c0d" class="icon-accent" stroke="none" />
+</g>
+</svg>

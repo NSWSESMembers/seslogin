@@ -4,9 +4,8 @@ import { describe, expect, it, vitest } from "vitest";
 import UserEvent from "@testing-library/user-event";
 
 // The inlined category icon (see CategoryIcon) is decorative but, unlike the
-// `<img>` it replaced, is real DOM content - some icons even carry a badge
-// glyph (e.g. Flood Operator L1's "1"). Strip it so this reads the same
-// button label text as before.
+// `<img>` it replaced, is real DOM content - some icons even carry glyphs of
+// their own. Strip it so this reads the same button label text as before.
 function labelText(element: Element): string {
   const clone = element.cloneNode(true) as Element;
   clone.querySelectorAll('[data-icon="category"]').forEach((el) => el.remove());
@@ -65,9 +64,11 @@ describe("ScanScreenCategories", () => {
       "Field Core Skills",
       "First Aid",
       "Fit for Role",
-      "Flood Operator L1",
-      "Flood Operator L2 (Boat)",
-      "Flood Operator L3 (SWR)",
+      "Flood Rescue: In Water",
+      "Flood Rescue: Land Based",
+      "Flood Rescue: On Water",
+      "HCV: Logistics",
+      "HCV: Operational",
       "Industrial & Domestic Rescue",
       "Job Ready",
       "Land Search",
@@ -77,7 +78,8 @@ describe("ScanScreenCategories", () => {
       "Other",
       "PIARO",
       "RCR",
-      "Storm & Water",
+      "Storm & Water: Ground",
+      "Storm & Water: Heights",
       "Traffic Safety",
       "USAR",
       "VR",
