@@ -47,8 +47,11 @@ fn map_update_err(e: SdkError<UpdateItemError>, not_found_msg: String) -> db::Er
     db::Error::Infrastructure(sdk_err_msg(e))
 }
 
-/// Generate a new unique ID for DB entities
-fn new_id() -> String {
+/// Generate a new unique ID for DB entities. Public so callers that need IDs
+/// before the record exists (e.g. `cli id`, for pre-allocating an ID to reuse
+/// verbatim across databases) use the exact same scheme rather than a
+/// hand-rolled one that could silently drift from it.
+pub fn new_id() -> String {
     // https://alex7kom.github.io/nano-nanoid-cc/?alphabet=0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz&size=12&speed=1000&speedUnit=hour
     nanoid!(12, &NANOID_ALPHABET)
 }

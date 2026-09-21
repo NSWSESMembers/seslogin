@@ -128,6 +128,16 @@ enum Object {
         #[arg(long)]
         max_pages: Option<usize>,
     },
+    /// Generate new record IDs using the same scheme `db.rs` uses for every
+    /// entity (12-char nanoid). Does not touch the DB or reserve/check
+    /// anything — just a source of IDs to pass as `--id` to a `create`
+    /// command, e.g. to pre-allocate an ID in one DB so it can be reused
+    /// verbatim in another.
+    Id {
+        /// How many IDs to print, one per line.
+        #[arg(long, default_value_t = 1)]
+        count: usize,
+    },
     /// Generate a signed JWT for a session or user (does not touch the DB).
     Jwt {
         /// JWT secret (overrides JWT_SECRET env var).
@@ -1214,6 +1224,14 @@ async fn main() -> Result<()> {
     seslogin::load_cli_env();
 
     let cli = Cli::parse();
+
+    // ID generation is self-contained and needs no DB — handle it before requiring DB_PREFIX.
+    if let Object::Id { count } = &cli.object {
+        for _ in 0..*count {
+            println!("{}", dynamodb::new_id());
+        }
+        return Ok(());
+    }
 
     // JWT generation is self-contained and needs no DB — handle it before requiring DB_PREFIX.
     if let Object::Jwt {
@@ -2762,6 +2780,7 @@ async fn run(db: &impl Handler, object: Object) -> Result<()> {
         }
 
         // Handled in `main` before the shared read-only DB is opened.
+        Object::Id { .. } => unreachable!("id is handled before DB setup"),
         Object::Jwt { .. } => unreachable!("jwt is handled before DB setup"),
         Object::Ses { .. } => unreachable!("ses is handled before DB setup"),
         Object::PeriodLink { .. } => {
