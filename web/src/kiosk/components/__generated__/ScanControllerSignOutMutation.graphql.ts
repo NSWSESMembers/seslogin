@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<5e01738c75dad2de2a0f6c7579b254a6>>
+ * @generated SignedSource<<96767f45a48117aa9b7a75d1b7a8dd49>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -17,6 +17,12 @@ export type ScanControllerSignOutMutation$variables = {
 };
 export type ScanControllerSignOutMutation$data = {
   readonly scanSignOut: {
+    readonly awardedBadges: ReadonlyArray<{
+      readonly description: string;
+      readonly id: string;
+      readonly name: string;
+      readonly tier: string;
+    }>;
     readonly period: {
       readonly category: {
         readonly id: string;
@@ -66,7 +72,14 @@ v4 = {
   "name": "id",
   "storageKey": null
 },
-v5 = [
+v5 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
+  "name": "name",
+  "storageKey": null
+},
+v6 = [
   {
     "alias": null,
     "args": [
@@ -96,6 +109,33 @@ v5 = [
     "name": "scanSignOut",
     "plural": false,
     "selections": [
+      {
+        "alias": null,
+        "args": null,
+        "concreteType": "BadgeAward",
+        "kind": "LinkedField",
+        "name": "awardedBadges",
+        "plural": true,
+        "selections": [
+          (v4/*: any*/),
+          (v5/*: any*/),
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "description",
+            "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "tier",
+            "storageKey": null
+          }
+        ],
+        "storageKey": null
+      },
       {
         "alias": null,
         "args": null,
@@ -154,13 +194,7 @@ v5 = [
             "plural": false,
             "selections": [
               (v4/*: any*/),
-              {
-                "alias": null,
-                "args": null,
-                "kind": "ScalarField",
-                "name": "name",
-                "storageKey": null
-              }
+              (v5/*: any*/)
             ],
             "storageKey": null
           }
@@ -182,7 +216,7 @@ return {
     "kind": "Fragment",
     "metadata": null,
     "name": "ScanControllerSignOutMutation",
-    "selections": (v5/*: any*/),
+    "selections": (v6/*: any*/),
     "type": "MutationRoot",
     "abstractKey": null
   },
@@ -196,19 +230,19 @@ return {
     ],
     "kind": "Operation",
     "name": "ScanControllerSignOutMutation",
-    "selections": (v5/*: any*/)
+    "selections": (v6/*: any*/)
   },
   "params": {
-    "cacheID": "27f8769727a8f01a7f963c158df7e531",
+    "cacheID": "0cab71a3db126f39661f26c59e017924",
     "id": null,
     "metadata": {},
     "name": "ScanControllerSignOutMutation",
     "operationKind": "mutation",
-    "text": "mutation ScanControllerSignOutMutation(\n  $id: ID!\n  $startTime: Int!\n  $endTime: Int!\n  $categoryId: ID!\n) {\n  scanSignOut(id: $id, startTime: $startTime, endTime: $endTime, categoryId: $categoryId) {\n    period {\n      id\n      person {\n        id\n        firstName\n        lastName\n      }\n      startTime\n      endTime\n      category {\n        id\n        name\n      }\n    }\n  }\n}\n"
+    "text": "mutation ScanControllerSignOutMutation(\n  $id: ID!\n  $startTime: Int!\n  $endTime: Int!\n  $categoryId: ID!\n) {\n  scanSignOut(id: $id, startTime: $startTime, endTime: $endTime, categoryId: $categoryId) {\n    awardedBadges {\n      id\n      name\n      description\n      tier\n    }\n    period {\n      id\n      person {\n        id\n        firstName\n        lastName\n      }\n      startTime\n      endTime\n      category {\n        id\n        name\n      }\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "c84cb9dd13bbfaf6dcb0fa9f82ca7efc";
+(node as any).hash = "862becb456a84e27a8f8c60daf82a067";
 
 export default node;
