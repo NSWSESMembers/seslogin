@@ -45,6 +45,27 @@
   --color-progress-start: #c95522; /* AdminHome top-categories bar gradient start */
   --color-progress-end: #e8945b; /* ...and its end */
   --color-badge-accent: #7f3f11; /* badge-program heading/stat-number/pill-bg accent, reused across admin + kiosk badge UI */
+  /* Kiosk badge celebration card (ScanScreenMain). Like rank-badge/count-badge
+   * these sit on a fixed warm gradient that has no dark treatment, so they are
+   * deliberately unchanged in both themes and carry no dark override. */
+  --color-celebrate-eyebrow: #8c5300; /* "Badge awarded" label above the count */
+  --color-celebrate-border: #d57c2f; /* per-badge card border */
+  --color-celebrate-title: #8a3f10; /* per-badge card heading */
+  --color-celebrate-body: #6c2e09; /* ...and its description line */
+  /* Kiosk badge leaderboard / member-badge modals (ScanTitleBar). Same
+   * reasoning as the celebration tokens above: the panels sit on a fixed light
+   * blue gradient, so these carry no dark override.
+   *
+   * The origin branch spread these across twenty-five one-off hex values,
+   * including eight navies within a few percent of each other that no eye could
+   * separate. They are collapsed here into the four roles actually being
+   * expressed. */
+  --color-kiosk-modal-heading: #1b355a; /* panel and section headings, stat values */
+  --color-kiosk-modal-ink: #223041; /* panel body text */
+  --color-kiosk-modal-muted: #5b6f8a; /* labels, secondary lines */
+  --color-kiosk-modal-line: #97aed6; /* panel and control borders */
+  --color-kiosk-highlight: #d8f8ff; /* "here now" pill background */
+  --color-kiosk-highlight-ink: #0f4d55; /* ...and its text */
 
   /* Semantic surface/text/line tokens. Light values match the previous
    * hard-coded colors, so light mode is unchanged; the dark values below flip
@@ -160,6 +181,70 @@
     50% {
       transform: scale(1.05);
       filter: drop-shadow(0 0 7px rgba(215, 157, 16, 0.7));
+    }
+  }
+
+  /* Kiosk badge celebration (ScanScreenMain). Both are paired with
+   * motion-reduce:animate-none at their call sites.
+   *
+   * The confetti animation reads its duration and delay from custom properties
+   * rather than fixing them here: every piece of the burst is set off at its own
+   * random offset via an inline style, so the token is the shared shape and the
+   * per-piece timing rides the cascade. */
+  --animate-badge-pop: badge-pop 0.42s ease-out;
+  --animate-badge-confetti: badge-confetti-burst var(--confetti-duration)
+    cubic-bezier(0.12, 0.72, 0.22, 1) var(--confetti-delay) forwards;
+
+  @keyframes badge-pop {
+    0% {
+      opacity: 0;
+      transform: translateY(8px) scale(0.9);
+    }
+    70% {
+      opacity: 1;
+      transform: translateY(-2px) scale(1.03);
+    }
+    100% {
+      transform: translateY(0) scale(1);
+    }
+  }
+
+  /* Kiosk modal loading state (ScanTitleBar), both paired with
+   * motion-reduce:animate-none at their call sites. */
+  --animate-kiosk-modal-spin: kiosk-modal-spin 0.9s linear infinite;
+  --animate-kiosk-modal-progress: kiosk-modal-progress-slide 1.2s ease-in-out
+    infinite;
+
+  @keyframes kiosk-modal-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  @keyframes kiosk-modal-progress-slide {
+    0% {
+      transform: translateX(-110%);
+    }
+    60% {
+      transform: translateX(110%);
+    }
+    100% {
+      transform: translateX(110%);
+    }
+  }
+
+  @keyframes badge-confetti-burst {
+    0% {
+      opacity: 0;
+      transform: translate(0, 0) rotate(0deg) scale(0.8);
+    }
+    10% {
+      opacity: 1;
+    }
+    100% {
+      opacity: 0;
+      transform: translate(var(--confetti-x), var(--confetti-y))
+        rotate(var(--confetti-rotation)) scale(1.1);
     }
   }
 }

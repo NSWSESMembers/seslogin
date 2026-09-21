@@ -39,7 +39,7 @@ const session = {
   id: "sess123",
   name: "Front Desk",
   config: { guests: true, theme: "dark", smallCategories: false },
-  location: { id: "loc456", name: "Test Unit" },
+  location: { id: "loc456", name: "Test Unit", gamificationEnabled: false },
 };
 
 function renderDialog(

@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<92c65535106f5577aae2e8eb01aa9996>>
+ * @generated SignedSource<<9e77a7b6424097797c2c985fedfdb0d1>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -16,6 +16,12 @@ export type ScanControllerRegister2Mutation$variables = {
 };
 export type ScanControllerRegister2Mutation$data = {
   readonly scanRegister2: {
+    readonly awardedBadges: ReadonlyArray<{
+      readonly description: string;
+      readonly id: string;
+      readonly name: string;
+      readonly tier: string;
+    }>;
     readonly period: {
       readonly endTime: number | null | undefined;
       readonly id: string;
@@ -114,6 +120,39 @@ v4 = [
         "args": null,
         "kind": "ScalarField",
         "name": "state",
+        "storageKey": null
+      },
+      {
+        "alias": null,
+        "args": null,
+        "concreteType": "BadgeAward",
+        "kind": "LinkedField",
+        "name": "awardedBadges",
+        "plural": true,
+        "selections": [
+          (v1/*: any*/),
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "name",
+            "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "description",
+            "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "tier",
+            "storageKey": null
+          }
+        ],
         "storageKey": null
       },
       {
@@ -232,16 +271,16 @@ return {
     "selections": (v4/*: any*/)
   },
   "params": {
-    "cacheID": "b8c0d12158d6acfcbeea676d3306c8b9",
+    "cacheID": "6d4aac644aa80d308b73f0c5f3fc6e03",
     "id": null,
     "metadata": {},
     "name": "ScanControllerRegister2Mutation",
     "operationKind": "mutation",
-    "text": "mutation ScanControllerRegister2Mutation(\n  $memberNumber: String!\n  $quickPick: Boolean!\n) {\n  scanRegister2(memberNumber: $memberNumber, quickPick: $quickPick) {\n    state\n    period {\n      id\n      startTime\n      endTime\n      person {\n        id\n        firstName\n        lastName\n      }\n    }\n    quickPick {\n      locationCategories {\n        category {\n          id\n        }\n        recentPeople {\n          id\n          firstName\n        }\n      }\n      personCategories {\n        category {\n          id\n        }\n      }\n    }\n  }\n}\n"
+    "text": "mutation ScanControllerRegister2Mutation(\n  $memberNumber: String!\n  $quickPick: Boolean!\n) {\n  scanRegister2(memberNumber: $memberNumber, quickPick: $quickPick) {\n    state\n    awardedBadges {\n      id\n      name\n      description\n      tier\n    }\n    period {\n      id\n      startTime\n      endTime\n      person {\n        id\n        firstName\n        lastName\n      }\n    }\n    quickPick {\n      locationCategories {\n        category {\n          id\n        }\n        recentPeople {\n          id\n          firstName\n        }\n      }\n      personCategories {\n        category {\n          id\n        }\n      }\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "493bb2560bb105b8fbcf01075e848f17";
+(node as any).hash = "c76ca32291cccc23ba41ed1301477b03";
 
 export default node;

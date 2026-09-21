@@ -8,6 +8,9 @@ export default function Scan() {
   const [cancelSignOut, setCancelSignOut] = useState<(() => void) | null>(null);
   const [signingOutName, setSigningOutName] = useState<string | null>(null);
   const [statusOpen, setStatusOpen] = useState(false);
+  const [signingOutPersonId, setSigningOutPersonId] = useState<string | null>(
+    null,
+  );
 
   return (
     <div className="flex h-dvh flex-col">
@@ -15,11 +18,13 @@ export default function Scan() {
         onCancelSignOut={cancelSignOut ?? undefined}
         signingOutName={signingOutName ?? undefined}
         onLogoClick={() => setStatusOpen(true)}
+        signingOutPersonId={signingOutPersonId ?? undefined}
       />
       <div className="relative flex-1 overflow-hidden">
         <ScanController
           onCancelSignOutChange={(fn) => setCancelSignOut(fn ? () => fn : null)}
           onSigningOutNameChange={setSigningOutName}
+          onSigningOutPersonIdChange={setSigningOutPersonId}
         />
       </div>
       <div className="fixed right-2.5 bottom-1.5 text-xs text-neutral-400">
