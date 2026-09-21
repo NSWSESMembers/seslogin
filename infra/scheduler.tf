@@ -97,3 +97,23 @@ resource "aws_scheduler_schedule" "badge_nightly" {
     input    = "{}"
   }
 }
+
+resource "aws_scheduler_schedule" "badge_digest_weekly" {
+  name       = "seslogin-badge-digest-weekly"
+  group_name = "default"
+
+  flexible_time_window {
+    mode = "OFF"
+  }
+
+  # 07:00 Sydney time every Monday — after badge_nightly's daily run, clear
+  # of the midnight sync/summary jobs.
+  schedule_expression          = "cron(0 7 ? * MON *)"
+  schedule_expression_timezone = "Australia/Sydney"
+
+  target {
+    arn      = aws_lambda_function.badge_digest.arn
+    role_arn = aws_iam_role.scheduler.arn
+    input    = "{}"
+  }
+}

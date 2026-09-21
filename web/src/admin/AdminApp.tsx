@@ -39,6 +39,7 @@ import Reports from "./pages/Reports";
 import ReportsBadges from "./pages/ReportsBadges";
 import SettingsPasskeys from "./pages/SettingsPasskeys";
 import SettingsDailyEmail from "./pages/SettingsDailyEmail";
+import SettingsWeeklyBadgeDigest from "./pages/SettingsWeeklyBadgeDigest";
 import SettingsActivityDisplay from "./pages/SettingsActivityDisplay";
 
 // Mounted at /admin/* — paths here are relative to /admin.
@@ -102,6 +103,10 @@ export default function AdminApp() {
         <Route path="settings">
           <Route index element={<SettingsPasskeys />} />
           <Route path="daily-email" element={<SettingsDailyEmail />} />
+          <Route
+            path="weekly-badge-digest"
+            element={<SettingsWeeklyBadgeDigest />}
+          />
           <Route
             path="activity-display"
             element={<SettingsActivityDisplay />}

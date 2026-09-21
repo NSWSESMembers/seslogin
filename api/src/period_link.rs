@@ -166,12 +166,12 @@ pub async fn issue_period_link_token(db: &impl Handler, period_id: &str) -> Resu
 /// first prod entry is the `new.` alias, not the apex we want in member links.
 const BASE_URL_VAR: &str = "WEB_BASE_URL";
 
-/// Build the member-facing edit URL for a freshly issued token.
-///
-/// The token goes in the fragment on purpose: browsers never send a fragment to
-/// the server, so it stays out of access logs and `Referer` headers.
-pub fn edit_link_url(token: &str) -> String {
-    let base = std::env::var(BASE_URL_VAR)
+/// The public site origin, e.g. for building asset URLs used in outgoing
+/// email. Shared by [`edit_link_url`] and by anything else that needs the
+/// site's own origin rather than an API endpoint — see [`BASE_URL_VAR`]'s doc
+/// comment for the fallback rationale.
+pub fn site_base_url() -> String {
+    std::env::var(BASE_URL_VAR)
         .ok()
         .filter(|s| !s.trim().is_empty())
         .or_else(|| {
@@ -179,8 +179,15 @@ pub fn edit_link_url(token: &str) -> String {
                 .ok()
                 .and_then(|origins| origins.split(',').next().map(str::to_string))
         })
-        .unwrap_or_else(|| "http://localhost:5173".to_string());
-    format_edit_link(&base, token)
+        .unwrap_or_else(|| "http://localhost:5173".to_string())
+}
+
+/// Build the member-facing edit URL for a freshly issued token.
+///
+/// The token goes in the fragment on purpose: browsers never send a fragment to
+/// the server, so it stays out of access logs and `Referer` headers.
+pub fn edit_link_url(token: &str) -> String {
+    format_edit_link(&site_base_url(), token)
 }
 
 /// Join a base origin and a token into an edit URL. Split from the env lookup so

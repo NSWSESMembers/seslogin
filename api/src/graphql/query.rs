@@ -118,6 +118,21 @@ impl<A: App + HasDb + Send + Sync + 'static> User<A> {
             .collect()
     }
 
+    /// Locations this user has opted into the weekly badge digest email for.
+    /// See `badge_digest.rs`'s `weekly_badge_opted_in_location_ids`, which
+    /// reads the same `email_config` shape — keep them in sync.
+    async fn badge_weekly_digest_location_ids(&self) -> Vec<String> {
+        self.rec
+            .email_config
+            .iter()
+            .filter_map(|(loc_id, val)| {
+                val.as_object()
+                    .filter(|m| m.contains_key("weekly_badge"))
+                    .map(|_| loc_id.clone())
+            })
+            .collect()
+    }
+
     async fn location_grant_ids(&self) -> Vec<ID> {
         self.rec
             .location_grants

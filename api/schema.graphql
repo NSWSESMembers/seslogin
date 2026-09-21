@@ -319,7 +319,7 @@ type MutationRoot {
 	"""
 	scanGuestSignOut(id: ID!): Period!
 	enqueueMemberSync(locationId: ID!): Boolean!
-	updateMyEmailConfig(dailyLocationIds: [String!]!): User!
+	updateMyEmailConfig(dailyLocationIds: [String!]!, weeklyBadgeLocationIds: [String!]): User!
 	updateMyDisaggregateVirtualPeriods(value: Boolean!): User!
 	"""
 	Start passkey registration for the authenticated user.
@@ -861,6 +861,12 @@ type User {
 	createdAt: Int!
 	updatedAt: Int!
 	emailSummaryLocationIds: [String!]!
+	"""
+	Locations this user has opted into the weekly badge digest email for.
+	See `badge_digest.rs`'s `weekly_badge_opted_in_location_ids`, which
+	reads the same `email_config` shape — keep them in sync.
+	"""
+	badgeWeeklyDigestLocationIds: [String!]!
 	locationGrantIds: [ID!]!
 	locations: [Location!]!
 	passkeys: [PasskeyInfo!]!

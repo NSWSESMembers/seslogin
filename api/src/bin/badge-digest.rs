@@ -1,0 +1,54 @@
+use clap::Parser;
+use seslogin::request_metrics::{self, RequestMetrics};
+use seslogin::{badge_digest, dynamodb, sesmail};
+use std::sync::Arc;
+
+/// Run the weekly badge digest email job manually.
+#[derive(Parser)]
+struct Cli {
+    /// Send the emails. Without it this is a dry run, which prints the email
+    /// content to stdout instead of sending it.
+    #[arg(long)]
+    apply: bool,
+
+    /// Only process this user's configuration (useful for single-user testing).
+    #[arg(long)]
+    user_id: Option<String>,
+
+    /// Override the recipient address — sends all emails to this address instead.
+    #[arg(long)]
+    override_to: Option<String>,
+}
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    let args = Cli::parse();
+    seslogin::load_cli_env();
+    tracing_subscriber::fmt::init();
+    let db_prefix = std::env::var("DB_PREFIX")?;
+    let dry_run = !args.apply;
+    let db = dynamodb::Handler::new(&db_prefix, dry_run).await;
+    let mailer = sesmail::Mailer::new().await;
+    let metrics = Arc::new(RequestMetrics::default());
+    request_metrics::METRICS
+        .scope(
+            metrics.clone(),
+            badge_digest::run(
+                &db,
+                &mailer,
+                badge_digest::DigestArgs {
+                    dry_run,
+                    user_id_filter: args.user_id,
+                    override_to: args.override_to,
+                },
+            ),
+        )
+        .await?;
+    tracing::info!(
+        "mode={} rru={:.1} wru={:.1}",
+        if dry_run { "dry-run" } else { "apply" },
+        metrics.read_units(),
+        metrics.write_units(),
+    );
+    Ok(())
+}
