@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<e1571657c0e760f4c4cf854889f1861e>>
+ * @generated SignedSource<<5e01738c75dad2de2a0f6c7579b254a6>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -17,18 +17,20 @@ export type ScanControllerSignOutMutation$variables = {
 };
 export type ScanControllerSignOutMutation$data = {
   readonly scanSignOut: {
-    readonly category: {
+    readonly period: {
+      readonly category: {
+        readonly id: string;
+        readonly name: string;
+      } | null | undefined;
+      readonly endTime: number | null | undefined;
       readonly id: string;
-      readonly name: string;
-    } | null | undefined;
-    readonly endTime: number | null | undefined;
-    readonly id: string;
-    readonly person: {
-      readonly firstName: string;
-      readonly id: string;
-      readonly lastName: string;
-    } | null | undefined;
-    readonly startTime: number;
+      readonly person: {
+        readonly firstName: string;
+        readonly id: string;
+        readonly lastName: string;
+      } | null | undefined;
+      readonly startTime: number;
+    };
   };
 };
 export type ScanControllerSignOutMutation = {
@@ -89,66 +91,77 @@ v5 = [
         "variableName": "startTime"
       }
     ],
-    "concreteType": "Period",
+    "concreteType": "ScanSignOutResult",
     "kind": "LinkedField",
     "name": "scanSignOut",
     "plural": false,
     "selections": [
-      (v4/*: any*/),
       {
         "alias": null,
         "args": null,
-        "concreteType": "Person",
+        "concreteType": "Period",
         "kind": "LinkedField",
-        "name": "person",
+        "name": "period",
         "plural": false,
         "selections": [
           (v4/*: any*/),
           {
             "alias": null,
             "args": null,
-            "kind": "ScalarField",
-            "name": "firstName",
+            "concreteType": "Person",
+            "kind": "LinkedField",
+            "name": "person",
+            "plural": false,
+            "selections": [
+              (v4/*: any*/),
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "firstName",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "lastName",
+                "storageKey": null
+              }
+            ],
             "storageKey": null
           },
           {
             "alias": null,
             "args": null,
             "kind": "ScalarField",
-            "name": "lastName",
+            "name": "startTime",
             "storageKey": null
-          }
-        ],
-        "storageKey": null
-      },
-      {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "startTime",
-        "storageKey": null
-      },
-      {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "endTime",
-        "storageKey": null
-      },
-      {
-        "alias": null,
-        "args": null,
-        "concreteType": "Category",
-        "kind": "LinkedField",
-        "name": "category",
-        "plural": false,
-        "selections": [
-          (v4/*: any*/),
+          },
           {
             "alias": null,
             "args": null,
             "kind": "ScalarField",
-            "name": "name",
+            "name": "endTime",
+            "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": null,
+            "concreteType": "Category",
+            "kind": "LinkedField",
+            "name": "category",
+            "plural": false,
+            "selections": [
+              (v4/*: any*/),
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "name",
+                "storageKey": null
+              }
+            ],
             "storageKey": null
           }
         ],
@@ -186,16 +199,16 @@ return {
     "selections": (v5/*: any*/)
   },
   "params": {
-    "cacheID": "30140ac60cf6900e88249b76d2a29d08",
+    "cacheID": "27f8769727a8f01a7f963c158df7e531",
     "id": null,
     "metadata": {},
     "name": "ScanControllerSignOutMutation",
     "operationKind": "mutation",
-    "text": "mutation ScanControllerSignOutMutation(\n  $id: ID!\n  $startTime: Int!\n  $endTime: Int!\n  $categoryId: ID!\n) {\n  scanSignOut(id: $id, startTime: $startTime, endTime: $endTime, categoryId: $categoryId) {\n    id\n    person {\n      id\n      firstName\n      lastName\n    }\n    startTime\n    endTime\n    category {\n      id\n      name\n    }\n  }\n}\n"
+    "text": "mutation ScanControllerSignOutMutation(\n  $id: ID!\n  $startTime: Int!\n  $endTime: Int!\n  $categoryId: ID!\n) {\n  scanSignOut(id: $id, startTime: $startTime, endTime: $endTime, categoryId: $categoryId) {\n    period {\n      id\n      person {\n        id\n        firstName\n        lastName\n      }\n      startTime\n      endTime\n      category {\n        id\n        name\n      }\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "df54e296ba57dc22fc351f8416b2ee40";
+(node as any).hash = "c84cb9dd13bbfaf6dcb0fa9f82ca7efc";
 
 export default node;
