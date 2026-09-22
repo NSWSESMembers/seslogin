@@ -67,12 +67,12 @@ function yesterday(): Date {
   return dateOnly(d);
 }
 
-function to12HourDigits(hours24: number, minutes: number): string {
-  let hour12 = hours24 % 12;
-  if (hour12 === 0) {
-    hour12 = 12;
-  }
-  return String(hour12).padStart(2, "0") + String(minutes).padStart(2, "0");
+// The digits an existing time is loaded into the editor as. 24-hour, not
+// 12-hour: an hour of 0 or 13-23 then lands on digits that are immediately
+// unambiguous (the "24h" badge below), rather than requiring a trip through
+// AM/PM to get back to the value that was already on screen.
+function to24HourDigits(hours24: number, minutes: number): string {
+  return String(hours24).padStart(2, "0") + String(minutes).padStart(2, "0");
 }
 
 const dateBtnClasses =
@@ -405,7 +405,7 @@ export default function ScanModalDateTime(props: {
   ) {
     setInitialDate(currentDate);
     setInitialAmPm(currentHours >= 12 ? "PM" : "AM");
-    setInitialValue(to12HourDigits(currentHours, currentMinutes));
+    setInitialValue(to24HourDigits(currentHours, currentMinutes));
     setField(fieldName);
   }
 

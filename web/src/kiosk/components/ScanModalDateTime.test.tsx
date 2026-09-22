@@ -1,7 +1,7 @@
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import { describe, expect, it, vitest } from "vitest";
 import UserEvent from "@testing-library/user-event";
-import { Inner } from "./ScanModalDateTime";
+import ScanModalDateTime, { Inner } from "./ScanModalDateTime";
 
 // The digit boxes are the only elements carrying the caret ring, so "which box
 // has border-accent" is the assertion for where the caret is.
@@ -193,5 +193,69 @@ describe("ScanModalDateTime", () => {
     renderInner({ onClose });
     await user.keyboard("{Escape}");
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+});
+
+// The wrapper component is what actually converts a period's existing time
+// into the digits the field opens with; `Inner` above only exercises that
+// conversion's output.
+describe("ScanModalDateTime (loading an existing time)", () => {
+  function renderModal() {
+    const show = {
+      current: null as
+        | ((
+            field: string,
+            currentDate: Date,
+            currentHours: number,
+            currentMinutes: number,
+          ) => void)
+        | null,
+    };
+    render(
+      <ScanModalDateTime
+        getShowFunction={(fn) => {
+          show.current = fn;
+        }}
+        onSave={vitest.fn()}
+      />,
+    );
+    return show;
+  }
+
+  it("loads an afternoon hour as unambiguous 24-hour digits, not 12-hour", async () => {
+    const show = renderModal();
+    await act(() => show.current!("startTime", new Date(2026, 0, 15), 14, 30));
+    expect(digitText()).toBe("1430");
+    expect(screen.getByText("24h")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "PM" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("loads midnight as 00, not 12", async () => {
+    const show = renderModal();
+    await act(() => show.current!("startTime", new Date(2026, 0, 15), 0, 5));
+    expect(digitText()).toBe("0005");
+    expect(screen.getByText("24h")).toBeInTheDocument();
+  });
+
+  it("still loads a morning hour ambiguously, needing AM/PM", async () => {
+    const show = renderModal();
+    await act(() => show.current!("startTime", new Date(2026, 0, 15), 8, 0));
+    expect(digitText()).toBe("0800");
+    expect(screen.queryByText("24h")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "AM" })).toHaveClass(
+      "border-accent",
+    );
+  });
+
+  it("loads noon as 12 PM, still ambiguous with midnight", async () => {
+    const show = renderModal();
+    await act(() => show.current!("startTime", new Date(2026, 0, 15), 12, 0));
+    expect(digitText()).toBe("1200");
+    expect(screen.queryByText("24h")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "PM" })).toHaveClass(
+      "border-accent",
+    );
   });
 });
