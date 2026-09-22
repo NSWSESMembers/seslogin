@@ -84,17 +84,33 @@ describe("ScanModalDateTime", () => {
   it("rejects a digit that would make the time invalid, wherever the caret is", async () => {
     const user = UserEvent.setup();
     renderInner({ initialValue: "1930" });
-    // hour units is 9, so the hour tens cannot become 2 (that would be 29:30)
+    // hour tens tops out at 2
     await user.click(digitBoxes()[0]);
-    await user.keyboard("2");
+    await user.keyboard("3");
     expect(digitText()).toBe("1930");
-    // ...but 0 is fine
-    await user.keyboard("0");
-    expect(digitText()).toBe("0930");
+    // hour units is 9, so once the hour tens is 2 the units cannot stay above
+    // 3 (that would be 29:30) — typing 9 there directly is rejected
+    await user.keyboard("2");
+    await user.keyboard("9");
+    expect(digitText()).toBe("2_30");
     // minute tens tops out at 5
     await user.click(digitBoxes()[2]);
     await user.keyboard("6");
-    expect(digitText()).toBe("0930");
+    expect(digitText()).toBe("2_30");
+  });
+
+  it("accepts a 24-hour hour-tens digit over a stale hour-units digit, clearing it instead of rejecting the keystroke", async () => {
+    const user = UserEvent.setup();
+    // The field opens prefilled and complete (12-hour "07:30", hour units 7),
+    // so retyping a 24-hour hour like 20:xx means overwriting the tens first
+    // while the stale "7" is still sitting in the units box.
+    renderInner({ initialValue: "0730" });
+    await user.click(digitBoxes()[0]);
+    await user.keyboard("2");
+    expect(digitText()).toBe("2_30");
+    expect(caretIndex()).toBe(1);
+    await user.keyboard("0");
+    expect(digitText()).toBe("2030");
   });
 
   it("never clears the digits after the one being entered", async () => {
