@@ -25,7 +25,10 @@ import type {
   ScanControllerRegister2Mutation,
   ScanControllerRegister2Mutation$data,
 } from "./__generated__/ScanControllerRegister2Mutation.graphql";
-import type { ScanControllerSignOutMutation } from "./__generated__/ScanControllerSignOutMutation.graphql";
+import type {
+  ScanControllerSignOutMutation,
+  ScanControllerSignOutMutation$data,
+} from "./__generated__/ScanControllerSignOutMutation.graphql";
 import { useKioskSession } from "./useKioskSession";
 import type { ScreenPosition } from "../../styles";
 import { isValidMemberIdText } from "../../lib/memberId";
@@ -34,6 +37,7 @@ import {
   isMutationFieldError,
 } from "../../lib/relayErrors";
 import { useSuspendScanFocus } from "../lib/scanFocusLeases";
+import { useLivePeriods } from "./useLivePeriods";
 
 const PURGE_EXPIRED_TRANSACTIONS_INTERVAL_MS = 1_000;
 const SCAN_TRANSACTION_LOG_LEASE_ID = "scan:transaction-log";
@@ -44,6 +48,7 @@ export default function ScanController(props: {
   onSigningOutNameChange?: (name: string | null) => void;
 }) {
   const session = useKioskSession();
+  const { applyOwnResult } = useLivePeriods();
   const smallCategories = !!session?.config?.smallCategories;
   const guestsEnabled = !!session?.config?.guests;
   const quickPickCategories = !!session?.config?.quickPickCategories;
@@ -126,6 +131,7 @@ export default function ScanController(props: {
           state
           period {
             id
+            version
             startTime
             endTime
             person {
@@ -168,6 +174,7 @@ export default function ScanController(props: {
           categoryId: $categoryId
         ) {
           id
+          version
           person {
             id
             firstName
@@ -238,12 +245,22 @@ export default function ScanController(props: {
       return;
     } else if (state == "SIGNED_IN") {
       audioSuccess.play();
-      const startTime = new Date(res.scanRegister2.period!.startTime! * 1000);
+      const period = res.scanRegister2.period!;
+      const startTime = new Date(period.startTime! * 1000);
+      const person = period.person!;
+      applyOwnResult({
+        kind: "opened",
+        periodId: period.id,
+        version: period.version,
+        name: `${person.firstName} ${person.lastName}`,
+        guest: false,
+        startTime: period.startTime!,
+      });
       dispatchTransaction({
         type: "PERSON_RESOLVED",
         uuid,
-        periodId: res.scanRegister2.period!.id,
-        person: res.scanRegister2.period!.person!,
+        periodId: period.id,
+        person,
         status: "SIGNED_IN",
         startTime,
       });
@@ -450,8 +467,20 @@ export default function ScanController(props: {
       endTime: Math.floor(endTime.getTime() / 1000),
       categoryId: tx.categoryId!,
     };
-    const onCompleted = () => {
+    const onCompleted = (data: ScanControllerSignOutMutation$data) => {
       console.log("Adjust mutation completed");
+      const period = data.scanSignOut;
+      const person = period.person!;
+      applyOwnResult({
+        kind: "closed",
+        periodId: period.id,
+        version: period.version,
+        name: `${person.firstName} ${person.lastName}`,
+        guest: false,
+        startTime: period.startTime,
+        endTime: period.endTime ?? null,
+        deleted: false,
+      });
       dispatchTransaction({
         type: "ADJUST_PERIOD",
         uuid,

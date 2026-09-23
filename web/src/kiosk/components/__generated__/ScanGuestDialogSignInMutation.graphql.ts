@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<53b253d8aa5676bf9e99caaed56af1a0>>
+ * @generated SignedSource<<0c10ff4cf1f91c4b87cbe5be8d05dfa0>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -18,6 +18,7 @@ export type ScanGuestDialogSignInMutation$data = {
     readonly guestName: string | null | undefined;
     readonly id: string;
     readonly startTime: number;
+    readonly version: number;
   };
 };
 export type ScanGuestDialogSignInMutation = {
@@ -69,6 +70,13 @@ v1 = [
         "alias": null,
         "args": null,
         "kind": "ScalarField",
+        "name": "version",
+        "storageKey": null
+      },
+      {
+        "alias": null,
+        "args": null,
+        "kind": "ScalarField",
         "name": "startTime",
         "storageKey": null
       },
@@ -101,16 +109,16 @@ return {
     "selections": (v1/*: any*/)
   },
   "params": {
-    "cacheID": "ed7d6a1ce7214130f7fcd51863d535fe",
+    "cacheID": "e775a544c52fc246d8ff637e9c1332fc",
     "id": null,
     "metadata": {},
     "name": "ScanGuestDialogSignInMutation",
     "operationKind": "mutation",
-    "text": "mutation ScanGuestDialogSignInMutation(\n  $name: String!\n  $reason: String\n) {\n  scanGuestSignIn(name: $name, reason: $reason) {\n    id\n    startTime\n    guestName\n  }\n}\n"
+    "text": "mutation ScanGuestDialogSignInMutation(\n  $name: String!\n  $reason: String\n) {\n  scanGuestSignIn(name: $name, reason: $reason) {\n    id\n    version\n    startTime\n    guestName\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "a138669f131a0683878266ae065e15b6";
+(node as any).hash = "ff6e025c181a278ad62499863099eac8";
 
 export default node;

@@ -17,6 +17,7 @@ const FOUND_USER_RESPONSE = {
       state: "SIGNED_IN",
       period: {
         id: "period-123",
+        version: 1,
         startTime: new Date().getTime() - 1000 * 60 * 60,
         endTime: new Date().getTime(),
         person: {
@@ -38,6 +39,7 @@ function signOutUserResponse(quickPick: unknown = null) {
         state: "SIGN_OUT_PENDING",
         period: {
           id: "period-456",
+          version: 1,
           startTime: new Date().getTime() - 1000 * 60 * 60,
           endTime: null,
           person: {
@@ -79,6 +81,38 @@ function sessionConfigHandler(config: Record<string, unknown>) {
       },
     });
   });
+}
+
+// LivePeriodsProvider's first move, on any kiosk with a status/guest view
+// enabled, is to ask for a realtime token. Returning null keeps every test
+// below on the polling fallback rather than needing a fake Ably client — see
+// LivePeriodsProvider.test.tsx for the realtime path itself.
+function kioskRealtimeTokenHandler() {
+  return relayEndpoint.query("KioskRealtimeTokenQuery", () =>
+    HttpResponse.json({ data: { kioskRealtimeToken: null } }),
+  );
+}
+
+// The one snapshot query behind Status, ScanStatusDialog and
+// ScanSignedInPanel now that all three read from LivePeriodsProvider.
+function snapshotHandler(
+  nodes: Array<{
+    id: string;
+    version: number;
+    startTime: number;
+    guestName: string | null;
+    person: { id: string; firstName: string; lastName: string } | null;
+  }>,
+) {
+  return relayEndpoint.query("LivePeriodsSnapshotQuery", () =>
+    HttpResponse.json({
+      data: {
+        session: {
+          location: { periods: { edges: nodes.map((node) => ({ node })) } },
+        },
+      },
+    }),
+  );
 }
 
 const EMPTY_QUICK_PICK = { locationCategories: [], personCategories: [] };
@@ -123,7 +157,11 @@ function register2Handler(quickPick: unknown = null) {
   );
 }
 
-const graphqlHandlers = [sessionConfigHandler({}), register2Handler()];
+const graphqlHandlers = [
+  sessionConfigHandler({}),
+  register2Handler(),
+  kioskRealtimeTokenHandler(),
+];
 
 const server = setupServer(...graphqlHandlers);
 const getItemSpy = vi.spyOn(localStorage, "getItem");
@@ -509,6 +547,7 @@ describe("KioskMain forgot-to-sign-out interstitial", () => {
             state: "SIGN_OUT_PENDING",
             period: {
               id: "period-456",
+              version: 1,
               // signed in well over 12 hours ago (unix seconds, as the API sends)
               startTime: Math.floor(Date.now() / 1000) - 60 * 60 * 30,
               endTime: null,
@@ -570,6 +609,7 @@ describe("KioskMain forgot-to-sign-out interstitial", () => {
             data: {
               scanSignOut: {
                 id: "period-456",
+                version: 2,
                 person: {
                   id: `person-${SIGNOUT_USER}`,
                   firstName: "Jamie",
@@ -657,14 +697,15 @@ describe("KioskMain forgot-to-sign-out interstitial", () => {
 });
 
 describe("KioskMain status screen", () => {
-  it("shows the error fallback instead of crashing when a field fails to resolve", async () => {
+  it("shows an error state instead of crashing when a field fails to resolve", async () => {
     // Same shape as a dangling person reference: data present, but one field
-    // errored. @throwOnFieldError turns this into a thrown error the boundary
-    // catches, instead of a null silently reaching StatusCurrentDisplay.
+    // errored. @throwOnFieldError on LivePeriodsSnapshotQuery turns this into
+    // a rejected fetchQuery promise, which LivePeriodsProvider turns into
+    // `error` rather than a null silently reaching StatusCurrentDisplay.
     vi.spyOn(console, "error").mockImplementation(() => {});
     server.use(
       sessionConfigHandler({ status: true }),
-      relayEndpoint.query("StatusQuery", () =>
+      relayEndpoint.query("LivePeriodsSnapshotQuery", () =>
         HttpResponse.json({
           data: {
             session: {
@@ -674,6 +715,7 @@ describe("KioskMain status screen", () => {
                     {
                       node: {
                         id: "period-1",
+                        version: 1,
                         startTime: Math.floor(Date.now() / 1000),
                         guestName: null,
                         person: null,
@@ -705,7 +747,9 @@ describe("KioskMain status screen", () => {
     render(<KioskMain />);
 
     await waitFor(() =>
-      expect(screen.getByText("Something went wrong")).toBeInTheDocument(),
+      expect(
+        screen.getByText(/Couldn't load the signed-in list/),
+      ).toBeInTheDocument(),
     );
   });
 
@@ -713,7 +757,7 @@ describe("KioskMain status screen", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     server.use(
       sessionConfigHandler({ status: true }),
-      relayEndpoint.query("StatusQuery", () =>
+      relayEndpoint.query("LivePeriodsSnapshotQuery", () =>
         HttpResponse.json({
           data: {
             session: {
@@ -723,6 +767,7 @@ describe("KioskMain status screen", () => {
                     {
                       node: {
                         id: "period-1",
+                        version: 1,
                         startTime: Math.floor(Date.now() / 1000),
                         guestName: null,
                         person: null,
@@ -754,12 +799,14 @@ describe("KioskMain status screen", () => {
     render(<KioskMain />);
 
     await waitFor(() =>
-      expect(screen.getByText("Something went wrong")).toBeInTheDocument(),
+      expect(
+        screen.getByText(/Couldn't load the signed-in list/),
+      ).toBeInTheDocument(),
     );
 
     // Whatever caused the field error is now fixed server-side.
     server.use(
-      relayEndpoint.query("StatusQuery", () =>
+      relayEndpoint.query("LivePeriodsSnapshotQuery", () =>
         HttpResponse.json({
           data: {
             session: {
@@ -769,6 +816,7 @@ describe("KioskMain status screen", () => {
                     {
                       node: {
                         id: "period-1",
+                        version: 1,
                         startTime: Math.floor(Date.now() / 1000),
                         guestName: "Random Guy",
                         person: null,
@@ -786,11 +834,9 @@ describe("KioskMain status screen", () => {
     const user = UserEvent.setup();
     await user.click(screen.getByRole("button", { name: "Try again" }));
 
-    // This is the actual regression test for the fetchKey fix: if "Try
-    // again" only invalidated the store (the pre-fetchKey behaviour), the
-    // useLazyLoadQuery cache entry still holds the original thrown error and
-    // this would keep showing "Something went wrong" forever, even though
-    // the server would now respond successfully.
+    // The regression this guards: "Try again" must actually restart
+    // LivePeriodsProvider's fetch cycle (retry() bumps its retryGeneration),
+    // not just redisplay whatever `error` was last set to.
     await waitFor(() =>
       expect(screen.getByText("1 member signed in")).toBeInTheDocument(),
     );
@@ -799,35 +845,18 @@ describe("KioskMain status screen", () => {
 });
 
 describe("KioskMain signed-in status", () => {
-  function statusDialogHandler(
-    nodes: Array<{
-      id: string;
-      startTime: number;
-      guestName: string | null;
-      person: { id: string; firstName: string; lastName: string } | null;
-    }>,
-  ) {
-    return relayEndpoint.query("ScanStatusDialogQuery", () =>
-      HttpResponse.json({
-        data: {
-          session: {
-            location: { periods: { edges: nodes.map((node) => ({ node })) } },
-          },
-        },
-      }),
-    );
-  }
-
   const nowSecs = Math.floor(Date.now() / 1000);
   const TWO_PEOPLE = [
     {
       id: "period-1",
+      version: 1,
       startTime: nowSecs - 60 * 60,
       guestName: null,
       person: { id: "person-1", firstName: "Alice", lastName: "Anderson" },
     },
     {
       id: "period-2",
+      version: 1,
       startTime: nowSecs - 60 * 30,
       guestName: "Jamie Visitor",
       person: null,
@@ -846,7 +875,7 @@ describe("KioskMain signed-in status", () => {
   it("lists members and guests with the total when the button is pressed", async () => {
     server.use(
       sessionConfigHandler({ signedInStatus: true }),
-      statusDialogHandler(TWO_PEOPLE),
+      snapshotHandler(TWO_PEOPLE),
     );
     const user = await setupTest();
 
@@ -862,7 +891,7 @@ describe("KioskMain signed-in status", () => {
   it("says so when nobody is signed in", async () => {
     server.use(
       sessionConfigHandler({ signedInStatus: true }),
-      statusDialogHandler([]),
+      snapshotHandler([]),
     );
     const user = await setupTest();
 
@@ -884,7 +913,7 @@ describe("KioskMain signed-in status", () => {
     // scanner's keystrokes have no say in the matter.
     server.use(
       sessionConfigHandler({ signedInStatus: true }),
-      statusDialogHandler(TWO_PEOPLE),
+      snapshotHandler(TWO_PEOPLE),
       register2Handler(),
     );
     const user = await setupTest();
@@ -905,35 +934,18 @@ describe("KioskMain signed-in status", () => {
 });
 
 describe("KioskMain signed-in status inline panel", () => {
-  function panelHandler(
-    nodes: Array<{
-      id: string;
-      startTime: number;
-      guestName: string | null;
-      person: { id: string; firstName: string; lastName: string } | null;
-    }>,
-  ) {
-    return relayEndpoint.query("ScanSignedInPanelQuery", () =>
-      HttpResponse.json({
-        data: {
-          session: {
-            location: { periods: { edges: nodes.map((node) => ({ node })) } },
-          },
-        },
-      }),
-    );
-  }
-
   const nowSecs = Math.floor(Date.now() / 1000);
   const TWO_PEOPLE = [
     {
       id: "period-1",
+      version: 1,
       startTime: nowSecs - 60 * 60,
       guestName: null,
       person: { id: "person-1", firstName: "Alice", lastName: "Anderson" },
     },
     {
       id: "period-2",
+      version: 1,
       startTime: nowSecs - 60 * 30,
       guestName: "Jamie Visitor",
       person: null,
@@ -950,7 +962,7 @@ describe("KioskMain signed-in status inline panel", () => {
   it("shows the list on the main screen without pressing anything, and hides the button", async () => {
     server.use(
       sessionConfigHandler({ signedInStatusInline: true }),
-      panelHandler(TWO_PEOPLE),
+      snapshotHandler(TWO_PEOPLE),
     );
     await setupTest();
 
@@ -971,7 +983,7 @@ describe("KioskMain signed-in status inline panel", () => {
         signedInStatus: true,
         signedInStatusInline: true,
       }),
-      panelHandler([]),
+      snapshotHandler([]),
     );
     await setupTest();
 
@@ -986,7 +998,7 @@ describe("KioskMain signed-in status inline panel", () => {
   it("says so when nobody is signed in", async () => {
     server.use(
       sessionConfigHandler({ signedInStatusInline: true }),
-      panelHandler([]),
+      snapshotHandler([]),
     );
     await setupTest();
 
@@ -998,7 +1010,7 @@ describe("KioskMain signed-in status inline panel", () => {
   it("does not steal focus from the member ID input", async () => {
     server.use(
       sessionConfigHandler({ signedInStatusInline: true }),
-      panelHandler(TWO_PEOPLE),
+      snapshotHandler(TWO_PEOPLE),
     );
     await setupTest();
 
