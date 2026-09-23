@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<2c046cb6aa23c00833b4217fac326fea>>
+ * @generated SignedSource<<54cd10dad7d7cd331fe55e1804d93c55>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -9,10 +9,10 @@
 // @ts-nocheck
 
 import { ConcreteRequest } from 'relay-runtime';
-export type ScanSignedInPanelQuery$variables = {
+export type LivePeriodsSnapshotQuery$variables = {
   first: number;
 };
-export type ScanSignedInPanelQuery$data = {
+export type LivePeriodsSnapshotQuery$data = {
   readonly session: {
     readonly location: {
       readonly periods: {
@@ -26,15 +26,16 @@ export type ScanSignedInPanelQuery$data = {
               readonly lastName: string;
             } | null | undefined;
             readonly startTime: number;
+            readonly version: number;
           };
         }>;
       };
     };
   };
 };
-export type ScanSignedInPanelQuery = {
-  response: ScanSignedInPanelQuery$data;
-  variables: ScanSignedInPanelQuery$variables;
+export type LivePeriodsSnapshotQuery = {
+  response: LivePeriodsSnapshotQuery$data;
+  variables: LivePeriodsSnapshotQuery$variables;
 };
 
 const node: ConcreteRequest = (function(){
@@ -92,6 +93,13 @@ v2 = {
               "alias": null,
               "args": null,
               "kind": "ScalarField",
+              "name": "version",
+              "storageKey": null
+            },
+            {
+              "alias": null,
+              "args": null,
+              "kind": "ScalarField",
               "name": "startTime",
               "storageKey": null
             },
@@ -144,7 +152,7 @@ return {
     "metadata": {
       "throwOnFieldError": true
     },
-    "name": "ScanSignedInPanelQuery",
+    "name": "LivePeriodsSnapshotQuery",
     "selections": [
       {
         "alias": null,
@@ -177,7 +185,7 @@ return {
   "operation": {
     "argumentDefinitions": (v0/*: any*/),
     "kind": "Operation",
-    "name": "ScanSignedInPanelQuery",
+    "name": "LivePeriodsSnapshotQuery",
     "selections": [
       {
         "alias": null,
@@ -207,16 +215,16 @@ return {
     ]
   },
   "params": {
-    "cacheID": "3b169bc43f2a84b944db42de8cb0b195",
+    "cacheID": "cfafa2022f6a256ac7244a99d94a172d",
     "id": null,
     "metadata": {},
-    "name": "ScanSignedInPanelQuery",
+    "name": "LivePeriodsSnapshotQuery",
     "operationKind": "query",
-    "text": "query ScanSignedInPanelQuery(\n  $first: Int!\n) {\n  session {\n    location {\n      periods(onlyActive: true, first: $first) {\n        edges {\n          node {\n            id\n            startTime\n            guestName\n            person {\n              id\n              firstName\n              lastName\n            }\n          }\n        }\n      }\n      id\n    }\n    id\n  }\n}\n"
+    "text": "query LivePeriodsSnapshotQuery(\n  $first: Int!\n) {\n  session {\n    location {\n      periods(onlyActive: true, first: $first) {\n        edges {\n          node {\n            id\n            version\n            startTime\n            guestName\n            person {\n              id\n              firstName\n              lastName\n            }\n          }\n        }\n      }\n      id\n    }\n    id\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "c61ccf2cbcca45bb1876e76458650835";
+(node as any).hash = "7742d56d6ca74e178f5d2640456aa664";
 
 export default node;
