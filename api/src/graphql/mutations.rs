@@ -16,21 +16,28 @@ use crate::app::App;
 use crate::app::HasDb;
 use crate::app::HasMail;
 use crate::app::HasQueues;
+use crate::app::HasRealtime;
 use crate::auth;
 use crate::auth::AuthInfo;
 use crate::db;
 use crate::db::Handler;
 use crate::mail::Handler as _;
 use crate::queue::Handler as _;
+use crate::realtime;
+use crate::realtime::Handler as _;
+use async_graphql::dataloader::DataLoader;
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use hex;
 
 use super::auth::{
     AuthGuard, AuthRequirement, require_location_access, require_period_access, require_writable,
 };
+use super::dataloader::DatabaseLoader;
 use super::error::{ApiError, ErrorCode};
 use super::query::{QuickPick, build_quick_pick};
-use super::{ApiToken, Category, Location, NitcGroup, PasskeyInfo, Period, Person, Session, User};
+use super::{
+    ApiToken, Category, Location, NitcGroup, PasskeyInfo, Period, Person, PersonId, Session, User,
+};
 
 /// Longest entry a member-facing edit link may set. The admin form only *warns*
 /// past 24h, but an admin can be trusted to mean it; a link holder correcting
@@ -203,11 +210,11 @@ struct CreateApiTokenResult {
     secret: String,
 }
 
-pub struct MutationRoot<A: App + HasDb + HasQueues + HasMail + Send + Sync> {
+pub struct MutationRoot<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync> {
     pub(super) app: Arc<A>,
 }
 
-impl<A: App + HasDb + HasQueues + HasMail + Send + Sync + 'static> MutationRoot<A> {
+impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static> MutationRoot<A> {
     /// Enqueue a Phase 1 (period) NITC export for a mutated period.
     ///
     /// `old_nitc_event_id` is the event the period was assigned to *before* this mutation (read
@@ -249,6 +256,91 @@ impl<A: App + HasDb + HasQueues + HasMail + Send + Sync + 'static> MutationRoot<
             );
         }
         Ok(())
+    }
+
+    /// Display name for a realtime event: the guest's own name, or "First Last"
+    /// for a member, loaded through the request `DataLoader` so this reuses
+    /// whatever load the response's own `person` field makes for the same
+    /// period rather than issuing a second read. A missing person (shouldn't
+    /// happen, but this must never fail the mutation over it) falls back to a
+    /// fixed placeholder.
+    async fn realtime_display_name(&self, ctx: &Context<'_>, period: &db::Period) -> String {
+        if let Some(guest_name) = &period.guest_name {
+            return guest_name.clone();
+        }
+        let Some(person_id) = &period.person_id else {
+            return "Unknown member".to_string();
+        };
+        let loader = ctx.data_unchecked::<DataLoader<DatabaseLoader<A>>>();
+        match loader.load_one(PersonId(ID(person_id.clone()))).await {
+            Ok(Some(Some(person))) => format!("{} {}", person.rec.first_name, person.rec.last_name),
+            _ => "Unknown member".to_string(),
+        }
+    }
+
+    /// Publish that a period was newly opened (member or guest sign-in). Best
+    /// effort, like `enqueue_nitc_export`: a failure is logged and never fails
+    /// the mutation. Runs inline, not spawned — the Lambda freezes background
+    /// tasks once the response is sent, so a spawned publish would just be
+    /// dropped mid-flight.
+    async fn publish_period_opened(
+        &self,
+        ctx: &Context<'_>,
+        location_id: &str,
+        period: &db::Period,
+    ) {
+        let name = self.realtime_display_name(ctx, period).await;
+        let event = realtime::PeriodOpened {
+            period_id: period.id.clone(),
+            version: period.version,
+            name,
+            guest: period.guest_name.is_some(),
+            start_time: period.start_time,
+        };
+        if let Err(e) = self
+            .app
+            .realtime()
+            .publish_period_opened(location_id, &event)
+            .await
+        {
+            warn!(
+                "Failed to publish realtime period.opened for period {}: {:#}",
+                period.id, e
+            );
+        }
+    }
+
+    /// Publish that an open period was closed: a sign-out, an admin edit that
+    /// sets `end_time` on a still-open period, or a delete of a still-open
+    /// period (`deleted: true`). Best effort — see `publish_period_opened`.
+    async fn publish_period_closed(
+        &self,
+        ctx: &Context<'_>,
+        location_id: &str,
+        period: &db::Period,
+        deleted: bool,
+    ) {
+        let name = self.realtime_display_name(ctx, period).await;
+        let event = realtime::PeriodClosed {
+            period_id: period.id.clone(),
+            version: period.version,
+            name,
+            guest: period.guest_name.is_some(),
+            start_time: period.start_time,
+            end_time: period.end_time,
+            deleted,
+        };
+        if let Err(e) = self
+            .app
+            .realtime()
+            .publish_period_closed(location_id, &event)
+            .await
+        {
+            warn!(
+                "Failed to publish realtime period.closed for period {}: {:#}",
+                period.id, e
+            );
+        }
     }
 
     /// Reject the mutation if any non-deleted person already holds `registration_number`.
@@ -297,7 +389,7 @@ impl<A: App + HasDb + HasQueues + HasMail + Send + Sync + 'static> MutationRoot<
 }
 
 #[Object]
-impl<A: App + HasDb + HasQueues + HasMail + Send + Sync + 'static> MutationRoot<A> {
+impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static> MutationRoot<A> {
     async fn auth_session(&self, code: String) -> Option<String> {
         let res = auth::issue_token_for_scan_code(&*self.app, &code).await;
 
@@ -894,6 +986,14 @@ impl<A: App + HasDb + HasQueues + HasMail + Send + Sync + 'static> MutationRoot<
 
         self.enqueue_nitc_export(&period.id, existing.nitc_event_id.as_deref())
             .await?;
+        // This mutation always sets an end_time, so it closes the period exactly
+        // when it was previously open and not deleted. Publish to the *old*
+        // location (`existing`), because the edit may have moved the period to
+        // a different one, and the old location's kiosk is what has it open.
+        if existing.end_time.is_none() && existing.deleted.is_none() {
+            self.publish_period_closed(ctx, &existing.location_id, &period, false)
+                .await;
+        }
         Ok(Period::new(period))
     }
 
@@ -994,6 +1094,13 @@ impl<A: App + HasDb + HasQueues + HasMail + Send + Sync + 'static> MutationRoot<
 
         self.enqueue_nitc_export(&period.id, existing.nitc_event_id.as_deref())
             .await?;
+        // Always sets an end_time; see `update_period` above for why this
+        // publishes only when the period was previously open, and to the old
+        // location.
+        if existing.end_time.is_none() && existing.deleted.is_none() {
+            self.publish_period_closed(ctx, &existing.location_id, &period, false)
+                .await;
+        }
         Ok(Period::new(period))
     }
 
@@ -1065,6 +1172,12 @@ impl<A: App + HasDb + HasQueues + HasMail + Send + Sync + 'static> MutationRoot<
             .next()
             .flatten()
             .ok_or_else(|| anyhow!("Period with ID {:?} missing", id))?;
+        // Always sets an end_time; see `update_period` above for why this
+        // publishes only when the period was previously open.
+        if existing.end_time.is_none() && existing.deleted.is_none() {
+            self.publish_period_closed(ctx, &existing.location_id, &period, false)
+                .await;
+        }
         Ok(Period::new(period))
     }
 
@@ -1208,12 +1321,21 @@ impl<A: App + HasDb + HasQueues + HasMail + Send + Sync + 'static> MutationRoot<
             .ok_or_else(|| anyhow!("Period with ID {:?} missing", id))?;
         require_location_access(ctx, &existing.location_id)?;
 
-        self.app
+        let new_version = self
+            .app
             .db()
             .update_period(&id, db::PeriodUpdateShape::Delete)
             .await?;
         self.enqueue_nitc_export(&id, existing.nitc_event_id.as_deref())
             .await?;
+        // Only a still-open, non-deleted period disappears from a kiosk's list
+        // as a result of this: a closed period was never shown there anyway.
+        if existing.end_time.is_none() && existing.deleted.is_none() {
+            let mut closed = existing.clone();
+            closed.version = new_version;
+            self.publish_period_closed(ctx, &existing.location_id, &closed, true)
+                .await;
+        }
         Ok(true)
     }
 
@@ -1909,6 +2031,7 @@ impl<A: App + HasDb + HasQueues + HasMail + Send + Sync + 'static> MutationRoot<
                 .db()
                 .start_period_for_person_location(&person_id, location_id, Some(session_id), None)
                 .await?;
+            self.publish_period_opened(ctx, location_id, &rec).await;
 
             Ok(RegisterResult {
                 state: RegisterState::SignedIn,
@@ -1951,7 +2074,8 @@ impl<A: App + HasDb + HasQueues + HasMail + Send + Sync + 'static> MutationRoot<
             .next()
             .flatten()
             .ok_or_else(|| anyhow!("Category {:?} not found", category_id))?;
-        self.app
+        let new_version = self
+            .app
             .db()
             .update_period(
                 &rec.id,
@@ -1969,11 +2093,14 @@ impl<A: App + HasDb + HasQueues + HasMail + Send + Sync + 'static> MutationRoot<
         rec.end_time = Some(end_time as u64);
         rec.category_id = Some(category_id.to_string());
         rec.signed_out_session_id = Some(session_id);
+        rec.version = new_version;
 
         // rec is the pre-update record (only local field copies were changed above), so
         // rec.nitc_event_id is still the event the period was assigned to before this sign-out.
         self.enqueue_nitc_export(&rec.id, rec.nitc_event_id.as_deref())
             .await?;
+        self.publish_period_closed(ctx, &rec.location_id, &rec, false)
+            .await;
         Ok(Period::new(rec))
     }
 
@@ -2016,6 +2143,7 @@ impl<A: App + HasDb + HasQueues + HasMail + Send + Sync + 'static> MutationRoot<
             .db()
             .start_guest_period(location_id, name, reason, session_id)
             .await?;
+        self.publish_period_opened(ctx, location_id, &rec).await;
         Ok(Period::new(rec))
     }
 
@@ -2056,6 +2184,8 @@ impl<A: App + HasDb + HasQueues + HasMail + Send + Sync + 'static> MutationRoot<
         }
 
         let updated = self.app.db().end_period(&rec, Some(&session_id)).await?;
+        self.publish_period_closed(ctx, &updated.location_id, &updated, false)
+            .await;
         Ok(Period::new(updated))
     }
 

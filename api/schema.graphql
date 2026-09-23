@@ -1,3 +1,24 @@
+"""
+An Ably `TokenRequest`, signed server-side, that a kiosk can hand straight
+to ably-js's `authCallback` to authenticate for its own channel — see
+`kioskRealtimeToken`. Field names and shapes mirror Ably's own wire format
+(<https://ably.com/docs/api/rest-api#token-request-spec>) so no translation
+is needed on the client.
+
+`timestamp` is a `Float`, not an `Int`: GraphQL's `Int` is 32-bit, and a
+Unix-epoch-*milliseconds* timestamp doesn't fit. `ttl` (a fixed one hour in
+milliseconds) does fit comfortably and stays an `Int`.
+"""
+type AblyTokenRequest {
+	keyName: String!
+	ttl: Int!
+	capability: String!
+	clientId: String!
+	timestamp: Float!
+	nonce: String!
+	mac: String!
+}
+
 type ApiToken {
 	id: ID!
 	name: String!
@@ -91,6 +112,18 @@ type Environment {
 A scalar that can represent any JSON value.
 """
 scalar JSON
+
+"""
+A signed realtime token together with the exact channel it authorizes.
+"""
+type KioskRealtimeToken {
+	"""
+	The Ably channel this kiosk's location publishes period open/close
+	events to — pass straight to `ably-js`'s `channels.get(channel)`.
+	"""
+	channel: String!
+	tokenRequest: AblyTokenRequest!
+}
 
 type Location {
 	id: ID!
@@ -393,6 +426,14 @@ type Period {
 	category: Category
 	startTime: Int!
 	endTime: Int
+	"""
+	Bumped on every mutation of this period (create, sign-out, admin edit,
+	delete). Lets a kiosk applying realtime `period.opened`/`period.closed`
+	messages from `kioskRealtimeToken`'s channel tell a stale message from a
+	fresh one, and coalesce its own optimistic update with the Ably echo of
+	the same write.
+	"""
+	version: Int!
 	createdAt: Int
 	updatedAt: Int
 	signedInSessionId: ID
@@ -562,6 +603,18 @@ type QueryRoot {
 		id: ID
 	): Session!
 	refreshToken: String!
+	"""
+	A signed Ably token request scoped to exactly this kiosk's own
+	location channel (`kiosk:<db_prefix>:<location_id>`, subscribe-only).
+	The location comes from the caller's own session record, never from an
+	argument, and the capability is covered by the MAC, so a kiosk cannot
+	widen it to another location's channel. Hand
+	`tokenRequest` straight to ably-js's `authCallback`.
+	
+	`None` means realtime publishing is disabled server-side (no
+	`ABLY_API_KEY` configured); the kiosk should fall back to polling.
+	"""
+	kioskRealtimeToken: KioskRealtimeToken
 	"""
 	Look up a pending kiosk enrollment by its key fingerprint (from the QR code).
 	Returns `None` if it never existed or has expired — the admin SessionEnroll page

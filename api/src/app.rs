@@ -2,6 +2,7 @@ use crate::db;
 use crate::jwt;
 use crate::mail;
 use crate::queue;
+use crate::realtime;
 use webauthn_rs::prelude::{Webauthn, WebauthnBuilder};
 
 pub trait App {
@@ -51,38 +52,48 @@ pub trait HasMail {
     fn mail(&self) -> &impl mail::Handler;
 }
 
+pub trait HasRealtime {
+    fn realtime(&self) -> &impl realtime::Handler;
+}
+
 /// struct for holding our global singletons
 ///
 /// Every backend is a type parameter, so each binary compiles exactly the
-/// implementations it uses: `bin/poem.rs` gets DynamoDB + SQS + SES, and
-/// `bin/poem-local.rs` gets DynamoDB + the mocks. There is deliberately no
-/// runtime switch — a server that could be talked into mocking its own email by
-/// an environment variable is a worse thing to deploy than two binaries.
-pub struct MyApp<DBH: db::Handler, Q: queue::Handler, M: mail::Handler> {
+/// implementations it uses: `bin/poem.rs` gets DynamoDB + SQS + SES + Ably, and
+/// `bin/poem-local.rs` gets DynamoDB + the mocks (queue, mail, and realtime all
+/// record/log instead of dispatching). There is deliberately no runtime switch
+/// — a server that could be talked into mocking its own email by an
+/// environment variable is a worse thing to deploy than two binaries.
+pub struct MyApp<DBH: db::Handler, Q: queue::Handler, M: mail::Handler, R: realtime::Handler> {
     pub db: DBH,
     pub jwt: jwt::Key,
     pub response_lag: u64,
     pub queues: Q,
     pub mail: M,
+    pub realtime: R,
 }
 
-pub fn new<DBH: db::Handler, Q: queue::Handler, M: mail::Handler>(
+pub fn new<DBH: db::Handler, Q: queue::Handler, M: mail::Handler, R: realtime::Handler>(
     db: DBH,
     jwt: jwt::Key,
     response_lag: u64,
     queues: Q,
     mail: M,
-) -> MyApp<DBH, Q, M> {
+    realtime: R,
+) -> MyApp<DBH, Q, M, R> {
     MyApp {
         db,
         jwt,
         response_lag,
         queues,
         mail,
+        realtime,
     }
 }
 
-impl<DBH: db::Handler, Q: queue::Handler, M: mail::Handler> App for MyApp<DBH, Q, M> {
+impl<DBH: db::Handler, Q: queue::Handler, M: mail::Handler, R: realtime::Handler> App
+    for MyApp<DBH, Q, M, R>
+{
     fn jwt(&self) -> &jwt::Key {
         &self.jwt
     }
@@ -91,20 +102,34 @@ impl<DBH: db::Handler, Q: queue::Handler, M: mail::Handler> App for MyApp<DBH, Q
     }
 }
 
-impl<DBH: db::Handler, Q: queue::Handler, M: mail::Handler> HasDb for MyApp<DBH, Q, M> {
+impl<DBH: db::Handler, Q: queue::Handler, M: mail::Handler, R: realtime::Handler> HasDb
+    for MyApp<DBH, Q, M, R>
+{
     fn db(&self) -> &impl db::Handler {
         &self.db
     }
 }
 
-impl<DBH: db::Handler, Q: queue::Handler, M: mail::Handler> HasQueues for MyApp<DBH, Q, M> {
+impl<DBH: db::Handler, Q: queue::Handler, M: mail::Handler, R: realtime::Handler> HasQueues
+    for MyApp<DBH, Q, M, R>
+{
     fn queues(&self) -> &impl queue::Handler {
         &self.queues
     }
 }
 
-impl<DBH: db::Handler, Q: queue::Handler, M: mail::Handler> HasMail for MyApp<DBH, Q, M> {
+impl<DBH: db::Handler, Q: queue::Handler, M: mail::Handler, R: realtime::Handler> HasMail
+    for MyApp<DBH, Q, M, R>
+{
     fn mail(&self) -> &impl mail::Handler {
         &self.mail
+    }
+}
+
+impl<DBH: db::Handler, Q: queue::Handler, M: mail::Handler, R: realtime::Handler> HasRealtime
+    for MyApp<DBH, Q, M, R>
+{
+    fn realtime(&self) -> &impl realtime::Handler {
+        &self.realtime
     }
 }
