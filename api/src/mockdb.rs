@@ -180,7 +180,11 @@ impl db::Handler for Handler {
         Self::unsupported()
     }
 
-    async fn update_period(&self, _id: &str, _change: db::PeriodUpdateShape<'_>) -> db::Result<()> {
+    async fn update_period(
+        &self,
+        _id: &str,
+        _change: db::PeriodUpdateShape<'_>,
+    ) -> db::Result<u64> {
         Self::unsupported()
     }
 

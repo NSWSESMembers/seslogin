@@ -72,6 +72,13 @@ variable "turnstile_secret_key_test" {
   sensitive   = true
 }
 
+variable "ably_api_key" {
+  description = "Ably API key (`keyName:keySecret`) for publishing kiosk realtime updates and signing kiosk subscribe tokens. Shared by prod, preprod and the test API (they all share the prod database and so the prod channel space, `kiosk:seslogin_prod:*`). The key's own capability must include publish and subscribe on `kiosk:*` — a token can only narrow a key's capability, never widen it. Optionally scope a non-prod key to its own prefix, e.g. `kiosk:seslogin_test:*`. Empty disables realtime (kiosks fall back to polling) rather than failing startup, so this is safe to leave unset before the key exists."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
 variable "db_prefix" {
   description = "DynamoDB table name prefix for the production environment (e.g. seslogin_prod_)"
   type        = string
