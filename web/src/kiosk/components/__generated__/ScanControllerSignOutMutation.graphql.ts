@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<e1571657c0e760f4c4cf854889f1861e>>
+ * @generated SignedSource<<d9df5e69449f9b53a33c8700fbba2120>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -29,6 +29,7 @@ export type ScanControllerSignOutMutation$data = {
       readonly lastName: string;
     } | null | undefined;
     readonly startTime: number;
+    readonly version: number;
   };
 };
 export type ScanControllerSignOutMutation = {
@@ -95,6 +96,13 @@ v5 = [
     "plural": false,
     "selections": [
       (v4/*: any*/),
+      {
+        "alias": null,
+        "args": null,
+        "kind": "ScalarField",
+        "name": "version",
+        "storageKey": null
+      },
       {
         "alias": null,
         "args": null,
@@ -186,16 +194,16 @@ return {
     "selections": (v5/*: any*/)
   },
   "params": {
-    "cacheID": "30140ac60cf6900e88249b76d2a29d08",
+    "cacheID": "7b811a7f4ce06a05452317d180e02484",
     "id": null,
     "metadata": {},
     "name": "ScanControllerSignOutMutation",
     "operationKind": "mutation",
-    "text": "mutation ScanControllerSignOutMutation(\n  $id: ID!\n  $startTime: Int!\n  $endTime: Int!\n  $categoryId: ID!\n) {\n  scanSignOut(id: $id, startTime: $startTime, endTime: $endTime, categoryId: $categoryId) {\n    id\n    person {\n      id\n      firstName\n      lastName\n    }\n    startTime\n    endTime\n    category {\n      id\n      name\n    }\n  }\n}\n"
+    "text": "mutation ScanControllerSignOutMutation(\n  $id: ID!\n  $startTime: Int!\n  $endTime: Int!\n  $categoryId: ID!\n) {\n  scanSignOut(id: $id, startTime: $startTime, endTime: $endTime, categoryId: $categoryId) {\n    id\n    version\n    person {\n      id\n      firstName\n      lastName\n    }\n    startTime\n    endTime\n    category {\n      id\n      name\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "df54e296ba57dc22fc351f8416b2ee40";
+(node as any).hash = "08f53ad80acba6e9532bc5235a2ce2bf";
 
 export default node;

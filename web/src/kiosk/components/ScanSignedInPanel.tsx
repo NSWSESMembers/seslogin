@@ -1,95 +1,7 @@
-import { Suspense, useEffect, useState } from "react";
-import { graphql } from "react-relay";
 import { formatTimeDiff } from "../../lib/time";
 import { signInColorClass } from "../lib/signInColor";
-import { useRetryableLazyLoadQuery } from "../../components/useRetryableLazyLoadQuery";
-import type { ScanSignedInPanelQuery } from "./__generated__/ScanSignedInPanelQuery.graphql";
-
-// Same cadence as ScanStatusDialog's on-demand list — frequent enough that a
-// screen left showing this panel stays current, without hammering the API
-// from every kiosk in the fleet that enables it.
-const REFRESH_INTERVAL_MS = 30_000;
-// Matches the full-screen status kiosk's own cap (pages/Status.tsx) and
-// ScanStatusDialog's, so no two of the three can report a different total for
-// the same room.
-const MAX_PERIODS = 100;
-
-type SignedIn = {
-  id: string;
-  startTime: number;
-  name: string;
-};
-
-function SignedInPanelList(props: { refreshKey: number }) {
-  const data = useRetryableLazyLoadQuery<ScanSignedInPanelQuery>(
-    graphql`
-      query ScanSignedInPanelQuery($first: Int!) @throwOnFieldError {
-        session {
-          location {
-            periods(onlyActive: true, first: $first) {
-              edges {
-                node {
-                  id
-                  startTime
-                  guestName
-                  person {
-                    id
-                    firstName
-                    lastName
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    `,
-    { first: MAX_PERIODS },
-    { fetchPolicy: "network-only", fetchKey: props.refreshKey },
-  );
-
-  const signedIn: SignedIn[] = data.session.location.periods.edges
-    .filter((edge): edge is NonNullable<typeof edge> => edge?.node != null)
-    .map(({ node }) => ({
-      id: node.id,
-      startTime: node.startTime,
-      name: node.person
-        ? `${node.person.firstName} ${node.person.lastName}`
-        : `${node.guestName ?? "Guest"} (Guest)`,
-    }))
-    // Longest signed in first: whoever might have forgotten to sign out is the
-    // most useful thing to see without pressing anything.
-    .sort((a, b) => a.startTime - b.startTime);
-
-  if (signedIn.length === 0) {
-    return (
-      <p className="m-0 text-base text-ink-muted">Nobody signed in here.</p>
-    );
-  }
-
-  return (
-    <>
-      <ul className="m-0 flex flex-1 list-none flex-col gap-0.5 overflow-y-auto p-0 text-base">
-        {signedIn.map((entry) => (
-          <li
-            key={entry.id}
-            className="flex items-baseline justify-between gap-3"
-          >
-            <span className="min-w-0 truncate text-left">{entry.name}</span>
-            <span
-              className={`shrink-0 text-right ${signInColorClass(entry.startTime)}`}
-            >
-              {formatTimeDiff(new Date(entry.startTime * 1000), new Date())}
-            </span>
-          </li>
-        ))}
-      </ul>
-      <p className="m-0 mt-auto pt-2 text-base font-bold">
-        {signedIn.length} signed in
-      </p>
-    </>
-  );
-}
+import { Button } from "../../components/ui/Button";
+import { useLivePeriods } from "./useLivePeriods";
 
 /**
  * Always-on companion to ScanStatusDialog: the same signed-in list, but
@@ -104,25 +16,46 @@ function SignedInPanelList(props: { refreshKey: number }) {
  * so it never has a scan result to get out of the way of.
  */
 export default function ScanSignedInPanel() {
-  const [refreshKey, setRefreshKey] = useState(0);
-
-  useEffect(() => {
-    const intervalId = window.setInterval(() => {
-      setRefreshKey((k) => k + 1);
-    }, REFRESH_INTERVAL_MS);
-    return () => window.clearInterval(intervalId);
-  }, []);
+  const { periods, loading, error, retry } = useLivePeriods();
 
   return (
     <div className="flex h-full flex-col">
       <h2 className="m-0 mb-2 text-left text-lg font-bold">
         Currently signed in
       </h2>
-      <Suspense
-        fallback={<p className="m-0 text-base text-ink-muted">Loading…</p>}
-      >
-        <SignedInPanelList refreshKey={refreshKey} />
-      </Suspense>
+      {loading ? (
+        <p className="m-0 text-base text-ink-muted">Loading…</p>
+      ) : error ? (
+        <div className="flex flex-1 flex-col items-start gap-2">
+          <p className="m-0 text-base text-red-600">Couldn't load the list.</p>
+          <Button variant="kiosk" onClick={retry}>
+            Try again
+          </Button>
+        </div>
+      ) : periods.length === 0 ? (
+        <p className="m-0 text-base text-ink-muted">Nobody signed in here.</p>
+      ) : (
+        <>
+          <ul className="m-0 flex flex-1 list-none flex-col gap-0.5 overflow-y-auto p-0 text-base">
+            {periods.map((entry) => (
+              <li
+                key={entry.id}
+                className="flex items-baseline justify-between gap-3"
+              >
+                <span className="min-w-0 truncate text-left">{entry.name}</span>
+                <span
+                  className={`shrink-0 text-right ${signInColorClass(entry.startTime)}`}
+                >
+                  {formatTimeDiff(new Date(entry.startTime * 1000), new Date())}
+                </span>
+              </li>
+            ))}
+          </ul>
+          <p className="m-0 mt-auto pt-2 text-base font-bold">
+            {periods.length} signed in
+          </p>
+        </>
+      )}
     </div>
   );
 }

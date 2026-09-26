@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<dfd9250279951a9871e7562bac253e86>>
+ * @generated SignedSource<<2e14a153dac77b672a6f9f7fedfd310e>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -15,7 +15,10 @@ export type ScanGuestDialogSignOutMutation$variables = {
 export type ScanGuestDialogSignOutMutation$data = {
   readonly scanGuestSignOut: {
     readonly endTime: number | null | undefined;
+    readonly guestName: string | null | undefined;
     readonly id: string;
+    readonly startTime: number;
+    readonly version: number;
   };
 };
 export type ScanGuestDialogSignOutMutation = {
@@ -57,7 +60,28 @@ v1 = [
         "alias": null,
         "args": null,
         "kind": "ScalarField",
+        "name": "version",
+        "storageKey": null
+      },
+      {
+        "alias": null,
+        "args": null,
+        "kind": "ScalarField",
+        "name": "startTime",
+        "storageKey": null
+      },
+      {
+        "alias": null,
+        "args": null,
+        "kind": "ScalarField",
         "name": "endTime",
+        "storageKey": null
+      },
+      {
+        "alias": null,
+        "args": null,
+        "kind": "ScalarField",
+        "name": "guestName",
         "storageKey": null
       }
     ],
@@ -82,16 +106,16 @@ return {
     "selections": (v1/*: any*/)
   },
   "params": {
-    "cacheID": "7a5d71eae72a90a4a3e09828033c4402",
+    "cacheID": "664a8d0725312f0008cd3fc8e21cc406",
     "id": null,
     "metadata": {},
     "name": "ScanGuestDialogSignOutMutation",
     "operationKind": "mutation",
-    "text": "mutation ScanGuestDialogSignOutMutation(\n  $id: ID!\n) {\n  scanGuestSignOut(id: $id) {\n    id\n    endTime\n  }\n}\n"
+    "text": "mutation ScanGuestDialogSignOutMutation(\n  $id: ID!\n) {\n  scanGuestSignOut(id: $id) {\n    id\n    version\n    startTime\n    endTime\n    guestName\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "d5a42a48fbdf087d63c20764740e6b1b";
+(node as any).hash = "8e65918a6bfbc991783ef268bc91c6c3";
 
 export default node;

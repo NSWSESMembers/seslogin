@@ -27,11 +27,15 @@ export default function KioskMain() {
   return (
     <Suspense fallback={<LoadingIndicator />}>
       <KioskEnvironment profile={profile}>
-        {/* canRetry: the four useLazyLoadQuery call sites reachable here —
-            Status, ScanGuestDialog's GuestList, ScanStatusDialog's
-            SignedInList and ScanSignedInPanel's SignedInPanelList — all
-            thread useRelayRetryFetchKey() into their query. */}
-        <RelayErrorBoundary canRetry>
+        {/* No useLazyLoadQuery call sites remain under here — Status,
+            ScanGuestDialog's GuestList, ScanStatusDialog and
+            ScanSignedInPanel all read from LivePeriodsProvider now, which
+            manages its own loading/error/retry state rather than suspending
+            or throwing. So canRetry stays off: "Try again" resetting the
+            store's invalidation epoch and bumping a Relay fetchKey (see
+            RelayErrorBoundary's doc comment) wouldn't fix whatever else
+            might throw here, and "Reload page" is the honest fallback. */}
+        <RelayErrorBoundary>
           <Suspense fallback={<LoadingIndicator />}>
             <Router />
           </Suspense>

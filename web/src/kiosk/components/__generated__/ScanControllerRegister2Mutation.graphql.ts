@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<92c65535106f5577aae2e8eb01aa9996>>
+ * @generated SignedSource<<40118c518cfc782463b6e4d518ddfe50>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -25,6 +25,7 @@ export type ScanControllerRegister2Mutation$data = {
         readonly lastName: string;
       } | null | undefined;
       readonly startTime: number;
+      readonly version: number;
     } | null | undefined;
     readonly quickPick: {
       readonly locationCategories: ReadonlyArray<{
@@ -125,6 +126,13 @@ v4 = [
         "plural": false,
         "selections": [
           (v1/*: any*/),
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "version",
+            "storageKey": null
+          },
           {
             "alias": null,
             "args": null,
@@ -232,16 +240,16 @@ return {
     "selections": (v4/*: any*/)
   },
   "params": {
-    "cacheID": "b8c0d12158d6acfcbeea676d3306c8b9",
+    "cacheID": "ba93a09c27430c633c2d3da2b156d0f9",
     "id": null,
     "metadata": {},
     "name": "ScanControllerRegister2Mutation",
     "operationKind": "mutation",
-    "text": "mutation ScanControllerRegister2Mutation(\n  $memberNumber: String!\n  $quickPick: Boolean!\n) {\n  scanRegister2(memberNumber: $memberNumber, quickPick: $quickPick) {\n    state\n    period {\n      id\n      startTime\n      endTime\n      person {\n        id\n        firstName\n        lastName\n      }\n    }\n    quickPick {\n      locationCategories {\n        category {\n          id\n        }\n        recentPeople {\n          id\n          firstName\n        }\n      }\n      personCategories {\n        category {\n          id\n        }\n      }\n    }\n  }\n}\n"
+    "text": "mutation ScanControllerRegister2Mutation(\n  $memberNumber: String!\n  $quickPick: Boolean!\n) {\n  scanRegister2(memberNumber: $memberNumber, quickPick: $quickPick) {\n    state\n    period {\n      id\n      version\n      startTime\n      endTime\n      person {\n        id\n        firstName\n        lastName\n      }\n    }\n    quickPick {\n      locationCategories {\n        category {\n          id\n        }\n        recentPeople {\n          id\n          firstName\n        }\n      }\n      personCategories {\n        category {\n          id\n        }\n      }\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "493bb2560bb105b8fbcf01075e848f17";
+(node as any).hash = "29f639363e3ab5e65265e96da65af82f";
 
 export default node;
