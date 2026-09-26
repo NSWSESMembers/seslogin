@@ -24,6 +24,7 @@
     "@tailwindcss/vite": "^4.3.2",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/user-event": "^14.6.1",
+    "ably": "^2.28.0",
     "exceljs": "^4.4.0",
     "msw": "^2.15.0",
     "qrcode": "^1.5.4",

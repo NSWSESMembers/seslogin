@@ -324,17 +324,18 @@ Terraform uses the `seslogin` AWS profile by default (var `aws_profile`) — an 
 
 **Database abstraction**: `api/src/db.rs` defines traits; `api/src/dynamodb.rs` is the DynamoDB implementation. A `mockdb` implementation exists for tests — it fails every call, so its job is exercising error paths, not standing in for a database.
 
-**Queue and mail abstraction**: the same trait/impl/mock split.
+**Queue, mail and realtime abstraction**: the same trait/impl/mock split.
 
 | Concern | Trait | AWS impl | Mock |
 |---|---|---|---|
 | DynamoDB | `db.rs` | `dynamodb.rs` | `mockdb.rs` (fails everything) |
 | SQS | `queue.rs` | `sqs.rs` | `mockqueue.rs` (records) |
 | SES email | `mail.rs` | `sesmail.rs` | `mockmail.rs` (logs) |
+| Kiosk realtime | `realtime.rs` | `ably.rs` | `mockrealtime.rs` (records) |
 
-Unlike `mockdb`, the queue and mail mocks *succeed* — they exist so the API can run with no AWS account. The app reaches all three through `app::HasDb` / `app::HasQueues` / `app::HasMail`, and `MyApp<DBH, Q, M>` is generic over each.
+Unlike `mockdb`, the queue, mail and realtime mocks *succeed* — they exist so the API can run with no AWS account (and, for realtime, no Ably account). The app reaches all four through `app::HasDb` / `app::HasQueues` / `app::HasMail` / `app::HasRealtime`, and `MyApp<DBH, Q, M, R>` is generic over each.
 
-**There is no runtime switch between them.** Which implementations exist is decided at compile time, by which binary you build: `bin/poem.rs` is DynamoDB + SQS + SES, `bin/poem-local.rs` is DynamoDB + the mocks. The shared server (handler, routes, CLI) lives in `server.rs` so the two can't drift; each binary is a ~15-line `main`. A cargo feature was rejected because `make check` runs `clippy --all-features`, which would enable it — the real SQS and SES paths would stop being linted, and any `--all-features` build would quietly produce a mocked server.
+**There is no runtime switch between them.** Which implementations exist is decided at compile time, by which binary you build: `bin/poem.rs` is DynamoDB + SQS + SES + Ably, `bin/poem-local.rs` is DynamoDB + the mocks. The shared server (handler, routes, CLI) lives in `server.rs` so the two can't drift; each binary is a ~15-line `main`. A cargo feature was rejected because `make check` runs `clippy --all-features`, which would enable it — the real SQS and SES paths would stop being linted, and any `--all-features` build would quietly produce a mocked server.
 
 `sqs.rs` also keeps free `enqueue_*` functions holding each message's wire format. The worker binaries (`dispatcher-lambda`, `nitc-export`) call those directly: each owns exactly one queue, so the three-queue `Queues` handle would be the wrong shape, and they need real AWS anyway.
 
@@ -399,3 +400,4 @@ Environment variables (loaded from `.env` and `.env.secret`; see
 - `MAIL_OVERRIDE_TO` — Redirect **all** outgoing email to this address instead of its real recipient, logging a warning each time. Set it locally before touching anything that mails a member: `seslogin_test` is a snapshot of production and carries real member addresses, so the admin "Remind" button would otherwise email a real volunteer from your laptop. Never set in a deployed environment.
 - `WEB_BASE_URL` — Public site origin used to build member-facing period edit links (`<base>/period#<token>`). Optional: falls back to the first `WEBAUTHN_RP_ORIGIN`, which is already the site origin in every environment, so no infra change is needed to deploy.
 - `WEBAUTHN_RP_ID` / `WEBAUTHN_RP_ORIGIN` — Passkey relying-party ID and origin. Local dev defaults to `localhost` / `http://localhost:5173`; deployed envs use `seslogin.com` / the site origin (e.g. `https://new.seslogin.com`). A passkey is bound to the RP ID it was registered under, so local-dev passkeys won't work in prod.
+- `ABLY_API_KEY` — Ably key (`keyName:keySecret`) for publishing kiosk period open/close events. Channels are per `kiosk:<DB_PREFIX>:<location_id>`, so environments never cross-publish into each other's channels. `kioskRealtimeToken` hands a kiosk a signed, subscribe-only token scoped to exactly its own location's channel. Unset, empty, or malformed disables realtime rather than failing startup — kiosks fall back to polling.

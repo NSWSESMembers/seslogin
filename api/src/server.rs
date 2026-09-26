@@ -29,12 +29,13 @@ use crate::graphql;
 use crate::jwt;
 use crate::mail;
 use crate::queue;
+use crate::realtime;
 use crate::request_metrics::{self, RequestMetrics};
 use crate::telemetry;
 
-type Schema<H, Q, M> = async_graphql::Schema<
-    graphql::QueryRoot<MyApp<H, Q, M>>,
-    graphql::MutationRoot<MyApp<H, Q, M>>,
+type Schema<H, Q, M, R> = async_graphql::Schema<
+    graphql::QueryRoot<MyApp<H, Q, M, R>>,
+    graphql::MutationRoot<MyApp<H, Q, M, R>>,
     EmptySubscription,
 >;
 
@@ -117,9 +118,9 @@ pub fn init() -> Result<Startup, Box<dyn Error>> {
 }
 
 #[handler]
-async fn index<H, Q, M>(
-    schema: Data<&Schema<H, Q, M>>,
-    app: Data<&Arc<MyApp<H, Q, M>>>,
+async fn index<H, Q, M, R>(
+    schema: Data<&Schema<H, Q, M, R>>,
+    app: Data<&Arc<MyApp<H, Q, M, R>>>,
     dev_auth: Data<&Arc<Option<auth::DevAuthConfig>>>,
     headers: &HeaderMap,
     body: Vec<u8>,
@@ -128,6 +129,7 @@ where
     H: db::Handler + Send + Sync + 'static,
     Q: queue::Handler + Send + Sync + 'static,
     M: mail::Handler + Send + Sync + 'static,
+    R: realtime::Handler + Send + Sync + 'static,
 {
     if app.response_lag > 0 {
         tokio::time::sleep(std::time::Duration::from_millis(app.response_lag)).await;
@@ -249,29 +251,38 @@ async fn graphiql() -> impl IntoResponse {
 }
 
 /// Serve the GraphQL API on :8000 until interrupted.
-pub async fn run<H, Q, M>(
+pub async fn run<H, Q, M, R>(
     startup: Startup,
     db: H,
     queues: Q,
     mailer: M,
+    realtime: R,
 ) -> Result<(), Box<dyn Error>>
 where
     H: db::Handler + Send + Sync + 'static,
     Q: queue::Handler + Send + Sync + 'static,
     M: mail::Handler + Send + Sync + 'static,
+    R: realtime::Handler + Send + Sync + 'static,
 {
     let Startup {
         cli, key, dev_auth, ..
     } = startup;
     let webauthn = Arc::new(app::build_webauthn()?);
-    let app = Arc::new(app::new(db, key, cli.response_lag_ms, queues, mailer));
+    let app = Arc::new(app::new(
+        db,
+        key,
+        cli.response_lag_ms,
+        queues,
+        mailer,
+        realtime,
+    ));
     let schema = graphql::build_schema(app.clone(), webauthn);
     std::fs::write("schema.graphql", schema.sdl())?;
     let allow_cross_origin = Cors::new();
     let routes = Route::new()
         .at(
             "/",
-            get(graphiql).post(index::<H, Q, M> {
+            get(graphiql).post(index::<H, Q, M, R> {
                 ..Default::default()
             }),
         )

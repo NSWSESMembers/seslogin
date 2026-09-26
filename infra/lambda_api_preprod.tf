@@ -22,6 +22,7 @@ resource "aws_lambda_function" "preprod_api" {
       DB_PREFIX             = var.db_prefix
       READ_ONLY             = "false"
       TURNSTILE_SECRET_KEY  = var.turnstile_secret_key
+      ABLY_API_KEY          = var.ably_api_key
       WEBAUTHN_RP_ID        = "seslogin.com"
       WEBAUTHN_RP_ORIGIN    = "https://preprod.seslogin.com"
       # Member-facing period edit links point at the canonical prod site, not the

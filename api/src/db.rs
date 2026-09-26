@@ -728,11 +728,14 @@ pub trait Handler: Sync {
         end_time: u64,
         comment: Option<&str>,
     ) -> impl Future<Output = Result<Period>> + Send;
+    /// Returns the period's new `version` (post-increment), so callers that
+    /// publish a realtime event for the mutation don't need a second read to
+    /// learn it.
     fn update_period(
         &self,
         id: &str,
         change: PeriodUpdateShape<'_>,
-    ) -> impl Future<Output = Result<()>> + Send;
+    ) -> impl Future<Output = Result<u64>> + Send;
     /// Returns the IDs of every session whose enrolled key fingerprint matches (from
     /// the `key_fingerprint-index` GSI). Expected to be at most one active session;
     /// callers should fetch each ID with [`get_sessions`](Self::get_sessions) to confirm

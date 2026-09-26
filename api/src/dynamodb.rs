@@ -47,6 +47,20 @@ fn map_update_err(e: SdkError<UpdateItemError>, not_found_msg: String) -> db::Er
     db::Error::Infrastructure(sdk_err_msg(e))
 }
 
+/// Pull the post-update `v` (version) attribute out of an `UpdateItemOutput`
+/// built with `.return_values(ReturnValue::UpdatedNew)`. Shared by every
+/// `update_period` shape and `end_period`, all of which `ADD v :one`.
+fn parse_new_version(
+    resp: &aws_sdk_dynamodb::operation::update_item::UpdateItemOutput,
+) -> db::Result<u64> {
+    resp.attributes
+        .as_ref()
+        .and_then(|a| a.get("v"))
+        .and_then(|v| v.as_n().ok())
+        .and_then(|n| n.parse::<u64>().ok())
+        .ok_or_else(|| Error::Infrastructure("Missing version in update response".to_string()))
+}
+
 /// Generate a new unique ID for DB entities. Public so callers that need IDs
 /// before the record exists (e.g. `cli id`, for pre-allocating an ID to reuse
 /// verbatim across databases) use the exact same scheme rather than a
@@ -1775,6 +1789,7 @@ impl db::Handler for Handler {
         }
 
         let resp = req
+            .return_values(ReturnValue::UpdatedNew)
             .return_consumed_capacity(ReturnConsumedCapacity::Total)
             .send()
             .await
@@ -1792,6 +1807,9 @@ impl db::Handler for Handler {
         if let Some(sess) = signed_out_session_id {
             updated.signed_out_session_id = Some(sess.to_string());
         }
+        // `v` was stale here (the pre-update value on the caller's clone) before
+        // `ReturnValue::UpdatedNew` started reporting the post-increment one.
+        updated.version = parse_new_version(&resp)?;
         Ok(updated)
     }
 
@@ -2240,11 +2258,14 @@ impl db::Handler for Handler {
         })
     }
 
-    async fn update_period(&self, id: &str, change: db::PeriodUpdateShape<'_>) -> db::Result<()> {
+    async fn update_period(&self, id: &str, change: db::PeriodUpdateShape<'_>) -> db::Result<u64> {
         if self.read_only {
             return Err(db::Error::MutationDisabled);
         }
-        match change {
+        // Every shape `ADD v :one` and reads it back via `ReturnValue::UpdatedNew`,
+        // so callers that publish a realtime event for this mutation (see
+        // `graphql/mutations.rs`) don't need a second read to learn the new version.
+        let new_version = match change {
             db::PeriodUpdateShape::Fields {
                 person_id,
                 location_id,
@@ -2311,11 +2332,13 @@ impl db::Handler for Handler {
                     );
                 }
                 let resp = update
+                    .return_values(ReturnValue::UpdatedNew)
                     .return_consumed_capacity(ReturnConsumedCapacity::Total)
                     .send()
                     .await
                     .map_err(|e| map_update_err(e, format!("Period {}", id)))?;
                 record_capacity("update_period", resp.consumed_capacity(), CapKind::Write);
+                parse_new_version(&resp)?
             }
             db::PeriodUpdateShape::TimeCategory {
                 start_time,
@@ -2388,11 +2411,13 @@ impl db::Handler for Handler {
                     );
                 }
                 let resp = update
+                    .return_values(ReturnValue::UpdatedNew)
                     .return_consumed_capacity(ReturnConsumedCapacity::Total)
                     .send()
                     .await
                     .map_err(|e| map_update_err(e, format!("Period {}", id)))?;
                 record_capacity("update_period", resp.consumed_capacity(), CapKind::Write);
+                parse_new_version(&resp)?
             }
             db::PeriodUpdateShape::Guest {
                 guest_name,
@@ -2455,11 +2480,13 @@ impl db::Handler for Handler {
                     );
                 }
                 let resp = update
+                    .return_values(ReturnValue::UpdatedNew)
                     .return_consumed_capacity(ReturnConsumedCapacity::Total)
                     .send()
                     .await
                     .map_err(|e| map_update_err(e, format!("Period {}", id)))?;
                 record_capacity("update_period", resp.consumed_capacity(), CapKind::Write);
+                parse_new_version(&resp)?
             }
             db::PeriodUpdateShape::Delete => {
                 let deleted_time = crate::clock::now_sec().to_string();
@@ -2476,15 +2503,17 @@ impl db::Handler for Handler {
                     .expression_attribute_values(":deleted", AttributeValue::N(deleted_time.clone()))
                     .expression_attribute_values(":updated_at", AttributeValue::N(deleted_time))
                     .expression_attribute_values(":one", AttributeValue::N("1".to_string()))
+                    .return_values(ReturnValue::UpdatedNew)
                     .return_consumed_capacity(ReturnConsumedCapacity::Total)
                     .send()
                     .await
                     .map_err(|e| map_update_err(e, format!("Period {}", id)))?;
                 record_capacity("update_period", resp.consumed_capacity(), CapKind::Write);
+                parse_new_version(&resp)?
             }
-        }
+        };
 
-        Ok(())
+        Ok(new_version)
     }
 
     async fn create_session(

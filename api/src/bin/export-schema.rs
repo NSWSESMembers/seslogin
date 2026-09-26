@@ -7,6 +7,7 @@ use seslogin::jwt;
 use seslogin::mockdb;
 use seslogin::mockmail;
 use seslogin::mockqueue;
+use seslogin::mockrealtime;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -19,6 +20,7 @@ async fn main() -> Result<()> {
         0,
         mockqueue::Handler::new(),
         mockmail::Handler::new(),
+        mockrealtime::Handler::new("schema-export"),
     ));
     let webauthn = Arc::new(app::build_webauthn()?);
     let schema = graphql::build_schema(app, webauthn);

@@ -17,16 +17,21 @@ use seslogin::jwt;
 use seslogin::mockdb;
 use seslogin::mockmail;
 use seslogin::mockqueue;
+use seslogin::mockrealtime;
 
 type TestSchema = async_graphql::Schema<
-    graphql::QueryRoot<MyApp<mockdb::Handler, mockqueue::Handler, mockmail::Handler>>,
-    graphql::MutationRoot<MyApp<mockdb::Handler, mockqueue::Handler, mockmail::Handler>>,
+    graphql::QueryRoot<
+        MyApp<mockdb::Handler, mockqueue::Handler, mockmail::Handler, mockrealtime::Handler>,
+    >,
+    graphql::MutationRoot<
+        MyApp<mockdb::Handler, mockqueue::Handler, mockmail::Handler, mockrealtime::Handler>,
+    >,
     async_graphql::EmptySubscription,
 >;
 
 struct Fixture {
     schema: TestSchema,
-    app: Arc<MyApp<mockdb::Handler, mockqueue::Handler, mockmail::Handler>>,
+    app: Arc<MyApp<mockdb::Handler, mockqueue::Handler, mockmail::Handler, mockrealtime::Handler>>,
 }
 
 fn fixture() -> Fixture {
@@ -40,6 +45,7 @@ fn fixture() -> Fixture {
         0,
         mockqueue::Handler::new(),
         mockmail::Handler::new(),
+        mockrealtime::Handler::new("test"),
     ));
     // No HTTP relying-party check is exercised by these queries, so a minimal fixed
     // origin is fine here — unlike `export-schema.rs`, this must not depend on
