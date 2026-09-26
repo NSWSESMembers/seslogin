@@ -94,23 +94,8 @@ resource "aws_route53_record" "test_a" {
   }
 }
 
-# ── Email: forwardemail.net inbound forwarding + DMARC ────────────────────────
-resource "aws_route53_record" "apex_mx" {
-  zone_id = aws_route53_zone.seslogin.zone_id
-  name    = "seslogin.com"
-  type    = "MX"
-  ttl     = 300
-  records = ["10 mx1.forwardemail.net", "20 mx2.forwardemail.net"]
-}
-
-resource "aws_route53_record" "apex_txt" {
-  zone_id = aws_route53_zone.seslogin.zone_id
-  name    = "seslogin.com"
-  type    = "TXT"
-  ttl     = 300
-  records = ["forward-email=alerts:seslogin@sdunster.com"]
-}
-
+# ── Email: DMARC ────────────────────────────────────────────────────────────
+# apex_mx and apex_txt (SES inbound MX + SPF) are managed outside Terraform.
 resource "aws_route53_record" "dmarc" {
   zone_id = aws_route53_zone.seslogin.zone_id
   name    = "_dmarc.seslogin.com"
