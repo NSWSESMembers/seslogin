@@ -301,7 +301,7 @@ function SegmentedControl<T extends string>({
       {options.map((option, index) => (
         <button
           key={option.value}
-          className={`m-0 min-w-23 cursor-pointer rounded-none border-0 bg-surface-raised px-3 py-1.5 text-ink hover:bg-surface-sunken aria-pressed:bg-navy aria-pressed:text-white aria-pressed:hover:bg-navy-active ${index > 0 ? "border-l border-line-strong" : ""}`}
+          className={`m-0 min-w-23 cursor-pointer rounded-none border-0 bg-surface-raised px-3 py-1.5 text-ink hover:bg-surface-sunken aria-pressed:bg-navy aria-pressed:text-surface aria-pressed:hover:bg-navy-active ${index > 0 ? "border-l border-line-strong" : ""}`}
           type="button"
           onClick={() => onChange(option.value)}
           aria-pressed={value === option.value}
