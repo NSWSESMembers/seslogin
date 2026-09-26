@@ -22,6 +22,17 @@ export interface LivePeriodsContextType {
    * connection/channel isn't currently attached). Purely informational — every
    * consumer reads the same `periods`/`guests` either way. */
   live: boolean;
+  /** Ably connection state as last reported by the SDK (e.g. "connecting",
+   * "connected", "disconnected", "suspended", "failed", "closed"). Null before
+   * a realtime connection has ever been attempted — including for the whole
+   * session when realtime is disabled server-side, in which case this stays
+   * null and the kiosk polls from the start. Purely informational, for
+   * diagnostics (see KioskStatusDialog). */
+  connectionState: string | null;
+  /** Epoch ms of the most recently *completed* fallback poll (not a realtime
+   * resync). Null if realtime has been live since this provider started, or
+   * no poll has completed yet. Purely informational, for diagnostics. */
+  lastPollAt: number | null;
   /** True until the first snapshot (a poll, or a realtime resync) completes. */
   loading: boolean;
   /** Set when the most recent snapshot attempt failed; cleared on the next
