@@ -1,6 +1,7 @@
 //! The GraphQL API server with the AWS services other than DynamoDB mocked out:
-//! queue messages are recorded and logged, email is logged rather than sent.
-//! Started by `make dev-local`; see DEVELOPMENT.md, "Running without AWS".
+//! queue messages are recorded and logged, email is logged rather than sent,
+//! and realtime kiosk events are recorded and logged rather than published to
+//! Ably. Started by `make dev-local`; see DEVELOPMENT.md, "Running without AWS".
 //!
 //! Deliberately a separate binary from `poem.rs`, not a flag or a cargo feature
 //! on it. A feature would be switched on by `--all-features`, which `make check`
@@ -17,21 +18,24 @@ use std::error::Error;
 use seslogin::dynamodb;
 use seslogin::mockmail;
 use seslogin::mockqueue;
+use seslogin::mockrealtime;
 use seslogin::server;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     let startup = server::init()?;
     tracing::warn!(
-        "poem-local: SQS and SES are mocked. Queue messages will be logged and dropped, \
-         and email will be logged instead of sent."
+        "poem-local: SQS, SES and Ably are mocked. Queue messages and realtime kiosk \
+         events will be logged and dropped, and email will be logged instead of sent."
     );
     let db = dynamodb::Handler::new(&startup.db_prefix, !startup.cli.enable_mutations).await;
+    let realtime = mockrealtime::Handler::new(startup.db_prefix.clone());
     server::run(
         startup,
         db,
         mockqueue::Handler::new(),
         mockmail::Handler::from_env(),
+        realtime,
     )
     .await
 }

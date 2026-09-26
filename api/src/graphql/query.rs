@@ -19,11 +19,14 @@ use xxhash_rust::xxh64::xxh64;
 
 use crate::app::App;
 use crate::app::HasDb;
+use crate::app::HasRealtime;
 use crate::auth;
 use crate::auth::AuthInfo;
 use crate::db;
 use crate::db::Handler;
 use crate::db::ListSessionsQuery;
+use crate::realtime;
+use crate::realtime::Handler as _;
 use crate::ses_api;
 
 use super::auth::{AuthGuard, AuthRequirement, require_location_access};
@@ -179,6 +182,49 @@ pub struct PasskeyInfo {
 pub struct PendingEnrollmentKey {
     pub fingerprint: String,
     pub expires_at: i64,
+}
+
+/// An Ably `TokenRequest`, signed server-side, that a kiosk can hand straight
+/// to ably-js's `authCallback` to authenticate for its own channel — see
+/// `kioskRealtimeToken`. Field names and shapes mirror Ably's own wire format
+/// (<https://ably.com/docs/api/rest-api#token-request-spec>) so no translation
+/// is needed on the client.
+///
+/// `timestamp` is a `Float`, not an `Int`: GraphQL's `Int` is 32-bit, and a
+/// Unix-epoch-*milliseconds* timestamp doesn't fit. `ttl` (a fixed one hour in
+/// milliseconds) does fit comfortably and stays an `Int`.
+#[derive(SimpleObject, Clone, Debug)]
+pub struct AblyTokenRequest {
+    pub key_name: String,
+    pub ttl: i64,
+    pub capability: String,
+    pub client_id: String,
+    pub timestamp: f64,
+    pub nonce: String,
+    pub mac: String,
+}
+
+impl From<realtime::TokenRequest> for AblyTokenRequest {
+    fn from(t: realtime::TokenRequest) -> Self {
+        Self {
+            key_name: t.key_name,
+            ttl: t.ttl,
+            capability: t.capability,
+            client_id: t.client_id,
+            timestamp: t.timestamp as f64,
+            nonce: t.nonce,
+            mac: t.mac,
+        }
+    }
+}
+
+/// A signed realtime token together with the exact channel it authorizes.
+#[derive(SimpleObject, Clone, Debug)]
+pub struct KioskRealtimeToken {
+    /// The Ably channel this kiosk's location publishes period open/close
+    /// events to — pass straight to `ably-js`'s `channels.get(channel)`.
+    pub channel: String,
+    pub token_request: AblyTokenRequest,
 }
 
 /// Build and deployment information about the API server.
@@ -683,6 +729,15 @@ impl<A: App + HasDb + Send + Sync> Period<A> {
 
     async fn end_time(&self) -> Option<i64> {
         self.rec.end_time.map(|i| i as i64)
+    }
+
+    /// Bumped on every mutation of this period (create, sign-out, admin edit,
+    /// delete). Lets a kiosk applying realtime `period.opened`/`period.closed`
+    /// messages from `kioskRealtimeToken`'s channel tell a stale message from a
+    /// fresh one, and coalesce its own optimistic update with the Ably echo of
+    /// the same write.
+    async fn version(&self) -> i64 {
+        self.rec.version as i64
     }
 
     async fn created_at(&self) -> Option<i64> {
@@ -3021,7 +3076,7 @@ fn make_ses_client() -> Result<ses_api::SesClient> {
 }
 
 #[Object]
-impl<A: App + HasDb + Send + Sync + 'static> QueryRoot<A> {
+impl<A: App + HasDb + HasRealtime + Send + Sync + 'static> QueryRoot<A> {
     /// Build and deployment information about this API server.
     ///
     /// Deliberately unauthenticated — the only root field that is. The home page is
@@ -3257,6 +3312,36 @@ impl<A: App + HasDb + Send + Sync + 'static> QueryRoot<A> {
 
         let app = ctx.data_unchecked::<Arc<A>>().clone();
         auth::issue_token_for_session_id(&*app, session_id)
+    }
+
+    /// A signed Ably token request scoped to exactly this kiosk's own
+    /// location channel (`kiosk:<db_prefix>:<location_id>`, subscribe-only).
+    /// The location comes from the caller's own session record, never from an
+    /// argument, and the capability is covered by the MAC, so a kiosk cannot
+    /// widen it to another location's channel. Hand
+    /// `tokenRequest` straight to ably-js's `authCallback`.
+    ///
+    /// `None` means realtime publishing is disabled server-side (no
+    /// `ABLY_API_KEY` configured); the kiosk should fall back to polling.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Session)")]
+    async fn kiosk_realtime_token(&self, ctx: &Context<'_>) -> Result<Option<KioskRealtimeToken>> {
+        let (session_id, location_id) = match ctx.data_opt::<AuthInfo>() {
+            Some(AuthInfo::Session { id, location }) => (id.clone(), location.clone()),
+            _ => {
+                return Err(anyhow!(
+                    "Cannot request a realtime token without session auth"
+                ));
+            }
+        };
+        let app = ctx.data_unchecked::<Arc<A>>();
+        let token = app
+            .realtime()
+            .kiosk_token_request(&location_id, &session_id)
+            .await?;
+        Ok(token.map(|t| KioskRealtimeToken {
+            channel: t.channel,
+            token_request: t.token_request.into(),
+        }))
     }
 
     /// Look up a pending kiosk enrollment by its key fingerprint (from the QR code).
