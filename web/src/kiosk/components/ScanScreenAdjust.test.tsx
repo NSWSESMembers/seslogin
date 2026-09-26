@@ -48,8 +48,6 @@ async function enterTime(
     throw new Error("Time must be in HH:MM format");
   }
 
-  await user.click(screen.getByRole("button", { name: am ? "AM" : "PM" }));
-
   for (const char of time) {
     if (char === ":") {
       continue;
@@ -57,6 +55,12 @@ async function enterTime(
     const button = screen.getByRole("button", { name: char });
     await user.click(button);
   }
+  // Click AM/PM only after the hour digits above are entered: the modal now
+  // loads the transaction's existing time as 24-hour digits, so whether it
+  // opens showing the AM/PM toggle at all depends on the current wall-clock
+  // hour the test happens to run at. The hours entered above (11) are always
+  // ambiguous, so the toggle is guaranteed to be present by this point.
+  await user.click(screen.getByRole("button", { name: am ? "AM" : "PM" }));
   await user.click(screen.getByRole("button", { name: "Confirm" }));
 }
 

@@ -34,14 +34,17 @@ function initialCaret(digits: Digits): Caret {
 }
 
 // Whether `key` is allowed as the digit at `index`, given the digits around it.
-// Hours run 00-23 and minutes 00-59, and the hour rule cuts both ways now that
-// digits can be edited out of order: typing a 2 into the hour tens is only legal
-// if the hour units is 3 or less (or still blank).
+// Hours run 00-23 and minutes 00-59. The hour tens only ever constrains the
+// units digit that *follows* it (index 1): once the tens is "2", the units
+// can't push the hour past 23. The tens digit is never rejected because of a
+// stale units digit already sitting there from the previous value — the
+// field normally opens prefilled and complete, so retyping a new hour starts
+// by overwriting the tens while the old units digit is still in place, and
+// blocking that keystroke would make entry look broken. `button` below clears
+// the stale units digit instead when it would no longer be valid.
 function isValidDigit(digits: Digits, index: number, key: number): boolean {
   if (index === 0) {
-    if (key > 2) return false;
-    if (key === 2 && digits[1] !== null && Number(digits[1]) > 3) return false;
-    return true;
+    return key <= 2;
   }
   if (index === 1) {
     return !(digits[0] === "2" && key > 3);
@@ -64,12 +67,12 @@ function yesterday(): Date {
   return dateOnly(d);
 }
 
-function to12HourDigits(hours24: number, minutes: number): string {
-  let hour12 = hours24 % 12;
-  if (hour12 === 0) {
-    hour12 = 12;
-  }
-  return String(hour12).padStart(2, "0") + String(minutes).padStart(2, "0");
+// The digits an existing time is loaded into the editor as. 24-hour, not
+// 12-hour: an hour of 0 or 13-23 then lands on digits that are immediately
+// unambiguous (the "24h" badge below), rather than requiring a trip through
+// AM/PM to get back to the value that was already on screen.
+function to24HourDigits(hours24: number, minutes: number): string {
+  return String(hours24).padStart(2, "0") + String(minutes).padStart(2, "0");
 }
 
 const dateBtnClasses =
@@ -137,10 +140,17 @@ export function Inner(props: {
     }
     const digit = Number(key);
     // A digit is always replaced in place — entering one never disturbs the
-    // others.
+    // others, except for the one case below.
     if (!isValidDigit(digits, caret, digit)) return;
     const next = [...digits] as Digits;
     next[caret] = key;
+    // Setting the hour tens to "2" caps the hour at 23. If the units digit
+    // still holds a stale value above 3 from before this edit, clear it
+    // rather than leaving the pair invalid (28:xx) or rejecting this
+    // keystroke outright — see isValidDigit.
+    if (caret === 0 && digit === 2 && next[1] !== null && Number(next[1]) > 3) {
+      next[1] = null;
+    }
     setDigits(next);
     // Move right, wrapping past the last digit back to the first so a second
     // pass over the same field can start straight away.
@@ -395,7 +405,7 @@ export default function ScanModalDateTime(props: {
   ) {
     setInitialDate(currentDate);
     setInitialAmPm(currentHours >= 12 ? "PM" : "AM");
-    setInitialValue(to12HourDigits(currentHours, currentMinutes));
+    setInitialValue(to24HourDigits(currentHours, currentMinutes));
     setField(fieldName);
   }
 

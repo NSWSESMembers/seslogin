@@ -939,6 +939,11 @@ impl<A: App + HasDb + HasQueues + HasMail + Send + Sync + 'static> MutationRoot<
             Some(AuthInfo::PeriodLink { .. })
         );
         if via_link {
+            // A token grants access to exactly one period; if it's since been
+            // deleted the token is no longer usable, mirroring `linked_period`.
+            if existing.deleted.is_some() {
+                return Err(anyhow!("Invalid or expired token"));
+            }
             if !matches!(comment, MaybeUndefined::Undefined) {
                 return Err(anyhow!("An edit link cannot change the comment"));
             }
@@ -1082,6 +1087,9 @@ impl<A: App + HasDb + HasQueues + HasMail + Send + Sync + 'static> MutationRoot<
             .flatten()
             .ok_or_else(|| anyhow!("Period with ID {:?} missing", id))?;
         require_location_access(ctx, &period.location_id)?;
+        if period.deleted.is_some() {
+            return Err(anyhow!("Cannot send an edit link for a deleted period"));
+        }
         // Checked before anything else costly, and before a token is minted, so a
         // rejected press leaves no trace.
         crate::period_link::check_reminder_cooldown(self.app.db(), &id).await?;

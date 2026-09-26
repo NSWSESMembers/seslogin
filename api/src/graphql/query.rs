@@ -3202,8 +3202,10 @@ impl<A: App + HasDb + Send + Sync + 'static> QueryRoot<A> {
             .into_iter()
             .next()
             .flatten()
-            // A token is only issued for an existing period, so a miss here means the
-            // period was since hard-deleted; keep the error uniform regardless.
+            // A token grants access to exactly one period; if it's gone (hard- or
+            // soft-deleted) the token is no longer usable, so keep the error
+            // uniform with the rest of `resolve_period_link_token`'s failure modes.
+            .filter(|p| p.deleted.is_none())
             .ok_or_else(|| anyhow!("Invalid or expired token"))
             .map(Period::new)
     }
