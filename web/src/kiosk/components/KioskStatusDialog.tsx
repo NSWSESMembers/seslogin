@@ -10,9 +10,11 @@ import {
 import { useEnvironmentInfo } from "../../lib/environmentInfo";
 import { formatFullDateTime, formatShortDuration } from "../../lib/time";
 import { getKioskServerStatus } from "../lib/kioskServerStatus";
+import { POLL_INTERVAL_MS } from "./LivePeriodsProvider";
 import KioskReEnrollPanel from "./KioskReEnrollPanel";
 import useKioskEnvironment from "./useKioskEnvironment";
 import { useKioskSession } from "./useKioskSession";
+import { useLivePeriods } from "./useLivePeriods";
 import type { JsonValue } from "./KioskSessionContext";
 
 const TICK_INTERVAL_MS = 1_000;
@@ -20,6 +22,10 @@ const TICK_INTERVAL_MS = 1_000;
 const CHECK_IN_OK_SECS = 5 * 60;
 /** Matches the server's ONLINE_SESSION_SECONDS — past this a kiosk reads as offline. */
 const CHECK_IN_STALE_SECS = 15 * 60;
+/** A fallback poll (period sync, every POLL_INTERVAL_MS) fresher than this is
+ * healthy; past it, either the poll is failing or the tab is backgrounded. */
+const PERIODS_POLL_OK_SECS = (POLL_INTERVAL_MS / 1000) * 2;
+const PERIODS_POLL_STALE_SECS = (POLL_INTERVAL_MS / 1000) * 4;
 
 function Row({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -43,11 +49,15 @@ function formatConfigFlags(config: { [key: string]: JsonValue }): string {
   return parts.length > 0 ? parts.join(", ") : "none";
 }
 
-function checkInColour(ageSecs: number): string {
-  if (ageSecs <= CHECK_IN_OK_SECS) {
+function checkInColour(
+  ageSecs: number,
+  okSecs: number = CHECK_IN_OK_SECS,
+  staleSecs: number = CHECK_IN_STALE_SECS,
+): string {
+  if (ageSecs <= okSecs) {
     return "text-green-700 dark:text-green-400";
   }
-  if (ageSecs <= CHECK_IN_STALE_SECS) {
+  if (ageSecs <= staleSecs) {
     return "text-amber-700 dark:text-amber-400";
   }
   return "text-red-700 dark:text-red-400";
@@ -67,6 +77,7 @@ export default function KioskStatusDialog({
   const session = useKioskSession();
   const { profile, authMode } = useKioskEnvironment();
   const environmentInfo = useEnvironmentInfo();
+  const { live, connectionState, lastPollAt } = useLivePeriods();
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
@@ -116,6 +127,42 @@ export default function KioskStatusDialog({
               {formatShortDuration((now - serverStatus.lastFailureAt) / 1000)}{" "}
               ago: {serverStatus.lastErrorMessage ?? "unknown error"}
             </span>
+          </Row>
+        )}
+
+        <Row label="Realtime">
+          {live ? (
+            <span className="text-green-700 dark:text-green-400">
+              connected
+              {connectionState != null && connectionState !== "connected"
+                ? ` (${connectionState})`
+                : ""}
+            </span>
+          ) : connectionState != null ? (
+            <span className="text-amber-700 dark:text-amber-400">
+              {connectionState}, falling back to polling
+            </span>
+          ) : (
+            <span className="text-neutral-500 dark:text-neutral-400">
+              off, polling
+            </span>
+          )}
+        </Row>
+        {!live && (
+          <Row label="Last poll">
+            {lastPollAt == null ? (
+              <span className="text-red-700 dark:text-red-400">never</span>
+            ) : (
+              <span
+                className={checkInColour(
+                  (now - lastPollAt) / 1000,
+                  PERIODS_POLL_OK_SECS,
+                  PERIODS_POLL_STALE_SECS,
+                )}
+              >
+                {formatShortDuration((now - lastPollAt) / 1000)} ago
+              </span>
+            )}
           </Row>
         )}
 

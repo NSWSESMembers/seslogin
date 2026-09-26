@@ -41,7 +41,9 @@ export {
 
 // Fallback cadence while there's no live subscription driving the list —
 // matches the cadence every consumer polled at before this provider existed.
-const POLL_INTERVAL_MS = 30_000;
+// Exported so KioskStatusDialog can size its own "is the last poll stale"
+// thresholds off the same number instead of duplicating it.
+export const POLL_INTERVAL_MS = 30_000;
 // Self-healing resync on an otherwise-healthy subscription, in case a message
 // was ever missed without the channel itself reporting discontinuity.
 const RESYNC_INTERVAL_MS = 10 * 60 * 1000;
@@ -109,6 +111,8 @@ export function LivePeriodsProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<LivePeriodsState>(createLivePeriodsState);
   const [loading, setLoading] = useState(true);
   const [live, setLive] = useState(false);
+  const [connectionState, setConnectionState] = useState<string | null>(null);
+  const [lastPollAt, setLastPollAt] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [retryGeneration, setRetryGeneration] = useState(0);
 
@@ -206,6 +210,7 @@ export function LivePeriodsProvider({ children }: { children: ReactNode }) {
             setState((prev) => applySnapshot(prev, entries, requestedAtMs));
             setLoading(false);
             setError(null);
+            setLastPollAt(requestedAtMs);
           })
           .catch((err: unknown) => {
             if (cancelled) return;
@@ -314,6 +319,7 @@ export function LivePeriodsProvider({ children }: { children: ReactNode }) {
 
       client.onConnectionStateChange((change) => {
         if (cancelled) return;
+        setConnectionState(change.current);
         if (CONNECTION_FALLBACK_STATES.has(change.current)) {
           setLive(false);
           startPolling();
@@ -334,6 +340,8 @@ export function LivePeriodsProvider({ children }: { children: ReactNode }) {
       setLoading(true);
       setError(null);
       setLive(false);
+      setConnectionState(null);
+      setLastPollAt(null);
 
       let token: KioskRealtimeTokenPayload | null;
       try {
@@ -391,12 +399,16 @@ export function LivePeriodsProvider({ children }: { children: ReactNode }) {
   const liveValue = active && live;
   const loadingValue = active && loading;
   const errorValue = active ? error : null;
+  const connectionStateValue = active ? connectionState : null;
+  const lastPollAtValue = active ? lastPollAt : null;
 
   const contextValue = useMemo(
     () => ({
       periods,
       guests,
       live: liveValue,
+      connectionState: connectionStateValue,
+      lastPollAt: lastPollAtValue,
       loading: loadingValue,
       error: errorValue,
       retry,
@@ -406,6 +418,8 @@ export function LivePeriodsProvider({ children }: { children: ReactNode }) {
       periods,
       guests,
       liveValue,
+      connectionStateValue,
+      lastPollAtValue,
       loadingValue,
       errorValue,
       retry,
