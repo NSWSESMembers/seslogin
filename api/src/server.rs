@@ -270,6 +270,13 @@ async fn oauth_metadata(headers: &HeaderMap) -> impl IntoResponse {
 }
 
 #[handler]
+async fn oauth_protected_resource_metadata(headers: &HeaderMap) -> impl IntoResponse {
+    oauth_response(crate::oauth_http::protected_resource_metadata(host_header(
+        headers,
+    )))
+}
+
+#[handler]
 async fn oauth_register<H, Q, M, R>(
     app: Data<&Arc<MyApp<H, Q, M, R>>>,
     body: Vec<u8>,
@@ -305,6 +312,37 @@ where
     }
     .emit();
     oauth_response(reply)
+}
+
+#[handler]
+async fn mcp_post<H, Q, M, R>(
+    app: Data<&Arc<MyApp<H, Q, M, R>>>,
+    schema: Data<&Schema<H, Q, M, R>>,
+    headers: &HeaderMap,
+    body: Vec<u8>,
+) -> impl IntoResponse
+where
+    H: db::Handler + Send + Sync + 'static,
+    Q: queue::Handler + Send + Sync + 'static,
+    M: mail::Handler + Send + Sync + 'static,
+    R: realtime::Handler + Send + Sync + 'static,
+{
+    let header = |name: &str| headers.get(name).and_then(|v| v.to_str().ok());
+    let reply = crate::mcp::handle_post(
+        *app,
+        *schema,
+        host_header(headers),
+        header("Authorization"),
+        crate::graphql::ClientIp::from_forwarded_for(header("x-forwarded-for")),
+        &body,
+    )
+    .await;
+    oauth_response(reply)
+}
+
+#[handler]
+async fn mcp_method_not_allowed() -> impl IntoResponse {
+    oauth_response(crate::mcp::method_not_allowed())
 }
 
 /// Serve the GraphQL API on :8000 until interrupted.
@@ -358,6 +396,22 @@ where
             post(oauth_token::<H, Q, M, R> {
                 ..Default::default()
             }),
+        )
+        .at(
+            "/.well-known/oauth-protected-resource/mcp",
+            get(oauth_protected_resource_metadata),
+        )
+        .at(
+            "/.well-known/oauth-protected-resource",
+            get(oauth_protected_resource_metadata),
+        )
+        .at(
+            "/mcp",
+            get(mcp_method_not_allowed)
+                .delete(mcp_method_not_allowed)
+                .post(mcp_post::<H, Q, M, R> {
+                    ..Default::default()
+                }),
         )
         .with(allow_cross_origin)
         .data(schema)

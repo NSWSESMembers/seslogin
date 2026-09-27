@@ -107,6 +107,34 @@ pub fn metadata(host: Option<&str>) -> HttpReply {
     )
 }
 
+// ── RFC 9728: protected resource metadata ───────────────────────────────────
+
+#[derive(Serialize)]
+struct ProtectedResourceMetadata {
+    resource: String,
+    authorization_servers: Vec<String>,
+    scopes_supported: Vec<&'static str>,
+    bearer_methods_supported: Vec<&'static str>,
+}
+
+/// `GET /.well-known/oauth-protected-resource/mcp` (and, for clients that
+/// don't append the protected path, the bare `/.well-known/oauth-protected-resource`
+/// — both describe the same, only, protected resource this server has today).
+/// Points at `<api base>/mcp` as the resource and `<api base>` as the sole
+/// authorization server, matching [`metadata`]'s `issuer`.
+pub fn protected_resource_metadata(host: Option<&str>) -> HttpReply {
+    let api_base = api_base_url(host);
+    HttpReply::json(
+        200,
+        &ProtectedResourceMetadata {
+            resource: format!("{api_base}/mcp"),
+            authorization_servers: vec![api_base],
+            scopes_supported: vec![DEFAULT_SCOPE],
+            bearer_methods_supported: vec!["header"],
+        },
+    )
+}
+
 // ── RFC 7591: dynamic client registration ───────────────────────────────────
 
 /// Longest `client_name` accepted at registration. Bounds the size of the
@@ -521,6 +549,25 @@ mod tests {
         assert_eq!(
             body["token_endpoint_auth_methods_supported"],
             serde_json::json!(["none"])
+        );
+    }
+
+    // ── protected resource metadata ───────────────────────────────────────────
+
+    #[test]
+    fn protected_resource_metadata_points_at_mcp_and_this_issuer() {
+        let reply = protected_resource_metadata(Some("api.seslogin.com"));
+        assert_eq!(reply.status, 200);
+        let body = body_of(&reply);
+        assert_eq!(body["resource"], "https://api.seslogin.com/mcp");
+        assert_eq!(
+            body["authorization_servers"],
+            serde_json::json!(["https://api.seslogin.com"])
+        );
+        assert_eq!(body["scopes_supported"], serde_json::json!([DEFAULT_SCOPE]));
+        assert_eq!(
+            body["bearer_methods_supported"],
+            serde_json::json!(["header"])
         );
     }
 

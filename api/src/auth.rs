@@ -34,6 +34,7 @@ pub(crate) const MAX_CLIENT_VERSION_LEN: usize = 64;
 /// How stale a session's `last_contact` must be before we write a refresh.
 const LAST_CONTACT_REFRESH_SECS: u64 = 5 * 60;
 
+#[derive(Clone)]
 pub enum AuthInfo {
     User {
         id: String,

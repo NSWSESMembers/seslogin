@@ -84,6 +84,12 @@ impl<
             (Method::GET, "/.well-known/oauth-authorization-server") => {
                 return oauth_reply_response(seslogin::oauth_http::metadata(host));
             }
+            (Method::GET, "/.well-known/oauth-protected-resource/mcp")
+            | (Method::GET, "/.well-known/oauth-protected-resource") => {
+                return oauth_reply_response(seslogin::oauth_http::protected_resource_metadata(
+                    host,
+                ));
+            }
             (Method::POST, "/oauth/register") => {
                 let body = body_bytes(request);
                 return oauth_reply_response(seslogin::oauth_http::register(&*self.app, &body));
@@ -98,6 +104,23 @@ impl<
                     ..Default::default()
                 }
                 .emit();
+                return oauth_reply_response(reply);
+            }
+            (Method::GET, "/mcp") | (Method::DELETE, "/mcp") => {
+                return oauth_reply_response(seslogin::mcp::method_not_allowed());
+            }
+            (Method::POST, "/mcp") => {
+                let authorization = headers.get("Authorization").and_then(|v| v.to_str().ok());
+                let body = body_bytes(request);
+                let reply = seslogin::mcp::handle_post(
+                    &self.app,
+                    &self.schema,
+                    host,
+                    authorization,
+                    client_ip,
+                    &body,
+                )
+                .await;
                 return oauth_reply_response(reply);
             }
             _ => {}
