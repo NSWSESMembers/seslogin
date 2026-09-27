@@ -353,6 +353,18 @@ type MutationRoot {
 	Delete one of the authenticated user's passkeys.
 	"""
 	deletePasskey(id: String!): Boolean!
+	"""
+	Approve an OAuth authorization request: the user has seen the consent
+	screen (`oauthAuthorizationRequest`) and clicked "Approve". Mints a
+	single-use authorization code and returns the client's `redirect_uri`
+	with `code` (and `state`, if given) appended — the caller just navigates
+	there.
+	
+	Re-validates the client id and redirect URI itself rather than trusting
+	whatever the consent page last read: nothing stops a client from calling
+	this directly, so every check the query made is repeated here.
+	"""
+	approveOauthAuthorization(clientId: String!, redirectUri: String!, codeChallenge: String!, codeChallengeMethod: String!, scope: String, resource: String, state: String): String!
 }
 
 enum NitcExportStatus {
@@ -366,6 +378,17 @@ type NitcGroup {
 	sesTags: [SesNonIncidentTag!]!
 	createdAt: Int
 	updatedAt: Int
+}
+
+"""
+What the OAuth consent screen needs to show before a user approves or denies
+an authorization request: the client's self-claimed name, and — the one
+value that actually matters, since DCR is unauthenticated — the host it will
+redirect back to.
+"""
+type OauthAuthorizationRequest {
+	clientName: String!
+	redirectHost: String!
 }
 
 """
@@ -646,6 +669,14 @@ type QueryRoot {
 	ses_nonincident_types: [String!]!
 	ses_nonincident_tags: [SesNonIncidentTag!]!
 	ses_participant_types: [String!]!
+	"""
+	Look up an OAuth client + redirect URI before showing the consent
+	screen. Deliberately returns nothing about the client beyond its
+	(self-claimed, DCR is unauthenticated) name and the redirect host — the
+	consent page shows the host prominently precisely because the name alone
+	can't be trusted.
+	"""
+	oauthAuthorizationRequest(clientId: String!, redirectUri: String!): OauthAuthorizationRequest!
 }
 
 """

@@ -15,7 +15,7 @@ use poem::EndpointExt;
 use poem::http::{HeaderMap, StatusCode};
 use poem::middleware::Cors;
 use poem::web::Data;
-use poem::{IntoResponse, Route, Server, get, handler, listener::TcpListener, web::Html};
+use poem::{IntoResponse, Route, Server, get, handler, listener::TcpListener, post, web::Html};
 use std::env;
 use std::error::Error;
 use std::sync::Arc;
@@ -250,6 +250,63 @@ async fn graphiql() -> impl IntoResponse {
     Html(GraphiQLSource::build().finish())
 }
 
+/// Turn a framework-agnostic [`crate::oauth_http::HttpReply`] into a poem response.
+fn oauth_response(reply: crate::oauth_http::HttpReply) -> poem::Response {
+    let mut builder = poem::Response::builder()
+        .status(StatusCode::from_u16(reply.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR));
+    for (name, value) in &reply.headers {
+        builder = builder.header(name.as_str(), value.as_str());
+    }
+    builder.body(reply.body)
+}
+
+fn host_header(headers: &HeaderMap) -> Option<&str> {
+    headers.get("host").and_then(|v| v.to_str().ok())
+}
+
+#[handler]
+async fn oauth_metadata(headers: &HeaderMap) -> impl IntoResponse {
+    oauth_response(crate::oauth_http::metadata(host_header(headers)))
+}
+
+#[handler]
+async fn oauth_register<H, Q, M, R>(
+    app: Data<&Arc<MyApp<H, Q, M, R>>>,
+    body: Vec<u8>,
+) -> impl IntoResponse
+where
+    H: db::Handler + Send + Sync + 'static,
+    Q: queue::Handler + Send + Sync + 'static,
+    M: mail::Handler + Send + Sync + 'static,
+    R: realtime::Handler + Send + Sync + 'static,
+{
+    oauth_response(crate::oauth_http::register(&***app, &body))
+}
+
+#[handler]
+async fn oauth_token<H, Q, M, R>(
+    app: Data<&Arc<MyApp<H, Q, M, R>>>,
+    headers: &HeaderMap,
+    body: Vec<u8>,
+) -> impl IntoResponse
+where
+    H: db::Handler + Send + Sync + 'static,
+    Q: queue::Handler + Send + Sync + 'static,
+    M: mail::Handler + Send + Sync + 'static,
+    R: realtime::Handler + Send + Sync + 'static,
+{
+    let request_start = Instant::now();
+    let reply = crate::oauth_http::token(&***app, host_header(headers), &body).await;
+    telemetry::RequestTelemetry {
+        status: reply.status,
+        operation_name: "oauth:token",
+        latency_ms: request_start.elapsed().as_secs_f64() * 1000.0,
+        ..Default::default()
+    }
+    .emit();
+    oauth_response(reply)
+}
+
 /// Serve the GraphQL API on :8000 until interrupted.
 pub async fn run<H, Q, M, R>(
     startup: Startup,
@@ -283,6 +340,22 @@ where
         .at(
             "/",
             get(graphiql).post(index::<H, Q, M, R> {
+                ..Default::default()
+            }),
+        )
+        .at(
+            "/.well-known/oauth-authorization-server",
+            get(oauth_metadata),
+        )
+        .at(
+            "/oauth/register",
+            post(oauth_register::<H, Q, M, R> {
+                ..Default::default()
+            }),
+        )
+        .at(
+            "/oauth/token",
+            post(oauth_token::<H, Q, M, R> {
                 ..Default::default()
             }),
         )

@@ -1,7 +1,11 @@
 import { Routes, Route } from "react-router";
+import { Suspense } from "react";
 
 import NotFound from "../components/NotFound";
 import AdminLayout from "./Layout";
+import AuthenticatedSession from "./components/AuthenticatedSession";
+import LoadingIndicator from "../components/LoadingIndicator";
+import OAuthAuthorize from "./pages/OAuthAuthorize";
 import AdminHome from "./pages/AdminHome";
 import LocationsList from "./pages/LocationList";
 import LocationsEdit from "./pages/LocationEdit";
@@ -43,6 +47,21 @@ import SettingsActivityDisplay from "./pages/SettingsActivityDisplay";
 export default function AdminApp() {
   return (
     <Routes>
+      {/* Deliberately outside AdminLayout: this is a one-off consent screen, not
+          part of the dashboard, so it skips the sidebar/menu chrome — but still
+          goes through AuthenticatedSession, so a logged-out visit shows the
+          ordinary login screen first and comes right back to this same URL
+          (query string and all) once it succeeds. */}
+      <Route
+        path="oauth/authorize"
+        element={
+          <AuthenticatedSession>
+            <Suspense fallback={<LoadingIndicator />}>
+              <OAuthAuthorize />
+            </Suspense>
+          </AuthenticatedSession>
+        }
+      />
       <Route element={<AdminLayout />}>
         <Route index element={<AdminHome />} />
         <Route path="locations">

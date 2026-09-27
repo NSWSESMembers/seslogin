@@ -236,6 +236,16 @@ pub struct Environment {
     pub is_prod_db: bool,
 }
 
+/// What the OAuth consent screen needs to show before a user approves or denies
+/// an authorization request: the client's self-claimed name, and — the one
+/// value that actually matters, since DCR is unauthenticated — the host it will
+/// redirect back to.
+#[derive(SimpleObject, Clone, Debug)]
+pub struct OAuthAuthorizationRequest {
+    pub client_name: String,
+    pub redirect_host: String,
+}
+
 #[derive(SimpleObject, Clone, Debug)]
 pub struct DashboardDailyPeriodSummary {
     pub day_start: i64,
@@ -3518,5 +3528,38 @@ impl<A: App + HasDb + HasRealtime + Send + Sync + 'static> QueryRoot<A> {
         let ses_client = make_ses_client()?;
         let types = ses_client.fetch_participant_types_cached().await?;
         Ok((*types).clone())
+    }
+
+    /// Look up an OAuth client + redirect URI before showing the consent
+    /// screen. Deliberately returns nothing about the client beyond its
+    /// (self-claimed, DCR is unauthenticated) name and the redirect host — the
+    /// consent page shows the host prominently precisely because the name alone
+    /// can't be trusted.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    async fn oauth_authorization_request(
+        &self,
+        ctx: &Context<'_>,
+        client_id: String,
+        redirect_uri: String,
+    ) -> Result<OAuthAuthorizationRequest> {
+        let app = ctx.data_unchecked::<Arc<A>>();
+        let registration =
+            crate::oauth::decode_client_id(&app.jwt().oauth_client_id_key(), &client_id)
+                .ok_or_else(|| anyhow!("Unknown or invalid client"))?;
+        if !registration
+            .redirect_uris
+            .iter()
+            .any(|u| u == &redirect_uri)
+        {
+            return Err(anyhow!("redirect_uri is not registered for this client"));
+        }
+        let redirect_host = url::Url::parse(&redirect_uri)
+            .ok()
+            .and_then(|u| u.host_str().map(str::to_string))
+            .ok_or_else(|| anyhow!("redirect_uri has no host"))?;
+        Ok(OAuthAuthorizationRequest {
+            client_name: registration.client_name,
+            redirect_host,
+        })
     }
 }

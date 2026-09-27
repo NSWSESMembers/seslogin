@@ -58,7 +58,7 @@ fn hmac_sha256(key: &[u8], msg: &[u8]) -> [u8; 32] {
     mac.finalize().into_bytes().into()
 }
 
-fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+pub(crate) fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
     a.len() == b.len() && bool::from(a.ct_eq(b))
 }
 

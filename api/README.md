@@ -109,6 +109,41 @@ Two details worth knowing:
 > than merely disabled. The server logs a loud warning at startup when injection is
 > active.
 
+## OAuth authorization server
+
+`poem`/`poem-local` also serve a small OAuth 2.1 + PKCE authorization server —
+the plumbing an AI client (Claude Code, a claude.ai connector, …) uses to get a
+token that acts as a specific user, with exactly their permissions. It's laid
+out per the MCP authorization spec, though nothing here is MCP-specific yet
+(see `oauth.rs`'s module docs and CLAUDE.md's plan for how a future MCP
+endpoint and other credential types slot into the same tables/tokens):
+
+- `GET /.well-known/oauth-authorization-server` — RFC 8414 metadata.
+- `POST /oauth/register` — RFC 7591 dynamic client registration. Public
+  clients only (`token_endpoint_auth_method: "none"`); nothing is stored
+  server-side — the returned `client_id` is a self-verifying, HMAC-signed blob
+  (see `oauth::encode_client_id`/`decode_client_id`).
+- `POST /oauth/token` — RFC 6749 §3.2 token endpoint, form-encoded. Handles
+  the `authorization_code` grant (PKCE S256 required) and `refresh_token`
+  rotation (OAuth 2.1 reuse detection: presenting an already-rotated refresh
+  token revokes the whole grant).
+
+The consent screen a user approves/denies from is a web page
+(`/admin/oauth/authorize`), backed by the `oauthAuthorizationRequest` query and
+`approveOauthAuthorization` mutation — ordinary GraphQL, guarded like anything
+else (`AuthRequirement::User`).
+
+All three HTTP endpoints are implemented in `oauth_http.rs` as plain
+`(app, method, path, headers, body) -> HttpReply` functions with no
+framework dependency, so `server.rs` (poem) and `bin/lambda/handler.rs` (raw
+`lambda_http`) each wrap them in a few lines rather than sharing a framework.
+
+Config: `API_BASE_URL` (optional) fixes the issuer/endpoint URLs instead of
+deriving them from the request's `Host` header — set it if the server sits
+behind something that changes the host a client sees. `WEB_BASE_URL` (see
+CLAUDE.md) doubles as the origin the `authorization_endpoint` metadata points
+the browser at, via the shared `base_url::web_base_url()` helper.
+
 ## Client self-reporting (`X-Client-Info`)
 
 Every request from the web client carries two diagnostic headers, which the server

@@ -75,6 +75,34 @@ impl<
             ),
         };
 
+        // OAuth authorization-server routes are handled entirely outside GraphQL —
+        // see `oauth_http.rs`. Everything else keeps behaving exactly as before;
+        // this dispatch only ever *adds* paths, it never changes how an existing
+        // one is handled.
+        let host = headers.get("host").and_then(|v| v.to_str().ok());
+        match (request.method().clone(), request.uri().path()) {
+            (Method::GET, "/.well-known/oauth-authorization-server") => {
+                return oauth_reply_response(seslogin::oauth_http::metadata(host));
+            }
+            (Method::POST, "/oauth/register") => {
+                let body = body_bytes(request);
+                return oauth_reply_response(seslogin::oauth_http::register(&*self.app, &body));
+            }
+            (Method::POST, "/oauth/token") => {
+                let body = body_bytes(request);
+                let reply = seslogin::oauth_http::token(&*self.app, host, &body).await;
+                RequestTelemetry {
+                    status: reply.status,
+                    operation_name: "oauth:token",
+                    latency_ms: request_start.elapsed().as_secs_f64() * 1000.0,
+                    ..Default::default()
+                }
+                .emit();
+                return oauth_reply_response(reply);
+            }
+            _ => {}
+        }
+
         let query = if request.method() == Method::POST {
             self.graphql_request_from_post(request).await
         } else if request.method() == Method::GET {
@@ -217,6 +245,31 @@ fn graphql_error(message: impl Display) -> String {
 
 fn error_response(status: StatusCode, body: String) -> Result<Response<Body>, Error> {
     Ok(Response::builder().status(status).body(Body::Text(body))?)
+}
+
+/// Extract raw body bytes from a Lambda request, for the two OAuth routes that
+/// take their own body format (JSON, form-urlencoded) rather than GraphQL's.
+/// An empty/missing body becomes an empty slice — the callers below all treat
+/// that as "no parameters", which is the right failure mode for a malformed or
+/// absent body.
+fn body_bytes(request: Request) -> Vec<u8> {
+    match request.into_body() {
+        Body::Text(text) => text.into_bytes(),
+        Body::Binary(binary) => binary,
+        _ => Vec::new(),
+    }
+}
+
+/// Turn a framework-agnostic [`seslogin::oauth_http::HttpReply`] into a Lambda response.
+fn oauth_reply_response(reply: seslogin::oauth_http::HttpReply) -> Result<Response<Body>, Error> {
+    let mut builder = Response::builder().status(reply.status);
+    for (name, value) in &reply.headers {
+        builder = builder.header(name.as_str(), value.as_str());
+    }
+    builder
+        .body(Body::Text(reply.body))
+        .map_err(ServerError::from)
+        .map_err(Error::from)
 }
 
 fn graphiql_for_request(_request: Request) -> Result<Response<Body>, Error> {
