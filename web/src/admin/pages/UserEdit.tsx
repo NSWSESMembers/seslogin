@@ -4,11 +4,15 @@ import { graphql, useMutation } from "react-relay";
 import { useRetryableLazyLoadQuery } from "../../components/useRetryableLazyLoadQuery";
 import type { UserEditQuery } from "./__generated__/UserEditQuery.graphql";
 import type { UserEditMutation } from "./__generated__/UserEditMutation.graphql";
+import type { UserEditRevokeOauthGrantMutation } from "./__generated__/UserEditRevokeOauthGrantMutation.graphql";
 import { useNotify } from "../components/useNotify";
 import { FieldList, FormField } from "../../components/ui/FormField";
 import TextInput from "../../components/ui/TextInput";
 import { Button } from "../../components/ui/Button";
 import MultiCombobox from "../../components/ui/MultiCombobox";
+import { AdminTable, Th, Td } from "../../components/ui/Table";
+import { SectionHeading } from "../../components/ui/SectionHeading";
+import { formatFullDateTime } from "../../lib/time";
 
 export default function UserEdit() {
   const navigate = useNavigate();
@@ -26,6 +30,13 @@ export default function UserEdit() {
           isDev
           enabled
           locationGrantIds
+          oauthGrants {
+            id
+            clientName
+            redirectHost
+            createdAt
+            lastUsedAt
+          }
         }
         locations {
           id
@@ -100,6 +111,31 @@ export default function UserEdit() {
     navigate("/admin/users");
   }
 
+  const [commitRevoke, isRevokeInFlight] =
+    useMutation<UserEditRevokeOauthGrantMutation>(graphql`
+      mutation UserEditRevokeOauthGrantMutation($id: ID!) {
+        revokeOauthGrant(id: $id)
+      }
+    `);
+
+  function handleRevoke(grantId: string, clientName: string) {
+    if (
+      !window.confirm(
+        `Disconnect "${clientName}"? It will need to be reconnected to act as this user again.`,
+      )
+    ) {
+      return;
+    }
+    commitRevoke({
+      variables: { id: grantId },
+      onCompleted: () => notifySuccess(`Disconnected "${clientName}"`),
+      onError: (err) => notifyError(err, `Couldn't disconnect "${clientName}"`),
+      updater: (store) => {
+        store.invalidateStore();
+      },
+    });
+  }
+
   const locations = [...data.locations].sort((a, b) =>
     a.name.localeCompare(b.name),
   );
@@ -172,6 +208,53 @@ export default function UserEdit() {
           </FormField>
         </FieldList>
       </form>
+
+      <SectionHeading>Connected AI apps</SectionHeading>
+      {user.oauthGrants.length === 0 && (
+        <p className="my-4">No AI apps connected.</p>
+      )}
+      {user.oauthGrants.length > 0 && (
+        <AdminTable>
+          <thead>
+            <tr>
+              <Th>App</Th>
+              <Th>Redirects to</Th>
+              <Th>Connected</Th>
+              <Th>Last used</Th>
+              <Th></Th>
+            </tr>
+          </thead>
+          <tbody>
+            {user.oauthGrants.map((grant, idx) => (
+              <tr
+                key={grant.id}
+                className={idx % 2 === 0 ? "bg-surface-raised" : undefined}
+              >
+                <Td>{grant.clientName}</Td>
+                <Td>{grant.redirectHost}</Td>
+                <Td>{formatFullDateTime(new Date(grant.createdAt * 1000))}</Td>
+                <Td>
+                  {grant.lastUsedAt
+                    ? formatFullDateTime(new Date(grant.lastUsedAt * 1000))
+                    : "Never"}
+                </Td>
+                <Td options>
+                  <div className="flex justify-end gap-1">
+                    <Button
+                      size="row"
+                      variant="danger"
+                      disabled={isRevokeInFlight}
+                      onClick={() => handleRevoke(grant.id, grant.clientName)}
+                    >
+                      Disconnect
+                    </Button>
+                  </div>
+                </Td>
+              </tr>
+            ))}
+          </tbody>
+        </AdminTable>
+      )}
     </>
   );
 }

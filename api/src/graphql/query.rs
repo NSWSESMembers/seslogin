@@ -165,6 +165,34 @@ impl<A: App + HasDb + Send + Sync + 'static> User<A> {
             })
             .collect())
     }
+
+    /// This user's connected AI apps (OAuth grants) — the "Connected AI apps"
+    /// list. Only the user themselves or a super user may see it, same as
+    /// `user(id)`. Filters out anything already past its TTL (DynamoDB's
+    /// deletion lags behind expiry), newest first.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    async fn oauth_grants(&self, ctx: &Context<'_>) -> Result<Vec<OAuthGrant>> {
+        match ctx.data_opt::<AuthInfo>() {
+            Some(AuthInfo::User { id, is_super, .. }) => {
+                if !is_super && *id != self.rec.id {
+                    return Err(anyhow!("Not authorized to query other users' OAuth grants"));
+                }
+            }
+            _ => return Err(anyhow!("Not authorized to query OAuth grants")),
+        }
+
+        let app = ctx.data_unchecked::<Arc<A>>();
+        let now = crate::clock::now_sec();
+        let mut grants = app
+            .db()
+            .list_oauth_grants_by_user(&self.rec.id)
+            .await?
+            .into_iter()
+            .filter(|g| g.expires_at > now && g.refresh_expires_at > now)
+            .collect::<Vec<_>>();
+        grants.sort_by_key(|g| std::cmp::Reverse(g.created_at));
+        Ok(grants.into_iter().map(OAuthGrant::new).collect())
+    }
 }
 
 /// Metadata for a stored passkey credential (never returns the private key material).
@@ -2858,6 +2886,56 @@ impl<A: App + HasDb + Send + Sync + 'static> Session<A> {
 
     async fn updated_at(&self) -> Option<i64> {
         self.rec.updated_at.map(|t| t as i64)
+    }
+}
+
+/// A user's "connected AI app" — an authorized OAuth client. Never exposes the
+/// token hashes or the (self-claimed, DCR-issued) `client_id`; the redirect
+/// host is what actually identifies the client to a viewer, same reasoning as
+/// `OAuthAuthorizationRequest` on the consent screen.
+#[derive(Debug, Clone, PartialEq)]
+pub struct OAuthGrant {
+    rec: db::OAuthGrant,
+}
+
+impl OAuthGrant {
+    pub(crate) fn new(rec: db::OAuthGrant) -> Self {
+        Self { rec }
+    }
+}
+
+#[Object]
+impl OAuthGrant {
+    async fn id(&self) -> ID {
+        ID(self.rec.id.clone())
+    }
+    async fn client_name(&self) -> &str {
+        &self.rec.client_name
+    }
+    /// Host the client's tokens redirect back to. Shown instead of the
+    /// (unauthenticated, self-claimed) client name alone, same as on the
+    /// consent screen.
+    async fn redirect_host(&self) -> String {
+        url::Url::parse(&self.rec.redirect_uri)
+            .ok()
+            .and_then(|u| u.host_str().map(str::to_string))
+            .unwrap_or_else(|| self.rec.redirect_uri.clone())
+    }
+    async fn scope(&self) -> &str {
+        &self.rec.scope
+    }
+    async fn created_at(&self) -> i64 {
+        self.rec.created_at as i64
+    }
+    async fn last_used_at(&self) -> Option<i64> {
+        self.rec.last_used_at.map(|t| t as i64)
+    }
+    /// When this grant's refresh token stops working if it's never used
+    /// again. Sliding: it moves out on every refresh, up to `expires_at`
+    /// (the grant's absolute cap, not exposed here since it isn't a useful
+    /// signal to show — a grant in active use never approaches it).
+    async fn refresh_expires_at(&self) -> i64 {
+        self.rec.refresh_expires_at as i64
     }
 }
 

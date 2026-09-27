@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<a96bd1563748fc0329b997a3c4a49bf4>>
+ * @generated SignedSource<<3736c6e9b4c70864f409fb40f1539ede>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -24,6 +24,13 @@ export type UserEditQuery$data = {
     readonly isDev: boolean;
     readonly isSuper: boolean;
     readonly locationGrantIds: ReadonlyArray<string>;
+    readonly oauthGrants: ReadonlyArray<{
+      readonly clientName: string;
+      readonly createdAt: number;
+      readonly id: string;
+      readonly lastUsedAt: number | null | undefined;
+      readonly redirectHost: string;
+    }>;
   };
 };
 export type UserEditQuery = {
@@ -96,6 +103,46 @@ v2 = [
         "kind": "ScalarField",
         "name": "locationGrantIds",
         "storageKey": null
+      },
+      {
+        "alias": null,
+        "args": null,
+        "concreteType": "OauthGrant",
+        "kind": "LinkedField",
+        "name": "oauthGrants",
+        "plural": true,
+        "selections": [
+          (v1/*: any*/),
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "clientName",
+            "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "redirectHost",
+            "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "createdAt",
+            "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "lastUsedAt",
+            "storageKey": null
+          }
+        ],
+        "storageKey": null
       }
     ],
     "storageKey": null
@@ -140,16 +187,16 @@ return {
     "selections": (v2/*: any*/)
   },
   "params": {
-    "cacheID": "297e0cd0ced6f0bfd5e34653d958a23e",
+    "cacheID": "7ba008355d23e71a8d3bee548d36e52e",
     "id": null,
     "metadata": {},
     "name": "UserEditQuery",
     "operationKind": "query",
-    "text": "query UserEditQuery(\n  $id: ID!\n) {\n  user(id: $id) {\n    id\n    email\n    isSuper\n    isDev\n    enabled\n    locationGrantIds\n  }\n  locations {\n    id\n    name\n  }\n}\n"
+    "text": "query UserEditQuery(\n  $id: ID!\n) {\n  user(id: $id) {\n    id\n    email\n    isSuper\n    isDev\n    enabled\n    locationGrantIds\n    oauthGrants {\n      id\n      clientName\n      redirectHost\n      createdAt\n      lastUsedAt\n    }\n  }\n  locations {\n    id\n    name\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "d011b28ef84d9a7137444dcf703822fd";
+(node as any).hash = "8b4da32a16b3470116dc19bcb802ddc3";
 
 export default node;
