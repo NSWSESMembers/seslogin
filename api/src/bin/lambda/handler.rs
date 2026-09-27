@@ -52,10 +52,21 @@ impl<
         let request_start = Instant::now();
         let headers = request.headers().clone();
 
-        // Authoritative client IP from the Function URL's request context (not
-        // spoofable), falling back to the first X-Forwarded-For hop. Forwarded
-        // to Cloudflare as `remoteip` during Turnstile verification.
+        // Client IP, forwarded to Cloudflare as `remoteip` during Turnstile
+        // verification. Behind CloudFront the Function URL's source IP is an
+        // edge server, so `CloudFront-Viewer-Address` wins when present.
+        // CloudFront overwrites that header, but a caller hitting the Function
+        // URL directly can still set it — acceptable while the URL is public,
+        // since `remoteip` is only a hint to Turnstile. Otherwise the request
+        // context's source IP (not spoofable), then the first X-Forwarded-For
+        // hop.
+        let viewer_ip = graphql::ClientIp::from_cloudfront_viewer_address(
+            headers
+                .get("cloudfront-viewer-address")
+                .and_then(|v| v.to_str().ok()),
+        );
         let client_ip = match request.request_context_ref() {
+            _ if viewer_ip.0.is_some() => viewer_ip,
             Some(RequestContext::ApiGatewayV2(ctx)) => {
                 graphql::ClientIp(ctx.http.source_ip.clone())
             }
@@ -209,7 +220,12 @@ fn error_response(status: StatusCode, body: String) -> Result<Response<Body>, Er
 }
 
 fn graphiql_for_request(_request: Request) -> Result<Response<Body>, Error> {
-    let html = async_graphql::http::GraphiQLSource::build().finish();
+    // GraphiQL resolves its endpoint against the page's origin, not its path, so
+    // name the path explicitly: behind CloudFront the API lives at `/graphql`,
+    // and `/` is the web app. The raw Function URL ignores the path either way.
+    let html = async_graphql::http::GraphiQLSource::build()
+        .endpoint("/graphql")
+        .finish();
     Response::builder()
         .status(200)
         .header("Content-Type", "text/html")

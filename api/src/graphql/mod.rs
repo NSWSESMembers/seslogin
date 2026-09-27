@@ -51,6 +51,20 @@ impl ClientIp {
                 .map(str::to_owned),
         )
     }
+
+    /// Extract the client IP from a `CloudFront-Viewer-Address` header value,
+    /// which CloudFront sets (overwriting any viewer-supplied copy) to
+    /// `<ip>:<port>` — IPv6 addresses are not bracketed. Returns `None` for a
+    /// missing header or anything that doesn't parse as an IP address.
+    pub fn from_cloudfront_viewer_address(value: Option<&str>) -> Self {
+        Self(
+            value
+                .and_then(|v| v.trim().rsplit_once(':'))
+                .map(|(ip, _port)| ip.trim_start_matches('[').trim_end_matches(']'))
+                .filter(|ip| ip.parse::<std::net::IpAddr>().is_ok())
+                .map(str::to_owned),
+        )
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -182,4 +196,37 @@ pub fn get_dataloader<A: App + HasDb + HasQueues + HasMail + Send + Sync + 'stat
     app: Arc<A>,
 ) -> DataLoader<DatabaseLoader<A>> {
     DataLoader::new(DatabaseLoader::new(app), request_metrics::metrics_spawner)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ClientIp;
+
+    fn viewer(value: Option<&str>) -> Option<String> {
+        ClientIp::from_cloudfront_viewer_address(value).0
+    }
+
+    #[test]
+    fn cloudfront_viewer_address_strips_port() {
+        assert_eq!(
+            viewer(Some("198.51.100.10:46532")).as_deref(),
+            Some("198.51.100.10")
+        );
+        assert_eq!(
+            viewer(Some("2001:db8:85a3::8a2e:370:7334:46532")).as_deref(),
+            Some("2001:db8:85a3::8a2e:370:7334")
+        );
+        assert_eq!(
+            viewer(Some("[2001:db8::1]:443")).as_deref(),
+            Some("2001:db8::1")
+        );
+    }
+
+    #[test]
+    fn cloudfront_viewer_address_rejects_junk() {
+        assert_eq!(viewer(None), None);
+        assert_eq!(viewer(Some("")), None);
+        assert_eq!(viewer(Some("198.51.100.10")), None);
+        assert_eq!(viewer(Some("not-an-ip:443")), None);
+    }
 }
