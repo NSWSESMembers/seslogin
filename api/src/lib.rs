@@ -20,6 +20,7 @@ pub mod mockqueue;
 pub mod mockrealtime;
 pub mod nitc_export;
 pub mod nonce;
+pub mod oauth;
 pub mod period_link;
 pub mod queue;
 pub mod realtime;

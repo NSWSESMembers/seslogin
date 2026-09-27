@@ -21,7 +21,7 @@ pub enum AuthError {
     Transient(String),
 }
 
-fn classify_db_err(msg: &str, e: db::Error) -> AuthError {
+pub(crate) fn classify_db_err(msg: &str, e: db::Error) -> AuthError {
     match e {
         db::Error::NotFound(_) => AuthError::Permanent(format!("{}: {:#}", msg, e)),
         _ => AuthError::Transient(format!("{}: {:#}", msg, e)),
@@ -41,6 +41,10 @@ pub enum AuthInfo {
         location_grants: Vec<String>,
         /// Set only when authenticated via an opaque user token; None for JWT.
         token_id: Option<String>,
+        /// Set only when authenticated via an OAuth access token (`slat_`); identifies
+        /// which grant so resolvers/telemetry can tell OAuth callers apart. None
+        /// everywhere else.
+        grant_id: Option<String>,
     },
     Session {
         id: String,
@@ -192,7 +196,7 @@ pub fn issue_token_for_session_id<A: App + HasDb>(app: &A, session_id: &str) -> 
         .make_session_jwt(session_id, jwt::ExpirePolicy::SessionDefault)
 }
 
-async fn fetch_update_user_auth_info<A: App + HasDb>(
+pub(crate) async fn fetch_update_user_auth_info<A: App + HasDb>(
     app: &A,
     user_id: String,
 ) -> Result<AuthInfo, AuthError> {
@@ -232,6 +236,7 @@ async fn fetch_update_user_auth_info<A: App + HasDb>(
         is_super: user.is_super,
         location_grants: user.location_grants,
         token_id: None,
+        grant_id: None,
     })
 }
 
@@ -404,7 +409,7 @@ pub async fn verify_signed_key<A: App + HasDb + HasQueues>(
     })
 }
 
-fn hash_token(secret: &str) -> String {
+pub(crate) fn hash_token(secret: &str) -> String {
     use sha2::{Digest, Sha256};
     let mut hasher = Sha256::new();
     hasher.update(secret.as_bytes());
@@ -515,6 +520,7 @@ async fn verify_token_with_user_token<A: App + HasDb>(
             is_super,
             location_grants,
             token_id: Some(token_id),
+            grant_id: None,
         }),
         other => Ok(other),
     }
@@ -595,4 +601,42 @@ pub fn generate_api_token_secret() -> (String, String) {
     let secret = format!("{}{}", API_TOKEN_PREFIX, crate::nonce::generate_nonce(32));
     let hash = hash_token(&secret);
     (secret, hash)
+}
+
+#[cfg(test)]
+mod verify_token_tests {
+    use super::*;
+    use crate::app::{self, MyApp};
+    use crate::client_info::ClientReport;
+    use crate::{mockdb, mockmail, mockqueue, mockrealtime};
+
+    fn app() -> MyApp<mockdb::Handler, mockqueue::Handler, mockmail::Handler, mockrealtime::Handler>
+    {
+        app::new(
+            mockdb::Handler::new(),
+            jwt::Key::new("test", None, None).expect("valid test JWT key"),
+            0,
+            mockqueue::Handler::new(),
+            mockmail::Handler::new(),
+            mockrealtime::Handler::new("test"),
+        )
+    }
+
+    /// `verify_token` must keep rejecting `slat_`/`slrt_` OAuth tokens: they carry no
+    /// prefix it recognizes, so they fall through to the JWT verifier and fail as a
+    /// malformed JWT — never reaching (and, with mockdb, never able to reach) the DB.
+    /// `oauth::verify_access_token` is the only accepted entry point for them.
+    #[tokio::test]
+    async fn rejects_oauth_access_token() {
+        let app = app();
+        let result = verify_token(&app, "slat_abc123.somesecret", &ClientReport::default()).await;
+        assert!(matches!(result, Err(AuthError::Permanent(_))));
+    }
+
+    #[tokio::test]
+    async fn rejects_oauth_refresh_token() {
+        let app = app();
+        let result = verify_token(&app, "slrt_abc123.somesecret", &ClientReport::default()).await;
+        assert!(matches!(result, Err(AuthError::Permanent(_))));
+    }
 }

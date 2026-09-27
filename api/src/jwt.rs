@@ -25,7 +25,15 @@ pub struct Key {
     decoding: DecodingKey,
     user_expire_s: u64,
     session_expire_s: u64,
+    /// Raw secret, kept alongside the jsonwebtoken key types (which don't expose their
+    /// bytes back out) so other HMAC uses derived from the same secret — currently the
+    /// signed OAuth DCR client id — don't need their own copy of `JWT_SECRET`.
+    secret: Box<[u8]>,
 }
+
+/// Domain-separation label for the client-id HMAC, so it can never collide with a JWT
+/// signed by the same secret even if both ever used the same algorithm.
+const OAUTH_CLIENT_ID_LABEL: &[u8] = b"seslogin-oauth-client-id-v1";
 
 // TEMPORARY: Remove after 2026-06-01 — handles legacy JWTs where exp was serialized as a string
 fn deserialize_exp_opt<'de, D>(deserializer: D) -> Result<Option<u64>, D::Error>
@@ -98,7 +106,19 @@ impl Key {
             decoding: DecodingKey::from_secret(secret.as_bytes()),
             user_expire_s: user_expire_s.unwrap_or(DEFAULT_USER_EXPIRE_S),
             session_expire_s: session_expire_s.unwrap_or(DEFAULT_SESSION_EXPIRE_S),
+            secret: secret.as_bytes().into(),
         })
+    }
+
+    /// A key for HMAC-signing the stateless OAuth DCR client id, derived from
+    /// `JWT_SECRET` via a domain-separated HMAC so it can't be reused to forge a JWT
+    /// (or vice versa) even though both start from the same secret.
+    pub fn oauth_client_id_key(&self) -> [u8; 32] {
+        use hmac::{Hmac, Mac};
+        let mut mac = <Hmac<sha2::Sha256> as Mac>::new_from_slice(&self.secret)
+            .expect("HMAC accepts a key of any length");
+        mac.update(OAUTH_CLIENT_ID_LABEL);
+        mac.finalize().into_bytes().into()
     }
 
     fn expiry(&self, policy: ExpirePolicy) -> u64 {
