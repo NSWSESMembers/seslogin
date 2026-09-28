@@ -14,7 +14,7 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 
 use seslogin::app::{self, MyApp};
-use seslogin::db::{self, EphemeralState, OAuthGrant, OAuthGrantUpdateShape, User};
+use seslogin::db::{self, EphemeralState, Location, OAuthGrant, OAuthGrantUpdateShape, User};
 use seslogin::jwt;
 use seslogin::mockmail;
 use seslogin::mockqueue;
@@ -28,6 +28,7 @@ pub(crate) struct FakeDb {
     pub(crate) users: Mutex<HashMap<String, User>>,
     pub(crate) ephemeral_state: Mutex<HashMap<String, EphemeralState>>,
     pub(crate) oauth_grants: Mutex<HashMap<String, OAuthGrant>>,
+    pub(crate) locations: Mutex<HashMap<String, Location>>,
 }
 
 pub(crate) fn unsupported<T>() -> db::Result<T> {
@@ -53,6 +54,25 @@ impl db::Handler for FakeDb {
                     .get_mut(id)
                     .ok_or_else(|| db::Error::NotFound(id.to_string()))?;
                 user.access_time = Some(seslogin::clock::now_sec());
+                Ok(())
+            }
+            db::UserUpdateShape::Fields {
+                email,
+                is_super,
+                is_dev,
+                enabled,
+                location_grants,
+            } => {
+                let mut users = self.users.lock().unwrap();
+                let user = users
+                    .get_mut(id)
+                    .ok_or_else(|| db::Error::NotFound(id.to_string()))?;
+                user.email = email.to_string();
+                user.is_super = is_super;
+                user.is_dev = is_dev;
+                user.enabled = enabled;
+                user.location_grants = location_grants;
+                user.updated_at = seslogin::clock::now_sec();
                 Ok(())
             }
             _ => unsupported(),
@@ -144,20 +164,42 @@ impl db::Handler for FakeDb {
             .collect())
     }
 
-    // Everything below is untouched by these tests.
+    // Everything below is untouched by the OAuth-flow tests. `list_users`,
+    // `create_user`, `get_locations`, and `list_locations` are also used by
+    // the MCP tool tests (`tests/mcp.rs`), which run real `users`/`createUser`/
+    // `updateUser`/`locations` GraphQL documents the same way the OAuth grant
+    // tests run theirs.
     async fn get_user_id_by_email(&self, _email: &str) -> db::Result<Vec<String>> {
         unsupported()
     }
     async fn list_users(&self) -> db::Result<Vec<User>> {
-        unsupported()
+        Ok(self.users.lock().unwrap().values().cloned().collect())
     }
     async fn create_user(
         &self,
-        _email: &str,
-        _is_super: bool,
-        _location_grants: Vec<String>,
+        email: &str,
+        is_super: bool,
+        location_grants: Vec<String>,
     ) -> db::Result<User> {
-        unsupported()
+        let now = seslogin::clock::now_sec();
+        let user = User {
+            id: seslogin::dynamodb::new_id(),
+            email: email.to_string(),
+            is_super,
+            is_dev: false,
+            enabled: true,
+            location_grants,
+            access_time: None,
+            email_config: serde_json::Map::new(),
+            disaggregate_virtual_periods: false,
+            created_at: now,
+            updated_at: now,
+        };
+        self.users
+            .lock()
+            .unwrap()
+            .insert(user.id.clone(), user.clone());
+        Ok(user)
     }
     async fn get_persons<T: AsRef<str> + Sync>(
         &self,
@@ -343,15 +385,19 @@ impl db::Handler for FakeDb {
     }
     async fn get_locations<T: AsRef<str> + Sync>(
         &self,
-        _ids: &[T],
+        ids: &[T],
     ) -> db::Result<Vec<Option<db::Location>>> {
-        unsupported()
+        let locations = self.locations.lock().unwrap();
+        Ok(ids
+            .iter()
+            .map(|id| locations.get(id.as_ref()).cloned())
+            .collect())
     }
     async fn list_locations(
         &self,
         _filter: db::ListLocationsFilter,
     ) -> db::Result<Vec<db::Location>> {
-        unsupported()
+        Ok(self.locations.lock().unwrap().values().cloned().collect())
     }
     async fn update_location(
         &self,
@@ -663,6 +709,31 @@ pub(crate) fn seed_user(
             access_time: None,
             email_config: serde_json::Map::new(),
             disaggregate_virtual_periods: false,
+            created_at: 0,
+            updated_at: 0,
+        },
+    );
+}
+
+/// Insert a [`Location`] directly, for tests of the MCP `list_locations` tool
+/// and of `create_user`/`update_user`'s `locationGrants` validation (which
+/// looks locations up by id via `get_locations`).
+#[allow(dead_code)] // see `seed_super_user`'s doc comment
+pub(crate) fn seed_location(
+    app: &MyApp<FakeDb, mockqueue::Handler, mockmail::Handler, mockrealtime::Handler>,
+    id: &str,
+    name: &str,
+) {
+    app.db.locations.lock().unwrap().insert(
+        id.to_string(),
+        Location {
+            id: id.to_string(),
+            name: name.to_string(),
+            enabled: true,
+            nitc_enabled: None,
+            nitc_complete_on_export: true,
+            ses_api_headquarters_id: None,
+            last_successful_member_sync: None,
             created_at: 0,
             updated_at: 0,
         },

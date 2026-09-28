@@ -165,6 +165,70 @@ The web page is `/admin/settings/connected-apps` (linked from the Settings
 submenu, beside Passkeys); a super user also sees and can revoke another
 user's grants from that user's edit page.
 
+## MCP interface
+
+`poem`/`poem-local` also serve an [MCP](https://modelcontextprotocol.io)
+endpoint at `POST <API base>/mcp` — the "Streamable HTTP" transport, run
+stateless with plain JSON responses (no `Mcp-Session-Id`, no SSE; Lambda can't
+hold sessions). It lets an AI client (Claude Code, a claude.ai custom
+connector, Cursor, …) manage seslogin's user list on your behalf, acting **as
+you, with exactly your permissions** — see `mcp.rs`'s module docs for why this
+is a small hand-rolled JSON-RPC 2.0 dispatcher rather than the `rmcp` crate,
+and for how every tool call still goes through the same GraphQL guards the
+admin UI does.
+
+**Connecting:**
+- **Claude Code**: `claude mcp add --transport http seslogin <API base>/mcp`
+  — it discovers the OAuth metadata, opens the consent page
+  (`/admin/oauth/authorize`) in your browser, and stores the resulting token.
+- **claude.ai**: add it as a custom connector with the URL `<API base>/mcp`.
+- Any other MCP client that supports the authorization spec's discovery flow
+  (RFC 9728 protected-resource metadata → RFC 8414 AS metadata → RFC 7591
+  dynamic client registration → the consent page → the token endpoint) works
+  the same way; see "OAuth authorization server" above for those endpoints.
+
+**Auth:** only an OAuth `slat_` access token audience-bound to `<API
+base>/mcp` is accepted (an `slu_` user token or a JWT is rejected here, same
+as an `slat_` token is rejected on the GraphQL endpoint — see `oauth.rs`). A
+missing or invalid token gets a `401` carrying `WWW-Authenticate: Bearer
+resource_metadata="<API base>/.well-known/oauth-protected-resource/mcp"`, per
+the MCP authorization spec's discovery flow.
+
+**Tools:**
+
+| tool | what it does |
+|---|---|
+| `whoami` | Who you're authenticated as: id, email, `isSuper`, and the locations you can access. |
+| `list_users` | List every admin user. Super user only. |
+| `get_user` | Look up one user by id. A non-super caller may only look up themselves. |
+| `list_locations` | List every location (id, name) — resolve a name to the id `create_user`/`update_user` expect in `locationGrants`. Super user only. |
+| `create_user` | Create a user (email, `isSuper`, `locationGrants`). Super user only. |
+| `update_user` | Change a user's email/`isSuper`/`isDev`/`locationGrants`; omitted fields keep their current value. Never touches `enabled`. Super user only. |
+| `disable_user` / `enable_user` | Flip `enabled` — seslogin has no user delete, only disable. Super user only. |
+
+Every tool runs a **fixed** GraphQL document against the in-process schema
+with your verified identity attached exactly as the GraphQL endpoint itself
+builds a request, so a non-super token gets the same authorization errors
+from `list_users`/`create_user`/etc. that the admin UI would; only `whoami`
+and `get_user` (on your own id) work. A tool failure (a guard rejection, a
+validation error) comes back as an ordinary JSON-RPC *success* whose
+`CallToolResult` carries `isError: true` and the message — not a transport
+error — so a client can show it inline rather than treating the whole request
+as failed.
+
+**Revoking access:** under Settings → Connected AI apps (see above), or by
+disabling the user, which blocks every credential kind immediately.
+
+**Local testing:** `make dev-local` runs `poem-local` with a permissive CORS
+policy, so the browser-based
+[MCP Inspector](https://github.com/modelcontextprotocol/inspector)
+(`npx @modelcontextprotocol/inspector`) works against
+`http://localhost:8000/mcp` end-to-end, including the OAuth flow. The same
+Inspector run against a *deployed* server will fail the discovery/registration
+requests to CORS — production intentionally doesn't allow arbitrary
+browser-origin JS to hit its OAuth endpoints; use `claude mcp add` or a
+claude.ai connector there instead.
+
 ## Client self-reporting (`X-Client-Info`)
 
 Every request from the web client carries two diagnostic headers, which the server

@@ -348,9 +348,11 @@ Unlike `mockdb`, the queue, mail and realtime mocks *succeed* — they exist so 
 
 Authorization uses an `AuthRequirement` guard enum per field: `Session`, `UserOrSession`, `User`, `SuperUser`.
 
-`api/src/oauth.rs` adds a fourth token kind, `slat_`/`slrt_` (OAuth access/refresh, one `oauth_grant` DB row per client authorization), for the MCP interface being built on top of this. They are deliberately **not** accepted by `verify_token`/the GraphQL endpoint — only a future MCP request handler calls `oauth::verify_access_token` directly — so an MCP token can't be used to drive the site API outside its own tool set.
+`api/src/oauth.rs` adds a fourth token kind, `slat_`/`slrt_` (OAuth access/refresh, one `oauth_grant` DB row per client authorization), for the MCP interface. They are deliberately **not** accepted by `verify_token`/the GraphQL endpoint — only `api/src/mcp.rs`'s `POST /mcp` handler calls `oauth::verify_access_token` directly — so an MCP token can't be used to drive the site API outside its own tool set.
 
 A user can see and revoke their own authorized grants — the "Connected AI apps" list — via `User.oauthGrants` and the `revokeOauthGrant` mutation (super users may act on anyone's); see `api/README.md`'s "Connected AI apps" section and the web page at `/admin/settings/connected-apps`.
+
+**MCP interface**: `api/src/mcp.rs` serves `POST /mcp` (Model Context Protocol, Streamable HTTP, stateless/JSON — a hand-rolled JSON-RPC 2.0 dispatcher; see the module docs for why not the `rmcp` crate) so an AI client can manage the user list acting as a given user, with exactly their permissions: every tool runs a fixed GraphQL document with that user's `AuthInfo` attached, so existing guards (`SuperUser` on `users`/`createUser`/`updateUser`, self-only on `user(id)`) apply unchanged. See `api/README.md`'s "MCP interface" section for the tool list, connecting a client, and local testing.
 
 **DataLoader**: `api/src/dataloader.rs` — Batches DB lookups to avoid N+1 in GraphQL resolvers.
 
