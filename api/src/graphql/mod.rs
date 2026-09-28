@@ -28,7 +28,7 @@ pub use self::mutations::MutationRoot;
 pub use self::query::{
     ApiToken, Category, CategoryMemberPeriodSummary, CategoryPeriodSummary, Environment, Location,
     MemberCategoryPeriodSummary, MemberPeriodSummary, NitcExportStatus, NitcGroup,
-    OAuthAuthorizationRequest, PasskeyInfo, Period, Person, QueryRoot, Session, User,
+    OAuthAuthorizationRequest, OAuthGrant, PasskeyInfo, Period, Person, QueryRoot, Session, User,
 };
 
 use self::dataloader::DatabaseLoader;

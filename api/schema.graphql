@@ -365,6 +365,13 @@ type MutationRoot {
 	this directly, so every check the query made is repeated here.
 	"""
 	approveOauthAuthorization(clientId: String!, redirectUri: String!, codeChallenge: String!, codeChallengeMethod: String!, scope: String, resource: String, state: String): String!
+	"""
+	Revoke a "connected AI app". Callers may revoke their own grants; a
+	super user may also revoke anyone's. Anything else — including a grant
+	that doesn't exist — fails the same "not found" way, so a caller can't
+	probe for other users' grant IDs.
+	"""
+	revokeOauthGrant(id: ID!): Boolean!
 }
 
 enum NitcExportStatus {
@@ -389,6 +396,27 @@ redirect back to.
 type OauthAuthorizationRequest {
 	clientName: String!
 	redirectHost: String!
+}
+
+type OauthGrant {
+	id: ID!
+	clientName: String!
+	"""
+	Host the client's tokens redirect back to. Shown instead of the
+	(unauthenticated, self-claimed) client name alone, same as on the
+	consent screen.
+	"""
+	redirectHost: String!
+	scope: String!
+	createdAt: Int!
+	lastUsedAt: Int
+	"""
+	When this grant's refresh token stops working if it's never used
+	again. Sliding: it moves out on every refresh, up to `expires_at`
+	(the grant's absolute cap, not exposed here since it isn't a useful
+	signal to show — a grant in active use never approaches it).
+	"""
+	refreshExpiresAt: Int!
 }
 
 """
@@ -866,6 +894,13 @@ type User {
 	locationGrantIds: [ID!]!
 	locations: [Location!]!
 	passkeys: [PasskeyInfo!]!
+	"""
+	This user's connected AI apps (OAuth grants) — the "Connected AI apps"
+	list. Only the user themselves or a super user may see it, same as
+	`user(id)`. Filters out anything already past its TTL (DynamoDB's
+	deletion lags behind expiry), newest first.
+	"""
+	oauthGrants: [OauthGrant!]!
 }
 
 """

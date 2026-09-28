@@ -144,6 +144,27 @@ behind something that changes the host a client sees. `WEB_BASE_URL` (see
 CLAUDE.md) doubles as the origin the `authorization_endpoint` metadata points
 the browser at, via the shared `base_url::web_base_url()` helper.
 
+### Connected AI apps (list + revoke)
+
+Once a user has approved a client, `User.oauthGrants` (guarded the same way as
+`user(id)` — the user themselves, or a super user) lists their authorized
+grants: client name, redirect host, scope, created/last-used timestamps, and
+`refreshExpiresAt` (when the grant goes dead if never used again). Token
+hashes and the client id are never exposed. Expired grants are filtered out
+client-side, since DynamoDB's TTL deletion lags real expiry.
+
+`revokeOauthGrant(id)` deletes a grant outright — the caller's own, or (for a
+super user) anyone's; anything else fails the same "not found" way a missing
+grant would, so a caller can't probe for other users' grant IDs. There is no
+"revoke on disable": disabling a user already blocks every credential kind
+via `fetch_update_user_auth_info`, and re-enabling should restore access the
+same way it does for other token types, rather than forcing every connected
+app to be reconnected.
+
+The web page is `/admin/settings/connected-apps` (linked from the Settings
+submenu, beside Passkeys); a super user also sees and can revoke another
+user's grants from that user's edit page.
+
 ## Client self-reporting (`X-Client-Info`)
 
 Every request from the web client carries two diagnostic headers, which the server

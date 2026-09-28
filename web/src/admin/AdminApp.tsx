@@ -40,6 +40,7 @@ import ActivityHeatmap from "./pages/ActivityHeatmap";
 import ActivityLastSeen from "./pages/ActivityLastSeen";
 import Reports from "./pages/Reports";
 import SettingsPasskeys from "./pages/SettingsPasskeys";
+import SettingsConnectedApps from "./pages/SettingsConnectedApps";
 import SettingsDailyEmail from "./pages/SettingsDailyEmail";
 import SettingsActivityDisplay from "./pages/SettingsActivityDisplay";
 
@@ -121,6 +122,7 @@ export default function AdminApp() {
             path="activity-display"
             element={<SettingsActivityDisplay />}
           />
+          <Route path="connected-apps" element={<SettingsConnectedApps />} />
         </Route>
         <Route path="*" element={<NotFound />} />
       </Route>

@@ -2778,6 +2778,32 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         }
         Ok(url.to_string())
     }
+
+    /// Revoke a "connected AI app". Callers may revoke their own grants; a
+    /// super user may also revoke anyone's. Anything else — including a grant
+    /// that doesn't exist — fails the same "not found" way, so a caller can't
+    /// probe for other users' grant IDs.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    async fn revoke_oauth_grant(&self, ctx: &Context<'_>, id: ID) -> Result<bool> {
+        require_writable(ctx)?;
+        let (caller_id, is_super) = match ctx.data_opt::<AuthInfo>() {
+            Some(AuthInfo::User { id, is_super, .. }) => (id.clone(), *is_super),
+            _ => return Err(anyhow!("Not authenticated")),
+        };
+
+        let grant = self
+            .app
+            .db()
+            .get_oauth_grant(&id)
+            .await?
+            .ok_or_else(|| anyhow!("OAuth grant not found"))?;
+        if !is_super && grant.user_id != caller_id {
+            return Err(anyhow!("OAuth grant not found"));
+        }
+
+        self.app.db().delete_oauth_grant(&id).await?;
+        Ok(true)
+    }
 }
 
 #[derive(async_graphql::SimpleObject)]
