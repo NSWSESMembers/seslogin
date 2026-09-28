@@ -54,6 +54,35 @@ impl HttpReply {
     }
 }
 
+/// Paths a browser-based MCP client calls cross-origin: the OAuth endpoints and
+/// `/mcp` itself. Behind CloudFront the CORS headers come from a response
+/// headers policy (the viewer's `Origin` isn't forwarded, so the Function URL's
+/// own CORS config never fires), but that policy only *adds* headers — the
+/// preflight's status still comes from here. Without this, an `OPTIONS` falls
+/// through to the GraphQL handler and gets a 400, failing the preflight.
+pub fn is_cors_preflight_path(path: &str) -> bool {
+    matches!(
+        path,
+        "/.well-known/oauth-authorization-server"
+            | "/.well-known/oauth-protected-resource"
+            | "/.well-known/oauth-protected-resource/mcp"
+            | "/oauth/register"
+            | "/oauth/token"
+            | "/mcp"
+    )
+}
+
+/// The empty `204` answering an `OPTIONS` on an [`is_cors_preflight_path`] path.
+/// Deliberately carries no CORS headers of its own: whoever fronts the handler
+/// (CloudFront's response headers policy, poem's `Cors`) adds them.
+pub fn cors_preflight() -> HttpReply {
+    HttpReply {
+        status: 204,
+        headers: vec![],
+        body: String::new(),
+    }
+}
+
 /// A JSON error body shared by all three endpoints: RFC 6749 §5.2 for the token
 /// endpoint, RFC 7591 §3.2.2 for registration. Both use the same
 /// `{error, error_description}` shape, just different `error` vocabularies.
@@ -524,6 +553,34 @@ mod tests {
 
     fn body_of(reply: &HttpReply) -> serde_json::Value {
         serde_json::from_str(&reply.body).expect("reply body is JSON")
+    }
+
+    // ── CORS preflight ───────────────────────────────────────────────────────
+
+    #[test]
+    fn cors_preflight_covers_every_cross_origin_endpoint() {
+        for path in [
+            "/.well-known/oauth-authorization-server",
+            "/.well-known/oauth-protected-resource",
+            "/.well-known/oauth-protected-resource/mcp",
+            "/oauth/register",
+            "/oauth/token",
+            "/mcp",
+        ] {
+            assert!(is_cors_preflight_path(path), "{path}");
+        }
+        let reply = cors_preflight();
+        assert_eq!(reply.status, 204);
+        assert!(reply.body.is_empty());
+    }
+
+    #[test]
+    fn cors_preflight_leaves_graphql_alone() {
+        // The site API keeps its own CORS handling (the Function URL's config,
+        // or none at all when same-origin behind CloudFront).
+        for path in ["/", "/graphql", "/oauth", "/mcp/", "/oauth/authorize"] {
+            assert!(!is_cors_preflight_path(path), "{path}");
+        }
     }
 
     // ── metadata ─────────────────────────────────────────────────────────────

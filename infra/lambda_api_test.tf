@@ -30,6 +30,9 @@ resource "aws_lambda_function" "test_api" {
       # Member-facing period edit links stay on the test frontend so the edit page
       # can be exercised there. Matches the WEBAUTHN_RP_ORIGIN fallback; set explicitly.
       WEB_BASE_URL = "https://test.seslogin.com"
+      # OAuth issuer and MCP resource URLs. Required behind CloudFront: Host isn't
+      # forwarded, so the fallback would name the Function URL's host instead.
+      API_BASE_URL = "https://test.seslogin.com"
     }
   }
 }
