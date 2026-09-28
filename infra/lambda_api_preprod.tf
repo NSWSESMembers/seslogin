@@ -28,6 +28,9 @@ resource "aws_lambda_function" "preprod_api" {
       # Member-facing period edit links point at the canonical prod site, not the
       # preprod staging frontend (preprod shares prod's DB and emails real members).
       WEB_BASE_URL = "https://seslogin.com"
+      # OAuth issuer and MCP resource URLs. Required behind CloudFront: Host isn't
+      # forwarded, so the fallback would name the Function URL's host instead.
+      API_BASE_URL = "https://preprod.seslogin.com"
     }
   }
 

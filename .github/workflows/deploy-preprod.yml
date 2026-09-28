@@ -80,7 +80,7 @@ jobs:
       - name: Build web app
         working-directory: ./web
         env:
-          VITE_API_URL: https://ykfbjqjwa2whdhrmilwjse6ape0smjrb.lambda-url.ap-southeast-2.on.aws/
+          VITE_API_URL: https://preprod.seslogin.com/graphql
           VITE_BEACON_URL: ${{ vars.BEACON_URL }}
           VITE_TURNSTILE_SITE_KEY: ${{ vars.TURNSTILE_SITE_KEY }}
           VITE_CLIENT_VERSION: ${{ github.sha }}
