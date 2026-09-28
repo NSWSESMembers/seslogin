@@ -81,6 +81,9 @@ impl<
         // one is handled.
         let host = headers.get("host").and_then(|v| v.to_str().ok());
         match (request.method().clone(), request.uri().path()) {
+            (Method::OPTIONS, path) if seslogin::oauth_http::is_cors_preflight_path(path) => {
+                return oauth_reply_response(seslogin::oauth_http::cors_preflight());
+            }
             (Method::GET, "/.well-known/oauth-authorization-server") => {
                 return oauth_reply_response(seslogin::oauth_http::metadata(host));
             }
