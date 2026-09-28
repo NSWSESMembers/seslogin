@@ -226,6 +226,13 @@ const TABLES: &[Table] = &[
         ttl: Some("expires_at"),
     },
     Table {
+        name: "oauth_grant",
+        hash: "id",
+        attrs: &[Attr("id", S), Attr("user_id", S)],
+        gsis: &[all("user_id-index", "user_id", None)],
+        ttl: Some("expires_at"),
+    },
+    Table {
         name: "test_pagination",
         hash: "id",
         attrs: &[Attr("id", S), Attr("group_id", N), Attr("number", N)],

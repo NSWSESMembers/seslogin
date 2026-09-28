@@ -91,6 +91,7 @@ async fn an_unclassified_resolver_failure_defaults_to_internal() {
             is_super: true,
             location_grants: vec![],
             token_id: None,
+            grant_id: None,
         })
         .data(fixture.app.clone())
         .data(graphql::get_dataloader(fixture.app.clone()));

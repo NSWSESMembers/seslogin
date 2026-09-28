@@ -360,6 +360,32 @@ resource "aws_dynamodb_table" "test_ephemeral_state" {
   }
 }
 
+resource "aws_dynamodb_table" "test_oauth_grant" {
+  name         = "${var.db_prefix_test}_oauth_grant"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "id"
+
+  attribute {
+    name = "id"
+    type = "S"
+  }
+  attribute {
+    name = "user_id"
+    type = "S"
+  }
+
+  global_secondary_index {
+    name            = "user_id-index"
+    hash_key        = "user_id"
+    projection_type = "ALL"
+  }
+
+  ttl {
+    attribute_name = "expires_at"
+    enabled        = true
+  }
+}
+
 # ── Test API access to the test tables ────────────────────────────────────────
 # The test API role's dynamodb-access policy in dynamodb.tf is scoped to
 # ${var.db_prefix}* (prod). To run the test environment against these tables,
