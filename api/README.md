@@ -187,17 +187,21 @@ admin UI does.
   dynamic client registration → the consent page → the token endpoint) works
   the same way; see "OAuth authorization server" above for those endpoints.
 
-**`<API base>` per environment:** on test it's `https://test.seslogin.com`, so
-the MCP URL is `https://test.seslogin.com/mcp`. CloudFront routes `/mcp`,
-`/oauth/*` and `/.well-known/oauth-*` to the API Lambda (as it does
-`/graphql`), and adds CORS headers for browser-based MCP clients through a
-response headers policy (`infra/web_test.tf`). The handler answers `OPTIONS`
-on those paths with a bare `204` (`oauth_http::is_cors_preflight_path`).
-`API_BASE_URL` is set there because CloudFront doesn't forward `Host`. Prod
-and preprod aren't behind CloudFront yet, so their API base is still the raw
-Function URL. That URL's own CORS config allows only the site origin, so
-browser-based MCP clients can't reach them yet. Server-side clients such as
-Claude Code and claude.ai aren't subject to CORS and are unaffected.
+**`<API base>` per environment:** on test it's `https://test.seslogin.com` and on
+preprod `https://preprod.seslogin.com`, so the MCP URL is e.g.
+`https://test.seslogin.com/mcp`. CloudFront routes `/mcp`, `/oauth/*` and
+`/.well-known/oauth-*` to the API Lambda (as it does `/graphql`), and adds
+CORS headers for browser-based MCP clients through a response headers policy
+(`infra/web_test.tf`, `infra/web_preprod.tf`). The handler answers `OPTIONS` on
+those paths with a bare `204` (`oauth_http::is_cors_preflight_path`).
+`API_BASE_URL` is set on both because CloudFront doesn't forward `Host`. Prod
+isn't behind CloudFront yet, so its API base is still the raw Function URL. That
+URL's own CORS config allows only the site origin, so browser-based MCP clients
+can't reach it yet. Server-side clients such as Claude Code and claude.ai aren't
+subject to CORS and are unaffected.
+
+Preprod shares prod's database and secrets, so an MCP client connected there acts
+on **live production users** with the connecting user's permissions.
 
 **Auth:** only an OAuth `slat_` access token audience-bound to `<API
 base>/mcp` is accepted (an `slu_` user token or a JWT is rejected here, same
