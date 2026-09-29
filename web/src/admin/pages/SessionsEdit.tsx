@@ -7,8 +7,10 @@ import type { SessionsEditMutation } from "./__generated__/SessionsEditMutation.
 import type { SessionsEditQuery } from "./__generated__/SessionsEditQuery.graphql";
 import { useNotify } from "../components/useNotify";
 import { Muted } from "../../components/ui/Muted";
+import useCanEditSelectedLocation from "../components/useCanEditSelectedLocation";
+import ReadOnlyNotice from "../components/ReadOnlyNotice";
 
-export default function SessionsEdit() {
+function SessionsEditForm() {
   const navigate = useNavigate();
   const params = useParams();
   const { notifyError, notifySuccess } = useNotify();
@@ -121,4 +123,9 @@ export default function SessionsEdit() {
       <SessionClientInfo clientInfo={session.clientInfo} />
     </>
   );
+}
+
+export default function SessionsEdit() {
+  const canEdit = useCanEditSelectedLocation();
+  return canEdit ? <SessionsEditForm /> : <ReadOnlyNotice />;
 }

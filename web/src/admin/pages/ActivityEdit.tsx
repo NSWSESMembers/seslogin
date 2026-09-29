@@ -16,8 +16,10 @@ import Textarea from "../../components/ui/Textarea";
 import Combobox from "../../components/ui/Combobox";
 import { Button } from "../../components/ui/Button";
 import { StatusMessage } from "../../components/ui/StatusMessage";
+import useCanEditSelectedLocation from "../components/useCanEditSelectedLocation";
+import ReadOnlyNotice from "../components/ReadOnlyNotice";
 
-export default function ActivityEdit() {
+function ActivityEditForm() {
   const params = useParams();
   const navigate = useNavigate();
   const { notifyError, notifySuccess } = useNotify();
@@ -283,4 +285,9 @@ export default function ActivityEdit() {
       </form>
     </>
   );
+}
+
+export default function ActivityEdit() {
+  const canEdit = useCanEditSelectedLocation();
+  return canEdit ? <ActivityEditForm /> : <ReadOnlyNotice />;
 }

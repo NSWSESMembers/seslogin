@@ -21,6 +21,14 @@ export default function TitleBar() {
       >
         {selectedLocation.name}
       </a>
+      {!selectedLocation.viewerCanEdit && (
+        <span
+          className="rounded-sm border border-current px-1.5 py-px align-middle font-sans text-xs tracking-wide text-white uppercase"
+          title="You can view this location but not make changes"
+        >
+          Read only
+        </span>
+      )}
     </TitleBarShell>
   );
 }

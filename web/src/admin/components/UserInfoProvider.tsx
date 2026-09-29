@@ -28,6 +28,7 @@ const userInfoQuery = graphql`
         id
         name
         enabled
+        viewerCanEdit
       }
       passkeys {
         __typename

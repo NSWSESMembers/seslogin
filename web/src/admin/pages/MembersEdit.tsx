@@ -10,8 +10,10 @@ import TextInput from "../../components/ui/TextInput";
 import { Button } from "../../components/ui/Button";
 import { StatusMessage } from "../../components/ui/StatusMessage";
 import { formatFullDateTime } from "../../lib/time";
+import useCanEditSelectedLocation from "../components/useCanEditSelectedLocation";
+import ReadOnlyNotice from "../components/ReadOnlyNotice";
 
-export default function MembersEdit() {
+function MembersEditForm() {
   const params = useParams();
   const navigate = useNavigate();
   const { notifyError, notifySuccess } = useNotify();
@@ -131,4 +133,9 @@ export default function MembersEdit() {
       </form>
     </>
   );
+}
+
+export default function MembersEdit() {
+  const canEdit = useCanEditSelectedLocation();
+  return canEdit ? <MembersEditForm /> : <ReadOnlyNotice />;
 }

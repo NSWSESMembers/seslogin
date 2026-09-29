@@ -7,6 +7,10 @@ import { MemoryRouter, Routes, Route } from "react-router";
 import { RelayEnvironmentProvider } from "react-relay";
 import { MockPayloadGenerator, createMockEnvironment } from "relay-test-utils";
 import SessionsEdit from "./SessionsEdit";
+vi.mock("../components/useCanEditSelectedLocation", () => ({
+  default: () => true,
+}));
+
 import {
   NotifyContext,
   type NotifyContextValue,
