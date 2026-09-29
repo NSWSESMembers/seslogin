@@ -764,7 +764,7 @@ pub(crate) fn seed_super_user(
 }
 
 /// Insert an [`OAuthGrant`] directly, bypassing the token endpoint — for
-/// tests that only care about the "connected AI apps" list/revoke GraphQL
+/// tests that only care about the "connected apps" list/revoke GraphQL
 /// fields, not the OAuth flow that produces a grant.
 #[allow(dead_code)] // see `seed_super_user`'s doc comment
 pub(crate) fn seed_grant(

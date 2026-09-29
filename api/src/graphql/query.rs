@@ -166,7 +166,7 @@ impl<A: App + HasDb + Send + Sync + 'static> User<A> {
             .collect())
     }
 
-    /// This user's connected AI apps (OAuth grants) — the "Connected AI apps"
+    /// This user's connected apps (OAuth grants) — the "Connected apps"
     /// list. Only the user themselves or a super user may see it, same as
     /// `user(id)`. Filters out anything already past its TTL (DynamoDB's
     /// deletion lags behind expiry), newest first.
@@ -2889,7 +2889,7 @@ impl<A: App + HasDb + Send + Sync + 'static> Session<A> {
     }
 }
 
-/// A user's "connected AI app" — an authorized OAuth client. Never exposes the
+/// A user's "connected app" — an authorized OAuth client. Never exposes the
 /// token hashes or the (self-claimed, DCR-issued) `client_id`; the redirect
 /// host is what actually identifies the client to a viewer, same reasoning as
 /// `OAuthAuthorizationRequest` on the consent screen.

@@ -2779,7 +2779,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         Ok(url.to_string())
     }
 
-    /// Revoke a "connected AI app". Callers may revoke their own grants; a
+    /// Revoke a "connected app". Callers may revoke their own grants; a
     /// super user may also revoke anyone's. Anything else — including a grant
     /// that doesn't exist — fails the same "not found" way, so a caller can't
     /// probe for other users' grant IDs.

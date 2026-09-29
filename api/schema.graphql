@@ -366,7 +366,7 @@ type MutationRoot {
 	"""
 	approveOauthAuthorization(clientId: String!, redirectUri: String!, codeChallenge: String!, codeChallengeMethod: String!, scope: String, resource: String, state: String): String!
 	"""
-	Revoke a "connected AI app". Callers may revoke their own grants; a
+	Revoke a "connected app". Callers may revoke their own grants; a
 	super user may also revoke anyone's. Anything else — including a grant
 	that doesn't exist — fails the same "not found" way, so a caller can't
 	probe for other users' grant IDs.
@@ -895,7 +895,7 @@ type User {
 	locations: [Location!]!
 	passkeys: [PasskeyInfo!]!
 	"""
-	This user's connected AI apps (OAuth grants) — the "Connected AI apps"
+	This user's connected apps (OAuth grants) — the "Connected apps"
 	list. Only the user themselves or a super user may see it, same as
 	`user(id)`. Filters out anything already past its TTL (DynamoDB's
 	deletion lags behind expiry), newest first.
