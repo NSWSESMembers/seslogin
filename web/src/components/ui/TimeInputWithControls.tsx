@@ -25,7 +25,7 @@ type Props = Omit<
 
 /**
  * A datetime-local input with buttons to nudge the value by an hour or a day,
- * and optionally to copy another field's value in. Used for the start/end
+ * set it to the current time, and optionally to copy another field's value in. Used for the start/end
  * time pairs across the admin activity forms and report date-range pickers.
  */
 export default function TimeInputWithControls({
@@ -59,6 +59,14 @@ export default function TimeInputWithControls({
             {label}
           </Button>
         ))}
+        <Button
+          type="button"
+          variant="secondary"
+          size="row"
+          onClick={() => onChange(dateToInputDateTimeLocal(new Date()))}
+        >
+          Now
+        </Button>
         {copyFrom && (
           <Button
             type="button"
