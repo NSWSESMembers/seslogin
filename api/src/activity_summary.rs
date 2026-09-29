@@ -69,7 +69,14 @@ pub async fn run(
                     .filter(|m| m.contains_key("daily"))
                     .map(|_| loc_id.clone())
             })
-            .filter(|loc_id| user.is_super || user.location_grants.iter().any(|g| g == loc_id))
+            .filter(|loc_id| {
+                user.is_super
+                    || user
+                        .location_grants
+                        .iter()
+                        .chain(user.location_read_only_grants.iter())
+                        .any(|g| g == loc_id)
+            })
             .collect();
 
         if summary_location_ids.is_empty() {

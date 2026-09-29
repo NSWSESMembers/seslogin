@@ -1023,7 +1023,12 @@ async fn show_categories(db: &impl Handler, cats: &[Category]) {
 async fn show_users(db: &impl Handler, users: &[User]) {
     let grant_ids: Vec<String> = users
         .iter()
-        .flat_map(|u| u.location_grants.clone())
+        .flat_map(|u| {
+            u.location_grants
+                .iter()
+                .chain(u.location_read_only_grants.iter())
+                .cloned()
+        })
         .collect();
     let locs = location_names(db, &grant_ids).await;
     for (i, u) in users.iter().enumerate() {
@@ -1037,6 +1042,7 @@ async fn show_users(db: &impl Handler, users: &[User]) {
             is_dev,
             enabled,
             location_grants,
+            location_read_only_grants,
             access_time,
             email_config,
             disaggregate_virtual_periods,
@@ -1052,6 +1058,15 @@ async fn show_users(db: &impl Handler, users: &[User]) {
                 .collect::<Vec<_>>()
                 .join(", ")
         };
+        let read_only_grants = if location_read_only_grants.is_empty() {
+            "-".to_string()
+        } else {
+            location_read_only_grants
+                .iter()
+                .map(|g| decorate(g, locs.get(g)))
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
         print_detail(&[
             ("id", id.clone()),
             ("email", email.clone()),
@@ -1059,6 +1074,7 @@ async fn show_users(db: &impl Handler, users: &[User]) {
             ("is_dev", bool_str(*is_dev)),
             ("enabled", bool_str(*enabled)),
             ("location_grants", grants),
+            ("location_read_only_grants", read_only_grants),
             ("access_time", opt_ts(*access_time)),
             (
                 "email_config",
@@ -2605,10 +2621,21 @@ async fn run(db: &impl Handler, object: Object) -> Result<()> {
                             bool_str(u.is_super),
                             bool_str(u.enabled),
                             u.location_grants.len().to_string(),
+                            u.location_read_only_grants.len().to_string(),
                         ]
                     })
                     .collect();
-                print_table(&["id", "email", "is_super", "enabled", "grants"], &rows);
+                print_table(
+                    &[
+                        "id",
+                        "email",
+                        "is_super",
+                        "enabled",
+                        "grants",
+                        "read_only_grants",
+                    ],
+                    &rows,
+                );
             }
         },
 

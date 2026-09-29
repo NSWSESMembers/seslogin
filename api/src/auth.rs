@@ -39,7 +39,10 @@ pub enum AuthInfo {
     User {
         id: String,
         is_super: bool,
+        /// Locations where the user is an Admin (read and write).
         location_grants: Vec<String>,
+        /// Locations where the user is Read only.
+        location_read_only_grants: Vec<String>,
         /// Set only when authenticated via an opaque user token; None for JWT.
         token_id: Option<String>,
         /// Set only when authenticated via an OAuth access token (`slat_`); identifies
@@ -236,6 +239,7 @@ pub(crate) async fn fetch_update_user_auth_info<A: App + HasDb>(
         id: user_id,
         is_super: user.is_super,
         location_grants: user.location_grants,
+        location_read_only_grants: user.location_read_only_grants,
         token_id: None,
         grant_id: None,
     })
@@ -515,11 +519,13 @@ async fn verify_token_with_user_token<A: App + HasDb>(
             id,
             is_super,
             location_grants,
+            location_read_only_grants,
             ..
         } => Ok(AuthInfo::User {
             id,
             is_super,
             location_grants,
+            location_read_only_grants,
             token_id: Some(token_id),
             grant_id: None,
         }),

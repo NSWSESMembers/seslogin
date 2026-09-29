@@ -29,7 +29,7 @@ use crate::realtime;
 use crate::realtime::Handler as _;
 use crate::ses_api;
 
-use super::auth::{AuthGuard, AuthRequirement, require_location_access};
+use super::auth::{AuthGuard, AuthRequirement, can_write_location, require_location_access};
 use super::dataloader::DatabaseLoader;
 use super::{CategoryId, LocationId, NitcEventId, PersonId, SessionId, UserId};
 
@@ -111,6 +111,15 @@ impl<A: App + HasDb + Send + Sync + 'static> User<A> {
             .collect()
     }
 
+    /// Locations where the user is Read only (can view but not change).
+    async fn read_only_location_grant_ids(&self) -> Vec<ID> {
+        self.rec
+            .location_read_only_grants
+            .iter()
+            .map(|id| ID(id.clone()))
+            .collect()
+    }
+
     async fn locations(&self, ctx: &Context<'_>) -> Result<Vec<Location<A>>> {
         if self.rec.is_super {
             // superusers have access to all locations, so fetch full list of locations
@@ -123,8 +132,19 @@ impl<A: App + HasDb + Send + Sync + 'static> User<A> {
             return Ok(items.into_iter().map(|rec| Location::new_db(rec)).collect());
         }
 
-        // all other users we list only the units they have grants for
-        let locations = &self.rec.location_grants;
+        // all other users we list only the units they have grants for: admin
+        // locations first, then read-only ones, without duplicates
+        let mut locations: Vec<String> = Vec::new();
+        for id in self
+            .rec
+            .location_grants
+            .iter()
+            .chain(self.rec.location_read_only_grants.iter())
+        {
+            if !locations.contains(id) {
+                locations.push(id.clone());
+            }
+        }
 
         let loader = ctx.data_unchecked::<DataLoader<DatabaseLoader<A>>>();
         let loaded_locations = loader
@@ -1798,6 +1818,12 @@ impl<A: App + HasDb + Send + Sync> Location<A> {
         self.rec.enabled
     }
 
+    /// Whether the current caller may make changes at this location. False for Read
+    /// only users, so a client can hide edit controls rather than let them fail.
+    async fn viewer_can_edit(&self, ctx: &Context<'_>) -> bool {
+        can_write_location(ctx, &self.rec.id)
+    }
+
     async fn nitc_enabled(&self) -> Option<i64> {
         self.rec.nitc_enabled.map(|ts| ts as i64)
     }
@@ -2823,9 +2849,14 @@ impl<A: App + HasDb + Send + Sync + 'static> Session<A> {
             .ok_or_else(|| anyhow!("Location with ID {} missing", self.rec.location_id))
     }
 
-    async fn code(&self) -> &Option<String> {
-        // TODO: careful who we show this to
-        &self.rec.code
+    async fn code(&self, ctx: &Context<'_>) -> Option<&str> {
+        // The setup code enrols a kiosk, so it is a write-capable credential: only
+        // callers who can make changes here get it. Read only viewers see null.
+        if can_write_location(ctx, &self.rec.location_id) {
+            self.rec.code.as_deref()
+        } else {
+            None
+        }
     }
 
     async fn healthcheck_url(&self) -> Option<&str> {

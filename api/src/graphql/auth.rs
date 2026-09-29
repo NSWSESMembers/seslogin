@@ -32,7 +32,7 @@ pub(crate) enum AuthRequirement {
     SuperUser,
     /// A single-period edit link. Scoped to exactly one period, so any resolver
     /// serving period-specific data must additionally check the id matches — see
-    /// [`require_period_access`].
+    /// [`require_period_write_access`].
     PeriodLink,
 }
 
@@ -133,16 +133,47 @@ impl Guard for AuthGuard {
     }
 }
 
-/// Check the caller is allowed to act on the given location:
+/// Check the caller is allowed to *read* the given location:
 /// - super users bypass
-/// - regular users must have the location in `location_grants`
+/// - regular users must have the location in `location_grants` (Admin) or
+///   `location_read_only_grants` (Read only)
 /// - sessions must be bound to the same location
 /// - api tokens must have the location in their per-token `location_grants`
 ///
+/// This is the check for queries. Anything that changes data must use
+/// [`require_location_write_access`] instead, which Read only users fail.
+///
 /// A period-link caller holds no location grants, so it falls through to the final
 /// arm and is rejected here — location-scoped access is not something an edit link
-/// ever has. Use [`require_period_access`] on paths it may reach.
+/// ever has. Use [`require_period_write_access`] on paths it may reach.
 pub(crate) fn require_location_access(ctx: &Context<'_>, location_id: &str) -> Result<()> {
+    match ctx.data_opt::<AuthInfo>() {
+        Some(AuthInfo::User { is_super: true, .. }) => Ok(()),
+        Some(AuthInfo::User {
+            location_grants,
+            location_read_only_grants,
+            ..
+        }) if location_grants
+            .iter()
+            .chain(location_read_only_grants.iter())
+            .any(|g| g == location_id) =>
+        {
+            Ok(())
+        }
+        Some(AuthInfo::Session { location, .. }) if location == location_id => Ok(()),
+        Some(AuthInfo::ApiToken {
+            location_grants, ..
+        }) if location_grants.iter().any(|g| g == location_id) => Ok(()),
+        _ => Err(ApiError::forbidden("Not authorized for this location").into()),
+    }
+}
+
+/// Check the caller is allowed to *change* things at the given location. Same as
+/// [`require_location_access`] except a regular user must hold the location in
+/// `location_grants` (Admin); `location_read_only_grants` does not qualify.
+///
+/// Read-only API tokens are rejected separately by [`require_writable`].
+pub(crate) fn require_location_write_access(ctx: &Context<'_>, location_id: &str) -> Result<()> {
     match ctx.data_opt::<AuthInfo>() {
         Some(AuthInfo::User { is_super: true, .. }) => Ok(()),
         Some(AuthInfo::User {
@@ -152,16 +183,27 @@ pub(crate) fn require_location_access(ctx: &Context<'_>, location_id: &str) -> R
         Some(AuthInfo::ApiToken {
             location_grants, ..
         }) if location_grants.iter().any(|g| g == location_id) => Ok(()),
+        Some(AuthInfo::User { .. }) => Err(ApiError::forbidden(
+            "Read only access: not authorized to make changes at this location",
+        )
+        .into()),
         _ => Err(ApiError::forbidden("Not authorized for this location").into()),
     }
 }
 
-/// Check the caller is allowed to act on one specific period.
+/// Whether the caller may make changes at the location — the boolean form of
+/// [`require_location_write_access`] plus [`require_writable`], for resolvers that
+/// report capability (e.g. `Location.viewerCanEdit`) rather than enforce it.
+pub(crate) fn can_write_location(ctx: &Context<'_>, location_id: &str) -> bool {
+    require_writable(ctx).is_ok() && require_location_write_access(ctx, location_id).is_ok()
+}
+
+/// Check the caller is allowed to change one specific period.
 ///
 /// An edit-link token must be *this* period's token — that single check is the
-/// whole of its authority. Every other principal falls back to the location check,
-/// so behaviour for users, sessions and API tokens is unchanged.
-pub(crate) fn require_period_access(ctx: &Context<'_>, period: &db::Period) -> Result<()> {
+/// whole of its authority. Every other principal falls back to
+/// [`require_location_write_access`].
+pub(crate) fn require_period_write_access(ctx: &Context<'_>, period: &db::Period) -> Result<()> {
     match ctx.data_opt::<AuthInfo>() {
         Some(AuthInfo::PeriodLink { period_id }) => {
             if *period_id == period.id {
@@ -170,7 +212,7 @@ pub(crate) fn require_period_access(ctx: &Context<'_>, period: &db::Period) -> R
                 Err(ApiError::forbidden("Not authorized for this period").into())
             }
         }
-        _ => require_location_access(ctx, &period.location_id),
+        _ => require_location_write_access(ctx, &period.location_id),
     }
 }
 

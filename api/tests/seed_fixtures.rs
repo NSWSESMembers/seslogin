@@ -21,6 +21,7 @@ use sha2::{Digest, Sha256};
 const USER_TOKENS: &[(&str, &str)] = &[
     ("TestSuperUsr", "slu_localdev0000000000000000000super"),
     ("TestUnitUser", "slu_localdev0000000000000000testunit"),
+    ("TestReadOnlyU", "slu_localdev0000000000000000readonly"),
 ];
 
 /// Identifiers the docs hand out as things to type or navigate to. Rename one and the docs
@@ -133,13 +134,15 @@ fn synthetic_references_resolve() {
     }
 
     for user in rows(&doc, "user") {
-        for grant in user["location_grants"]["SS"].as_array().unwrap_or(&vec![]) {
-            let loc = grant.as_str().expect("location_grants entries are strings");
-            assert!(
-                locations.contains(loc),
-                "user {} is granted missing location {loc}",
-                id(user)
-            );
+        for attr in ["location_grants", "location_read_only_grants"] {
+            for grant in user[attr]["SS"].as_array().unwrap_or(&vec![]) {
+                let loc = grant.as_str().expect("grant entries are strings");
+                assert!(
+                    locations.contains(loc),
+                    "user {} is granted missing location {loc} in {attr}",
+                    id(user)
+                );
+            }
         }
     }
 }
