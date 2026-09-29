@@ -55,6 +55,21 @@ describe("TimeInputWithControls", () => {
     expect(input.value).toBe("2024-01-15T10:00");
   });
 
+  it("sets the value to the current time via the Now button", async () => {
+    const user = UserEvent.setup();
+    render(<Controlled />);
+    const input = screen.getByLabelText("time") as HTMLInputElement;
+
+    const before = Date.now();
+    await user.click(screen.getByRole("button", { name: "Now" }));
+    const after = Date.now();
+
+    // datetime-local has minute precision, so compare at that granularity.
+    const shown = new Date(input.value).getTime();
+    expect(shown).toBeGreaterThanOrEqual(before - 60_000);
+    expect(shown).toBeLessThanOrEqual(after);
+  });
+
   it("copies another field's value in via the copyFrom button", async () => {
     const user = UserEvent.setup();
     render(<ControlledPair />);
