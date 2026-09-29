@@ -144,7 +144,7 @@ behind something that changes the host a client sees. `WEB_BASE_URL` (see
 CLAUDE.md) doubles as the origin the `authorization_endpoint` metadata points
 the browser at, via the shared `base_url::web_base_url()` helper.
 
-### Connected AI apps (list + revoke)
+### Connected apps (list + revoke)
 
 Once a user has approved a client, `User.oauthGrants` (guarded the same way as
 `user(id)` — the user themselves, or a super user) lists their authorized
@@ -228,7 +228,7 @@ validation error) comes back as an ordinary JSON-RPC *success* whose
 error — so a client can show it inline rather than treating the whole request
 as failed.
 
-**Revoking access:** under Settings → Connected AI apps (see above), or by
+**Revoking access:** under Settings → Connected apps (see above), or by
 disabling the user, which blocks every credential kind immediately.
 
 **Local testing:** `make dev-local` runs `poem-local` with a permissive CORS

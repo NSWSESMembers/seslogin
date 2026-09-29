@@ -1,4 +1,4 @@
-//! Coverage for the "connected AI apps" GraphQL surface added in PR 3:
+//! Coverage for the "connected apps" GraphQL surface added in PR 3:
 //! `User.oauthGrants` visibility and `revokeOauthGrant` authorization.
 //!
 //! Runs real GraphQL documents through `graphql::build_schema`, the same way

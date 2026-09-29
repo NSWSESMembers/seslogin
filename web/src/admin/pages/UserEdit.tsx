@@ -209,9 +209,9 @@ export default function UserEdit() {
         </FieldList>
       </form>
 
-      <SectionHeading>Connected AI apps</SectionHeading>
+      <SectionHeading>Connected apps</SectionHeading>
       {user.oauthGrants.length === 0 && (
-        <p className="my-4">No AI apps connected.</p>
+        <p className="my-4">No apps connected.</p>
       )}
       {user.oauthGrants.length > 0 && (
         <AdminTable>

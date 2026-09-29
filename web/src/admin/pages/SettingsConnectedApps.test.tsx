@@ -47,7 +47,7 @@ describe("SettingsConnectedApps", () => {
     });
 
     expect(
-      await screen.findByText("No AI apps connected yet."),
+      await screen.findByText("No apps connected yet."),
     ).toBeInTheDocument();
   });
 
@@ -101,7 +101,7 @@ describe("SettingsConnectedApps", () => {
     });
 
     expect(
-      await screen.findByText("No AI apps connected yet."),
+      await screen.findByText("No apps connected yet."),
     ).toBeInTheDocument();
 
     confirmSpy.mockRestore();
