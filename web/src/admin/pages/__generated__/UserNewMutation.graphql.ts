@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<68ccb470e3c2dd844c777cb69317026e>>
+ * @generated SignedSource<<d11204f13c855c8afd6c6634d7fd2184>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -13,6 +13,7 @@ export type UserNewMutation$variables = {
   email: string;
   isSuper: boolean;
   locationGrants: ReadonlyArray<string>;
+  readOnlyLocationGrants: ReadonlyArray<string>;
 };
 export type UserNewMutation$data = {
   readonly createUser: {
@@ -41,6 +42,11 @@ var v0 = [
     "defaultValue": null,
     "kind": "LocalArgument",
     "name": "locationGrants"
+  },
+  {
+    "defaultValue": null,
+    "kind": "LocalArgument",
+    "name": "readOnlyLocationGrants"
   }
 ],
 v1 = [
@@ -61,6 +67,11 @@ v1 = [
         "kind": "Variable",
         "name": "locationGrants",
         "variableName": "locationGrants"
+      },
+      {
+        "kind": "Variable",
+        "name": "readOnlyLocationGrants",
+        "variableName": "readOnlyLocationGrants"
       }
     ],
     "concreteType": "User",
@@ -104,16 +115,16 @@ return {
     "selections": (v1/*: any*/)
   },
   "params": {
-    "cacheID": "e03e9e49f0e3d4258293319f02c7a97a",
+    "cacheID": "3571735fa491d8f212623762f007c493",
     "id": null,
     "metadata": {},
     "name": "UserNewMutation",
     "operationKind": "mutation",
-    "text": "mutation UserNewMutation(\n  $email: String!\n  $isSuper: Boolean!\n  $locationGrants: [String!]!\n) {\n  createUser(email: $email, isSuper: $isSuper, locationGrants: $locationGrants) {\n    id\n    email\n  }\n}\n"
+    "text": "mutation UserNewMutation(\n  $email: String!\n  $isSuper: Boolean!\n  $locationGrants: [String!]!\n  $readOnlyLocationGrants: [String!]!\n) {\n  createUser(email: $email, isSuper: $isSuper, locationGrants: $locationGrants, readOnlyLocationGrants: $readOnlyLocationGrants) {\n    id\n    email\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "98899e77c398636555cce92654415dcf";
+(node as any).hash = "9920a6e87b878e107761c71b4968ed4d";
 
 export default node;

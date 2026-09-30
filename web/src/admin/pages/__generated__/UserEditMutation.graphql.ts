@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<e9b34eef1ad661aeefc3ba322beb11cc>>
+ * @generated SignedSource<<8748700dd344b158c43143fa0863a678>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -16,6 +16,7 @@ export type UserEditMutation$variables = {
   isDev: boolean;
   isSuper: boolean;
   locationGrants: ReadonlyArray<string>;
+  readOnlyLocationGrants: ReadonlyArray<string>;
 };
 export type UserEditMutation$data = {
   readonly updateUser: {
@@ -24,6 +25,7 @@ export type UserEditMutation$data = {
     readonly isDev: boolean;
     readonly isSuper: boolean;
     readonly locationGrantIds: ReadonlyArray<string>;
+    readonly readOnlyLocationGrantIds: ReadonlyArray<string>;
   };
 };
 export type UserEditMutation = {
@@ -62,7 +64,12 @@ v5 = {
   "kind": "LocalArgument",
   "name": "locationGrants"
 },
-v6 = [
+v6 = {
+  "defaultValue": null,
+  "kind": "LocalArgument",
+  "name": "readOnlyLocationGrants"
+},
+v7 = [
   {
     "alias": null,
     "args": [
@@ -95,6 +102,11 @@ v6 = [
         "kind": "Variable",
         "name": "locationGrants",
         "variableName": "locationGrants"
+      },
+      {
+        "kind": "Variable",
+        "name": "readOnlyLocationGrants",
+        "variableName": "readOnlyLocationGrants"
       }
     ],
     "concreteType": "User",
@@ -136,6 +148,13 @@ v6 = [
         "kind": "ScalarField",
         "name": "locationGrantIds",
         "storageKey": null
+      },
+      {
+        "alias": null,
+        "args": null,
+        "kind": "ScalarField",
+        "name": "readOnlyLocationGrantIds",
+        "storageKey": null
       }
     ],
     "storageKey": null
@@ -149,12 +168,13 @@ return {
       (v2/*: any*/),
       (v3/*: any*/),
       (v4/*: any*/),
-      (v5/*: any*/)
+      (v5/*: any*/),
+      (v6/*: any*/)
     ],
     "kind": "Fragment",
     "metadata": null,
     "name": "UserEditMutation",
-    "selections": (v6/*: any*/),
+    "selections": (v7/*: any*/),
     "type": "MutationRoot",
     "abstractKey": null
   },
@@ -166,23 +186,24 @@ return {
       (v4/*: any*/),
       (v3/*: any*/),
       (v5/*: any*/),
+      (v6/*: any*/),
       (v1/*: any*/)
     ],
     "kind": "Operation",
     "name": "UserEditMutation",
-    "selections": (v6/*: any*/)
+    "selections": (v7/*: any*/)
   },
   "params": {
-    "cacheID": "df6db32ceb50ef2b8d0134f48000abf9",
+    "cacheID": "f86cbdc47f9321c833780e0c5893c921",
     "id": null,
     "metadata": {},
     "name": "UserEditMutation",
     "operationKind": "mutation",
-    "text": "mutation UserEditMutation(\n  $id: ID!\n  $email: String!\n  $isSuper: Boolean!\n  $isDev: Boolean!\n  $locationGrants: [String!]!\n  $enabled: Boolean!\n) {\n  updateUser(id: $id, email: $email, isSuper: $isSuper, isDev: $isDev, locationGrants: $locationGrants, enabled: $enabled) {\n    id\n    email\n    isSuper\n    isDev\n    locationGrantIds\n  }\n}\n"
+    "text": "mutation UserEditMutation(\n  $id: ID!\n  $email: String!\n  $isSuper: Boolean!\n  $isDev: Boolean!\n  $locationGrants: [String!]!\n  $readOnlyLocationGrants: [String!]!\n  $enabled: Boolean!\n) {\n  updateUser(id: $id, email: $email, isSuper: $isSuper, isDev: $isDev, locationGrants: $locationGrants, readOnlyLocationGrants: $readOnlyLocationGrants, enabled: $enabled) {\n    id\n    email\n    isSuper\n    isDev\n    locationGrantIds\n    readOnlyLocationGrantIds\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "5fd479c95d3f14a6aae2eb5e279d6b6a";
+(node as any).hash = "139c15623d9297b893aa00ce8ef66735";
 
 export default node;

@@ -9,7 +9,12 @@ import { useNotify } from "../components/useNotify";
 import { FieldList, FormField } from "../../components/ui/FormField";
 import TextInput from "../../components/ui/TextInput";
 import { Button } from "../../components/ui/Button";
-import MultiCombobox from "../../components/ui/MultiCombobox";
+import LocationRolesField from "../components/LocationRolesField";
+import {
+  joinLocationRoles,
+  splitLocationRoles,
+  type LocationRoleEntry,
+} from "../components/locationRoles";
 import { AdminTable, Th, Td } from "../../components/ui/Table";
 import { SectionHeading } from "../../components/ui/SectionHeading";
 import { formatFullDateTime } from "../../lib/time";
@@ -30,6 +35,7 @@ export default function UserEdit() {
           isDev
           enabled
           locationGrantIds
+          readOnlyLocationGrantIds
           oauthGrants {
             id
             clientName
@@ -55,6 +61,7 @@ export default function UserEdit() {
         $isSuper: Boolean!
         $isDev: Boolean!
         $locationGrants: [String!]!
+        $readOnlyLocationGrants: [String!]!
         $enabled: Boolean!
       ) {
         updateUser(
@@ -63,6 +70,7 @@ export default function UserEdit() {
           isSuper: $isSuper
           isDev: $isDev
           locationGrants: $locationGrants
+          readOnlyLocationGrants: $readOnlyLocationGrants
           enabled: $enabled
         ) {
           id
@@ -70,6 +78,7 @@ export default function UserEdit() {
           isSuper
           isDev
           locationGrantIds
+          readOnlyLocationGrantIds
         }
       }
     `,
@@ -80,9 +89,11 @@ export default function UserEdit() {
     const isSuper = formData.get("super") === "on";
     const isDev = formData.get("dev") === "on";
     const enabled = formData.get("enabled") === "on";
-    const locationGrants = formData
-      .getAll("locations")
-      .map((v) => v.toString());
+    // A super user has access everywhere, so the role editor is hidden and
+    // both grant lists are cleared.
+    const { locationGrants, readOnlyLocationGrants } = isSuper
+      ? { locationGrants: [], readOnlyLocationGrants: [] }
+      : splitLocationRoles(roles);
 
     try {
       await new Promise((resolve, reject) => {
@@ -93,6 +104,7 @@ export default function UserEdit() {
             isSuper,
             isDev,
             locationGrants,
+            readOnlyLocationGrants,
             enabled,
           },
           onCompleted: resolve,
@@ -143,6 +155,9 @@ export default function UserEdit() {
   const [isSuper, setIsSuper] = useState(user.isSuper);
   const [isDev, setIsDev] = useState(user.isDev);
   const [enabled, setEnabled] = useState(user.enabled);
+  const [roles, setRoles] = useState<LocationRoleEntry[]>(() =>
+    joinLocationRoles(user.locationGrantIds, user.readOnlyLocationGrantIds),
+  );
 
   return (
     <>
@@ -188,16 +203,11 @@ export default function UserEdit() {
           </FormField>
           {!isSuper && (
             <FormField label={<label htmlFor="locations">Locations</label>}>
-              <MultiCombobox
+              <LocationRolesField
                 id="locations"
-                name="locations"
-                options={locations.map((location) => ({
-                  value: location.id,
-                  label: location.name,
-                }))}
-                defaultValue={user.locationGrantIds}
-                placeholder="Search locations…"
-                emptyText="No locations match"
+                locations={locations.map((l) => ({ id: l.id, name: l.name }))}
+                value={roles}
+                onChange={setRoles}
               />
             </FormField>
           )}
