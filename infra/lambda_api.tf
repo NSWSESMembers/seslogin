@@ -25,6 +25,11 @@ resource "aws_lambda_function" "api" {
       # Member-facing period edit links. Set explicitly so the bare apex is used
       # rather than the first WEBAUTHN_RP_ORIGIN entry (new.seslogin.com).
       WEB_BASE_URL = "https://seslogin.com"
+      # OAuth issuer and MCP resource URLs. Required behind CloudFront: Host isn't
+      # forwarded, so the fallback would name the Function URL's host instead. The
+      # apex, like WEB_BASE_URL; new.seslogin.com serves the same site but isn't
+      # the advertised MCP host.
+      API_BASE_URL = "https://seslogin.com"
     }
   }
 

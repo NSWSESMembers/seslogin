@@ -34,6 +34,36 @@ resource "aws_s3_bucket_policy" "prod_web" {
   })
 }
 
+# CORS for the MCP/OAuth endpoints, which browser-based MCP clients call from
+# their own origin (the web app and consent page are same-origin and need none).
+# Any origin is allowed: these endpoints are bearer-token/PKCE only and never
+# read cookies, so there's no ambient credential for a foreign page to ride on.
+# The headers come from here rather than the Function URL's CORS config because
+# the viewer's Origin isn't forwarded, so that config never fires through
+# CloudFront; origin_override makes this the one source either way. A policy
+# only adds headers, so the handler itself answers OPTIONS with 204.
+resource "aws_cloudfront_response_headers_policy" "prod_oauth_mcp_cors" {
+  name = "seslogin-prod-oauth-mcp-cors"
+
+  cors_config {
+    access_control_allow_credentials = false
+    access_control_allow_origins {
+      items = ["*"]
+    }
+    access_control_allow_methods {
+      items = ["GET", "POST", "DELETE", "OPTIONS"]
+    }
+    access_control_allow_headers {
+      items = ["Authorization", "Content-Type", "Mcp-Protocol-Version", "Mcp-Session-Id", "Last-Event-Id"]
+    }
+    access_control_expose_headers {
+      items = ["WWW-Authenticate", "Mcp-Session-Id", "Mcp-Protocol-Version"]
+    }
+    access_control_max_age_sec = 600
+    origin_override            = true
+  }
+}
+
 resource "aws_cloudfront_distribution" "prod" {
   aliases             = ["seslogin.com", "new.seslogin.com"]
   enabled             = true
@@ -46,6 +76,21 @@ resource "aws_cloudfront_distribution" "prod" {
     origin_id                = "prod-web-s3"
     domain_name              = aws_s3_bucket.prod_web.bucket_regional_domain_name
     origin_access_control_id = aws_cloudfront_origin_access_control.prod_web.id
+  }
+
+  # The API, served same-origin at /graphql so the browser needs no CORS
+  # preflight, plus the MCP endpoint and its OAuth authorization server. The
+  # Function URL is still public (AuthType=NONE) and keeps its own CORS config,
+  # so builds still calling it directly keep working.
+  origin {
+    origin_id   = "prod-api-lambda"
+    domain_name = trimsuffix(trimprefix(aws_lambda_function_url.api.function_url, "https://"), "/")
+    custom_origin_config {
+      http_port              = 80
+      https_port             = 443
+      origin_protocol_policy = "https-only"
+      origin_ssl_protocols   = ["TLSv1.2"]
+    }
   }
 
   default_cache_behavior {
@@ -71,6 +116,44 @@ resource "aws_cloudfront_distribution" "prod" {
     cached_methods         = ["GET", "HEAD"]
     compress               = true
     cache_policy_id        = "658327ea-f89d-4fab-a63d-7e88639e58f6"
+  }
+
+  # Never cached (managed CachingDisabled policy). The origin request policy
+  # forwards the API's headers but not Host, which a Function URL rejects
+  # (aws_cloudfront_origin_request_policy.api, defined in web_test.tf). The
+  # custom_error_response blocks below are distribution-wide, so an API 403/404
+  # would be swapped for index.html: the handler never returns either (errors
+  # are 400/401/500/503), and a Function URL 403 means the origin is
+  # misconfigured anyway.
+  ordered_cache_behavior {
+    path_pattern             = "/graphql"
+    target_origin_id         = "prod-api-lambda"
+    viewer_protocol_policy   = "https-only"
+    allowed_methods          = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
+    cached_methods           = ["GET", "HEAD"]
+    compress                 = true
+    cache_policy_id          = "4135ea2d-6df8-44a3-9df3-4b5a84be39ad"
+    origin_request_policy_id = aws_cloudfront_origin_request_policy.api.id
+  }
+
+  # The MCP endpoint and its OAuth authorization server, on the same Lambda and
+  # with the same settings as /graphql plus cross-origin CORS (see
+  # prod_oauth_mcp_cors). The 403/404 rewrite below is safe here too: these
+  # handlers return only 200/201/202/204/400/401/405/500/503. API_BASE_URL on
+  # the Lambda must name this host, since CloudFront doesn't forward Host.
+  dynamic "ordered_cache_behavior" {
+    for_each = ["/mcp", "/oauth/*", "/.well-known/oauth-*"]
+    content {
+      path_pattern               = ordered_cache_behavior.value
+      target_origin_id           = "prod-api-lambda"
+      viewer_protocol_policy     = "https-only"
+      allowed_methods            = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
+      cached_methods             = ["GET", "HEAD"]
+      compress                   = true
+      cache_policy_id            = "4135ea2d-6df8-44a3-9df3-4b5a84be39ad"
+      origin_request_policy_id   = aws_cloudfront_origin_request_policy.api.id
+      response_headers_policy_id = aws_cloudfront_response_headers_policy.prod_oauth_mcp_cors.id
+    }
   }
 
   # OAC returns 403 (not 404) for missing S3 keys — catch both for SPA routing
