@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { Dialog, DialogTitle } from "../../components/ui/Dialog";
 import { Button } from "../../components/ui/Button";
 import { MEMBER_ID_LENGTH } from "../../lib/memberId";
@@ -26,11 +27,10 @@ const digitBoxCurrent = "border-accent";
 const digitBoxIdle = "border-transparent";
 
 /**
- * One key. Pressing it must not move focus: the member ID input behind the
- * dialog keeps it, so a barcode scan or a keyboard is still typed into the same
- * entry while the pad is open, and a key that took focus would also start the
- * input's refocus timer on every tap. Preventing the default on mousedown keeps
- * focus where it is, and `tabIndex={-1}` keeps the pad out of the tab order.
+ * One key. Pressing it must not take focus, so the pad's own keyboard handling
+ * (below) keeps working for a barcode scan or a keyboard after a tap. Preventing
+ * the default on mousedown keeps focus where it is, and `tabIndex={-1}` keeps
+ * the pad out of the tab order.
  */
 function Key(props: {
   className: string;
@@ -62,6 +62,11 @@ function Key(props: {
  * the input stays the single source of truth and a scanner, a physical keyboard
  * and this pad can all be used against the same entry. `value` is that input's
  * current text, shown here because the dialog covers the input itself.
+ *
+ * The input is not focused while the pad is open — on an iPad a focused input
+ * brings up the system keyboard on top of the pad — so a barcode scanner or
+ * physical keyboard would otherwise type into nothing. The pad listens for
+ * those keys itself and treats them as presses of its own keys.
  */
 export default function ScanNumberPadDialog(props: {
   value: string;
@@ -72,6 +77,42 @@ export default function ScanNumberPadDialog(props: {
   submitDisabled?: boolean;
 }) {
   const { value, onDigit, onDelete, onSubmit, onClose, submitDisabled } = props;
+
+  // Held in a ref so the listener is attached once, not on every keystroke.
+  const handlersRef = useRef(props);
+  useEffect(() => {
+    handlersRef.current = props;
+  });
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.ctrlKey || event.metaKey || event.altKey) {
+        return;
+      }
+      const handlers = handlersRef.current;
+      if (/^[0-9]$/.test(event.key)) {
+        handlers.onDigit(event.key);
+      } else if (event.key === "Backspace") {
+        handlers.onDelete();
+      } else if (event.key === "Enter") {
+        // A scanner's trailing newline lands here, so Enter submits whenever
+        // the pad's own Enter key would.
+        if (!handlers.submitDisabled) {
+          handlers.onSubmit();
+        }
+      } else if (event.key === "Escape") {
+        handlers.onClose();
+      } else {
+        return;
+      }
+      event.preventDefault();
+    }
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, []);
 
   return (
     <Dialog onDismiss={onClose} width="w-auto">

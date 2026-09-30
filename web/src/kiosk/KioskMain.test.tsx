@@ -480,9 +480,10 @@ describe("KioskMain number pad", () => {
     const user = await setupNumberPadTest();
     await openPad(user);
 
-    // What a barcode scanner does: the keystrokes and their trailing newline go
-    // to the member ID input, which still has focus behind the dialog.
-    await user.type(screen.getByRole("textbox"), FOUND_USER + "{enter}");
+    // What a barcode scanner does: keystrokes and a trailing newline. The
+    // input is not focused behind the dialog, so the pad picks them up itself.
+    await user.keyboard(FOUND_USER + "{Enter}");
+    expect(screen.getByRole("textbox")).toHaveValue("");
 
     await waitFor(() =>
       expect(screen.queryByText("Enter your SES ID")).not.toBeInTheDocument(),
@@ -519,13 +520,50 @@ describe("KioskMain number pad", () => {
     expect(textbox).toHaveValue("01234567");
   });
 
-  it("leaves focus in the member ID input so a scan is never lost", async () => {
+  it("keeps focus out of the member ID input so a touch keyboard stays hidden", async () => {
+    const user = await setupNumberPadTest();
+    const textbox = screen.getByRole("textbox");
+    expect(document.activeElement).toBe(textbox);
+
+    await openPad(user);
+    expect(document.activeElement).not.toBe(textbox);
+
+    await tap(user, "7");
+    expect(textbox).toHaveValue("7");
+    expect(document.activeElement).not.toBe(textbox);
+  });
+
+  it("takes typed digits and Backspace from a physical keyboard", async () => {
     const user = await setupNumberPadTest();
     await openPad(user);
     const textbox = screen.getByRole("textbox");
 
-    await tap(user, "7");
-    expect(document.activeElement).toBe(textbox);
+    await user.keyboard("12a3{Backspace}");
+    expect(textbox).toHaveValue("12");
+  });
+
+  it("closes on Escape and gives focus back to the input", async () => {
+    const user = await setupNumberPadTest();
+    await openPad(user);
+    const textbox = screen.getByRole("textbox");
+
+    await user.keyboard("{Escape}");
+    await waitFor(() =>
+      expect(screen.queryByText("Enter your SES ID")).not.toBeInTheDocument(),
+    );
+    // Not straight away: on an iPad, a focus made while handling the tap that
+    // closed the pad would bring the system keyboard up in its place.
+    expect(document.activeElement).not.toBe(textbox);
+    await waitFor(() => expect(document.activeElement).toBe(textbox), {
+      timeout: 3_000,
+    });
+  });
+
+  it("asks a touch screen for its number keyboard", async () => {
+    await setupNumberPadTest();
+    const textbox = screen.getByRole("textbox");
+    expect(textbox).toHaveAttribute("inputmode", "numeric");
+    expect(textbox).toHaveAttribute("pattern", "[0-9]*");
   });
 
   it("cannot submit an empty entry", async () => {
