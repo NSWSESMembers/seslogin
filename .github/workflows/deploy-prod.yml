@@ -80,7 +80,9 @@ jobs:
       - name: Build web app
         working-directory: ./web
         env:
-          VITE_API_URL: https://zba3de77v7oiwjwfzkyilnwgyu0lpddq.lambda-url.ap-southeast-2.on.aws/
+          # Relative: the site is served at both seslogin.com and new.seslogin.com, and
+          # /graphql is routed to the API by the same CloudFront distribution.
+          VITE_API_URL: /graphql
           VITE_BEACON_URL: ${{ vars.BEACON_URL }}
           VITE_TURNSTILE_SITE_KEY: ${{ vars.TURNSTILE_SITE_KEY }}
           VITE_CLIENT_VERSION: ${{ github.sha }}
