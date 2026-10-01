@@ -9,6 +9,7 @@ import Status from "./pages/Status";
 import { useParams } from "react-router";
 import { setKioskProfile, setContactFailureSource } from "../lib/clientInfo";
 import { getKioskServerStatus } from "./lib/kioskServerStatus";
+import { startWakeLock } from "./lib/wakeLock";
 
 // Only the kiosk polls the server on a timer, so only the kiosk has a failure count
 // worth reporting. Registered at module scope so it is in place before the first
@@ -86,6 +87,10 @@ function Router() {
       }
     };
   }, [theme]);
+
+  // Both kiosk faces are meant to sit unattended on a wall or a desk, so neither
+  // should let the device dim and auto-lock.
+  useEffect(() => startWakeLock(), []);
 
   if (session?.config?.status) {
     return <Status />;

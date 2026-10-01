@@ -1,4 +1,9 @@
-import { useEffect, useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from "react";
 import { Dialog, DialogActions, DialogTitle } from "../../components/ui/Dialog";
 import { Button } from "../../components/ui/Button";
 import { getClientUpdateState } from "../../lib/clientUpdate";
@@ -10,6 +15,15 @@ import {
 import { useEnvironmentInfo } from "../../lib/environmentInfo";
 import { formatFullDateTime, formatShortDuration } from "../../lib/time";
 import { getKioskServerStatus } from "../lib/kioskServerStatus";
+import {
+  isAppleMobileSafari,
+  isFullscreen,
+  isFullscreenSupported,
+  isStandalone,
+  subscribeFullscreen,
+  toggleFullscreen,
+} from "../lib/fullscreen";
+import { getWakeLockStatus, subscribeWakeLock } from "../lib/wakeLock";
 import { POLL_INTERVAL_MS } from "./LivePeriodsProvider";
 import KioskReEnrollPanel from "./KioskReEnrollPanel";
 import useKioskEnvironment from "./useKioskEnvironment";
@@ -91,6 +105,23 @@ export default function KioskStatusDialog({
   const serverStatus = getKioskServerStatus();
   const { pendingVersion } = getClientUpdateState();
   const updateLeases = getClientUpdateLeases();
+
+  // Subscribed rather than read on the tick: the React Compiler would cache a bare
+  // getter call with no inputs, freezing whatever it returned on first render.
+  const wakeLock = useSyncExternalStore(subscribeWakeLock, getWakeLockStatus);
+  const standalone = isStandalone();
+  const canFullscreen = !standalone && isFullscreenSupported();
+  const fullscreen = useSyncExternalStore(subscribeFullscreen, isFullscreen);
+  const [fullscreenError, setFullscreenError] = useState<string | null>(null);
+
+  const onToggleFullscreen = () => {
+    setFullscreenError(null);
+    toggleFullscreen().catch((error: unknown) => {
+      setFullscreenError(
+        error instanceof Error ? error.message : String(error),
+      );
+    });
+  };
 
   const checkInAgeSecs =
     serverStatus.lastSuccessAt == null
@@ -208,8 +239,49 @@ export default function KioskStatusDialog({
               : "pending"}
         </Row>
 
+        <Row label="Keep awake">
+          {wakeLock.state === "held" ? (
+            <span className="text-green-700 dark:text-green-400">
+              on, screen will not sleep
+            </span>
+          ) : wakeLock.state === "unsupported" ? (
+            <span className="text-amber-700 dark:text-amber-400">
+              not supported, set the device's auto-lock to Never
+            </span>
+          ) : wakeLock.state === "pending" ? (
+            "requesting"
+          ) : (
+            <span className="text-amber-700 dark:text-amber-400">
+              not held{wakeLock.lastError ? `: ${wakeLock.lastError}` : ""},
+              retrying on next tap
+            </span>
+          )}
+        </Row>
+        <Row label="Display">
+          {standalone
+            ? "home screen app"
+            : fullscreen
+              ? "full screen"
+              : "browser"}
+        </Row>
+
         <Row label="Config">{formatConfigFlags(session?.config ?? {})}</Row>
       </dl>
+
+      {isAppleMobileSafari() && !standalone && (
+        <p className="text-sm text-neutral-500 dark:text-neutral-400">
+          On an iPad, the most reliable full screen kiosk is a home screen app:
+          tap Share, then Add to Home Screen, and open the kiosk from the new
+          icon. The home screen app keeps its own storage, so it needs enrolling
+          again. Guided Access (Settings &gt; Accessibility) then stops anyone
+          leaving it.
+        </p>
+      )}
+      {fullscreenError != null && (
+        <p className="text-sm text-red-700 dark:text-red-400">
+          Could not change full screen: {fullscreenError}
+        </p>
+      )}
 
       <KioskReEnrollPanel currentKioskName={session?.name ?? null} />
 
@@ -217,6 +289,11 @@ export default function KioskStatusDialog({
         <Button variant="secondary" onClick={onClose}>
           Close
         </Button>
+        {canFullscreen && (
+          <Button variant="secondary" onClick={onToggleFullscreen}>
+            {fullscreen ? "Exit full screen" : "Full screen"}
+          </Button>
+        )}
         <Button variant="kiosk" onClick={() => window.location.reload()}>
           Reload
         </Button>
