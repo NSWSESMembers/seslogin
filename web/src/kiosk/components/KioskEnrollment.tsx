@@ -1,4 +1,4 @@
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import {
   Panel,
   PanelBox,
@@ -11,6 +11,25 @@ import { FingerprintChip } from "../../components/FingerprintChip";
 import { fetchKeySessionId } from "../lib/enrollmentKey";
 import { useEnrollmentQr } from "../lib/useEnrollmentQr";
 import { pollDelayMs } from "../lib/enrollPolling";
+import { isIPad, isStandalone } from "../lib/fullscreen";
+import KioskHomeScreenHelp from "./KioskHomeScreenHelp";
+
+/**
+ * Remembers "Ignore" for the rest of the tab, so a reload while waiting for an admin
+ * (a client update, say) doesn't put the instructions back over the QR code.
+ */
+const HOME_SCREEN_HELP_DISMISSED_KEY = "kiosk_home_screen_help_dismissed";
+
+function shouldOfferHomeScreen(): boolean {
+  if (!isIPad() || isStandalone()) {
+    return false;
+  }
+  try {
+    return sessionStorage.getItem(HOME_SCREEN_HELP_DISMISSED_KEY) == null;
+  } catch {
+    return true;
+  }
+}
 
 const STEPS: { icon: ReactNode; text: ReactNode }[] = [
   {
@@ -75,6 +94,16 @@ export default function KioskEnrollment({
   onUseCodeInstead: () => void;
 }) {
   const { info, fingerprint, enrollUrl, qrDataUrl } = useEnrollmentQr(profile);
+  const [offerHomeScreen, setOfferHomeScreen] = useState(shouldOfferHomeScreen);
+
+  const ignoreHomeScreen = () => {
+    try {
+      sessionStorage.setItem(HOME_SCREEN_HELP_DISMISSED_KEY, "1");
+    } catch {
+      // Storage blocked: dismissing for this render is still what was asked for.
+    }
+    setOfferHomeScreen(false);
+  };
 
   useEffect(() => {
     if (info == null) return;
@@ -111,6 +140,12 @@ export default function KioskEnrollment({
     // `onEnrolled` is a stable useCallback from KioskEnvironment and `info` is set once
     // per profile, so this poll loop is set up once rather than on every render.
   }, [info, onEnrolled]);
+
+  // The key and poll above keep running behind the instructions, so "Ignore" lands
+  // straight on a QR code that is already live.
+  if (offerHomeScreen) {
+    return <KioskHomeScreenHelp onIgnore={ignoreHomeScreen} />;
+  }
 
   return (
     <Panel>

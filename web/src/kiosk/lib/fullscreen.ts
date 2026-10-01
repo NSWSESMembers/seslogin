@@ -73,3 +73,15 @@ export function isStandalone(): boolean {
 export function isAppleMobileSafari(): boolean {
   return "standalone" in navigator;
 }
+
+/**
+ * An iPad, in any browser. iPadOS 13+ asks for desktop sites by default, so its user
+ * agent claims to be a Mac; a Mac with a multi-touch screen is the tell, since no real
+ * Mac has one.
+ */
+export function isIPad(): boolean {
+  const ua = navigator.userAgent;
+  return (
+    /iPad/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1)
+  );
+}
