@@ -237,7 +237,10 @@ export default function ScanScreenMain(props: {
   const inputRef = useRef<HTMLInputElement>(null);
   const refocusTimeoutIdRef = useRef<number | null>(null);
   const clearTimeoutIdRef = useRef<number | null>(null);
-  const [padOpen, setPadOpen] = useState(false);
+  const [padOpen, setPadOpenState] = useState(false);
+  // The same flag, readable from the timers and callbacks below that outlive
+  // the render they were created in.
+  const padOpenRef = useRef(false);
   // A mirror of the input's text, kept only for what React has to render from
   // it: the pad's own digit display, and whether the button beside the input is
   // the submit arrow or the one that opens the pad. The input itself stays the
@@ -264,13 +267,57 @@ export default function ScanScreenMain(props: {
 
   // Read the lease state live rather than through the render snapshot: this runs
   // from timers and callbacks that outlive the render they were created in.
+  //
+  // The input is also left alone while the number pad is open. On a touch
+  // screen (an iPad) focusing it brings up the system keyboard over the pad, so
+  // the pad keeps focus out of the input and takes keyboard input itself — see
+  // ScanNumberPadDialog.
   const focusInput = useCallback(() => {
     clearRefocusTimeout();
-    if (isScanFocusSuspended()) {
+    if (isScanFocusSuspended() || padOpenRef.current) {
       return;
     }
     inputRef.current?.focus();
   }, [clearRefocusTimeout]);
+
+  // Take focus back after SCAN_INPUT_REFOCUS_TIMEOUT_MS rather than now. Also
+  // used when the pad closes: iOS shows its keyboard for a focus() made while
+  // handling a tap (and WebKit carries that tap through timers shorter than a
+  // second), so refocusing straight from the pad's Close or Enter key would
+  // swap the pad for the system keyboard.
+  const scheduleRefocus = useCallback(() => {
+    clearRefocusTimeout();
+    if (isScanFocusSuspended() || padOpenRef.current) {
+      return;
+    }
+    refocusTimeoutIdRef.current = window.setTimeout(() => {
+      refocusTimeoutIdRef.current = null;
+      // Re-checked here as well as above: the blur that started this timer is
+      // what hands focus to an overlay, so the overlay's lease is usually not
+      // registered yet when the timer is scheduled.
+      if (isScanFocusSuspended() || padOpenRef.current) {
+        return;
+      }
+      if (
+        inputRef.current !== null &&
+        document.activeElement !== inputRef.current
+      ) {
+        inputRef.current.focus();
+      }
+    }, SCAN_INPUT_REFOCUS_TIMEOUT_MS);
+  }, [clearRefocusTimeout]);
+
+  const setPadOpen = useCallback(
+    (open: boolean) => {
+      padOpenRef.current = open;
+      setPadOpenState(open);
+      if (open) {
+        clearRefocusTimeout();
+        inputRef.current?.blur();
+      }
+    },
+    [clearRefocusTimeout],
+  );
 
   const syncMemberIdText = useCallback(() => {
     setMemberIdText(inputRef.current?.value ?? "");
@@ -317,11 +364,12 @@ export default function ScanScreenMain(props: {
   // than of the key that was pressed.
   async function submitMemberId(rawMemberId: string) {
     const memberId = rawMemberId.trim();
+    const refocus = padOpenRef.current ? scheduleRefocus : focusInput;
     setPadOpen(false);
     if (memberId === "") {
       // Ignore empty submissions (e.g. Enter pressed on a blank/whitespace input)
       // so we never fire scanRegister2 with an empty registration number.
-      focusInput();
+      refocus();
       return;
     }
 
@@ -330,7 +378,7 @@ export default function ScanScreenMain(props: {
     const isValidMemberId = validateMemberId(memberId);
 
     if (!isValidMemberId) {
-      focusInput();
+      refocus();
       return;
     }
 
@@ -343,10 +391,11 @@ export default function ScanScreenMain(props: {
 
   // The number pad edits the input's value directly rather than holding the
   // typed ID in state: the input stays the single source of truth, so a pad
-  // press, a barcode scan and a keyboard can be mixed on the same entry. Each
-  // press also restarts the clear timeout, which only an `onChange` from real
-  // typing would otherwise do — a half-tapped ID left on screen is discarded on
-  // the same timer as a half-typed one.
+  // press, a barcode scan and a keyboard (which the pad routes here while it is
+  // open) can be mixed on the same entry. Each press also restarts the clear
+  // timeout, which only an `onChange` from real typing would otherwise do — a
+  // half-tapped ID left on screen is discarded on the same timer as a
+  // half-typed one.
   function handleNumberPadDigit(digit: string) {
     const input = inputRef.current;
     if (input === null || input.value.length >= MEMBER_ID_LENGTH) {
@@ -355,7 +404,6 @@ export default function ScanScreenMain(props: {
     input.value = input.value + digit;
     syncMemberIdText();
     scheduleInputClearTimeout();
-    focusInput();
   }
 
   function handleNumberPadDelete() {
@@ -366,7 +414,6 @@ export default function ScanScreenMain(props: {
     input.value = input.value.slice(0, -1);
     syncMemberIdText();
     scheduleInputClearTimeout();
-    focusInput();
   }
 
   function handleNumberPadSubmit() {
@@ -380,8 +427,12 @@ export default function ScanScreenMain(props: {
     <>
       <p className="mt-25 mb-4 text-3xl">Please enter or scan your SES ID</p>
 
+      {/* noValidate: the input's `pattern` is only there to pick the iOS
+          number keyboard, and must not block a submit — a bad ID goes through
+          validateMemberId so the kiosk reports it the usual way. */}
       <form
         autoComplete="off"
+        noValidate
         onSubmit={(submitEvent) => {
           submitEvent.preventDefault();
           handleSubmit(new FormData(submitEvent.target));
@@ -393,27 +444,17 @@ export default function ScanScreenMain(props: {
           name="id"
           maxLength={MEMBER_ID_LENGTH}
           className={`${inputBase} mr-3.75 w-80 py-3 text-center align-middle font-mono text-5xl/snug transition-colors duration-500`}
-          onBlur={() => {
-            clearRefocusTimeout();
-            if (isScanFocusSuspended()) {
-              return;
-            }
-            refocusTimeoutIdRef.current = window.setTimeout(() => {
-              refocusTimeoutIdRef.current = null;
-              // Re-checked here as well as above: the blur that started this
-              // timer is what hands focus to an overlay, so the overlay's lease
-              // is usually not registered yet when the timer is scheduled.
-              if (isScanFocusSuspended()) {
-                return;
-              }
-              if (
-                inputRef.current !== null &&
-                document.activeElement !== inputRef.current
-              ) {
-                inputRef.current.focus();
-              }
-            }, SCAN_INPUT_REFOCUS_TIMEOUT_MS);
-          }}
+          // Member IDs are all digits: ask a touch screen for its number
+          // keyboard rather than the full one. `pattern` is what makes iOS
+          // Safari pick the numeric layout; `type="number"` is avoided because
+          // it would drop leading zeros and add spinner arrows.
+          inputMode="numeric"
+          pattern="[0-9]*"
+          enterKeyHint="go"
+          autoCapitalize="off"
+          autoCorrect="off"
+          spellCheck={false}
+          onBlur={scheduleRefocus}
           onFocus={() => {
             clearRefocusTimeout();
           }}
@@ -435,7 +476,6 @@ export default function ScanScreenMain(props: {
             aria-label="Number pad"
             onClick={() => {
               setPadOpen(true);
-              focusInput();
             }}
           >
             <svg
@@ -488,7 +528,7 @@ export default function ScanScreenMain(props: {
           onSubmit={handleNumberPadSubmit}
           onClose={() => {
             setPadOpen(false);
-            focusInput();
+            scheduleRefocus();
           }}
           submitDisabled={submitDisabled || memberIdText === ""}
         />
