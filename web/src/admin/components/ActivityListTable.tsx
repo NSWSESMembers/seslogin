@@ -17,6 +17,7 @@ import bulletOrange from "../../assets/bullet-orange.svg";
 import bulletGreen from "../../assets/bullet-green.svg";
 import { useUserInfo } from "./useUserInfo";
 import { useNotify } from "./useNotify";
+import useCanEditSelectedLocation from "./useCanEditSelectedLocation";
 import { AdminTable, Th, Td } from "../../components/ui/Table";
 import { Button, ButtonLink } from "../../components/ui/Button";
 import { Popover } from "../../components/ui/Popover";
@@ -71,6 +72,7 @@ function Section<T extends ActivityListTable_period$key>({
   getRowSubLabel,
   isDev,
   showSplit,
+  canEdit,
 }: {
   day: string;
   entries: ReadonlyArray<Entry<T>>;
@@ -78,6 +80,7 @@ function Section<T extends ActivityListTable_period$key>({
   getRowSubLabel?: (p: T) => string | null;
   isDev: boolean;
   showSplit: boolean;
+  canEdit: boolean;
 }) {
   const colSpan = isDev ? 8 : 7;
   const periodCount = entries.length;
@@ -136,6 +139,7 @@ function Section<T extends ActivityListTable_period$key>({
             getRowLabel={getRowLabel}
             getRowSubLabel={getRowSubLabel}
             isDev={isDev}
+            canEdit={canEdit}
           />
         </ErrorBoundary>
       ))}
@@ -190,12 +194,14 @@ function Row<T extends ActivityListTable_period$key>({
   getRowLabel,
   getRowSubLabel,
   isDev,
+  canEdit,
 }: {
   entry: Entry<T>;
   idx: number;
   getRowLabel: (p: T) => string;
   getRowSubLabel?: (p: T) => string | null;
   isDev: boolean;
+  canEdit: boolean;
 }) {
   const period = entry.data;
   const subLabel = getRowSubLabel?.(entry.ref) ?? null;
@@ -331,31 +337,33 @@ function Row<T extends ActivityListTable_period$key>({
         </span>
       </Td>
       <Td options>
-        <div className="flex justify-end gap-1">
-          <ButtonLink size="row" to={`/admin/activity/${period.id}`}>
-            Edit
-          </ButtonLink>
-          {/* Still being trialled, so dev-tagged users only. The guest check is
+        {canEdit && (
+          <div className="flex justify-end gap-1">
+            <ButtonLink size="row" to={`/admin/activity/${period.id}`}>
+              Edit
+            </ButtonLink>
+            {/* Still being trialled, so dev-tagged users only. The guest check is
               the same as Edit's: a guest has no member record to email. */}
-          {isDev && period.personId != null && (
+            {isDev && period.personId != null && (
+              <Button
+                size="row"
+                onClick={sendReminder}
+                disabled={isRemindInFlight}
+                title="Email this member a link to check and correct their time entry"
+              >
+                {isRemindInFlight ? "Sending…" : "Remind"} [dev-only]
+              </Button>
+            )}
             <Button
               size="row"
-              onClick={sendReminder}
-              disabled={isRemindInFlight}
-              title="Email this member a link to check and correct their time entry"
+              variant="danger"
+              onClick={deletePeriod}
+              disabled={isMutationInFlight}
             >
-              {isRemindInFlight ? "Sending…" : "Remind"} [dev-only]
+              Delete
             </Button>
-          )}
-          <Button
-            size="row"
-            variant="danger"
-            onClick={deletePeriod}
-            disabled={isMutationInFlight}
-          >
-            Delete
-          </Button>
-        </div>
+          </div>
+        )}
       </Td>
     </tr>
   );
@@ -383,6 +391,7 @@ export default function ActivityListTable<
   loadMoreError?: string | null;
 }) {
   const { isDev, disaggregateVirtualPeriods } = useUserInfo();
+  const canEdit = useCanEditSelectedLocation();
   const [hideVirtual, setHideVirtual] = useState(false);
   const showSplit = disaggregateVirtualPeriods && !hideVirtual;
   const dayGroupedRows = new Map<string, Array<Entry<T>>>();
@@ -449,6 +458,7 @@ export default function ActivityListTable<
               getRowSubLabel={getRowSubLabel}
               isDev={isDev}
               showSplit={showSplit}
+              canEdit={canEdit}
             />
           ))}
         </tbody>

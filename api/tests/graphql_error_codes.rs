@@ -90,6 +90,7 @@ async fn an_unclassified_resolver_failure_defaults_to_internal() {
             id: "user-1".to_string(),
             is_super: true,
             location_grants: vec![],
+            location_read_only_grants: vec![],
             token_id: None,
             grant_id: None,
         })

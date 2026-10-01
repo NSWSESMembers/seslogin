@@ -1,9 +1,12 @@
 .DS_Store
 .env.secret
 CLAUDE.local.md
+
+# Terraform — .terraform.lock.hcl is committed: it pins the provider version so
+# everyone runs `terraform init` against the same one. Only the working
+# state/cache and secret values are ignored.
 infra/terraform.tfvars
 infra/.terraform/
-infra/.terraform.lock.hcl
 local/mail/
 local/.dynamodb-data/
 local/.dynamodb.pid

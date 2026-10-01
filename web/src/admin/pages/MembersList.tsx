@@ -70,10 +70,12 @@ function Row({
   person,
   idx,
   isDev,
+  canEdit,
 }: {
   person: Person;
   idx: number;
   isDev: boolean;
+  canEdit: boolean;
 }) {
   const { notifyError, notifySuccess } = useNotify();
   const [commitMutation, isMutationInFlight] =
@@ -145,7 +147,7 @@ function Row({
           <ButtonLink size="row" to={`/admin/members/activity/${person.id}`}>
             Activity
           </ButtonLink>
-          {!sesApiPersonId ? (
+          {canEdit && !sesApiPersonId ? (
             <>
               <ButtonLink size="row" to={`/admin/members/${person.id}`}>
                 Edit
@@ -170,6 +172,7 @@ export default function MembersList() {
   const { isDev } = useUserInfo();
   const selectedLocation = useSelectedLocation();
   const locationId = selectedLocation.id;
+  const canEdit = selectedLocation.viewerCanEdit;
   const data = useRetryableLazyLoadQuery<MembersListQuery>(
     graphql`
       query MembersListQuery($location: ID!) @throwOnFieldError {
@@ -250,7 +253,7 @@ export default function MembersList() {
       {location.sesApiHeadquartersId ? (
         <div className="mb-2">
           Last successful member sync: {lastSyncText}{" "}
-          {!syncedRecently && (
+          {canEdit && !syncedRecently && (
             <button
               className="cursor-pointer"
               onClick={triggerSync}
@@ -284,7 +287,13 @@ export default function MembersList() {
           </thead>
           <tbody>
             {filteredPeople.map((person, idx) => (
-              <Row key={person.id} person={person} idx={idx} isDev={isDev} />
+              <Row
+                key={person.id}
+                person={person}
+                idx={idx}
+                isDev={isDev}
+                canEdit={canEdit}
+              />
             ))}
           </tbody>
         </AdminTable>

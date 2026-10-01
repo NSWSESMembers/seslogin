@@ -59,9 +59,15 @@ function Submenu({ items }: { items: SubItem[] }) {
 
 interface SubmenuBarProps {
   isSuper: boolean;
+  // Whether the user may make changes at the selected location. When false the
+  // "New" entries for location-scoped sections are left out. Defaults to true.
+  canEdit?: boolean;
 }
 
-export default function SubmenuBar({ isSuper }: SubmenuBarProps) {
+export default function SubmenuBar({
+  isSuper,
+  canEdit = true,
+}: SubmenuBarProps) {
   const isMembersSection = useMatch("/admin/members/*");
   const isActivitySection = useMatch("/admin/activity/*");
   const isSessionsSection = useMatch("/admin/sessions/*");
@@ -76,7 +82,7 @@ export default function SubmenuBar({ isSuper }: SubmenuBarProps) {
       <Submenu
         items={[
           { to: "/admin/members", label: "List" },
-          { to: "/admin/members/new", label: "New" },
+          ...(canEdit ? [{ to: "/admin/members/new", label: "New" }] : []),
         ]}
       />
     );
@@ -87,7 +93,9 @@ export default function SubmenuBar({ isSuper }: SubmenuBarProps) {
       <Submenu
         items={[
           { to: "/admin/activity", label: "Previous Periods" },
-          { to: "/admin/activity/new", label: "New Period" },
+          ...(canEdit
+            ? [{ to: "/admin/activity/new", label: "New Period" }]
+            : []),
           { to: "/admin/activity/current", label: "Incomplete Periods" },
           { to: "/admin/activity/totals", label: "Totals" },
           { to: "/admin/activity/breakdown", label: "Breakdown" },
@@ -104,7 +112,7 @@ export default function SubmenuBar({ isSuper }: SubmenuBarProps) {
       <Submenu
         items={[
           { to: "/admin/sessions", label: "List" },
-          { to: "/admin/sessions/new", label: "New" },
+          ...(canEdit ? [{ to: "/admin/sessions/new", label: "New" }] : []),
         ]}
       />
     );

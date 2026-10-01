@@ -21,6 +21,7 @@ export const kioskKey = readJson(join(SEED, "kiosk-signing-key.json"));
 export const USER_TOKENS = {
   "super@seslogin.test": "slu_localdev0000000000000000000super",
   "testunit@seslogin.test": "slu_localdev0000000000000000testunit",
+  "readonly@seslogin.test": "slu_localdev0000000000000000readonly",
 };
 
 // Chromium phones home on startup — component updates, the optimisation-hints

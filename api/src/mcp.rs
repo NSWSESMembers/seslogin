@@ -168,8 +168,8 @@ fn initialize_result(params: &Value) -> Value {
 /// A GraphQL `User` object's fields, as every tool that returns a user asks
 /// for them — kept as one literal so the eight tools' documents can't drift
 /// from each other field-by-field.
-const USER_SELECTION: &str =
-    "id email isSuper isDev enabled accessTime locationGrantIds locations { id name }";
+const USER_SELECTION: &str = "id email isSuper isDev enabled accessTime locationGrantIds readOnlyLocationGrantIds \
+     locations { id name }";
 
 fn user_query() -> String {
     format!("query McpUser($id: ID) {{ user(id: $id) {{ {USER_SELECTION} }} }}")
@@ -179,17 +179,19 @@ fn users_query() -> String {
 }
 fn create_user_mutation() -> String {
     format!(
-        "mutation McpCreateUser($email: String!, $isSuper: Boolean!, $locationGrants: [String!]!) \
-         {{ createUser(email: $email, isSuper: $isSuper, locationGrants: $locationGrants) \
-         {{ {USER_SELECTION} }} }}"
+        "mutation McpCreateUser($email: String!, $isSuper: Boolean!, $locationGrants: [String!]!, \
+         $readOnlyLocationGrants: [String!]) \
+         {{ createUser(email: $email, isSuper: $isSuper, locationGrants: $locationGrants, \
+         readOnlyLocationGrants: $readOnlyLocationGrants) {{ {USER_SELECTION} }} }}"
     )
 }
 fn update_user_mutation() -> String {
     format!(
         "mutation McpUpdateUser($id: ID!, $email: String!, $isSuper: Boolean!, $isDev: Boolean!, \
-         $enabled: Boolean!, $locationGrants: [String!]!) \
+         $enabled: Boolean!, $locationGrants: [String!]!, $readOnlyLocationGrants: [String!]) \
          {{ updateUser(id: $id, email: $email, isSuper: $isSuper, isDev: $isDev, enabled: $enabled, \
-         locationGrants: $locationGrants) {{ {USER_SELECTION} }} }}"
+         locationGrants: $locationGrants, readOnlyLocationGrants: $readOnlyLocationGrants) \
+         {{ {USER_SELECTION} }} }}"
     )
 }
 const LOCATIONS_QUERY: &str = "query McpLocations { locations { id name } }";
@@ -213,6 +215,7 @@ fn user_object_schema() -> Value {
             "enabled": { "type": "boolean" },
             "accessTime": { "type": ["integer", "null"] },
             "locationGrantIds": { "type": "array", "items": { "type": "string" } },
+            "readOnlyLocationGrantIds": { "type": "array", "items": { "type": "string" } },
             "locations": {
                 "type": "array",
                 "items": {
@@ -307,9 +310,11 @@ fn tool_catalogue() -> Vec<Value> {
             "name": "create_user",
             "title": "Create user",
             "description": "Create a new seslogin admin user. `locationGrants` is a list \
-                of location ids (see `list_locations`) the user can access; pass an empty \
-                list for a user with no location access yet. Only a super user may call \
-                this.",
+                of location ids (see `list_locations`) where the user is an Admin (can \
+                view and change); pass an empty list for a user with no admin access. \
+                `readOnlyLocationGrants` optionally lists locations where the user is Read \
+                only (can view but not change); a location may not be in both lists. Only \
+                a super user may call this.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -318,7 +323,12 @@ fn tool_catalogue() -> Vec<Value> {
                     "locationGrants": {
                         "type": "array",
                         "items": { "type": "string" },
-                        "description": "Location ids this user can access.",
+                        "description": "Location ids where this user is an Admin.",
+                    },
+                    "readOnlyLocationGrants": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "description": "Location ids where this user is Read only.",
                     },
                 },
                 "required": ["email", "isSuper", "locationGrants"],
@@ -330,7 +340,8 @@ fn tool_catalogue() -> Vec<Value> {
             "name": "update_user",
             "title": "Update user",
             "description": "Update a seslogin user's email, super/dev flags, or location \
-                grants. Only the fields you pass are changed — anything omitted (including \
+                grants (`locationGrants` = Admin, `readOnlyLocationGrants` = Read only; a \
+                location may not be in both). Only the fields you pass are changed — anything omitted (including \
                 `enabled`, which this tool never touches; use `disable_user`/`enable_user` \
                 for that) keeps its current value. Only a super user may call this.",
             "inputSchema": {
@@ -341,6 +352,7 @@ fn tool_catalogue() -> Vec<Value> {
                     "isSuper": { "type": "boolean" },
                     "isDev": { "type": "boolean" },
                     "locationGrants": { "type": "array", "items": { "type": "string" } },
+                    "readOnlyLocationGrants": { "type": "array", "items": { "type": "string" } },
                 },
                 "required": ["id"],
             },
@@ -532,13 +544,25 @@ where
                         .collect()
                 })
                 .unwrap_or_default();
+            let read_only_location_grants: Vec<String> = arguments
+                .get("readOnlyLocationGrants")
+                .and_then(Value::as_array)
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|v| v.as_str().map(str::to_string))
+                        .collect()
+                })
+                .unwrap_or_default();
             let result = run_graphql(
                 app,
                 schema,
                 auth(),
                 client_ip,
                 &create_user_mutation(),
-                json!({ "email": email, "isSuper": is_super, "locationGrants": location_grants }),
+                json!({
+                    "email": email, "isSuper": is_super, "locationGrants": location_grants,
+                    "readOnlyLocationGrants": read_only_location_grants,
+                }),
             )
             .await;
             rename_root(result, "createUser").into()
@@ -587,6 +611,15 @@ where
                         .collect()
                 })
                 .unwrap_or_else(|| field_str_array(&current, "locationGrantIds"));
+            // Omitted leaves the stored read-only grants unchanged (null => no change).
+            let read_only_location_grants: Option<Vec<String>> = arguments
+                .get("readOnlyLocationGrants")
+                .and_then(Value::as_array)
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|v| v.as_str().map(str::to_string))
+                        .collect()
+                });
             let result = run_graphql(
                 app,
                 schema,
@@ -596,6 +629,7 @@ where
                 json!({
                     "id": id, "email": email, "isSuper": is_super, "isDev": is_dev,
                     "enabled": enabled, "locationGrants": location_grants,
+                    "readOnlyLocationGrants": read_only_location_grants,
                 }),
             )
             .await;

@@ -226,11 +226,13 @@ pub async fn verify_access_token<A: App + HasDb>(
             id,
             is_super,
             location_grants,
+            location_read_only_grants,
             ..
         } => Ok(AuthInfo::User {
             id,
             is_super,
             location_grants,
+            location_read_only_grants,
             token_id: None,
             grant_id: Some(grant.id),
         }),

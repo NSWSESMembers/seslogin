@@ -1,6 +1,6 @@
 use crate::clock::now_sec;
 
-pub const DEFAULT_USER_EXPIRE_S: u64 = 60 * 60 * 8;
+pub const DEFAULT_USER_EXPIRE_S: u64 = 60 * 60 * 48;
 pub const DEFAULT_SESSION_EXPIRE_S: u64 = 60 * 60 * 24 * 14;
 
 pub enum ExpirePolicy {

@@ -313,6 +313,7 @@ impl TryInto<User> for Item {
                 .bool_field("disaggregate_virtual_periods")?
                 .unwrap_or(false),
             location_grants: self.string_set_field("location_grants")?,
+            location_read_only_grants: self.string_set_field("location_read_only_grants")?,
             enabled: self.i64_field("enabled")?.is_some(),
             access_time: self.i64_field("access_time")?.map(|i| i as u64),
             email_config: {
@@ -1159,6 +1160,7 @@ impl db::Handler for Handler {
         email: &str,
         is_super: bool,
         location_grants: Vec<String>,
+        location_read_only_grants: Vec<String>,
     ) -> db::Result<User> {
         if self.read_only {
             return Err(db::Error::MutationDisabled);
@@ -1187,6 +1189,12 @@ impl db::Handler for Handler {
                 AttributeValue::Ss(location_grants.clone()),
             );
         }
+        if !location_read_only_grants.is_empty() {
+            put = put.item(
+                "location_read_only_grants",
+                AttributeValue::Ss(location_read_only_grants.clone()),
+            );
+        }
 
         let resp = put
             .send()
@@ -1200,6 +1208,7 @@ impl db::Handler for Handler {
             is_super,
             is_dev: false,
             location_grants,
+            location_read_only_grants,
             enabled: true,
             access_time: None,
             email_config: serde_json::Map::new(),
@@ -1220,6 +1229,7 @@ impl db::Handler for Handler {
                 is_dev,
                 enabled,
                 location_grants,
+                location_read_only_grants,
             } => {
                 let mut set_clauses = vec![
                     "email = :email",
@@ -1254,6 +1264,21 @@ impl db::Handler for Handler {
                         ":location_grants",
                         AttributeValue::Ss(location_grants),
                     );
+                }
+
+                // Same omit-over-Null rule; `None` means leave the attribute alone.
+                match location_read_only_grants {
+                    None => {}
+                    Some(grants) if grants.is_empty() => {
+                        remove_clauses.push("location_read_only_grants");
+                    }
+                    Some(grants) => {
+                        set_clauses.push("location_read_only_grants = :location_read_only_grants");
+                        builder = builder.expression_attribute_values(
+                            ":location_read_only_grants",
+                            AttributeValue::Ss(grants),
+                        );
+                    }
                 }
 
                 // `enabled` is stored sparsely: N:1 when enabled, attribute removed

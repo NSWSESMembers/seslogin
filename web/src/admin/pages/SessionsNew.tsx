@@ -7,8 +7,10 @@ import SessionCreatedInterstitial from "../components/SessionCreatedInterstitial
 import useSelectedLocation from "../components/useSelectedLocation";
 import type { SessionsNewMutation } from "./__generated__/SessionsNewMutation.graphql";
 import { useNotify } from "../components/useNotify";
+import useCanEditSelectedLocation from "../components/useCanEditSelectedLocation";
+import ReadOnlyNotice from "../components/ReadOnlyNotice";
 
-export default function SessionsNew() {
+function SessionsNewForm() {
   const { notifyError } = useNotify();
   const selectedLocation = useSelectedLocation();
   const locationId = selectedLocation.id;
@@ -81,4 +83,9 @@ export default function SessionsNew() {
       />
     </>
   );
+}
+
+export default function SessionsNew() {
+  const canEdit = useCanEditSelectedLocation();
+  return canEdit ? <SessionsNewForm /> : <ReadOnlyNotice />;
 }

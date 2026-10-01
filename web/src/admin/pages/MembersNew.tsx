@@ -6,8 +6,10 @@ import { useNotify } from "../components/useNotify";
 import { FieldList, FormField } from "../../components/ui/FormField";
 import TextInput from "../../components/ui/TextInput";
 import { Button } from "../../components/ui/Button";
+import useCanEditSelectedLocation from "../components/useCanEditSelectedLocation";
+import ReadOnlyNotice from "../components/ReadOnlyNotice";
 
-export default function MembersNew() {
+function MembersNewForm() {
   const { notifyError, notifySuccess } = useNotify();
   const [commitMutation, isMutationInFlight] = useMutation<MembersNewMutation>(
     graphql`
@@ -93,4 +95,9 @@ export default function MembersNew() {
       </form>
     </>
   );
+}
+
+export default function MembersNew() {
+  const canEdit = useCanEditSelectedLocation();
+  return canEdit ? <MembersNewForm /> : <ReadOnlyNotice />;
 }

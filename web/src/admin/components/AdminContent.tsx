@@ -9,6 +9,14 @@ import Footer from "./Footer";
 import LoadingIndicator from "../../components/LoadingIndicator";
 import RelayErrorBoundary from "../../components/RelayErrorBoundary";
 import LocationSelector from "./LocationSelector";
+import useCanEditSelectedLocation from "./useCanEditSelectedLocation";
+
+// Split out so the hook runs inside LocationSelector, once a location is chosen.
+function LocationSubmenuBar({ isSuper }: { isSuper: boolean }) {
+  const canEdit = useCanEditSelectedLocation();
+  return <SubmenuBar isSuper={isSuper} canEdit={canEdit} />;
+}
+
 interface AdminContentProps {
   children?: React.ReactNode;
   onLogout: () => void;
@@ -34,7 +42,7 @@ export default function AdminContent({
       <TopBar username={displayName} />
       <TitleBar />
       <MenuBar onLogout={onLogout} isSuper={isSuper} />
-      <SubmenuBar isSuper={isSuper} />
+      <LocationSubmenuBar isSuper={isSuper} />
 
       <div className="bg-surface px-[3%] py-5 text-center">
         {/* canRetry: every useLazyLoadQuery reachable through a routed page

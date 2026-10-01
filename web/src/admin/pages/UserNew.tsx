@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useNavigate } from "react-router";
 import { graphql, useMutation } from "react-relay";
 import { useRetryableLazyLoadQuery } from "../../components/useRetryableLazyLoadQuery";
@@ -7,7 +8,11 @@ import { useNotify } from "../components/useNotify";
 import { FieldList, FormField } from "../../components/ui/FormField";
 import TextInput from "../../components/ui/TextInput";
 import { Button } from "../../components/ui/Button";
-import MultiCombobox from "../../components/ui/MultiCombobox";
+import LocationRolesField from "../components/LocationRolesField";
+import {
+  splitLocationRoles,
+  type LocationRoleEntry,
+} from "../components/locationRoles";
 
 export default function NewUser() {
   const navigate = useNavigate();
@@ -30,11 +35,13 @@ export default function NewUser() {
         $email: String!
         $isSuper: Boolean!
         $locationGrants: [String!]!
+        $readOnlyLocationGrants: [String!]!
       ) {
         createUser(
           email: $email
           isSuper: $isSuper
           locationGrants: $locationGrants
+          readOnlyLocationGrants: $readOnlyLocationGrants
         ) {
           id
           email
@@ -43,17 +50,18 @@ export default function NewUser() {
     `,
   );
 
+  const [roles, setRoles] = useState<LocationRoleEntry[]>([]);
+
   async function handleSubmit(formData: FormData) {
     const email = formData.get("email")?.toString() || "";
     const isSuper = formData.get("super") === "on";
-    const locationGrants = formData
-      .getAll("locations")
-      .map((v) => v.toString());
+    const { locationGrants, readOnlyLocationGrants } =
+      splitLocationRoles(roles);
 
     try {
       await new Promise((resolve, reject) => {
         commitMutation({
-          variables: { email, isSuper, locationGrants },
+          variables: { email, isSuper, locationGrants, readOnlyLocationGrants },
           onCompleted: resolve,
           onError: reject,
           updater: (store) => {
@@ -89,15 +97,11 @@ export default function NewUser() {
             <input type="checkbox" name="super" id="super" />
           </FormField>
           <FormField label={<label htmlFor="locations">Locations</label>}>
-            <MultiCombobox
+            <LocationRolesField
               id="locations"
-              name="locations"
-              options={locations.map((location) => ({
-                value: location.id,
-                label: location.name,
-              }))}
-              placeholder="Search locations…"
-              emptyText="No locations match"
+              locations={locations.map((l) => ({ id: l.id, name: l.name }))}
+              value={roles}
+              onChange={setRoles}
             />
           </FormField>
           <FormField>

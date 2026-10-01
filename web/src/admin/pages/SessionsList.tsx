@@ -67,10 +67,12 @@ function Row({
   session,
   idx,
   isDev,
+  canEdit,
 }: {
   session: Session;
   idx: number;
   isDev: boolean;
+  canEdit: boolean;
 }) {
   const [now] = useState(() => Math.round(Date.now() / 1000));
   const [confirmingReactivate, setConfirmingReactivate] = useState(false);
@@ -191,7 +193,7 @@ function Row({
         )}
       </Td>
       <Td>{timeSinceAccess}</Td>
-      <Td>{session.code}</Td>
+      {canEdit && <Td>{session.code}</Td>}
       <Td className="text-sm">
         {session.keyFingerprint ? (
           <FingerprintChip
@@ -207,43 +209,47 @@ function Row({
         <SessionEnvironment clientInfo={session.clientInfo} />
       </Td>
       <Td options>
-        <div className="flex items-center justify-end gap-1">
-          {session.reactivatable ? (
-            <Button
-              size="row"
-              onClick={() => setConfirmingReactivate(true)}
-              disabled={isReactivateInFlight}
-            >
-              Reactivate
-            </Button>
-          ) : isExpiredKiosk ? (
-            <span
-              className="mr-1 text-xs text-ink-muted"
-              title="Switch this kiosk on and wait for it to show its QR code, then reload this page to reactivate it."
-            >
-              Expired
-            </span>
-          ) : null}
-          {!isReplacedKiosk && (
-            <ButtonLink size="row" to={`/admin/sessions/${session.id}`}>
-              Edit
-            </ButtonLink>
-          )}
-          <Button
-            size="row"
-            variant="danger"
-            onClick={deleteSession}
-            disabled={isMutationInFlight}
-          >
-            Delete
-          </Button>
-        </div>
-        {confirmingReactivate && (
-          <ReactivateDialog
-            session={session}
-            onConfirm={reactivateSession}
-            onCancel={() => setConfirmingReactivate(false)}
-          />
+        {canEdit && (
+          <>
+            <div className="flex items-center justify-end gap-1">
+              {session.reactivatable ? (
+                <Button
+                  size="row"
+                  onClick={() => setConfirmingReactivate(true)}
+                  disabled={isReactivateInFlight}
+                >
+                  Reactivate
+                </Button>
+              ) : isExpiredKiosk ? (
+                <span
+                  className="mr-1 text-xs text-ink-muted"
+                  title="Switch this kiosk on and wait for it to show its QR code, then reload this page to reactivate it."
+                >
+                  Expired
+                </span>
+              ) : null}
+              {!isReplacedKiosk && (
+                <ButtonLink size="row" to={`/admin/sessions/${session.id}`}>
+                  Edit
+                </ButtonLink>
+              )}
+              <Button
+                size="row"
+                variant="danger"
+                onClick={deleteSession}
+                disabled={isMutationInFlight}
+              >
+                Delete
+              </Button>
+            </div>
+            {confirmingReactivate && (
+              <ReactivateDialog
+                session={session}
+                onConfirm={reactivateSession}
+                onCancel={() => setConfirmingReactivate(false)}
+              />
+            )}
+          </>
         )}
       </Td>
     </tr>
@@ -297,6 +303,7 @@ export default function SessionsList() {
   const { isDev } = useUserInfo();
   const selectedLocation = useSelectedLocation();
   const locationId = selectedLocation.id;
+  const canEdit = selectedLocation.viewerCanEdit;
   // `clientInfo` is handed to SessionEnvironment whole rather than read field by field,
   // so the lint rule can't see the usage.
   /* eslint-disable relay/unused-fields */
@@ -376,7 +383,7 @@ export default function SessionsList() {
             {isDev && <Th>ID</Th>}
             <Th>Name</Th>
             <Th>Last contact</Th>
-            <Th>Code</Th>
+            {canEdit && <Th>Code</Th>}
             <Th>Device key</Th>
             <Th>Version</Th>
             <Th>Environment</Th>
@@ -385,7 +392,13 @@ export default function SessionsList() {
         </thead>
         <tbody>
           {sortedSessions.map((session, idx) => (
-            <Row session={session} idx={idx} key={session.id} isDev={isDev} />
+            <Row
+              session={session}
+              idx={idx}
+              key={session.id}
+              isDev={isDev}
+              canEdit={canEdit}
+            />
           ))}
         </tbody>
       </AdminTable>

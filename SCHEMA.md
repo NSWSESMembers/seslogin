@@ -32,7 +32,8 @@ All IDs are exposed to the API layer as opaque UUID strings. Conversion happens 
 **Non-obvious attributes (not in table definition):**
 
 - `is_super` (Bool) — superuser flag
-- `location_grants` (SS) — string set of location UUIDs this user can access
+- `location_grants` (SS) — string set of location UUIDs where this user is an **Admin** (read and write)
+- `location_read_only_grants` (SS) — string set of location UUIDs where this user is **Read only** (can view, cannot change; disjoint from `location_grants`). Omitted when empty, like `location_grants`
 - `deleted` (Bool)
 - `access_time` (N) — Unix timestamp
 

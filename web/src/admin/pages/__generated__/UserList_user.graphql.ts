@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<daac357931c88c645a911d7908be9849>>
+ * @generated SignedSource<<a73a3a17519b928457acae6ae2b0c9b4>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -22,6 +22,7 @@ export type UserList_user$data = {
     readonly id: string;
     readonly name: string;
   }>;
+  readonly readOnlyLocationGrantIds: ReadonlyArray<string>;
   readonly " $fragmentType": "UserList_user";
 };
 export type UserList_user$key = {
@@ -84,6 +85,13 @@ return {
     {
       "alias": null,
       "args": null,
+      "kind": "ScalarField",
+      "name": "readOnlyLocationGrantIds",
+      "storageKey": null
+    },
+    {
+      "alias": null,
+      "args": null,
       "concreteType": "Location",
       "kind": "LinkedField",
       "name": "locations",
@@ -113,6 +121,6 @@ return {
 };
 })();
 
-(node as any).hash = "a2f4d87acf1924e569c2f389bed6d1a6";
+(node as any).hash = "dfe4d7a6b9293f9117f794e84f8ff375";
 
 export default node;

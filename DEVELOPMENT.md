@@ -243,8 +243,8 @@ cd api && cargo run --bin poem -- --enable-mutations --dev-auth-session <SESSION
 cd api && cargo run --bin poem -- --enable-mutations --dev-auth-user <USER_ID_OR_EMAIL>
 ```
 
-The impersonated caller keeps its real permissions (`is_super`, `location_grants`, session
-location), so authorization still applies normally. A missing or inactive record yields
+The impersonated caller keeps its real permissions (`is_super`, `location_grants`,
+`location_read_only_grants`, session location), so authorization still applies normally. A missing or inactive record yields
 `401`.
 
 **The admin UI needs one more step.** The flag bypasses the *server's* token check, but the
@@ -409,7 +409,7 @@ than the thing standing between production data and a public repo.
 | --- | --- |
 | **Test A Unit** (`TestAUnit001`) | Where most testing happens. Members **Alice Anderson** (`10000001`) and **Bob Brown** (`10000002`) |
 | **Test B Unit** (`TestBUnit001`) | Second unit, for cross-unit sign-in and for checking a grant is enforced. Member **Crossunit Tester** (`20000001`) |
-| **Users** | `super@seslogin.test` (super) and `testunit@seslogin.test` (Test A Unit only) |
+| **Users** | `super@seslogin.test` (super), `testunit@seslogin.test` (Admin at Test A Unit only) and `readonly@seslogin.test` (Read only at Test A Unit) |
 | **User tokens** | One ready-made login per user — see [Logging in](#logging-in) |
 | **Kiosk sessions** | `TestAKiosk01` at Test A Unit, enrolment code `123456`; `TestAKiosk02`, the same unit but **key-enrolled** |
 | **Categories** | All 220, plus the 99 NITC groups they point at |
@@ -452,7 +452,8 @@ Three ways in, fastest first:
   | User | Token |
   | --- | --- |
   | `super@seslogin.test` (super) | `slu_localdev0000000000000000000super` |
-  | `testunit@seslogin.test` (Test A Unit only) | `slu_localdev0000000000000000testunit` |
+  | `testunit@seslogin.test` (Admin, Test A Unit only) | `slu_localdev0000000000000000testunit` |
+  | `readonly@seslogin.test` (Read only, Test A Unit) | `slu_localdev0000000000000000readonly` |
 
   In the browser, put one in `localStorage` under `admin_auth_token` and reload:
 

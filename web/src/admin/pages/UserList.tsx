@@ -22,6 +22,7 @@ function Row(props: { user: UserList_user$key; idx: number; isDev: boolean }) {
         isSuper
         isDev
         locationGrantIds
+        readOnlyLocationGrantIds
         locations {
           id
           name
@@ -71,6 +72,8 @@ function Row(props: { user: UserList_user$key; idx: number; isDev: boolean }) {
               isSuper: user.isSuper,
               isDev: user.isDev,
               locationGrants: [...user.locationGrantIds],
+              // readOnlyLocationGrants is deliberately omitted: on update an
+              // omitted value leaves the user's read-only grants unchanged.
               enabled: !user.enabled,
             },
             onCompleted: resolve,
@@ -86,6 +89,8 @@ function Row(props: { user: UserList_user$key; idx: number; isDev: boolean }) {
       }
     }
   }
+
+  const readOnlyIds = new Set(user.readOnlyLocationGrantIds);
 
   return (
     <tr className={props.idx % 2 === 0 ? "bg-surface-raised" : undefined}>
@@ -103,7 +108,13 @@ function Row(props: { user: UserList_user$key; idx: number; isDev: boolean }) {
       </Td>
       <Td>{user.isSuper ? "Yes" : "No"}</Td>
       <Td>
-        {user.isSuper ? null : user.locations.map((l) => l.name).join(", ")}
+        {user.isSuper
+          ? null
+          : user.locations
+              .map((l) =>
+                readOnlyIds.has(l.id) ? `${l.name} (read only)` : l.name,
+              )
+              .join(", ")}
       </Td>
       <Td options>
         <div className="flex justify-end gap-1">

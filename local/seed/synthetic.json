@@ -72,6 +72,16 @@
         "location_grants": { "SS": ["TestAUnit001"] },
         "created_at": { "N": "1767225600" },
         "updated_at": { "N": "1767225600" }
+      },
+      {
+        "_comment": "Read only user at Test A Unit: can view everything there but every change is refused, and Session.code is hidden. No location_grants attribute (omitted, not empty); location_read_only_grants is the Read only set.",
+        "id": { "S": "TestReadOnlyU" },
+        "email": { "S": "readonly@seslogin.test" },
+        "super": { "BOOL": false },
+        "enabled": { "N": "1" },
+        "location_read_only_grants": { "SS": ["TestAUnit001"] },
+        "created_at": { "N": "1767225600" },
+        "updated_at": { "N": "1767225600" }
       }
     ],
     "user_token": [
@@ -92,6 +102,16 @@
           "S": "546e0fbd6b5295d38262e53bd24bd1b3189660e778ed8e72d3cbc1b3ee02566c"
         },
         "user_id": { "S": "TestUnitUser" },
+        "created_at": { "N": "1767225600" },
+        "expires_at": { "N": "4102444800" }
+      },
+      {
+        "_comment": "Same, for TestReadOnlyU. Plaintext token 'slu_localdev0000000000000000readonly'.",
+        "id": { "S": "TokenReadOnly" },
+        "token_hash": {
+          "S": "a9e2a24f1329cd45cc13a3c0235de96f2701dae9dd08935e62bc00eef2b47184"
+        },
+        "user_id": { "S": "TestReadOnlyU" },
         "created_at": { "N": "1767225600" },
         "expires_at": { "N": "4102444800" }
       }

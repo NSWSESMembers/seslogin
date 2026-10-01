@@ -229,8 +229,9 @@ make local-seed-extract   # refresh local/seed/from-prod.json (the only step nee
 
 `make local-seed` (part of `dev-local`) loads two invented units — **Test A Unit**
 (`TestAUnit001`, members Alice Anderson `10000001` and Bob Brown `10000002`) and **Test B
-Unit** (`TestBUnit001`, member Crossunit Tester `20000001`, for cross-unit sign-in) — two
-users (`super@seslogin.test` and `testunit@seslogin.test`, granted Test A Unit only), a
+Unit** (`TestBUnit001`, member Crossunit Tester `20000001`, for cross-unit sign-in) — three
+users (`super@seslogin.test`, `testunit@seslogin.test` Admin at Test A Unit only, and
+`readonly@seslogin.test` Read only at Test A Unit — use it to check write refusals), a
 ready-made user token for each, two kiosk sessions at Test A Unit — `TestAKiosk01`
 (code-enrolled, code `123456`) and `TestAKiosk02` (key-enrolled) — and all 220 categories
 with the 99 NITC groups they reference. Neither unit name contains the other, so a selector
@@ -255,7 +256,7 @@ the read-only case. A fixture where every member is sync-owned makes the member 
 unreachable while looking perfectly fine.
 
 Log in with the seeded token — put `slu_localdev0000000000000000000super` (or
-`slu_localdev0000000000000000testunit`) in `localStorage` under `admin_auth_token`, or send
+`slu_localdev0000000000000000testunit`, or `slu_localdev0000000000000000readonly`) in `localStorage` under `admin_auth_token`, or send
 it as a bearer token to the API. Only its sha256 is stored, as in production. Otherwise use
 `--dev-auth-user super@seslogin.test`, or the real email-code flow, reading the code out of
 the log.
@@ -348,6 +349,8 @@ Unlike `mockdb`, the queue, mail and realtime mocks *succeed* — they exist so 
 
 Authorization uses an `AuthRequirement` guard enum per field: `Session`, `UserOrSession`, `User`, `SuperUser`.
 
+**Roles**: a user holds a role per location — **Admin** (`location_grants`, read and write) or **Read only** (`location_read_only_grants`, view only); the two sets are disjoint. Queries authorise with `require_location_access` (either role); every location-scoped write must use `require_location_write_access` / `require_period_write_access` (Admin only), and `can_write_location` backs `Location.viewerCanEdit`. `Session.code` is hidden from Read only users because it enrols a kiosk. `update_my_email_config` deliberately keeps the read check: a daily summary subscription is a personal, read-compatible setting.
+
 `api/src/oauth.rs` adds a fourth token kind, `slat_`/`slrt_` (OAuth access/refresh, one `oauth_grant` DB row per client authorization), for the MCP interface. They are deliberately **not** accepted by `verify_token`/the GraphQL endpoint — only `api/src/mcp.rs`'s `POST /mcp` handler calls `oauth::verify_access_token` directly — so an MCP token can't be used to drive the site API outside its own tool set.
 
 A user can see and revoke their own authorized grants — the "Connected apps" list — via `User.oauthGrants` and the `revokeOauthGrant` mutation (super users may act on anyone's); see `api/README.md`'s "Connected apps" section and the web page at `/admin/settings/connected-apps`.
@@ -384,7 +387,7 @@ Absence writes are excluded from `max_mutations`: a location with a large but le
 | `Person` | `id`, `location_id`, `member_number`, `ses_api_person_id` | Members; synced from SES |
 | `Period` | `id`, `person_id`, `location_id`, `category_id`, `start_time`, `end_time` | Attendance events |
 | `Session` | `id`, `name`, `location_id`, `code`, `healthcheck_url` | Kiosk/device sessions |
-| `User` | `id`, `email`, `is_super`, `location_grants` | System admins |
+| `User` | `id`, `email`, `is_super`, `location_grants`, `location_read_only_grants` | System users; per-location Admin / Read only |
 | `Category` | `id`, `name` | Activity types for periods |
 
 All entities use soft deletes (`deleted` flag).
