@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<3e15e32a54b6f4c4d1b6d5f133e4ce02>>
+ * @generated SignedSource<<d8db9580bc5dd4760575656ee6214d34>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -129,6 +129,13 @@ return {
           {
             "alias": null,
             "args": null,
+            "kind": "ScalarField",
+            "name": "readOnlyLocationGrantIds",
+            "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": null,
             "concreteType": "Location",
             "kind": "LinkedField",
             "name": "locations",
@@ -151,12 +158,12 @@ return {
     ]
   },
   "params": {
-    "cacheID": "ef022a68ab570bd9f8e6daa4153419ab",
+    "cacheID": "47a585bdb5842a24dd51ba818de2f415",
     "id": null,
     "metadata": {},
     "name": "UserListQuery",
     "operationKind": "query",
-    "text": "query UserListQuery {\n  users {\n    id\n    accessTime\n    enabled\n    email\n    ...UserList_user\n  }\n}\n\nfragment UserList_user on User {\n  id\n  email\n  accessTime\n  isSuper\n  isDev\n  locationGrantIds\n  locations {\n    id\n    name\n  }\n  enabled\n}\n"
+    "text": "query UserListQuery {\n  users {\n    id\n    accessTime\n    enabled\n    email\n    ...UserList_user\n  }\n}\n\nfragment UserList_user on User {\n  id\n  email\n  accessTime\n  isSuper\n  isDev\n  locationGrantIds\n  readOnlyLocationGrantIds\n  locations {\n    id\n    name\n  }\n  enabled\n}\n"
   }
 };
 })();
