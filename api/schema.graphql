@@ -1,7 +1,7 @@
 """
 An Ably `TokenRequest`, signed server-side, that a kiosk can hand straight
 to ably-js's `authCallback` to authenticate for its own channel — see
-`kioskRealtimeToken`. Field names and shapes mirror Ably's own wire format
+`kioskRealtimeToken` and `enrollmentRealtimeToken`. Field names and shapes mirror Ably's own wire format
 (<https://ably.com/docs/api/rest-api#token-request-spec>) so no translation
 is needed on the client.
 
@@ -118,8 +118,10 @@ A signed realtime token together with the exact channel it authorizes.
 """
 type KioskRealtimeToken {
 	"""
-	The Ably channel this kiosk's location publishes period open/close
-	events to — pass straight to `ably-js`'s `channels.get(channel)`.
+	The Ably channel this token authorizes: a location's period open/close
+	events for `kioskRealtimeToken`, or a pending key's enrollment-completed
+	signal for `enrollmentRealtimeToken`. Pass straight to `ably-js`'s
+	`channels.get(channel)`.
 	"""
 	channel: String!
 	tokenRequest: AblyTokenRequest!
@@ -689,6 +691,22 @@ type QueryRoot {
 	`ABLY_API_KEY` configured); the kiosk should fall back to polling.
 	"""
 	kioskRealtimeToken: KioskRealtimeToken
+	"""
+	A signed Ably token request, subscribe-only, for the enrollment channel
+	(`kiosk-enroll:<db_prefix>:<fingerprint>`) of a kiosk waiting to be
+	enrolled, so it is told `enrollment.completed` instead of polling.
+	
+	Unauthenticated — the kiosk has no credentials yet. The fingerprint is
+	derived server-side from the validated `publicKey` (never accepted from
+	the caller), and a live pending enrollment for it must exist (i.e. the
+	kiosk has already called `submitEnrollmentKey`), otherwise this errors.
+	That gate stops anyone minting Ably tokens for arbitrary channels: you can
+	only get one for a key that has a live pending enrollment, and it grants
+	only the content-free signal for that one key.
+	
+	`None` means realtime is disabled server-side; the kiosk should poll.
+	"""
+	enrollmentRealtimeToken(publicKey: String!): KioskRealtimeToken
 	"""
 	Look up a pending kiosk enrollment by its key fingerprint (from the QR code).
 	Returns `None` if it never existed or has expired — the admin SessionEnroll page

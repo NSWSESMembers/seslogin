@@ -234,7 +234,7 @@ pub struct PendingEnrollmentKey {
 
 /// An Ably `TokenRequest`, signed server-side, that a kiosk can hand straight
 /// to ably-js's `authCallback` to authenticate for its own channel — see
-/// `kioskRealtimeToken`. Field names and shapes mirror Ably's own wire format
+/// `kioskRealtimeToken` and `enrollmentRealtimeToken`. Field names and shapes mirror Ably's own wire format
 /// (<https://ably.com/docs/api/rest-api#token-request-spec>) so no translation
 /// is needed on the client.
 ///
@@ -269,8 +269,10 @@ impl From<realtime::TokenRequest> for AblyTokenRequest {
 /// A signed realtime token together with the exact channel it authorizes.
 #[derive(SimpleObject, Clone, Debug)]
 pub struct KioskRealtimeToken {
-    /// The Ably channel this kiosk's location publishes period open/close
-    /// events to — pass straight to `ably-js`'s `channels.get(channel)`.
+    /// The Ably channel this token authorizes: a location's period open/close
+    /// events for `kioskRealtimeToken`, or a pending key's enrollment-completed
+    /// signal for `enrollmentRealtimeToken`. Pass straight to `ably-js`'s
+    /// `channels.get(channel)`.
     pub channel: String,
     pub token_request: AblyTokenRequest,
 }
@@ -3456,6 +3458,43 @@ impl<A: App + HasDb + HasRealtime + Send + Sync + 'static> QueryRoot<A> {
         let token = app
             .realtime()
             .kiosk_token_request(&location_id, &session_id)
+            .await?;
+        Ok(token.map(|t| KioskRealtimeToken {
+            channel: t.channel,
+            token_request: t.token_request.into(),
+        }))
+    }
+
+    /// A signed Ably token request, subscribe-only, for the enrollment channel
+    /// (`kiosk-enroll:<db_prefix>:<fingerprint>`) of a kiosk waiting to be
+    /// enrolled, so it is told `enrollment.completed` instead of polling.
+    ///
+    /// Unauthenticated — the kiosk has no credentials yet. The fingerprint is
+    /// derived server-side from the validated `publicKey` (never accepted from
+    /// the caller), and a live pending enrollment for it must exist (i.e. the
+    /// kiosk has already called `submitEnrollmentKey`), otherwise this errors.
+    /// That gate stops anyone minting Ably tokens for arbitrary channels: you can
+    /// only get one for a key that has a live pending enrollment, and it grants
+    /// only the content-free signal for that one key.
+    ///
+    /// `None` means realtime is disabled server-side; the kiosk should poll.
+    async fn enrollment_realtime_token(
+        &self,
+        ctx: &Context<'_>,
+        public_key: String,
+    ) -> Result<Option<KioskRealtimeToken>> {
+        let (_, fingerprint) = crate::session_key::validate_public_key_spki_b64(&public_key)
+            .map_err(|e| anyhow!("Invalid public key: {e:#}"))?;
+        let app = ctx.data_unchecked::<Arc<A>>();
+        let now = crate::clock::now_sec();
+        app.db()
+            .get_ephemeral_state(&crate::session_key::enroll_state_id(&fingerprint))
+            .await?
+            .filter(|s| s.kind == crate::session_key::ENROLL_STATE_KIND && s.expires_at > now)
+            .ok_or_else(|| anyhow!("No pending enrollment for this key"))?;
+        let token = app
+            .realtime()
+            .enrollment_token_request(&fingerprint)
             .await?;
         Ok(token.map(|t| KioskRealtimeToken {
             channel: t.channel,

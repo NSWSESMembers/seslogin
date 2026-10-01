@@ -25,6 +25,10 @@ pub enum Event {
         channel: String,
         event: PeriodClosed,
     },
+    EnrollmentCompleted {
+        channel: String,
+        message_id: String,
+    },
 }
 
 pub struct Handler {
@@ -77,6 +81,27 @@ impl realtime::Handler for Handler {
         Ok(())
     }
 
+    async fn publish_enrollment_completed(
+        &self,
+        fingerprint: &str,
+        message_id: &str,
+    ) -> Result<()> {
+        let channel = realtime::enrollment_channel(&self.db_prefix, fingerprint);
+        tracing::info!("mock realtime publish to {channel}: enrollment.completed");
+        self.published
+            .lock()
+            .expect("mockrealtime lock")
+            .push(Event::EnrollmentCompleted {
+                channel,
+                message_id: message_id.to_string(),
+            });
+        Ok(())
+    }
+
+    async fn enrollment_token_request(&self, _fingerprint: &str) -> Result<Option<KioskToken>> {
+        Ok(None)
+    }
+
     async fn kiosk_token_request(
         &self,
         _location_id: &str,
@@ -121,6 +146,22 @@ mod tests {
 
         h.clear();
         assert!(h.published().is_empty());
+    }
+
+    #[tokio::test]
+    async fn records_enrollment_completed_by_channel() {
+        let h = Handler::new("seslogin_local");
+        h.publish_enrollment_completed("fp1", "enrolled:s1")
+            .await
+            .unwrap();
+        assert_eq!(
+            h.published(),
+            vec![Event::EnrollmentCompleted {
+                channel: "kiosk-enroll:seslogin_local:fp1".to_string(),
+                message_id: "enrolled:s1".to_string(),
+            }]
+        );
+        assert!(h.enrollment_token_request("fp1").await.unwrap().is_none());
     }
 
     #[tokio::test]

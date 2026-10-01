@@ -21,8 +21,8 @@ use reqwest::Client;
 use sha2::Sha256;
 
 use crate::realtime::{
-    self, EVENT_PERIOD_CLOSED, EVENT_PERIOD_OPENED, KioskToken, PeriodClosed, PeriodOpened,
-    TokenRequest,
+    self, EVENT_ENROLLMENT_COMPLETED, EVENT_PERIOD_CLOSED, EVENT_PERIOD_OPENED, KioskToken,
+    PeriodClosed, PeriodOpened, TokenRequest,
 };
 
 type HmacSha256 = Hmac<Sha256>;
@@ -92,15 +92,15 @@ impl Publisher {
         }
     }
 
-    async fn publish(&self, location_id: &str, id: String, name: &str, data: &str) -> Result<()> {
+    /// POST one message to an already-built channel name.
+    async fn publish(&self, channel: &str, id: String, name: &str, data: &str) -> Result<()> {
         let Some(key) = &self.key else {
-            tracing::debug!("realtime disabled: dropping {name} for location {location_id}");
+            tracing::debug!("realtime disabled: dropping {name} for {channel}");
             return Ok(());
         };
-        let channel = realtime::kiosk_channel(&self.db_prefix, location_id);
         let url = format!(
             "https://rest.ably.io/channels/{}/messages",
-            utf8_percent_encode(&channel, NON_ALPHANUMERIC)
+            utf8_percent_encode(channel, NON_ALPHANUMERIC)
         );
         let body = serde_json::json!({
             // Idempotency key: a retried publish of the same period+version is a
@@ -137,15 +137,40 @@ impl realtime::Handler for Publisher {
     async fn publish_period_opened(&self, location_id: &str, event: &PeriodOpened) -> Result<()> {
         let id = format!("{}:{}", event.period_id, event.version);
         let data = serde_json::to_string(event)?;
-        self.publish(location_id, id, EVENT_PERIOD_OPENED, &data)
-            .await
+        let channel = realtime::kiosk_channel(&self.db_prefix, location_id);
+        self.publish(&channel, id, EVENT_PERIOD_OPENED, &data).await
     }
 
     async fn publish_period_closed(&self, location_id: &str, event: &PeriodClosed) -> Result<()> {
         let id = format!("{}:{}", event.period_id, event.version);
         let data = serde_json::to_string(event)?;
-        self.publish(location_id, id, EVENT_PERIOD_CLOSED, &data)
-            .await
+        let channel = realtime::kiosk_channel(&self.db_prefix, location_id);
+        self.publish(&channel, id, EVENT_PERIOD_CLOSED, &data).await
+    }
+
+    async fn publish_enrollment_completed(
+        &self,
+        fingerprint: &str,
+        message_id: &str,
+    ) -> Result<()> {
+        let channel = realtime::enrollment_channel(&self.db_prefix, fingerprint);
+        let data = serde_json::to_string(&realtime::EnrollmentCompleted {})?;
+        self.publish(
+            &channel,
+            message_id.to_string(),
+            EVENT_ENROLLMENT_COMPLETED,
+            &data,
+        )
+        .await
+    }
+
+    async fn enrollment_token_request(&self, fingerprint: &str) -> Result<Option<KioskToken>> {
+        let Some(key) = &self.key else {
+            return Ok(None);
+        };
+        let channel = realtime::enrollment_channel(&self.db_prefix, fingerprint);
+        let client_id = format!("enroll:{fingerprint}");
+        Ok(Some(self.signed_token(key, channel, client_id)))
     }
 
     async fn kiosk_token_request(
@@ -157,11 +182,17 @@ impl realtime::Handler for Publisher {
             return Ok(None);
         };
         let channel = realtime::kiosk_channel(&self.db_prefix, location_id);
-        // Subscribe-only, and scoped to exactly this location's channel: the
-        // whole authorization boundary for a kiosk. The MAC covers the
-        // capability, so the kiosk cannot widen it without invalidating it.
-        let capability = capability_json(&channel);
         let client_id = format!("session:{session_id}");
+        Ok(Some(self.signed_token(key, channel, client_id)))
+    }
+}
+
+impl Publisher {
+    /// Subscribe-only, and scoped to exactly `channel`: the whole authorization
+    /// boundary for a kiosk. The MAC covers the capability, so the kiosk cannot
+    /// widen it without invalidating it.
+    fn signed_token(&self, key: &Key, channel: String, client_id: String) -> KioskToken {
+        let capability = capability_json(&channel);
         let timestamp = crate::clock::now_ms();
         let nonce = crate::nonce::generate_nonce(16);
         let mac = sign_token_request(
@@ -173,7 +204,7 @@ impl realtime::Handler for Publisher {
             timestamp,
             &nonce,
         );
-        Ok(Some(KioskToken {
+        KioskToken {
             channel,
             token_request: TokenRequest {
                 key_name: key.name.clone(),
@@ -184,7 +215,7 @@ impl realtime::Handler for Publisher {
                 nonce,
                 mac,
             },
-        }))
+        }
     }
 }
 
@@ -246,6 +277,19 @@ mod tests {
         );
     }
 
+    #[test]
+    fn enrollment_token_is_scoped_to_the_enrollment_channel() {
+        let publisher = Publisher::from_raw_key(Some("appid.keyid:secret"), "seslogin_test");
+        let key = publisher.key.as_ref().unwrap();
+        let channel = realtime::enrollment_channel("seslogin_test", "fp1");
+        let token = publisher.signed_token(key, channel.clone(), "enroll:fp1".to_string());
+        assert_eq!(token.channel, "kiosk-enroll:seslogin_test:fp1");
+        let cap: serde_json::Value = serde_json::from_str(&token.token_request.capability).unwrap();
+        assert_eq!(cap, serde_json::json!({ channel: ["subscribe"] }));
+        assert_eq!(token.token_request.client_id, "enroll:fp1");
+        assert_eq!(token.token_request.ttl, TOKEN_TTL_MS);
+    }
+
     #[tokio::test]
     async fn disabled_without_a_key_returns_no_token_and_publishing_is_a_noop() {
         let publisher = Publisher::from_raw_key(None, "seslogin_test");
@@ -255,6 +299,14 @@ mod tests {
             .await
             .unwrap();
         assert!(token.is_none());
+
+        let token = realtime::Handler::enrollment_token_request(&publisher, "fp1")
+            .await
+            .unwrap();
+        assert!(token.is_none());
+        realtime::Handler::publish_enrollment_completed(&publisher, "fp1", "enrolled:s1")
+            .await
+            .unwrap();
 
         realtime::Handler::publish_period_opened(
             &publisher,
