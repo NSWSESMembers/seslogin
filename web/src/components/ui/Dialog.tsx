@@ -14,6 +14,11 @@ import { cn } from "../../lib/tw";
 // on inherited page centring, which this codebase is phasing out — see #235)
 // so dialog content stays centred regardless of what text-align the page
 // behind it happens to use.
+//
+// Capped at the dynamic viewport height and scrollable, so a dialog taller
+// than a small screen (the kiosk number pads at 800x480, say) can still be
+// scrolled to its last row instead of running off the top and bottom.
+// `dvh` rather than `vh` so the cap follows the visible area on tablets.
 export function Dialog(props: {
   onDismiss?: () => void;
   width?: string;
@@ -28,7 +33,7 @@ export function Dialog(props: {
       ></div>
       <div
         className={cn(
-          "relative z-10 flex max-w-[92vw] animate-dialog-in flex-col gap-4 rounded-xl bg-surface p-4 text-center shadow-2xl motion-reduce:animate-none sm:p-6",
+          "relative z-10 flex max-h-[calc(100dvh-1rem)] max-w-[92vw] animate-dialog-in flex-col gap-4 overflow-y-auto overscroll-contain rounded-xl bg-surface p-4 text-center shadow-2xl motion-reduce:animate-none sm:p-6",
           props.width ?? "w-150",
           props.className,
         )}
