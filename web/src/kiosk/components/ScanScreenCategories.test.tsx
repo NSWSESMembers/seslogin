@@ -20,7 +20,6 @@ describe("ScanScreenCategories", () => {
         uuid={null}
         screenPosition={"center"}
         onSelectCategory={onSelect}
-        smallCategories={false}
       />,
     );
     const categoryElements = screen.getAllByRole("button");
@@ -47,7 +46,6 @@ describe("ScanScreenCategories", () => {
         uuid={null}
         screenPosition={"center"}
         onSelectCategory={onSelect}
-        smallCategories={false}
       />,
     );
     const trainingCategory = screen.getByText("Training");

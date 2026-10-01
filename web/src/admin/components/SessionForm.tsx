@@ -66,8 +66,6 @@ interface BasicSessionModeFieldsProps {
   onChange: (nextMode: SessionMode) => void;
   theme: KioskTheme;
   onThemeChange: (next: KioskTheme) => void;
-  smallCategories: boolean;
-  onSmallCategoriesChange: (next: boolean) => void;
   guests: boolean;
   onGuestsChange: (next: boolean) => void;
   quickPickCategories: boolean;
@@ -146,23 +144,6 @@ function getThemeFromConfig(config: ConfigObject): KioskTheme {
     return "auto";
   }
   return config.theme === "dark" ? "dark" : "light";
-}
-
-function withSmallCategories(
-  config: ConfigObject,
-  enabled: boolean,
-): ConfigObject {
-  const next = { ...config };
-  if (enabled) {
-    next.smallCategories = true;
-  } else {
-    delete next.smallCategories;
-  }
-  return next;
-}
-
-function getSmallCategoriesFromConfig(config: ConfigObject): boolean {
-  return !!config.smallCategories;
 }
 
 function withGuests(config: ConfigObject, enabled: boolean): ConfigObject {
@@ -357,8 +338,6 @@ function ThemeControl({ theme, onChange }: ThemeControlProps) {
 function BasicSessionModeFields({
   sessionMode,
   onChange,
-  smallCategories,
-  onSmallCategoriesChange,
   guests,
   onGuestsChange,
   quickPickCategories,
@@ -410,18 +389,6 @@ function BasicSessionModeFields({
       {sessionMode === "scan" && (
         <FormField label={<span>Options</span>}>
           <OptionList>
-            <OptionRow
-              input={
-                <input
-                  type="checkbox"
-                  checked={smallCategories}
-                  onChange={(e) => onSmallCategoriesChange(e.target.checked)}
-                  className="mt-0.5"
-                />
-              }
-              title="Small categories"
-              description="use smaller category buttons to fit more on screen — useful on smaller or lower-resolution displays"
-            />
             <OptionRow
               input={
                 <input
@@ -582,7 +549,6 @@ export default function SessionForm({
   );
   const parsedConfig = parseConfigObject(configJson);
   const sessionMode = getSessionModeFromConfig(parsedConfig);
-  const smallCategories = getSmallCategoriesFromConfig(parsedConfig);
   const guests = getGuestsFromConfig(parsedConfig);
   const quickPickCategories = getQuickPickCategoriesFromConfig(parsedConfig);
   const numberPad = getNumberPadFromConfig(parsedConfig);
@@ -598,14 +564,6 @@ export default function SessionForm({
 
   function handleBasicSessionModeChange(nextMode: SessionMode) {
     const nextConfig = withSessionMode(parseConfigObject(configJson), nextMode);
-    setConfigJson(JSON.stringify(nextConfig, null, 2));
-  }
-
-  function handleSmallCategoriesChange(enabled: boolean) {
-    const nextConfig = withSmallCategories(
-      parseConfigObject(configJson),
-      enabled,
-    );
     setConfigJson(JSON.stringify(nextConfig, null, 2));
   }
 
@@ -658,8 +616,6 @@ export default function SessionForm({
           <BasicSessionModeFields
             sessionMode={sessionMode}
             onChange={handleBasicSessionModeChange}
-            smallCategories={smallCategories}
-            onSmallCategoriesChange={handleSmallCategoriesChange}
             guests={guests}
             onGuestsChange={handleGuestsChange}
             quickPickCategories={quickPickCategories}

@@ -42,7 +42,7 @@ vitest.mock("../lib/useEnrollmentQr", () => ({
 const session = {
   id: "sess123",
   name: "Front Desk",
-  config: { guests: true, theme: "dark", smallCategories: false },
+  config: { guests: true, theme: "dark" },
   location: { id: "loc456", name: "Test Unit" },
 };
 
@@ -66,6 +66,7 @@ function renderDialog(
   authMode: KioskAuthMode = "key",
   onKeyEnrolled = vitest.fn(),
   livePeriods: Partial<LivePeriodsContextType> = {},
+  categoryScale?: number,
 ) {
   return render(
     <KioskEnvironmentContext.Provider
@@ -80,7 +81,7 @@ function renderDialog(
         <LivePeriodsContext.Provider
           value={{ ...defaultLivePeriods, ...livePeriods }}
         >
-          <KioskStatusDialog onClose={onClose} />
+          <KioskStatusDialog onClose={onClose} categoryScale={categoryScale} />
         </LivePeriodsContext.Provider>
       </KioskSessionContext.Provider>
     </KioskEnvironmentContext.Provider>,
@@ -109,6 +110,11 @@ describe("KioskStatusDialog", () => {
     ).toBeTruthy();
     expect(screen.getByText(/0s ago/)).toBeDefined();
     expect(screen.getByText("enrolled key")).toBeDefined();
+  });
+
+  it("shows the automatically chosen category size", () => {
+    renderDialog(undefined, "key", undefined, {}, 0.85);
+    expect(screen.getByText("auto (85%)")).toBeDefined();
   });
 
   it("reports when the kiosk has never reached the server", () => {

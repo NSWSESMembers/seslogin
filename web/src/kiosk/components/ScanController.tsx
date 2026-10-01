@@ -49,7 +49,6 @@ export default function ScanController(props: {
 }) {
   const session = useKioskSession();
   const { applyOwnResult } = useLivePeriods();
-  const smallCategories = !!session?.config?.smallCategories;
   const guestsEnabled = !!session?.config?.guests;
   const quickPickCategories = !!session?.config?.quickPickCategories;
   const numberPad = !!session?.config?.numberPad;
@@ -548,13 +547,11 @@ export default function ScanController(props: {
         onSkip={onSkipQuickPick}
         uuid={needsQuickPick ? transactionUuid : null}
         suggestions={quickPickSuggestions}
-        smallCategories={smallCategories}
       />
       <ScanScreenCategories
         screenPosition={categoriesPos}
         onSelectCategory={onSelectCategory}
         uuid={transactionUuid}
-        smallCategories={smallCategories}
       />
       <ScanScreenAdjust
         screenPosition={adjustPos}
