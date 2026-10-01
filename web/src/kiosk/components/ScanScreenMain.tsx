@@ -283,7 +283,7 @@ export default function ScanScreenMain(props: {
   // Take focus back after SCAN_INPUT_REFOCUS_TIMEOUT_MS rather than now. Also
   // used when the pad closes: iOS shows its keyboard for a focus() made while
   // handling a tap (and WebKit carries that tap through timers shorter than a
-  // second), so refocusing straight from the pad's Close or Enter key would
+  // second), so refocusing straight from the pad's Close or Confirm key would
   // swap the pad for the system keyboard.
   const scheduleRefocus = useCallback(() => {
     clearRefocusTimeout();
