@@ -27,4 +27,11 @@ describe("scanViewProps", () => {
       scanViewProps("center").className.trim(),
     );
   });
+
+  it("makes every screen fill its host and scroll vertically on its own", () => {
+    const { className } = scanViewProps("center");
+    expect(className).toContain("h-full");
+    expect(className).toContain("overflow-y-auto");
+    expect(className).toContain("overflow-x-hidden");
+  });
 });
