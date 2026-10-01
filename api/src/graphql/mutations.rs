@@ -212,6 +212,54 @@ struct CreateApiTokenResult {
     secret: String,
 }
 
+/// `submitFeedback`'s result: the Toolbox ticket the feedback became.
+#[derive(SimpleObject)]
+struct SubmittedFeedback {
+    /// Toolbox's ticket number.
+    number: i64,
+    /// `[#{slug}-{number}]`, the tag on every email about this ticket — what the
+    /// user will see in their inbox, so it doubles as their reference.
+    reference: String,
+}
+
+const FEEDBACK_SUBJECT_MAX_CHARS: usize = 200;
+const FEEDBACK_MESSAGE_MAX_CHARS: usize = 10_000;
+
+/// Trim and bound a feedback submission, returning `(subject, message)`. The
+/// subject is one line: Toolbox uses it as an email subject.
+fn validate_feedback(subject: &str, message: &str) -> Result<(String, String)> {
+    let subject = subject.trim();
+    let message = message.trim();
+    if subject.is_empty() {
+        return Err(anyhow!("Subject cannot be empty"));
+    }
+    if subject.contains(['\r', '\n']) {
+        return Err(anyhow!("Subject must be a single line"));
+    }
+    if subject.chars().count() > FEEDBACK_SUBJECT_MAX_CHARS {
+        return Err(anyhow!(
+            "Subject cannot be longer than {FEEDBACK_SUBJECT_MAX_CHARS} characters"
+        ));
+    }
+    if message.is_empty() {
+        return Err(anyhow!("Message cannot be empty"));
+    }
+    if message.chars().count() > FEEDBACK_MESSAGE_MAX_CHARS {
+        return Err(anyhow!(
+            "Message cannot be longer than {FEEDBACK_MESSAGE_MAX_CHARS} characters"
+        ));
+    }
+    Ok((subject.to_string(), message.to_string()))
+}
+
+/// The ticket body: the user's message, then who sent it and from where, so
+/// whoever handles the ticket can find the account without asking.
+fn feedback_body(message: &str, user_id: &str, email: &str, site: &str) -> String {
+    format!(
+        "{message}\n\n--\nSent from the seslogin help page ({site}) by {email} (user {user_id})."
+    )
+}
+
 pub struct MutationRoot<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync> {
     pub(super) app: Arc<A>,
 }
@@ -2271,6 +2319,59 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         Ok(true)
     }
 
+    /// Send feedback or a help request to the seslogin team, as a ticket in
+    /// Toolbox. Replies go to the caller's own email address, which is read from
+    /// their user record — never from the request — because Toolbox trusts it as
+    /// already verified. Fails when feedback isn't configured on this server (see
+    /// `Query.feedbackAvailable`).
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    async fn submit_feedback(
+        &self,
+        ctx: &Context<'_>,
+        subject: String,
+        message: String,
+    ) -> Result<SubmittedFeedback> {
+        let user_id = match ctx.data_opt::<AuthInfo>() {
+            Some(AuthInfo::User { id, .. }) => id.clone(),
+            _ => return Err(anyhow!("User auth required")),
+        };
+        let (subject, message) = validate_feedback(&subject, &message)?;
+        let config = crate::toolbox::Config::from_env()
+            .ok_or_else(|| anyhow!("Help requests aren't available on this server"))?;
+
+        let user = self
+            .app
+            .db()
+            .get_users(&[&user_id])
+            .await?
+            .into_iter()
+            .next()
+            .flatten()
+            .ok_or_else(|| anyhow!("User not found"))?;
+        let email = user.email.trim();
+        if email.is_empty() {
+            return Err(anyhow!("Your account has no email address to reply to"));
+        }
+
+        let body = feedback_body(&message, &user.id, email, &crate::base_url::web_base_url());
+        let ticket = crate::toolbox::submit_ticket(&config, &subject, &body, email)
+            .await
+            .map_err(|err| {
+                // Toolbox's detail is for us, not the user (it can name the
+                // integration token).
+                warn!("Feedback submission to Toolbox failed for user {user_id}: {err:#}");
+                anyhow!("Couldn't send your message. Please try again later.")
+            })?;
+        info!(
+            "Feedback submitted: user={} ticket={}",
+            user_id, ticket.subject_tag
+        );
+        Ok(SubmittedFeedback {
+            number: ticket.number,
+            reference: ticket.subject_tag,
+        })
+    }
+
     #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
     async fn update_my_email_config(
         &self,
@@ -2876,6 +2977,42 @@ struct PasskeyChallenge {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn validate_feedback_trims_and_accepts() {
+        let (subject, message) =
+            super::validate_feedback("  Report broken \t", "\n Line one\nLine two \n").unwrap();
+        assert_eq!(subject, "Report broken");
+        assert_eq!(message, "Line one\nLine two");
+    }
+
+    #[test]
+    fn validate_feedback_rejects_bad_input() {
+        let long_subject = "x".repeat(super::FEEDBACK_SUBJECT_MAX_CHARS + 1);
+        let long_message = "x".repeat(super::FEEDBACK_MESSAGE_MAX_CHARS + 1);
+        for (subject, message) in [
+            ("  ", "body"),
+            ("subject", " \n "),
+            ("two\nlines", "body"),
+            ("carriage\rreturn", "body"),
+            (long_subject.as_str(), "body"),
+            ("subject", long_message.as_str()),
+        ] {
+            assert!(
+                super::validate_feedback(subject, message).is_err(),
+                "{subject:?} / {message:?} should be rejected"
+            );
+        }
+    }
+
+    #[test]
+    fn feedback_body_identifies_the_sender() {
+        let body = super::feedback_body("Help!", "u1", "a@example.com", "https://seslogin.com");
+        assert!(body.starts_with("Help!\n\n"));
+        assert!(body.contains("a@example.com"));
+        assert!(body.contains("user u1"));
+        assert!(body.contains("https://seslogin.com"));
+    }
     // Sanitized fixture captured from a real 0.4.x Passkey serialization. Key bytes are zeroed.
     // This test exists to catch webauthn-rs serde format changes during library upgrades — if
     // deserialization breaks here after a version bump, stored passkeys in DynamoDB are at risk.

@@ -35,6 +35,7 @@ pub mod session_key;
 pub mod sqs;
 pub mod telemetry;
 pub mod text_table;
+pub mod toolbox;
 pub mod turnstile;
 
 /// Load local `.env`/`.env.secret` for CLI / dev binaries. The Lambda binaries

@@ -3502,6 +3502,15 @@ impl<A: App + HasDb + HasRealtime + Send + Sync + 'static> QueryRoot<A> {
         }))
     }
 
+    /// Whether `submitFeedback` can send anything: Toolbox is configured on this
+    /// server (`TOOLBOX_GRAPHQL_URL` and `TOOLBOX_API_TOKEN`). The help page
+    /// checks this before showing its form, so nobody types a message only to
+    /// have it refused.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    async fn feedback_available(&self) -> bool {
+        crate::toolbox::Config::from_env().is_some()
+    }
+
     /// Look up a pending kiosk enrollment by its key fingerprint (from the QR code).
     /// Returns `None` if it never existed or has expired — the admin SessionEnroll page
     /// uses this to tell the operator to rescan.

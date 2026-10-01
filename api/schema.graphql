@@ -350,6 +350,14 @@ type MutationRoot {
 	"""
 	scanGuestSignOut(id: ID!): Period!
 	enqueueMemberSync(locationId: ID!): Boolean!
+	"""
+	Send feedback or a help request to the seslogin team, as a ticket in
+	Toolbox. Replies go to the caller's own email address, which is read from
+	their user record — never from the request — because Toolbox trusts it as
+	already verified. Fails when feedback isn't configured on this server (see
+	`Query.feedbackAvailable`).
+	"""
+	submitFeedback(subject: String!, message: String!): SubmittedFeedback!
 	updateMyEmailConfig(dailyLocationIds: [String!]!): User!
 	updateMyDisaggregateVirtualPeriods(value: Boolean!): User!
 	"""
@@ -708,6 +716,13 @@ type QueryRoot {
 	"""
 	enrollmentRealtimeToken(publicKey: String!): KioskRealtimeToken
 	"""
+	Whether `submitFeedback` can send anything: Toolbox is configured on this
+	server (`TOOLBOX_GRAPHQL_URL` and `TOOLBOX_API_TOKEN`). The help page
+	checks this before showing its form, so nobody types a message only to
+	have it refused.
+	"""
+	feedbackAvailable: Boolean!
+	"""
 	Look up a pending kiosk enrollment by its key fingerprint (from the QR code).
 	Returns `None` if it never existed or has expired — the admin SessionEnroll page
 	uses this to tell the operator to rescan.
@@ -916,6 +931,21 @@ type SessionClientInfo {
 	When this snapshot was written, in Unix seconds.
 	"""
 	updatedAt: Int
+}
+
+"""
+`submitFeedback`'s result: the Toolbox ticket the feedback became.
+"""
+type SubmittedFeedback {
+	"""
+	Toolbox's ticket number.
+	"""
+	number: Int!
+	"""
+	`[#{slug}-{number}]`, the tag on every email about this ticket — what the
+	user will see in their inbox, so it doubles as their reference.
+	"""
+	reference: String!
 }
 
 type User {
