@@ -48,7 +48,7 @@ RUST_LOG=info cargo run --bin poem -- --enable-mutations --dev-auth-user <USER_I
 
 With either flag set, the `Authorization` header is ignored and no token is
 needed from the browser. The impersonated caller keeps its real permissions
-(`is_super`, `location_grants`, session location), so authorization still applies
+(`is_super`, `location_grants`, `location_read_only_grants`, session location), so authorization still applies
 normally. If the given record isn't found (or the session is inactive), requests
 return `401`.
 
@@ -218,8 +218,8 @@ the MCP authorization spec's discovery flow.
 | `list_users` | List every admin user. Super user only. |
 | `get_user` | Look up one user by id. A non-super caller may only look up themselves. |
 | `list_locations` | List every location (id, name) — resolve a name to the id `create_user`/`update_user` expect in `locationGrants`. Super user only. |
-| `create_user` | Create a user (email, `isSuper`, `locationGrants`). Super user only. |
-| `update_user` | Change a user's email/`isSuper`/`isDev`/`locationGrants`; omitted fields keep their current value. Never touches `enabled`. Super user only. |
+| `create_user` | Create a user (email, `isSuper`, `locationGrants`, optional `readOnlyLocationGrants`). Super user only. |
+| `update_user` | Change a user's email/`isSuper`/`isDev`/`locationGrants`/`readOnlyLocationGrants`; omitted fields keep their current value. Never touches `enabled`. Super user only. |
 | `disable_user` / `enable_user` | Flip `enabled` — seslogin has no user delete, only disable. Super user only. |
 
 Every tool runs a **fixed** GraphQL document against the in-process schema

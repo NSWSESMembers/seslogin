@@ -394,6 +394,63 @@ async fn whoami_works_for_any_authenticated_caller() {
 // ── tools/call: super-user-only tools ────────────────────────────────────────
 
 #[tokio::test]
+async fn create_and_update_user_pass_through_read_only_location_grants() {
+    let (app, schema) = setup();
+    seed_super_user(&app, "admin-1", true);
+    seed_location(&app, "loc-1", "Test Unit");
+    seed_location(&app, "loc-2", "Other Unit");
+    let token = access_token_for(&app, "admin-1").await;
+    let bearer = format!("Bearer {token}");
+
+    let reply = post(
+        &app,
+        &schema,
+        Some(&bearer),
+        tool_call(
+            "create_user",
+            json!({
+                "email": "ro@example.com", "isSuper": false, "locationGrants": [],
+                "readOnlyLocationGrants": ["loc-1"],
+            }),
+        ),
+    )
+    .await;
+    assert_eq!(reply.json["result"]["isError"], false, "{:?}", reply.json);
+    let user = &reply.json["result"]["structuredContent"]["user"];
+    assert_eq!(user["readOnlyLocationGrantIds"], json!(["loc-1"]));
+    let id = user["id"].as_str().unwrap().to_string();
+
+    // Updating only the admin grants keeps the read-only ones.
+    let reply = post(
+        &app,
+        &schema,
+        Some(&bearer),
+        tool_call(
+            "update_user",
+            json!({ "id": id, "locationGrants": ["loc-2"] }),
+        ),
+    )
+    .await;
+    assert_eq!(reply.json["result"]["isError"], false, "{:?}", reply.json);
+    let stored = app.db.users.lock().unwrap().get(&id).cloned().unwrap();
+    assert_eq!(stored.location_grants, vec!["loc-2".to_string()]);
+    assert_eq!(stored.location_read_only_grants, vec!["loc-1".to_string()]);
+
+    // A location in both lists is rejected.
+    let reply = post(
+        &app,
+        &schema,
+        Some(&bearer),
+        tool_call(
+            "update_user",
+            json!({ "id": id, "locationGrants": ["loc-1"] }),
+        ),
+    )
+    .await;
+    assert_eq!(reply.json["result"]["isError"], true, "{:?}", reply.json);
+}
+
+#[tokio::test]
 async fn super_user_can_list_create_and_update_users() {
     let (app, schema) = setup();
     seed_super_user(&app, "admin-1", true);

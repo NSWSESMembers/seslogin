@@ -29,6 +29,7 @@ pub(crate) struct FakeDb {
     pub(crate) ephemeral_state: Mutex<HashMap<String, EphemeralState>>,
     pub(crate) oauth_grants: Mutex<HashMap<String, OAuthGrant>>,
     pub(crate) locations: Mutex<HashMap<String, Location>>,
+    pub(crate) sessions: Mutex<HashMap<String, db::Session>>,
 }
 
 pub(crate) fn unsupported<T>() -> db::Result<T> {
@@ -62,6 +63,7 @@ impl db::Handler for FakeDb {
                 is_dev,
                 enabled,
                 location_grants,
+                location_read_only_grants,
             } => {
                 let mut users = self.users.lock().unwrap();
                 let user = users
@@ -72,6 +74,9 @@ impl db::Handler for FakeDb {
                 user.is_dev = is_dev;
                 user.enabled = enabled;
                 user.location_grants = location_grants;
+                if let Some(grants) = location_read_only_grants {
+                    user.location_read_only_grants = grants;
+                }
                 user.updated_at = seslogin::clock::now_sec();
                 Ok(())
             }
@@ -180,6 +185,7 @@ impl db::Handler for FakeDb {
         email: &str,
         is_super: bool,
         location_grants: Vec<String>,
+        location_read_only_grants: Vec<String>,
     ) -> db::Result<User> {
         let now = seslogin::clock::now_sec();
         let user = User {
@@ -189,6 +195,7 @@ impl db::Handler for FakeDb {
             is_dev: false,
             enabled: true,
             location_grants,
+            location_read_only_grants,
             access_time: None,
             email_config: serde_json::Map::new(),
             disaggregate_virtual_periods: false,
@@ -237,8 +244,16 @@ impl db::Handler for FakeDb {
     async fn wipe_session_code(&self, _id: &str) -> db::Result<()> {
         unsupported()
     }
-    async fn list_sessions(&self, _query: db::ListSessionsQuery) -> db::Result<Vec<db::Session>> {
-        unsupported()
+    async fn list_sessions(&self, query: db::ListSessionsQuery) -> db::Result<Vec<db::Session>> {
+        let db::ListSessionsQuery::ByLocation(location_id) = query;
+        Ok(self
+            .sessions
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|s| s.location_id == location_id)
+            .cloned()
+            .collect())
     }
     async fn list_people_for_location(
         &self,
@@ -706,6 +721,7 @@ pub(crate) fn seed_user(
             is_dev: false,
             enabled,
             location_grants: vec![],
+            location_read_only_grants: vec![],
             access_time: None,
             email_config: serde_json::Map::new(),
             disaggregate_virtual_periods: false,

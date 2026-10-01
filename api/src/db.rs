@@ -100,7 +100,11 @@ pub struct User {
     pub is_super: bool,
     pub is_dev: bool,
     pub enabled: bool,
+    /// Locations where the user is an Admin (read and write).
     pub location_grants: Vec<String>,
+    /// Locations where the user is Read only: they can view but not change.
+    /// Disjoint from `location_grants`.
+    pub location_read_only_grants: Vec<String>,
     pub access_time: Option<u64>,
     pub email_config: serde_json::Map<String, serde_json::Value>,
     pub disaggregate_virtual_periods: bool,
@@ -122,6 +126,8 @@ pub enum UserUpdateShape<'a> {
         is_dev: bool,
         enabled: bool,
         location_grants: Vec<String>,
+        /// `None` leaves the stored read-only grants unchanged.
+        location_read_only_grants: Option<Vec<String>>,
     },
     AccessTime,
     EmailConfig {
@@ -659,6 +665,7 @@ pub trait Handler: Sync {
         email: &str,
         is_super: bool,
         location_grants: Vec<String>,
+        location_read_only_grants: Vec<String>,
     ) -> impl Future<Output = Result<User>> + Send;
     fn update_user(
         &self,

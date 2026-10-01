@@ -36,6 +36,7 @@ impl db::Handler for Handler {
         _email: &str,
         _is_super: bool,
         _location_grants: Vec<String>,
+        _location_read_only_grants: Vec<String>,
     ) -> db::Result<User> {
         Self::unsupported()
     }

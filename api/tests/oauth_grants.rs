@@ -22,6 +22,7 @@ fn user_auth(id: &str, is_super: bool) -> AuthInfo {
         id: id.to_string(),
         is_super,
         location_grants: vec![],
+        location_read_only_grants: vec![],
         token_id: None,
         grant_id: None,
     }

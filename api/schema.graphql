@@ -129,6 +129,11 @@ type Location {
 	id: ID!
 	name: String!
 	enabled: Boolean!
+	"""
+	Whether the current caller may make changes at this location. False for Read
+	only users, so a client can hide edit controls rather than let them fail.
+	"""
+	viewerCanEdit: Boolean!
 	nitcEnabled: Int
 	"""
 	Whether NITC events exported for this location are marked completed in SES.
@@ -243,8 +248,26 @@ type MutationRoot {
 	Revoke the current user's opaque session token (no-op for JWT sessions).
 	"""
 	logout: Boolean!
-	createUser(email: String!, isSuper: Boolean!, locationGrants: [String!]!): User!
-	updateUser(id: ID!, email: String!, isSuper: Boolean!, isDev: Boolean!, enabled: Boolean!, locationGrants: [String!]!): User!
+	createUser(		email: String!,		isSuper: Boolean!,
+		"""
+		Locations where the user is an Admin (read and write).
+		"""
+		locationGrants: [String!]!,
+		"""
+		Locations where the user is Read only: can view but not change. Must not overlap `locationGrants`. Omitted means none.
+		"""
+		readOnlyLocationGrants: [String!]
+	): User!
+	updateUser(		id: ID!,		email: String!,		isSuper: Boolean!,		isDev: Boolean!,		enabled: Boolean!,
+		"""
+		Locations where the user is an Admin (read and write).
+		"""
+		locationGrants: [String!]!,
+		"""
+		Locations where the user is Read only: can view but not change. Must not overlap `locationGrants`. Omitted leaves the user's existing read-only locations unchanged.
+		"""
+		readOnlyLocationGrants: [String!]
+	): User!
 	createPerson(locationId: ID!, firstName: String!, lastName: String!, memberNumber: String!): Person!
 	updatePerson(id: ID!, firstName: String!, lastName: String!, memberNumber: String!): Person!
 	deletePerson(id: ID!): Boolean!
@@ -892,6 +915,10 @@ type User {
 	updatedAt: Int!
 	emailSummaryLocationIds: [String!]!
 	locationGrantIds: [ID!]!
+	"""
+	Locations where the user is Read only (can view but not change).
+	"""
+	readOnlyLocationGrantIds: [ID!]!
 	locations: [Location!]!
 	passkeys: [PasskeyInfo!]!
 	"""

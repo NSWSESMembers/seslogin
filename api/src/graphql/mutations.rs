@@ -31,7 +31,8 @@ use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use hex;
 
 use super::auth::{
-    AuthGuard, AuthRequirement, require_location_access, require_period_access, require_writable,
+    AuthGuard, AuthRequirement, require_location_access, require_location_write_access,
+    require_period_write_access, require_writable,
 };
 use super::dataloader::DatabaseLoader;
 use super::error::{ApiError, ErrorCode};
@@ -216,6 +217,30 @@ pub struct MutationRoot<A: App + HasDb + HasQueues + HasMail + HasRealtime + Sen
 }
 
 impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static> MutationRoot<A> {
+    /// Validate the two per-location grant lists of a user: every location must exist,
+    /// and no location may appear in both (a user is Admin or Read only at a location,
+    /// never both).
+    async fn validate_user_grants(&self, admin: &[String], read_only: &[String]) -> Result<()> {
+        if let Some(id) = admin.iter().find(|id| read_only.contains(id)) {
+            return Err(anyhow!(
+                "Location {:?} cannot be both an admin and a read-only grant",
+                id
+            ));
+        }
+        for grants in [admin, read_only] {
+            if grants.is_empty() {
+                continue;
+            }
+            let found = self.app.db().get_locations(grants).await?;
+            for (id, loc) in grants.iter().zip(found.iter()) {
+                if loc.is_none() {
+                    return Err(anyhow!("Location {:?} not found", id));
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// Enqueue a Phase 1 (period) NITC export for a mutated period.
     ///
     /// `old_nitc_event_id` is the event the period was assigned to *before* this mutation (read
@@ -672,24 +697,21 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         &self,
         email: String,
         is_super: bool,
+        #[graphql(desc = "Locations where the user is an Admin (read and write).")]
         location_grants: Vec<String>,
+        #[graphql(
+            desc = "Locations where the user is Read only: can view but not change. Must not \
+                    overlap `locationGrants`. Omitted means none."
+        )]
+        read_only_location_grants: Option<Vec<String>>,
     ) -> Result<User<A>> {
-        if !location_grants.is_empty() {
-            let found = self
-                .app
-                .db()
-                .get_locations(location_grants.as_slice())
-                .await?;
-            for (id, loc) in location_grants.iter().zip(found.iter()) {
-                if loc.is_none() {
-                    return Err(anyhow!("Location {:?} not found", id));
-                }
-            }
-        }
+        let read_only_location_grants = read_only_location_grants.unwrap_or_default();
+        self.validate_user_grants(&location_grants, &read_only_location_grants)
+            .await?;
         let rec = self
             .app
             .db()
-            .create_user(&email, is_super, location_grants)
+            .create_user(&email, is_super, location_grants, read_only_location_grants)
             .await?;
 
         // TODO: email user with setup instructions
@@ -705,20 +727,33 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         is_super: bool,
         is_dev: bool,
         enabled: bool,
+        #[graphql(desc = "Locations where the user is an Admin (read and write).")]
         location_grants: Vec<String>,
+        #[graphql(
+            desc = "Locations where the user is Read only: can view but not change. Must not \
+                    overlap `locationGrants`. Omitted leaves the user's existing read-only \
+                    locations unchanged."
+        )]
+        read_only_location_grants: Option<Vec<String>>,
     ) -> Result<User<A>> {
-        if !location_grants.is_empty() {
-            let found = self
+        // When the read-only list is omitted it stays as stored, so the new admin list
+        // must still be checked against the stored one.
+        let effective_read_only = match &read_only_location_grants {
+            Some(grants) => grants.clone(),
+            None if location_grants.is_empty() => Vec::new(),
+            None => self
                 .app
                 .db()
-                .get_locations(location_grants.as_slice())
-                .await?;
-            for (id, loc) in location_grants.iter().zip(found.iter()) {
-                if loc.is_none() {
-                    return Err(anyhow!("Location {:?} not found", id));
-                }
-            }
-        }
+                .get_users(&[&id])
+                .await?
+                .into_iter()
+                .next()
+                .flatten()
+                .map(|u| u.location_read_only_grants)
+                .unwrap_or_default(),
+        };
+        self.validate_user_grants(&location_grants, &effective_read_only)
+            .await?;
         self.app
             .db()
             .update_user(
@@ -729,6 +764,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
                     is_dev,
                     enabled,
                     location_grants,
+                    location_read_only_grants: read_only_location_grants,
                 },
             )
             .await
@@ -757,7 +793,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         #[graphql(name = "memberNumber")] registration_number: String,
     ) -> Result<Person<A>> {
         require_writable(ctx)?;
-        require_location_access(ctx, &location_id)?;
+        require_location_write_access(ctx, &location_id)?;
         self.app
             .db()
             .get_locations(&[&location_id])
@@ -798,7 +834,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
             .next()
             .flatten()
             .ok_or_else(|| anyhow!("Person with ID {:?} missing", id))?;
-        require_location_access(ctx, &existing.location_id)?;
+        require_location_write_access(ctx, &existing.location_id)?;
 
         self.ensure_registration_number_available(&registration_number, Some(id.as_str()))
             .await?;
@@ -833,7 +869,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
             .next()
             .flatten()
             .ok_or_else(|| anyhow!("Person with ID {:?} missing", id))?;
-        require_location_access(ctx, &existing.location_id)?;
+        require_location_write_access(ctx, &existing.location_id)?;
 
         self.app
             .db()
@@ -857,7 +893,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         if start_time >= end_time {
             return Err(anyhow!("start_time must be before end_time"));
         }
-        require_location_access(ctx, &location_id)?;
+        require_location_write_access(ctx, &location_id)?;
         self.app
             .db()
             .get_locations(&[&location_id])
@@ -931,8 +967,8 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         if existing.guest_name.is_some() {
             return Err(anyhow!("Cannot edit a guest period"));
         }
-        require_location_access(ctx, &existing.location_id)?;
-        require_location_access(ctx, &location_id)?;
+        require_location_write_access(ctx, &existing.location_id)?;
+        require_location_write_access(ctx, &location_id)?;
         self.app
             .db()
             .get_locations(&[&location_id])
@@ -1031,7 +1067,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         if existing.guest_name.is_some() {
             return Err(anyhow!("Cannot edit a guest period"));
         }
-        require_period_access(ctx, &existing)?;
+        require_period_write_access(ctx, &existing)?;
 
         // A member-facing edit link is deliberately narrower than an admin edit: it
         // corrects the times and category of its own entry, nothing else.
@@ -1144,7 +1180,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         if existing.guest_name.is_none() {
             return Err(anyhow!("Not a guest period"));
         }
-        require_location_access(ctx, &existing.location_id)?;
+        require_location_write_access(ctx, &existing.location_id)?;
 
         let comment = match &comment {
             MaybeUndefined::Undefined => None,
@@ -1200,7 +1236,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
             .next()
             .flatten()
             .ok_or_else(|| anyhow!("Period with ID {:?} missing", id))?;
-        require_location_access(ctx, &period.location_id)?;
+        require_location_write_access(ctx, &period.location_id)?;
         if period.deleted.is_some() {
             return Err(anyhow!("Cannot send an edit link for a deleted period"));
         }
@@ -1320,7 +1356,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
             .next()
             .flatten()
             .ok_or_else(|| anyhow!("Period with ID {:?} missing", id))?;
-        require_location_access(ctx, &existing.location_id)?;
+        require_location_write_access(ctx, &existing.location_id)?;
 
         let new_version = self
             .app
@@ -1350,7 +1386,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         healthcheck_url: Option<String>,
     ) -> Result<Session<A>> {
         require_writable(ctx)?;
-        require_location_access(ctx, &location_id)?;
+        require_location_write_access(ctx, &location_id)?;
         self.app
             .db()
             .get_locations(&[&location_id])
@@ -1401,7 +1437,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         key_fingerprint: String,
     ) -> Result<Session<A>> {
         require_writable(ctx)?;
-        require_location_access(ctx, &location_id)?;
+        require_location_write_access(ctx, &location_id)?;
         self.app
             .db()
             .get_locations(&[&location_id])
@@ -1668,7 +1704,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
             .next()
             .flatten()
             .ok_or_else(|| anyhow!("Session with ID {:?} missing", id))?;
-        require_location_access(ctx, &existing.location_id)?;
+        require_location_write_access(ctx, &existing.location_id)?;
 
         let config = parse_session_config_json(config.as_deref())?;
         let healthcheck_url = normalize_healthcheck_url(healthcheck_url.as_deref())?;
@@ -1702,7 +1738,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
             .next()
             .flatten()
             .ok_or_else(|| anyhow!("Session with ID {:?} missing", id))?;
-        require_location_access(ctx, &existing.location_id)?;
+        require_location_write_access(ctx, &existing.location_id)?;
 
         self.app
             .db()
@@ -1734,7 +1770,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
             .next()
             .flatten()
             .ok_or_else(|| anyhow!("Session with ID {:?} missing", id))?;
-        require_location_access(ctx, &existing.location_id)?;
+        require_location_write_access(ctx, &existing.location_id)?;
 
         if !existing.active {
             return Err(anyhow!("This kiosk has been deleted."));
@@ -2066,7 +2102,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
             .next()
             .flatten()
             .ok_or_else(|| anyhow!("Period with ID {:?} missing", id))?;
-        require_location_access(ctx, &rec.location_id)?;
+        require_location_write_access(ctx, &rec.location_id)?;
         self.app
             .db()
             .get_categories(&[&category_id])
@@ -2173,7 +2209,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
             .flatten()
             .ok_or_else(|| anyhow!("Period with ID {:?} missing", id))?;
 
-        require_location_access(ctx, &rec.location_id)?;
+        require_location_write_access(ctx, &rec.location_id)?;
         if rec.guest_name.is_none() {
             return Err(anyhow!("Not a guest period"));
         }
@@ -2193,7 +2229,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
     #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
     async fn enqueue_member_sync(&self, ctx: &Context<'_>, location_id: ID) -> Result<bool> {
         require_writable(ctx)?;
-        require_location_access(ctx, &location_id)?;
+        require_location_write_access(ctx, &location_id)?;
         self.app
             .db()
             .get_locations(&[&location_id])
