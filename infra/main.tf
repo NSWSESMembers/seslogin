@@ -1,8 +1,10 @@
 terraform {
   required_providers {
     aws = {
-      source  = "hashicorp/aws"
-      version = "~> 5.0"
+      source = "hashicorp/aws"
+      # 6.37+ for GSI `key_schema` (6.29) without its perpetual-diff (6.32.1) and
+      # GSI-removal (6.37.0) bugs.
+      version = ">= 6.37, < 7.0"
     }
   }
   required_version = ">= 1.5"

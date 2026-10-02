@@ -28,8 +28,11 @@ resource "aws_dynamodb_table" "test_user" {
   }
 
   global_secondary_index {
-    name            = "email-index"
-    hash_key        = "email"
+    name = "email-index"
+    key_schema {
+      attribute_name = "email"
+      key_type       = "HASH"
+    }
     projection_type = "KEYS_ONLY"
   }
 }
@@ -49,8 +52,11 @@ resource "aws_dynamodb_table" "test_category" {
   }
 
   global_secondary_index {
-    name            = "nitc_group_id-index"
-    hash_key        = "nitc_group_id"
+    name = "nitc_group_id-index"
+    key_schema {
+      attribute_name = "nitc_group_id"
+      key_type       = "HASH"
+    }
     projection_type = "ALL"
   }
 }
@@ -97,26 +103,47 @@ resource "aws_dynamodb_table" "test_period" {
   }
 
   global_secondary_index {
-    name            = "person_id-start_time-index"
-    hash_key        = "person_id"
-    range_key       = "start_time"
+    name = "person_id-start_time-index"
+    key_schema {
+      attribute_name = "person_id"
+      key_type       = "HASH"
+    }
+    key_schema {
+      attribute_name = "start_time"
+      key_type       = "RANGE"
+    }
     projection_type = "ALL"
   }
   global_secondary_index {
-    name            = "nitc_event_id-index"
-    hash_key        = "nitc_event_id"
+    name = "nitc_event_id-index"
+    key_schema {
+      attribute_name = "nitc_event_id"
+      key_type       = "HASH"
+    }
     projection_type = "ALL"
   }
   global_secondary_index {
-    name            = "location_open-start_time-index"
-    hash_key        = "location_open"
-    range_key       = "start_time"
+    name = "location_open-start_time-index"
+    key_schema {
+      attribute_name = "location_open"
+      key_type       = "HASH"
+    }
+    key_schema {
+      attribute_name = "start_time"
+      key_type       = "RANGE"
+    }
     projection_type = "ALL"
   }
   global_secondary_index {
-    name            = "location_live-start_time-index"
-    hash_key        = "location_live"
-    range_key       = "start_time"
+    name = "location_live-start_time-index"
+    key_schema {
+      attribute_name = "location_live"
+      key_type       = "HASH"
+    }
+    key_schema {
+      attribute_name = "start_time"
+      key_type       = "RANGE"
+    }
     projection_type = "ALL"
   }
 }
@@ -144,18 +171,27 @@ resource "aws_dynamodb_table" "test_person" {
   }
 
   global_secondary_index {
-    name            = "location_id-index"
-    hash_key        = "location_id"
+    name = "location_id-index"
+    key_schema {
+      attribute_name = "location_id"
+      key_type       = "HASH"
+    }
     projection_type = "ALL"
   }
   global_secondary_index {
-    name            = "registration_number-index"
-    hash_key        = "registration_number"
+    name = "registration_number-index"
+    key_schema {
+      attribute_name = "registration_number"
+      key_type       = "HASH"
+    }
     projection_type = "KEYS_ONLY"
   }
   global_secondary_index {
-    name            = "ses_api_person_id-index"
-    hash_key        = "ses_api_person_id"
+    name = "ses_api_person_id-index"
+    key_schema {
+      attribute_name = "ses_api_person_id"
+      key_type       = "HASH"
+    }
     projection_type = "KEYS_ONLY"
   }
 }
@@ -187,19 +223,31 @@ resource "aws_dynamodb_table" "test_session" {
   }
 
   global_secondary_index {
-    name            = "code-index"
-    hash_key        = "code"
+    name = "code-index"
+    key_schema {
+      attribute_name = "code"
+      key_type       = "HASH"
+    }
     projection_type = "KEYS_ONLY"
   }
   global_secondary_index {
-    name            = "active-location_id-index"
-    hash_key        = "active"
-    range_key       = "location_id"
+    name = "active-location_id-index"
+    key_schema {
+      attribute_name = "active"
+      key_type       = "HASH"
+    }
+    key_schema {
+      attribute_name = "location_id"
+      key_type       = "RANGE"
+    }
     projection_type = "ALL"
   }
   global_secondary_index {
-    name            = "key_fingerprint-index"
-    hash_key        = "key_fingerprint"
+    name = "key_fingerprint-index"
+    key_schema {
+      attribute_name = "key_fingerprint"
+      key_type       = "HASH"
+    }
     projection_type = "KEYS_ONLY"
   }
 }
@@ -223,13 +271,19 @@ resource "aws_dynamodb_table" "test_api_token" {
   }
 
   global_secondary_index {
-    name            = "token_hash-index"
-    hash_key        = "token_hash"
+    name = "token_hash-index"
+    key_schema {
+      attribute_name = "token_hash"
+      key_type       = "HASH"
+    }
     projection_type = "KEYS_ONLY"
   }
   global_secondary_index {
-    name            = "active-index"
-    hash_key        = "active"
+    name = "active-index"
+    key_schema {
+      attribute_name = "active"
+      key_type       = "HASH"
+    }
     projection_type = "ALL"
   }
 }
@@ -275,9 +329,15 @@ resource "aws_dynamodb_table" "test_nitc_event" {
   }
 
   global_secondary_index {
-    name            = "location_id-topic_date-index"
-    hash_key        = "location_id"
-    range_key       = "topic_date"
+    name = "location_id-topic_date-index"
+    key_schema {
+      attribute_name = "location_id"
+      key_type       = "HASH"
+    }
+    key_schema {
+      attribute_name = "topic_date"
+      key_type       = "RANGE"
+    }
     projection_type = "ALL"
   }
 }
@@ -313,8 +373,11 @@ resource "aws_dynamodb_table" "test_user_token" {
   }
 
   global_secondary_index {
-    name            = "token_hash-index"
-    hash_key        = "token_hash"
+    name = "token_hash-index"
+    key_schema {
+      attribute_name = "token_hash"
+      key_type       = "HASH"
+    }
     projection_type = "KEYS_ONLY"
   }
 }
@@ -334,8 +397,11 @@ resource "aws_dynamodb_table" "test_webauthn_credential" {
   }
 
   global_secondary_index {
-    name            = "user_id-index"
-    hash_key        = "user_id"
+    name = "user_id-index"
+    key_schema {
+      attribute_name = "user_id"
+      key_type       = "HASH"
+    }
     projection_type = "ALL"
   }
 }
@@ -375,8 +441,11 @@ resource "aws_dynamodb_table" "test_oauth_grant" {
   }
 
   global_secondary_index {
-    name            = "user_id-index"
-    hash_key        = "user_id"
+    name = "user_id-index"
+    key_schema {
+      attribute_name = "user_id"
+      key_type       = "HASH"
+    }
     projection_type = "ALL"
   }
 
