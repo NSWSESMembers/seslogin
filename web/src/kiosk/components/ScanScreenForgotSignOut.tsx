@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { TransactionSignedOut } from "../ScanState";
 import { formatLongDateTimeWithWeekday, formatSeconds } from "../../lib/time";
+import { useResetScroll } from "../useResetScroll";
 import { scanViewProps, type ScreenPosition } from "../../styles";
 import { Button } from "../../components/ui/Button";
 
@@ -65,11 +66,13 @@ export default function ScanScreenForgotSignOut(props: {
   screenPosition: ScreenPosition;
   onResolve: (endTime?: Date) => void;
 }) {
+  const { ref: scrollRef } = useResetScroll<HTMLDivElement>(props.uuid);
   return (
     <div
+      ref={scrollRef}
       {...scanViewProps(
         props.screenPosition,
-        "inset-y-0 flex flex-col items-center justify-center text-center",
+        "inset-y-0 flex flex-col items-center justify-center-safe text-center",
       )}
     >
       {props.uuid && props.transaction && (

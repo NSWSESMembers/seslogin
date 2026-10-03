@@ -2,7 +2,7 @@ import { tw } from "./lib/tw";
 
 export type ScreenPosition = "offLeft" | "center" | "offRight";
 
-export const scanView = tw`absolute left-0 w-full px-2.5 text-center transition-transform duration-500 ease-in-out`;
+export const scanView = tw`absolute top-0 left-0 h-full w-full overflow-x-hidden overflow-y-auto overscroll-contain px-2.5 text-center transition-transform duration-500 ease-in-out`;
 
 export const scanViewPosition: Record<ScreenPosition, string> = {
   offLeft: tw`-translate-x-full`,

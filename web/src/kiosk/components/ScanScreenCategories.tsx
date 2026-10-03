@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { categories } from "../../lib/categories";
 import type { Category } from "../../lib/categories";
 import { scanViewProps, type ScreenPosition } from "../../styles";
+import { useResetScroll } from "../useResetScroll";
 import { CategoryIcon } from "../../components/CategoryIcon";
 
 export function CategoryButton(props: {
@@ -36,9 +37,18 @@ export function CategoryButton(props: {
 export function Inner(props: {
   onSelectCategory: (uuid: string, categoryId: string) => void;
   uuid: string | null;
+  /** Called on mount and whenever the list swaps; the host resets its scroll. */
+  onListChange: () => void;
   smallCategories?: boolean;
 }) {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+
+  // Drilling into or out of a subcategory swaps the whole list, so start at the
+  // top. Runs on mount too, which covers a new uuid (Inner is keyed on it).
+  const { onListChange } = props;
+  useEffect(() => {
+    onListChange();
+  }, [onListChange, selectedCategory]);
 
   const selectedCategoryData = selectedCategory
     ? categories.find((c: Category) => c.id === selectedCategory)
@@ -110,9 +120,12 @@ export default function ScanScreenCategories(props: {
   uuid: string | null;
   smallCategories?: boolean;
 }) {
+  const { ref: scrollRef, reset: onListChange } =
+    useResetScroll<HTMLDivElement>(props.uuid);
   return (
-    <div {...scanViewProps(props.screenPosition)}>
+    <div ref={scrollRef} {...scanViewProps(props.screenPosition)}>
       <Inner
+        onListChange={onListChange}
         onSelectCategory={props.onSelectCategory}
         key={props.uuid}
         uuid={props.uuid}

@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import type { QuickPickSuggestions } from "../ScanState";
 import { findLeafCategory } from "../../lib/categories";
+import { useResetScroll } from "../useResetScroll";
 import { scanViewProps, type ScreenPosition } from "../../styles";
 import { Button } from "../../components/ui/Button";
 import { CategoryIcon } from "../../components/CategoryIcon";
@@ -179,8 +180,10 @@ export default function ScanScreenQuickPick(props: {
 }) {
   const { uuid, suggestions, onSelectCategory } = props;
 
+  const { ref: scrollRef } = useResetScroll<HTMLDivElement>(uuid);
+
   return (
-    <div {...scanViewProps(props.screenPosition)}>
+    <div ref={scrollRef} {...scanViewProps(props.screenPosition)}>
       {uuid && suggestions && (
         <Inner
           key={uuid}
