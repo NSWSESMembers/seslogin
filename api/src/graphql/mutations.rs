@@ -369,6 +369,24 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         }
     }
 
+    /// Tell a kiosk waiting on the enrollment screen that it has been enrolled
+    /// or reactivated (`enrollment.completed` on its per-key channel). Best
+    /// effort and inline, like `publish_period_opened`: a failure is logged and
+    /// never fails the mutation, and the kiosk's fallback check still finds out.
+    async fn publish_enrollment_completed(&self, fingerprint: &str, message_id: &str) {
+        if let Err(e) = self
+            .app
+            .realtime()
+            .publish_enrollment_completed(fingerprint, message_id)
+            .await
+        {
+            warn!(
+                "Failed to publish realtime enrollment.completed for key {}: {:#}",
+                fingerprint, e
+            );
+        }
+    }
+
     /// Reject the mutation if any non-deleted person already holds `registration_number`.
     ///
     /// Registration numbers (member numbers) are intended to be globally unique. DynamoDB cannot
@@ -1567,6 +1585,9 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
             );
         }
 
+        self.publish_enrollment_completed(&key_fingerprint, &format!("enrolled:{}", item.id))
+            .await;
+
         Ok(Session::new(item))
     }
 
@@ -1816,6 +1837,11 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
             "Reactivated kiosk session {} at location {} until {}",
             existing.id, existing.location_id, expires_at
         );
+        self.publish_enrollment_completed(
+            key_fingerprint,
+            &format!("reactivated:{}:{}", existing.id, expires_at),
+        )
+        .await;
 
         let rec = self.app.db().get_sessions(&[&id]).await?;
         Ok(Session::new(rec.into_iter().next().flatten().ok_or_else(

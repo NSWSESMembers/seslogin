@@ -16,6 +16,12 @@ export type EnrollmentQr = {
   qrDataUrl: string | null;
   /** Set when the key, the QR render, or publishing the key failed. */
   error: string | null;
+  /**
+   * True once the key has been published successfully at least once (and stays true
+   * across later re-submits). The server only hands out an enrollment realtime token
+   * for a live pending record, so watchers must wait for this.
+   */
+  published: boolean;
 };
 
 const IDLE: EnrollmentQr = {
@@ -24,6 +30,7 @@ const IDLE: EnrollmentQr = {
   enrollUrl: null,
   qrDataUrl: null,
   error: null,
+  published: false,
 };
 
 function message(err: unknown): string {
@@ -82,7 +89,8 @@ export function useEnrollmentQr(
           if (cancelled) return;
           try {
             await submitEnrollmentKey(info);
-            if (!cancelled) setState((prev) => ({ ...prev, error: null }));
+            if (!cancelled)
+              setState((prev) => ({ ...prev, error: null, published: true }));
           } catch (err) {
             console.error("Failed to submit enrollment key:", err);
             if (!cancelled) {

@@ -9,8 +9,12 @@
 //!
 //! A kiosk's "who's signed in" panel subscribes to one Ably channel per
 //! location and applies [`PeriodOpened`]/[`PeriodClosed`] messages as they
-//! arrive, instead of polling GraphQL. See CLAUDE.md, "Queue, mail and
-//! realtime abstraction" and the `ABLY_API_KEY` configuration bullet.
+//! arrive, instead of polling GraphQL. A kiosk waiting to be enrolled (the
+//! public-key/QR flow) likewise subscribes to a per-key-fingerprint channel
+//! ([`enrollment_channel`]) and is told [`EnrollmentCompleted`] when an admin
+//! enrolls or reactivates it, instead of polling for its session. See
+//! CLAUDE.md, "Queue, mail and realtime abstraction" and the `ABLY_API_KEY`
+//! configuration bullet.
 
 use std::future::Future;
 
@@ -21,6 +25,9 @@ use serde::{Deserialize, Serialize};
 pub const EVENT_PERIOD_OPENED: &str = "period.opened";
 /// Event name for a closed (signed-out, or deleted-while-open) period.
 pub const EVENT_PERIOD_CLOSED: &str = "period.closed";
+
+/// Event name for a kiosk's pending enrollment having been completed.
+pub const EVENT_ENROLLMENT_COMPLETED: &str = "enrollment.completed";
 
 /// The Ably channel a location's kiosks publish and subscribe to.
 ///
@@ -33,6 +40,22 @@ pub const EVENT_PERIOD_CLOSED: &str = "period.closed";
 pub fn kiosk_channel(db_prefix: &str, location_id: &str) -> String {
     format!("kiosk:{db_prefix}:{location_id}")
 }
+
+/// The Ably channel a not-yet-enrolled kiosk subscribes to, one per public-key
+/// fingerprint (the hex SHA-256 of its SPKI DER), namespaced by database prefix
+/// for the same reason as [`kiosk_channel`]. The fingerprint is derived
+/// server-side from a validated key, never taken from a caller.
+pub fn enrollment_channel(db_prefix: &str, fingerprint: &str) -> String {
+    format!("kiosk-enroll:{db_prefix}:{fingerprint}")
+}
+
+/// Published on [`enrollment_channel`] when an admin enrolls (or reactivates)
+/// the kiosk holding that key. Deliberately content-free: it is only a "check
+/// now" signal, and the kiosk confirms with a request signed by its own key, so
+/// nothing about the new session (id, location) travels over the channel.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EnrollmentCompleted {}
 
 /// Published when a period is opened (a member sign-in or a guest sign-in).
 /// Times are Unix seconds, matching the GraphQL `startTime` field.
@@ -107,6 +130,23 @@ pub trait Handler: Sync {
         event: &PeriodClosed,
     ) -> impl Future<Output = Result<()>> + Send;
 
+    /// Publish that the kiosk holding `fingerprint` has been enrolled (or
+    /// reactivated). `message_id` is Ably's idempotency key.
+    fn publish_enrollment_completed(
+        &self,
+        fingerprint: &str,
+        message_id: &str,
+    ) -> impl Future<Output = Result<()>> + Send;
+
+    /// Build a signed, subscribe-only token request scoped to exactly one
+    /// key's enrollment channel. `None` means realtime is disabled. The caller
+    /// is responsible for having checked the key has a live pending
+    /// enrollment — this only signs.
+    fn enrollment_token_request(
+        &self,
+        fingerprint: &str,
+    ) -> impl Future<Output = Result<Option<KioskToken>>> + Send;
+
     /// Build a signed, subscribe-only token request scoped to exactly one
     /// location's channel. `None` means realtime is disabled (no Ably key
     /// configured) — callers fall back to polling.
@@ -135,6 +175,28 @@ mod tests {
             kiosk_channel("seslogin_prod", "ABC123"),
             kiosk_channel("seslogin_test", "ABC123"),
         );
+    }
+
+    #[test]
+    fn enrollment_channel_is_namespaced_by_prefix_and_fingerprint() {
+        assert_eq!(
+            enrollment_channel("seslogin_prod", "abc123"),
+            "kiosk-enroll:seslogin_prod:abc123"
+        );
+        assert_ne!(
+            enrollment_channel("seslogin_prod", "abc123"),
+            enrollment_channel("seslogin_test", "abc123"),
+        );
+        assert_ne!(
+            enrollment_channel("seslogin_prod", "abc123"),
+            kiosk_channel("seslogin_prod", "abc123"),
+        );
+    }
+
+    #[test]
+    fn enrollment_completed_is_an_empty_object() {
+        let json = serde_json::to_string(&EnrollmentCompleted {}).unwrap();
+        assert_eq!(json, "{}");
     }
 
     #[test]
