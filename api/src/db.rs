@@ -688,6 +688,17 @@ impl AuditAction {
             Self::Restore => "restore",
         }
     }
+
+    /// Inverse of [`AuditAction::as_str`].
+    pub fn parse(s: &str) -> Option<Self> {
+        Some(match s {
+            "create" => Self::Create,
+            "update" => Self::Update,
+            "delete" => Self::Delete,
+            "restore" => Self::Restore,
+            _ => return None,
+        })
+    }
 }
 
 /// Which kind of record an audit entry is about.
@@ -708,6 +719,25 @@ pub enum AuditEntityType {
 }
 
 impl AuditEntityType {
+    /// Inverse of [`AuditEntityType::as_str`].
+    pub fn parse(s: &str) -> Option<Self> {
+        Some(match s {
+            "user" => Self::User,
+            "person" => Self::Person,
+            "period" => Self::Period,
+            "session" => Self::Session,
+            "api_token" => Self::ApiToken,
+            "location" => Self::Location,
+            "category" => Self::Category,
+            "nitc_group" => Self::NitcGroup,
+            "nitc_tag" => Self::NitcTag,
+            "user_token" => Self::UserToken,
+            "oauth_grant" => Self::OAuthGrant,
+            "webauthn_credential" => Self::WebauthnCredential,
+            _ => return None,
+        })
+    }
+
     /// Stable string stored in the `entity_type` attribute.
     pub fn as_str(self) -> &'static str {
         match self {
@@ -762,6 +792,67 @@ pub struct AuditEntry {
     pub actor_via: Option<String>,
     pub ip: Option<String>,
     pub changes: Vec<AuditFieldChange>,
+}
+
+impl AuditEntry {
+    /// The entry's sort key in the audit indexes; see [`audit_sk`].
+    pub fn sk(&self) -> String {
+        audit_sk(self.ts, &self.id)
+    }
+}
+
+/// The `sk` of an `audit_log` item: `ts` (Unix seconds) zero-padded to 10 digits, `#`,
+/// then the item `id`. Lexical order is time order, and the `id` makes it unique. It is
+/// also the paging cursor — the `id` it carries is the table's hash key, so a cursor holds
+/// everything DynamoDB needs for an `ExclusiveStartKey`.
+pub fn audit_sk(ts: u64, id: &str) -> String {
+    format!("{ts:010}#{id}")
+}
+
+/// Check that `cursor` has the shape of an [`audit_sk`] and return the item `id` inside
+/// it, or `None` for anything else. Callers treat `None` as a bad request: a cursor comes
+/// from the client, and a malformed one must not reach the database.
+pub fn parse_audit_cursor(cursor: &str) -> Option<&str> {
+    let (ts, id) = cursor.split_once('#')?;
+    let id_ok = !id.is_empty()
+        && id.len() <= 64
+        && id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
+    (!ts.is_empty() && ts.len() <= 20 && ts.chars().all(|c| c.is_ascii_digit()) && id_ok)
+        .then_some(id)
+}
+
+/// Which slice of the audit log to read.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum AuditScope {
+    /// Items for one location (`location_id-sk-index`). A write that touched several
+    /// locations has an item in each, so it shows up in every one of their views.
+    Location(String),
+    /// Every event once, including those of global entities (`scope-sk-index`).
+    All,
+}
+
+/// A page of the audit log, in the order `descending` names.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ListAuditEntriesPage {
+    /// Only entries strictly after this cursor (an [`audit_sk`]) in the page's order.
+    /// Reading backwards is the same query with `descending` flipped: the caller asks
+    /// for the entries after the cursor in the opposite order, nearest first.
+    pub after: Option<String>,
+    /// How many entries to return at most; callers fetch `page_size + 1` to learn
+    /// whether there is another page.
+    pub limit: i32,
+    /// Newest first when true.
+    pub descending: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ListAuditEntriesQuery {
+    pub scope: AuditScope,
+    /// Only entries about this kind of record.
+    pub entity_type: Option<AuditEntityType>,
+    pub page: ListAuditEntriesPage,
 }
 
 /// `Sync` is required so a `&impl Handler` (including the erased handle returned by
@@ -1308,11 +1399,50 @@ pub trait Handler: Sync {
     /// [`crate::audit::AuditingHandler`], which builds entries for business writes and
     /// treats a failure here as non-fatal; nothing else should call this directly.
     fn put_audit_entry(&self, entry: &AuditEntry) -> impl Future<Output = Result<()>> + Send;
+
+    /// One page of the audit log. Each returned entry is a single table item: its
+    /// `location_ids` holds that item's location (empty for a global entity), not every
+    /// location the event touched. A row that cannot be read is logged and skipped
+    /// rather than failing the page. An `after` cursor that is not an [`audit_sk`] is an
+    /// error; validate with [`parse_audit_cursor`] first to report it as a user error.
+    fn list_audit_entries(
+        &self,
+        query: ListAuditEntriesQuery,
+    ) -> impl Future<Output = Result<Vec<AuditEntry>>> + Send;
 }
 
 #[cfg(test)]
 mod tests {
-    use super::Session;
+    use super::{Session, audit_sk, parse_audit_cursor};
+
+    #[test]
+    fn an_audit_sk_is_a_valid_cursor_that_carries_its_id() {
+        let sk = audit_sk(1_700_000_000, "Ab3dEf6hIj9k");
+        assert_eq!(sk, "1700000000#Ab3dEf6hIj9k");
+        assert_eq!(parse_audit_cursor(&sk), Some("Ab3dEf6hIj9k"));
+        // Small timestamps are padded so lexical order stays time order.
+        assert_eq!(audit_sk(5, "x"), "0000000005#x");
+        assert!(audit_sk(9, "x") < audit_sk(10, "x"));
+    }
+
+    #[test]
+    fn audit_cursors_that_are_not_an_sk_are_rejected() {
+        for bad in [
+            "",
+            "#",
+            "1700000000",
+            "1700000000#",
+            "#abc",
+            "17x0#abc",
+            "1700000000#a#b",
+            "1700000000#a b",
+            "1700000000#a/b",
+            "-1#abc",
+        ] {
+            assert_eq!(parse_audit_cursor(bad), None, "{bad:?}");
+        }
+        assert_eq!(parse_audit_cursor(&format!("1#{}", "a".repeat(65))), None);
+    }
 
     fn session(active: bool, key_released_at: Option<u64>) -> Session {
         Session {

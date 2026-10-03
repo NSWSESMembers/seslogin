@@ -33,6 +33,7 @@ pub(crate) struct FakeDb {
     pub(crate) sessions: Mutex<HashMap<String, db::Session>>,
     pub(crate) persons: Mutex<HashMap<String, db::Person>>,
     pub(crate) periods: Mutex<HashMap<String, db::Period>>,
+    pub(crate) api_tokens: Mutex<HashMap<String, db::ApiToken>>,
     /// Every entry `put_audit_entry` was given, in order. See [`FakeDb::audit_entries`].
     pub(crate) audit_log: Mutex<Vec<db::AuditEntry>>,
     /// Makes `put_audit_entry` fail, like the audit table not existing yet.
@@ -44,6 +45,16 @@ impl FakeDb {
     #[allow(dead_code)] // see `seed_super_user`'s doc comment
     pub(crate) fn audit_entries(&self) -> Vec<db::AuditEntry> {
         self.audit_log.lock().unwrap().clone()
+    }
+
+    /// Give the recorded entries distinct, increasing timestamps (`base`, `base + 10`, …) in
+    /// the order they were written. Real mutations stamp the wall clock, so several in one
+    /// test share a second and would otherwise sort by their random ids.
+    #[allow(dead_code)] // see `seed_super_user`'s doc comment
+    pub(crate) fn restamp_audit_entries(&self, base: u64) {
+        for (i, entry) in self.audit_log.lock().unwrap().iter_mut().enumerate() {
+            entry.ts = base + 10 * i as u64;
+        }
     }
 }
 
@@ -254,9 +265,13 @@ impl db::Handler for FakeDb {
     }
     async fn get_sessions<T: AsRef<str> + Sync>(
         &self,
-        _ids: &[T],
+        ids: &[T],
     ) -> db::Result<Vec<Option<db::Session>>> {
-        unsupported()
+        let sessions = self.sessions.lock().unwrap();
+        Ok(ids
+            .iter()
+            .map(|id| sessions.get(id.as_ref()).cloned())
+            .collect())
     }
     async fn get_session_id_by_code(&self, _code: &str) -> db::Result<Vec<String>> {
         unsupported()
@@ -463,8 +478,8 @@ impl db::Handler for FakeDb {
     ) -> db::Result<()> {
         unsupported()
     }
-    async fn get_api_token(&self, _id: &str) -> db::Result<Option<db::ApiToken>> {
-        unsupported()
+    async fn get_api_token(&self, id: &str) -> db::Result<Option<db::ApiToken>> {
+        Ok(self.api_tokens.lock().unwrap().get(id).cloned())
     }
     async fn get_api_token_by_hash(&self, _token_hash: &str) -> db::Result<Option<db::ApiToken>> {
         unsupported()
@@ -803,6 +818,55 @@ impl db::Handler for FakeDb {
         }
         self.audit_log.lock().unwrap().push(entry.clone());
         Ok(())
+    }
+    async fn list_audit_entries(
+        &self,
+        query: db::ListAuditEntriesQuery,
+    ) -> db::Result<Vec<db::AuditEntry>> {
+        // Fan an entry out into table items the way `dynamodb::audit_items` does: one per
+        // location (or a single location-less one), the first carrying `scope = "all"`
+        // and the entry's own id, the rest with derived ids.
+        let mut items: Vec<db::AuditEntry> = Vec::new();
+        for entry in self.audit_log.lock().unwrap().iter() {
+            let locations: Vec<Option<&String>> = if entry.location_ids.is_empty() {
+                vec![None]
+            } else {
+                entry.location_ids.iter().map(Some).collect()
+            };
+            for (i, location) in locations.into_iter().enumerate() {
+                let in_scope = match &query.scope {
+                    db::AuditScope::All => i == 0,
+                    db::AuditScope::Location(wanted) => location == Some(wanted),
+                };
+                if !in_scope {
+                    continue;
+                }
+                let mut item = entry.clone();
+                if i > 0 {
+                    item.id = format!("{}-{i}", entry.id);
+                }
+                item.location_ids = location.cloned().into_iter().collect();
+                items.push(item);
+            }
+        }
+        items.retain(|e| query.entity_type.is_none_or(|t| e.entity_type == t));
+        items.sort_by_key(|e| e.sk());
+        if query.page.descending {
+            items.reverse();
+        }
+        if let Some(cursor) = &query.page.after {
+            db::parse_audit_cursor(cursor)
+                .ok_or_else(|| db::Error::TypeConversion(format!("bad cursor {cursor}")))?;
+            items.retain(|e| {
+                if query.page.descending {
+                    e.sk() < *cursor
+                } else {
+                    e.sk() > *cursor
+                }
+            });
+        }
+        items.truncate(usize::try_from(query.page.limit).unwrap_or(0));
+        Ok(items)
     }
 }
 

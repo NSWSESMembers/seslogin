@@ -31,6 +31,179 @@ type ApiToken {
 	lastUsedAt: Int
 }
 
+"""
+What a recorded write did to its entity.
+"""
+enum AuditAction {
+	CREATE
+	UPDATE
+	DELETE
+	RESTORE
+}
+
+type AuditActor {
+	kind: AuditActorKind!
+	"""
+	The actor's ID: a user, kiosk session or API token ID, the period ID of an edit
+	link, or the job name for `SYSTEM` (`member-sync`, `cli`, …). Null when none was
+	recorded.
+	"""
+	id: String
+	"""
+	How a user acted when not through an ordinary web login: `oauth_grant:<id>` (an AI
+	client over MCP), `user_token:<id>` or `oauth_client:<id>`. Super users only;
+	null for everyone else.
+	"""
+	via: String
+	"""
+	A name for the actor, looked up now rather than recorded: a user's email, a kiosk's
+	name, an API token's name, the job name for `SYSTEM`, "Period edit link" for an
+	edit link. Null when there is nothing to show or the record no longer exists.
+	"""
+	label: String
+}
+
+"""
+Who made a write.
+"""
+enum AuditActorKind {
+	"""
+	A signed-in user (web, MCP or a user token).
+	"""
+	USER
+	"""
+	A kiosk device.
+	"""
+	SESSION
+	API_TOKEN
+	"""
+	A member using a single-period edit link.
+	"""
+	PERIOD_LINK
+	"""
+	A background job or the CLI.
+	"""
+	SYSTEM
+	"""
+	A write made before anyone was identified (e.g. the first login code request).
+	"""
+	UNAUTHENTICATED
+	"""
+	Not recorded, or a kind this server version does not know.
+	"""
+	UNKNOWN
+}
+
+"""
+The kind of record an entry is about.
+"""
+enum AuditEntityType {
+	USER
+	PERSON
+	PERIOD
+	SESSION
+	API_TOKEN
+	LOCATION
+	CATEGORY
+	NITC_GROUP
+	NITC_TAG
+	USER_TOKEN
+	OAUTH_GRANT
+	WEBAUTHN_CREDENTIAL
+}
+
+type AuditEntry {
+	"""
+	Unique per entry *in a view*. A write that touched two locations is two entries
+	(one in each location's log) with different IDs.
+	"""
+	id: ID!
+	"""
+	When the write happened, in Unix seconds.
+	"""
+	timestamp: Int!
+	action: AuditAction!
+	entityType: AuditEntityType!
+	"""
+	The ID of the record that was changed.
+	"""
+	entityId: ID!
+	"""
+	A human-readable name for the record as it was at the time (e.g. a member's full
+	name), so the entry still reads sensibly after the record is renamed or deleted.
+	"""
+	entityLabel: String
+	"""
+	The location this entry belongs to. In a location's log, that location. In the
+	all-locations view, the first location the write touched (a write that moved a
+	member between units appears once there). Null for a global record (user,
+	category, …) and if the location no longer exists.
+	"""
+	location: Location
+	actor: AuditActor!
+	"""
+	The client IP address of the request. Super users only; null for everyone else,
+	because an IP address is personal data.
+	"""
+	ip: String
+	"""
+	The fields the write changed, before and after. Empty when the write has no
+	field-level detail to show.
+	"""
+	changes: [AuditFieldChange!]!
+}
+
+type AuditEntryConnection {
+	"""
+	Information to aid in pagination.
+	"""
+	pageInfo: PageInfo!
+	"""
+	A list of edges.
+	"""
+	edges: [AuditEntryEdge!]!
+	"""
+	A list of nodes.
+	"""
+	nodes: [AuditEntry!]!
+}
+
+"""
+An edge in a connection.
+"""
+type AuditEntryEdge {
+	"""
+	The item at the end of the edge
+	"""
+	node: AuditEntry!
+	"""
+	A cursor for use in pagination
+	"""
+	cursor: String!
+}
+
+"""
+One field a write changed.
+"""
+type AuditFieldChange {
+	"""
+	The field's name as stored, e.g. `first_name`.
+	"""
+	field: String!
+	"""
+	The value before the write, or null if the field was absent (or the entity was just
+	created). A JSON string is returned as its raw text, anything else as compact JSON
+	(`true`, `42`, `["a","b"]`), so the text `5` is a string or a number — a viewer that
+	cares can tell from the field. A secret that changed shows as `[redacted]`.
+	"""
+	before: String
+	"""
+	The value after the write, or null if the field was removed. Same encoding as
+	`before`.
+	"""
+	after: String
+}
+
 type Category {
 	id: ID!
 	name: String!
@@ -134,6 +307,19 @@ type Location {
 	only users, so a client can hide edit controls rather than let them fail.
 	"""
 	viewerCanEdit: Boolean!
+	"""
+	A record of changes made at this location — who changed what, and when — newest
+	first. Visible to every user with access to the location, Admin or Read only (and
+	super users); kiosks, API tokens and edit links are refused. A member moved between
+	locations appears in the log of both. Global records (users, categories, …) are
+	not here; they are in `Query.auditLog`, for super users.
+	"""
+	auditLog(		first: Int,		after: String,		last: Int,		before: String,
+		"""
+		Only entries about this kind of record
+		"""
+		entityType: AuditEntityType
+	): AuditEntryConnection!
 	nitcEnabled: Int
 	"""
 	Whether NITC events exported for this location are marked completed in SES.
@@ -705,6 +891,17 @@ type QueryRoot {
 		id: ID!
 	): Category!
 	locations: [Location!]!
+	"""
+	The audit log across every location, newest first, with each write listed once —
+	including writes to global records (users, categories, API tokens, …) that belong
+	to no location. Super users only; location admins use `Location.auditLog`.
+	"""
+	auditLog(		first: Int,		after: String,		last: Int,		before: String,
+		"""
+		Only entries about this kind of record
+		"""
+		entityType: AuditEntityType
+	): AuditEntryConnection!
 	users: [User!]!
 	categories: [Category!]!
 	nitcGroups: [NitcGroup!]!

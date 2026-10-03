@@ -10,7 +10,7 @@ use crate::db;
 use crate::db::Handler;
 
 use super::query::{Category, Location, Person, Session, User};
-use super::{CategoryId, LocationId, NitcEventId, PersonId, SessionId, UserId};
+use super::{ApiTokenNameId, CategoryId, LocationId, NitcEventId, PersonId, SessionId, UserId};
 
 pub struct DatabaseLoader<A: App + HasDb + Send + Sync> {
     app: Arc<A>,
@@ -155,5 +155,30 @@ impl<A: App + HasDb + Send + Sync + 'static> Loader<NitcEventId> for DatabaseLoa
             .map(|rec| (NitcEventId(rec.id.clone()), rec))
             .collect();
         Ok(map)
+    }
+}
+
+impl<A: App + HasDb + Send + Sync + 'static> Loader<ApiTokenNameId> for DatabaseLoader<A> {
+    type Value = String;
+    type Error = Arc<anyhow::Error>;
+
+    async fn load(
+        &self,
+        keys: &[ApiTokenNameId],
+    ) -> std::result::Result<HashMap<ApiTokenNameId, String>, Arc<anyhow::Error>> {
+        // There is no batch getter for API tokens, so fetch each distinct id
+        // concurrently. A token that no longer exists is simply absent from the map.
+        let db = self.app.db();
+        let lookups = keys.iter().map(|k| async move {
+            db.get_api_token(&k.0)
+                .await
+                .map(|rec| rec.map(|t| (k.clone(), t.name)))
+        });
+        async_graphql::futures_util::future::join_all(lookups)
+            .await
+            .into_iter()
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(|e| Arc::new(anyhow!("DB error: {:?}", e)))
+            .map(|found| found.into_iter().flatten().collect())
     }
 }

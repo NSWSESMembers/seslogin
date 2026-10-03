@@ -29,6 +29,7 @@ use crate::realtime;
 use crate::realtime::Handler as _;
 use crate::ses_api;
 
+use super::audit_log::{self, AuditEntityType, AuditEntryConnection};
 use super::auth::{AuthGuard, AuthRequirement, can_write_location, require_location_access};
 use super::dataloader::DatabaseLoader;
 use super::{CategoryId, LocationId, NitcEventId, PersonId, SessionId, UserId};
@@ -1824,6 +1825,26 @@ impl<A: App + HasDb + Send + Sync> Location<A> {
         can_write_location(ctx, &self.rec.id)
     }
 
+    /// A record of changes made at this location — who changed what, and when — newest
+    /// first. Visible to every user with access to the location, Admin or Read only (and
+    /// super users); kiosks, API tokens and edit links are refused. A member moved between
+    /// locations appears in the log of both. Global records (users, categories, …) are
+    /// not here; they are in `Query.auditLog`, for super users.
+    async fn audit_log(
+        &self,
+        ctx: &Context<'_>,
+        first: Option<i32>,
+        after: Option<String>,
+        last: Option<i32>,
+        before: Option<String>,
+        #[graphql(desc = "Only entries about this kind of record")] entity_type: Option<
+            AuditEntityType,
+        >,
+    ) -> Result<AuditEntryConnection<A>> {
+        audit_log::location_audit_log(ctx, &self.rec.id, first, after, last, before, entity_type)
+            .await
+    }
+
     async fn nitc_enabled(&self) -> Option<i64> {
         self.rec.nitc_enabled.map(|ts| ts as i64)
     }
@@ -3519,6 +3540,33 @@ impl<A: App + HasDb + HasRealtime + Send + Sync + 'static> QueryRoot<A> {
 
         Ok(items.into_iter().map(|rec| Location::new_db(rec)).collect())
     }
+    /// The audit log across every location, newest first, with each write listed once —
+    /// including writes to global records (users, categories, API tokens, …) that belong
+    /// to no location. Super users only; location admins use `Location.auditLog`.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::SuperUser)")]
+    async fn audit_log(
+        &self,
+        ctx: &Context<'_>,
+        first: Option<i32>,
+        after: Option<String>,
+        last: Option<i32>,
+        before: Option<String>,
+        #[graphql(desc = "Only entries about this kind of record")] entity_type: Option<
+            AuditEntityType,
+        >,
+    ) -> Result<AuditEntryConnection<A>> {
+        audit_log::audit_log_connection(
+            ctx,
+            db::AuditScope::All,
+            first,
+            after,
+            last,
+            before,
+            entity_type,
+        )
+        .await
+    }
+
     #[graphql(guard = "AuthGuard::new(AuthRequirement::SuperUser)")]
     async fn users(&self, ctx: &Context<'_>) -> Result<Vec<User<A>>> {
         let app = ctx.data_unchecked::<Arc<A>>();

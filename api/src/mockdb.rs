@@ -634,4 +634,11 @@ impl db::Handler for Handler {
     async fn put_audit_entry(&self, _entry: &db::AuditEntry) -> db::Result<()> {
         Self::unsupported()
     }
+
+    async fn list_audit_entries(
+        &self,
+        _query: db::ListAuditEntriesQuery,
+    ) -> db::Result<Vec<db::AuditEntry>> {
+        Self::unsupported()
+    }
 }
