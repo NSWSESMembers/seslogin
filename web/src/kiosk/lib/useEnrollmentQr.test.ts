@@ -67,6 +67,7 @@ describe("useEnrollmentQr", () => {
       expect(submitEnrollmentKey).toHaveBeenCalledWith(keyInfo),
     );
     expect(result.current.error).toBeNull();
+    await waitFor(() => expect(result.current.published).toBe(true));
   });
 
   it("reports a failure to publish the key, since the code won't work without it", async () => {
@@ -79,6 +80,7 @@ describe("useEnrollmentQr", () => {
 
     await waitFor(() => expect(result.current.error).not.toBeNull());
     expect(result.current.error).toContain("Failed to fetch");
+    expect(result.current.published).toBe(false);
   });
 
   it("clears its state when disabled again", async () => {
@@ -90,9 +92,10 @@ describe("useEnrollmentQr", () => {
       { initialProps: { enabled: true } },
     );
 
-    await waitFor(() => expect(result.current.qrDataUrl).not.toBeNull());
+    await waitFor(() => expect(result.current.published).toBe(true));
     rerender({ enabled: false });
 
+    expect(result.current.published).toBe(false);
     expect(result.current.qrDataUrl).toBeNull();
     expect(result.current.fingerprint).toBeNull();
   });

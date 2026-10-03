@@ -1,7 +1,6 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Button } from "../../components/ui/Button";
-import { fetchKeySessionId } from "../lib/enrollmentKey";
-import { pollDelayMs } from "../lib/enrollPolling";
+import { useEnrollmentWatch } from "../lib/useEnrollmentWatch";
 import { useEnrollmentQr } from "../lib/useEnrollmentQr";
 import useKioskEnvironment from "./useKioskEnvironment";
 import { FingerprintChip } from "../../components/FingerprintChip";
@@ -26,7 +25,7 @@ export default function KioskReEnrollPanel({
 }) {
   const { profile, authMode, onKeyEnrolled } = useKioskEnvironment();
   const [shown, setShown] = useState(false);
-  const { info, fingerprint, qrDataUrl, error } = useEnrollmentQr(
+  const { info, published, fingerprint, qrDataUrl, error } = useEnrollmentQr(
     profile,
     shown,
   );
@@ -35,39 +34,11 @@ export default function KioskReEnrollPanel({
   // old kiosk — until we notice the key has been enrolled and hand over to it. Kiosks
   // already signing with the key need no handover: their next session refresh resolves
   // whichever session now holds the key.
-  useEffect(() => {
-    if (!shown || info == null || authMode !== "jwt") return;
-
-    let cancelled = false;
-    let pollTimeout: number | null = null;
-    const startedAt = Date.now();
-
-    const runPoll = async () => {
-      if (cancelled) return;
-      let sessionId: string | null = null;
-      try {
-        sessionId = await fetchKeySessionId(info);
-      } catch (err) {
-        console.error("Re-enrollment poll failed:", err);
-      }
-      if (cancelled) return;
-      if (sessionId != null) {
-        onKeyEnrolled();
-        return;
-      }
-      pollTimeout = window.setTimeout(
-        runPoll,
-        pollDelayMs(Date.now() - startedAt),
-      );
-    };
-
-    runPoll();
-
-    return () => {
-      cancelled = true;
-      if (pollTimeout !== null) window.clearTimeout(pollTimeout);
-    };
-  }, [shown, info, authMode, onKeyEnrolled]);
+  useEnrollmentWatch({
+    info,
+    enabled: published && shown && authMode === "jwt",
+    onEnrolled: onKeyEnrolled,
+  });
 
   if (!shown) {
     return (
