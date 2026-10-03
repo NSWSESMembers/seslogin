@@ -38,6 +38,7 @@ import ActivityBreakdown from "./pages/ActivityBreakdown";
 import ActivityDailyBreakdown from "./pages/ActivityDailyBreakdown";
 import ActivityHeatmap from "./pages/ActivityHeatmap";
 import ActivityLastSeen from "./pages/ActivityLastSeen";
+import AuditLog from "./pages/AuditLog";
 import Reports from "./pages/Reports";
 import SettingsPasskeys from "./pages/SettingsPasskeys";
 import SettingsConnectedApps from "./pages/SettingsConnectedApps";
@@ -112,6 +113,7 @@ export default function AdminApp() {
           <Route path="last-seen" element={<ActivityLastSeen />} />
           <Route path=":periodId" element={<ActivityEdit />} />
         </Route>
+        <Route path="audit" element={<AuditLog />} />
         <Route path="reports">
           <Route index element={<Reports />} />
         </Route>
