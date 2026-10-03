@@ -1,3 +1,4 @@
+use crate::audit::AuditingHandler;
 use crate::db::{self, Handler as _};
 use crate::dynamodb;
 use crate::ses_api::{SesClient, SesPerson, SesSearchClient};
@@ -1195,7 +1196,17 @@ async fn apply_email_updates<H: db::Handler>(
     Ok(())
 }
 
+/// Run the member sync, recording every write it makes in the audit log as the
+/// `member-sync` system actor.
 pub async fn run(config: SyncConfig) -> Result<RunStats> {
+    crate::audit::scope(
+        crate::audit::AuditContext::system("member-sync"),
+        run_inner(config),
+    )
+    .await
+}
+
+async fn run_inner(config: SyncConfig) -> Result<RunStats> {
     if config.page_limit == 0 {
         return Err(anyhow!("SES_PAGE_LIMIT must be greater than 0"));
     }
@@ -1213,7 +1224,7 @@ pub async fn run(config: SyncConfig) -> Result<RunStats> {
         config.max_retries,
     )?;
 
-    let db = dynamodb::Handler::new(&config.db_prefix, false).await;
+    let db = AuditingHandler::new(dynamodb::Handler::new(&config.db_prefix, false).await);
     let all_locations = db
         .list_locations(db::ListLocationsFilter::EnabledOnly)
         .await

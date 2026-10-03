@@ -161,11 +161,14 @@ where
     );
     let mut caller_type = auth::CallerType::Unauthenticated;
     let mut caller_id = String::from("unknown");
+    // Who the audit log attributes this request's writes to; see `crate::audit`.
+    let mut audit_auth: Option<auth::AuthInfo> = None;
     if let Some(cfg) = (***dev_auth).as_ref() {
         // Dev-only override: skip token verification and act as the configured caller.
         match auth::resolve_dev_auth(&***app, cfg).await {
             Ok(auth_info) => {
                 (caller_type, caller_id) = auth::caller_info(Some(&auth_info));
+                audit_auth = Some(auth_info.clone());
                 req = req.data(auth_info);
             }
             Err(e) => {
@@ -210,22 +213,32 @@ where
             Ok(v) => v,
         };
         (caller_type, caller_id) = auth::caller_info(Some(&auth_info));
+        audit_auth = Some(auth_info.clone());
         req = req.data(auth_info);
     }
+    let client_ip = graphql::ClientIp::from_forwarded_for(
+        headers
+            .get("x-forwarded-for")
+            .and_then(|value| value.to_str().ok()),
+    );
+    let audit_ip = client_ip.0.clone();
     req = req
         .data(app.clone())
-        .data(graphql::ClientIp::from_forwarded_for(
-            headers
-                .get("x-forwarded-for")
-                .and_then(|value| value.to_str().ok()),
-        ))
+        .data(client_ip)
         .data(graphql::get_dataloader(app.clone()));
 
     let operation_context = telemetry::extract_operation_context(&mut req);
     let request_start = Instant::now();
     let metrics = Arc::new(RequestMetrics::default());
     let gql_response = request_metrics::METRICS
-        .scope(metrics.clone(), schema.execute(req))
+        .scope(
+            metrics.clone(),
+            crate::audit::scope_for_request(
+                audit_auth.as_ref(),
+                audit_ip.as_deref(),
+                schema.execute(req),
+            ),
+        )
         .await;
     let gql_error_count = gql_response.errors.len();
     let response = GraphQLResponse(gql_response).into_response();

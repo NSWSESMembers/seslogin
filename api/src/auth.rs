@@ -190,7 +190,18 @@ pub async fn issue_token_for_scan_code<A: App + HasDb>(app: &A, code: &str) -> R
         return Err(anyhow!("Invalid code"));
     }
 
-    app.db().wipe_session_code(&session.id).await?;
+    // The kiosk is redeeming its own code: attribute the wipe to it rather than to the
+    // (unauthenticated) request that carried the code.
+    crate::audit::scope(
+        crate::audit::AuditContext::new(
+            crate::audit::Actor::Session {
+                id: session.id.clone(),
+            },
+            crate::audit::current_ip(),
+        ),
+        app.db().wipe_session_code(&session.id),
+    )
+    .await?;
 
     issue_token_for_session_id(app, &session.id)
 }
@@ -537,9 +548,19 @@ pub async fn issue_user_token<A: App + HasDb>(app: &A, user_id: &str) -> Result<
     let secret = format!("{}{}", USER_TOKEN_PREFIX, crate::nonce::generate_nonce(32));
     let hash = hash_token(&secret);
     let expires_at = crate::expire::ExpirePolicy::UserTokenDefault.from_now();
-    app.db()
-        .create_user_token(&hash, user_id, expires_at)
-        .await?;
+    // The caller is unauthenticated until this very call succeeds (email-code and
+    // passkey login), so attribute the new token to the user it is for.
+    crate::audit::scope(
+        crate::audit::AuditContext::new(
+            crate::audit::Actor::User {
+                id: user_id.to_string(),
+                via: None,
+            },
+            crate::audit::current_ip(),
+        ),
+        app.db().create_user_token(&hash, user_id, expires_at),
+    )
+    .await?;
     Ok(secret)
 }
 

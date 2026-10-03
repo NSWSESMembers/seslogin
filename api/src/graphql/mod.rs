@@ -195,7 +195,7 @@ pub fn build_schema<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + 
 pub fn get_dataloader<A: App + HasDb + HasQueues + HasMail + Send + Sync + 'static>(
     app: Arc<A>,
 ) -> DataLoader<DatabaseLoader<A>> {
-    DataLoader::new(DatabaseLoader::new(app), request_metrics::metrics_spawner)
+    DataLoader::new(DatabaseLoader::new(app), request_metrics::request_spawner)
 }
 
 #[cfg(test)]

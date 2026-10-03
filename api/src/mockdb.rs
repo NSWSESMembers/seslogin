@@ -630,4 +630,8 @@ impl db::Handler for Handler {
     async fn delete_ephemeral_state(&self, _id: &str) -> db::Result<()> {
         Self::unsupported()
     }
+
+    async fn put_audit_entry(&self, _entry: &db::AuditEntry) -> db::Result<()> {
+        Self::unsupported()
+    }
 }

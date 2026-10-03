@@ -12,6 +12,7 @@
 
 use std::collections::HashMap;
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use seslogin::app::{self, MyApp};
 use seslogin::db::{self, EphemeralState, Location, OAuthGrant, OAuthGrantUpdateShape, User};
@@ -30,6 +31,20 @@ pub(crate) struct FakeDb {
     pub(crate) oauth_grants: Mutex<HashMap<String, OAuthGrant>>,
     pub(crate) locations: Mutex<HashMap<String, Location>>,
     pub(crate) sessions: Mutex<HashMap<String, db::Session>>,
+    pub(crate) persons: Mutex<HashMap<String, db::Person>>,
+    pub(crate) periods: Mutex<HashMap<String, db::Period>>,
+    /// Every entry `put_audit_entry` was given, in order. See [`FakeDb::audit_entries`].
+    pub(crate) audit_log: Mutex<Vec<db::AuditEntry>>,
+    /// Makes `put_audit_entry` fail, like the audit table not existing yet.
+    pub(crate) fail_audit_writes: AtomicBool,
+}
+
+impl FakeDb {
+    /// The audit entries recorded so far.
+    #[allow(dead_code)] // see `seed_super_user`'s doc comment
+    pub(crate) fn audit_entries(&self) -> Vec<db::AuditEntry> {
+        self.audit_log.lock().unwrap().clone()
+    }
 }
 
 pub(crate) fn unsupported<T>() -> db::Result<T> {
@@ -210,15 +225,26 @@ impl db::Handler for FakeDb {
     }
     async fn get_persons<T: AsRef<str> + Sync>(
         &self,
-        _ids: &[T],
+        ids: &[T],
     ) -> db::Result<Vec<Option<db::Person>>> {
-        unsupported()
+        let persons = self.persons.lock().unwrap();
+        Ok(ids
+            .iter()
+            .map(|id| persons.get(id.as_ref()).cloned())
+            .collect())
     }
     async fn get_person_id_by_registration_number(
         &self,
-        _registration_number: &str,
+        registration_number: &str,
     ) -> db::Result<Vec<String>> {
-        unsupported()
+        Ok(self
+            .persons
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|p| p.registration_number.as_deref() == Some(registration_number))
+            .map(|p| p.id.clone())
+            .collect())
     }
     async fn get_person_id_by_ses_api_person_id(
         &self,
@@ -274,19 +300,32 @@ impl db::Handler for FakeDb {
     }
     async fn list_periods_for_person(
         &self,
-        _person_id: &str,
-        _location_id: Option<&str>,
-        _only_unfinished: Option<bool>,
+        person_id: &str,
+        location_id: Option<&str>,
+        only_unfinished: Option<bool>,
         _category_ids: Option<&[String]>,
         _page: db::ListPeriodsPage,
     ) -> db::Result<Vec<db::Period>> {
-        unsupported()
+        Ok(self
+            .periods
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|p| p.person_id.as_deref() == Some(person_id))
+            .filter(|p| location_id.is_none_or(|l| p.location_id == l))
+            .filter(|p| only_unfinished != Some(true) || p.end_time.is_none())
+            .cloned()
+            .collect())
     }
     async fn get_periods<T: AsRef<str> + Sync>(
         &self,
-        _ids: &[T],
+        ids: &[T],
     ) -> db::Result<Vec<Option<db::Period>>> {
-        unsupported()
+        let periods = self.periods.lock().unwrap();
+        Ok(ids
+            .iter()
+            .map(|id| periods.get(id.as_ref()).cloned())
+            .collect())
     }
     async fn end_period(
         &self,
@@ -297,12 +336,36 @@ impl db::Handler for FakeDb {
     }
     async fn start_period_for_person_location(
         &self,
-        _person_id: &str,
-        _location_id: &str,
-        _signed_in_session_id: Option<&str>,
-        _start_time: Option<u64>,
+        person_id: &str,
+        location_id: &str,
+        signed_in_session_id: Option<&str>,
+        start_time: Option<u64>,
     ) -> db::Result<db::Period> {
-        unsupported()
+        let now = seslogin::clock::now_sec();
+        let period = db::Period {
+            id: seslogin::dynamodb::new_id(),
+            person_id: Some(person_id.to_string()),
+            guest_name: None,
+            comment: None,
+            location_id: location_id.to_string(),
+            category_id: None,
+            start_time: start_time.unwrap_or(now),
+            end_time: None,
+            signed_in_session_id: signed_in_session_id.map(str::to_string),
+            signed_out_session_id: None,
+            version: 1,
+            nitc_event_id: None,
+            nitc_participant_id: None,
+            nitc_exported_version: None,
+            deleted: None,
+            created_at: Some(now),
+            updated_at: Some(now),
+        };
+        self.periods
+            .lock()
+            .unwrap()
+            .insert(period.id.clone(), period.clone());
+        Ok(period)
     }
     async fn start_guest_period(
         &self,
@@ -315,15 +378,55 @@ impl db::Handler for FakeDb {
     }
     async fn create_person(
         &self,
-        _location_id: &str,
-        _first_name: &str,
-        _last_name: &str,
-        _registration_number: &str,
+        location_id: &str,
+        first_name: &str,
+        last_name: &str,
+        registration_number: &str,
     ) -> db::Result<db::Person> {
-        unsupported()
+        let now = seslogin::clock::now_sec();
+        let person = db::Person {
+            id: seslogin::dynamodb::new_id(),
+            location_id: location_id.to_string(),
+            first_name: first_name.to_string(),
+            last_name: last_name.to_string(),
+            registration_number: Some(registration_number.to_string()),
+            ses_api_person_id: None,
+            email: None,
+            deleted: None,
+            missing_since: None,
+            created_at: Some(now),
+            updated_at: Some(now),
+        };
+        self.persons
+            .lock()
+            .unwrap()
+            .insert(person.id.clone(), person.clone());
+        Ok(person)
     }
-    async fn update_person(&self, _id: &str, _change: db::PersonUpdateShape<'_>) -> db::Result<()> {
-        unsupported()
+    async fn update_person(&self, id: &str, change: db::PersonUpdateShape<'_>) -> db::Result<()> {
+        let mut persons = self.persons.lock().unwrap();
+        let person = persons
+            .get_mut(id)
+            .ok_or_else(|| db::Error::NotFound(id.to_string()))?;
+        match change {
+            db::PersonUpdateShape::Fields {
+                first_name,
+                last_name,
+                registration_number,
+            } => {
+                person.first_name = first_name.to_string();
+                person.last_name = last_name.to_string();
+                person.registration_number = Some(registration_number.to_string());
+            }
+            db::PersonUpdateShape::Location { location_id } => {
+                person.location_id = location_id.to_string();
+            }
+            db::PersonUpdateShape::Delete => {
+                person.deleted = Some(seslogin::clock::now_sec());
+            }
+            _ => return unsupported(),
+        }
+        Ok(())
     }
     async fn create_period(
         &self,
@@ -692,8 +795,18 @@ impl db::Handler for FakeDb {
     async fn delete_webauthn_state(&self, _id: &str) -> db::Result<()> {
         unsupported()
     }
+    async fn put_audit_entry(&self, entry: &db::AuditEntry) -> db::Result<()> {
+        if self.fail_audit_writes.load(Ordering::SeqCst) {
+            return Err(db::Error::Infrastructure(
+                "audit_log table does not exist".to_string(),
+            ));
+        }
+        self.audit_log.lock().unwrap().push(entry.clone());
+        Ok(())
+    }
 }
 
+#[allow(dead_code)] // see `seed_super_user`'s doc comment
 pub(crate) fn fake_app()
 -> MyApp<FakeDb, mockqueue::Handler, mockmail::Handler, mockrealtime::Handler> {
     let key = jwt::Key::new("test-secret", None, None).expect("valid test JWT key");

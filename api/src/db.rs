@@ -1,6 +1,27 @@
 use chrono::NaiveDate;
+use nanoid::nanoid;
+use serde::{Deserialize, Serialize};
 use std::future::Future;
 use thiserror::Error;
+
+const NANOID_ALPHABET: [char; 62] = [
+    '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I',
+    'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b',
+    'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u',
+    'v', 'w', 'x', 'y', 'z',
+];
+
+/// Generate a new unique ID for DB entities. Public so callers that need IDs
+/// before the record exists (e.g. `cli id`, for pre-allocating an ID to reuse
+/// verbatim across databases) use the exact same scheme rather than a
+/// hand-rolled one that could silently drift from it.
+///
+/// Lives here rather than in `dynamodb.rs` so code that is independent of the AWS
+/// implementation (the audit wrapper) can mint IDs too; `dynamodb::new_id` re-exports it.
+pub fn new_id() -> String {
+    // https://alex7kom.github.io/nano-nanoid-cc/?alphabet=0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz&size=12&speed=1000&speedUnit=hour
+    nanoid!(12, &NANOID_ALPHABET)
+}
 
 /// these errors are separated into groups because we want to handle them differently
 #[derive(Error, Debug)]
@@ -646,6 +667,103 @@ pub struct EphemeralState {
     pub expires_at: u64,
 }
 
+// ── Audit log ────────────────────────────────────────────────────────────────
+
+/// What an audited write did to its entity.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AuditAction {
+    Create,
+    Update,
+    Delete,
+    Restore,
+}
+
+impl AuditAction {
+    /// Stable string stored in the `action` attribute.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Create => "create",
+            Self::Update => "update",
+            Self::Delete => "delete",
+            Self::Restore => "restore",
+        }
+    }
+}
+
+/// Which kind of record an audit entry is about.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AuditEntityType {
+    User,
+    Person,
+    Period,
+    Session,
+    ApiToken,
+    Location,
+    Category,
+    NitcGroup,
+    NitcTag,
+    UserToken,
+    OAuthGrant,
+    WebauthnCredential,
+}
+
+impl AuditEntityType {
+    /// Stable string stored in the `entity_type` attribute.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::User => "user",
+            Self::Person => "person",
+            Self::Period => "period",
+            Self::Session => "session",
+            Self::ApiToken => "api_token",
+            Self::Location => "location",
+            Self::Category => "category",
+            Self::NitcGroup => "nitc_group",
+            Self::NitcTag => "nitc_tag",
+            Self::UserToken => "user_token",
+            Self::OAuthGrant => "oauth_grant",
+            Self::WebauthnCredential => "webauthn_credential",
+        }
+    }
+}
+
+/// One field of an entity that an audited write changed. `None` means the field was
+/// absent on that side (so a create has `before: None` throughout). Secrets are never
+/// carried here — the audit wrapper substitutes the string `"[redacted]"`.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct AuditFieldChange {
+    pub field: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub before: Option<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub after: Option<serde_json::Value>,
+}
+
+/// One recorded business write. A write that touches several locations is stored as one
+/// table item per location, all sharing `event_id`; see SCHEMA.md's `audit_log` section.
+#[derive(Clone, Debug, PartialEq)]
+pub struct AuditEntry {
+    /// Unique per stored item. The DB implementation mints one per item it writes, so
+    /// this is only the id of the entry as built; `event_id` is what groups items.
+    pub id: String,
+    pub event_id: String,
+    /// Unix seconds when the write happened.
+    pub ts: u64,
+    pub action: AuditAction,
+    pub entity_type: AuditEntityType,
+    pub entity_id: String,
+    /// Human-readable name of the entity at the time (e.g. a person's full name).
+    pub entity_label: Option<String>,
+    /// Every location the write affected. Empty for global entities (users, categories…).
+    pub location_ids: Vec<String>,
+    /// See [`crate::audit::Actor::kind`].
+    pub actor_kind: String,
+    pub actor_id: Option<String>,
+    pub actor_via: Option<String>,
+    pub ip: Option<String>,
+    pub changes: Vec<AuditFieldChange>,
+}
+
 /// `Sync` is required so a `&impl Handler` (including the erased handle returned by
 /// [`crate::app::HasDb::db`]) can be held across `.await` inside the `Send` futures the
 /// GraphQL/Poem stack builds. Both implementors (`dynamodb::Handler`, `mockdb::Handler`)
@@ -1183,6 +1301,13 @@ pub trait Handler: Sync {
     ) -> impl Future<Output = Result<Option<EphemeralState>>> + Send;
 
     fn delete_ephemeral_state(&self, id: &str) -> impl Future<Output = Result<()>> + Send;
+
+    // ── Audit log ─────────────────────────────────────────────────────────────
+
+    /// Append an entry to the `audit_log` table. Callers go through
+    /// [`crate::audit::AuditingHandler`], which builds entries for business writes and
+    /// treats a failure here as non-fatal; nothing else should call this directly.
+    fn put_audit_entry(&self, entry: &AuditEntry) -> impl Future<Output = Result<()>> + Send;
 }
 
 #[cfg(test)]
