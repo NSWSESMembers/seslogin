@@ -31,6 +31,7 @@ locals {
     aws_dynamodb_table.prod_nitc_event,
     aws_dynamodb_table.prod_user_token,
     aws_dynamodb_table.prod_webauthn_credential,
+    aws_dynamodb_table.prod_audit_log,
   ]
 }
 

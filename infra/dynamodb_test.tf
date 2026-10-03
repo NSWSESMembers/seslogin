@@ -455,6 +455,59 @@ resource "aws_dynamodb_table" "test_oauth_grant" {
   }
 }
 
+# Audit log of business DB writes (mirrors prod_audit_log in dynamodb.tf).
+resource "aws_dynamodb_table" "test_audit_log" {
+  name         = "${var.db_prefix_test}_audit_log"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "id"
+
+  attribute {
+    name = "id"
+    type = "S"
+  }
+  attribute {
+    name = "location_id"
+    type = "S"
+  }
+  attribute {
+    name = "scope"
+    type = "S"
+  }
+  attribute {
+    name = "sk"
+    type = "S"
+  }
+
+  # Per-location view. Items for global entities have no location_id, so they
+  # are absent from this index (sparse).
+  global_secondary_index {
+    name = "location_id-sk-index"
+    key_schema {
+      attribute_name = "location_id"
+      key_type       = "HASH"
+    }
+    key_schema {
+      attribute_name = "sk"
+      key_type       = "RANGE"
+    }
+    projection_type = "ALL"
+  }
+  # Sparse index: `scope = "all"` is set on exactly one item per audited event,
+  # giving super users an all-locations view without duplicates.
+  global_secondary_index {
+    name = "scope-sk-index"
+    key_schema {
+      attribute_name = "scope"
+      key_type       = "HASH"
+    }
+    key_schema {
+      attribute_name = "sk"
+      key_type       = "RANGE"
+    }
+    projection_type = "ALL"
+  }
+}
+
 # ── Test API access to the test tables ────────────────────────────────────────
 # The test API role's dynamodb-access policy in dynamodb.tf is scoped to
 # ${var.db_prefix}* (prod). To run the test environment against these tables,
