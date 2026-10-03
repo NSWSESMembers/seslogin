@@ -15,15 +15,7 @@ use aws_sdk_dynamodb::types::{
     ConsumedCapacity, KeysAndAttributes, ReturnConsumedCapacity, ReturnValue,
 };
 use aws_sdk_dynamodb::{Client, types::AttributeValue};
-use nanoid::nanoid;
 use std::collections::HashMap;
-
-const NANOID_ALPHABET: [char; 62] = [
-    '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I',
-    'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b',
-    'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u',
-    'v', 'w', 'x', 'y', 'z',
-];
 
 /// Extract the most useful info from a DynamoDB SdkError.
 /// `{}` just prints "service error"; `{:?}` dumps raw HTTP responses.
@@ -61,14 +53,8 @@ fn parse_new_version(
         .ok_or_else(|| Error::Infrastructure("Missing version in update response".to_string()))
 }
 
-/// Generate a new unique ID for DB entities. Public so callers that need IDs
-/// before the record exists (e.g. `cli id`, for pre-allocating an ID to reuse
-/// verbatim across databases) use the exact same scheme rather than a
-/// hand-rolled one that could silently drift from it.
-pub fn new_id() -> String {
-    // https://alex7kom.github.io/nano-nanoid-cc/?alphabet=0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz&size=12&speed=1000&speedUnit=hour
-    nanoid!(12, &NANOID_ALPHABET)
-}
+/// Generate a new unique ID for DB entities; see [`db::new_id`].
+pub use crate::db::new_id;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Item(HashMap<String, AttributeValue>);
@@ -931,6 +917,84 @@ fn unprocessed_keys_for(
         .and_then(|mut tables| tables.remove(table_name))
         .map(|ka| ka.keys)
         .unwrap_or_default()
+}
+
+/// The `audit_log` items for one event: one per affected location, or a single item with
+/// no `location_id` when the entry is global. Exactly one item (the first) carries
+/// `scope = "all"`, so the all-locations view lists each event once. The first item keeps
+/// the entry's own `id`; the rest get fresh ones. Optional attributes are omitted, never
+/// written as Null (see CLAUDE.md).
+fn audit_items(entry: &db::AuditEntry) -> db::Result<Vec<HashMap<String, AttributeValue>>> {
+    let changes = serde_json::to_string(&entry.changes)
+        .map_err(|e| Error::TypeConversion(format!("audit changes serialize: {e}")))?;
+    let locations: Vec<Option<&str>> = if entry.location_ids.is_empty() {
+        vec![None]
+    } else {
+        entry
+            .location_ids
+            .iter()
+            .map(|l| Some(l.as_str()))
+            .collect()
+    };
+
+    Ok(locations
+        .into_iter()
+        .enumerate()
+        .map(|(i, location_id)| {
+            let id = if i == 0 { entry.id.clone() } else { new_id() };
+            let mut item = HashMap::from([
+                (
+                    "sk".to_string(),
+                    AttributeValue::S(format!("{:010}#{}", entry.ts, id)),
+                ),
+                ("id".to_string(), AttributeValue::S(id)),
+                ("ts".to_string(), AttributeValue::N(entry.ts.to_string())),
+                (
+                    "event_id".to_string(),
+                    AttributeValue::S(entry.event_id.clone()),
+                ),
+                (
+                    "action".to_string(),
+                    AttributeValue::S(entry.action.as_str().to_string()),
+                ),
+                (
+                    "entity_type".to_string(),
+                    AttributeValue::S(entry.entity_type.as_str().to_string()),
+                ),
+                (
+                    "entity_id".to_string(),
+                    AttributeValue::S(entry.entity_id.clone()),
+                ),
+                (
+                    "actor_kind".to_string(),
+                    AttributeValue::S(entry.actor_kind.clone()),
+                ),
+                ("changes".to_string(), AttributeValue::S(changes.clone())),
+            ]);
+            if let Some(label) = &entry.entity_label {
+                item.insert("entity_label".to_string(), AttributeValue::S(label.clone()));
+            }
+            if let Some(location_id) = location_id {
+                item.insert(
+                    "location_id".to_string(),
+                    AttributeValue::S(location_id.to_string()),
+                );
+            }
+            if i == 0 {
+                item.insert("scope".to_string(), AttributeValue::S("all".to_string()));
+            }
+            if let Some(actor_id) = &entry.actor_id {
+                item.insert("actor_id".to_string(), AttributeValue::S(actor_id.clone()));
+            }
+            if let Some(via) = &entry.actor_via {
+                item.insert("actor_via".to_string(), AttributeValue::S(via.clone()));
+            }
+            if let Some(ip) = &entry.ip {
+                item.insert("ip".to_string(), AttributeValue::S(ip.clone()));
+            }
+            item
+        })
+        .collect())
 }
 
 enum CapKind {
@@ -4788,13 +4852,33 @@ impl db::Handler for Handler {
             .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
         Ok(())
     }
+
+    async fn put_audit_entry(&self, entry: &db::AuditEntry) -> db::Result<()> {
+        if self.read_only {
+            return Err(db::Error::MutationDisabled);
+        }
+        for item in audit_items(entry)? {
+            let resp = self
+                .client
+                .put_item()
+                .table_name(self.table_name("audit_log"))
+                .set_item(Some(item))
+                .return_consumed_capacity(ReturnConsumedCapacity::Total)
+                .send()
+                .await
+                .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
+            record_capacity("put_audit_entry", resp.consumed_capacity(), CapKind::Write);
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        Item, batch_get_backoff, client_info_attributes, hydrate_items, hydrate_items_lenient,
-        nitc_event_key, scan_cursor_from_key, topic_date_key, unprocessed_keys_for,
+        Item, audit_items, batch_get_backoff, client_info_attributes, hydrate_items,
+        hydrate_items_lenient, nitc_event_key, scan_cursor_from_key, topic_date_key,
+        unprocessed_keys_for,
     };
     use crate::db;
     use crate::db::Category;
@@ -5120,5 +5204,77 @@ mod tests {
         for (attr, _) in client_info_attributes(&full_client_info()) {
             assert!(attr.starts_with("client_"), "{attr} is not namespaced");
         }
+    }
+
+    fn audit_entry(location_ids: &[&str]) -> db::AuditEntry {
+        db::AuditEntry {
+            id: "item-1".to_string(),
+            event_id: "event-1".to_string(),
+            ts: 1_700_000_000,
+            action: db::AuditAction::Update,
+            entity_type: db::AuditEntityType::Person,
+            entity_id: "p1".to_string(),
+            entity_label: None,
+            location_ids: location_ids.iter().map(|s| s.to_string()).collect(),
+            actor_kind: "system".to_string(),
+            actor_id: None,
+            actor_via: None,
+            ip: None,
+            changes: vec![db::AuditFieldChange {
+                field: "location_id".to_string(),
+                before: Some(serde_json::json!("a")),
+                after: Some(serde_json::json!("b")),
+            }],
+        }
+    }
+
+    /// A global entry is a single item with no `location_id`, and omits every absent
+    /// optional attribute rather than writing Null.
+    #[test]
+    fn a_global_audit_entry_is_one_item_without_location_or_nulls() {
+        let items = audit_items(&audit_entry(&[])).unwrap();
+        assert_eq!(items.len(), 1);
+        let item = &items[0];
+        assert!(!item.contains_key("location_id"));
+        assert_eq!(item["scope"], AttributeValue::S("all".to_string()));
+        assert_eq!(
+            item["sk"],
+            AttributeValue::S("1700000000#item-1".to_string())
+        );
+        for absent in ["entity_label", "actor_id", "actor_via", "ip"] {
+            assert!(!item.contains_key(absent), "{absent} should be omitted");
+        }
+        assert!(item.values().all(|v| !matches!(v, AttributeValue::Null(_))));
+    }
+
+    /// One item per location, sharing `event_id`, with `scope = "all"` on exactly one.
+    #[test]
+    fn a_multi_location_audit_entry_writes_one_item_per_location_with_one_scope() {
+        let items = audit_items(&audit_entry(&["a", "b"])).unwrap();
+        assert_eq!(items.len(), 2);
+        let locations: Vec<_> = items
+            .iter()
+            .map(|i| i["location_id"].as_s().unwrap().as_str())
+            .collect();
+        assert_eq!(locations, vec!["a", "b"]);
+        assert_eq!(items.iter().filter(|i| i.contains_key("scope")).count(), 1);
+        assert!(items[0].contains_key("scope"));
+        for item in &items {
+            assert_eq!(item["event_id"], AttributeValue::S("event-1".to_string()));
+            let id = item["id"].as_s().unwrap();
+            assert_eq!(item["sk"].as_s().unwrap(), &format!("1700000000#{id}"));
+        }
+        assert_ne!(items[0]["id"], items[1]["id"]);
+    }
+
+    #[test]
+    fn audit_changes_are_stored_as_a_json_string_omitting_absent_sides() {
+        let item = &audit_items(&audit_entry(&[])).unwrap()[0];
+        let changes: serde_json::Value =
+            serde_json::from_str(item["changes"].as_s().unwrap()).unwrap();
+        assert_eq!(
+            changes,
+            serde_json::json!([{ "field": "location_id", "before": "a", "after": "b" }])
+        );
     }
 }

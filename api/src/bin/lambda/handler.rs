@@ -160,6 +160,9 @@ impl<
             Ok(opt) => opt,
         };
         let (caller_type, caller_id) = auth::caller_info(auth_opt.as_ref());
+        // Who the audit log attributes this request's writes to; see `seslogin::audit`.
+        let audit_ctx =
+            seslogin::audit::AuditContext::for_request(auth_opt.as_ref(), client_ip.0.as_deref());
         if let Some(auth) = auth_opt {
             query = query.data(auth);
         }
@@ -172,7 +175,10 @@ impl<
         let operation_context = telemetry::extract_operation_context(&mut query);
         let metrics = Arc::new(RequestMetrics::default());
         let gql_response = request_metrics::METRICS
-            .scope(metrics.clone(), self.schema.execute(query))
+            .scope(
+                metrics.clone(),
+                seslogin::audit::scope(audit_ctx, self.schema.execute(query)),
+            )
             .await;
         let gql_error_count = gql_response.errors.len();
 

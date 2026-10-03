@@ -1,5 +1,6 @@
 use anyhow::{Result, anyhow};
 use clap::Parser;
+use seslogin::audit::{self, AuditContext, AuditingHandler};
 use seslogin::db::{self, Handler};
 use seslogin::dynamodb;
 use seslogin::ses_api;
@@ -62,11 +63,15 @@ async fn main() -> Result<()> {
         return Ok(());
     }
 
-    let db = dynamodb::Handler::new(&db_prefix, false).await;
-    for tag in &tags {
-        db.put_nitc_tag(tag).await?;
-        eprintln!("  wrote id={} name={:?}", tag.id, tag.name);
-    }
+    let db = AuditingHandler::new(dynamodb::Handler::new(&db_prefix, false).await);
+    audit::scope(AuditContext::system("load-nitc-tags"), async {
+        for tag in &tags {
+            db.put_nitc_tag(tag).await?;
+            eprintln!("  wrote id={} name={:?}", tag.id, tag.name);
+        }
+        Ok::<(), anyhow::Error>(())
+    })
+    .await?;
 
     eprintln!(
         "Done: {} tags written to {}_nitc_tag",

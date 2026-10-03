@@ -243,7 +243,7 @@ An append-only record of business database writes, shown in the admin UI. Entrie
 
 | Attribute     | Type | Role                                                                                      |
 | ------------- | ---- | ----------------------------------------------------------------------------------------- |
-| `id`          | S    | Hash key (PK) — UUID, unique per item                                                     |
+| `id`          | S    | Hash key (PK) — 12-char nanoid, unique per item                                                    |
 | `location_id` | S    | GSI hash key (`location_id-sk-index`) — absent for global entities                        |
 | `scope`       | S    | GSI hash key (`scope-sk-index`) — `"all"` on exactly one item per event, otherwise absent |
 | `sk`          | S    | GSI sort key — `"{ts:010}#{id}"`                                                          |
@@ -265,15 +265,15 @@ Access patterns: per-location newest-first (`Query` on `location_id-sk-index`) a
 
 - `ts` (N) — Unix seconds when the event happened
 - `event_id` (S) — shared by every item written for the same event
-- `action` (S) — what was done (e.g. create, update, delete)
-- `entity_type` (S) — kind of entity changed (e.g. person, period, user)
+- `action` (S) — `create`, `update`, `delete` or `restore`
+- `entity_type` (S) — `user`, `person`, `period`, `session`, `api_token`, `location`, `category`, `nitc_group`, `nitc_tag`, `user_token`, `oauth_grant` or `webauthn_credential`
 - `entity_id` (S) — ID of the entity changed
 - `entity_label` (S) — human-readable name of the entity at the time; omitted when unknown
-- `actor_kind` (S) — what kind of caller made the change (e.g. user, session, system)
-- `actor_id` (S) — caller's ID; omitted for system actors
-- `actor_via` (S) — how the caller came in (e.g. web, MCP); omitted when unknown
+- `actor_kind` (S) — `user`, `session` (kiosk), `api_token`, `period_link`, `system` (a job or the CLI), `unauthenticated` or `unknown`
+- `actor_id` (S) — the user/session/token ID, the period ID for a period link, or the job name for `system`; omitted for `unauthenticated`/`unknown`
+- `actor_via` (S) — `oauth_grant:<id>` (MCP), `user_token:<id>` or `oauth_client:<id>`; omitted for an ordinary web login and for non-user actors
 - `ip` (S) — caller's IP address; omitted when unknown
-- `changes` (S) — JSON string describing the field-level changes
+- `changes` (S) — JSON array of `{"field", "before", "after"}`; a side that is absent (a create has no `before`, a cleared field has no `after`) is omitted. Secrets are never stored: a secret field that changed appears as `"[redacted]"`
 
 ---
 

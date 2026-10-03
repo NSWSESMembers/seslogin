@@ -4,6 +4,7 @@ mod handler;
 use lambda_http::{Error, run, service_fn, tracing};
 use seslogin::ably;
 use seslogin::app;
+use seslogin::audit::AuditingHandler;
 use seslogin::auth;
 use seslogin::db;
 use seslogin::dynamodb;
@@ -34,7 +35,7 @@ async fn main() -> Result<(), Error> {
         .unwrap_or(false);
 
     let db_prefix = env::var("DB_PREFIX").expect("DB_PREFIX must be set for dynamodb backend");
-    let db = dynamodb::Handler::new(&db_prefix, read_only).await;
+    let db = AuditingHandler::new(dynamodb::Handler::new(&db_prefix, read_only).await);
     let realtime = ably::Publisher::from_env(db_prefix);
     let app = Arc::new(app::new(db, key, 0, queues, mailer, realtime));
     let webauthn = Arc::new(app::build_webauthn().expect("WebAuthn build failed"));
