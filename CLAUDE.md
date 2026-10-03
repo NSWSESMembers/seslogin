@@ -222,7 +222,7 @@ make local-reset          # stop it and delete every local table and row
 make local-tables         # create any missing tables
 make local-tables-check   # fail if a table this codebase expects is missing
 make local-seed           # write local/seed/*.json into the database
-make local-clear          # delete rows the app writes (periods, ephemeral state, passkeys)
+make local-clear          # delete rows the app writes (periods, ephemeral state, passkeys, the audit log)
 make local-cli ARGS="..." # run the `cli` inspector/editor against the local database
 make local-seed-extract   # refresh local/seed/from-prod.json (the only step needing AWS)
 ```
