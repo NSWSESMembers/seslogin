@@ -89,7 +89,7 @@ local-seed` will not clear it: it only writes the fixture rows back, and no fixt
 describes a period.
 
 ```bash
-make local-clear     # drop periods, ephemeral state and passkeys; keep the fixtures
+make local-clear     # drop periods, ephemeral state, passkeys and the audit log; keep the fixtures
 ```
 
 Reach for `make local-reset` only when you want the tables themselves rebuilt.
