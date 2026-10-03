@@ -945,7 +945,7 @@ fn audit_items(entry: &db::AuditEntry) -> db::Result<Vec<HashMap<String, Attribu
             let mut item = HashMap::from([
                 (
                     "sk".to_string(),
-                    AttributeValue::S(format!("{:010}#{}", entry.ts, id)),
+                    AttributeValue::S(db::audit_sk(entry.ts, &id)),
                 ),
                 ("id".to_string(), AttributeValue::S(id)),
                 ("ts".to_string(), AttributeValue::N(entry.ts.to_string())),
@@ -995,6 +995,134 @@ fn audit_items(entry: &db::AuditEntry) -> db::Result<Vec<HashMap<String, Attribu
             item
         })
         .collect())
+}
+
+/// Hydrate one `audit_log` item. It is a single item of an event, so `location_ids`
+/// holds just that item's `location_id` (empty for a global entity).
+///
+/// Strict about the attributes the UI cannot do without (`ts`, `action`, `entity_type`,
+/// `entity_id`, `actor_kind`, `event_id`): a row missing one is reported as a
+/// hydration error, which [`audit_entries_from_items`] logs and skips. Lenient about
+/// `changes`: it is only detail, so a value that is not the expected JSON shows as an
+/// entry with no field changes rather than hiding who did what.
+impl TryInto<db::AuditEntry> for Item {
+    type Error = HydrationError;
+    fn try_into(self) -> Result<db::AuditEntry, Self::Error> {
+        let id = self.id()?;
+        let ts = self
+            .i64_field("ts")?
+            .and_then(|t| u64::try_from(t).ok())
+            .ok_or_else(|| anyhow!("AuditEntry missing ts"))?;
+        let action = self
+            .string_field("action")?
+            .ok_or_else(|| anyhow!("AuditEntry missing action"))?;
+        let action = db::AuditAction::parse(&action)
+            .ok_or_else(|| anyhow!("AuditEntry has unknown action {action:?}"))?;
+        let entity_type = self
+            .string_field("entity_type")?
+            .ok_or_else(|| anyhow!("AuditEntry missing entity_type"))?;
+        let entity_type = db::AuditEntityType::parse(&entity_type)
+            .ok_or_else(|| anyhow!("AuditEntry has unknown entity_type {entity_type:?}"))?;
+        let changes = match self.string_field("changes") {
+            Ok(Some(raw)) => serde_json::from_str(&raw).unwrap_or_else(|e| {
+                tracing::warn!(audit_id = %id, "unreadable audit changes, showing none: {e}");
+                Vec::new()
+            }),
+            Ok(None) => Vec::new(),
+            Err(e) => {
+                tracing::warn!(audit_id = %id, "unreadable audit changes, showing none: {e}");
+                Vec::new()
+            }
+        };
+        Ok(db::AuditEntry {
+            event_id: self
+                .string_field("event_id")?
+                .ok_or_else(|| anyhow!("AuditEntry missing event_id"))?,
+            ts,
+            action,
+            entity_type,
+            entity_id: self
+                .string_field("entity_id")?
+                .ok_or_else(|| anyhow!("AuditEntry missing entity_id"))?,
+            entity_label: self.string_field("entity_label")?,
+            location_ids: self.string_field("location_id")?.into_iter().collect(),
+            actor_kind: self
+                .string_field("actor_kind")?
+                .ok_or_else(|| anyhow!("AuditEntry missing actor_kind"))?,
+            actor_id: self.string_field("actor_id")?,
+            actor_via: self.string_field("actor_via")?,
+            ip: self.string_field("ip")?,
+            changes,
+            id,
+        })
+    }
+}
+
+/// Hydrate a page of `audit_log` items, logging and skipping any that cannot be read so
+/// one corrupt row never fails the whole page.
+fn audit_entries_from_items(items: Vec<HashMap<String, AttributeValue>>) -> Vec<db::AuditEntry> {
+    hydrate_items_lenient::<db::AuditEntry>(Some(items))
+        .into_iter()
+        .filter_map(|r| match r {
+            Ok(entry) => Some(entry),
+            Err(e) => {
+                tracing::warn!("skipping unreadable audit_log row: {e}");
+                None
+            }
+        })
+        .collect()
+}
+
+/// How a `list_audit_entries` query maps onto DynamoDB.
+#[derive(Debug, PartialEq)]
+struct AuditQueryPlan {
+    index_name: &'static str,
+    /// The GSI's hash key attribute and the value it must equal.
+    hash_attr: &'static str,
+    hash_value: String,
+    scan_forward: bool,
+    exclusive_start_key: Option<HashMap<String, AttributeValue>>,
+    /// Value for the `entity_type` filter, if any.
+    entity_type: Option<&'static str>,
+}
+
+/// Build the DynamoDB request shape for an audit query. Fails for a malformed cursor —
+/// one that is not an [`db::audit_sk`] — rather than sending it to DynamoDB.
+///
+/// The `ExclusiveStartKey` for a GSI query must carry the base table's key (`id`) as well
+/// as the index's two keys. The cursor is the item's `sk`, which embeds the `id` (see
+/// [`audit_items`]), so all three can be rebuilt from it plus the scope.
+fn audit_query_plan(query: &db::ListAuditEntriesQuery) -> db::Result<AuditQueryPlan> {
+    let (index_name, hash_attr, hash_value) = match &query.scope {
+        db::AuditScope::Location(location_id) => {
+            ("location_id-sk-index", "location_id", location_id.clone())
+        }
+        db::AuditScope::All => ("scope-sk-index", "scope", "all".to_string()),
+    };
+    let exclusive_start_key = query
+        .page
+        .after
+        .as_deref()
+        .map(|cursor| {
+            let id = db::parse_audit_cursor(cursor)
+                .ok_or_else(|| Error::TypeConversion(format!("Invalid audit cursor {cursor:?}")))?;
+            Ok::<_, Error>(HashMap::from([
+                ("id".to_string(), AttributeValue::S(id.to_string())),
+                (hash_attr.to_string(), AttributeValue::S(hash_value.clone())),
+                ("sk".to_string(), AttributeValue::S(cursor.to_string())),
+            ]))
+        })
+        .transpose()?;
+    Ok(AuditQueryPlan {
+        index_name,
+        hash_attr,
+        hash_value,
+        // `descending` is the order of the returned page, so it is also the scan order:
+        // there is no reversed output to undo.
+        scan_forward: !query.page.descending,
+        exclusive_start_key,
+        entity_type: query.entity_type.map(|t| t.as_str()),
+    })
 }
 
 enum CapKind {
@@ -4871,14 +4999,76 @@ impl db::Handler for Handler {
         }
         Ok(())
     }
+
+    async fn list_audit_entries(
+        &self,
+        query: db::ListAuditEntriesQuery,
+    ) -> db::Result<Vec<db::AuditEntry>> {
+        let plan = audit_query_plan(&query)?;
+        let fetch_limit = usize::try_from(query.page.limit).unwrap_or(0);
+        if fetch_limit == 0 {
+            return Ok(Vec::new());
+        }
+        // `Limit` bounds the items *read*, before the entity_type filter drops any, so a
+        // filtered page can come back short while more rows remain. Read in bigger
+        // chunks when filtering so a rare type needs fewer round trips.
+        let read_limit = if plan.entity_type.is_some() {
+            fetch_limit.max(100)
+        } else {
+            fetch_limit
+        };
+        let read_limit = i32::try_from(read_limit).unwrap_or(i32::MAX);
+
+        let mut exclusive_start_key = plan.exclusive_start_key;
+        let mut entries: Vec<db::AuditEntry> = Vec::new();
+        loop {
+            let mut builder = self
+                .client
+                .query()
+                .table_name(self.table_name("audit_log"))
+                .index_name(plan.index_name)
+                .key_condition_expression("#h = :h")
+                .expression_attribute_names("#h", plan.hash_attr)
+                .expression_attribute_values(":h", AttributeValue::S(plan.hash_value.clone()))
+                .limit(read_limit)
+                .scan_index_forward(plan.scan_forward)
+                .return_consumed_capacity(ReturnConsumedCapacity::Total);
+            if let Some(entity_type) = plan.entity_type {
+                builder = builder
+                    .filter_expression("entity_type = :et")
+                    .expression_attribute_values(":et", AttributeValue::S(entity_type.to_string()));
+            }
+            if let Some(esk) = exclusive_start_key.take() {
+                builder = builder.set_exclusive_start_key(Some(esk));
+            }
+
+            let resp = builder
+                .send()
+                .await
+                .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
+            record_capacity(
+                "list_audit_entries",
+                resp.consumed_capacity(),
+                CapKind::Read,
+            );
+            entries.extend(audit_entries_from_items(resp.items.unwrap_or_default()));
+            exclusive_start_key = resp.last_evaluated_key;
+
+            if entries.len() >= fetch_limit || exclusive_start_key.is_none() {
+                break;
+            }
+        }
+        entries.truncate(fetch_limit);
+        Ok(entries)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        Item, audit_items, batch_get_backoff, client_info_attributes, hydrate_items,
-        hydrate_items_lenient, nitc_event_key, scan_cursor_from_key, topic_date_key,
-        unprocessed_keys_for,
+        AuditQueryPlan, Item, audit_entries_from_items, audit_items, audit_query_plan,
+        batch_get_backoff, client_info_attributes, hydrate_items, hydrate_items_lenient,
+        nitc_event_key, scan_cursor_from_key, topic_date_key, unprocessed_keys_for,
     };
     use crate::db;
     use crate::db::Category;
@@ -5276,5 +5466,168 @@ mod tests {
             changes,
             serde_json::json!([{ "field": "location_id", "before": "a", "after": "b" }])
         );
+    }
+
+    /// What a reader gets back for each item an entry was written as: the same entry, with
+    /// the item's own id and its one location.
+    #[test]
+    fn audit_items_hydrate_back_into_entries() {
+        let entry = db::AuditEntry {
+            entity_label: Some("Alice Anderson".to_string()),
+            actor_id: Some("u1".to_string()),
+            actor_via: Some("oauth_grant:g1".to_string()),
+            ip: Some("203.0.113.7".to_string()),
+            ..audit_entry(&["a", "b"])
+        };
+        let items = audit_items(&entry).unwrap();
+        let read = audit_entries_from_items(items.clone());
+        assert_eq!(read.len(), 2);
+        assert_eq!(
+            read[0],
+            db::AuditEntry {
+                location_ids: vec!["a".to_string()],
+                ..entry.clone()
+            }
+        );
+        assert_eq!(read[1].location_ids, vec!["b".to_string()]);
+        assert_eq!(read[1].id, items[1]["id"].as_s().unwrap().as_str());
+        // The cursor a reader hands back is the item's stored sk.
+        for (entry, item) in read.iter().zip(&items) {
+            assert_eq!(&entry.sk(), item["sk"].as_s().unwrap());
+        }
+        // A global entry hydrates with no location.
+        let global = audit_entries_from_items(audit_items(&audit_entry(&[])).unwrap());
+        assert!(global[0].location_ids.is_empty());
+    }
+
+    #[test]
+    fn a_malformed_audit_row_is_skipped_without_failing_the_page() {
+        let good = audit_items(&audit_entry(&["a"])).unwrap().remove(0);
+        let mut without_ts = good.clone();
+        without_ts.remove("ts");
+        let mut unknown_action = good.clone();
+        unknown_action.insert(
+            "action".to_string(),
+            AttributeValue::S("explode".to_string()),
+        );
+        let mut unknown_entity = good.clone();
+        unknown_entity.insert(
+            "entity_type".to_string(),
+            AttributeValue::S("widget".to_string()),
+        );
+        let mut wrong_type = good.clone();
+        wrong_type.insert("ts".to_string(), AttributeValue::S("soon".to_string()));
+
+        let read = audit_entries_from_items(vec![
+            without_ts,
+            good.clone(),
+            unknown_action,
+            unknown_entity,
+            wrong_type,
+        ]);
+        assert_eq!(read.len(), 1);
+        assert_eq!(read[0].id, "item-1");
+    }
+
+    /// `changes` is detail: a row whose changes are unreadable still shows who did what.
+    #[test]
+    fn unreadable_audit_changes_hydrate_as_no_changes() {
+        for bad in [
+            AttributeValue::S("not json".to_string()),
+            AttributeValue::S(r#"{"field":"x"}"#.to_string()),
+            AttributeValue::N("5".to_string()),
+        ] {
+            let mut item = audit_items(&audit_entry(&["a"])).unwrap().remove(0);
+            item.insert("changes".to_string(), bad);
+            let read = audit_entries_from_items(vec![item]);
+            assert_eq!(read.len(), 1);
+            assert!(read[0].changes.is_empty());
+        }
+        let mut item = audit_items(&audit_entry(&["a"])).unwrap().remove(0);
+        item.remove("changes");
+        assert!(audit_entries_from_items(vec![item])[0].changes.is_empty());
+    }
+
+    fn audit_query(
+        scope: db::AuditScope,
+        after: Option<&str>,
+        descending: bool,
+    ) -> db::ListAuditEntriesQuery {
+        db::ListAuditEntriesQuery {
+            scope,
+            entity_type: None,
+            page: db::ListAuditEntriesPage {
+                after: after.map(String::from),
+                limit: 11,
+                descending,
+            },
+        }
+    }
+
+    #[test]
+    fn a_location_audit_query_uses_the_location_index_and_rebuilds_the_start_key() {
+        let plan = audit_query_plan(&audit_query(
+            db::AuditScope::Location("loc-a".to_string()),
+            Some("1700000000#Ab3-_x"),
+            true,
+        ))
+        .unwrap();
+        assert_eq!(
+            plan,
+            AuditQueryPlan {
+                index_name: "location_id-sk-index",
+                hash_attr: "location_id",
+                hash_value: "loc-a".to_string(),
+                // Newest first is a backwards scan of the ascending sort key.
+                scan_forward: false,
+                // Base table key plus both index keys, all rebuilt from the cursor.
+                exclusive_start_key: Some(HashMap::from([
+                    ("id".to_string(), AttributeValue::S("Ab3-_x".to_string())),
+                    (
+                        "location_id".to_string(),
+                        AttributeValue::S("loc-a".to_string())
+                    ),
+                    (
+                        "sk".to_string(),
+                        AttributeValue::S("1700000000#Ab3-_x".to_string())
+                    ),
+                ])),
+                entity_type: None,
+            }
+        );
+    }
+
+    #[test]
+    fn an_all_scope_audit_query_uses_the_scope_index() {
+        let mut query = audit_query(db::AuditScope::All, Some("0000000005#zz"), false);
+        query.entity_type = Some(db::AuditEntityType::Person);
+        let plan = audit_query_plan(&query).unwrap();
+        assert_eq!(plan.index_name, "scope-sk-index");
+        assert_eq!(plan.hash_attr, "scope");
+        assert_eq!(plan.hash_value, "all");
+        assert!(plan.scan_forward);
+        assert_eq!(plan.entity_type, Some("person"));
+        let esk = plan.exclusive_start_key.unwrap();
+        assert_eq!(esk["scope"], AttributeValue::S("all".to_string()));
+        assert_eq!(esk["id"], AttributeValue::S("zz".to_string()));
+        assert!(!esk.contains_key("location_id"));
+    }
+
+    #[test]
+    fn an_audit_query_without_a_cursor_has_no_start_key() {
+        let plan = audit_query_plan(&audit_query(db::AuditScope::All, None, true)).unwrap();
+        assert_eq!(plan.exclusive_start_key, None);
+    }
+
+    #[test]
+    fn a_malformed_audit_cursor_is_an_error_not_a_request() {
+        for bad in [
+            "", "garbage", "123#", "#abc", "12x4#abc", "123#a b", "123#a#b",
+        ] {
+            assert!(
+                audit_query_plan(&audit_query(db::AuditScope::All, Some(bad), true)).is_err(),
+                "{bad:?} was accepted"
+            );
+        }
     }
 }

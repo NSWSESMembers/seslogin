@@ -15,6 +15,7 @@ use crate::auth::AuthInfo;
 use crate::request_metrics;
 use crate::telemetry::{self, OperationKind};
 
+pub mod audit_log;
 pub mod auth;
 pub mod dataloader;
 pub mod error;
@@ -84,6 +85,11 @@ pub struct SessionId(pub ID);
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct CategoryId(pub ID);
+
+/// Loads an API token's *name* only, for audit-log actor labels: the rest of a token
+/// record (hash, grants) has no business in a resolver that just wants a label.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct ApiTokenNameId(pub String);
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct NitcEventId(pub String);
