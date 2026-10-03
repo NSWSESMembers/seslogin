@@ -247,11 +247,24 @@ claude.ai connector there instead.
 
 ## Audit log
 
-Every business write (people, periods, kiosk sessions, users, locations, categories, API tokens, passkeys, OAuth grants, …) is recorded in the `{DB_PREFIX}_audit_log` DynamoDB table: who did it, which location(s) it touched, and which fields changed from what to what. The table is defined in `infra/dynamodb*.tf` and documented in `SCHEMA.md`; it must exist (`terraform apply`) for entries to land. There is no read API or UI for it yet.
+Every business write (people, periods, kiosk sessions, users, locations, categories, API tokens, passkeys, OAuth grants, …) is recorded in the `{DB_PREFIX}_audit_log` DynamoDB table: who did it, which location(s) it touched, and which fields changed from what to what. The table is defined in `infra/dynamodb*.tf` and documented in `SCHEMA.md`; it must exist (`terraform apply`) for entries to land. It is read through GraphQL (below); there is no UI for it yet.
 
 It is implemented by `audit::AuditingHandler`, a `db::Handler` wrapper that the servers, sync jobs and CLI wrap their DynamoDB handler in (`poem`, `poem-local`, the API Lambda, `member_sync::run`, `location_sync::run`, `cli`, `load-nitc-tags`). The actor comes from the `AUDIT_CONTEXT` task-local each entry point sets: `user` (with `actor_via` `oauth_grant:<id>` / `user_token:<id>` / `oauth_client:<id>` when not a plain web login), `session` (kiosk), `api_token`, `period_link`, `system` (`actor_id` is the job: `member-sync`, `location-sync`, `cli`, `load-nitc-tags`, `oauth-refresh-reuse`), `unauthenticated`, or `unknown` when a write was made with no context set (a bug; it logs a warning).
 
 Auditing is **best-effort**: if recording an entry fails it is logged at `error!` (with the entity type and id) and the write still succeeds. Dry runs and read-only servers record nothing, because the write they would describe is refused. Updates that change nothing record nothing.
+
+### Reading the log (GraphQL)
+
+Both views are Relay connections, **newest first**, default page 50 (max 200), and take `first`/`after` (towards older entries), `last`/`before` (back towards newer ones) and an optional `entityType` filter. A cursor is the item's `sk` (`{ts:010}#{id}`); a malformed one is a `BAD_REQUEST` error. `first` with `before`, or `last` with `after`, is rejected.
+
+| Field | Who may read it | Shows |
+|---|---|---|
+| `Location.auditLog` | A *user* with Admin **or** Read only access to the location, or a super user. Kiosk sessions, API tokens and edit links are refused even for their own location. | Entries at that location. A write touching two locations (a member moved between units) is in both logs. Global records (users, categories, …) are not here. |
+| `Query.auditLog` | Super users only | Every event once, including global records. |
+
+Each `AuditEntry` has `timestamp` (Unix seconds), `action`, `entityType`, `entityId`, `entityLabel`, `location` (the item's own location; the first one a multi-location write touched in the all-locations view; null for global records), `actor { kind id via label }` and `changes { field before after }`. `before`/`after` are text: a JSON string comes back raw, anything else as compact JSON. `actor.label` is looked up at read time (user email, kiosk name, API token name, job name, "Period edit link"); an unknown `actor_kind` reads as `UNKNOWN`. `ip` and `actor.via` are personal data and are returned to **super users only** (null otherwise).
+
+An `entityType` filter is a `FilterExpression`, so a rare type in a busy log can read many rows to fill a page; a malformed row in the table is logged and skipped rather than failing the page.
 
 To inspect entries locally after `make dev-local` / `make local-e2e`, scan the table in DynamoDB Local:
 

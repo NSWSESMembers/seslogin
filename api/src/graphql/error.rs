@@ -23,6 +23,8 @@ pub enum ErrorCode {
     Unauthenticated,
     /// The request conflicts with the resource's current state.
     Conflict,
+    /// An argument is malformed (e.g. a pagination cursor that is not one we issued).
+    BadRequest,
     /// Anything else — an unclassified failure. Deliberately the default, so a
     /// resolver that doesn't opt in still gets a code rather than none.
     Internal,
@@ -35,6 +37,7 @@ impl ErrorCode {
             ErrorCode::Forbidden => "FORBIDDEN",
             ErrorCode::Unauthenticated => "UNAUTHENTICATED",
             ErrorCode::Conflict => "CONFLICT",
+            ErrorCode::BadRequest => "BAD_REQUEST",
             ErrorCode::Internal => "INTERNAL",
         }
     }
@@ -68,6 +71,10 @@ impl ApiError {
 
     pub fn forbidden(message: impl Into<String>) -> Self {
         Self::new(ErrorCode::Forbidden, message)
+    }
+
+    pub fn bad_request(message: impl Into<String>) -> Self {
+        Self::new(ErrorCode::BadRequest, message)
     }
 }
 
