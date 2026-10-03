@@ -2,10 +2,11 @@ import { useNavigate, useParams } from "react-router";
 import { CategoryButton } from "../kiosk/components/ScanScreenCategories";
 import { categories, findLeafCategory } from "../lib/categories";
 import { CategoryIcon } from "../components/CategoryIcon";
+import { MIN_CATEGORY_SCALE } from "../kiosk/categoryScale";
 import { Muted } from "../components/ui/Muted";
 
 // Standalone preview of the kiosk category button (CategoryButton, from
-// ScanScreenCategories) and its icon, for a given category id — every size,
+// ScanScreenCategories) and its icon, for a given category id — full size and the smallest auto size,
 // background and theme combination in one place without walking a scan
 // through to the category screen. Route: /demo/category/:id?
 
@@ -30,28 +31,25 @@ const ICON_BACKGROUNDS: {
 
 function ThemedButtonTile(props: {
   theme: "light" | "dark";
-  small: boolean;
+  scale: number;
   id: string;
   name: string;
   icon: string;
 }) {
-  const { theme, small, id, name, icon } = props;
+  const { theme, scale, id, name, icon } = props;
   return (
     <div
       data-theme={theme}
       className="flex flex-col items-center gap-2 rounded-lg bg-surface p-4"
     >
       <span className="text-xs tracking-wide text-ink-muted uppercase">
-        {theme} · {small ? "small" : "large"}
+        {theme} · {Math.round(scale * 100)}%
       </span>
-      <ul className="m-0 p-0">
-        <CategoryButton
-          id={id}
-          name={name}
-          icon={icon}
-          onSelect={() => {}}
-          small={small}
-        />
+      <ul
+        className="m-0 p-0"
+        style={{ "--cat-scale": scale } as React.CSSProperties}
+      >
+        <CategoryButton id={id} name={name} icon={icon} onSelect={() => {}} />
       </ul>
       <span className="text-xs text-ink-muted">
         click and hold to preview the pressed state
@@ -73,10 +71,10 @@ export default function CategoryButtonDemo() {
         <h1 className="m-0 text-3xl font-bold">Category button demo</h1>
         <Muted className="mt-1.5">
           Renders the real kiosk <code>CategoryButton</code> (from{" "}
-          <code>ScanScreenCategories</code>) for a category id, at every size,
-          theme and state it supports on the scan screen, plus the icon alone on
-          a few backgrounds. The icon is inlined SVG (see{" "}
-          <code>CategoryIcon</code>), so its navy follows{" "}
+          <code>ScanScreenCategories</code>) for a category id, at full size and
+          the smallest auto size, in every theme and state it supports on the
+          scan screen, plus the icon alone on a few backgrounds. The icon is
+          inlined SVG (see <code>CategoryIcon</code>), so its navy follows{" "}
           <code>currentColor</code> (dark mode included) and its orange accent
           follows the <code>--icon-accent</code> custom property — the "Dark
           surface" tile below is what that looks like without any per-icon work.
@@ -124,28 +122,28 @@ export default function CategoryButtonDemo() {
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
               <ThemedButtonTile
                 theme="light"
-                small={false}
+                scale={1}
                 id={id}
                 name={match.name}
                 icon={match.icon}
               />
               <ThemedButtonTile
                 theme="light"
-                small={true}
+                scale={MIN_CATEGORY_SCALE}
                 id={id}
                 name={match.name}
                 icon={match.icon}
               />
               <ThemedButtonTile
                 theme="dark"
-                small={false}
+                scale={1}
                 id={id}
                 name={match.name}
                 icon={match.icon}
               />
               <ThemedButtonTile
                 theme="dark"
-                small={true}
+                scale={MIN_CATEGORY_SCALE}
                 id={id}
                 name={match.name}
                 icon={match.icon}
