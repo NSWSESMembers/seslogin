@@ -399,13 +399,16 @@ async fn run_graphql<A>(
 where
     A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static,
 {
+    // Writes made by a tool are attributed to the user (and the grant they came in by).
+    let audit_ctx =
+        crate::audit::AuditContext::for_request(Some(&auth_info), client_ip.0.as_deref());
     let request = async_graphql::Request::new(document)
         .variables(Variables::from_json(variables))
         .data(auth_info)
         .data(app.clone())
         .data(client_ip.clone())
         .data(graphql::get_dataloader(app.clone()));
-    let response = schema.execute(request).await;
+    let response = crate::audit::scope(audit_ctx, schema.execute(request)).await;
     if !response.errors.is_empty() {
         return Err(response.errors.iter().map(|e| e.message.clone()).collect());
     }
