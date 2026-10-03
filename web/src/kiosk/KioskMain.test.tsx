@@ -434,7 +434,7 @@ describe("KioskMain number pad", () => {
     expect(screen.getByRole("button", { name: "5" })).toBeInTheDocument();
   });
 
-  it("types into the member ID input, then submits and closes on Enter", async () => {
+  it("types into the member ID input, then submits and closes on Confirm", async () => {
     const user = await setupNumberPadTest();
     await openPad(user);
     const textbox = screen.getByRole("textbox");
@@ -444,7 +444,7 @@ describe("KioskMain number pad", () => {
     }
     expect(textbox).toHaveValue(FOUND_USER);
 
-    await tap(user, "Enter");
+    await tap(user, "Confirm");
     await waitFor(() =>
       expect(screen.queryByText("Enter your SES ID")).not.toBeInTheDocument(),
     );
@@ -570,7 +570,7 @@ describe("KioskMain number pad", () => {
     const user = await setupNumberPadTest();
     await openPad(user);
 
-    expect(screen.getByRole("button", { name: "Enter" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Confirm" })).toBeDisabled();
     expect(audioPlaySpy).not.toHaveBeenCalled();
   });
 });

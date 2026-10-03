@@ -187,6 +187,27 @@ describe("ScanModalDateTime", () => {
     expect(onSave).not.toHaveBeenCalled();
   });
 
+  it("types, deletes and confirms from the on-screen keypad", async () => {
+    const user = UserEvent.setup();
+    const onSave = vitest.fn();
+    const onClose = vitest.fn();
+    renderInner({ initialValue: "", onSave, onClose });
+    for (const key of ["1", "4", "3"]) {
+      await user.click(screen.getByRole("button", { name: key }));
+    }
+    expect(digitText()).toBe("143_");
+    await user.click(screen.getByRole("button", { name: "Delete" }));
+    expect(digitText()).toBe("14__");
+    expect(screen.getByRole("button", { name: "Confirm" })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "3" }));
+    await user.click(screen.getByRole("button", { name: "0" }));
+    await user.click(screen.getByRole("button", { name: "Confirm" }));
+    expect(onSave).toHaveBeenCalledTimes(1);
+    expect(onSave.mock.calls[0][2]).toBe("1430");
+    await user.click(screen.getByRole("button", { name: "Close" }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
   it("closes on Escape", async () => {
     const user = UserEvent.setup();
     const onClose = vitest.fn();

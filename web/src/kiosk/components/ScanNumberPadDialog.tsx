@@ -1,58 +1,13 @@
 import { useEffect, useRef } from "react";
 import { Dialog, DialogTitle } from "../../components/ui/Dialog";
-import { Button } from "../../components/ui/Button";
+import Keypad from "./Keypad";
 import { MEMBER_ID_LENGTH } from "../../lib/memberId";
 
-// Key faces are laid out phone-style (1 top-left), which is what people expect
-// from a touchscreen. The bottom row is delete / 0 / enter, so the two actions
-// sit either side of the digit rather than being reached for somewhere else.
-const DIGIT_KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9"];
-
-// Every key is the same box — sized here rather than left to the text inside it,
-// so the delete and enter keys line up with the digits.
-const keyBase =
-  "flex h-20 w-28 cursor-pointer items-center justify-center rounded-[14px] leading-none shadow-md disabled:cursor-default disabled:opacity-30 disabled:shadow-none";
-const keyDigit = `${keyBase} bg-neutral-800 text-4xl text-white active:bg-neutral-600 dark:bg-neutral-700 dark:active:bg-neutral-500`;
-const keyAux = `${keyBase} bg-neutral-200 text-3xl text-neutral-700 active:bg-neutral-300 dark:bg-neutral-800 dark:text-neutral-300 dark:active:bg-neutral-700`;
-const keyConfirm = `${keyBase} bg-confirm text-3xl text-white active:bg-confirm-active disabled:bg-neutral-300 disabled:text-neutral-500 dark:disabled:bg-neutral-700 dark:disabled:text-neutral-500`;
-// The digit boxes sit on the always-dark display strip, so they stay
-// light-on-dark in both themes — no dark: variants.
-const digitBoxBase =
-  "box-border w-11 rounded-lg border-4 bg-white text-center text-neutral-800";
-// The ring marks the digit the next key press fills. Its border *colour* lives
-// only in these two: two border-colour utilities in one class string resolve by
-// stylesheet order rather than the order they are written, so a colour in
-// digitBoxBase would beat the ring.
-const digitBoxCurrent = "border-accent";
-const digitBoxIdle = "border-transparent";
-
-/**
- * One key. Pressing it must not take focus, so the pad's own keyboard handling
- * (below) keeps working for a barcode scan or a keyboard after a tap. Preventing
- * the default on mousedown keeps focus where it is, and `tabIndex={-1}` keeps
- * the pad out of the tab order.
- */
-function Key(props: {
-  className: string;
-  label: string;
-  onPress: () => void;
-  face?: string;
-  disabled?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      tabIndex={-1}
-      aria-label={props.label}
-      disabled={props.disabled}
-      className={props.className}
-      onMouseDown={(event) => event.preventDefault()}
-      onClick={props.onPress}
-    >
-      {props.face ?? props.label}
-    </button>
-  );
-}
+// The typed digits sit on the always-dark display strip, so the box stays
+// light-on-dark in both themes — no dark: variants. Its width is fixed to
+// MEMBER_ID_LENGTH digits plus the cursor (tabular digits, so every one is the
+// same `ch` wide) so the dialog doesn't resize as digits are typed.
+const displayWidth = `${MEMBER_ID_LENGTH + 1}ch`;
 
 /**
  * The on-screen keypad for entering a member ID without a keyboard or barcode
@@ -96,7 +51,7 @@ export default function ScanNumberPadDialog(props: {
         handlers.onDelete();
       } else if (event.key === "Enter") {
         // A scanner's trailing newline lands here, so Enter submits whenever
-        // the pad's own Enter key would.
+        // the pad's Confirm key would.
         if (!handlers.submitDisabled) {
           handlers.onSubmit();
         }
@@ -117,38 +72,30 @@ export default function ScanNumberPadDialog(props: {
   return (
     <Dialog onDismiss={onClose} width="w-auto">
       <DialogTitle>Enter your SES ID</DialogTitle>
-      <div className="flex justify-center gap-1.5 rounded-[14px] bg-neutral-800 px-3 py-3.5 text-3xl font-bold">
-        {Array.from({ length: MEMBER_ID_LENGTH }, (_, index) => (
-          <span
-            key={index}
-            className={`${digitBoxBase} ${index === value.length ? digitBoxCurrent : digitBoxIdle}`}
-          >
-            {value.charAt(index) || "\xa0"}
-          </span>
-        ))}
+      <div className="flex justify-center rounded-[14px] bg-neutral-800 px-3 py-3.5">
+        <div
+          role="status"
+          aria-label="Member ID"
+          style={{ width: displayWidth }}
+          className="box-content rounded-lg bg-white px-3 py-1 text-left font-mono text-4xl font-bold text-neutral-800 tabular-nums"
+        >
+          {value}
+          {value.length < MEMBER_ID_LENGTH && (
+            <span
+              aria-hidden="true"
+              className="ml-px inline-block h-[1em] w-0.5 translate-y-[0.15em] animate-pulse bg-accent motion-reduce:animate-none"
+            />
+          )}
+          {"\u200b"}
+        </div>
       </div>
-      <div className="grid grid-cols-3 gap-2.5">
-        {DIGIT_KEYS.map((digit) => (
-          <Key
-            key={digit}
-            className={keyDigit}
-            label={digit}
-            onPress={() => onDigit(digit)}
-          />
-        ))}
-        <Key className={keyAux} label="Delete" face="⌫" onPress={onDelete} />
-        <Key className={keyDigit} label="0" onPress={() => onDigit("0")} />
-        <Key
-          className={keyConfirm}
-          label="Enter"
-          face="⏎"
-          onPress={onSubmit}
-          disabled={submitDisabled}
-        />
-      </div>
-      <Button variant="kiosk" size="panel" type="button" onClick={onClose}>
-        Close
-      </Button>
+      <Keypad
+        onDigit={onDigit}
+        onDelete={onDelete}
+        onClose={onClose}
+        onConfirm={onSubmit}
+        confirmDisabled={submitDisabled}
+      />
     </Dialog>
   );
 }
