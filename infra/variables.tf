@@ -79,6 +79,19 @@ variable "ably_api_key" {
   default     = ""
 }
 
+variable "toolbox_graphql_url" {
+  description = "Toolbox's GraphQL endpoint (`https://<toolbox web domain>/graphql`), where the admin help form files tickets via `submitVerifiedTicket`. Shared by prod, preprod and the test API. Empty disables the help form (the admin footer link then offers the support email instead) rather than failing startup."
+  type        = string
+  default     = ""
+}
+
+variable "toolbox_api_token" {
+  description = "Toolbox integration token (`mta_{id}.{secret}`), minted by the support instance's owner with `createApiToken`. It authorises only `submitVerifiedTicket` for that instance. Empty disables the help form, as for `toolbox_graphql_url`."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
 variable "db_prefix" {
   description = "DynamoDB table name prefix for the production environment (e.g. seslogin_prod_)"
   type        = string

@@ -39,6 +39,7 @@ import ActivityDailyBreakdown from "./pages/ActivityDailyBreakdown";
 import ActivityHeatmap from "./pages/ActivityHeatmap";
 import ActivityLastSeen from "./pages/ActivityLastSeen";
 import Reports from "./pages/Reports";
+import Help from "./pages/Help";
 import SettingsPasskeys from "./pages/SettingsPasskeys";
 import SettingsConnectedApps from "./pages/SettingsConnectedApps";
 import SettingsDailyEmail from "./pages/SettingsDailyEmail";
@@ -115,6 +116,7 @@ export default function AdminApp() {
         <Route path="reports">
           <Route index element={<Reports />} />
         </Route>
+        <Route path="help" element={<Help />} />
         <Route path="settings">
           <Route index element={<SettingsPasskeys />} />
           <Route path="daily-email" element={<SettingsDailyEmail />} />

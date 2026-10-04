@@ -2,6 +2,8 @@ import { Outlet, useLocation } from "react-router";
 import { ErrorBoundary } from "react-error-boundary";
 import TopBar from "../admin/components/TopBar";
 import ClientVersionLabel from "../components/ClientVersionLabel";
+import HelpLink from "../components/HelpLink";
+import { EmailHelp } from "../components/EmailHelp";
 import PageErrorFallback from "../components/PageErrorFallback";
 import HomeEnvironmentProbe from "./HomeEnvironmentProbe";
 
@@ -18,7 +20,8 @@ export default function Layout() {
       <Outlet />
       <footer className="bg-surface-sunken p-2.5 text-center text-xs text-ink-muted">
         NSW SES Volunteers &mdash; SES Activity v2 &mdash;{" "}
-        <ClientVersionLabel />
+        <ClientVersionLabel /> &mdash;{" "}
+        <HelpLink>{(close) => <EmailHelp onClose={close} />}</HelpLink>
       </footer>
     </ErrorBoundary>
   );
