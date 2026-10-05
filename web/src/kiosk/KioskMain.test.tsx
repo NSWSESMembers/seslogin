@@ -319,6 +319,18 @@ describe("KioskMain theme", () => {
     await setupTest();
     expect(document.documentElement).toHaveAttribute("data-theme", "light");
   });
+
+  it("sets a black theme-color for the status bar, and removes it on unmount", () => {
+    const { unmount } = render(<KioskMain />);
+    const selector = 'meta[name="theme-color"]';
+    expect(document.head.querySelectorAll(selector)).toHaveLength(1);
+    expect(document.head.querySelector(selector)).toHaveAttribute(
+      "content",
+      "#000000",
+    );
+    unmount();
+    expect(document.head.querySelector(selector)).toBeNull();
+  });
 });
 
 describe("KioskMain quick pick categories", () => {

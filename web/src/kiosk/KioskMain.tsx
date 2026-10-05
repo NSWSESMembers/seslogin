@@ -25,6 +25,21 @@ export default function KioskMain() {
   // a device running several kiosk identities.
   setKioskProfile(profile);
   console.log("[KioskMain] render");
+
+  // Keep the status bar black whatever the light/dark setting when the kiosk runs
+  // from an iPad's home screen. iPadOS no longer treats index.html's
+  // `apple-mobile-web-app-status-bar-style: black` as a fixed colour: it follows
+  // the system appearance instead. A `theme-color` with no `media` query takes
+  // precedence. Set here rather than in index.html so the homepage and admin keep
+  // Safari's default toolbar colour.
+  useEffect(() => {
+    const meta = document.createElement("meta");
+    meta.name = "theme-color";
+    meta.content = "#000000";
+    document.head.appendChild(meta);
+    return () => meta.remove();
+  }, []);
+
   return (
     <Suspense fallback={<LoadingIndicator />}>
       <KioskEnvironment profile={profile}>
