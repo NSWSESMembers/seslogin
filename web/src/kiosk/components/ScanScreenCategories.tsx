@@ -20,7 +20,7 @@ export function CategoryButton(props: {
     <li className="inline-block list-none align-bottom">
       <button
         onClick={onSelect}
-        className="m-[calc(12px*var(--cat-scale,1))] box-content flex h-[calc(115px*var(--cat-scale,1))] w-[calc(150px*var(--cat-scale,1))] cursor-pointer flex-col content-start rounded-lg border-2 border-line-strong bg-surface-raised p-[calc(10px*var(--cat-scale,1))] text-[calc(18px*var(--cat-scale,1))] leading-[calc(28px*var(--cat-scale,1))] wrap-break-word text-ink active:bg-menu"
+        className="m-[calc(12px*var(--cat-scale,1))] box-content flex h-[calc(115px*var(--cat-scale,1))] w-[calc(150px*var(--cat-scale,1))] cursor-pointer flex-col content-start items-stretch rounded-lg border-2 border-line-strong bg-surface-raised p-[calc(10px*var(--cat-scale,1))] text-[calc(18px*var(--cat-scale,1))] leading-[calc(28px*var(--cat-scale,1))] wrap-break-word text-ink active:bg-menu"
       >
         <CategoryIcon
           icon={icon}
