@@ -11,7 +11,7 @@ const displayWidth = `${MEMBER_ID_LENGTH + 1}ch`;
 
 /**
  * The on-screen keypad for entering a member ID without a keyboard or barcode
- * scanner, opened from the scan screen when the session config enables it.
+ * scanner, opened from the scan screen on a touch kiosk (see interfaceMode).
  *
  * It drives the member ID input rather than holding the typed value itself, so
  * the input stays the single source of truth and a scanner, a physical keyboard
