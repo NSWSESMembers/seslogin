@@ -1,7 +1,6 @@
 /**
- * @generated SignedSource<<0e39d0189c4cf4cae31890be688e0374>>
+ * @generated SignedSource<<8547eab54e6b300a819b628993419069>>
  * @lightSyntaxTransform
- * @nogrep
  */
 
 /* tslint:disable */
@@ -139,8 +138,8 @@ v13 = {
   "storageKey": null
 },
 v14 = [
-  (v5/*: any*/),
-  (v13/*: any*/)
+  (v5/*:: as any*/),
+  (v13/*:: as any*/)
 ],
 v15 = {
   "alias": null,
@@ -149,7 +148,7 @@ v15 = {
   "kind": "LinkedField",
   "name": "signedInSession",
   "plural": false,
-  "selections": (v14/*: any*/),
+  "selections": (v14/*:: as any*/),
   "storageKey": null
 },
 v16 = {
@@ -159,7 +158,7 @@ v16 = {
   "kind": "LinkedField",
   "name": "signedOutSession",
   "plural": false,
-  "selections": (v14/*: any*/),
+  "selections": (v14/*:: as any*/),
   "storageKey": null
 },
 v17 = {
@@ -170,8 +169,8 @@ v17 = {
   "name": "category",
   "plural": false,
   "selections": [
-    (v5/*: any*/),
-    (v13/*: any*/),
+    (v5/*:: as any*/),
+    (v13/*:: as any*/),
     {
       "alias": null,
       "args": null,
@@ -197,7 +196,7 @@ v19 = {
   "name": "person",
   "plural": false,
   "selections": [
-    (v5/*: any*/),
+    (v5/*:: as any*/),
     {
       "alias": null,
       "args": null,
@@ -226,7 +225,7 @@ v19 = {
       "kind": "LinkedField",
       "name": "location",
       "plural": false,
-      "selections": (v14/*: any*/),
+      "selections": (v14/*:: as any*/),
       "storageKey": null
     }
   ],
@@ -260,10 +259,10 @@ v20 = {
 return {
   "fragment": {
     "argumentDefinitions": [
-      (v0/*: any*/),
-      (v1/*: any*/),
-      (v2/*: any*/),
-      (v3/*: any*/)
+      (v0/*:: as any*/),
+      (v1/*:: as any*/),
+      (v2/*:: as any*/),
+      (v3/*:: as any*/)
     ],
     "kind": "Fragment",
     "metadata": null,
@@ -271,16 +270,16 @@ return {
     "selections": [
       {
         "alias": null,
-        "args": (v4/*: any*/),
+        "args": (v4/*:: as any*/),
         "concreteType": "Location",
         "kind": "LinkedField",
         "name": "location",
         "plural": false,
         "selections": [
-          (v5/*: any*/),
+          (v5/*:: as any*/),
           {
             "alias": null,
-            "args": (v6/*: any*/),
+            "args": (v6/*:: as any*/),
             "concreteType": "PeriodConnection",
             "kind": "LinkedField",
             "name": "periods",
@@ -306,26 +305,26 @@ return {
                         "kind": "InlineDataFragmentSpread",
                         "name": "ActivityListTable_period",
                         "selections": [
-                          (v5/*: any*/),
-                          (v7/*: any*/),
-                          (v8/*: any*/),
-                          (v9/*: any*/),
-                          (v10/*: any*/),
-                          (v11/*: any*/),
-                          (v12/*: any*/),
+                          (v5/*:: as any*/),
+                          (v7/*:: as any*/),
+                          (v8/*:: as any*/),
+                          (v9/*:: as any*/),
+                          (v10/*:: as any*/),
+                          (v11/*:: as any*/),
+                          (v12/*:: as any*/),
                           {
                             "kind": "CatchField",
-                            "field": (v15/*: any*/),
+                            "field": (v15/*:: as any*/),
                             "to": "RESULT"
                           },
                           {
                             "kind": "CatchField",
-                            "field": (v16/*: any*/),
+                            "field": (v16/*:: as any*/),
                             "to": "RESULT"
                           },
                           {
                             "kind": "CatchField",
-                            "field": (v17/*: any*/),
+                            "field": (v17/*:: as any*/),
                             "to": "RESULT"
                           }
                         ],
@@ -336,10 +335,10 @@ return {
                         "kind": "InlineDataFragmentSpread",
                         "name": "ActivityList_periodName",
                         "selections": [
-                          (v18/*: any*/),
+                          (v18/*:: as any*/),
                           {
                             "kind": "CatchField",
-                            "field": (v19/*: any*/),
+                            "field": (v19/*:: as any*/),
                             "to": "RESULT"
                           }
                         ],
@@ -352,7 +351,7 @@ return {
                 ],
                 "storageKey": null
               },
-              (v20/*: any*/)
+              (v20/*:: as any*/)
             ],
             "storageKey": null
           }
@@ -366,26 +365,26 @@ return {
   "kind": "Request",
   "operation": {
     "argumentDefinitions": [
-      (v3/*: any*/),
-      (v2/*: any*/),
-      (v0/*: any*/),
-      (v1/*: any*/)
+      (v3/*:: as any*/),
+      (v2/*:: as any*/),
+      (v0/*:: as any*/),
+      (v1/*:: as any*/)
     ],
     "kind": "Operation",
     "name": "ActivityListLoadMoreQuery",
     "selections": [
       {
         "alias": null,
-        "args": (v4/*: any*/),
+        "args": (v4/*:: as any*/),
         "concreteType": "Location",
         "kind": "LinkedField",
         "name": "location",
         "plural": false,
         "selections": [
-          (v5/*: any*/),
+          (v5/*:: as any*/),
           {
             "alias": null,
-            "args": (v6/*: any*/),
+            "args": (v6/*:: as any*/),
             "concreteType": "PeriodConnection",
             "kind": "LinkedField",
             "name": "periods",
@@ -407,25 +406,25 @@ return {
                     "name": "node",
                     "plural": false,
                     "selections": [
-                      (v5/*: any*/),
-                      (v7/*: any*/),
-                      (v8/*: any*/),
-                      (v9/*: any*/),
-                      (v10/*: any*/),
-                      (v11/*: any*/),
-                      (v12/*: any*/),
-                      (v15/*: any*/),
-                      (v16/*: any*/),
-                      (v17/*: any*/),
-                      (v18/*: any*/),
-                      (v19/*: any*/)
+                      (v5/*:: as any*/),
+                      (v7/*:: as any*/),
+                      (v8/*:: as any*/),
+                      (v9/*:: as any*/),
+                      (v10/*:: as any*/),
+                      (v11/*:: as any*/),
+                      (v12/*:: as any*/),
+                      (v15/*:: as any*/),
+                      (v16/*:: as any*/),
+                      (v17/*:: as any*/),
+                      (v18/*:: as any*/),
+                      (v19/*:: as any*/)
                     ],
                     "storageKey": null
                   }
                 ],
                 "storageKey": null
               },
-              (v20/*: any*/)
+              (v20/*:: as any*/)
             ],
             "storageKey": null
           }

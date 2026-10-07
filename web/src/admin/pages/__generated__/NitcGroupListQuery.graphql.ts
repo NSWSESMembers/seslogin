@@ -1,7 +1,6 @@
 /**
- * @generated SignedSource<<8c20d2507d8a0d944af489b76bf8908a>>
+ * @generated SignedSource<<f3c682319b0d5798a5f1a14422d6254c>>
  * @lightSyntaxTransform
- * @nogrep
  */
 
 /* tslint:disable */
@@ -54,7 +53,7 @@ v2 = [
     "name": "nitcGroups",
     "plural": true,
     "selections": [
-      (v0/*: any*/),
+      (v0/*:: as any*/),
       {
         "alias": null,
         "args": null,
@@ -70,8 +69,8 @@ v2 = [
         "name": "sesTags",
         "plural": true,
         "selections": [
-          (v0/*: any*/),
-          (v1/*: any*/)
+          (v0/*:: as any*/),
+          (v1/*:: as any*/)
         ],
         "storageKey": null
       }
@@ -86,8 +85,8 @@ v2 = [
     "name": "categories",
     "plural": true,
     "selections": [
-      (v0/*: any*/),
-      (v1/*: any*/),
+      (v0/*:: as any*/),
+      (v1/*:: as any*/),
       {
         "alias": null,
         "args": null,
@@ -107,7 +106,7 @@ return {
       "throwOnFieldError": true
     },
     "name": "NitcGroupListQuery",
-    "selections": (v2/*: any*/),
+    "selections": (v2/*:: as any*/),
     "type": "QueryRoot",
     "abstractKey": null
   },
@@ -116,7 +115,7 @@ return {
     "argumentDefinitions": [],
     "kind": "Operation",
     "name": "NitcGroupListQuery",
-    "selections": (v2/*: any*/)
+    "selections": (v2/*:: as any*/)
   },
   "params": {
     "cacheID": "8ad8670b88ee9cb6d47c7184d616efa5",

@@ -1,7 +1,6 @@
 /**
- * @generated SignedSource<<51dc2aa0a9e10b3322135941a7c5b0e6>>
+ * @generated SignedSource<<f5a743e13052f52c551ef7a2b1d6f315>>
  * @lightSyntaxTransform
- * @nogrep
  */
 
 /* tslint:disable */
@@ -45,7 +44,7 @@ return {
     },
     "name": "HelpFormQuery",
     "selections": [
-      (v0/*: any*/),
+      (v0/*:: as any*/),
       {
         "alias": null,
         "args": null,
@@ -54,7 +53,7 @@ return {
         "name": "user",
         "plural": false,
         "selections": [
-          (v1/*: any*/)
+          (v1/*:: as any*/)
         ],
         "storageKey": null
       }
@@ -68,7 +67,7 @@ return {
     "kind": "Operation",
     "name": "HelpFormQuery",
     "selections": [
-      (v0/*: any*/),
+      (v0/*:: as any*/),
       {
         "alias": null,
         "args": null,
@@ -77,7 +76,7 @@ return {
         "name": "user",
         "plural": false,
         "selections": [
-          (v1/*: any*/),
+          (v1/*:: as any*/),
           {
             "alias": null,
             "args": null,

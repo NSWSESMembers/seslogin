@@ -1,7 +1,6 @@
 /**
- * @generated SignedSource<<10ee5449b4e0f6c4c0c55cf182898b7d>>
+ * @generated SignedSource<<9c58f79174df507c752da5640645275c>>
  * @lightSyntaxTransform
- * @nogrep
  */
 
 /* tslint:disable */
@@ -49,7 +48,7 @@ return {
       "throwOnFieldError": true
     },
     "name": "UserInfoProviderHeartbeatQuery",
-    "selections": (v0/*: any*/),
+    "selections": (v0/*:: as any*/),
     "type": "QueryRoot",
     "abstractKey": null
   },
@@ -58,7 +57,7 @@ return {
     "argumentDefinitions": [],
     "kind": "Operation",
     "name": "UserInfoProviderHeartbeatQuery",
-    "selections": (v0/*: any*/)
+    "selections": (v0/*:: as any*/)
   },
   "params": {
     "cacheID": "f1a9debdd96bb842748ed83f1c7732b6",

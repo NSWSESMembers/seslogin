@@ -1,7 +1,6 @@
 /**
- * @generated SignedSource<<9d02592a95a1b6668b3f1d20e9307e16>>
+ * @generated SignedSource<<04a64f49bb119bf08b4cc7f25ff13c87>>
  * @lightSyntaxTransform
- * @nogrep
  */
 
 /* tslint:disable */
@@ -42,7 +41,7 @@ v1 = [
     "name": "user",
     "plural": false,
     "selections": [
-      (v0/*: any*/),
+      (v0/*:: as any*/),
       {
         "alias": null,
         "args": null,
@@ -58,7 +57,7 @@ v1 = [
         "name": "locations",
         "plural": true,
         "selections": [
-          (v0/*: any*/),
+          (v0/*:: as any*/),
           {
             "alias": null,
             "args": null,
@@ -81,7 +80,7 @@ return {
       "throwOnFieldError": true
     },
     "name": "SettingsDailyEmailQuery",
-    "selections": (v1/*: any*/),
+    "selections": (v1/*:: as any*/),
     "type": "QueryRoot",
     "abstractKey": null
   },
@@ -90,7 +89,7 @@ return {
     "argumentDefinitions": [],
     "kind": "Operation",
     "name": "SettingsDailyEmailQuery",
-    "selections": (v1/*: any*/)
+    "selections": (v1/*:: as any*/)
   },
   "params": {
     "cacheID": "ca98825c98b88e318a2162f605f3d0ef",
