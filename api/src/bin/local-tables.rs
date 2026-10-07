@@ -209,7 +209,7 @@ const TABLES: &[Table] = &[
         hash: "id",
         attrs: &[Attr("id", S), Attr("token_hash", S)],
         gsis: &[keys_only("token_hash-index", "token_hash")],
-        ttl: None,
+        ttl: Some("expires_at"),
     },
     Table {
         name: "webauthn_credential",
