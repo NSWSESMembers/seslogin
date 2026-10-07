@@ -1,7 +1,6 @@
 /**
- * @generated SignedSource<<844803c33d368622b714e663b3a0f430>>
+ * @generated SignedSource<<60baf60ac5f17a3df4f781ec719ff8c4>>
  * @lightSyntaxTransform
- * @nogrep
  */
 
 /* tslint:disable */
@@ -65,7 +64,7 @@ return {
       "throwOnFieldError": true
     },
     "name": "CategoryNewQuery",
-    "selections": (v0/*: any*/),
+    "selections": (v0/*:: as any*/),
     "type": "QueryRoot",
     "abstractKey": null
   },
@@ -74,7 +73,7 @@ return {
     "argumentDefinitions": [],
     "kind": "Operation",
     "name": "CategoryNewQuery",
-    "selections": (v0/*: any*/)
+    "selections": (v0/*:: as any*/)
   },
   "params": {
     "cacheID": "7b8efb397000547dfcc41630e2a4088a",

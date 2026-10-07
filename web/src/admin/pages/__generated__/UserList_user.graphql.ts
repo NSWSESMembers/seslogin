@@ -1,7 +1,6 @@
 /**
- * @generated SignedSource<<a73a3a17519b928457acae6ae2b0c9b4>>
+ * @generated SignedSource<<570f6f1b98819fce8b34d8408e53261c>>
  * @lightSyntaxTransform
- * @nogrep
  */
 
 /* tslint:disable */
@@ -46,7 +45,7 @@ return {
   },
   "name": "UserList_user",
   "selections": [
-    (v0/*: any*/),
+    (v0/*:: as any*/),
     {
       "alias": null,
       "args": null,
@@ -97,7 +96,7 @@ return {
       "name": "locations",
       "plural": true,
       "selections": [
-        (v0/*: any*/),
+        (v0/*:: as any*/),
         {
           "alias": null,
           "args": null,

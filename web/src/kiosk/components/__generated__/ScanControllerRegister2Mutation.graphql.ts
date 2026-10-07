@@ -1,7 +1,6 @@
 /**
- * @generated SignedSource<<40118c518cfc782463b6e4d518ddfe50>>
+ * @generated SignedSource<<b03c3f8e6916986aa33e36b270e33652>>
  * @lightSyntaxTransform
- * @nogrep
  */
 
 /* tslint:disable */
@@ -86,7 +85,7 @@ v3 = {
   "name": "category",
   "plural": false,
   "selections": [
-    (v1/*: any*/)
+    (v1/*:: as any*/)
   ],
   "storageKey": null
 },
@@ -125,7 +124,7 @@ v4 = [
         "name": "period",
         "plural": false,
         "selections": [
-          (v1/*: any*/),
+          (v1/*:: as any*/),
           {
             "alias": null,
             "args": null,
@@ -155,8 +154,8 @@ v4 = [
             "name": "person",
             "plural": false,
             "selections": [
-              (v1/*: any*/),
-              (v2/*: any*/),
+              (v1/*:: as any*/),
+              (v2/*:: as any*/),
               {
                 "alias": null,
                 "args": null,
@@ -186,7 +185,7 @@ v4 = [
             "name": "locationCategories",
             "plural": true,
             "selections": [
-              (v3/*: any*/),
+              (v3/*:: as any*/),
               {
                 "alias": null,
                 "args": null,
@@ -195,8 +194,8 @@ v4 = [
                 "name": "recentPeople",
                 "plural": true,
                 "selections": [
-                  (v1/*: any*/),
-                  (v2/*: any*/)
+                  (v1/*:: as any*/),
+                  (v2/*:: as any*/)
                 ],
                 "storageKey": null
               }
@@ -211,7 +210,7 @@ v4 = [
             "name": "personCategories",
             "plural": true,
             "selections": [
-              (v3/*: any*/)
+              (v3/*:: as any*/)
             ],
             "storageKey": null
           }
@@ -224,20 +223,20 @@ v4 = [
 ];
 return {
   "fragment": {
-    "argumentDefinitions": (v0/*: any*/),
+    "argumentDefinitions": (v0/*:: as any*/),
     "kind": "Fragment",
     "metadata": null,
     "name": "ScanControllerRegister2Mutation",
-    "selections": (v4/*: any*/),
+    "selections": (v4/*:: as any*/),
     "type": "MutationRoot",
     "abstractKey": null
   },
   "kind": "Request",
   "operation": {
-    "argumentDefinitions": (v0/*: any*/),
+    "argumentDefinitions": (v0/*:: as any*/),
     "kind": "Operation",
     "name": "ScanControllerRegister2Mutation",
-    "selections": (v4/*: any*/)
+    "selections": (v4/*:: as any*/)
   },
   "params": {
     "cacheID": "ba93a09c27430c633c2d3da2b156d0f9",

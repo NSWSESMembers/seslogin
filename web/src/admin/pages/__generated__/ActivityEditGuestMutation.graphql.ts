@@ -1,7 +1,6 @@
 /**
- * @generated SignedSource<<f910e1b6322702b53d7b512056a774d2>>
+ * @generated SignedSource<<53455a28e0ab474b925d5284f5b3fd80>>
  * @lightSyntaxTransform
- * @nogrep
  */
 
 /* tslint:disable */
@@ -133,31 +132,31 @@ v5 = [
 return {
   "fragment": {
     "argumentDefinitions": [
-      (v0/*: any*/),
-      (v1/*: any*/),
-      (v2/*: any*/),
-      (v3/*: any*/),
-      (v4/*: any*/)
+      (v0/*:: as any*/),
+      (v1/*:: as any*/),
+      (v2/*:: as any*/),
+      (v3/*:: as any*/),
+      (v4/*:: as any*/)
     ],
     "kind": "Fragment",
     "metadata": null,
     "name": "ActivityEditGuestMutation",
-    "selections": (v5/*: any*/),
+    "selections": (v5/*:: as any*/),
     "type": "MutationRoot",
     "abstractKey": null
   },
   "kind": "Request",
   "operation": {
     "argumentDefinitions": [
-      (v3/*: any*/),
-      (v2/*: any*/),
-      (v4/*: any*/),
-      (v1/*: any*/),
-      (v0/*: any*/)
+      (v3/*:: as any*/),
+      (v2/*:: as any*/),
+      (v4/*:: as any*/),
+      (v1/*:: as any*/),
+      (v0/*:: as any*/)
     ],
     "kind": "Operation",
     "name": "ActivityEditGuestMutation",
-    "selections": (v5/*: any*/)
+    "selections": (v5/*:: as any*/)
   },
   "params": {
     "cacheID": "c4ed32b52518563235d041a082d9b6c1",

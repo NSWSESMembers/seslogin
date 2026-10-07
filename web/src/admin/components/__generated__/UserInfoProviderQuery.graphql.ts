@@ -1,7 +1,6 @@
 /**
- * @generated SignedSource<<e5f00ca4eb4d5c3d5e3d542177f87f70>>
+ * @generated SignedSource<<27013661663beb817320d3d6a2f02fa9>>
  * @lightSyntaxTransform
- * @nogrep
  */
 
 /* tslint:disable */
@@ -54,7 +53,7 @@ v1 = [
     "name": "user",
     "plural": false,
     "selections": [
-      (v0/*: any*/),
+      (v0/*:: as any*/),
       {
         "alias": null,
         "args": null,
@@ -91,7 +90,7 @@ v1 = [
         "name": "locations",
         "plural": true,
         "selections": [
-          (v0/*: any*/),
+          (v0/*:: as any*/),
           {
             "alias": null,
             "args": null,
@@ -171,7 +170,7 @@ return {
       "throwOnFieldError": true
     },
     "name": "UserInfoProviderQuery",
-    "selections": (v1/*: any*/),
+    "selections": (v1/*:: as any*/),
     "type": "QueryRoot",
     "abstractKey": null
   },
@@ -180,7 +179,7 @@ return {
     "argumentDefinitions": [],
     "kind": "Operation",
     "name": "UserInfoProviderQuery",
-    "selections": (v1/*: any*/)
+    "selections": (v1/*:: as any*/)
   },
   "params": {
     "cacheID": "f7eef8dabb3d1695696f4cfd1a2246ac",

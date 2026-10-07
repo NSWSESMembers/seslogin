@@ -1,7 +1,7 @@
 // relay-test-utils ships no types of its own (and the @types/relay-test-utils package
 // on npm only covers older Relay major versions), so this declares the minimal surface
 // this codebase actually calls, matching the .js.flow sources under
-// node_modules/relay-test-utils for v20.1.1.
+// node_modules/relay-test-utils for v21.0.1.
 declare module "relay-test-utils" {
   import type {
     Environment,

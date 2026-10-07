@@ -1,7 +1,6 @@
 /**
- * @generated SignedSource<<111795f4530268a314aa340c435f15b1>>
+ * @generated SignedSource<<d9a9365ac96a26b3c8e43344d76af562>>
  * @lightSyntaxTransform
- * @nogrep
  */
 
 /* tslint:disable */
@@ -57,8 +56,8 @@ v2 = [
     "name": "categories",
     "plural": true,
     "selections": [
-      (v0/*: any*/),
-      (v1/*: any*/),
+      (v0/*:: as any*/),
+      (v1/*:: as any*/),
       {
         "alias": null,
         "args": null,
@@ -95,7 +94,7 @@ v2 = [
         "name": "nitcGroup",
         "plural": false,
         "selections": [
-          (v0/*: any*/),
+          (v0/*:: as any*/),
           {
             "alias": null,
             "args": null,
@@ -111,8 +110,8 @@ v2 = [
             "name": "sesTags",
             "plural": true,
             "selections": [
-              (v0/*: any*/),
-              (v1/*: any*/)
+              (v0/*:: as any*/),
+              (v1/*:: as any*/)
             ],
             "storageKey": null
           }
@@ -131,7 +130,7 @@ return {
       "throwOnFieldError": true
     },
     "name": "CategoryListQuery",
-    "selections": (v2/*: any*/),
+    "selections": (v2/*:: as any*/),
     "type": "QueryRoot",
     "abstractKey": null
   },
@@ -140,7 +139,7 @@ return {
     "argumentDefinitions": [],
     "kind": "Operation",
     "name": "CategoryListQuery",
-    "selections": (v2/*: any*/)
+    "selections": (v2/*:: as any*/)
   },
   "params": {
     "cacheID": "c80d6fb923b0f673592e455b27b66761",
