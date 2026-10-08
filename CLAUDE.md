@@ -343,8 +343,8 @@ Unlike `mockdb`, the queue, mail and realtime mocks *succeed* — they exist so 
 > **Optional attributes: omit, don't write `Null`.** When an optional field is absent, leave the attribute off the item entirely — on `put_item` skip the `.item(...)` call; on `update_item` put it in a `REMOVE` clause rather than `SET`ting it to `AttributeValue::Null`. This is mandatory for any attribute that backs a GSI key (DynamoDB rejects a `Null` GSI key with a `ValidationException` — this was the cause of the category-creation bug) and is also required for String/Number Sets (which cannot be stored empty). Apply it uniformly to all optional attributes for consistency; hydration in `dynamodb.rs` already treats a missing attribute and `Null` identically.
 
 **Auth**: `api/src/auth.rs` — token verification dispatches on prefix:
-1. API tokens (`slgn_` prefix) — opaque hashed secrets for programmatic access, shaped `slgn_<id>.<secret>` and verified the same way as user tokens below. Legacy `slgn_<secret>` tokens never expire on their own, so they keep working through `token_hash-index` and log a `legacy-format API token used` warning naming the token, until each is replaced by hand
-2. User tokens (`slu_` prefix) — opaque hashed secrets issued via email-code auth, shaped `slu_<id>.<secret>` so verification is one strongly consistent `GetItem` by id plus a constant-time hash check. `user_token` has no secondary index; a legacy `slu_<secret>` token (no `.`) is refused
+1. API tokens (`slgn_` prefix) — opaque hashed secrets for programmatic access, shaped `slgn_<id>.<secret>` and verified the same way as user tokens below
+2. User tokens (`slu_` prefix) — opaque hashed secrets issued via email-code auth, shaped `slu_<id>.<secret>` so verification is one strongly consistent `GetItem` by id plus a constant-time hash check. Neither table has a hash index; a legacy `slu_<secret>`/`slgn_<secret>` token (no `.`) is refused
 3. JWT (no prefix) — session JWTs (single-use numeric kiosk codes → 14-day JWT) and user JWTs
 
 Authorization uses an `AuthRequirement` guard enum per field: `Session`, `UserOrSession`, `User`, `SuperUser`.

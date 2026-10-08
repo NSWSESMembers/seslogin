@@ -302,23 +302,10 @@ resource "aws_dynamodb_table" "prod_api_token" {
     type = "S"
   }
   attribute {
-    name = "token_hash"
-    type = "S"
-  }
-  attribute {
     name = "active"
     type = "N"
   }
 
-  # Used at every authenticated request that presents an api token.
-  global_secondary_index {
-    name = "token_hash-index"
-    key_schema {
-      attribute_name = "token_hash"
-      key_type       = "HASH"
-    }
-    projection_type = "KEYS_ONLY"
-  }
   # Sparse index for listing live (non-revoked) tokens in the admin UI.
   # `active` is set to "1" on creation and REMOVEd on revoke, so the GSI stays sparse.
   global_secondary_index {

@@ -365,15 +365,6 @@ impl db::Handler for FakeDb {
     async fn get_api_token(&self, id: &str) -> db::Result<Option<db::ApiToken>> {
         Ok(self.api_tokens.lock().unwrap().get(id).cloned())
     }
-    async fn get_api_token_by_hash(&self, token_hash: &str) -> db::Result<Option<db::ApiToken>> {
-        Ok(self
-            .api_tokens
-            .lock()
-            .unwrap()
-            .values()
-            .find(|t| t.token_hash == token_hash)
-            .cloned())
-    }
     async fn list_api_tokens(
         &self,
         _filter: db::ListApiTokensFilter,

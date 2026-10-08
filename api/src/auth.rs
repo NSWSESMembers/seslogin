@@ -426,36 +426,16 @@ async fn verify_token_with_api_token<A: App + HasDb>(
     token: &str,
 ) -> Result<AuthInfo, AuthError> {
     let token_hash = hash_token(token);
-    let api_token = match parse_opaque_token(token, API_TOKEN_PREFIX)? {
-        OpaqueToken::IdBound(id) => app
-            .db()
-            .get_api_token(id)
-            .await
-            .map_err(|e| classify_db_err("fetch api token", e))?
-            // The id only locates the row; the whole token must still hash to what
-            // the row holds, or anyone who learned an id could present it.
-            .filter(|t| {
-                crate::oauth::constant_time_eq(t.token_hash.as_bytes(), token_hash.as_bytes())
-            }),
-        OpaqueToken::Legacy => {
-            let found = app
-                .db()
-                .get_api_token_by_hash(&token_hash)
-                .await
-                .map_err(|e| classify_db_err("fetch api token by hash", e))?;
-            // API tokens don't expire on their own, so these have to be replaced by
-            // hand before `token_hash-index` can go. This names the ones still in use.
-            if let Some(t) = &found {
-                warn!(
-                    api_token_id = %t.id,
-                    api_token_name = %t.name,
-                    "legacy-format API token used; replace it with a new token"
-                );
-            }
-            found
-        }
-    }
-    .ok_or_else(|| AuthError::Permanent("Invalid api token".into()))?;
+    let id = opaque_token_id(token, API_TOKEN_PREFIX)?;
+    let api_token = app
+        .db()
+        .get_api_token(id)
+        .await
+        .map_err(|e| classify_db_err("fetch api token", e))?
+        // The id only locates the row; the whole token must still hash to what
+        // the row holds, or anyone who learned an id could present it.
+        .filter(|t| crate::oauth::constant_time_eq(t.token_hash.as_bytes(), token_hash.as_bytes()))
+        .ok_or_else(|| AuthError::Permanent("Invalid api token".into()))?;
 
     if api_token.revoked_at.is_some() {
         return Err(AuthError::Permanent("API token has been revoked".into()));
@@ -503,27 +483,19 @@ async fn verify_token_with_jwt<A: App + HasDb + HasQueues>(
     }
 }
 
-/// The two shapes an `slu_`/`slgn_` token can take after the prefix.
-#[derive(Debug, PartialEq, Eq)]
-enum OpaqueToken<'a> {
-    /// `<id>.<secret>`: the row id travels in the token, so verification is one
-    /// `GetItem` by primary key followed by a hash comparison.
-    IdBound(&'a str),
-    /// `<secret>` alone, minted before ids were embedded. `slu_` ones have all
-    /// expired; `slgn_` ones are found through `token_hash-index` until replaced.
-    Legacy,
-}
-
-/// Classify the part of an opaque token after `prefix`. A legacy secret is
-/// base64url, which has no `.`, so the presence of one is unambiguous. A `.` with an
-/// empty half on either side is malformed rather than legacy.
-fn parse_opaque_token<'a>(token: &'a str, prefix: &str) -> Result<OpaqueToken<'a>, AuthError> {
+/// The row id an `slu_<id>.<secret>` / `slgn_<id>.<secret>` token embeds, which
+/// locates its row by primary key. Neither half may be empty. A token with no `.`
+/// predates ids (a base64url secret can't contain one); every such token has expired
+/// or been replaced, and the index that could find one is gone, so it is refused.
+fn opaque_token_id<'a>(token: &'a str, prefix: &str) -> Result<&'a str, AuthError> {
     let rest = token
         .strip_prefix(prefix)
         .ok_or_else(|| AuthError::Permanent("Malformed token".into()))?;
     match rest.split_once('.') {
-        None => Ok(OpaqueToken::Legacy),
-        Some((id, secret)) if !id.is_empty() && !secret.is_empty() => Ok(OpaqueToken::IdBound(id)),
+        None => Err(AuthError::Permanent(
+            "Legacy token format is no longer accepted".into(),
+        )),
+        Some((id, secret)) if !id.is_empty() && !secret.is_empty() => Ok(id),
         Some(_) => Err(AuthError::Permanent("Malformed token".into())),
     }
 }
@@ -538,11 +510,7 @@ async fn verify_token_with_user_token<A: App + HasDb>(
     token: &str,
 ) -> Result<AuthInfo, AuthError> {
     let token_hash = hash_token(token);
-    let OpaqueToken::IdBound(id) = parse_opaque_token(token, USER_TOKEN_PREFIX)? else {
-        // Every `slu_<secret>` token predates ids and has expired by now; the
-        // index that could find one is gone.
-        return Err(AuthError::Permanent("User token has expired".into()));
-    };
+    let id = opaque_token_id(token, USER_TOKEN_PREFIX)?;
     let user_token = app
         .db()
         .get_user_token(id)
@@ -719,25 +687,17 @@ mod opaque_token_tests {
     #[test]
     fn id_bound_token_yields_its_id() {
         assert_eq!(
-            parse_opaque_token("slu_abc123XYZ.s3cr3t", USER_TOKEN_PREFIX).unwrap(),
-            OpaqueToken::IdBound("abc123XYZ")
+            opaque_token_id("slu_abc123XYZ.s3cr3t", USER_TOKEN_PREFIX).unwrap(),
+            "abc123XYZ"
         );
     }
 
     #[test]
-    fn token_without_a_dot_is_legacy() {
-        assert_eq!(
-            parse_opaque_token("slu_onlyAsecret-_x", USER_TOKEN_PREFIX).unwrap(),
-            OpaqueToken::Legacy
-        );
-    }
-
-    #[test]
-    fn empty_halves_are_malformed_not_legacy() {
-        for token in ["slu_.secret", "slu_id.", "slu_."] {
+    fn malformed_and_legacy_tokens_are_refused() {
+        for token in ["slu_onlyAsecret-_x", "slu_.secret", "slu_id.", "slu_."] {
             assert!(
                 matches!(
-                    parse_opaque_token(token, USER_TOKEN_PREFIX),
+                    opaque_token_id(token, USER_TOKEN_PREFIX),
                     Err(AuthError::Permanent(_))
                 ),
                 "{token} should be rejected"
@@ -749,8 +709,8 @@ mod opaque_token_tests {
     fn minted_token_round_trips_through_the_parser() {
         let token = mint_id_bound_token(USER_TOKEN_PREFIX, "abc123XYZ");
         assert_eq!(
-            parse_opaque_token(&token, USER_TOKEN_PREFIX).unwrap(),
-            OpaqueToken::IdBound("abc123XYZ")
+            opaque_token_id(&token, USER_TOKEN_PREFIX).unwrap(),
+            "abc123XYZ"
         );
     }
 
