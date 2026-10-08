@@ -3099,6 +3099,7 @@ impl db::Handler for Handler {
             .get_item()
             .table_name(self.table_name("api_token"))
             .key("id", AttributeValue::S(id.to_string()))
+            .consistent_read(true)
             .return_consumed_capacity(ReturnConsumedCapacity::Total)
             .send()
             .await
@@ -3176,6 +3177,7 @@ impl db::Handler for Handler {
 
     async fn create_api_token(
         &self,
+        id: &str,
         name: &str,
         token_hash: &str,
         location_grants: Vec<String>,
@@ -3186,14 +3188,13 @@ impl db::Handler for Handler {
         if self.read_only {
             return Err(db::Error::MutationDisabled);
         }
-        let id = new_id();
         let unix_time = crate::clock::now_sec();
 
         let mut request = self
             .client
             .put_item()
             .table_name(self.table_name("api_token"))
-            .item("id", AttributeValue::S(id.clone()))
+            .item("id", AttributeValue::S(id.to_string()))
             .item("name", AttributeValue::S(name.to_string()))
             .item("token_hash", AttributeValue::S(token_hash.to_string()))
             .item("read_only", AttributeValue::Bool(read_only))
@@ -3202,7 +3203,9 @@ impl db::Handler for Handler {
                 "created_by_user_id",
                 AttributeValue::S(created_by_user_id.to_string()),
             )
-            .item("active", AttributeValue::N("1".to_string()));
+            .item("active", AttributeValue::N("1".to_string()))
+            // The id is caller-supplied now; never let a collision overwrite a token.
+            .condition_expression("attribute_not_exists(id)");
 
         if !location_grants.is_empty() {
             request = request.item(
@@ -3222,7 +3225,7 @@ impl db::Handler for Handler {
         record_capacity("create_api_token", resp.consumed_capacity(), CapKind::Write);
 
         Ok(ApiToken {
-            id,
+            id: id.to_string(),
             name: name.to_string(),
             token_hash: token_hash.to_string(),
             location_grants,

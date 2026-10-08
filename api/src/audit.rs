@@ -1347,6 +1347,7 @@ impl<D: db::Handler> db::Handler for AuditingHandler<D> {
 
     async fn create_api_token(
         &self,
+        id: &str,
         name: &str,
         token_hash: &str,
         location_grants: Vec<String>,
@@ -1357,6 +1358,7 @@ impl<D: db::Handler> db::Handler for AuditingHandler<D> {
         let token = self
             .inner
             .create_api_token(
+                id,
                 name,
                 token_hash,
                 location_grants,
