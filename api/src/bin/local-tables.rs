@@ -165,11 +165,8 @@ const TABLES: &[Table] = &[
     Table {
         name: "api_token",
         hash: "id",
-        attrs: &[Attr("id", S), Attr("token_hash", S), Attr("active", N)],
-        gsis: &[
-            keys_only("token_hash-index", "token_hash"),
-            all("active-index", "active", None),
-        ],
+        attrs: &[Attr("id", S), Attr("active", N)],
+        gsis: &[all("active-index", "active", None)],
         ttl: None,
     },
     Table {
