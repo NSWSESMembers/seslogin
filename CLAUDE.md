@@ -127,7 +127,7 @@ make format                           # Auto-fix formatting: cargo fmt, prettier
 | | |
 |---|---|
 | workflows | `actionlint` |
-| web | relay compile, `prettier --check`, eslint, `tsc -b`, vite build |
+| web | relay compile, `prettier --check`, eslint, `npm run typecheck`, vite build |
 | infra | `terraform fmt -check` |
 | api | toolchain version check, `cargo fmt --check`, `export-schema` diff against `schema.graphql`, `clippy -Dwarnings` |
 
@@ -140,8 +140,16 @@ before pushing, or `make check && make test` for the full equivalent.
 
 Type-checking covers test files: `web/tsconfig.app.json` includes `src` (so every `*.test.tsx`)
 plus `setupTests.ts`. Vitest itself only strips types via esbuild and never checks them, which is
-why `test:unit` runs `tsc -b` first. The bare `npm test` script stays type-check-free because CI
-already runs `npm run typecheck` as its own step.
+why `test:unit` runs `npm run typecheck` first. The bare `npm test` script stays type-check-free
+because CI already runs `npm run typecheck` as its own step.
+
+Two TypeScripts are installed side by side. Type-checking uses TypeScript 7, the native compiler,
+installed as `typescript-native`; `npm run typecheck` invokes it by path. TypeScript 7 ships no
+JS API, so the `typescript` package name stays on TypeScript 6 (`@typescript/typescript6`) for
+typescript-eslint and the other tools that `require("typescript")`. That package pulls in a
+second `tsc` bin, which can win the `node_modules/.bin/tsc` link — so a bare `npx tsc` may be
+TypeScript 6. Use `npm run typecheck`. Once typescript-eslint supports TypeScript 7's API (7.1 or
+later), this collapses back to a single `typescript` dependency.
 
 ### Data Sync (local)
 
