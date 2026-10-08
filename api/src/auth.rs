@@ -426,12 +426,36 @@ async fn verify_token_with_api_token<A: App + HasDb>(
     token: &str,
 ) -> Result<AuthInfo, AuthError> {
     let token_hash = hash_token(token);
-    let api_token = app
-        .db()
-        .get_api_token_by_hash(&token_hash)
-        .await
-        .map_err(|e| classify_db_err("fetch api token by hash", e))?
-        .ok_or_else(|| AuthError::Permanent("Invalid api token".into()))?;
+    let api_token = match parse_opaque_token(token, API_TOKEN_PREFIX)? {
+        OpaqueToken::IdBound(id) => app
+            .db()
+            .get_api_token(id)
+            .await
+            .map_err(|e| classify_db_err("fetch api token", e))?
+            // The id only locates the row; the whole token must still hash to what
+            // the row holds, or anyone who learned an id could present it.
+            .filter(|t| {
+                crate::oauth::constant_time_eq(t.token_hash.as_bytes(), token_hash.as_bytes())
+            }),
+        OpaqueToken::Legacy => {
+            let found = app
+                .db()
+                .get_api_token_by_hash(&token_hash)
+                .await
+                .map_err(|e| classify_db_err("fetch api token by hash", e))?;
+            // API tokens don't expire on their own, so these have to be replaced by
+            // hand before `token_hash-index` can go. This names the ones still in use.
+            if let Some(t) = &found {
+                warn!(
+                    api_token_id = %t.id,
+                    api_token_name = %t.name,
+                    "legacy-format API token used; replace it with a new token"
+                );
+            }
+            found
+        }
+    }
+    .ok_or_else(|| AuthError::Permanent("Invalid api token".into()))?;
 
     if api_token.revoked_at.is_some() {
         return Err(AuthError::Permanent("API token has been revoked".into()));
@@ -651,9 +675,10 @@ pub async fn verify_authorization_header<A: App + HasDb + HasQueues>(
     }
 }
 
-/// Generate a new opaque api token secret. Returns (secret, sha256_hex_hash).
-pub fn generate_api_token_secret() -> (String, String) {
-    let secret = format!("{}{}", API_TOKEN_PREFIX, crate::nonce::generate_nonce(32));
+/// Generate a new opaque api token secret for the row that will be stored under
+/// `id`. Returns (secret, sha256_hex_hash).
+pub fn generate_api_token_secret(id: &str) -> (String, String) {
+    let secret = mint_id_bound_token(API_TOKEN_PREFIX, id);
     let hash = hash_token(&secret);
     (secret, hash)
 }

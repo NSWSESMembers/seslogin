@@ -1672,11 +1672,13 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
             .and_then(|ts| u64::try_from(ts).ok())
             .filter(|&ts| ts > 0);
 
-        let (secret, token_hash) = auth::generate_api_token_secret();
+        let id = crate::dynamodb::new_id();
+        let (secret, token_hash) = auth::generate_api_token_secret(&id);
         let rec = self
             .app
             .db()
             .create_api_token(
+                &id,
                 &name,
                 &token_hash,
                 location_grants,
