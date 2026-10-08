@@ -224,6 +224,7 @@ impl db::Handler for Handler {
 
     async fn create_api_token(
         &self,
+        _id: &str,
         _name: &str,
         _token_hash: &str,
         _location_grants: Vec<String>,

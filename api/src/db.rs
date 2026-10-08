@@ -814,7 +814,10 @@ pub trait Handler: Sync {
         change: SessionUpdateShape<'_>,
     ) -> impl Future<Output = Result<()>> + Send;
 
+    /// Strongly consistent, so a token is verifiable the moment it's created.
     fn get_api_token(&self, id: &str) -> impl Future<Output = Result<Option<ApiToken>>> + Send;
+    /// Legacy `slgn_<secret>` tokens only, which carry no id. Goes away with
+    /// `token_hash-index` once they have all been revoked or replaced.
     fn get_api_token_by_hash(
         &self,
         token_hash: &str,
@@ -825,8 +828,11 @@ pub trait Handler: Sync {
         &self,
         filter: ListApiTokensFilter,
     ) -> impl Future<Output = Result<Vec<ApiToken>>> + Send;
+    /// Caller supplies the id: it is embedded in the token (`slgn_<id>.<secret>`).
+    #[allow(clippy::too_many_arguments)]
     fn create_api_token(
         &self,
+        id: &str,
         name: &str,
         token_hash: &str,
         location_grants: Vec<String>,

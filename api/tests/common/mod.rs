@@ -2,7 +2,7 @@
 //! `db::Handler` — `mockdb::Handler` fails every call by design (see its own
 //! docs), so it can't stand in for a database. This is a tiny in-memory
 //! `Handler` covering exactly the tables the integration tests touch
-//! (users, `ephemeral_state`, `oauth_grant`, `user_token`). Everything else panics if
+//! (users, `ephemeral_state`, `oauth_grant`, `user_token`, `api_token`). Everything else panics if
 //! called, the same as `mockdb::Handler`'s `unsupported()` — nothing under
 //! test should ever reach them.
 //!
@@ -31,6 +31,7 @@ pub(crate) struct FakeDb {
     pub(crate) locations: Mutex<HashMap<String, Location>>,
     pub(crate) sessions: Mutex<HashMap<String, db::Session>>,
     pub(crate) user_tokens: Mutex<HashMap<String, db::UserToken>>,
+    pub(crate) api_tokens: Mutex<HashMap<String, db::ApiToken>>,
 }
 
 pub(crate) fn unsupported<T>() -> db::Result<T> {
@@ -361,11 +362,17 @@ impl db::Handler for FakeDb {
     ) -> db::Result<()> {
         unsupported()
     }
-    async fn get_api_token(&self, _id: &str) -> db::Result<Option<db::ApiToken>> {
-        unsupported()
+    async fn get_api_token(&self, id: &str) -> db::Result<Option<db::ApiToken>> {
+        Ok(self.api_tokens.lock().unwrap().get(id).cloned())
     }
-    async fn get_api_token_by_hash(&self, _token_hash: &str) -> db::Result<Option<db::ApiToken>> {
-        unsupported()
+    async fn get_api_token_by_hash(&self, token_hash: &str) -> db::Result<Option<db::ApiToken>> {
+        Ok(self
+            .api_tokens
+            .lock()
+            .unwrap()
+            .values()
+            .find(|t| t.token_hash == token_hash)
+            .cloned())
     }
     async fn list_api_tokens(
         &self,
@@ -375,21 +382,48 @@ impl db::Handler for FakeDb {
     }
     async fn create_api_token(
         &self,
-        _name: &str,
-        _token_hash: &str,
-        _location_grants: Vec<String>,
-        _read_only: bool,
-        _expires_at: Option<u64>,
-        _created_by_user_id: &str,
+        id: &str,
+        name: &str,
+        token_hash: &str,
+        location_grants: Vec<String>,
+        read_only: bool,
+        expires_at: Option<u64>,
+        created_by_user_id: &str,
     ) -> db::Result<db::ApiToken> {
-        unsupported()
+        let token = db::ApiToken {
+            id: id.to_string(),
+            name: name.to_string(),
+            token_hash: token_hash.to_string(),
+            location_grants,
+            read_only,
+            created_at: seslogin::clock::now_sec(),
+            created_by_user_id: created_by_user_id.to_string(),
+            expires_at,
+            revoked_at: None,
+            last_used_at: None,
+        };
+        self.api_tokens
+            .lock()
+            .unwrap()
+            .insert(id.to_string(), token.clone());
+        Ok(token)
     }
     async fn update_api_token(
         &self,
-        _id: &str,
-        _change: db::ApiTokenUpdateShape<'_>,
+        id: &str,
+        change: db::ApiTokenUpdateShape<'_>,
     ) -> db::Result<()> {
-        unsupported()
+        match change {
+            db::ApiTokenUpdateShape::TouchLastUsed => {
+                let mut tokens = self.api_tokens.lock().unwrap();
+                let token = tokens
+                    .get_mut(id)
+                    .ok_or_else(|| db::Error::NotFound(id.to_string()))?;
+                token.last_used_at = Some(seslogin::clock::now_sec());
+                Ok(())
+            }
+            _ => unsupported(),
+        }
     }
     async fn create_location(
         &self,
