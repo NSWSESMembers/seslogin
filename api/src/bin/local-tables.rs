@@ -207,8 +207,8 @@ const TABLES: &[Table] = &[
     Table {
         name: "user_token",
         hash: "id",
-        attrs: &[Attr("id", S), Attr("token_hash", S)],
-        gsis: &[keys_only("token_hash-index", "token_hash")],
+        attrs: &[Attr("id", S)],
+        gsis: &[],
         ttl: None,
     },
     Table {

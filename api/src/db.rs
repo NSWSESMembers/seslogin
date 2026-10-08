@@ -968,8 +968,8 @@ pub trait Handler: Sync {
         limit: i32,
     ) -> impl Future<Output = Result<ScanPage<Session>>> + Send;
 
-    /// The only way to enumerate user tokens: `user_token` has just
-    /// `token_hash-index`, so there is no lookup by `user_id` or anything else.
+    /// The only way to enumerate user tokens: `user_token` has no secondary
+    /// index, so there is no lookup by `user_id` or anything else.
     fn scan_user_tokens(
         &self,
         cursor: Option<ScanCursor>,
@@ -1090,13 +1090,6 @@ pub trait Handler: Sync {
 
     /// Strongly consistent, so a token is verifiable the moment it's issued.
     fn get_user_token(&self, id: &str) -> impl Future<Output = Result<Option<UserToken>>> + Send;
-
-    /// Legacy `slu_<secret>` tokens only, which carry no id. Goes away with
-    /// `token_hash-index` once they have all expired.
-    fn get_user_token_by_hash(
-        &self,
-        token_hash: &str,
-    ) -> impl Future<Output = Result<Option<UserToken>>> + Send;
 
     fn update_user_token(
         &self,
