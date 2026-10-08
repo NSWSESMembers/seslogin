@@ -451,21 +451,21 @@ Three ways in, fastest first:
 
   | User | Token |
   | --- | --- |
-  | `super@seslogin.test` (super) | `slu_localdev0000000000000000000super` |
-  | `testunit@seslogin.test` (Admin, Test A Unit only) | `slu_localdev0000000000000000testunit` |
-  | `readonly@seslogin.test` (Read only, Test A Unit) | `slu_localdev0000000000000000readonly` |
+  | `super@seslogin.test` (super) | `slu_TokenSuperUsr.localdev-super` |
+  | `testunit@seslogin.test` (Admin, Test A Unit only) | `slu_TokenUnitUser.localdev-testunit` |
+  | `readonly@seslogin.test` (Read only, Test A Unit) | `slu_TokenReadOnly.localdev-readonly` |
 
   In the browser, put one in `localStorage` under `admin_auth_token` and reload:
 
   ```js
-  localStorage.setItem("admin_auth_token", "slu_localdev0000000000000000000super");
+  localStorage.setItem("admin_auth_token", "slu_TokenSuperUsr.localdev-super");
   ```
 
   For the API directly, send it as a bearer token:
 
   ```bash
   curl -s http://localhost:8000/ -H 'Content-Type: application/json' \
-    -H 'Authorization: Bearer slu_localdev0000000000000000000super' \
+    -H 'Authorization: Bearer slu_TokenSuperUsr.localdev-super' \
     -d '{"query":"{ locations { id name } }"}'
   ```
 
@@ -551,7 +551,7 @@ page.on("pageerror", (e) => console.log(`[pageerror] ${e.message}`));
 //    this key client-side, so it must be set before the app decides anything.
 await page.goto("http://localhost:5173/admin");
 await page.evaluate(() =>
-  localStorage.setItem("admin_auth_token", "slu_localdev0000000000000000000super"));
+  localStorage.setItem("admin_auth_token", "slu_TokenSuperUsr.localdev-super"));
 await page.goto("http://localhost:5173/admin", { waitUntil: "networkidle" });
 
 // 2. Dismiss the passkey enrolment prompt, which greets every fresh profile.
