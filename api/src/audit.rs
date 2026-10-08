@@ -2121,10 +2121,6 @@ impl<D: db::Handler> db::Handler for AuditingHandler<D> {
         self.inner.get_user_token(id).await
     }
 
-    async fn get_user_token_by_hash(&self, token_hash: &str) -> db::Result<Option<db::UserToken>> {
-        self.inner.get_user_token_by_hash(token_hash).await
-    }
-
     async fn update_user_token(
         &self,
         id: &str,
