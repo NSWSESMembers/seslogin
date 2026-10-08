@@ -680,15 +680,6 @@ impl db::Handler for FakeDb {
     async fn get_user_token(&self, id: &str) -> db::Result<Option<db::UserToken>> {
         Ok(self.user_tokens.lock().unwrap().get(id).cloned())
     }
-    async fn get_user_token_by_hash(&self, token_hash: &str) -> db::Result<Option<db::UserToken>> {
-        Ok(self
-            .user_tokens
-            .lock()
-            .unwrap()
-            .values()
-            .find(|t| t.token_hash == token_hash)
-            .cloned())
-    }
     async fn update_user_token(
         &self,
         id: &str,

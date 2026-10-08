@@ -444,20 +444,6 @@ resource "aws_dynamodb_table" "prod_user_token" {
     name = "id"
     type = "S"
   }
-  attribute {
-    name = "token_hash"
-    type = "S"
-  }
-
-  # Used on every authenticated request that presents a user token.
-  global_secondary_index {
-    name = "token_hash-index"
-    key_schema {
-      attribute_name = "token_hash"
-      key_type       = "HASH"
-    }
-    projection_type = "KEYS_ONLY"
-  }
 }
 
 resource "aws_dynamodb_table" "prod_webauthn_credential" {

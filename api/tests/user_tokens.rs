@@ -1,5 +1,5 @@
-//! `slu_` user tokens: id-bound tokens are found by primary key, and legacy
-//! (pre-id) tokens keep working through `token_hash-index` until they expire.
+//! `slu_` user tokens: found by the row id they embed, and legacy (pre-id)
+//! tokens are refused.
 
 mod common;
 
@@ -75,34 +75,25 @@ async fn unknown_id_is_rejected() {
 }
 
 #[tokio::test]
-async fn legacy_token_still_verifies_but_its_expiry_no_longer_slides() {
+async fn legacy_token_is_refused_even_if_its_row_survives() {
     let app = fake_app();
     seed_user(&app, "user1", true);
 
     let legacy = "slu_legacySecretWithNoDot0123456789abcdefghij";
-    let expires_at = seslogin::clock::now_sec() + 3600;
     app.db
-        .create_user_token("LegacyRow001", &sha256_hex(legacy), "user1", expires_at)
+        .create_user_token(
+            "LegacyRow001",
+            &sha256_hex(legacy),
+            "user1",
+            seslogin::clock::now_sec() + 3600,
+        )
         .await
         .unwrap();
 
-    match verify(&app, legacy).await {
-        Ok(AuthInfo::User { id, .. }) => assert_eq!(id, "user1"),
-        Ok(_) => panic!("expected a user"),
-        Err(e) => panic!("verify failed: {e}"),
-    }
-
-    let row = app
-        .db
-        .get_user_token("LegacyRow001")
-        .await
-        .unwrap()
-        .unwrap();
-    assert_eq!(
-        row.expires_at, expires_at,
-        "a legacy token's expiry must not be extended"
-    );
-    assert_eq!(row.last_used_at, None);
+    assert!(matches!(
+        verify(&app, legacy).await,
+        Err(AuthError::Permanent(_))
+    ));
 }
 
 #[tokio::test]

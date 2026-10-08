@@ -4268,59 +4268,6 @@ impl db::Handler for Handler {
         }
     }
 
-    async fn get_user_token_by_hash(&self, token_hash: &str) -> db::Result<Option<UserToken>> {
-        let resp = self
-            .client
-            .query()
-            .table_name(self.table_name("user_token"))
-            .index_name("token_hash-index")
-            .key_condition_expression("token_hash = :token_hash")
-            .expression_attribute_values(":token_hash", AttributeValue::S(token_hash.to_string()))
-            .return_consumed_capacity(ReturnConsumedCapacity::Total)
-            .send()
-            .await
-            .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
-        record_capacity(
-            "get_user_token_by_hash",
-            resp.consumed_capacity(),
-            CapKind::Read,
-        );
-        if resp.count == 0 {
-            return Ok(None);
-        }
-        if resp.count > 1 {
-            return Err(Error::Integrity(
-                "Multiple user tokens found with same hash".to_string(),
-            ));
-        }
-        let gsi_item = Item(
-            resp.items
-                .ok_or_else(|| Error::Infrastructure("items missing".to_string()))?
-                .into_iter()
-                .next()
-                .unwrap(),
-        );
-        let id = gsi_item.id()?;
-        let full = self
-            .client
-            .get_item()
-            .table_name(self.table_name("user_token"))
-            .key("id", AttributeValue::S(id))
-            .return_consumed_capacity(ReturnConsumedCapacity::Total)
-            .send()
-            .await
-            .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
-        record_capacity(
-            "get_user_token_by_hash_fetch",
-            full.consumed_capacity(),
-            CapKind::Read,
-        );
-        match full.item {
-            Some(item) => Ok(Some(Item(item).try_into()?)),
-            None => Ok(None),
-        }
-    }
-
     async fn update_user_token(
         &self,
         id: &str,

@@ -509,8 +509,8 @@ enum OpaqueToken<'a> {
     /// `<id>.<secret>`: the row id travels in the token, so verification is one
     /// `GetItem` by primary key followed by a hash comparison.
     IdBound(&'a str),
-    /// `<secret>` alone, minted before ids were embedded. Found only through
-    /// `token_hash-index`; kept until every such token has expired or been replaced.
+    /// `<secret>` alone, minted before ids were embedded. `slu_` ones have all
+    /// expired; `slgn_` ones are found through `token_hash-index` until replaced.
     Legacy,
 }
 
@@ -538,25 +538,20 @@ async fn verify_token_with_user_token<A: App + HasDb>(
     token: &str,
 ) -> Result<AuthInfo, AuthError> {
     let token_hash = hash_token(token);
-    let shape = parse_opaque_token(token, USER_TOKEN_PREFIX)?;
-    let user_token = match shape {
-        OpaqueToken::IdBound(id) => app
-            .db()
-            .get_user_token(id)
-            .await
-            .map_err(|e| classify_db_err("fetch user token", e))?
-            // The id only locates the row; the whole token must still hash to what
-            // the row holds, or anyone who learned an id could present it.
-            .filter(|t| {
-                crate::oauth::constant_time_eq(t.token_hash.as_bytes(), token_hash.as_bytes())
-            }),
-        OpaqueToken::Legacy => app
-            .db()
-            .get_user_token_by_hash(&token_hash)
-            .await
-            .map_err(|e| classify_db_err("fetch user token by hash", e))?,
-    }
-    .ok_or_else(|| AuthError::Permanent("Invalid user token".into()))?;
+    let OpaqueToken::IdBound(id) = parse_opaque_token(token, USER_TOKEN_PREFIX)? else {
+        // Every `slu_<secret>` token predates ids and has expired by now; the
+        // index that could find one is gone.
+        return Err(AuthError::Permanent("User token has expired".into()));
+    };
+    let user_token = app
+        .db()
+        .get_user_token(id)
+        .await
+        .map_err(|e| classify_db_err("fetch user token", e))?
+        // The id only locates the row; the whole token must still hash to what
+        // the row holds, or anyone who learned an id could present it.
+        .filter(|t| crate::oauth::constant_time_eq(t.token_hash.as_bytes(), token_hash.as_bytes()))
+        .ok_or_else(|| AuthError::Permanent("Invalid user token".into()))?;
 
     let now = crate::clock::now_sec();
 
@@ -566,11 +561,7 @@ async fn verify_token_with_user_token<A: App + HasDb>(
 
     let token_id = user_token.id.clone();
 
-    // Touching a user token also slides its expiry forward, so a legacy token in
-    // regular use would never age out and `token_hash-index` could never be dropped.
-    // Leave legacy tokens alone instead: each one dies at the expiry it already has,
-    // and its holder signs in again and gets an id-bound token.
-    if shape != OpaqueToken::Legacy && user_token.last_used_at.is_none_or(|t| now > t + 60) {
+    if user_token.last_used_at.is_none_or(|t| now > t + 60) {
         match app
             .db()
             .update_user_token(&user_token.id, db::UserTokenUpdateShape::TouchLastUsed)
