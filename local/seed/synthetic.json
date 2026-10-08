@@ -86,30 +86,30 @@
     ],
     "user_token": [
       {
-        "_comment": "Ready-made login for TestSuperUsr. token_hash is sha256 of the plaintext token 'slu_localdev0000000000000000000super', which is what a client presents; the plaintext is never stored, here or in production. Valid until 2100 so the fixture does not rot. Only ever valid against a local database — see DEVELOPMENT.md §9.",
+        "_comment": "Ready-made login for TestSuperUsr. token_hash is sha256 of the plaintext token 'slu_TokenSuperUsr.localdev-super', which is what a client presents, and the part between 'slu_' and the '.' is this row's id; the plaintext is never stored, here or in production. Valid until 2100 so the fixture does not rot. Only ever valid against a local database — see DEVELOPMENT.md §9.",
         "id": { "S": "TokenSuperUsr" },
         "token_hash": {
-          "S": "c49f5952330f9b087d8629ba01167fa9a697aabea7bf3b4bd0d2d414d9d41bef"
+          "S": "6e78f432673af24273204663c542e992dc4d93050f87185bb6dbe3c9cbfc59ae"
         },
         "user_id": { "S": "TestSuperUsr" },
         "created_at": { "N": "1767225600" },
         "expires_at": { "N": "4102444800" }
       },
       {
-        "_comment": "Same, for TestUnitUser. Plaintext token 'slu_localdev0000000000000000testunit'.",
+        "_comment": "Same, for TestUnitUser. Plaintext token 'slu_TokenUnitUser.localdev-testunit'.",
         "id": { "S": "TokenUnitUser" },
         "token_hash": {
-          "S": "546e0fbd6b5295d38262e53bd24bd1b3189660e778ed8e72d3cbc1b3ee02566c"
+          "S": "7c7ada32f77aaf256b710849ccc977e9f8d0d7e964a0b159aabdb603a6cf918a"
         },
         "user_id": { "S": "TestUnitUser" },
         "created_at": { "N": "1767225600" },
         "expires_at": { "N": "4102444800" }
       },
       {
-        "_comment": "Same, for TestReadOnlyU. Plaintext token 'slu_localdev0000000000000000readonly'.",
+        "_comment": "Same, for TestReadOnlyU. Plaintext token 'slu_TokenReadOnly.localdev-readonly'.",
         "id": { "S": "TokenReadOnly" },
         "token_hash": {
-          "S": "a9e2a24f1329cd45cc13a3c0235de96f2701dae9dd08935e62bc00eef2b47184"
+          "S": "027d31fdb8a18cd6e431f3746c0201e7ca3dd2b4fc7f661956de9f725ea290ec"
         },
         "user_id": { "S": "TestReadOnlyU" },
         "created_at": { "N": "1767225600" },

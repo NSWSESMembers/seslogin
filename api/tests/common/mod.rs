@@ -1,8 +1,8 @@
 //! Shared test double for integration tests that need a real, executable
 //! `db::Handler` — `mockdb::Handler` fails every call by design (see its own
 //! docs), so it can't stand in for a database. This is a tiny in-memory
-//! `Handler` covering exactly the tables the OAuth integration tests touch
-//! (users, `ephemeral_state`, `oauth_grant`). Everything else panics if
+//! `Handler` covering exactly the tables the integration tests touch
+//! (users, `ephemeral_state`, `oauth_grant`, `user_token`). Everything else panics if
 //! called, the same as `mockdb::Handler`'s `unsupported()` — nothing under
 //! test should ever reach them.
 //!
@@ -30,6 +30,7 @@ pub(crate) struct FakeDb {
     pub(crate) oauth_grants: Mutex<HashMap<String, OAuthGrant>>,
     pub(crate) locations: Mutex<HashMap<String, Location>>,
     pub(crate) sessions: Mutex<HashMap<String, db::Session>>,
+    pub(crate) user_tokens: Mutex<HashMap<String, db::UserToken>>,
 }
 
 pub(crate) fn unsupported<T>() -> db::Result<T> {
@@ -623,21 +624,54 @@ impl db::Handler for FakeDb {
     }
     async fn create_user_token(
         &self,
-        _token_hash: &str,
-        _user_id: &str,
-        _expires_at: u64,
+        id: &str,
+        token_hash: &str,
+        user_id: &str,
+        expires_at: u64,
     ) -> db::Result<db::UserToken> {
-        unsupported()
+        let token = db::UserToken {
+            id: id.to_string(),
+            token_hash: token_hash.to_string(),
+            user_id: user_id.to_string(),
+            created_at: seslogin::clock::now_sec(),
+            expires_at,
+            last_used_at: None,
+        };
+        self.user_tokens
+            .lock()
+            .unwrap()
+            .insert(id.to_string(), token.clone());
+        Ok(token)
     }
-    async fn get_user_token_by_hash(&self, _token_hash: &str) -> db::Result<Option<db::UserToken>> {
-        unsupported()
+    async fn get_user_token(&self, id: &str) -> db::Result<Option<db::UserToken>> {
+        Ok(self.user_tokens.lock().unwrap().get(id).cloned())
+    }
+    async fn get_user_token_by_hash(&self, token_hash: &str) -> db::Result<Option<db::UserToken>> {
+        Ok(self
+            .user_tokens
+            .lock()
+            .unwrap()
+            .values()
+            .find(|t| t.token_hash == token_hash)
+            .cloned())
     }
     async fn update_user_token(
         &self,
-        _id: &str,
-        _change: db::UserTokenUpdateShape,
+        id: &str,
+        change: db::UserTokenUpdateShape,
     ) -> db::Result<()> {
-        unsupported()
+        match change {
+            db::UserTokenUpdateShape::TouchLastUsed => {
+                let mut tokens = self.user_tokens.lock().unwrap();
+                let token = tokens
+                    .get_mut(id)
+                    .ok_or_else(|| db::Error::NotFound(id.to_string()))?;
+                let now = seslogin::clock::now_sec();
+                token.last_used_at = Some(now);
+                token.expires_at = now + seslogin::expire::DEFAULT_USER_EXPIRE_S;
+                Ok(())
+            }
+        }
     }
     async fn delete_user_token(&self, _id: &str) -> db::Result<()> {
         unsupported()

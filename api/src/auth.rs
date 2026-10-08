@@ -479,17 +479,60 @@ async fn verify_token_with_jwt<A: App + HasDb + HasQueues>(
     }
 }
 
+/// The two shapes an `slu_`/`slgn_` token can take after the prefix.
+#[derive(Debug, PartialEq, Eq)]
+enum OpaqueToken<'a> {
+    /// `<id>.<secret>`: the row id travels in the token, so verification is one
+    /// `GetItem` by primary key followed by a hash comparison.
+    IdBound(&'a str),
+    /// `<secret>` alone, minted before ids were embedded. Found only through
+    /// `token_hash-index`; kept until every such token has expired or been replaced.
+    Legacy,
+}
+
+/// Classify the part of an opaque token after `prefix`. A legacy secret is
+/// base64url, which has no `.`, so the presence of one is unambiguous. A `.` with an
+/// empty half on either side is malformed rather than legacy.
+fn parse_opaque_token<'a>(token: &'a str, prefix: &str) -> Result<OpaqueToken<'a>, AuthError> {
+    let rest = token
+        .strip_prefix(prefix)
+        .ok_or_else(|| AuthError::Permanent("Malformed token".into()))?;
+    match rest.split_once('.') {
+        None => Ok(OpaqueToken::Legacy),
+        Some((id, secret)) if !id.is_empty() && !secret.is_empty() => Ok(OpaqueToken::IdBound(id)),
+        Some(_) => Err(AuthError::Permanent("Malformed token".into())),
+    }
+}
+
+/// Mint `<prefix><id>.<secret>` for a row that will be stored under `id`.
+fn mint_id_bound_token(prefix: &str, id: &str) -> String {
+    format!("{prefix}{id}.{}", crate::nonce::generate_nonce(32))
+}
+
 async fn verify_token_with_user_token<A: App + HasDb>(
     app: &A,
     token: &str,
 ) -> Result<AuthInfo, AuthError> {
     let token_hash = hash_token(token);
-    let user_token = app
-        .db()
-        .get_user_token_by_hash(&token_hash)
-        .await
-        .map_err(|e| classify_db_err("fetch user token by hash", e))?
-        .ok_or_else(|| AuthError::Permanent("Invalid user token".into()))?;
+    let shape = parse_opaque_token(token, USER_TOKEN_PREFIX)?;
+    let user_token = match shape {
+        OpaqueToken::IdBound(id) => app
+            .db()
+            .get_user_token(id)
+            .await
+            .map_err(|e| classify_db_err("fetch user token", e))?
+            // The id only locates the row; the whole token must still hash to what
+            // the row holds, or anyone who learned an id could present it.
+            .filter(|t| {
+                crate::oauth::constant_time_eq(t.token_hash.as_bytes(), token_hash.as_bytes())
+            }),
+        OpaqueToken::Legacy => app
+            .db()
+            .get_user_token_by_hash(&token_hash)
+            .await
+            .map_err(|e| classify_db_err("fetch user token by hash", e))?,
+    }
+    .ok_or_else(|| AuthError::Permanent("Invalid user token".into()))?;
 
     let now = crate::clock::now_sec();
 
@@ -499,7 +542,11 @@ async fn verify_token_with_user_token<A: App + HasDb>(
 
     let token_id = user_token.id.clone();
 
-    if user_token.last_used_at.is_none_or(|t| now > t + 60) {
+    // Touching a user token also slides its expiry forward, so a legacy token in
+    // regular use would never age out and `token_hash-index` could never be dropped.
+    // Leave legacy tokens alone instead: each one dies at the expiry it already has,
+    // and its holder signs in again and gets an id-bound token.
+    if shape != OpaqueToken::Legacy && user_token.last_used_at.is_none_or(|t| now > t + 60) {
         match app
             .db()
             .update_user_token(&user_token.id, db::UserTokenUpdateShape::TouchLastUsed)
@@ -534,11 +581,12 @@ async fn verify_token_with_user_token<A: App + HasDb>(
 }
 
 pub async fn issue_user_token<A: App + HasDb>(app: &A, user_id: &str) -> Result<String> {
-    let secret = format!("{}{}", USER_TOKEN_PREFIX, crate::nonce::generate_nonce(32));
+    let id = crate::dynamodb::new_id();
+    let secret = mint_id_bound_token(USER_TOKEN_PREFIX, &id);
     let hash = hash_token(&secret);
     let expires_at = crate::expire::ExpirePolicy::UserTokenDefault.from_now();
     app.db()
-        .create_user_token(&hash, user_id, expires_at)
+        .create_user_token(&id, &hash, user_id, expires_at)
         .await?;
     Ok(secret)
 }
@@ -645,5 +693,58 @@ mod verify_token_tests {
         let app = app();
         let result = verify_token(&app, "slrt_abc123.somesecret", &ClientReport::default()).await;
         assert!(matches!(result, Err(AuthError::Permanent(_))));
+    }
+}
+
+#[cfg(test)]
+mod opaque_token_tests {
+    use super::*;
+
+    #[test]
+    fn id_bound_token_yields_its_id() {
+        assert_eq!(
+            parse_opaque_token("slu_abc123XYZ.s3cr3t", USER_TOKEN_PREFIX).unwrap(),
+            OpaqueToken::IdBound("abc123XYZ")
+        );
+    }
+
+    #[test]
+    fn token_without_a_dot_is_legacy() {
+        assert_eq!(
+            parse_opaque_token("slu_onlyAsecret-_x", USER_TOKEN_PREFIX).unwrap(),
+            OpaqueToken::Legacy
+        );
+    }
+
+    #[test]
+    fn empty_halves_are_malformed_not_legacy() {
+        for token in ["slu_.secret", "slu_id.", "slu_."] {
+            assert!(
+                matches!(
+                    parse_opaque_token(token, USER_TOKEN_PREFIX),
+                    Err(AuthError::Permanent(_))
+                ),
+                "{token} should be rejected"
+            );
+        }
+    }
+
+    #[test]
+    fn minted_token_round_trips_through_the_parser() {
+        let token = mint_id_bound_token(USER_TOKEN_PREFIX, "abc123XYZ");
+        assert_eq!(
+            parse_opaque_token(&token, USER_TOKEN_PREFIX).unwrap(),
+            OpaqueToken::IdBound("abc123XYZ")
+        );
+    }
+
+    /// Ids and secrets must never contain the separator, or the split above would
+    /// put part of one in the other.
+    #[test]
+    fn minted_ids_and_secrets_have_no_dot() {
+        for _ in 0..100 {
+            assert!(!crate::dynamodb::new_id().contains('.'));
+            assert!(!crate::nonce::generate_nonce(32).contains('.'));
+        }
     }
 }

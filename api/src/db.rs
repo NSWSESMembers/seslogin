@@ -1072,13 +1072,21 @@ pub trait Handler: Sync {
 
     // ── User tokens (opaque, hashed, sliding expiry) ─────────────────────────
 
+    /// Caller supplies the id: it is embedded in the token (`slu_<id>.<secret>`), so
+    /// it has to exist before the token can be minted and hashed.
     fn create_user_token(
         &self,
+        id: &str,
         token_hash: &str,
         user_id: &str,
         expires_at: u64,
     ) -> impl Future<Output = Result<UserToken>> + Send;
 
+    /// Strongly consistent, so a token is verifiable the moment it's issued.
+    fn get_user_token(&self, id: &str) -> impl Future<Output = Result<Option<UserToken>>> + Send;
+
+    /// Legacy `slu_<secret>` tokens only, which carry no id. Goes away with
+    /// `token_hash-index` once they have all expired.
     fn get_user_token_by_hash(
         &self,
         token_hash: &str,
@@ -1094,8 +1102,7 @@ pub trait Handler: Sync {
 
     // ── OAuth grants (MCP access/refresh tokens) ─────────────────────────────
 
-    /// Caller supplies the id (and every other field) — unlike `create_user_token`,
-    /// there's no separate mint step to hand an id back from.
+    /// Caller supplies the id (and every other field), as with `create_user_token`.
     fn create_oauth_grant(&self, grant: &OAuthGrant) -> impl Future<Output = Result<()>> + Send;
 
     fn get_oauth_grant(&self, id: &str) -> impl Future<Output = Result<Option<OAuthGrant>>> + Send;

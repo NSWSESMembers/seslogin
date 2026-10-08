@@ -19,9 +19,9 @@ export const kioskKey = readJson(join(SEED, "kiosk-signing-key.json"));
 
 /** The seeded user tokens, by email. Documented in DEVELOPMENT.md §9. */
 export const USER_TOKENS = {
-  "super@seslogin.test": "slu_localdev0000000000000000000super",
-  "testunit@seslogin.test": "slu_localdev0000000000000000testunit",
-  "readonly@seslogin.test": "slu_localdev0000000000000000readonly",
+  "super@seslogin.test": "slu_TokenSuperUsr.localdev-super",
+  "testunit@seslogin.test": "slu_TokenUnitUser.localdev-testunit",
+  "readonly@seslogin.test": "slu_TokenReadOnly.localdev-readonly",
 };
 
 // Chromium phones home on startup — component updates, the optimisation-hints

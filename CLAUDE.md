@@ -255,8 +255,8 @@ Delete only for members member sync does not own, so Alice is the one to change 
 the read-only case. A fixture where every member is sync-owned makes the member edit form
 unreachable while looking perfectly fine.
 
-Log in with the seeded token — put `slu_localdev0000000000000000000super` (or
-`slu_localdev0000000000000000testunit`, or `slu_localdev0000000000000000readonly`) in `localStorage` under `admin_auth_token`, or send
+Log in with the seeded token — put `slu_TokenSuperUsr.localdev-super` (or
+`slu_TokenUnitUser.localdev-testunit`, or `slu_TokenReadOnly.localdev-readonly`) in `localStorage` under `admin_auth_token`, or send
 it as a bearer token to the API. Only its sha256 is stored, as in production. Otherwise use
 `--dev-auth-user super@seslogin.test`, or the real email-code flow, reading the code out of
 the log.
@@ -344,7 +344,7 @@ Unlike `mockdb`, the queue, mail and realtime mocks *succeed* — they exist so 
 
 **Auth**: `api/src/auth.rs` — token verification dispatches on prefix:
 1. API tokens (`slgn_` prefix) — opaque hashed secrets for programmatic access
-2. User tokens (`slu_` prefix) — opaque hashed secrets issued via email-code auth
+2. User tokens (`slu_` prefix) — opaque hashed secrets issued via email-code auth, shaped `slu_<id>.<secret>` so verification is one strongly consistent `GetItem` by id plus a constant-time hash check. Legacy `slu_<secret>` tokens (no `.`) are still found through `token_hash-index`, but their sliding expiry is frozen so they all age out
 3. JWT (no prefix) — session JWTs (single-use numeric kiosk codes → 14-day JWT) and user JWTs
 
 Authorization uses an `AuthRequirement` guard enum per field: `Session`, `UserOrSession`, `User`, `SuperUser`.

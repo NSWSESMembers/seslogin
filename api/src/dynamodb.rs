@@ -4215,6 +4215,7 @@ impl db::Handler for Handler {
 
     async fn create_user_token(
         &self,
+        id: &str,
         token_hash: &str,
         user_id: &str,
         expires_at: u64,
@@ -4222,27 +4223,46 @@ impl db::Handler for Handler {
         if self.read_only {
             return Err(db::Error::MutationDisabled);
         }
-        let id = new_id();
         let now = crate::clock::now_sec();
         self.client
             .put_item()
             .table_name(self.table_name("user_token"))
-            .item("id", AttributeValue::S(id.clone()))
+            .item("id", AttributeValue::S(id.to_string()))
             .item("token_hash", AttributeValue::S(token_hash.to_string()))
             .item("user_id", AttributeValue::S(user_id.to_string()))
             .item("created_at", AttributeValue::N(now.to_string()))
             .item("expires_at", AttributeValue::N(expires_at.to_string()))
+            // The id is caller-supplied now; never let a collision overwrite a token.
+            .condition_expression("attribute_not_exists(id)")
             .send()
             .await
             .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
         Ok(UserToken {
-            id,
+            id: id.to_string(),
             token_hash: token_hash.to_string(),
             user_id: user_id.to_string(),
             created_at: now,
             expires_at,
             last_used_at: None,
         })
+    }
+
+    async fn get_user_token(&self, id: &str) -> db::Result<Option<UserToken>> {
+        let resp = self
+            .client
+            .get_item()
+            .table_name(self.table_name("user_token"))
+            .key("id", AttributeValue::S(id.to_string()))
+            .consistent_read(true)
+            .return_consumed_capacity(ReturnConsumedCapacity::Total)
+            .send()
+            .await
+            .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
+        record_capacity("get_user_token", resp.consumed_capacity(), CapKind::Read);
+        match resp.item {
+            Some(item) => Ok(Some(Item(item).try_into()?)),
+            None => Ok(None),
+        }
     }
 
     async fn get_user_token_by_hash(&self, token_hash: &str) -> db::Result<Option<UserToken>> {
