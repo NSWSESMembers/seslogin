@@ -1,7 +1,6 @@
 /**
- * @generated SignedSource<<b62d3cf8b5b7120a1072b8d27e328049>>
+ * @generated SignedSource<<dec20b878d155ebd2b95b1c41a8adb74>>
  * @lightSyntaxTransform
- * @nogrep
  */
 
 /* tslint:disable */
@@ -63,8 +62,8 @@ v2 = [
     "name": "session",
     "plural": false,
     "selections": [
-      (v0/*: any*/),
-      (v1/*: any*/),
+      (v0/*:: as any*/),
+      (v1/*:: as any*/),
       {
         "alias": null,
         "args": null,
@@ -87,8 +86,8 @@ v2 = [
         "name": "location",
         "plural": false,
         "selections": [
-          (v0/*: any*/),
-          (v1/*: any*/)
+          (v0/*:: as any*/),
+          (v1/*:: as any*/)
         ],
         "storageKey": null
       }
@@ -127,7 +126,7 @@ return {
     "kind": "Fragment",
     "metadata": null,
     "name": "KioskTokenSessionFetcherQuery",
-    "selections": (v2/*: any*/),
+    "selections": (v2/*:: as any*/),
     "type": "QueryRoot",
     "abstractKey": null
   },
@@ -136,7 +135,7 @@ return {
     "argumentDefinitions": [],
     "kind": "Operation",
     "name": "KioskTokenSessionFetcherQuery",
-    "selections": (v2/*: any*/)
+    "selections": (v2/*:: as any*/)
   },
   "params": {
     "cacheID": "37ec4bde83224d824bfd485e575b73ae",

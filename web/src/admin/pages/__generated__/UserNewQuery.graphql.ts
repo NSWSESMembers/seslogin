@@ -1,7 +1,6 @@
 /**
- * @generated SignedSource<<b6388a2f2c72d8be43f825ad35403ed1>>
+ * @generated SignedSource<<6ad5f4dee0d15bfcbb119427b2d752c5>>
  * @lightSyntaxTransform
- * @nogrep
  */
 
 /* tslint:disable */
@@ -57,7 +56,7 @@ return {
       "throwOnFieldError": true
     },
     "name": "UserNewQuery",
-    "selections": (v0/*: any*/),
+    "selections": (v0/*:: as any*/),
     "type": "QueryRoot",
     "abstractKey": null
   },
@@ -66,7 +65,7 @@ return {
     "argumentDefinitions": [],
     "kind": "Operation",
     "name": "UserNewQuery",
-    "selections": (v0/*: any*/)
+    "selections": (v0/*:: as any*/)
   },
   "params": {
     "cacheID": "6d6b5d994f963862139042031bc09a43",

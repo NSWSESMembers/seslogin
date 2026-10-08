@@ -1,7 +1,6 @@
 /**
- * @generated SignedSource<<f812b9406aec3b05cbdff2b9ac2d7087>>
+ * @generated SignedSource<<d6b8f56e8f2c4b9bbb4131fdb6570c5a>>
  * @lightSyntaxTransform
- * @nogrep
  */
 
 /* tslint:disable */
@@ -57,7 +56,7 @@ return {
       "throwOnFieldError": true
     },
     "name": "ActivityCategorySelectorQuery",
-    "selections": (v0/*: any*/),
+    "selections": (v0/*:: as any*/),
     "type": "QueryRoot",
     "abstractKey": null
   },
@@ -66,7 +65,7 @@ return {
     "argumentDefinitions": [],
     "kind": "Operation",
     "name": "ActivityCategorySelectorQuery",
-    "selections": (v0/*: any*/)
+    "selections": (v0/*:: as any*/)
   },
   "params": {
     "cacheID": "746a0841caa34322e4a6b7c08ef12759",

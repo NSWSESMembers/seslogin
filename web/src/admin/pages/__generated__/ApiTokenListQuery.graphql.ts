@@ -1,7 +1,6 @@
 /**
- * @generated SignedSource<<d0c7a41efb51b27786609515cff0bcde>>
+ * @generated SignedSource<<c01f48e65875d30ad635b8fe12edef92>>
  * @lightSyntaxTransform
- * @nogrep
  */
 
 /* tslint:disable */
@@ -49,8 +48,8 @@ v2 = {
   "name": "locations",
   "plural": true,
   "selections": [
-    (v0/*: any*/),
-    (v1/*: any*/)
+    (v0/*:: as any*/),
+    (v1/*:: as any*/)
   ],
   "storageKey": null
 };
@@ -71,7 +70,7 @@ return {
         "name": "apiTokens",
         "plural": true,
         "selections": [
-          (v0/*: any*/),
+          (v0/*:: as any*/),
           {
             "args": null,
             "kind": "FragmentSpread",
@@ -80,7 +79,7 @@ return {
         ],
         "storageKey": null
       },
-      (v2/*: any*/)
+      (v2/*:: as any*/)
     ],
     "type": "QueryRoot",
     "abstractKey": null
@@ -99,8 +98,8 @@ return {
         "name": "apiTokens",
         "plural": true,
         "selections": [
-          (v0/*: any*/),
-          (v1/*: any*/),
+          (v0/*:: as any*/),
+          (v1/*:: as any*/),
           {
             "alias": null,
             "args": null,
@@ -139,7 +138,7 @@ return {
         ],
         "storageKey": null
       },
-      (v2/*: any*/)
+      (v2/*:: as any*/)
     ]
   },
   "params": {

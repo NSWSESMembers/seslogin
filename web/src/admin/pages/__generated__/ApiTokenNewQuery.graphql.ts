@@ -1,7 +1,6 @@
 /**
- * @generated SignedSource<<f30a4d1c5cf14f83609aa9325e2db627>>
+ * @generated SignedSource<<e436b01aa9c634f2bf99ff1d2cdebde4>>
  * @lightSyntaxTransform
- * @nogrep
  */
 
 /* tslint:disable */
@@ -57,7 +56,7 @@ return {
       "throwOnFieldError": true
     },
     "name": "ApiTokenNewQuery",
-    "selections": (v0/*: any*/),
+    "selections": (v0/*:: as any*/),
     "type": "QueryRoot",
     "abstractKey": null
   },
@@ -66,7 +65,7 @@ return {
     "argumentDefinitions": [],
     "kind": "Operation",
     "name": "ApiTokenNewQuery",
-    "selections": (v0/*: any*/)
+    "selections": (v0/*:: as any*/)
   },
   "params": {
     "cacheID": "24802ceba1438831732664534dafe412",

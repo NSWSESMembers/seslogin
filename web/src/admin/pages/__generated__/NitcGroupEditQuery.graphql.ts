@@ -1,7 +1,6 @@
 /**
- * @generated SignedSource<<552f5d5e74a995c7423acc0229ee99d4>>
+ * @generated SignedSource<<74dda7b17ba3823b136ebc6390cc9590>>
  * @lightSyntaxTransform
- * @nogrep
  */
 
 /* tslint:disable */
@@ -48,7 +47,7 @@ v1 = {
   "storageKey": null
 },
 v2 = [
-  (v1/*: any*/),
+  (v1/*:: as any*/),
   {
     "alias": null,
     "args": null,
@@ -72,7 +71,7 @@ v3 = [
     "name": "nitcGroup",
     "plural": false,
     "selections": [
-      (v1/*: any*/),
+      (v1/*:: as any*/),
       {
         "alias": null,
         "args": null,
@@ -87,7 +86,7 @@ v3 = [
         "kind": "LinkedField",
         "name": "sesTags",
         "plural": true,
-        "selections": (v2/*: any*/),
+        "selections": (v2/*:: as any*/),
         "storageKey": null
       }
     ],
@@ -107,28 +106,28 @@ v3 = [
     "kind": "LinkedField",
     "name": "ses_nonincident_tags",
     "plural": true,
-    "selections": (v2/*: any*/),
+    "selections": (v2/*:: as any*/),
     "storageKey": null
   }
 ];
 return {
   "fragment": {
-    "argumentDefinitions": (v0/*: any*/),
+    "argumentDefinitions": (v0/*:: as any*/),
     "kind": "Fragment",
     "metadata": {
       "throwOnFieldError": true
     },
     "name": "NitcGroupEditQuery",
-    "selections": (v3/*: any*/),
+    "selections": (v3/*:: as any*/),
     "type": "QueryRoot",
     "abstractKey": null
   },
   "kind": "Request",
   "operation": {
-    "argumentDefinitions": (v0/*: any*/),
+    "argumentDefinitions": (v0/*:: as any*/),
     "kind": "Operation",
     "name": "NitcGroupEditQuery",
-    "selections": (v3/*: any*/)
+    "selections": (v3/*:: as any*/)
   },
   "params": {
     "cacheID": "99d4ad8fcdb14f97baaa235cc2f813c9",

@@ -1,7 +1,6 @@
 /**
- * @generated SignedSource<<432b0bfd323d6f511ce7e445f5afc499>>
+ * @generated SignedSource<<5b66a20c361f2dd57eb7c655596a35b6>>
  * @lightSyntaxTransform
- * @nogrep
  */
 
 /* tslint:disable */
@@ -43,7 +42,7 @@ v1 = [
     "name": "user",
     "plural": false,
     "selections": [
-      (v0/*: any*/),
+      (v0/*:: as any*/),
       {
         "alias": null,
         "args": null,
@@ -52,7 +51,7 @@ v1 = [
         "name": "passkeys",
         "plural": true,
         "selections": [
-          (v0/*: any*/),
+          (v0/*:: as any*/),
           {
             "alias": null,
             "args": null,
@@ -89,7 +88,7 @@ return {
       "throwOnFieldError": true
     },
     "name": "SettingsPasskeysQuery",
-    "selections": (v1/*: any*/),
+    "selections": (v1/*:: as any*/),
     "type": "QueryRoot",
     "abstractKey": null
   },
@@ -98,7 +97,7 @@ return {
     "argumentDefinitions": [],
     "kind": "Operation",
     "name": "SettingsPasskeysQuery",
-    "selections": (v1/*: any*/)
+    "selections": (v1/*:: as any*/)
   },
   "params": {
     "cacheID": "310017254f320cbfd0b19c10bed33c2d",

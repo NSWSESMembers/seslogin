@@ -1,7 +1,6 @@
 /**
- * @generated SignedSource<<56b3de3ec848c69202c913e46e09cc38>>
+ * @generated SignedSource<<e1ff5070d0c11f287eb48cb1a9fa4328>>
  * @lightSyntaxTransform
- * @nogrep
  */
 
 /* tslint:disable */
@@ -63,9 +62,9 @@ return {
         "name": "locations",
         "plural": true,
         "selections": [
-          (v0/*: any*/),
-          (v1/*: any*/),
-          (v2/*: any*/),
+          (v0/*:: as any*/),
+          (v1/*:: as any*/),
+          (v2/*:: as any*/),
           {
             "args": null,
             "kind": "FragmentSpread",
@@ -92,9 +91,9 @@ return {
         "name": "locations",
         "plural": true,
         "selections": [
-          (v0/*: any*/),
-          (v1/*: any*/),
-          (v2/*: any*/),
+          (v0/*:: as any*/),
+          (v1/*:: as any*/),
+          (v2/*:: as any*/),
           {
             "alias": null,
             "args": null,

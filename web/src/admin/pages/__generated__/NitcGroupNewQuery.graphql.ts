@@ -1,7 +1,6 @@
 /**
- * @generated SignedSource<<9b5f5f6cd30384438ea441f5de867b88>>
+ * @generated SignedSource<<66157777b607622c6f812897e5a42e8d>>
  * @lightSyntaxTransform
- * @nogrep
  */
 
 /* tslint:disable */
@@ -65,7 +64,7 @@ return {
       "throwOnFieldError": true
     },
     "name": "NitcGroupNewQuery",
-    "selections": (v0/*: any*/),
+    "selections": (v0/*:: as any*/),
     "type": "QueryRoot",
     "abstractKey": null
   },
@@ -74,7 +73,7 @@ return {
     "argumentDefinitions": [],
     "kind": "Operation",
     "name": "NitcGroupNewQuery",
-    "selections": (v0/*: any*/)
+    "selections": (v0/*:: as any*/)
   },
   "params": {
     "cacheID": "edc7acb79e25012ae7bd5650c4b8730d",

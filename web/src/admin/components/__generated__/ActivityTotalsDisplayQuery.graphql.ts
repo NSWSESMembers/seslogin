@@ -1,7 +1,6 @@
 /**
- * @generated SignedSource<<7ed755f11e701d8aff7443346dc9e6d8>>
+ * @generated SignedSource<<022e3d976c1a0826f1b16315254b2c6e>>
  * @lightSyntaxTransform
- * @nogrep
  */
 
 /* tslint:disable */
@@ -113,7 +112,7 @@ v9 = [
     "name": "location",
     "plural": false,
     "selections": [
-      (v4/*: any*/),
+      (v4/*:: as any*/),
       {
         "alias": null,
         "args": [
@@ -122,8 +121,8 @@ v9 = [
             "name": "categories",
             "variableName": "categories"
           },
-          (v5/*: any*/),
-          (v6/*: any*/)
+          (v5/*:: as any*/),
+          (v6/*:: as any*/)
         ],
         "concreteType": "MemberPeriodSummary",
         "kind": "LinkedField",
@@ -138,7 +137,7 @@ v9 = [
             "name": "person",
             "plural": false,
             "selections": [
-              (v4/*: any*/),
+              (v4/*:: as any*/),
               {
                 "alias": null,
                 "args": null,
@@ -161,15 +160,15 @@ v9 = [
                 "name": "location",
                 "plural": false,
                 "selections": [
-                  (v4/*: any*/),
-                  (v7/*: any*/)
+                  (v4/*:: as any*/),
+                  (v7/*:: as any*/)
                 ],
                 "storageKey": null
               }
             ],
             "storageKey": null
           },
-          (v8/*: any*/),
+          (v8/*:: as any*/),
           {
             "alias": null,
             "args": null,
@@ -183,8 +182,8 @@ v9 = [
       {
         "alias": null,
         "args": [
-          (v5/*: any*/),
-          (v6/*: any*/)
+          (v5/*:: as any*/),
+          (v6/*:: as any*/)
         ],
         "concreteType": "CategoryPeriodSummary",
         "kind": "LinkedField",
@@ -199,8 +198,8 @@ v9 = [
             "name": "category",
             "plural": false,
             "selections": [
-              (v4/*: any*/),
-              (v7/*: any*/),
+              (v4/*:: as any*/),
+              (v7/*:: as any*/),
               {
                 "alias": null,
                 "args": null,
@@ -211,7 +210,7 @@ v9 = [
             ],
             "storageKey": null
           },
-          (v8/*: any*/)
+          (v8/*:: as any*/)
         ],
         "storageKey": null
       }
@@ -222,31 +221,31 @@ v9 = [
 return {
   "fragment": {
     "argumentDefinitions": [
-      (v0/*: any*/),
-      (v1/*: any*/),
-      (v2/*: any*/),
-      (v3/*: any*/)
+      (v0/*:: as any*/),
+      (v1/*:: as any*/),
+      (v2/*:: as any*/),
+      (v3/*:: as any*/)
     ],
     "kind": "Fragment",
     "metadata": {
       "throwOnFieldError": true
     },
     "name": "ActivityTotalsDisplayQuery",
-    "selections": (v9/*: any*/),
+    "selections": (v9/*:: as any*/),
     "type": "QueryRoot",
     "abstractKey": null
   },
   "kind": "Request",
   "operation": {
     "argumentDefinitions": [
-      (v2/*: any*/),
-      (v3/*: any*/),
-      (v1/*: any*/),
-      (v0/*: any*/)
+      (v2/*:: as any*/),
+      (v3/*:: as any*/),
+      (v1/*:: as any*/),
+      (v0/*:: as any*/)
     ],
     "kind": "Operation",
     "name": "ActivityTotalsDisplayQuery",
-    "selections": (v9/*: any*/)
+    "selections": (v9/*:: as any*/)
   },
   "params": {
     "cacheID": "1d71240303b4b9f27222bbb4a713f6f6",

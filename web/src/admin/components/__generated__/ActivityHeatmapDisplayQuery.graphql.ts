@@ -1,7 +1,6 @@
 /**
- * @generated SignedSource<<d9d38c2f0bee251b69bbc47e3d8c255f>>
+ * @generated SignedSource<<2e3558c7b99a70bf20d11de81773c55e>>
  * @lightSyntaxTransform
- * @nogrep
  */
 
 /* tslint:disable */
@@ -83,7 +82,7 @@ v5 = [
     "name": "location",
     "plural": false,
     "selections": [
-      (v4/*: any*/),
+      (v4/*:: as any*/),
       {
         "alias": null,
         "args": null,
@@ -92,7 +91,7 @@ v5 = [
         "name": "people",
         "plural": true,
         "selections": [
-          (v4/*: any*/),
+          (v4/*:: as any*/),
           {
             "alias": null,
             "args": null,
@@ -157,7 +156,7 @@ v5 = [
                 "name": "person",
                 "plural": false,
                 "selections": [
-                  (v4/*: any*/)
+                  (v4/*:: as any*/)
                 ],
                 "storageKey": null
               },
@@ -188,31 +187,31 @@ v5 = [
 return {
   "fragment": {
     "argumentDefinitions": [
-      (v0/*: any*/),
-      (v1/*: any*/),
-      (v2/*: any*/),
-      (v3/*: any*/)
+      (v0/*:: as any*/),
+      (v1/*:: as any*/),
+      (v2/*:: as any*/),
+      (v3/*:: as any*/)
     ],
     "kind": "Fragment",
     "metadata": {
       "throwOnFieldError": true
     },
     "name": "ActivityHeatmapDisplayQuery",
-    "selections": (v5/*: any*/),
+    "selections": (v5/*:: as any*/),
     "type": "QueryRoot",
     "abstractKey": null
   },
   "kind": "Request",
   "operation": {
     "argumentDefinitions": [
-      (v2/*: any*/),
-      (v3/*: any*/),
-      (v1/*: any*/),
-      (v0/*: any*/)
+      (v2/*:: as any*/),
+      (v3/*:: as any*/),
+      (v1/*:: as any*/),
+      (v0/*:: as any*/)
     ],
     "kind": "Operation",
     "name": "ActivityHeatmapDisplayQuery",
-    "selections": (v5/*: any*/)
+    "selections": (v5/*:: as any*/)
   },
   "params": {
     "cacheID": "c8884b87e62d253cfc606dab5e6c41d9",
