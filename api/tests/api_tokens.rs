@@ -1,5 +1,5 @@
-//! `slgn_` API tokens: id-bound tokens are found by primary key, and legacy
-//! (pre-id) tokens keep working through `token_hash-index` until replaced.
+//! `slgn_` API tokens: found by the row id they embed, and legacy (pre-id)
+//! tokens are refused.
 
 mod common;
 
@@ -79,12 +79,15 @@ async fn right_id_with_wrong_secret_is_rejected() {
 }
 
 #[tokio::test]
-async fn legacy_token_still_verifies() {
+async fn legacy_token_is_refused_even_if_its_row_survives() {
     let app = fake_app();
     let legacy = "slgn_legacySecretWithNoDot0123456789abcdefghij";
     store(&app, "LegacyApi001", &sha256_hex(legacy)).await;
 
-    expect_api_token(verify(&app, legacy).await, "LegacyApi001");
+    assert!(matches!(
+        verify(&app, legacy).await,
+        Err(AuthError::Permanent(_))
+    ));
 }
 
 #[tokio::test]

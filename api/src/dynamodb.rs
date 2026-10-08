@@ -2919,44 +2919,6 @@ impl db::Handler for Handler {
         }
     }
 
-    async fn get_api_token_by_hash(&self, token_hash: &str) -> db::Result<Option<ApiToken>> {
-        let resp = self
-            .client
-            .query()
-            .table_name(self.table_name("api_token"))
-            .index_name("token_hash-index")
-            .key_condition_expression("token_hash = :token_hash")
-            .expression_attribute_values(":token_hash", AttributeValue::S(token_hash.to_string()))
-            .return_consumed_capacity(ReturnConsumedCapacity::Total)
-            .send()
-            .await
-            .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
-        record_capacity(
-            "get_api_token_by_hash query",
-            resp.consumed_capacity(),
-            CapKind::Read,
-        );
-
-        if resp.count == 0 {
-            return Ok(None);
-        }
-        if resp.count > 1 {
-            return Err(Error::Integrity(format!(
-                "Multiple api tokens found with token_hash {}",
-                token_hash
-            )));
-        }
-        let gsi_item = Item(
-            resp.items
-                .ok_or_else(|| Error::Infrastructure("items missing".to_string()))?
-                .into_iter()
-                .next()
-                .unwrap(),
-        );
-        let id = gsi_item.id()?;
-        self.get_api_token(&id).await
-    }
-
     async fn list_api_tokens(&self, filter: db::ListApiTokensFilter) -> db::Result<Vec<ApiToken>> {
         match filter {
             db::ListApiTokensFilter::ActiveOnly => {

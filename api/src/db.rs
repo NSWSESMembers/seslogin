@@ -816,12 +816,6 @@ pub trait Handler: Sync {
 
     /// Strongly consistent, so a token is verifiable the moment it's created.
     fn get_api_token(&self, id: &str) -> impl Future<Output = Result<Option<ApiToken>>> + Send;
-    /// Legacy `slgn_<secret>` tokens only, which carry no id. Goes away with
-    /// `token_hash-index` once they have all been revoked or replaced.
-    fn get_api_token_by_hash(
-        &self,
-        token_hash: &str,
-    ) -> impl Future<Output = Result<Option<ApiToken>>> + Send;
     /// List API tokens. [`ListApiTokensFilter::ActiveOnly`] queries `active-index` and
     /// so cannot see revoked tokens; `All` scans, which is the only way to reach them.
     fn list_api_tokens(
