@@ -5,7 +5,7 @@ resource "aws_sns_topic" "member_sync_alerts" {
 resource "aws_sns_topic_subscription" "member_sync_email" {
   topic_arn = aws_sns_topic.member_sync_alerts.arn
   protocol  = "email"
-  endpoint  = "alerts@seslogin.com"
+  endpoint  = "me@sdunster.com"
 }
 
 resource "aws_cloudwatch_dashboard" "api" {
