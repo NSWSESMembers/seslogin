@@ -82,7 +82,6 @@ resource "aws_route53_record" "preprod_aaaa" {
   }
 }
 
-# test.seslogin.com had an A alias only (no AAAA) in the old zone.
 resource "aws_route53_record" "test_a" {
   zone_id = aws_route53_zone.seslogin.zone_id
   name    = "test.seslogin.com"
@@ -94,14 +93,53 @@ resource "aws_route53_record" "test_a" {
   }
 }
 
+resource "aws_route53_record" "test_aaaa" {
+  zone_id = aws_route53_zone.seslogin.zone_id
+  name    = "test.seslogin.com"
+  type    = "AAAA"
+  alias {
+    name                   = local.test_alias_target
+    zone_id                = local.cf_alias_zone_id
+    evaluate_target_health = false
+  }
+}
+
+# ── Email: apex MX (SES inbound) and SPF ──────────────────────────────────────
+# These two records predate Terraform management and were adopted by the import
+# blocks below; the import blocks can be deleted once applied everywhere.
+resource "aws_route53_record" "apex_mx" {
+  zone_id = aws_route53_zone.seslogin.zone_id
+  name    = "seslogin.com"
+  type    = "MX"
+  ttl     = 300
+  records = ["10 inbound-smtp.ap-southeast-2.amazonaws.com"]
+}
+
+import {
+  to = aws_route53_record.apex_mx
+  id = "${aws_route53_zone.seslogin.zone_id}_seslogin.com_MX"
+}
+
+resource "aws_route53_record" "apex_txt" {
+  zone_id = aws_route53_zone.seslogin.zone_id
+  name    = "seslogin.com"
+  type    = "TXT"
+  ttl     = 300
+  records = ["v=spf1 include:amazonses.com ~all"]
+}
+
+import {
+  to = aws_route53_record.apex_txt
+  id = "${aws_route53_zone.seslogin.zone_id}_seslogin.com_TXT"
+}
+
 # ── Email: DMARC ────────────────────────────────────────────────────────────
-# apex_mx and apex_txt (SES inbound MX + SPF) are managed outside Terraform.
 resource "aws_route53_record" "dmarc" {
   zone_id = aws_route53_zone.seslogin.zone_id
   name    = "_dmarc.seslogin.com"
   type    = "TXT"
   ttl     = 300
-  records = ["v=DMARC1; p=none;"]
+  records = ["v=DMARC1; p=none; rua=mailto:dmarc@seslogin.com;"]
 }
 
 # ── SES custom MAIL FROM (mail.seslogin.com) ──────────────────────────────────
