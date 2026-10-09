@@ -42,6 +42,7 @@ type ConfigEditorMode = "basic" | "advanced";
 type SessionMode = "scan" | "status";
 type KioskTheme = "auto" | "light" | "dark";
 type SignedInStatusMode = "off" | "button" | "inline";
+type InterfaceMode = "auto" | "mouseKeyboard" | "touch";
 type ConfigObject = Record<string, unknown>;
 
 interface SegmentedControlProps<T extends string> {
@@ -66,14 +67,12 @@ interface BasicSessionModeFieldsProps {
   onChange: (nextMode: SessionMode) => void;
   theme: KioskTheme;
   onThemeChange: (next: KioskTheme) => void;
-  smallCategories: boolean;
-  onSmallCategoriesChange: (next: boolean) => void;
   guests: boolean;
   onGuestsChange: (next: boolean) => void;
   quickPickCategories: boolean;
   onQuickPickCategoriesChange: (next: boolean) => void;
-  numberPad: boolean;
-  onNumberPadChange: (next: boolean) => void;
+  interfaceMode: InterfaceMode;
+  onInterfaceModeChange: (next: InterfaceMode) => void;
   signedInStatusMode: SignedInStatusMode;
   onSignedInStatusModeChange: (next: SignedInStatusMode) => void;
   configJson: string;
@@ -148,23 +147,6 @@ function getThemeFromConfig(config: ConfigObject): KioskTheme {
   return config.theme === "dark" ? "dark" : "light";
 }
 
-function withSmallCategories(
-  config: ConfigObject,
-  enabled: boolean,
-): ConfigObject {
-  const next = { ...config };
-  if (enabled) {
-    next.smallCategories = true;
-  } else {
-    delete next.smallCategories;
-  }
-  return next;
-}
-
-function getSmallCategoriesFromConfig(config: ConfigObject): boolean {
-  return !!config.smallCategories;
-}
-
 function withGuests(config: ConfigObject, enabled: boolean): ConfigObject {
   const next = { ...config };
   if (enabled) {
@@ -196,18 +178,29 @@ function getQuickPickCategoriesFromConfig(config: ConfigObject): boolean {
   return !!config.quickPickCategories;
 }
 
-function withNumberPad(config: ConfigObject, enabled: boolean): ConfigObject {
+/**
+ * Omits the key for Auto, like `withTheme`: an omitted key already means auto
+ * to the kiosk (see `interfaceModeFromConfig` in kiosk/lib/interfaceMode).
+ */
+function withInterfaceMode(
+  config: ConfigObject,
+  mode: InterfaceMode,
+): ConfigObject {
   const next = { ...config };
-  if (enabled) {
-    next.numberPad = true;
+  if (mode === "auto") {
+    delete next.interfaceMode;
   } else {
-    delete next.numberPad;
+    next.interfaceMode = mode;
   }
   return next;
 }
 
-function getNumberPadFromConfig(config: ConfigObject): boolean {
-  return !!config.numberPad;
+/** Mirrors the kiosk's reading: anything unrecognised is auto. */
+function getInterfaceModeFromConfig(config: ConfigObject): InterfaceMode {
+  return config.interfaceMode === "mouseKeyboard" ||
+    config.interfaceMode === "touch"
+    ? config.interfaceMode
+    : "auto";
 }
 
 /**
@@ -357,14 +350,12 @@ function ThemeControl({ theme, onChange }: ThemeControlProps) {
 function BasicSessionModeFields({
   sessionMode,
   onChange,
-  smallCategories,
-  onSmallCategoriesChange,
   guests,
   onGuestsChange,
   quickPickCategories,
   onQuickPickCategoriesChange,
-  numberPad,
-  onNumberPadChange,
+  interfaceMode,
+  onInterfaceModeChange,
   signedInStatusMode,
   onSignedInStatusModeChange,
   configJson,
@@ -414,18 +405,6 @@ function BasicSessionModeFields({
               input={
                 <input
                   type="checkbox"
-                  checked={smallCategories}
-                  onChange={(e) => onSmallCategoriesChange(e.target.checked)}
-                  className="mt-0.5"
-                />
-              }
-              title="Small categories"
-              description="use smaller category buttons to fit more on screen — useful on smaller or lower-resolution displays"
-            />
-            <OptionRow
-              input={
-                <input
-                  type="checkbox"
                   checked={guests}
                   onChange={(e) => onGuestsChange(e.target.checked)}
                   className="mt-0.5"
@@ -453,19 +432,29 @@ function BasicSessionModeFields({
               title="Quick pick categories"
               description="on the sign-out screen, show quick-pick buttons for the location's and the member's own recently-used categories before the full category list, so people converge on the same categories instead of picking slightly different ones each time"
             />
-            <OptionRow
-              input={
-                <input
-                  type="checkbox"
-                  checked={numberPad}
-                  onChange={(e) => onNumberPadChange(e.target.checked)}
-                  className="mt-0.5"
-                />
-              }
-              title="On-screen number pad"
-              description="show a keypad button so members can enter their ID by touch — for a touchscreen kiosk with no barcode scanner or keyboard"
-            />
           </OptionList>
+        </FormField>
+      )}
+      {sessionMode === "scan" && (
+        <FormField label={<span>Interface</span>}>
+          <SegmentedControl
+            label="Interface"
+            value={interfaceMode}
+            options={[
+              { value: "auto", label: "Auto" },
+              { value: "mouseKeyboard", label: "Mouse & keyboard" },
+              { value: "touch", label: "Touch" },
+            ]}
+            onChange={onInterfaceModeChange}
+          />
+          <Muted className="mt-1.5">
+            Auto detects whether the kiosk is a touchscreen device (such as an
+            iPad) and works for most kiosks — only change this if detection gets
+            it wrong. Touch shows an on-screen number pad when the member ID
+            field or the keypad button is tapped, instead of the device's own
+            keyboard (guest sign-in still uses the device's keyboard for names).
+            Mouse &amp; keyboard never shows the number pad.
+          </Muted>
         </FormField>
       )}
       {sessionMode === "scan" && (
@@ -582,10 +571,9 @@ export default function SessionForm({
   );
   const parsedConfig = parseConfigObject(configJson);
   const sessionMode = getSessionModeFromConfig(parsedConfig);
-  const smallCategories = getSmallCategoriesFromConfig(parsedConfig);
   const guests = getGuestsFromConfig(parsedConfig);
   const quickPickCategories = getQuickPickCategoriesFromConfig(parsedConfig);
-  const numberPad = getNumberPadFromConfig(parsedConfig);
+  const interfaceMode = getInterfaceModeFromConfig(parsedConfig);
   const signedInStatusMode = getSignedInStatusModeFromConfig(parsedConfig);
   const theme = getThemeFromConfig(parsedConfig);
 
@@ -598,14 +586,6 @@ export default function SessionForm({
 
   function handleBasicSessionModeChange(nextMode: SessionMode) {
     const nextConfig = withSessionMode(parseConfigObject(configJson), nextMode);
-    setConfigJson(JSON.stringify(nextConfig, null, 2));
-  }
-
-  function handleSmallCategoriesChange(enabled: boolean) {
-    const nextConfig = withSmallCategories(
-      parseConfigObject(configJson),
-      enabled,
-    );
     setConfigJson(JSON.stringify(nextConfig, null, 2));
   }
 
@@ -622,8 +602,8 @@ export default function SessionForm({
     setConfigJson(JSON.stringify(nextConfig, null, 2));
   }
 
-  function handleNumberPadChange(enabled: boolean) {
-    const nextConfig = withNumberPad(parseConfigObject(configJson), enabled);
+  function handleInterfaceModeChange(mode: InterfaceMode) {
+    const nextConfig = withInterfaceMode(parseConfigObject(configJson), mode);
     setConfigJson(JSON.stringify(nextConfig, null, 2));
   }
 
@@ -658,14 +638,12 @@ export default function SessionForm({
           <BasicSessionModeFields
             sessionMode={sessionMode}
             onChange={handleBasicSessionModeChange}
-            smallCategories={smallCategories}
-            onSmallCategoriesChange={handleSmallCategoriesChange}
             guests={guests}
             onGuestsChange={handleGuestsChange}
             quickPickCategories={quickPickCategories}
             onQuickPickCategoriesChange={handleQuickPickCategoriesChange}
-            numberPad={numberPad}
-            onNumberPadChange={handleNumberPadChange}
+            interfaceMode={interfaceMode}
+            onInterfaceModeChange={handleInterfaceModeChange}
             signedInStatusMode={signedInStatusMode}
             onSignedInStatusModeChange={handleSignedInStatusModeChange}
             configJson={configJson}

@@ -1,5 +1,6 @@
 /**
- * Completion-poll cadence for a kiosk waiting to be enrolled, as a function of how long
+ * Fallback completion-poll cadence for a kiosk waiting to be enrolled (used by
+ * `useEnrollmentWatch` only when realtime is unavailable), as a function of how long
  * it has been waiting: quick while an admin is likely mid-enrollment, then progressively
  * slower to avoid pointless traffic from a kiosk left on the enrollment screen.
  */

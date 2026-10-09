@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import {
   Panel,
   PanelBox,
@@ -8,9 +8,8 @@ import {
 import { Button } from "../../components/ui/Button";
 import LoadingIndicator from "../../components/LoadingIndicator";
 import { FingerprintChip } from "../../components/FingerprintChip";
-import { fetchKeySessionId } from "../lib/enrollmentKey";
 import { useEnrollmentQr } from "../lib/useEnrollmentQr";
-import { pollDelayMs } from "../lib/enrollPolling";
+import { useEnrollmentWatch } from "../lib/useEnrollmentWatch";
 import { isIPad, isStandalone } from "../lib/fullscreen";
 import KioskHomeScreenHelp from "./KioskHomeScreenHelp";
 
@@ -93,7 +92,8 @@ export default function KioskEnrollment({
   onEnrolled: () => void;
   onUseCodeInstead: () => void;
 }) {
-  const { info, fingerprint, enrollUrl, qrDataUrl } = useEnrollmentQr(profile);
+  const { info, published, fingerprint, enrollUrl, qrDataUrl } =
+    useEnrollmentQr(profile);
   const [offerHomeScreen, setOfferHomeScreen] = useState(shouldOfferHomeScreen);
 
   const ignoreHomeScreen = () => {
@@ -105,43 +105,9 @@ export default function KioskEnrollment({
     setOfferHomeScreen(false);
   };
 
-  useEffect(() => {
-    if (info == null) return;
+  useEnrollmentWatch({ info, enabled: published, onEnrolled });
 
-    let cancelled = false;
-    let pollTimeout: number | null = null;
-    const startedAt = Date.now();
-
-    const runPoll = async () => {
-      if (cancelled) return;
-      let sessionId: string | null = null;
-      try {
-        sessionId = await fetchKeySessionId(info);
-      } catch (err) {
-        console.error("Enrollment poll failed:", err);
-      }
-      if (cancelled) return;
-      if (sessionId != null) {
-        onEnrolled();
-        return;
-      }
-      pollTimeout = window.setTimeout(
-        runPoll,
-        pollDelayMs(Date.now() - startedAt),
-      );
-    };
-
-    runPoll();
-
-    return () => {
-      cancelled = true;
-      if (pollTimeout !== null) window.clearTimeout(pollTimeout);
-    };
-    // `onEnrolled` is a stable useCallback from KioskEnvironment and `info` is set once
-    // per profile, so this poll loop is set up once rather than on every render.
-  }, [info, onEnrolled]);
-
-  // The key and poll above keep running behind the instructions, so "Ignore" lands
+  // The key and watch above keep running behind the instructions, so "Ignore" lands
   // straight on a QR code that is already live.
   if (offerHomeScreen) {
     return <KioskHomeScreenHelp onIgnore={ignoreHomeScreen} />;

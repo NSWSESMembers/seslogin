@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { formatDayDate, isSameDay } from "../../lib/time";
 import { Dialog } from "../../components/ui/Dialog";
+import Keypad from "./Keypad";
 
 type AmPm = "AM" | "PM";
 
@@ -96,13 +97,6 @@ const ampmMiniBase =
   "cursor-pointer rounded-lg border-2 px-3 py-[3px] text-base shadow-none";
 const ampmMiniOff = "border-neutral-300 bg-white text-neutral-700";
 const ampmMiniSelected = "border-accent bg-accent text-white";
-const keyDigitBtn =
-  "block w-40 cursor-pointer rounded-[14px] bg-neutral-800 px-2.5 py-[18px] text-[64px] text-white no-underline shadow-md active:bg-neutral-600 dark:bg-neutral-700 dark:active:bg-neutral-500";
-const keyAuxBtn =
-  "block w-40 cursor-pointer rounded-[14px] bg-neutral-200 px-2.5 py-[18px] text-[32px] text-neutral-700 no-underline shadow-md active:bg-neutral-300 dark:bg-neutral-800 dark:text-neutral-300 dark:active:bg-neutral-700";
-const keyConfirmBtn =
-  "block w-full cursor-pointer rounded-[14px] bg-confirm px-2.5 py-[18px] text-[40px] text-white no-underline shadow-md active:bg-confirm-active disabled:cursor-default disabled:bg-neutral-300 disabled:text-neutral-500 disabled:shadow-none dark:disabled:bg-neutral-700 dark:disabled:text-neutral-500";
-
 export function Inner(props: {
   onSave: (field: string, date: Date, value: string) => void;
   onClose: () => void;
@@ -134,10 +128,6 @@ export function Inner(props: {
     hourEntered !== null && (hourEntered === 0 || hourEntered >= 13);
 
   function button(key: string) {
-    if (key === "DEL") {
-      del();
-      return;
-    }
     const digit = Number(key);
     // A digit is always replaced in place — entering one never disturbs the
     // others, except for the one case below.
@@ -299,8 +289,8 @@ export function Inner(props: {
             </button>
           </div>
         </div>
-        <div className="grid grid-cols-3 gap-2.5">
-          <div className="col-span-3 rounded-[14px] bg-neutral-800 px-2.5 py-3.5 text-center font-bold text-white">
+        <div className="flex flex-col gap-2.5">
+          <div className="rounded-[14px] bg-neutral-800 px-2.5 py-3.5 text-center font-bold text-white">
             <div className="flex items-center justify-center gap-4">
               <div className="flex items-center text-[56px]">
                 {digitBox(0)}
@@ -329,49 +319,13 @@ export function Inner(props: {
               )}
             </div>
           </div>
-          <button className={keyDigitBtn} onClick={() => button("1")}>
-            1
-          </button>
-          <button className={keyDigitBtn} onClick={() => button("2")}>
-            2
-          </button>
-          <button className={keyDigitBtn} onClick={() => button("3")}>
-            3
-          </button>
-          <button className={keyDigitBtn} onClick={() => button("4")}>
-            4
-          </button>
-          <button className={keyDigitBtn} onClick={() => button("5")}>
-            5
-          </button>
-          <button className={keyDigitBtn} onClick={() => button("6")}>
-            6
-          </button>
-          <button className={keyDigitBtn} onClick={() => button("7")}>
-            7
-          </button>
-          <button className={keyDigitBtn} onClick={() => button("8")}>
-            8
-          </button>
-          <button className={keyDigitBtn} onClick={() => button("9")}>
-            9
-          </button>
-          <button className={keyAuxBtn} onClick={props.onClose}>
-            &times;
-          </button>
-          <button className={keyDigitBtn} onClick={() => button("0")}>
-            0
-          </button>
-          <button className={keyAuxBtn} onClick={() => button("DEL")}>
-            DEL
-          </button>
-          <button
-            className={`col-span-3 ${keyConfirmBtn}`}
-            disabled={!complete}
-            onClick={confirm}
-          >
-            Confirm
-          </button>
+          <Keypad
+            onDigit={button}
+            onDelete={del}
+            onClose={props.onClose}
+            onConfirm={confirm}
+            confirmDisabled={!complete}
+          />
         </div>
       </div>
     </Dialog>

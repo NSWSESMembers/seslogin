@@ -3,6 +3,7 @@ import ScanModalDateTime from "./ScanModalDateTime";
 import { formatDayDate, formatTimeDiff, formatTimeOfDay } from "../../lib/time";
 import type { TransactionSignedOut } from "../ScanState";
 import { categories } from "../../lib/categories";
+import { useResetScroll } from "../useResetScroll";
 import { scanViewProps, type ScreenPosition } from "../../styles";
 import { Button } from "../../components/ui/Button";
 import { Dialog, DialogActions, DialogTitle } from "../../components/ui/Dialog";
@@ -311,11 +312,13 @@ export default function ScanScreenAdjust(props: {
   onError: () => void;
   isSubmitting: boolean;
 }) {
+  const { ref: scrollRef } = useResetScroll<HTMLDivElement>(props.uuid);
   return (
     <div
+      ref={scrollRef}
       {...scanViewProps(
         props.screenPosition,
-        "inset-y-0 flex flex-col items-center justify-center",
+        "inset-y-0 flex flex-col items-center justify-center-safe",
       )}
     >
       {props.transaction && (

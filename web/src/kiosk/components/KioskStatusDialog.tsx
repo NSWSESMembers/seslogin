@@ -85,8 +85,11 @@ function checkInColour(
  */
 export default function KioskStatusDialog({
   onClose,
+  categoryScale,
 }: {
   onClose: () => void;
+  /** The auto-chosen category button scale (1 = full size); see categoryScale.ts. */
+  categoryScale?: number;
 }) {
   const session = useKioskSession();
   const { profile, authMode } = useKioskEnvironment();
@@ -264,6 +267,11 @@ export default function KioskStatusDialog({
               ? "full screen"
               : "browser"}
         </Row>
+        {categoryScale !== undefined && (
+          <Row label="Category size">
+            auto ({Math.round(categoryScale * 100)}%)
+          </Row>
+        )}
 
         <Row label="Config">{formatConfigFlags(session?.config ?? {})}</Row>
       </dl>

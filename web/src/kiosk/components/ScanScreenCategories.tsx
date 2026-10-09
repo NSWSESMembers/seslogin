@@ -1,31 +1,30 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { categories } from "../../lib/categories";
 import type { Category } from "../../lib/categories";
 import { scanViewProps, type ScreenPosition } from "../../styles";
+import { useResetScroll } from "../useResetScroll";
 import { CategoryIcon } from "../../components/CategoryIcon";
 
+// Every dimension below is `<px at scale 1> * --cat-scale`; the scale is chosen
+// once per kiosk (see categoryScale.ts) and inherited from the scan area. The
+// fallback of 1 is the original large size, for use outside the scan area.
 export function CategoryButton(props: {
   id: string;
   name: string;
   icon: string;
   onSelect: () => void;
-  small?: boolean;
 }) {
-  const { name, icon, onSelect, small } = props;
+  const { name, icon, onSelect } = props;
 
   return (
     <li className="inline-block list-none align-bottom">
       <button
         onClick={onSelect}
-        className={
-          small
-            ? "m-2 box-content flex h-21 w-28.75 cursor-pointer flex-col content-start rounded-lg border-2 border-line-strong bg-surface-raised p-1.75 text-sm wrap-break-word text-ink active:bg-menu"
-            : "m-3 box-content flex h-28.75 w-37.5 cursor-pointer flex-col content-start rounded-lg border-2 border-line-strong bg-surface-raised p-2.5 text-lg wrap-break-word text-ink active:bg-menu"
-        }
+        className="m-[calc(12px*var(--cat-scale,1))] box-content flex h-[calc(115px*var(--cat-scale,1))] w-[calc(150px*var(--cat-scale,1))] cursor-pointer flex-col content-start items-stretch rounded-lg border-2 border-line-strong bg-surface-raised p-[calc(10px*var(--cat-scale,1))] text-[calc(18px*var(--cat-scale,1))] leading-[calc(28px*var(--cat-scale,1))] wrap-break-word text-ink active:bg-menu"
       >
         <CategoryIcon
           icon={icon}
-          className={`mx-auto block ${small ? "max-h-12 max-w-12" : ""}`}
+          className="mx-auto block size-[calc(70px*var(--cat-scale,1))]"
         />
         {name}
       </button>
@@ -33,12 +32,56 @@ export function CategoryButton(props: {
   );
 }
 
+/**
+ * The title row above a category list. Shared with the scale probe, which
+ * measures it: the drill-down variant (with the back button) is the taller one.
+ */
+export function CategoriesHeader(props: {
+  groupName?: string;
+  onBack?: () => void;
+  /** Only the probe overrides this, so its text never matches a real screen's. */
+  backLabel?: string;
+}) {
+  return (
+    <div
+      data-probe="header"
+      className="mt-5 flex items-center justify-center gap-3.75 text-3xl"
+    >
+      {props.groupName !== undefined ? (
+        <>
+          <button
+            className="inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border-2 border-line-strong bg-surface-raised px-3.5 py-1.5 align-middle text-ink active:bg-menu"
+            onClick={props.onBack}
+          >
+            <span aria-hidden="true">&#8592;</span>{" "}
+            {props.backLabel ?? "Categories"}
+          </button>
+          <span className="align-middle opacity-60" aria-hidden="true">
+            &gt;
+          </span>
+          <span className="align-middle">{props.groupName}</span>
+        </>
+      ) : (
+        <span className="align-middle">Categories</span>
+      )}
+    </div>
+  );
+}
+
 export function Inner(props: {
   onSelectCategory: (uuid: string, categoryId: string) => void;
   uuid: string | null;
-  smallCategories?: boolean;
+  /** Called on mount and whenever the list swaps; the host resets its scroll. */
+  onListChange: () => void;
 }) {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+
+  // Drilling into or out of a subcategory swaps the whole list, so start at the
+  // top. Runs on mount too, which covers a new uuid (Inner is keyed on it).
+  const { onListChange } = props;
+  useEffect(() => {
+    onListChange();
+  }, [onListChange, selectedCategory]);
 
   const selectedCategoryData = selectedCategory
     ? categories.find((c: Category) => c.id === selectedCategory)
@@ -68,24 +111,7 @@ export function Inner(props: {
 
   return (
     <>
-      <div className="mt-5 flex items-center justify-center gap-3.75 text-3xl">
-        {selectedCategoryData ? (
-          <>
-            <button
-              className="inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border-2 border-line-strong bg-surface-raised px-3.5 py-1.5 align-middle text-ink active:bg-menu"
-              onClick={back}
-            >
-              <span aria-hidden="true">&#8592;</span> Categories
-            </button>
-            <span className="align-middle opacity-60" aria-hidden="true">
-              &gt;
-            </span>
-            <span className="align-middle">{selectedCategoryData.name}</span>
-          </>
-        ) : (
-          <span className="align-middle">Categories</span>
-        )}
-      </div>
+      <CategoriesHeader groupName={selectedCategoryData?.name} onBack={back} />
       <ul className="pl-0">
         {sortedCategories.map((category) => (
           <CategoryButton
@@ -94,7 +120,6 @@ export function Inner(props: {
             name={category.name}
             icon={category.icon}
             onSelect={() => select(category.id)}
-            small={props.smallCategories}
           />
         ))}
       </ul>
@@ -108,15 +133,16 @@ export default function ScanScreenCategories(props: {
   onSelectCategory: (uuid: string, categoryId: string) => void;
   screenPosition: ScreenPosition;
   uuid: string | null;
-  smallCategories?: boolean;
 }) {
+  const { ref: scrollRef, reset: onListChange } =
+    useResetScroll<HTMLDivElement>(props.uuid);
   return (
-    <div {...scanViewProps(props.screenPosition)}>
+    <div ref={scrollRef} {...scanViewProps(props.screenPosition)}>
       <Inner
+        onListChange={onListChange}
         onSelectCategory={props.onSelectCategory}
         key={props.uuid}
         uuid={props.uuid}
-        smallCategories={props.smallCategories}
       />
     </div>
   );

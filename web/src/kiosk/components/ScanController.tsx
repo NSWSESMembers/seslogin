@@ -38,6 +38,10 @@ import {
 } from "../../lib/relayErrors";
 import { useSuspendScanFocus } from "../lib/scanFocusLeases";
 import { useLivePeriods } from "./useLivePeriods";
+import {
+  interfaceModeFromConfig,
+  resolveInterfaceMode,
+} from "../lib/interfaceMode";
 
 const PURGE_EXPIRED_TRANSACTIONS_INTERVAL_MS = 1_000;
 const SCAN_TRANSACTION_LOG_LEASE_ID = "scan:transaction-log";
@@ -49,10 +53,16 @@ export default function ScanController(props: {
 }) {
   const session = useKioskSession();
   const { applyOwnResult } = useLivePeriods();
-  const smallCategories = !!session?.config?.smallCategories;
   const guestsEnabled = !!session?.config?.guests;
   const quickPickCategories = !!session?.config?.quickPickCategories;
-  const numberPad = !!session?.config?.numberPad;
+  const interfaceMode = interfaceModeFromConfig(session?.config?.interfaceMode);
+  // Resolved once per config change rather than every render: the device
+  // doesn't change under a running kiosk, and an auto guess that flipped
+  // mid-entry would swap the input's behaviour under the member's finger.
+  const touchInput = useMemo(
+    () => resolveInterfaceMode(interfaceMode) === "touch",
+    [interfaceMode],
+  );
   const signedInStatus = !!session?.config?.signedInStatus;
   const signedInStatusInline = !!session?.config?.signedInStatusInline;
   // A button that opens the very list already sitting on screen would be
@@ -531,7 +541,7 @@ export default function ScanController(props: {
         }}
         guestsEnabled={guestsEnabled}
         onOpenGuestDialog={() => setGuestDialogOpen(true)}
-        numberPadEnabled={numberPad}
+        touchInput={touchInput}
         statusEnabled={signedInStatusButton}
         onOpenStatusDialog={openStatusDialog}
         signedInInline={signedInStatusInline}
@@ -548,13 +558,11 @@ export default function ScanController(props: {
         onSkip={onSkipQuickPick}
         uuid={needsQuickPick ? transactionUuid : null}
         suggestions={quickPickSuggestions}
-        smallCategories={smallCategories}
       />
       <ScanScreenCategories
         screenPosition={categoriesPos}
         onSelectCategory={onSelectCategory}
         uuid={transactionUuid}
-        smallCategories={smallCategories}
       />
       <ScanScreenAdjust
         screenPosition={adjustPos}

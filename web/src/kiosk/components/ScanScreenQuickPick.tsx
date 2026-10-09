@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import type { QuickPickSuggestions } from "../ScanState";
 import { findLeafCategory } from "../../lib/categories";
+import { useResetScroll } from "../useResetScroll";
 import { scanViewProps, type ScreenPosition } from "../../styles";
 import { Button } from "../../components/ui/Button";
 import { CategoryIcon } from "../../components/CategoryIcon";
@@ -13,37 +14,29 @@ type QuickPickItem = {
   peopleNames?: string[];
 };
 
-function QuickPickButton(props: {
-  item: QuickPickItem;
-  small?: boolean;
-  onSelect: () => void;
-}) {
-  const { item, small, onSelect } = props;
+// Sized from the same per-kiosk `--cat-scale` as the category buttons (see
+// categoryScale.ts and ScanScreenCategories).
+function QuickPickButton(props: { item: QuickPickItem; onSelect: () => void }) {
+  const { item, onSelect } = props;
 
   return (
     <li className="flex list-none">
       <button
         onClick={onSelect}
-        className={
-          small
-            ? "m-2 box-content flex min-h-21 w-28.75 cursor-pointer flex-col content-start rounded-lg border-2 border-line-strong bg-surface-raised p-1.75 text-sm wrap-break-word text-ink active:bg-menu"
-            : "m-2 box-content flex min-h-28.75 w-37.5 cursor-pointer flex-col content-start rounded-lg border-2 border-line-strong bg-surface-raised p-2.5 text-lg wrap-break-word text-ink active:bg-menu"
-        }
+        className="m-[calc(8px*var(--cat-scale,1))] box-content flex min-h-[calc(115px*var(--cat-scale,1))] w-[calc(150px*var(--cat-scale,1))] cursor-pointer flex-col content-start items-stretch rounded-lg border-2 border-line-strong bg-surface-raised p-[calc(10px*var(--cat-scale,1))] text-[calc(18px*var(--cat-scale,1))] leading-[calc(28px*var(--cat-scale,1))] wrap-break-word text-ink active:bg-menu"
       >
         <CategoryIcon
           icon={item.icon}
-          className={`mx-auto block ${small ? "max-h-12 max-w-12" : ""}`}
+          className="mx-auto block size-[calc(70px*var(--cat-scale,1))]"
         />
-        <span className={`opacity-60 ${small ? "text-xs" : "text-sm"}`}>
+        <span className="text-[calc(14px*var(--cat-scale,1))] leading-[calc(20px*var(--cat-scale,1))] opacity-60">
           {item.groupName}
         </span>
-        <span
-          className={`line-clamp-2 font-semibold ${small ? "min-h-10" : "min-h-14"}`}
-        >
+        <span className="line-clamp-2 min-h-[calc(56px*var(--cat-scale,1))] font-semibold">
           {item.name}
         </span>
         {item.peopleNames && item.peopleNames.length > 0 && (
-          <span className="mt-auto text-sm opacity-60">
+          <span className="mt-auto text-[calc(14px*var(--cat-scale,1))] leading-[calc(20px*var(--cat-scale,1))] opacity-60">
             {item.peopleNames.join(", ")}
           </span>
         )}
@@ -56,7 +49,6 @@ function QuickPickSection(props: {
   title: string;
   description: string;
   items: QuickPickItem[];
-  small?: boolean;
   onSelect: (categoryId: string) => void;
 }) {
   if (props.items.length === 0) {
@@ -76,7 +68,6 @@ function QuickPickSection(props: {
           <QuickPickButton
             key={item.categoryId}
             item={item}
-            small={props.small}
             onSelect={() => props.onSelect(item.categoryId)}
           />
         ))}
@@ -108,7 +99,6 @@ function toItems(entries: QuickPickSuggestions["location"]): QuickPickItem[] {
 
 function Inner(props: {
   suggestions: QuickPickSuggestions;
-  smallCategories?: boolean;
   onSelectCategory: (categoryId: string) => void;
   onSkip: () => void;
 }) {
@@ -141,14 +131,12 @@ function Inner(props: {
         title="This location"
         description="Popular here recently"
         items={locationItems}
-        small={props.smallCategories}
         onSelect={props.onSelectCategory}
       />
       <QuickPickSection
         title="You"
         description="Your recent picks"
         items={personItems}
-        small={props.smallCategories}
         onSelect={props.onSelectCategory}
       />
       <div className="mt-8 pb-2 text-center">
@@ -175,17 +163,17 @@ export default function ScanScreenQuickPick(props: {
   uuid: string | null;
   /** Comes back with the sign-out itself; null if the server had none to give. */
   suggestions: QuickPickSuggestions | null;
-  smallCategories?: boolean;
 }) {
   const { uuid, suggestions, onSelectCategory } = props;
 
+  const { ref: scrollRef } = useResetScroll<HTMLDivElement>(uuid);
+
   return (
-    <div {...scanViewProps(props.screenPosition)}>
+    <div ref={scrollRef} {...scanViewProps(props.screenPosition)}>
       {uuid && suggestions && (
         <Inner
           key={uuid}
           suggestions={suggestions}
-          smallCategories={props.smallCategories}
           onSelectCategory={(categoryId) => onSelectCategory(uuid, categoryId)}
           onSkip={props.onSkip}
         />

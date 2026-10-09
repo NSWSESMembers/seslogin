@@ -215,7 +215,10 @@ export default function ScanScreenMain(props: {
   onFocusInputReady?: (focusInput: () => void) => void;
   guestsEnabled?: boolean;
   onOpenGuestDialog?: () => void;
-  numberPadEnabled?: boolean;
+  /** The kiosk is driven by touch (the session's resolved interface mode):
+   * offer the on-screen number pad, open it from a tap on the member ID input,
+   * and keep the system keyboard from coming up for that input. */
+  touchInput?: boolean;
   statusEnabled?: boolean;
   onOpenStatusDialog?: () => void;
   signedInInline?: boolean;
@@ -228,7 +231,7 @@ export default function ScanScreenMain(props: {
     validateMemberId,
     guestsEnabled,
     onOpenGuestDialog,
-    numberPadEnabled,
+    touchInput,
     statusEnabled,
     onOpenStatusDialog,
     signedInInline,
@@ -283,7 +286,7 @@ export default function ScanScreenMain(props: {
   // Take focus back after SCAN_INPUT_REFOCUS_TIMEOUT_MS rather than now. Also
   // used when the pad closes: iOS shows its keyboard for a focus() made while
   // handling a tap (and WebKit carries that tap through timers shorter than a
-  // second), so refocusing straight from the pad's Close or Enter key would
+  // second), so refocusing straight from the pad's Close or Confirm key would
   // swap the pad for the system keyboard.
   const scheduleRefocus = useCallback(() => {
     clearRefocusTimeout();
@@ -421,7 +424,7 @@ export default function ScanScreenMain(props: {
     submitMemberId(inputRef.current?.value ?? "");
   }
 
-  const showPadButton = !!numberPadEnabled && memberIdText === "";
+  const showPadButton = !!touchInput && memberIdText === "";
 
   const mainColumn = (
     <>
@@ -444,17 +447,29 @@ export default function ScanScreenMain(props: {
           name="id"
           maxLength={MEMBER_ID_LENGTH}
           className={`${inputBase} mr-3.75 w-80 py-3 text-center align-middle font-mono text-5xl/snug transition-colors duration-500`}
-          // Member IDs are all digits: ask a touch screen for its number
-          // keyboard rather than the full one. `pattern` is what makes iOS
-          // Safari pick the numeric layout; `type="number"` is avoided because
-          // it would drop leading zeros and add spinner arrows.
-          inputMode="numeric"
+          // On a touch kiosk the number pad replaces the system keyboard, so ask
+          // for none: the input still takes focus, so a barcode scanner or a
+          // physical keyboard types into it as usual. Otherwise member IDs are
+          // all digits, so ask for the number keyboard should one ever appear.
+          // `pattern` is what makes iOS Safari pick the numeric layout;
+          // `type="number"` is avoided because it would drop leading zeros and
+          // add spinner arrows.
+          inputMode={touchInput ? "none" : "numeric"}
           pattern="[0-9]*"
           enterKeyHint="go"
           autoCapitalize="off"
           autoCorrect="off"
           spellCheck={false}
           onBlur={scheduleRefocus}
+          // A tap on the field is the obvious way in on a touch kiosk, so it
+          // opens the pad just as the button beside it does.
+          onClick={
+            touchInput
+              ? () => {
+                  setPadOpen(true);
+                }
+              : undefined
+          }
           onFocus={() => {
             clearRefocusTimeout();
           }}

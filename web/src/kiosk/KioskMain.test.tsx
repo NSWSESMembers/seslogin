@@ -401,9 +401,22 @@ describe("KioskMain quick pick categories", () => {
 
 describe("KioskMain number pad", () => {
   async function setupNumberPadTest() {
-    server.use(sessionConfigHandler({ numberPad: true }));
+    server.use(sessionConfigHandler({ interfaceMode: "touch" }));
     return await setupTest();
   }
+
+  // Not vi.restoreAllMocks(): that would also undo this file's module-level
+  // spies, which the rest of the file still asserts against.
+  let userAgentSpy: { mockRestore: () => void } | null = null;
+  function setUserAgent(ua: string) {
+    userAgentSpy = vi.spyOn(navigator, "userAgent", "get").mockReturnValue(ua);
+  }
+
+  afterEach(() => {
+    userAgentSpy?.mockRestore();
+    userAgentSpy = null;
+    Reflect.deleteProperty(navigator, "maxTouchPoints");
+  });
 
   function tap(user: UserEventInstance, label: string) {
     return user.click(screen.getByRole("button", { name: label }));
@@ -416,12 +429,50 @@ describe("KioskMain number pad", () => {
     );
   }
 
-  it("offers no number pad unless the session config enables it", async () => {
+  it("offers no number pad when auto detection finds a mouse and keyboard", async () => {
     await setupTest();
     expect(
       screen.queryByRole("button", { name: "Number pad" }),
     ).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Submit" })).toBeInTheDocument();
+  });
+
+  it("offers no number pad in mouse and keyboard mode, even on an iPad", async () => {
+    setUserAgent(
+      "Mozilla/5.0 (iPad; CPU OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1",
+    );
+    server.use(sessionConfigHandler({ interfaceMode: "mouseKeyboard" }));
+    const user = await setupTest();
+    expect(
+      screen.queryByRole("button", { name: "Number pad" }),
+    ).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("textbox"));
+    expect(screen.queryByText("Enter your SES ID")).not.toBeInTheDocument();
+  });
+
+  it("detects an iPad as a touch kiosk in auto mode", async () => {
+    // iPadOS asks for desktop sites by default, so its user agent claims to be
+    // a Mac; only the touch points give it away.
+    setUserAgent(
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15",
+    );
+    Object.defineProperty(navigator, "maxTouchPoints", {
+      configurable: true,
+      get: () => 5,
+    });
+    await setupTest();
+    expect(
+      screen.getByRole("button", { name: "Number pad" }),
+    ).toBeInTheDocument();
+  });
+
+  it("opens the pad dialog from a tap on the member ID input", async () => {
+    const user = await setupNumberPadTest();
+    await user.click(screen.getByRole("textbox"));
+    await waitFor(() =>
+      expect(screen.getByText("Enter your SES ID")).toBeInTheDocument(),
+    );
   });
 
   it("opens the pad dialog from the button beside the input", async () => {
@@ -434,7 +485,7 @@ describe("KioskMain number pad", () => {
     expect(screen.getByRole("button", { name: "5" })).toBeInTheDocument();
   });
 
-  it("types into the member ID input, then submits and closes on Enter", async () => {
+  it("types into the member ID input, then submits and closes on Confirm", async () => {
     const user = await setupNumberPadTest();
     await openPad(user);
     const textbox = screen.getByRole("textbox");
@@ -444,7 +495,7 @@ describe("KioskMain number pad", () => {
     }
     expect(textbox).toHaveValue(FOUND_USER);
 
-    await tap(user, "Enter");
+    await tap(user, "Confirm");
     await waitFor(() =>
       expect(screen.queryByText("Enter your SES ID")).not.toBeInTheDocument(),
     );
@@ -559,8 +610,13 @@ describe("KioskMain number pad", () => {
     });
   });
 
-  it("asks a touch screen for its number keyboard", async () => {
+  it("keeps the system keyboard hidden in touch mode", async () => {
     await setupNumberPadTest();
+    expect(screen.getByRole("textbox")).toHaveAttribute("inputmode", "none");
+  });
+
+  it("asks for the number keyboard outside touch mode", async () => {
+    await setupTest();
     const textbox = screen.getByRole("textbox");
     expect(textbox).toHaveAttribute("inputmode", "numeric");
     expect(textbox).toHaveAttribute("pattern", "[0-9]*");
@@ -570,7 +626,7 @@ describe("KioskMain number pad", () => {
     const user = await setupNumberPadTest();
     await openPad(user);
 
-    expect(screen.getByRole("button", { name: "Enter" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Confirm" })).toBeDisabled();
     expect(audioPlaySpy).not.toHaveBeenCalled();
   });
 });

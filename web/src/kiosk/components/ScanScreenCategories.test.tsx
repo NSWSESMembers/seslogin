@@ -20,7 +20,6 @@ describe("ScanScreenCategories", () => {
         uuid={null}
         screenPosition={"center"}
         onSelectCategory={onSelect}
-        smallCategories={false}
       />,
     );
     const categoryElements = screen.getAllByRole("button");
@@ -47,7 +46,6 @@ describe("ScanScreenCategories", () => {
         uuid={null}
         screenPosition={"center"}
         onSelectCategory={onSelect}
-        smallCategories={false}
       />,
     );
     const trainingCategory = screen.getByText("Training");
@@ -84,5 +82,29 @@ describe("ScanScreenCategories", () => {
       "USAR",
       "VR",
     ]);
+  });
+
+  it("scrolls back to the top on drill-down and for a new transaction", async () => {
+    const user = UserEvent.setup();
+    const props = {
+      screenPosition: "center" as const,
+      onSelectCategory: vitest.fn(),
+    };
+    const { container, rerender } = render(
+      <ScanScreenCategories uuid="a" {...props} />,
+    );
+    const screenDiv = container.firstElementChild as HTMLElement;
+
+    screenDiv.scrollTop = 200;
+    await user.click(screen.getByText("Training"));
+    expect(screenDiv.scrollTop).toBe(0);
+
+    screenDiv.scrollTop = 200;
+    await user.click(screen.getAllByRole("button")[0]);
+    expect(screenDiv.scrollTop).toBe(0);
+
+    screenDiv.scrollTop = 200;
+    rerender(<ScanScreenCategories uuid="b" {...props} />);
+    expect(screenDiv.scrollTop).toBe(0);
   });
 });
