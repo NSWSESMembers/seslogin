@@ -139,7 +139,7 @@ resource "aws_route53_record" "dmarc" {
   name    = "_dmarc.seslogin.com"
   type    = "TXT"
   ttl     = 300
-  records = ["v=DMARC1; p=none; rua=mailto:dmarc@seslogin.com;"]
+  records = ["v=DMARC1; p=none; rua=mailto:dmarc@sdunster.com;"]
 }
 
 # ── SES custom MAIL FROM (mail.seslogin.com) ──────────────────────────────────
