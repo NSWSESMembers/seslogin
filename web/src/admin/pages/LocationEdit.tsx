@@ -7,6 +7,7 @@ import { useNotify } from "../components/useNotify";
 import { FieldList, FormField } from "../../components/ui/FormField";
 import TextInput from "../../components/ui/TextInput";
 import { Button } from "../../components/ui/Button";
+import { Muted } from "../../components/ui/Muted";
 
 export default function EditLocation() {
   const params = useParams();
@@ -23,6 +24,7 @@ export default function EditLocation() {
           enabled
           nitcEnabled
           nitcCompleteOnExport
+          gamificationEnabled
         }
       }
     `,
@@ -37,6 +39,7 @@ export default function EditLocation() {
         $enabled: Boolean!
         $nitcEnabled: Int
         $nitcCompleteOnExport: Boolean
+        $gamificationEnabled: Boolean
       ) {
         updateLocation(
           id: $id
@@ -44,12 +47,14 @@ export default function EditLocation() {
           enabled: $enabled
           nitcEnabled: $nitcEnabled
           nitcCompleteOnExport: $nitcCompleteOnExport
+          gamificationEnabled: $gamificationEnabled
         ) {
           id
           name
           enabled
           nitcEnabled
           nitcCompleteOnExport
+          gamificationEnabled
         }
       }
     `);
@@ -64,6 +69,7 @@ export default function EditLocation() {
       ? Math.floor(new Date(nitcEnabledDate + "T00:00:00Z").getTime() / 1000)
       : null;
     const nitcCompleteOnExport = formData.get("nitcCompleteOnExport") === "on";
+    const gamificationEnabled = formData.get("gamificationEnabled") === "on";
 
     try {
       await new Promise((resolve, reject) => {
@@ -74,6 +80,7 @@ export default function EditLocation() {
             enabled,
             nitcEnabled,
             nitcCompleteOnExport,
+            gamificationEnabled,
           },
           onCompleted: resolve,
           onError: reject,
@@ -148,6 +155,20 @@ export default function EditLocation() {
               Untick to leave exported NITCs incomplete in SES so they can be
               reviewed and finalised there.
             </div>
+          </FormField>
+          <FormField
+            label={<label htmlFor="gamificationEnabled">Gamification</label>}
+          >
+            <input
+              type="checkbox"
+              name="gamificationEnabled"
+              id="gamificationEnabled"
+              defaultChecked={location.gamificationEnabled}
+            />
+            <Muted className="mt-1.5 text-xs">
+              Tick to let this location's members earn badges for their
+              attendance.
+            </Muted>
           </FormField>
           <FormField>
             <Button type="submit" disabled={isMutationInFlight}>
