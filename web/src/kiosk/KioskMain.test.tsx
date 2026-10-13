@@ -287,6 +287,15 @@ describe("KioskMain", () => {
 });
 
 describe("KioskMain theme", () => {
+  // `data-theme` is stamped from a passive effect, which React may run on a
+  // later task than the commit that renders the scan screen. `setupTest` only
+  // waits for that text, so a pinned theme has to be waited for in turn.
+  async function expectTheme(theme: string) {
+    await waitFor(() =>
+      expect(document.documentElement).toHaveAttribute("data-theme", theme),
+    );
+  }
+
   afterEach(() => {
     document.documentElement.removeAttribute("data-theme");
   });
@@ -299,13 +308,13 @@ describe("KioskMain theme", () => {
   it("pins light when the theme is 'light'", async () => {
     server.use(sessionConfigHandler({ theme: "light" }));
     await setupTest();
-    expect(document.documentElement).toHaveAttribute("data-theme", "light");
+    await expectTheme("light");
   });
 
   it("pins dark when the theme is 'dark'", async () => {
     server.use(sessionConfigHandler({ theme: "dark" }));
     await setupTest();
-    expect(document.documentElement).toHaveAttribute("data-theme", "dark");
+    await expectTheme("dark");
   });
 
   it("leaves the theme unpinned when the theme is 'auto'", async () => {
@@ -317,7 +326,7 @@ describe("KioskMain theme", () => {
   it("pins light for an unrecognised theme value", async () => {
     server.use(sessionConfigHandler({ theme: "solarized" }));
     await setupTest();
-    expect(document.documentElement).toHaveAttribute("data-theme", "light");
+    await expectTheme("light");
   });
 });
 
@@ -574,7 +583,9 @@ describe("KioskMain number pad", () => {
   it("keeps focus out of the member ID input so a touch keyboard stays hidden", async () => {
     const user = await setupNumberPadTest();
     const textbox = screen.getByRole("textbox");
-    expect(document.activeElement).toBe(textbox);
+    // The input takes focus from an effect, which can land a task after the
+    // scan screen first renders.
+    await waitFor(() => expect(document.activeElement).toBe(textbox));
 
     await openPad(user);
     expect(document.activeElement).not.toBe(textbox);
