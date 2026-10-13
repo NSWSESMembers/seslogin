@@ -833,6 +833,7 @@ async fn show_sessions(db: &impl Handler, sessions: &[Session]) {
             key_fingerprint,
             key_expires_at,
             key_released_at,
+            version,
             created_at,
             updated_at,
         } = s;
@@ -868,6 +869,7 @@ async fn show_sessions(db: &impl Handler, sessions: &[Session]) {
             ("key_expires_at", opt_ts(*key_expires_at)),
             ("key_released_at", opt_ts(*key_released_at)),
             ("config", serde_json::to_string(config).unwrap_or_default()),
+            ("version", version.to_string()),
             ("created_at", opt_ts(*created_at)),
             ("updated_at", opt_ts(*updated_at)),
         ]);

@@ -823,6 +823,12 @@ type SesNonIncidentTag {
 type Session {
 	id: ID!
 	lastContact: Int
+	"""
+	Increases whenever an admin changes this session or its key is released or it
+	is deleted — not on heartbeats. Lets a kiosk tell a stale realtime message or
+	refetch from a fresh one.
+	"""
+	version: Int!
 	clientVersion: String
 	"""
 	What this kiosk last reported about itself. Null for one that has never reported —

@@ -357,7 +357,7 @@ impl db::Handler for FakeDb {
         &self,
         _id: &str,
         _change: db::SessionUpdateShape<'_>,
-    ) -> db::Result<()> {
+    ) -> db::Result<Option<u64>> {
         unsupported()
     }
     async fn get_api_token(&self, _id: &str) -> db::Result<Option<db::ApiToken>> {
