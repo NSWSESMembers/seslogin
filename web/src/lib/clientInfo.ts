@@ -76,7 +76,7 @@ function getDisplayMode(): string | undefined {
   return mode ?? "browser";
 }
 
-function getScreen(): string | undefined {
+export function getScreen(): string | undefined {
   if (typeof window === "undefined") {
     return undefined;
   }
@@ -90,11 +90,11 @@ function getScreen(): string | undefined {
   return `${innerWidth}x${innerHeight}@${ratio}`;
 }
 
-function getTimezone(): string | undefined {
+export function getTimezone(): string | undefined {
   return Intl.DateTimeFormat().resolvedOptions().timeZone || undefined;
 }
 
-function getUptimeSecs(): number | undefined {
+export function getUptimeSecs(): number | undefined {
   if (
     typeof performance === "undefined" ||
     typeof performance.now !== "function"
