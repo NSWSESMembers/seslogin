@@ -148,10 +148,11 @@ afterEach(() => {
 });
 afterAll(() => server.close());
 
-const session = {
+const session: KioskSession = {
   id: "sess1",
   name: "Test Kiosk",
   config: { signedInStatus: true },
+  version: 1,
   location: { id: "loc1", name: "Test Location" },
 };
 
@@ -413,22 +414,19 @@ describe("LivePeriodsProvider", () => {
     );
   });
 
-  it("opens no connection on a kiosk with no live view", async () => {
-    let tokenRequests = 0;
-    server.use(
-      relayEndpoint.query("KioskRealtimeTokenQuery", () => {
-        tokenRequests += 1;
-        return HttpResponse.json(TOKEN_RESPONSE);
-      }),
-    );
+  it("leaves the location channel alone on a kiosk with no live view", async () => {
+    const fake = makeFakeRealtimeClient();
+    vi.mocked(createRealtimeConnection).mockResolvedValue(fake.client);
 
     renderProvider({ ...session, config: {} });
 
+    // Every kiosk holds the shared connection (for its session channel), but
+    // nothing here needs the period events on the location channel.
     await waitFor(() =>
-      expect(screen.getByTestId("loading")).toHaveTextContent("false"),
+      expect(createRealtimeConnection).toHaveBeenCalledOnce(),
     );
-    expect(tokenRequests).toBe(0);
-    expect(createRealtimeConnection).not.toHaveBeenCalled();
+    expect(screen.getByTestId("loading")).toHaveTextContent("false");
+    expect(fake.channelNames).toEqual([]);
   });
 
   it("subscribes to the location channel on the shared connection, and only releases it on unmount", async () => {

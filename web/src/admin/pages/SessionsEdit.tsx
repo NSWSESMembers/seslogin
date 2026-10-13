@@ -102,9 +102,9 @@ function SessionsEditForm() {
   return (
     <>
       <p className="my-4">
-        Edit this kiosk's configuration, then click Save. The configuration
-        update will be automatically applied within 5 minutes. Refresh the
-        kiosk's webpage to reload the configuration immediately.
+        Edit this kiosk's configuration, then click Save. A kiosk that's online
+        picks up the change straight away; one that isn't gets it when it next
+        checks in.
       </p>
 
       <SessionForm

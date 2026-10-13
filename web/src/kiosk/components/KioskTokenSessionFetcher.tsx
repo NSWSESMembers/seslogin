@@ -25,6 +25,7 @@ const kioskRefreshQuery = graphql`
       id
       name
       config
+      version
       keyExpiresAt
       location {
         id
@@ -39,6 +40,13 @@ const kioskRefreshQuery = graphql`
 `;
 /* eslint-enable relay/unused-fields */
 
+export interface KioskSessionFetcher {
+  /** Refresh now instead of at the next scheduled poll (then carry on as usual).
+   * If a refresh is already in flight, another follows straight after it. */
+  refreshNow: () => void;
+  stop: () => void;
+}
+
 export default function startKioskTokenSessionFetcher({
   environment,
   setToken,
@@ -51,10 +59,14 @@ export default function startKioskTokenSessionFetcher({
   // Key-enrolled kiosks authenticate by signing each request, so the JWT that
   // `refreshToken` still returns must not be persisted or used. Set false for them.
   persistRefreshedToken?: boolean;
-}) {
+}): KioskSessionFetcher {
   let timeoutId: number | null = null;
   let isCancelled = false;
   let inFlight = false;
+  // Set when `refreshNow` is asked for while a refresh is already in flight: that
+  // one may have been answered before whatever prompted the ask, so another
+  // follows as soon as it lands.
+  let refreshAgain = false;
 
   const scheduleRefresh = () => {
     if (isCancelled) {
@@ -101,6 +113,7 @@ export default function startKioskTokenSessionFetcher({
               id: response.session.id,
               name: response.session.name,
               config: response.session.config ?? {},
+              version: response.session.version,
               location: {
                 id: response.session.location.id,
                 name: response.session.location.name,
@@ -112,7 +125,7 @@ export default function startKioskTokenSessionFetcher({
         }
         setSession(refreshedSession);
 
-        scheduleRefresh();
+        scheduleNext();
       })
       .catch((error) => {
         console.log("Failed to refresh kiosk session: ", error);
@@ -122,17 +135,42 @@ export default function startKioskTokenSessionFetcher({
           return;
         }
 
-        scheduleRefresh();
+        scheduleNext();
       });
+  };
+
+  const scheduleNext = () => {
+    if (refreshAgain) {
+      refreshAgain = false;
+      refresh();
+    } else {
+      scheduleRefresh();
+    }
   };
 
   refresh();
 
-  return () => {
-    console.log("Cancelling kiosk session fetcher");
-    isCancelled = true;
-    if (timeoutId !== null) {
-      window.clearTimeout(timeoutId);
-    }
+  return {
+    refreshNow: () => {
+      if (isCancelled) {
+        return;
+      }
+      if (inFlight) {
+        refreshAgain = true;
+        return;
+      }
+      if (timeoutId !== null) {
+        window.clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+      refresh();
+    },
+    stop: () => {
+      console.log("Cancelling kiosk session fetcher");
+      isCancelled = true;
+      if (timeoutId !== null) {
+        window.clearTimeout(timeoutId);
+      }
+    },
   };
 }
