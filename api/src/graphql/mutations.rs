@@ -435,6 +435,53 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         }
     }
 
+    /// Tell a session's kiosk about an admin edit (`session.updated` on its session
+    /// channel), with the name and config it now has. Best effort, like
+    /// `publish_period_opened`: the kiosk's own poll still catches up.
+    async fn publish_session_updated(
+        &self,
+        session_id: &str,
+        version: u64,
+        name: &str,
+        config: &serde_json::Map<String, serde_json::Value>,
+    ) {
+        let event = realtime::SessionUpdated {
+            session_id: session_id.to_string(),
+            version,
+            name: name.to_string(),
+            config: config.clone(),
+        };
+        // A config too big for one Ably message goes as a bare "refetch" instead.
+        let fits = serde_json::to_string(&event)
+            .is_ok_and(|data| data.len() <= realtime::MAX_SESSION_UPDATED_BYTES);
+        if !fits {
+            self.publish_session_changed(session_id, version).await;
+            return;
+        }
+        if let Err(e) = self.app.realtime().publish_session_updated(&event).await {
+            warn!(
+                "Failed to publish realtime session.updated for session {}: {:#}",
+                session_id, e
+            );
+        }
+    }
+
+    /// Tell a session's kiosk to refetch its session (`session.changed`): its key was
+    /// released to a newly enrolled session, or it was deleted. Best effort, like
+    /// `publish_period_opened`.
+    async fn publish_session_changed(&self, session_id: &str, version: u64) {
+        let event = realtime::SessionChanged {
+            session_id: session_id.to_string(),
+            version,
+        };
+        if let Err(e) = self.app.realtime().publish_session_changed(&event).await {
+            warn!(
+                "Failed to publish realtime session.changed for session {}: {:#}",
+                session_id, e
+            );
+        }
+    }
+
     /// Reject the mutation if any non-deleted person already holds `registration_number`.
     ///
     /// Registration numbers (member numbers) are intended to be globally unique. DynamoDB cannot
@@ -1554,6 +1601,9 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
             .db()
             .get_session_id_by_key_fingerprint(&key_fingerprint)
             .await?;
+        // (session id, its version after the release) for each holder released below,
+        // told to refetch once the new session exists.
+        let mut released = Vec::new();
         for existing in self
             .app
             .db()
@@ -1581,20 +1631,25 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
                 )
                 .await
             {
-                Ok(_) => info!(
-                    "Released {} key {} from kiosk session {} ({:?}) at location {} so its device \
-                     could enroll as {:?} at location {}",
-                    match holder {
-                        crate::session_key::FingerprintHolder::ReleaseLive => "live",
-                        _ => "expired",
-                    },
-                    key_fingerprint,
-                    existing.id,
-                    existing.name,
-                    existing.location_id,
-                    name,
-                    *location_id
-                ),
+                Ok(version) => {
+                    info!(
+                        "Released {} key {} from kiosk session {} ({:?}) at location {} so its device \
+                         could enroll as {:?} at location {}",
+                        match holder {
+                            crate::session_key::FingerprintHolder::ReleaseLive => "live",
+                            _ => "expired",
+                        },
+                        key_fingerprint,
+                        existing.id,
+                        existing.name,
+                        existing.location_id,
+                        name,
+                        *location_id
+                    );
+                    if let Some(version) = version {
+                        released.push((existing.id, version));
+                    }
+                }
                 // The conditional write failed: the row stopped holding this fingerprint
                 // between our read and our write, so another enrollment of the same device
                 // got there first. Nothing sensible to take over any more.
@@ -1635,6 +1690,12 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
 
         self.publish_enrollment_completed(&key_fingerprint, &format!("enrolled:{}", item.id))
             .await;
+        // A kiosk re-enrolled from its status dialog is still running as the session it
+        // was released from, and listening on that session's channel. Only now, with
+        // the new session written, does its refetch resolve the key to it.
+        for (session_id, version) in released {
+            self.publish_session_changed(&session_id, version).await;
+        }
 
         Ok(Session::new(item))
     }
@@ -1779,7 +1840,8 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
 
         let config = parse_session_config_json(config.as_deref())?;
         let healthcheck_url = normalize_healthcheck_url(healthcheck_url.as_deref())?;
-        self.app
+        let version = self
+            .app
             .db()
             .update_session(
                 &id,
@@ -1790,6 +1852,10 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
                 },
             )
             .await?;
+        if let Some(version) = version {
+            self.publish_session_updated(&id, version, &name, &config)
+                .await;
+        }
 
         let rec = self.app.db().get_sessions(&[&id]).await?;
         Ok(Session::new(rec.into_iter().next().flatten().ok_or_else(
@@ -1811,10 +1877,15 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
             .ok_or_else(|| anyhow!("Session with ID {:?} missing", id))?;
         require_location_write_access(ctx, &existing.location_id)?;
 
-        self.app
+        let version = self
+            .app
             .db()
             .update_session(&id, db::SessionUpdateShape::Delete)
             .await?;
+        // Its kiosk's refetch now 401s, which takes it to the enrollment screen.
+        if let Some(version) = version {
+            self.publish_session_changed(&id, version).await;
+        }
         Ok(true)
     }
 

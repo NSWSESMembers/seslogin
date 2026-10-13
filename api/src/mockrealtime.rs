@@ -13,7 +13,9 @@ use std::sync::Mutex;
 
 use anyhow::Result;
 
-use crate::realtime::{self, KioskToken, PeriodClosed, PeriodOpened};
+use crate::realtime::{
+    self, KioskToken, PeriodClosed, PeriodOpened, SessionChanged, SessionUpdated,
+};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Event {
@@ -28,6 +30,14 @@ pub enum Event {
     EnrollmentCompleted {
         channel: String,
         message_id: String,
+    },
+    SessionUpdated {
+        channel: String,
+        event: SessionUpdated,
+    },
+    SessionChanged {
+        channel: String,
+        event: SessionChanged,
     },
 }
 
@@ -98,6 +108,32 @@ impl realtime::Handler for Handler {
         Ok(())
     }
 
+    async fn publish_session_updated(&self, event: &SessionUpdated) -> Result<()> {
+        let channel = realtime::session_channel(&self.db_prefix, &event.session_id);
+        tracing::info!("mock realtime publish to {channel}: {event:?}");
+        self.published
+            .lock()
+            .expect("mockrealtime lock")
+            .push(Event::SessionUpdated {
+                channel,
+                event: event.clone(),
+            });
+        Ok(())
+    }
+
+    async fn publish_session_changed(&self, event: &SessionChanged) -> Result<()> {
+        let channel = realtime::session_channel(&self.db_prefix, &event.session_id);
+        tracing::info!("mock realtime publish to {channel}: {event:?}");
+        self.published
+            .lock()
+            .expect("mockrealtime lock")
+            .push(Event::SessionChanged {
+                channel,
+                event: event.clone(),
+            });
+        Ok(())
+    }
+
     async fn enrollment_token_request(&self, _fingerprint: &str) -> Result<Option<KioskToken>> {
         Ok(None)
     }
@@ -162,6 +198,23 @@ mod tests {
             }]
         );
         assert!(h.enrollment_token_request("fp1").await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn records_session_events_on_the_session_channel() {
+        let h = Handler::new("seslogin_local");
+        let changed = SessionChanged {
+            session_id: "s1".to_string(),
+            version: 2,
+        };
+        h.publish_session_changed(&changed).await.unwrap();
+        assert_eq!(
+            h.published(),
+            vec![Event::SessionChanged {
+                channel: "kiosk:seslogin_local:session:s1".to_string(),
+                event: changed,
+            }]
+        );
     }
 
     #[tokio::test]

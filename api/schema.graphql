@@ -297,6 +297,12 @@ type KioskRealtimeToken {
 	`channels.get(channel)`.
 	"""
 	channel: String!
+	"""
+	The kiosk's own session channel, which the token also covers: it carries
+	`session.updated` (an admin edit, with the new name and config) and
+	`session.changed` (refetch the session). Null for `enrollmentRealtimeToken`.
+	"""
+	sessionChannel: String
 	tokenRequest: AblyTokenRequest!
 }
 

@@ -21,8 +21,9 @@ use reqwest::Client;
 use sha2::Sha256;
 
 use crate::realtime::{
-    self, EVENT_ENROLLMENT_COMPLETED, EVENT_PERIOD_CLOSED, EVENT_PERIOD_OPENED, KioskToken,
-    PeriodClosed, PeriodOpened, TokenRequest,
+    self, EVENT_ENROLLMENT_COMPLETED, EVENT_PERIOD_CLOSED, EVENT_PERIOD_OPENED,
+    EVENT_SESSION_CHANGED, EVENT_SESSION_UPDATED, KioskToken, PeriodClosed, PeriodOpened,
+    SessionChanged, SessionUpdated, TokenRequest,
 };
 
 type HmacSha256 = Hmac<Sha256>;
@@ -164,13 +165,37 @@ impl realtime::Handler for Publisher {
         .await
     }
 
+    async fn publish_session_updated(&self, event: &SessionUpdated) -> Result<()> {
+        let data = serde_json::to_string(event)?;
+        let channel = realtime::session_channel(&self.db_prefix, &event.session_id);
+        self.publish(
+            &channel,
+            session_message_id(&event.session_id, event.version),
+            EVENT_SESSION_UPDATED,
+            &data,
+        )
+        .await
+    }
+
+    async fn publish_session_changed(&self, event: &SessionChanged) -> Result<()> {
+        let data = serde_json::to_string(event)?;
+        let channel = realtime::session_channel(&self.db_prefix, &event.session_id);
+        self.publish(
+            &channel,
+            session_message_id(&event.session_id, event.version),
+            EVENT_SESSION_CHANGED,
+            &data,
+        )
+        .await
+    }
+
     async fn enrollment_token_request(&self, fingerprint: &str) -> Result<Option<KioskToken>> {
         let Some(key) = &self.key else {
             return Ok(None);
         };
         let channel = realtime::enrollment_channel(&self.db_prefix, fingerprint);
         let client_id = format!("enroll:{fingerprint}");
-        Ok(Some(self.signed_token(key, channel, client_id)))
+        Ok(Some(self.signed_token(key, channel, None, client_id)))
     }
 
     async fn kiosk_token_request(
@@ -182,17 +207,37 @@ impl realtime::Handler for Publisher {
             return Ok(None);
         };
         let channel = realtime::kiosk_channel(&self.db_prefix, location_id);
+        let session_channel = realtime::session_channel(&self.db_prefix, session_id);
         let client_id = format!("session:{session_id}");
-        Ok(Some(self.signed_token(key, channel, client_id)))
+        Ok(Some(self.signed_token(
+            key,
+            channel,
+            Some(session_channel),
+            client_id,
+        )))
     }
 }
 
+/// Ably's idempotency key for a session event: one message per session version,
+/// so a retried publish of the same write is a no-op rather than a duplicate.
+fn session_message_id(session_id: &str, version: u64) -> String {
+    format!("session:{session_id}:{version}")
+}
+
 impl Publisher {
-    /// Subscribe-only, and scoped to exactly `channel`: the whole authorization
-    /// boundary for a kiosk. The MAC covers the capability, so the kiosk cannot
-    /// widen it without invalidating it.
-    fn signed_token(&self, key: &Key, channel: String, client_id: String) -> KioskToken {
-        let capability = capability_json(&channel);
+    /// Subscribe-only, and scoped to exactly `channel` (plus `session_channel`, when
+    /// given): the whole authorization boundary for a kiosk. The MAC covers the
+    /// capability, so the kiosk cannot widen it without invalidating it.
+    fn signed_token(
+        &self,
+        key: &Key,
+        channel: String,
+        session_channel: Option<String>,
+        client_id: String,
+    ) -> KioskToken {
+        let mut channels = vec![channel.as_str()];
+        channels.extend(session_channel.as_deref());
+        let capability = capability_json(&channels);
         let timestamp = crate::clock::now_ms();
         let nonce = crate::nonce::generate_nonce(16);
         let mac = sign_token_request(
@@ -206,6 +251,7 @@ impl Publisher {
         );
         KioskToken {
             channel,
+            session_channel,
             token_request: TokenRequest {
                 key_name: key.name.clone(),
                 ttl: TOKEN_TTL_MS,
@@ -219,10 +265,15 @@ impl Publisher {
     }
 }
 
-/// `{"<channel>":["subscribe"]}` — the exact capability an Ably token grants.
-fn capability_json(channel: &str) -> String {
-    serde_json::to_string(&serde_json::json!({ channel: ["subscribe"] }))
-        .expect("a single-key JSON object of strings cannot fail to serialize")
+/// `{"<channel>":["subscribe"], ...}` — the exact capability an Ably token grants:
+/// subscribe, and only subscribe, on each named channel.
+fn capability_json(channels: &[&str]) -> String {
+    let capability: serde_json::Map<String, serde_json::Value> = channels
+        .iter()
+        .map(|channel| (channel.to_string(), serde_json::json!(["subscribe"])))
+        .collect();
+    serde_json::to_string(&capability)
+        .expect("a JSON object of string arrays cannot fail to serialize")
 }
 
 /// Ably's `TokenRequest` MAC: `base64(HMAC-SHA256(keySecret, text))`, where
@@ -269,7 +320,7 @@ mod tests {
 
     #[test]
     fn capability_names_exactly_one_channel_subscribe_only() {
-        let json = capability_json("kiosk:seslogin_prod:LOC1");
+        let json = capability_json(&["kiosk:seslogin_prod:LOC1"]);
         let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
         assert_eq!(
             parsed,
@@ -277,13 +328,42 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn kiosk_token_covers_its_location_and_its_own_session_only() {
+        let publisher = Publisher::from_raw_key(Some("appid.keyid:secret"), "seslogin_test");
+        let token = realtime::Handler::kiosk_token_request(&publisher, "LOC1", "S1")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(token.channel, "kiosk:seslogin_test:LOC1");
+        assert_eq!(
+            token.session_channel.as_deref(),
+            Some("kiosk:seslogin_test:session:S1")
+        );
+        let cap: serde_json::Value = serde_json::from_str(&token.token_request.capability).unwrap();
+        assert_eq!(
+            cap,
+            serde_json::json!({
+                "kiosk:seslogin_test:LOC1": ["subscribe"],
+                "kiosk:seslogin_test:session:S1": ["subscribe"],
+            })
+        );
+        assert_eq!(token.token_request.client_id, "session:S1");
+    }
+
+    #[test]
+    fn session_message_id_is_per_session_version() {
+        assert_eq!(session_message_id("S1", 4), "session:S1:4");
+    }
+
     #[test]
     fn enrollment_token_is_scoped_to_the_enrollment_channel() {
         let publisher = Publisher::from_raw_key(Some("appid.keyid:secret"), "seslogin_test");
         let key = publisher.key.as_ref().unwrap();
         let channel = realtime::enrollment_channel("seslogin_test", "fp1");
-        let token = publisher.signed_token(key, channel.clone(), "enroll:fp1".to_string());
+        let token = publisher.signed_token(key, channel.clone(), None, "enroll:fp1".to_string());
         assert_eq!(token.channel, "kiosk-enroll:seslogin_test:fp1");
+        assert_eq!(token.session_channel, None);
         let cap: serde_json::Value = serde_json::from_str(&token.token_request.capability).unwrap();
         assert_eq!(cap, serde_json::json!({ channel: ["subscribe"] }));
         assert_eq!(token.token_request.client_id, "enroll:fp1");
@@ -307,6 +387,15 @@ mod tests {
         realtime::Handler::publish_enrollment_completed(&publisher, "fp1", "enrolled:s1")
             .await
             .unwrap();
+        realtime::Handler::publish_session_changed(
+            &publisher,
+            &realtime::SessionChanged {
+                session_id: "S1".to_string(),
+                version: 2,
+            },
+        )
+        .await
+        .unwrap();
 
         realtime::Handler::publish_period_opened(
             &publisher,
