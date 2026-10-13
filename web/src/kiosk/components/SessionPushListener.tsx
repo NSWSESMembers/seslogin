@@ -32,13 +32,19 @@ import { useKioskSession } from "./useKioskSession";
  * resolves to a different session — the same backoff `useEnrollmentWatch`
  * uses. If it never does (the session was deleted), the refetch goes ahead
  * anyway and its 401 takes the kiosk to enrollment, which is then right.
+ *
+ * It also reports, through `onLiveChange`, whether pushes are flowing right now
+ * (channel attached and connection up), which is what lets the session poll
+ * stretch out.
  */
 export function SessionPushListener({
   onUpdated,
   refreshNow,
+  onLiveChange,
 }: {
   onUpdated: (push: SessionUpdatedPayload) => void;
   refreshNow: () => void;
+  onLiveChange: (live: boolean) => void;
 }) {
   const session = useKioskSession();
   const realtime = useKioskRealtime();
@@ -52,10 +58,17 @@ export function SessionPushListener({
     session,
     onUpdated,
     refreshNow,
+    onLiveChange,
     kioskEnvironment,
   });
   useEffect(() => {
-    latest.current = { session, onUpdated, refreshNow, kioskEnvironment };
+    latest.current = {
+      session,
+      onUpdated,
+      refreshNow,
+      onLiveChange,
+      kioskEnvironment,
+    };
   });
 
   useEffect(() => {
@@ -63,6 +76,13 @@ export function SessionPushListener({
 
     let cancelled = false;
     const channel = connection.channel(channelName);
+    // Pushes are only arriving while both hold. A disconnected connection can
+    // leave the channel reading "attached" for a while before it's suspended,
+    // so the channel's state alone isn't enough.
+    let channelAttached = false;
+    let connected = connection.state === "connected";
+    const reportLive = () =>
+      latest.current.onLiveChange(channelAttached && connected);
 
     async function handleChanged(sessionId: string) {
       const env = latest.current.kioskEnvironment;
@@ -95,6 +115,8 @@ export function SessionPushListener({
 
     channel.onChannelStateChange((change) => {
       if (cancelled) return;
+      channelAttached = change.current === "attached";
+      reportLive();
       // Includes the first attach: a change made between the session's last
       // fetch and this subscription going live would otherwise wait for the
       // next poll.
@@ -103,9 +125,19 @@ export function SessionPushListener({
       }
     });
 
+    const stopConnectionListener = connection.onConnectionStateChange(
+      (change) => {
+        if (cancelled) return;
+        connected = change.current === "connected";
+        reportLive();
+      },
+    );
+
     return () => {
       cancelled = true;
+      stopConnectionListener();
       channel.release();
+      latest.current.onLiveChange(false);
     };
   }, [connection, channelName]);
 

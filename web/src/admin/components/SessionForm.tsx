@@ -508,9 +508,10 @@ function HealthcheckUrlField({
         inputMode="url"
       />
       <Muted className="mt-1.5">
-        Optional. SES Activity can ping this URL approximately every 5 minutes
-        or so while the kiosk using this session remains connected to the
-        system. Perfect for use with something like{" "}
+        Optional. SES Activity can ping this URL approximately every 15 minutes
+        while the kiosk using this session remains connected to the system (set
+        your check's period to 15 minutes, with a grace time of about 10
+        minutes). Perfect for use with something like{" "}
         <a
           href="https://healthchecks.io/"
           target="_blank"

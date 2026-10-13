@@ -39,10 +39,12 @@ import { useLivePeriods } from "./useLivePeriods";
 import type { JsonValue } from "./KioskSessionContext";
 
 const TICK_INTERVAL_MS = 1_000;
-/** Check-ins fresher than this are healthy; the poll runs every 2 minutes. */
-const CHECK_IN_OK_SECS = 5 * 60;
-/** Matches the server's ONLINE_SESSION_SECONDS — past this a kiosk reads as offline. */
-const CHECK_IN_STALE_SECS = 15 * 60;
+/** Check-ins fresher than this are healthy. The session poll runs every 15 min
+ * ±10% while realtime session pushes are live (2 min otherwise), so this
+ * matches the server's ONLINE_SESSION_SECONDS: one poll plus room for splay. */
+const CHECK_IN_OK_SECS = 20 * 60;
+/** Past this — at least one poll missed outright — the check-in reads as stale. */
+const CHECK_IN_STALE_SECS = 35 * 60;
 /** A fallback poll (period sync, every POLL_INTERVAL_MS) fresher than this is
  * healthy; past it, either the poll is failing or the tab is backgrounded. */
 const PERIODS_POLL_OK_SECS = (POLL_INTERVAL_MS / 1000) * 2;

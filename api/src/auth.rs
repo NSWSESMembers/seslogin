@@ -271,7 +271,7 @@ async fn touch_session<A: App + HasDb + HasQueues>(
 ) -> Result<(), AuthError> {
     // Only refresh last_contact if it's older than this window, to reduce DB
     // write load. The admin UI only renders last_contact at minute+ granularity
-    // (the "online" status dot uses a 10-minute green band), so finer precision
+    // (the "online" status dot uses a 20-minute green band), so finer precision
     // here just burns writes (each one also rewrites the ALL-projection GSI and
     // adds PITR churn).
     //
