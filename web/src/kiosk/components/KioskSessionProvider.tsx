@@ -3,6 +3,7 @@ import { useRelayEnvironment } from "react-relay";
 import LoadingIndicator from "../../components/LoadingIndicator";
 import { KioskSessionContext, type KioskSession } from "./KioskSessionContext";
 import startKioskTokenSessionFetcher from "./KioskTokenSessionFetcher";
+import { KioskRealtimeProvider } from "./KioskRealtimeProvider";
 import { LivePeriodsProvider } from "./LivePeriodsProvider";
 
 export {
@@ -74,12 +75,15 @@ export function KioskSessionProvider({
     persistRefreshedToken,
   ]);
 
-  // LivePeriodsProvider needs both the Relay environment (available above, via
-  // KioskRelayEnvironment/KioskKeyRelayEnvironment) and useKioskSession() (only
-  // available below, inside KioskSessionContext.Provider) — so it's mounted
-  // here rather than in either of those.
+  // KioskRealtimeProvider and LivePeriodsProvider need both the Relay
+  // environment (available above, via KioskRelayEnvironment/
+  // KioskKeyRelayEnvironment) and useKioskSession() (only available below,
+  // inside KioskSessionContext.Provider) — so they're mounted here rather than
+  // in either of those.
   const body = isInitialFetchComplete ? (
-    <LivePeriodsProvider>{children}</LivePeriodsProvider>
+    <KioskRealtimeProvider>
+      <LivePeriodsProvider>{children}</LivePeriodsProvider>
+    </KioskRealtimeProvider>
   ) : (
     <LoadingIndicator />
   );
