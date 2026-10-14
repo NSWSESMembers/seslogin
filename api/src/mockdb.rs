@@ -214,10 +214,6 @@ impl db::Handler for Handler {
         Self::unsupported()
     }
 
-    async fn get_api_token_by_hash(&self, _token_hash: &str) -> db::Result<Option<ApiToken>> {
-        Self::unsupported()
-    }
-
     async fn list_api_tokens(&self, _filter: db::ListApiTokensFilter) -> db::Result<Vec<ApiToken>> {
         Self::unsupported()
     }

@@ -1903,10 +1903,6 @@ impl<D: db::Handler> db::Handler for AuditingHandler<D> {
         self.inner.get_api_token(id).await
     }
 
-    async fn get_api_token_by_hash(&self, token_hash: &str) -> db::Result<Option<ApiToken>> {
-        self.inner.get_api_token_by_hash(token_hash).await
-    }
-
     async fn list_api_tokens(&self, filter: db::ListApiTokensFilter) -> db::Result<Vec<ApiToken>> {
         self.inner.list_api_tokens(filter).await
     }
