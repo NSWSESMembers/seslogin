@@ -1,3 +1,4 @@
+use crate::audit::AuditingHandler;
 use crate::db::{self, Handler as _, ListLocationsFilter};
 use crate::dynamodb;
 use crate::ses_api::SesClient;
@@ -46,7 +47,17 @@ enum PlannedChange {
     },
 }
 
+/// Run the location sync, recording every write it makes in the audit log as the
+/// `location-sync` system actor.
 pub async fn run(config: SyncConfig) -> Result<RunStats> {
+    crate::audit::scope(
+        crate::audit::AuditContext::system("location-sync"),
+        run_inner(config),
+    )
+    .await
+}
+
+async fn run_inner(config: SyncConfig) -> Result<RunStats> {
     let ses_client = SesClient::new(
         config.ses_api_base_url,
         config.ses_api_key,
@@ -54,7 +65,7 @@ pub async fn run(config: SyncConfig) -> Result<RunStats> {
         config.max_retries,
     )
     .context("Building SES HTTP client")?;
-    let db = dynamodb::Handler::new(&config.db_prefix, config.dry_run).await;
+    let db = AuditingHandler::new(dynamodb::Handler::new(&config.db_prefix, config.dry_run).await);
 
     let all_hqs = ses_client
         .list_headquarters()

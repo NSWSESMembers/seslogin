@@ -449,7 +449,19 @@ async fn token_authorization_code<A: App + HasDb>(
         &scope,
         now_sec(),
     );
-    if let Err(e) = app.db().create_oauth_grant(&grant).await {
+    // The user authorized this client at the consent screen; the grant is theirs.
+    let created = crate::audit::scope(
+        crate::audit::AuditContext::new(
+            crate::audit::Actor::User {
+                id: grant.user_id.clone(),
+                via: Some(format!("oauth_client:{}", grant.client_id)),
+            },
+            None,
+        ),
+        app.db().create_oauth_grant(&grant),
+    )
+    .await;
+    if let Err(e) = created {
         return server_error("creating oauth grant", e);
     }
 
@@ -483,7 +495,12 @@ async fn token_refresh<A: App + HasDb>(app: &A, params: &HashMap<String, String>
         // either garbage, or a token already rotated away by an earlier refresh.
         // OAuth 2.1 reuse detection: treat it as a stolen token and kill the whole
         // grant rather than just failing this one request.
-        if let Err(e) = app.db().delete_oauth_grant(&grant.id).await {
+        let revoked = crate::audit::scope(
+            crate::audit::AuditContext::system("oauth-refresh-reuse"),
+            app.db().delete_oauth_grant(&grant.id),
+        )
+        .await;
+        if let Err(e) = revoked {
             return server_error("revoking oauth grant on refresh-token reuse", e);
         }
         return error_reply(400, "invalid_grant", "Refresh token has already been used");
