@@ -396,10 +396,26 @@ impl TryInto<Session> for Item {
             key_fingerprint: self.string_field("key_fingerprint")?,
             key_expires_at: self.i64_field("key_expires_at")?.map(|i| i as u64),
             key_released_at: self.i64_field("key_released_at")?.map(|i| i as u64),
+            // 0, not 1, for a row written before versions existed: its first bump
+            // (`ADD v` creates the attribute at 1) must read as newer than what a kiosk
+            // already holds for it.
+            version: self.i64_field("v")?.unwrap_or(0) as u64,
             created_at: self.i64_field("created_at")?.map(|i| i as u64),
             updated_at: self.i64_field("updated_at")?.map(|i| i as u64),
         })
     }
+}
+
+/// The new session version from an `update_item` that ran `ADD v :one` with
+/// `ReturnValues::UpdatedNew`.
+fn returned_version(attributes: Option<&HashMap<String, AttributeValue>>) -> db::Result<u64> {
+    attributes
+        .and_then(|a| a.get("v"))
+        .and_then(|v| v.as_n().ok())
+        .and_then(|n| n.parse::<u64>().ok())
+        .ok_or_else(|| {
+            Error::Infrastructure("Missing version in session update response".to_string())
+        })
 }
 
 /// The session attributes backing [`crate::client_info::ClientInfo`], paired with the
@@ -2808,7 +2824,8 @@ impl db::Handler for Handler {
             .item("config", AttributeValue::S(serialized_config))
             .item("created_at", AttributeValue::N(unix_time.to_string()))
             .item("updated_at", AttributeValue::N(unix_time.to_string()))
-            .item("active", AttributeValue::N("1".to_string()));
+            .item("active", AttributeValue::N("1".to_string()))
+            .item("v", AttributeValue::N("1".to_string()));
 
         // A key-enrolled session (QR/public-key flow) authenticates by signature and
         // has no 6-digit code; a code-enrolled session gets a code and no key. The two
@@ -2866,12 +2883,17 @@ impl db::Handler for Handler {
             key_fingerprint: key.map(|k| k.fingerprint.to_string()),
             key_expires_at: key.map(|k| k.expires_at),
             key_released_at: None,
+            version: 1,
             created_at: Some(unix_time),
             updated_at: Some(unix_time),
         })
     }
 
-    async fn update_session(&self, id: &str, change: db::SessionUpdateShape<'_>) -> db::Result<()> {
+    async fn update_session(
+        &self,
+        id: &str,
+        change: db::SessionUpdateShape<'_>,
+    ) -> db::Result<Option<u64>> {
         if self.read_only {
             return Err(db::Error::MutationDisabled);
         }
@@ -2899,7 +2921,7 @@ impl db::Handler for Handler {
                 request = if let Some(healthcheck_url) = healthcheck_url {
                     request
                         .update_expression(
-                            "SET #name = :name, config = :config, healthcheck_url = :healthcheck_url, updated_at = :updated_at",
+                            "SET #name = :name, config = :config, healthcheck_url = :healthcheck_url, updated_at = :updated_at ADD v :one",
                         )
                         .expression_attribute_values(
                             ":healthcheck_url",
@@ -2907,16 +2929,19 @@ impl db::Handler for Handler {
                         )
                 } else {
                     request.update_expression(
-                        "SET #name = :name, config = :config, updated_at = :updated_at REMOVE healthcheck_url",
+                        "SET #name = :name, config = :config, updated_at = :updated_at REMOVE healthcheck_url ADD v :one",
                     )
                 };
 
                 let resp = request
+                    .expression_attribute_values(":one", AttributeValue::N("1".to_string()))
+                    .return_values(ReturnValue::UpdatedNew)
                     .return_consumed_capacity(ReturnConsumedCapacity::Total)
                     .send()
                     .await
                     .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
                 record_capacity("update_session", resp.consumed_capacity(), CapKind::Write);
+                Ok(Some(returned_version(resp.attributes())?))
             }
             db::SessionUpdateShape::Info {
                 client_version,
@@ -2993,6 +3018,7 @@ impl db::Handler for Handler {
                     .await
                     .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
                 record_capacity("update_session", resp.consumed_capacity(), CapKind::Write);
+                Ok(None)
             }
             db::SessionUpdateShape::ExtendKey { expires_at } => {
                 // The condition keeps the write honest: a soft-deleted session (no
@@ -3022,6 +3048,7 @@ impl db::Handler for Handler {
                     .await
                     .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
                 record_capacity("update_session", resp.consumed_capacity(), CapKind::Write);
+                Ok(None)
             }
             db::SessionUpdateShape::ReleaseKey { fingerprint } => {
                 // Same REMOVE list as `Delete` minus `active`: the record stays in its
@@ -3046,10 +3073,12 @@ impl db::Handler for Handler {
                     )
                     .update_expression(
                         "SET updated_at = :now, key_released_at = :now \
-                         REMOVE key_fingerprint, public_key, key_expires_at",
+                         REMOVE key_fingerprint, public_key, key_expires_at ADD v :one",
                     )
                     .expression_attribute_values(":fp", AttributeValue::S(fingerprint.to_string()))
                     .expression_attribute_values(":now", AttributeValue::N(now.to_string()))
+                    .expression_attribute_values(":one", AttributeValue::N("1".to_string()))
+                    .return_values(ReturnValue::UpdatedNew)
                     .return_consumed_capacity(ReturnConsumedCapacity::Total)
                     .send()
                     .await
@@ -3064,6 +3093,7 @@ impl db::Handler for Handler {
                     resp.consumed_capacity(),
                     CapKind::Write,
                 );
+                Ok(Some(returned_version(resp.attributes())?))
             }
             db::SessionUpdateShape::Delete => {
                 // Removing `active` soft-deletes the session. Also drop the key fields so
@@ -3076,21 +3106,22 @@ impl db::Handler for Handler {
                     .table_name(self.table_name("session"))
                     .key("id", AttributeValue::S(id.to_string()))
                     .update_expression(
-                        "SET updated_at = :updated_at REMOVE active, key_fingerprint, public_key, key_expires_at",
+                        "SET updated_at = :updated_at REMOVE active, key_fingerprint, public_key, key_expires_at ADD v :one",
                     )
                     .expression_attribute_values(
                         ":updated_at",
                         AttributeValue::N(crate::clock::now_sec().to_string()),
                     )
+                    .expression_attribute_values(":one", AttributeValue::N("1".to_string()))
+                    .return_values(ReturnValue::UpdatedNew)
                     .return_consumed_capacity(ReturnConsumedCapacity::Total)
                     .send()
                     .await
                     .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
                 record_capacity("delete_session", resp.consumed_capacity(), CapKind::Write);
+                Ok(Some(returned_version(resp.attributes())?))
             }
         }
-
-        Ok(())
     }
 
     async fn get_api_token(&self, id: &str) -> db::Result<Option<ApiToken>> {
@@ -5408,6 +5439,38 @@ mod tests {
         .unwrap();
         assert_eq!(session.client_info, None);
         assert_eq!(session.client_info_updated_at, None);
+    }
+
+    /// A session written before versions existed reads as 0, so the first bump (which
+    /// creates `v` at 1) is still newer than anything a kiosk holds for it.
+    #[test]
+    fn a_session_with_no_version_reads_as_zero() {
+        let session: db::Session = item(&[
+            ("id", AttributeValue::S("s1".to_string())),
+            ("location_id", AttributeValue::S("loc1".to_string())),
+        ])
+        .try_into()
+        .unwrap();
+        assert_eq!(session.version, 0);
+    }
+
+    #[test]
+    fn a_session_reads_its_version() {
+        let session: db::Session = item(&[
+            ("id", AttributeValue::S("s1".to_string())),
+            ("location_id", AttributeValue::S("loc1".to_string())),
+            ("v", AttributeValue::N("7".to_string())),
+        ])
+        .try_into()
+        .unwrap();
+        assert_eq!(session.version, 7);
+    }
+
+    #[test]
+    fn returned_version_reads_the_bumped_attribute() {
+        let attrs = raw(&[("v", AttributeValue::N("3".to_string()))]);
+        assert_eq!(super::returned_version(Some(&attrs)).unwrap(), 3);
+        assert!(super::returned_version(None).is_err());
     }
 
     /// Every attribute this module writes is prefixed, so it can never collide with an

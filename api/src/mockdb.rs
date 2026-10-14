@@ -206,7 +206,7 @@ impl db::Handler for Handler {
         &self,
         _id: &str,
         _change: db::SessionUpdateShape<'_>,
-    ) -> db::Result<()> {
+    ) -> db::Result<Option<u64>> {
         Self::unsupported()
     }
 

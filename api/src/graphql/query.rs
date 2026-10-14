@@ -2836,6 +2836,13 @@ impl<A: App + HasDb + Send + Sync + 'static> Session<A> {
         self.rec.last_contact.map(|ts| ts as i64)
     }
 
+    /// Increases whenever an admin changes this session or its key is released or it
+    /// is deleted — not on heartbeats. Lets a kiosk tell a stale realtime message or
+    /// refetch from a fresh one.
+    async fn version(&self) -> i64 {
+        self.rec.version as i64
+    }
+
     async fn client_version(&self) -> Option<&str> {
         self.rec.client_version.as_deref()
     }

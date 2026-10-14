@@ -249,6 +249,13 @@ pub struct Session {
     /// [`is_live`](Self::is_live) is the test every caller that means "a working kiosk"
     /// must use.
     pub key_released_at: Option<u64>,
+    /// Bumped by every [`update_session`](Handler::update_session) that changes what
+    /// the kiosk shows or whether it can authenticate (`Fields`, `ReleaseKey`,
+    /// `Delete`), so a kiosk can tell a stale realtime message or refetch from a fresh
+    /// one. Heartbeats (`Info`) and reactivation (`ExtendKey`) leave it alone. A row
+    /// written before this existed reads as 0, so its first bump (to 1) still counts
+    /// as newer.
+    pub version: u64,
     pub created_at: Option<u64>,
     pub updated_at: Option<u64>,
 }
@@ -1017,11 +1024,13 @@ pub trait Handler: Sync {
         healthcheck_url: Option<&str>,
         key: Option<SessionKeyParams<'_>>,
     ) -> impl Future<Output = Result<Session>> + Send;
+    /// Returns the session's new [`version`](Session::version) for the shapes that bump
+    /// it (`Fields`, `ReleaseKey`, `Delete`), `None` for those that don't.
     fn update_session(
         &self,
         id: &str,
         change: SessionUpdateShape<'_>,
-    ) -> impl Future<Output = Result<()>> + Send;
+    ) -> impl Future<Output = Result<Option<u64>>> + Send;
 
     /// Strongly consistent, so a token is verifiable the moment it's created.
     fn get_api_token(&self, id: &str) -> impl Future<Output = Result<Option<ApiToken>>> + Send;
@@ -1474,6 +1483,7 @@ mod tests {
             key_fingerprint: None,
             key_expires_at: None,
             key_released_at,
+            version: 1,
             created_at: None,
             updated_at: None,
         }

@@ -1581,7 +1581,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
                 )
                 .await
             {
-                Ok(()) => info!(
+                Ok(_) => info!(
                     "Released {} key {} from kiosk session {} ({:?}) at location {} so its device \
                      could enroll as {:?} at location {}",
                     match holder {
