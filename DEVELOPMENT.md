@@ -653,7 +653,7 @@ friendlier option when you're browsing rather than scripting.
 | `make local-tables` | Create any missing tables |
 | `make local-tables-check` | Fail if the local database is missing a table this codebase expects |
 | `make local-seed` | Write `local/seed/*.json` into the database |
-| `make local-clear` | Delete the rows the app writes (periods, ephemeral state, passkeys), keeping the fixtures |
+| `make local-clear` | Delete the rows the app writes (periods, ephemeral state, passkeys, the audit log), keeping the fixtures |
 | `make local-cli ARGS="..."` | Run the `cli` inspector/editor against the local database |
 | `node local/examples/*.mjs` | Put a browser into a state worth testing from (see [local/examples/](local/examples/)) |
 | `make local-seed-extract` | Refresh `from-prod.json` from the real database (**needs AWS**) |

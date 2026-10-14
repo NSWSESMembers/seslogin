@@ -59,7 +59,7 @@ enum Command {
     },
     /// Write the fixtures into the local database. Needs no AWS access.
     Apply,
-    /// Delete every row the app itself writes — periods, ephemeral state, passkeys —
+    /// Delete every row the app itself writes — periods, ephemeral state, passkeys, the audit log —
     /// leaving the seeded fixtures alone. Needs no AWS access.
     ///
     /// `apply` cannot do this: it only ever `put_item`s the fixture rows, and no
@@ -307,7 +307,12 @@ fn load_tables(path: &Path) -> Result<Map<String, Value>> {
 /// Tables the running app writes into that no fixture owns. Anything seeded is
 /// left alone: `apply` overwrites those, so wiping them would only mean a
 /// mandatory reseed. Keep this in step with `local-tables`.
-const TRANSIENT_TABLES: &[&str] = &["period", "ephemeral_state", "webauthn_credential"];
+const TRANSIENT_TABLES: &[&str] = &[
+    "period",
+    "ephemeral_state",
+    "webauthn_credential",
+    "audit_log",
+];
 
 async fn clear() -> Result<()> {
     let endpoint = seslogin::local_dev::require_local_dynamodb_endpoint()?;

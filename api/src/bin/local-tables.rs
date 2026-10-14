@@ -233,6 +233,21 @@ const TABLES: &[Table] = &[
         ttl: Some("expires_at"),
     },
     Table {
+        name: "audit_log",
+        hash: "id",
+        attrs: &[
+            Attr("id", S),
+            Attr("location_id", S),
+            Attr("scope", S),
+            Attr("sk", S),
+        ],
+        gsis: &[
+            all("location_id-sk-index", "location_id", Some("sk")),
+            all("scope-sk-index", "scope", Some("sk")),
+        ],
+        ttl: None,
+    },
+    Table {
         name: "test_pagination",
         hash: "id",
         attrs: &[Attr("id", S), Attr("group_id", N), Attr("number", N)],
