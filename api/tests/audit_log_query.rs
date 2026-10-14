@@ -111,6 +111,7 @@ fn db_session(id: &str, name: &str) -> db::Session {
         key_fingerprint: None,
         key_expires_at: None,
         key_released_at: None,
+        version: 1,
         created_at: Some(0),
         updated_at: Some(0),
     }
