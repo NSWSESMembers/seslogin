@@ -5,25 +5,20 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use tracing::debug;
 
-pub use crate::expire::{DEFAULT_SESSION_EXPIRE_S, DEFAULT_USER_EXPIRE_S, ExpirePolicy};
+pub use crate::expire::{DEFAULT_SESSION_EXPIRE_S, ExpirePolicy};
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum JwtData {
-    User { user_id: String },
-    Session { session_id: String },
-}
-
+/// A verified kiosk session JWT. These are the only JWTs the API issues or accepts:
+/// users authenticate with opaque `slu_` tokens instead.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ParsedJwt {
     pub expires: Option<chrono::DateTime<Utc>>,
-    pub data: JwtData,
+    pub session_id: String,
 }
 
 #[derive(Debug)]
 pub struct Key {
     encoding: EncodingKey,
     decoding: DecodingKey,
-    user_expire_s: u64,
     session_expire_s: u64,
     /// Raw secret, kept alongside the jsonwebtoken key types (which don't expose their
     /// bytes back out) so other HMAC uses derived from the same secret — currently the
@@ -81,8 +76,6 @@ where
 #[derive(Serialize, Deserialize)]
 struct Claims {
     #[serde(skip_serializing_if = "Option::is_none")]
-    user_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     session_id: Option<String>,
     // TEMPORARY: Remove after 2026-06-01 — deserialize_with handles string exp values
     #[serde(
@@ -96,15 +89,10 @@ struct Claims {
 }
 
 impl Key {
-    pub fn new(
-        secret: &str,
-        user_expire_s: Option<u64>,
-        session_expire_s: Option<u64>,
-    ) -> Result<Self> {
+    pub fn new(secret: &str, session_expire_s: Option<u64>) -> Result<Self> {
         Ok(Key {
             encoding: EncodingKey::from_secret(secret.as_bytes()),
             decoding: DecodingKey::from_secret(secret.as_bytes()),
-            user_expire_s: user_expire_s.unwrap_or(DEFAULT_USER_EXPIRE_S),
             session_expire_s: session_expire_s.unwrap_or(DEFAULT_SESSION_EXPIRE_S),
             secret: secret.as_bytes().into(),
         })
@@ -122,7 +110,7 @@ impl Key {
     }
 
     fn expiry(&self, policy: ExpirePolicy) -> u64 {
-        policy.expires_at(self.user_expire_s, self.session_expire_s)
+        policy.expires_at(self.session_expire_s)
     }
 
     fn sign(&self, claims: Claims) -> Result<String> {
@@ -130,18 +118,8 @@ impl Key {
             .context("Failed to encode JWT")
     }
 
-    pub fn make_user_jwt(&self, user_id: &str, expire: ExpirePolicy) -> Result<String> {
-        self.sign(Claims {
-            user_id: Some(user_id.to_string()),
-            session_id: None,
-            exp: Some(self.expiry(expire)),
-            iat: None,
-        })
-    }
-
     pub fn make_session_jwt(&self, session_id: &str, expire: ExpirePolicy) -> Result<String> {
         self.sign(Claims {
-            user_id: None,
             session_id: Some(session_id.to_string()),
             exp: Some(self.expiry(expire)),
             iat: None,
@@ -181,15 +159,13 @@ impl Key {
             anyhow::bail!("Missing exp and iat claim");
         };
 
-        let data = if let Some(user_id) = claims.user_id {
-            JwtData::User { user_id }
-        } else if let Some(session_id) = claims.session_id {
-            JwtData::Session { session_id }
-        } else {
-            anyhow::bail!("Missing user_id or session_id claim");
-        };
+        // A legacy user JWT carries `user_id` instead, which is no longer accepted.
+        let session_id = claims.session_id.context("Missing session_id claim")?;
 
-        Ok(ParsedJwt { expires, data })
+        Ok(ParsedJwt {
+            expires,
+            session_id,
+        })
     }
 }
 
@@ -199,22 +175,37 @@ mod tests {
 
     #[test]
     fn test_make_and_verify_jwt_success() -> Result<()> {
-        let key = Key::new("test_secret", None, None)?;
-        let token = key.make_user_jwt("test_user", ExpirePolicy::UserDefault)?;
+        let key = Key::new("test_secret", None)?;
+        let token = key.make_session_jwt("test_session", ExpirePolicy::SessionDefault)?;
         let parsed = key.verify_jwt(&token)?;
-        assert_eq!(
-            parsed.data,
-            JwtData::User {
-                user_id: "test_user".into()
-            }
-        );
+        assert_eq!(parsed.session_id, "test_session");
         assert!(parsed.expires.unwrap() > Utc::now());
         Ok(())
     }
 
     #[test]
+    fn test_verify_jwt_rejects_user_jwt() {
+        #[derive(Serialize)]
+        struct UserClaims {
+            user_id: String,
+            exp: u64,
+        }
+        let key = Key::new("test_secret", None).unwrap();
+        let token = encode(
+            &Header::new(Algorithm::HS256),
+            &UserClaims {
+                user_id: "test_user".into(),
+                exp: ExpirePolicy::TimeSec(3600).from_now(),
+            },
+            &key.encoding,
+        )
+        .unwrap();
+        assert!(key.verify_jwt(&token).is_err());
+    }
+
+    #[test]
     fn test_verify_jwt_invalid_token() {
-        let key = Key::new("test_secret", None, None).unwrap();
+        let key = Key::new("test_secret", None).unwrap();
         assert!(key.verify_jwt("invalid.token.string").is_err());
     }
 }

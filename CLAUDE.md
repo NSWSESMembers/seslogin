@@ -345,7 +345,7 @@ Unlike `mockdb`, the queue, mail and realtime mocks *succeed* — they exist so 
 **Auth**: `api/src/auth.rs` — token verification dispatches on prefix:
 1. API tokens (`slgn_` prefix) — opaque hashed secrets for programmatic access, shaped `slgn_<id>.<secret>` and verified the same way as user tokens below. Legacy `slgn_<secret>` tokens never expire on their own, so they keep working through `token_hash-index` and log a `legacy-format API token used` warning naming the token, until each is replaced by hand
 2. User tokens (`slu_` prefix) — opaque hashed secrets issued via email-code auth, shaped `slu_<id>.<secret>` so verification is one strongly consistent `GetItem` by id plus a constant-time hash check. Legacy `slu_<secret>` tokens (no `.`) are still found through `token_hash-index`, but their sliding expiry is frozen so they all age out
-3. JWT (no prefix) — session JWTs (single-use numeric kiosk codes → 14-day JWT) and user JWTs
+3. JWT (no prefix) — kiosk session JWTs only (single-use numeric kiosk codes → 14-day JWT). User JWTs are no longer issued or accepted; users authenticate with `slu_` tokens
 
 Authorization uses an `AuthRequirement` guard enum per field: `Session`, `UserOrSession`, `User`, `SuperUser`.
 
@@ -379,7 +379,7 @@ Absence writes are excluded from `max_mutations`: a location with a large but le
 
 **SES API client**: `api/src/ses_api.rs` — HTTP client with retry logic for the external headquarters system.
 
-**JWT**: `api/src/jwt.rs` — HMAC-SHA256 tokens with claims `{ user_id, exp }` or `{ session_id, exp }`.
+**JWT**: `api/src/jwt.rs` — HMAC-SHA256 kiosk session tokens with claims `{ session_id, exp }`. A JWT carrying `user_id` instead is rejected.
 
 ### Core Data Model
 

@@ -11,7 +11,7 @@ use seslogin::mockrealtime;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let key = jwt::Key::new("schema-export", None, None)?;
+    let key = jwt::Key::new("schema-export", None)?;
     let db = mockdb::Handler::new();
     // Nothing here dispatches anything; the mocks keep schema export off the network.
     let app = Arc::new(app::new(

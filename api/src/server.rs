@@ -42,10 +42,6 @@ type Schema<H, Q, M, R> = async_graphql::Schema<
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
 pub struct Cli {
-    /// JWT expiry time in seconds (default: 1h in dev)
-    #[arg(short, long, default_value_t = 3600)]
-    pub user_expiry_s: u64,
-
     /// JWT expiry time for sessions in seconds (default: 1h in dev)
     #[arg(short, long, default_value_t = 1209600)]
     pub session_expiry_s: u64,
@@ -108,7 +104,7 @@ pub fn init() -> Result<Startup, Box<dyn Error>> {
 
     let var = env::var("JWT_SECRET").expect("JWT_SECRET must be set");
     let secret = var.trim();
-    let key = jwt::Key::new(secret, Some(cli.user_expiry_s), Some(cli.session_expiry_s))?;
+    let key = jwt::Key::new(secret, Some(cli.session_expiry_s))?;
 
     let dev_auth = match (&cli.dev_auth_session, &cli.dev_auth_user) {
         (Some(_), Some(_)) => {

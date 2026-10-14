@@ -25,7 +25,7 @@ async fn main() -> Result<(), Error> {
     // load JWT secret from env
     let secret = env::var("JWT_SECRET").expect("JWT_SECRET must be set");
 
-    let key = jwt::Key::new(&secret, None, None)?;
+    let key = jwt::Key::new(&secret, None)?;
 
     let queues = sqs::Queues::from_env().await?;
     let mailer = sesmail::Mailer::new().await;

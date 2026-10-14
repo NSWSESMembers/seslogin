@@ -940,7 +940,7 @@ impl db::Handler for FakeDb {
 #[allow(dead_code)] // see `seed_super_user`'s doc comment
 pub(crate) fn fake_app()
 -> MyApp<FakeDb, mockqueue::Handler, mockmail::Handler, mockrealtime::Handler> {
-    let key = jwt::Key::new("test-secret", None, None).expect("valid test JWT key");
+    let key = jwt::Key::new("test-secret", None).expect("valid test JWT key");
     app::new(
         FakeDb::default(),
         key,

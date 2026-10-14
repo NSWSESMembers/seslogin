@@ -43,7 +43,7 @@ pub enum AuthInfo {
         location_grants: Vec<String>,
         /// Locations where the user is Read only.
         location_read_only_grants: Vec<String>,
-        /// Set only when authenticated via an opaque user token; None for JWT.
+        /// Set only when authenticated via an opaque user token; None otherwise.
         token_id: Option<String>,
         /// Set only when authenticated via an OAuth access token (`slat_`); identifies
         /// which grant so resolvers/telemetry can tell OAuth callers apart. None
@@ -506,12 +506,7 @@ async fn verify_token_with_jwt<A: App + HasDb + HasQueues>(
         .jwt()
         .verify_jwt(token)
         .map_err(|e| AuthError::Permanent(format!("Failed to verify JWT: {:#}", e)))?;
-    match parsed_jwt.data {
-        jwt::JwtData::User { user_id } => fetch_update_user_auth_info(app, user_id).await,
-        jwt::JwtData::Session { session_id } => {
-            fetch_update_session_auth_info(app, session_id, client).await
-        }
-    }
+    fetch_update_session_auth_info(app, parsed_jwt.session_id, client).await
 }
 
 /// The two shapes an `slu_`/`slgn_` token can take after the prefix.
@@ -715,7 +710,7 @@ mod verify_token_tests {
     {
         app::new(
             mockdb::Handler::new(),
-            jwt::Key::new("test", None, None).expect("valid test JWT key"),
+            jwt::Key::new("test", None).expect("valid test JWT key"),
             0,
             mockqueue::Handler::new(),
             mockmail::Handler::new(),
