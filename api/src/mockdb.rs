@@ -520,10 +520,6 @@ impl db::Handler for Handler {
         Self::unsupported()
     }
 
-    async fn get_user_token_by_hash(&self, _token_hash: &str) -> db::Result<Option<db::UserToken>> {
-        Self::unsupported()
-    }
-
     async fn update_user_token(
         &self,
         _id: &str,
