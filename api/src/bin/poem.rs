@@ -12,8 +12,11 @@ use seslogin::server;
 use seslogin::sesmail;
 use seslogin::sqs;
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>> {
+fn main() -> Result<(), Box<dyn Error>> {
+    server::runtime()?.block_on(run())
+}
+
+async fn run() -> Result<(), Box<dyn Error>> {
     let startup = server::init()?;
     let db = dynamodb::Handler::new(&startup.db_prefix, !startup.cli.enable_mutations).await;
     let queues = sqs::Queues::from_env().await?;
