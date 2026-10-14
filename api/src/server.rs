@@ -76,6 +76,26 @@ pub struct Startup {
     pub db_prefix: String,
 }
 
+/// Stack size for each tokio worker thread, in place of tokio's 2 MiB default.
+///
+/// Unoptimised (debug) builds keep far more on the stack per request than release
+/// builds: a single mutation needs about 1.7 MB of worker stack in a debug build,
+/// against about 250 KB in release. That leaves `make dev` one modest change away
+/// from aborting with "thread 'tokio-rt-worker' has overflowed its stack" (sooner
+/// on macOS, whose debug frames run larger), so give the workers ample headroom.
+/// It costs nothing in practice: the stack is reserved address space, and only the
+/// pages a request actually touches are ever committed.
+const WORKER_STACK_SIZE: usize = 8 * 1024 * 1024;
+
+/// The tokio runtime the API server binaries run on: `#[tokio::main]`'s
+/// multi-threaded runtime, with [`WORKER_STACK_SIZE`] stacks.
+pub fn runtime() -> std::io::Result<tokio::runtime::Runtime> {
+    tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .thread_stack_size(WORKER_STACK_SIZE)
+        .build()
+}
+
 /// Set up logging, load `.env`, parse the command line, and read the config every
 /// server needs. Call this first; it must run before any backend is constructed,
 /// because that's what puts `.env` into the environment.

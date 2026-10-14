@@ -21,8 +21,11 @@ use seslogin::mockqueue;
 use seslogin::mockrealtime;
 use seslogin::server;
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>> {
+fn main() -> Result<(), Box<dyn Error>> {
+    server::runtime()?.block_on(run())
+}
+
+async fn run() -> Result<(), Box<dyn Error>> {
     let startup = server::init()?;
     tracing::warn!(
         "poem-local: SQS, SES and Ably are mocked. Queue messages and realtime kiosk \
