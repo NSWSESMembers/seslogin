@@ -1777,6 +1777,14 @@ impl<D: db::Handler> db::Handler for AuditingHandler<D> {
         self.inner.put_audit_entry(entry).await
     }
 
+    // A read: nothing to audit.
+    async fn list_audit_entries(
+        &self,
+        query: db::ListAuditEntriesQuery,
+    ) -> db::Result<Vec<AuditEntry>> {
+        self.inner.list_audit_entries(query).await
+    }
+
     // ── Everything else: straight delegation ─────────────────────────────────
 
     async fn get_users<T: AsRef<str> + Sync>(&self, ids: &[T]) -> db::Result<Vec<Option<User>>> {
