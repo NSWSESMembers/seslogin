@@ -1612,13 +1612,14 @@ impl<D: db::Handler> db::Handler for AuditingHandler<D> {
 
     async fn create_user_token(
         &self,
+        id: &str,
         token_hash: &str,
         user_id: &str,
         expires_at: u64,
     ) -> db::Result<db::UserToken> {
         let token = self
             .inner
-            .create_user_token(token_hash, user_id, expires_at)
+            .create_user_token(id, token_hash, user_id, expires_at)
             .await?;
         let label = self.before_user(user_id).await.map(|u| u.email);
         self.record_create(
@@ -1633,7 +1634,6 @@ impl<D: db::Handler> db::Handler for AuditingHandler<D> {
     }
 
     async fn delete_user_token(&self, id: &str) -> db::Result<()> {
-        // Tokens can only be looked up by hash, so there is nothing to read first.
         self.inner.delete_user_token(id).await?;
         self.record(Recorded {
             entity_type: AuditEntityType::UserToken,
@@ -2113,6 +2113,10 @@ impl<D: db::Handler> db::Handler for AuditingHandler<D> {
 
     async fn increment_login_code_attempts(&self, email: &str) -> db::Result<()> {
         self.inner.increment_login_code_attempts(email).await
+    }
+
+    async fn get_user_token(&self, id: &str) -> db::Result<Option<db::UserToken>> {
+        self.inner.get_user_token(id).await
     }
 
     async fn get_user_token_by_hash(&self, token_hash: &str) -> db::Result<Option<db::UserToken>> {

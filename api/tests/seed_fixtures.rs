@@ -19,9 +19,9 @@ use sha2::{Digest, Sha256};
 /// The plaintext tokens DEVELOPMENT.md tells people to use. The fixtures store only their
 /// hashes, exactly as production does, so this is the only place the two can be compared.
 const USER_TOKENS: &[(&str, &str)] = &[
-    ("TestSuperUsr", "slu_localdev0000000000000000000super"),
-    ("TestUnitUser", "slu_localdev0000000000000000testunit"),
-    ("TestReadOnlyU", "slu_localdev0000000000000000readonly"),
+    ("TestSuperUsr", "slu_TokenSuperUsr.localdev-super"),
+    ("TestUnitUser", "slu_TokenUnitUser.localdev-testunit"),
+    ("TestReadOnlyU", "slu_TokenReadOnly.localdev-readonly"),
 ];
 
 /// Identifiers the docs hand out as things to type or navigate to. Rename one and the docs
@@ -174,6 +174,17 @@ fn user_token_hashes_match_their_documented_plaintexts() {
             .iter()
             .find(|t| s(t, "user_id").as_deref() == Some(*user_id))
             .unwrap_or_else(|| panic!("no user_token seeded for {user_id}"));
+
+        // `slu_<id>.<secret>`: verification looks the row up by the embedded id.
+        let embedded_id = plaintext
+            .strip_prefix("slu_")
+            .and_then(|rest| rest.split_once('.'))
+            .map(|(id, _)| id);
+        assert_eq!(
+            embedded_id,
+            Some(id(token).as_str()),
+            "user_token for {user_id} is not stored under the id its plaintext embeds"
+        );
 
         let want = hex::encode(Sha256::digest(plaintext.as_bytes()));
         assert_eq!(
