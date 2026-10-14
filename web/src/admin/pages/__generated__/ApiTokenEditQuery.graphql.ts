@@ -1,7 +1,6 @@
 /**
- * @generated SignedSource<<e1d032cfc3383c0c38cf9d2aaf0851c3>>
+ * @generated SignedSource<<b6799294b43f7dcae3a087d6503dc048>>
  * @lightSyntaxTransform
- * @nogrep
  */
 
 /* tslint:disable */
@@ -70,8 +69,8 @@ v3 = [
     "name": "apiToken",
     "plural": false,
     "selections": [
-      (v1/*: any*/),
-      (v2/*: any*/),
+      (v1/*:: as any*/),
+      (v2/*:: as any*/),
       {
         "alias": null,
         "args": null,
@@ -125,30 +124,30 @@ v3 = [
     "name": "locations",
     "plural": true,
     "selections": [
-      (v1/*: any*/),
-      (v2/*: any*/)
+      (v1/*:: as any*/),
+      (v2/*:: as any*/)
     ],
     "storageKey": null
   }
 ];
 return {
   "fragment": {
-    "argumentDefinitions": (v0/*: any*/),
+    "argumentDefinitions": (v0/*:: as any*/),
     "kind": "Fragment",
     "metadata": {
       "throwOnFieldError": true
     },
     "name": "ApiTokenEditQuery",
-    "selections": (v3/*: any*/),
+    "selections": (v3/*:: as any*/),
     "type": "QueryRoot",
     "abstractKey": null
   },
   "kind": "Request",
   "operation": {
-    "argumentDefinitions": (v0/*: any*/),
+    "argumentDefinitions": (v0/*:: as any*/),
     "kind": "Operation",
     "name": "ApiTokenEditQuery",
-    "selections": (v3/*: any*/)
+    "selections": (v3/*:: as any*/)
   },
   "params": {
     "cacheID": "e7858a29249353d066298b6213f13228",

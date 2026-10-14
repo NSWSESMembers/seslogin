@@ -1,7 +1,6 @@
 /**
- * @generated SignedSource<<d9df5e69449f9b53a33c8700fbba2120>>
+ * @generated SignedSource<<5d9283ada425ef522a6598872a4b5f8d>>
  * @lightSyntaxTransform
- * @nogrep
  */
 
 /* tslint:disable */
@@ -95,7 +94,7 @@ v5 = [
     "name": "scanSignOut",
     "plural": false,
     "selections": [
-      (v4/*: any*/),
+      (v4/*:: as any*/),
       {
         "alias": null,
         "args": null,
@@ -111,7 +110,7 @@ v5 = [
         "name": "person",
         "plural": false,
         "selections": [
-          (v4/*: any*/),
+          (v4/*:: as any*/),
           {
             "alias": null,
             "args": null,
@@ -151,7 +150,7 @@ v5 = [
         "name": "category",
         "plural": false,
         "selections": [
-          (v4/*: any*/),
+          (v4/*:: as any*/),
           {
             "alias": null,
             "args": null,
@@ -169,29 +168,29 @@ v5 = [
 return {
   "fragment": {
     "argumentDefinitions": [
-      (v0/*: any*/),
-      (v1/*: any*/),
-      (v2/*: any*/),
-      (v3/*: any*/)
+      (v0/*:: as any*/),
+      (v1/*:: as any*/),
+      (v2/*:: as any*/),
+      (v3/*:: as any*/)
     ],
     "kind": "Fragment",
     "metadata": null,
     "name": "ScanControllerSignOutMutation",
-    "selections": (v5/*: any*/),
+    "selections": (v5/*:: as any*/),
     "type": "MutationRoot",
     "abstractKey": null
   },
   "kind": "Request",
   "operation": {
     "argumentDefinitions": [
-      (v2/*: any*/),
-      (v3/*: any*/),
-      (v1/*: any*/),
-      (v0/*: any*/)
+      (v2/*:: as any*/),
+      (v3/*:: as any*/),
+      (v1/*:: as any*/),
+      (v0/*:: as any*/)
     ],
     "kind": "Operation",
     "name": "ScanControllerSignOutMutation",
-    "selections": (v5/*: any*/)
+    "selections": (v5/*:: as any*/)
   },
   "params": {
     "cacheID": "7b811a7f4ce06a05452317d180e02484",

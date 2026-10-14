@@ -1,7 +1,6 @@
 /**
- * @generated SignedSource<<928212ad50e1f4949bce31a135ced2a6>>
+ * @generated SignedSource<<c30bfb8758524113be819c4358d49e57>>
  * @lightSyntaxTransform
- * @nogrep
  */
 
 /* tslint:disable */
@@ -101,7 +100,7 @@ v6 = [
     "name": "updatePeriodTimeCategory",
     "plural": false,
     "selections": [
-      (v5/*: any*/),
+      (v5/*:: as any*/),
       {
         "alias": null,
         "args": null,
@@ -131,7 +130,7 @@ v6 = [
         "name": "category",
         "plural": false,
         "selections": [
-          (v5/*: any*/),
+          (v5/*:: as any*/),
           {
             "alias": null,
             "args": null,
@@ -149,31 +148,31 @@ v6 = [
 return {
   "fragment": {
     "argumentDefinitions": [
-      (v0/*: any*/),
-      (v1/*: any*/),
-      (v2/*: any*/),
-      (v3/*: any*/),
-      (v4/*: any*/)
+      (v0/*:: as any*/),
+      (v1/*:: as any*/),
+      (v2/*:: as any*/),
+      (v3/*:: as any*/),
+      (v4/*:: as any*/)
     ],
     "kind": "Fragment",
     "metadata": null,
     "name": "ActivityEditMutation",
-    "selections": (v6/*: any*/),
+    "selections": (v6/*:: as any*/),
     "type": "MutationRoot",
     "abstractKey": null
   },
   "kind": "Request",
   "operation": {
     "argumentDefinitions": [
-      (v3/*: any*/),
-      (v4/*: any*/),
-      (v2/*: any*/),
-      (v0/*: any*/),
-      (v1/*: any*/)
+      (v3/*:: as any*/),
+      (v4/*:: as any*/),
+      (v2/*:: as any*/),
+      (v0/*:: as any*/),
+      (v1/*:: as any*/)
     ],
     "kind": "Operation",
     "name": "ActivityEditMutation",
-    "selections": (v6/*: any*/)
+    "selections": (v6/*:: as any*/)
   },
   "params": {
     "cacheID": "95867046619766d85abb34222f76f8b3",

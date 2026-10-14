@@ -1,7 +1,6 @@
 /**
- * @generated SignedSource<<34312bcb4d6432361c0c9b023d37ae25>>
+ * @generated SignedSource<<ccb697179ff1dca480decda8492a76e6>>
  * @lightSyntaxTransform
- * @nogrep
  */
 
 /* tslint:disable */
@@ -72,7 +71,7 @@ v3 = [
     "name": "period",
     "plural": false,
     "selections": [
-      (v1/*: any*/),
+      (v1/*:: as any*/),
       {
         "alias": null,
         "args": null,
@@ -109,8 +108,8 @@ v3 = [
         "name": "category",
         "plural": false,
         "selections": [
-          (v1/*: any*/),
-          (v2/*: any*/)
+          (v1/*:: as any*/),
+          (v2/*:: as any*/)
         ],
         "storageKey": null
       }
@@ -125,8 +124,8 @@ v3 = [
     "name": "categories",
     "plural": true,
     "selections": [
-      (v1/*: any*/),
-      (v2/*: any*/),
+      (v1/*:: as any*/),
+      (v2/*:: as any*/),
       {
         "alias": null,
         "args": null,
@@ -140,22 +139,22 @@ v3 = [
 ];
 return {
   "fragment": {
-    "argumentDefinitions": (v0/*: any*/),
+    "argumentDefinitions": (v0/*:: as any*/),
     "kind": "Fragment",
     "metadata": {
       "throwOnFieldError": true
     },
     "name": "ActivityEditQuery",
-    "selections": (v3/*: any*/),
+    "selections": (v3/*:: as any*/),
     "type": "QueryRoot",
     "abstractKey": null
   },
   "kind": "Request",
   "operation": {
-    "argumentDefinitions": (v0/*: any*/),
+    "argumentDefinitions": (v0/*:: as any*/),
     "kind": "Operation",
     "name": "ActivityEditQuery",
-    "selections": (v3/*: any*/)
+    "selections": (v3/*:: as any*/)
   },
   "params": {
     "cacheID": "22984d806346d47aa3c59d34d8131970",

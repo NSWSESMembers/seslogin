@@ -1,7 +1,6 @@
 /**
- * @generated SignedSource<<2c805869e9733405c23f74307bfdc388>>
+ * @generated SignedSource<<4fbd412bea52ef869e1b36a866f79460>>
  * @lightSyntaxTransform
- * @nogrep
  */
 
 /* tslint:disable */
@@ -45,7 +44,7 @@ v1 = [
     "name": "user",
     "plural": false,
     "selections": [
-      (v0/*: any*/),
+      (v0/*:: as any*/),
       {
         "alias": null,
         "args": null,
@@ -54,7 +53,7 @@ v1 = [
         "name": "oauthGrants",
         "plural": true,
         "selections": [
-          (v0/*: any*/),
+          (v0/*:: as any*/),
           {
             "alias": null,
             "args": null,
@@ -105,7 +104,7 @@ return {
       "throwOnFieldError": true
     },
     "name": "SettingsConnectedAppsQuery",
-    "selections": (v1/*: any*/),
+    "selections": (v1/*:: as any*/),
     "type": "QueryRoot",
     "abstractKey": null
   },
@@ -114,7 +113,7 @@ return {
     "argumentDefinitions": [],
     "kind": "Operation",
     "name": "SettingsConnectedAppsQuery",
-    "selections": (v1/*: any*/)
+    "selections": (v1/*:: as any*/)
   },
   "params": {
     "cacheID": "31a93e4ec04f712e0e60d2f20a312e16",

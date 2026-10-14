@@ -1,7 +1,6 @@
 /**
- * @generated SignedSource<<7df902b28a7d466edbe5b97144e926c4>>
+ * @generated SignedSource<<89103fb95397c23312e44c0866cdc112>>
  * @lightSyntaxTransform
- * @nogrep
  */
 
 /* tslint:disable */
@@ -75,8 +74,8 @@ v4 = {
   "name": "category",
   "plural": false,
   "selections": [
-    (v0/*: any*/),
-    (v3/*: any*/)
+    (v0/*:: as any*/),
+    (v3/*:: as any*/)
   ],
   "storageKey": null
 },
@@ -102,8 +101,8 @@ v7 = {
   "name": "categories",
   "plural": true,
   "selections": [
-    (v0/*: any*/),
-    (v3/*: any*/),
+    (v0/*:: as any*/),
+    (v3/*:: as any*/),
     {
       "alias": null,
       "args": null,
@@ -131,10 +130,10 @@ return {
         "name": "linkedPeriod",
         "plural": false,
         "selections": [
-          (v0/*: any*/),
-          (v1/*: any*/),
-          (v2/*: any*/),
-          (v4/*: any*/),
+          (v0/*:: as any*/),
+          (v1/*:: as any*/),
+          (v2/*:: as any*/),
+          (v4/*:: as any*/),
           {
             "alias": null,
             "args": null,
@@ -143,8 +142,8 @@ return {
             "name": "person",
             "plural": false,
             "selections": [
-              (v5/*: any*/),
-              (v6/*: any*/)
+              (v5/*:: as any*/),
+              (v6/*:: as any*/)
             ],
             "storageKey": null
           },
@@ -156,14 +155,14 @@ return {
             "name": "location",
             "plural": false,
             "selections": [
-              (v3/*: any*/)
+              (v3/*:: as any*/)
             ],
             "storageKey": null
           }
         ],
         "storageKey": null
       },
-      (v7/*: any*/)
+      (v7/*:: as any*/)
     ],
     "type": "QueryRoot",
     "abstractKey": null
@@ -182,10 +181,10 @@ return {
         "name": "linkedPeriod",
         "plural": false,
         "selections": [
-          (v0/*: any*/),
-          (v1/*: any*/),
-          (v2/*: any*/),
-          (v4/*: any*/),
+          (v0/*:: as any*/),
+          (v1/*:: as any*/),
+          (v2/*:: as any*/),
+          (v4/*:: as any*/),
           {
             "alias": null,
             "args": null,
@@ -194,9 +193,9 @@ return {
             "name": "person",
             "plural": false,
             "selections": [
-              (v5/*: any*/),
-              (v6/*: any*/),
-              (v0/*: any*/)
+              (v5/*:: as any*/),
+              (v6/*:: as any*/),
+              (v0/*:: as any*/)
             ],
             "storageKey": null
           },
@@ -208,15 +207,15 @@ return {
             "name": "location",
             "plural": false,
             "selections": [
-              (v3/*: any*/),
-              (v0/*: any*/)
+              (v3/*:: as any*/),
+              (v0/*:: as any*/)
             ],
             "storageKey": null
           }
         ],
         "storageKey": null
       },
-      (v7/*: any*/)
+      (v7/*:: as any*/)
     ]
   },
   "params": {
