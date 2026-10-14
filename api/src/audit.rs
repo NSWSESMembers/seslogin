@@ -1323,7 +1323,11 @@ impl<D: db::Handler> db::Handler for AuditingHandler<D> {
         Ok(())
     }
 
-    async fn update_session(&self, id: &str, change: db::SessionUpdateShape<'_>) -> db::Result<()> {
+    async fn update_session(
+        &self,
+        id: &str,
+        change: db::SessionUpdateShape<'_>,
+    ) -> db::Result<Option<u64>> {
         if !session_shape_is_audited(&change) {
             return self.inner.update_session(id, change).await;
         }
@@ -1332,7 +1336,7 @@ impl<D: db::Handler> db::Handler for AuditingHandler<D> {
             session_update_changes(before.as_ref(), &change, crate::clock::now_sec());
         let label = session_label_after(before.as_ref(), &change);
         let location_ids: Vec<String> = before.iter().map(|s| s.location_id.clone()).collect();
-        self.inner.update_session(id, change).await?;
+        let version = self.inner.update_session(id, change).await?;
         self.record(Recorded {
             entity_type: AuditEntityType::Session,
             entity_id: id,
@@ -1342,7 +1346,7 @@ impl<D: db::Handler> db::Handler for AuditingHandler<D> {
             changes,
         })
         .await;
-        Ok(())
+        Ok(version)
     }
 
     async fn create_api_token(
@@ -2272,6 +2276,7 @@ mod tests {
             key_fingerprint: None,
             key_expires_at: None,
             key_released_at: None,
+            version: 1,
             created_at: Some(1),
             updated_at: Some(1),
         }
