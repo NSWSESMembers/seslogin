@@ -458,6 +458,14 @@ resource "aws_dynamodb_table" "prod_user_token" {
     }
     projection_type = "KEYS_ONLY"
   }
+
+  # `expires_at` slides forward on each use (`TouchLastUsed`), so only tokens
+  # left unused past their lifetime are removed. Deletion is lazy (often up to
+  # a couple of days late); auth rejects expired tokens itself regardless.
+  ttl {
+    attribute_name = "expires_at"
+    enabled        = true
+  }
 }
 
 resource "aws_dynamodb_table" "prod_webauthn_credential" {

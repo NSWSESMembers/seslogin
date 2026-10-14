@@ -380,6 +380,11 @@ resource "aws_dynamodb_table" "test_user_token" {
     }
     projection_type = "KEYS_ONLY"
   }
+
+  ttl {
+    attribute_name = "expires_at"
+    enabled        = true
+  }
 }
 
 resource "aws_dynamodb_table" "test_webauthn_credential" {
