@@ -223,7 +223,7 @@ fn labels_of(connection: &serde_json::Value) -> Vec<&str> {
 async fn populated_app() -> (Arc<TestApp>, String) {
     let app = app::new(
         AuditingHandler::new(FakeDb::default()),
-        jwt::Key::new("test-secret", None, None).expect("valid test JWT key"),
+        jwt::Key::new("test-secret", None).expect("valid test JWT key"),
         0,
         mockqueue::Handler::new(),
         mockmail::Handler::new(),

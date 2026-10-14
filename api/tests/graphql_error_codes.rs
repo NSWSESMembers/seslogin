@@ -35,7 +35,7 @@ struct Fixture {
 }
 
 fn fixture() -> Fixture {
-    let key = jwt::Key::new("test", None, None).expect("valid test JWT key");
+    let key = jwt::Key::new("test", None).expect("valid test JWT key");
     let db = mockdb::Handler::new();
     // The mock backends record instead of dispatching, so nothing here touches the
     // network or needs AWS config resolution.

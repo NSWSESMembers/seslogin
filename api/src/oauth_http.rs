@@ -557,7 +557,7 @@ mod tests {
 
     fn app() -> MyApp<mockdb::Handler, mockqueue::Handler, mockmail::Handler, mockrealtime::Handler>
     {
-        let key = jwt::Key::new("test-secret", None, None).expect("valid test JWT key");
+        let key = jwt::Key::new("test-secret", None).expect("valid test JWT key");
         app::new(
             mockdb::Handler::new(),
             key,

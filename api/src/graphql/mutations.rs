@@ -745,7 +745,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         }
     }
 
-    /// Revoke the current user's opaque session token (no-op for JWT sessions).
+    /// Revoke the current user's opaque session token (no-op when not signed in with one).
     #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
     async fn logout(&self, ctx: &Context<'_>) -> Result<bool> {
         if let Some(AuthInfo::User {

@@ -139,7 +139,7 @@ enum Object {
         #[arg(long, default_value_t = 1)]
         count: usize,
     },
-    /// Generate a signed JWT for a session or user (does not touch the DB).
+    /// Generate a signed kiosk session JWT (does not touch the DB).
     Jwt {
         /// JWT secret (overrides JWT_SECRET env var).
         #[arg(long)]
@@ -181,11 +181,6 @@ enum JwtCmd {
     Session {
         /// The session ID to embed in the JWT.
         session_id: String,
-    },
-    /// Generate a JWT for a user (default expiry: 1 hour).
-    User {
-        /// The user ID to embed in the JWT.
-        user_id: String,
     },
 }
 
@@ -1531,25 +1526,21 @@ fn scan_outcomes<T>(rows: Vec<seslogin::db::Result<T>>) -> Vec<Result<(), String
         .collect()
 }
 
-/// Generate and print a signed JWT for a session or user. Does not touch the DB.
+/// Generate and print a signed kiosk session JWT. Does not touch the DB.
 fn run_jwt(jwt_secret: Option<String>, expire_s: Option<u64>, cmd: &JwtCmd) -> Result<()> {
     let secret = jwt_secret
         .or_else(|| std::env::var("JWT_SECRET").ok())
         .ok_or_else(|| anyhow!("JWT_SECRET is required (flag or env var)"))?;
 
-    let key = Key::new(&secret, None, None)?;
+    let key = Key::new(&secret, None)?;
 
     let expire_policy = match expire_s {
         Some(s) => ExpirePolicy::TimeSec(s),
-        None => match cmd {
-            JwtCmd::Session { .. } => ExpirePolicy::SessionDefault,
-            JwtCmd::User { .. } => ExpirePolicy::UserDefault,
-        },
+        None => ExpirePolicy::SessionDefault,
     };
 
     let token = match cmd {
         JwtCmd::Session { session_id } => key.make_session_jwt(session_id, expire_policy)?,
-        JwtCmd::User { user_id } => key.make_user_jwt(user_id, expire_policy)?,
     };
 
     println!("{token}");
