@@ -60,4 +60,19 @@ describe("MenuBar", () => {
 
     expect(linksContainer().className).toContain("hidden");
   });
+
+  it("offers the audit log to every user", () => {
+    renderMenuBar("/admin");
+    expect(screen.getByRole("link", { name: "Audit log" })).toHaveAttribute(
+      "href",
+      "/admin/audit",
+    );
+  });
+
+  it("shows the audit log as the current section on its page", () => {
+    renderMenuBar("/admin/audit");
+    expect(
+      screen.getByRole("button", { name: "Audit log" }),
+    ).toBeInTheDocument();
+  });
 });

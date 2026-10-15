@@ -72,6 +72,7 @@ fn app_with_location() -> Arc<TestApp> {
             key_fingerprint: None,
             key_expires_at: None,
             key_released_at: None,
+            version: 1,
             created_at: Some(0),
             updated_at: Some(0),
         },

@@ -42,10 +42,6 @@ type Schema<H, Q, M, R> = async_graphql::Schema<
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
 pub struct Cli {
-    /// JWT expiry time in seconds (default: 1h in dev)
-    #[arg(short, long, default_value_t = 3600)]
-    pub user_expiry_s: u64,
-
     /// JWT expiry time for sessions in seconds (default: 1h in dev)
     #[arg(short, long, default_value_t = 1209600)]
     pub session_expiry_s: u64,
@@ -76,6 +72,26 @@ pub struct Startup {
     pub db_prefix: String,
 }
 
+/// Stack size for each tokio worker thread, in place of tokio's 2 MiB default.
+///
+/// Unoptimised (debug) builds keep far more on the stack per request than release
+/// builds: a single mutation needs about 1.7 MB of worker stack in a debug build,
+/// against about 250 KB in release. That leaves `make dev` one modest change away
+/// from aborting with "thread 'tokio-rt-worker' has overflowed its stack" (sooner
+/// on macOS, whose debug frames run larger), so give the workers ample headroom.
+/// It costs nothing in practice: the stack is reserved address space, and only the
+/// pages a request actually touches are ever committed.
+const WORKER_STACK_SIZE: usize = 8 * 1024 * 1024;
+
+/// The tokio runtime the API server binaries run on: `#[tokio::main]`'s
+/// multi-threaded runtime, with [`WORKER_STACK_SIZE`] stacks.
+pub fn runtime() -> std::io::Result<tokio::runtime::Runtime> {
+    tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .thread_stack_size(WORKER_STACK_SIZE)
+        .build()
+}
+
 /// Set up logging, load `.env`, parse the command line, and read the config every
 /// server needs. Call this first; it must run before any backend is constructed,
 /// because that's what puts `.env` into the environment.
@@ -88,7 +104,7 @@ pub fn init() -> Result<Startup, Box<dyn Error>> {
 
     let var = env::var("JWT_SECRET").expect("JWT_SECRET must be set");
     let secret = var.trim();
-    let key = jwt::Key::new(secret, Some(cli.user_expiry_s), Some(cli.session_expiry_s))?;
+    let key = jwt::Key::new(secret, Some(cli.session_expiry_s))?;
 
     let dev_auth = match (&cli.dev_auth_session, &cli.dev_auth_user) {
         (Some(_), Some(_)) => {
@@ -161,11 +177,14 @@ where
     );
     let mut caller_type = auth::CallerType::Unauthenticated;
     let mut caller_id = String::from("unknown");
+    // Who the audit log attributes this request's writes to; see `crate::audit`.
+    let mut audit_auth: Option<auth::AuthInfo> = None;
     if let Some(cfg) = (***dev_auth).as_ref() {
         // Dev-only override: skip token verification and act as the configured caller.
         match auth::resolve_dev_auth(&***app, cfg).await {
             Ok(auth_info) => {
                 (caller_type, caller_id) = auth::caller_info(Some(&auth_info));
+                audit_auth = Some(auth_info.clone());
                 req = req.data(auth_info);
             }
             Err(e) => {
@@ -210,22 +229,32 @@ where
             Ok(v) => v,
         };
         (caller_type, caller_id) = auth::caller_info(Some(&auth_info));
+        audit_auth = Some(auth_info.clone());
         req = req.data(auth_info);
     }
+    let client_ip = graphql::ClientIp::from_forwarded_for(
+        headers
+            .get("x-forwarded-for")
+            .and_then(|value| value.to_str().ok()),
+    );
+    let audit_ip = client_ip.0.clone();
     req = req
         .data(app.clone())
-        .data(graphql::ClientIp::from_forwarded_for(
-            headers
-                .get("x-forwarded-for")
-                .and_then(|value| value.to_str().ok()),
-        ))
+        .data(client_ip)
         .data(graphql::get_dataloader(app.clone()));
 
     let operation_context = telemetry::extract_operation_context(&mut req);
     let request_start = Instant::now();
     let metrics = Arc::new(RequestMetrics::default());
     let gql_response = request_metrics::METRICS
-        .scope(metrics.clone(), schema.execute(req))
+        .scope(
+            metrics.clone(),
+            crate::audit::scope_for_request(
+                audit_auth.as_ref(),
+                audit_ip.as_deref(),
+                schema.execute(req),
+            ),
+        )
         .await;
     let gql_error_count = gql_response.errors.len();
     let response = GraphQLResponse(gql_response).into_response();

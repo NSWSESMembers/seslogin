@@ -15,15 +15,7 @@ use aws_sdk_dynamodb::types::{
     ConsumedCapacity, KeysAndAttributes, ReturnConsumedCapacity, ReturnValue,
 };
 use aws_sdk_dynamodb::{Client, types::AttributeValue};
-use nanoid::nanoid;
 use std::collections::HashMap;
-
-const NANOID_ALPHABET: [char; 62] = [
-    '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I',
-    'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b',
-    'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u',
-    'v', 'w', 'x', 'y', 'z',
-];
 
 /// Extract the most useful info from a DynamoDB SdkError.
 /// `{}` just prints "service error"; `{:?}` dumps raw HTTP responses.
@@ -61,14 +53,8 @@ fn parse_new_version(
         .ok_or_else(|| Error::Infrastructure("Missing version in update response".to_string()))
 }
 
-/// Generate a new unique ID for DB entities. Public so callers that need IDs
-/// before the record exists (e.g. `cli id`, for pre-allocating an ID to reuse
-/// verbatim across databases) use the exact same scheme rather than a
-/// hand-rolled one that could silently drift from it.
-pub fn new_id() -> String {
-    // https://alex7kom.github.io/nano-nanoid-cc/?alphabet=0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz&size=12&speed=1000&speedUnit=hour
-    nanoid!(12, &NANOID_ALPHABET)
-}
+/// Generate a new unique ID for DB entities; see [`db::new_id`].
+pub use crate::db::new_id;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Item(HashMap<String, AttributeValue>);
@@ -410,10 +396,26 @@ impl TryInto<Session> for Item {
             key_fingerprint: self.string_field("key_fingerprint")?,
             key_expires_at: self.i64_field("key_expires_at")?.map(|i| i as u64),
             key_released_at: self.i64_field("key_released_at")?.map(|i| i as u64),
+            // 0, not 1, for a row written before versions existed: its first bump
+            // (`ADD v` creates the attribute at 1) must read as newer than what a kiosk
+            // already holds for it.
+            version: self.i64_field("v")?.unwrap_or(0) as u64,
             created_at: self.i64_field("created_at")?.map(|i| i as u64),
             updated_at: self.i64_field("updated_at")?.map(|i| i as u64),
         })
     }
+}
+
+/// The new session version from an `update_item` that ran `ADD v :one` with
+/// `ReturnValues::UpdatedNew`.
+fn returned_version(attributes: Option<&HashMap<String, AttributeValue>>) -> db::Result<u64> {
+    attributes
+        .and_then(|a| a.get("v"))
+        .and_then(|v| v.as_n().ok())
+        .and_then(|n| n.parse::<u64>().ok())
+        .ok_or_else(|| {
+            Error::Infrastructure("Missing version in session update response".to_string())
+        })
 }
 
 /// The session attributes backing [`crate::client_info::ClientInfo`], paired with the
@@ -931,6 +933,212 @@ fn unprocessed_keys_for(
         .and_then(|mut tables| tables.remove(table_name))
         .map(|ka| ka.keys)
         .unwrap_or_default()
+}
+
+/// The `audit_log` items for one event: one per affected location, or a single item with
+/// no `location_id` when the entry is global. Exactly one item (the first) carries
+/// `scope = "all"`, so the all-locations view lists each event once. The first item keeps
+/// the entry's own `id`; the rest get fresh ones. Optional attributes are omitted, never
+/// written as Null (see CLAUDE.md).
+fn audit_items(entry: &db::AuditEntry) -> db::Result<Vec<HashMap<String, AttributeValue>>> {
+    let changes = serde_json::to_string(&entry.changes)
+        .map_err(|e| Error::TypeConversion(format!("audit changes serialize: {e}")))?;
+    let locations: Vec<Option<&str>> = if entry.location_ids.is_empty() {
+        vec![None]
+    } else {
+        entry
+            .location_ids
+            .iter()
+            .map(|l| Some(l.as_str()))
+            .collect()
+    };
+
+    Ok(locations
+        .into_iter()
+        .enumerate()
+        .map(|(i, location_id)| {
+            let id = if i == 0 { entry.id.clone() } else { new_id() };
+            let mut item = HashMap::from([
+                (
+                    "sk".to_string(),
+                    AttributeValue::S(db::audit_sk(entry.ts, &id)),
+                ),
+                ("id".to_string(), AttributeValue::S(id)),
+                ("ts".to_string(), AttributeValue::N(entry.ts.to_string())),
+                (
+                    "event_id".to_string(),
+                    AttributeValue::S(entry.event_id.clone()),
+                ),
+                (
+                    "action".to_string(),
+                    AttributeValue::S(entry.action.as_str().to_string()),
+                ),
+                (
+                    "entity_type".to_string(),
+                    AttributeValue::S(entry.entity_type.as_str().to_string()),
+                ),
+                (
+                    "entity_id".to_string(),
+                    AttributeValue::S(entry.entity_id.clone()),
+                ),
+                (
+                    "actor_kind".to_string(),
+                    AttributeValue::S(entry.actor_kind.clone()),
+                ),
+                ("changes".to_string(), AttributeValue::S(changes.clone())),
+            ]);
+            if let Some(label) = &entry.entity_label {
+                item.insert("entity_label".to_string(), AttributeValue::S(label.clone()));
+            }
+            if let Some(location_id) = location_id {
+                item.insert(
+                    "location_id".to_string(),
+                    AttributeValue::S(location_id.to_string()),
+                );
+            }
+            if i == 0 {
+                item.insert("scope".to_string(), AttributeValue::S("all".to_string()));
+            }
+            if let Some(actor_id) = &entry.actor_id {
+                item.insert("actor_id".to_string(), AttributeValue::S(actor_id.clone()));
+            }
+            if let Some(via) = &entry.actor_via {
+                item.insert("actor_via".to_string(), AttributeValue::S(via.clone()));
+            }
+            if let Some(ip) = &entry.ip {
+                item.insert("ip".to_string(), AttributeValue::S(ip.clone()));
+            }
+            item
+        })
+        .collect())
+}
+
+/// Hydrate one `audit_log` item. It is a single item of an event, so `location_ids`
+/// holds just that item's `location_id` (empty for a global entity).
+///
+/// Strict about the attributes the UI cannot do without (`ts`, `action`, `entity_type`,
+/// `entity_id`, `actor_kind`, `event_id`): a row missing one is reported as a
+/// hydration error, which [`audit_entries_from_items`] logs and skips. Lenient about
+/// `changes`: it is only detail, so a value that is not the expected JSON shows as an
+/// entry with no field changes rather than hiding who did what.
+impl TryInto<db::AuditEntry> for Item {
+    type Error = HydrationError;
+    fn try_into(self) -> Result<db::AuditEntry, Self::Error> {
+        let id = self.id()?;
+        let ts = self
+            .i64_field("ts")?
+            .and_then(|t| u64::try_from(t).ok())
+            .ok_or_else(|| anyhow!("AuditEntry missing ts"))?;
+        let action = self
+            .string_field("action")?
+            .ok_or_else(|| anyhow!("AuditEntry missing action"))?;
+        let action = db::AuditAction::parse(&action)
+            .ok_or_else(|| anyhow!("AuditEntry has unknown action {action:?}"))?;
+        let entity_type = self
+            .string_field("entity_type")?
+            .ok_or_else(|| anyhow!("AuditEntry missing entity_type"))?;
+        let entity_type = db::AuditEntityType::parse(&entity_type)
+            .ok_or_else(|| anyhow!("AuditEntry has unknown entity_type {entity_type:?}"))?;
+        let changes = match self.string_field("changes") {
+            Ok(Some(raw)) => serde_json::from_str(&raw).unwrap_or_else(|e| {
+                tracing::warn!(audit_id = %id, "unreadable audit changes, showing none: {e}");
+                Vec::new()
+            }),
+            Ok(None) => Vec::new(),
+            Err(e) => {
+                tracing::warn!(audit_id = %id, "unreadable audit changes, showing none: {e}");
+                Vec::new()
+            }
+        };
+        Ok(db::AuditEntry {
+            event_id: self
+                .string_field("event_id")?
+                .ok_or_else(|| anyhow!("AuditEntry missing event_id"))?,
+            ts,
+            action,
+            entity_type,
+            entity_id: self
+                .string_field("entity_id")?
+                .ok_or_else(|| anyhow!("AuditEntry missing entity_id"))?,
+            entity_label: self.string_field("entity_label")?,
+            location_ids: self.string_field("location_id")?.into_iter().collect(),
+            actor_kind: self
+                .string_field("actor_kind")?
+                .ok_or_else(|| anyhow!("AuditEntry missing actor_kind"))?,
+            actor_id: self.string_field("actor_id")?,
+            actor_via: self.string_field("actor_via")?,
+            ip: self.string_field("ip")?,
+            changes,
+            id,
+        })
+    }
+}
+
+/// Hydrate a page of `audit_log` items, logging and skipping any that cannot be read so
+/// one corrupt row never fails the whole page.
+fn audit_entries_from_items(items: Vec<HashMap<String, AttributeValue>>) -> Vec<db::AuditEntry> {
+    hydrate_items_lenient::<db::AuditEntry>(Some(items))
+        .into_iter()
+        .filter_map(|r| match r {
+            Ok(entry) => Some(entry),
+            Err(e) => {
+                tracing::warn!("skipping unreadable audit_log row: {e}");
+                None
+            }
+        })
+        .collect()
+}
+
+/// How a `list_audit_entries` query maps onto DynamoDB.
+#[derive(Debug, PartialEq)]
+struct AuditQueryPlan {
+    index_name: &'static str,
+    /// The GSI's hash key attribute and the value it must equal.
+    hash_attr: &'static str,
+    hash_value: String,
+    scan_forward: bool,
+    exclusive_start_key: Option<HashMap<String, AttributeValue>>,
+    /// Value for the `entity_type` filter, if any.
+    entity_type: Option<&'static str>,
+}
+
+/// Build the DynamoDB request shape for an audit query. Fails for a malformed cursor —
+/// one that is not an [`db::audit_sk`] — rather than sending it to DynamoDB.
+///
+/// The `ExclusiveStartKey` for a GSI query must carry the base table's key (`id`) as well
+/// as the index's two keys. The cursor is the item's `sk`, which embeds the `id` (see
+/// [`audit_items`]), so all three can be rebuilt from it plus the scope.
+fn audit_query_plan(query: &db::ListAuditEntriesQuery) -> db::Result<AuditQueryPlan> {
+    let (index_name, hash_attr, hash_value) = match &query.scope {
+        db::AuditScope::Location(location_id) => {
+            ("location_id-sk-index", "location_id", location_id.clone())
+        }
+        db::AuditScope::All => ("scope-sk-index", "scope", "all".to_string()),
+    };
+    let exclusive_start_key = query
+        .page
+        .after
+        .as_deref()
+        .map(|cursor| {
+            let id = db::parse_audit_cursor(cursor)
+                .ok_or_else(|| Error::TypeConversion(format!("Invalid audit cursor {cursor:?}")))?;
+            Ok::<_, Error>(HashMap::from([
+                ("id".to_string(), AttributeValue::S(id.to_string())),
+                (hash_attr.to_string(), AttributeValue::S(hash_value.clone())),
+                ("sk".to_string(), AttributeValue::S(cursor.to_string())),
+            ]))
+        })
+        .transpose()?;
+    Ok(AuditQueryPlan {
+        index_name,
+        hash_attr,
+        hash_value,
+        // `descending` is the order of the returned page, so it is also the scan order:
+        // there is no reversed output to undo.
+        scan_forward: !query.page.descending,
+        exclusive_start_key,
+        entity_type: query.entity_type.map(|t| t.as_str()),
+    })
 }
 
 enum CapKind {
@@ -2616,7 +2824,8 @@ impl db::Handler for Handler {
             .item("config", AttributeValue::S(serialized_config))
             .item("created_at", AttributeValue::N(unix_time.to_string()))
             .item("updated_at", AttributeValue::N(unix_time.to_string()))
-            .item("active", AttributeValue::N("1".to_string()));
+            .item("active", AttributeValue::N("1".to_string()))
+            .item("v", AttributeValue::N("1".to_string()));
 
         // A key-enrolled session (QR/public-key flow) authenticates by signature and
         // has no 6-digit code; a code-enrolled session gets a code and no key. The two
@@ -2674,12 +2883,17 @@ impl db::Handler for Handler {
             key_fingerprint: key.map(|k| k.fingerprint.to_string()),
             key_expires_at: key.map(|k| k.expires_at),
             key_released_at: None,
+            version: 1,
             created_at: Some(unix_time),
             updated_at: Some(unix_time),
         })
     }
 
-    async fn update_session(&self, id: &str, change: db::SessionUpdateShape<'_>) -> db::Result<()> {
+    async fn update_session(
+        &self,
+        id: &str,
+        change: db::SessionUpdateShape<'_>,
+    ) -> db::Result<Option<u64>> {
         if self.read_only {
             return Err(db::Error::MutationDisabled);
         }
@@ -2707,7 +2921,7 @@ impl db::Handler for Handler {
                 request = if let Some(healthcheck_url) = healthcheck_url {
                     request
                         .update_expression(
-                            "SET #name = :name, config = :config, healthcheck_url = :healthcheck_url, updated_at = :updated_at",
+                            "SET #name = :name, config = :config, healthcheck_url = :healthcheck_url, updated_at = :updated_at ADD v :one",
                         )
                         .expression_attribute_values(
                             ":healthcheck_url",
@@ -2715,16 +2929,19 @@ impl db::Handler for Handler {
                         )
                 } else {
                     request.update_expression(
-                        "SET #name = :name, config = :config, updated_at = :updated_at REMOVE healthcheck_url",
+                        "SET #name = :name, config = :config, updated_at = :updated_at REMOVE healthcheck_url ADD v :one",
                     )
                 };
 
                 let resp = request
+                    .expression_attribute_values(":one", AttributeValue::N("1".to_string()))
+                    .return_values(ReturnValue::UpdatedNew)
                     .return_consumed_capacity(ReturnConsumedCapacity::Total)
                     .send()
                     .await
                     .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
                 record_capacity("update_session", resp.consumed_capacity(), CapKind::Write);
+                Ok(Some(returned_version(resp.attributes())?))
             }
             db::SessionUpdateShape::Info {
                 client_version,
@@ -2801,6 +3018,7 @@ impl db::Handler for Handler {
                     .await
                     .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
                 record_capacity("update_session", resp.consumed_capacity(), CapKind::Write);
+                Ok(None)
             }
             db::SessionUpdateShape::ExtendKey { expires_at } => {
                 // The condition keeps the write honest: a soft-deleted session (no
@@ -2830,6 +3048,7 @@ impl db::Handler for Handler {
                     .await
                     .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
                 record_capacity("update_session", resp.consumed_capacity(), CapKind::Write);
+                Ok(None)
             }
             db::SessionUpdateShape::ReleaseKey { fingerprint } => {
                 // Same REMOVE list as `Delete` minus `active`: the record stays in its
@@ -2854,10 +3073,12 @@ impl db::Handler for Handler {
                     )
                     .update_expression(
                         "SET updated_at = :now, key_released_at = :now \
-                         REMOVE key_fingerprint, public_key, key_expires_at",
+                         REMOVE key_fingerprint, public_key, key_expires_at ADD v :one",
                     )
                     .expression_attribute_values(":fp", AttributeValue::S(fingerprint.to_string()))
                     .expression_attribute_values(":now", AttributeValue::N(now.to_string()))
+                    .expression_attribute_values(":one", AttributeValue::N("1".to_string()))
+                    .return_values(ReturnValue::UpdatedNew)
                     .return_consumed_capacity(ReturnConsumedCapacity::Total)
                     .send()
                     .await
@@ -2872,6 +3093,7 @@ impl db::Handler for Handler {
                     resp.consumed_capacity(),
                     CapKind::Write,
                 );
+                Ok(Some(returned_version(resp.attributes())?))
             }
             db::SessionUpdateShape::Delete => {
                 // Removing `active` soft-deletes the session. Also drop the key fields so
@@ -2884,21 +3106,22 @@ impl db::Handler for Handler {
                     .table_name(self.table_name("session"))
                     .key("id", AttributeValue::S(id.to_string()))
                     .update_expression(
-                        "SET updated_at = :updated_at REMOVE active, key_fingerprint, public_key, key_expires_at",
+                        "SET updated_at = :updated_at REMOVE active, key_fingerprint, public_key, key_expires_at ADD v :one",
                     )
                     .expression_attribute_values(
                         ":updated_at",
                         AttributeValue::N(crate::clock::now_sec().to_string()),
                     )
+                    .expression_attribute_values(":one", AttributeValue::N("1".to_string()))
+                    .return_values(ReturnValue::UpdatedNew)
                     .return_consumed_capacity(ReturnConsumedCapacity::Total)
                     .send()
                     .await
                     .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
                 record_capacity("delete_session", resp.consumed_capacity(), CapKind::Write);
+                Ok(Some(returned_version(resp.attributes())?))
             }
         }
-
-        Ok(())
     }
 
     async fn get_api_token(&self, id: &str) -> db::Result<Option<ApiToken>> {
@@ -2907,6 +3130,7 @@ impl db::Handler for Handler {
             .get_item()
             .table_name(self.table_name("api_token"))
             .key("id", AttributeValue::S(id.to_string()))
+            .consistent_read(true)
             .return_consumed_capacity(ReturnConsumedCapacity::Total)
             .send()
             .await
@@ -2984,6 +3208,7 @@ impl db::Handler for Handler {
 
     async fn create_api_token(
         &self,
+        id: &str,
         name: &str,
         token_hash: &str,
         location_grants: Vec<String>,
@@ -2994,14 +3219,13 @@ impl db::Handler for Handler {
         if self.read_only {
             return Err(db::Error::MutationDisabled);
         }
-        let id = new_id();
         let unix_time = crate::clock::now_sec();
 
         let mut request = self
             .client
             .put_item()
             .table_name(self.table_name("api_token"))
-            .item("id", AttributeValue::S(id.clone()))
+            .item("id", AttributeValue::S(id.to_string()))
             .item("name", AttributeValue::S(name.to_string()))
             .item("token_hash", AttributeValue::S(token_hash.to_string()))
             .item("read_only", AttributeValue::Bool(read_only))
@@ -3010,7 +3234,9 @@ impl db::Handler for Handler {
                 "created_by_user_id",
                 AttributeValue::S(created_by_user_id.to_string()),
             )
-            .item("active", AttributeValue::N("1".to_string()));
+            .item("active", AttributeValue::N("1".to_string()))
+            // The id is caller-supplied now; never let a collision overwrite a token.
+            .condition_expression("attribute_not_exists(id)");
 
         if !location_grants.is_empty() {
             request = request.item(
@@ -3030,7 +3256,7 @@ impl db::Handler for Handler {
         record_capacity("create_api_token", resp.consumed_capacity(), CapKind::Write);
 
         Ok(ApiToken {
-            id,
+            id: id.to_string(),
             name: name.to_string(),
             token_hash: token_hash.to_string(),
             location_grants,
@@ -4215,6 +4441,7 @@ impl db::Handler for Handler {
 
     async fn create_user_token(
         &self,
+        id: &str,
         token_hash: &str,
         user_id: &str,
         expires_at: u64,
@@ -4222,27 +4449,46 @@ impl db::Handler for Handler {
         if self.read_only {
             return Err(db::Error::MutationDisabled);
         }
-        let id = new_id();
         let now = crate::clock::now_sec();
         self.client
             .put_item()
             .table_name(self.table_name("user_token"))
-            .item("id", AttributeValue::S(id.clone()))
+            .item("id", AttributeValue::S(id.to_string()))
             .item("token_hash", AttributeValue::S(token_hash.to_string()))
             .item("user_id", AttributeValue::S(user_id.to_string()))
             .item("created_at", AttributeValue::N(now.to_string()))
             .item("expires_at", AttributeValue::N(expires_at.to_string()))
+            // The id is caller-supplied now; never let a collision overwrite a token.
+            .condition_expression("attribute_not_exists(id)")
             .send()
             .await
             .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
         Ok(UserToken {
-            id,
+            id: id.to_string(),
             token_hash: token_hash.to_string(),
             user_id: user_id.to_string(),
             created_at: now,
             expires_at,
             last_used_at: None,
         })
+    }
+
+    async fn get_user_token(&self, id: &str) -> db::Result<Option<UserToken>> {
+        let resp = self
+            .client
+            .get_item()
+            .table_name(self.table_name("user_token"))
+            .key("id", AttributeValue::S(id.to_string()))
+            .consistent_read(true)
+            .return_consumed_capacity(ReturnConsumedCapacity::Total)
+            .send()
+            .await
+            .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
+        record_capacity("get_user_token", resp.consumed_capacity(), CapKind::Read);
+        match resp.item {
+            Some(item) => Ok(Some(Item(item).try_into()?)),
+            None => Ok(None),
+        }
     }
 
     async fn get_user_token_by_hash(&self, token_hash: &str) -> db::Result<Option<UserToken>> {
@@ -4788,12 +5034,94 @@ impl db::Handler for Handler {
             .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
         Ok(())
     }
+
+    async fn put_audit_entry(&self, entry: &db::AuditEntry) -> db::Result<()> {
+        if self.read_only {
+            return Err(db::Error::MutationDisabled);
+        }
+        for item in audit_items(entry)? {
+            let resp = self
+                .client
+                .put_item()
+                .table_name(self.table_name("audit_log"))
+                .set_item(Some(item))
+                .return_consumed_capacity(ReturnConsumedCapacity::Total)
+                .send()
+                .await
+                .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
+            record_capacity("put_audit_entry", resp.consumed_capacity(), CapKind::Write);
+        }
+        Ok(())
+    }
+
+    async fn list_audit_entries(
+        &self,
+        query: db::ListAuditEntriesQuery,
+    ) -> db::Result<Vec<db::AuditEntry>> {
+        let plan = audit_query_plan(&query)?;
+        let fetch_limit = usize::try_from(query.page.limit).unwrap_or(0);
+        if fetch_limit == 0 {
+            return Ok(Vec::new());
+        }
+        // `Limit` bounds the items *read*, before the entity_type filter drops any, so a
+        // filtered page can come back short while more rows remain. Read in bigger
+        // chunks when filtering so a rare type needs fewer round trips.
+        let read_limit = if plan.entity_type.is_some() {
+            fetch_limit.max(100)
+        } else {
+            fetch_limit
+        };
+        let read_limit = i32::try_from(read_limit).unwrap_or(i32::MAX);
+
+        let mut exclusive_start_key = plan.exclusive_start_key;
+        let mut entries: Vec<db::AuditEntry> = Vec::new();
+        loop {
+            let mut builder = self
+                .client
+                .query()
+                .table_name(self.table_name("audit_log"))
+                .index_name(plan.index_name)
+                .key_condition_expression("#h = :h")
+                .expression_attribute_names("#h", plan.hash_attr)
+                .expression_attribute_values(":h", AttributeValue::S(plan.hash_value.clone()))
+                .limit(read_limit)
+                .scan_index_forward(plan.scan_forward)
+                .return_consumed_capacity(ReturnConsumedCapacity::Total);
+            if let Some(entity_type) = plan.entity_type {
+                builder = builder
+                    .filter_expression("entity_type = :et")
+                    .expression_attribute_values(":et", AttributeValue::S(entity_type.to_string()));
+            }
+            if let Some(esk) = exclusive_start_key.take() {
+                builder = builder.set_exclusive_start_key(Some(esk));
+            }
+
+            let resp = builder
+                .send()
+                .await
+                .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
+            record_capacity(
+                "list_audit_entries",
+                resp.consumed_capacity(),
+                CapKind::Read,
+            );
+            entries.extend(audit_entries_from_items(resp.items.unwrap_or_default()));
+            exclusive_start_key = resp.last_evaluated_key;
+
+            if entries.len() >= fetch_limit || exclusive_start_key.is_none() {
+                break;
+            }
+        }
+        entries.truncate(fetch_limit);
+        Ok(entries)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        Item, batch_get_backoff, client_info_attributes, hydrate_items, hydrate_items_lenient,
+        AuditQueryPlan, Item, audit_entries_from_items, audit_items, audit_query_plan,
+        batch_get_backoff, client_info_attributes, hydrate_items, hydrate_items_lenient,
         nitc_event_key, scan_cursor_from_key, topic_date_key, unprocessed_keys_for,
     };
     use crate::db;
@@ -5113,12 +5441,279 @@ mod tests {
         assert_eq!(session.client_info_updated_at, None);
     }
 
+    /// A session written before versions existed reads as 0, so the first bump (which
+    /// creates `v` at 1) is still newer than anything a kiosk holds for it.
+    #[test]
+    fn a_session_with_no_version_reads_as_zero() {
+        let session: db::Session = item(&[
+            ("id", AttributeValue::S("s1".to_string())),
+            ("location_id", AttributeValue::S("loc1".to_string())),
+        ])
+        .try_into()
+        .unwrap();
+        assert_eq!(session.version, 0);
+    }
+
+    #[test]
+    fn a_session_reads_its_version() {
+        let session: db::Session = item(&[
+            ("id", AttributeValue::S("s1".to_string())),
+            ("location_id", AttributeValue::S("loc1".to_string())),
+            ("v", AttributeValue::N("7".to_string())),
+        ])
+        .try_into()
+        .unwrap();
+        assert_eq!(session.version, 7);
+    }
+
+    #[test]
+    fn returned_version_reads_the_bumped_attribute() {
+        let attrs = raw(&[("v", AttributeValue::N("3".to_string()))]);
+        assert_eq!(super::returned_version(Some(&attrs)).unwrap(), 3);
+        assert!(super::returned_version(None).is_err());
+    }
+
     /// Every attribute this module writes is prefixed, so it can never collide with an
     /// existing session attribute (`name`, `code`, `config`, ...).
     #[test]
     fn client_info_attributes_are_namespaced() {
         for (attr, _) in client_info_attributes(&full_client_info()) {
             assert!(attr.starts_with("client_"), "{attr} is not namespaced");
+        }
+    }
+
+    fn audit_entry(location_ids: &[&str]) -> db::AuditEntry {
+        db::AuditEntry {
+            id: "item-1".to_string(),
+            event_id: "event-1".to_string(),
+            ts: 1_700_000_000,
+            action: db::AuditAction::Update,
+            entity_type: db::AuditEntityType::Person,
+            entity_id: "p1".to_string(),
+            entity_label: None,
+            location_ids: location_ids.iter().map(|s| s.to_string()).collect(),
+            actor_kind: "system".to_string(),
+            actor_id: None,
+            actor_via: None,
+            ip: None,
+            changes: vec![db::AuditFieldChange {
+                field: "location_id".to_string(),
+                before: Some(serde_json::json!("a")),
+                after: Some(serde_json::json!("b")),
+            }],
+        }
+    }
+
+    /// A global entry is a single item with no `location_id`, and omits every absent
+    /// optional attribute rather than writing Null.
+    #[test]
+    fn a_global_audit_entry_is_one_item_without_location_or_nulls() {
+        let items = audit_items(&audit_entry(&[])).unwrap();
+        assert_eq!(items.len(), 1);
+        let item = &items[0];
+        assert!(!item.contains_key("location_id"));
+        assert_eq!(item["scope"], AttributeValue::S("all".to_string()));
+        assert_eq!(
+            item["sk"],
+            AttributeValue::S("1700000000#item-1".to_string())
+        );
+        for absent in ["entity_label", "actor_id", "actor_via", "ip"] {
+            assert!(!item.contains_key(absent), "{absent} should be omitted");
+        }
+        assert!(item.values().all(|v| !matches!(v, AttributeValue::Null(_))));
+    }
+
+    /// One item per location, sharing `event_id`, with `scope = "all"` on exactly one.
+    #[test]
+    fn a_multi_location_audit_entry_writes_one_item_per_location_with_one_scope() {
+        let items = audit_items(&audit_entry(&["a", "b"])).unwrap();
+        assert_eq!(items.len(), 2);
+        let locations: Vec<_> = items
+            .iter()
+            .map(|i| i["location_id"].as_s().unwrap().as_str())
+            .collect();
+        assert_eq!(locations, vec!["a", "b"]);
+        assert_eq!(items.iter().filter(|i| i.contains_key("scope")).count(), 1);
+        assert!(items[0].contains_key("scope"));
+        for item in &items {
+            assert_eq!(item["event_id"], AttributeValue::S("event-1".to_string()));
+            let id = item["id"].as_s().unwrap();
+            assert_eq!(item["sk"].as_s().unwrap(), &format!("1700000000#{id}"));
+        }
+        assert_ne!(items[0]["id"], items[1]["id"]);
+    }
+
+    #[test]
+    fn audit_changes_are_stored_as_a_json_string_omitting_absent_sides() {
+        let item = &audit_items(&audit_entry(&[])).unwrap()[0];
+        let changes: serde_json::Value =
+            serde_json::from_str(item["changes"].as_s().unwrap()).unwrap();
+        assert_eq!(
+            changes,
+            serde_json::json!([{ "field": "location_id", "before": "a", "after": "b" }])
+        );
+    }
+
+    /// What a reader gets back for each item an entry was written as: the same entry, with
+    /// the item's own id and its one location.
+    #[test]
+    fn audit_items_hydrate_back_into_entries() {
+        let entry = db::AuditEntry {
+            entity_label: Some("Alice Anderson".to_string()),
+            actor_id: Some("u1".to_string()),
+            actor_via: Some("oauth_grant:g1".to_string()),
+            ip: Some("203.0.113.7".to_string()),
+            ..audit_entry(&["a", "b"])
+        };
+        let items = audit_items(&entry).unwrap();
+        let read = audit_entries_from_items(items.clone());
+        assert_eq!(read.len(), 2);
+        assert_eq!(
+            read[0],
+            db::AuditEntry {
+                location_ids: vec!["a".to_string()],
+                ..entry.clone()
+            }
+        );
+        assert_eq!(read[1].location_ids, vec!["b".to_string()]);
+        assert_eq!(read[1].id, items[1]["id"].as_s().unwrap().as_str());
+        // The cursor a reader hands back is the item's stored sk.
+        for (entry, item) in read.iter().zip(&items) {
+            assert_eq!(&entry.sk(), item["sk"].as_s().unwrap());
+        }
+        // A global entry hydrates with no location.
+        let global = audit_entries_from_items(audit_items(&audit_entry(&[])).unwrap());
+        assert!(global[0].location_ids.is_empty());
+    }
+
+    #[test]
+    fn a_malformed_audit_row_is_skipped_without_failing_the_page() {
+        let good = audit_items(&audit_entry(&["a"])).unwrap().remove(0);
+        let mut without_ts = good.clone();
+        without_ts.remove("ts");
+        let mut unknown_action = good.clone();
+        unknown_action.insert(
+            "action".to_string(),
+            AttributeValue::S("explode".to_string()),
+        );
+        let mut unknown_entity = good.clone();
+        unknown_entity.insert(
+            "entity_type".to_string(),
+            AttributeValue::S("widget".to_string()),
+        );
+        let mut wrong_type = good.clone();
+        wrong_type.insert("ts".to_string(), AttributeValue::S("soon".to_string()));
+
+        let read = audit_entries_from_items(vec![
+            without_ts,
+            good.clone(),
+            unknown_action,
+            unknown_entity,
+            wrong_type,
+        ]);
+        assert_eq!(read.len(), 1);
+        assert_eq!(read[0].id, "item-1");
+    }
+
+    /// `changes` is detail: a row whose changes are unreadable still shows who did what.
+    #[test]
+    fn unreadable_audit_changes_hydrate_as_no_changes() {
+        for bad in [
+            AttributeValue::S("not json".to_string()),
+            AttributeValue::S(r#"{"field":"x"}"#.to_string()),
+            AttributeValue::N("5".to_string()),
+        ] {
+            let mut item = audit_items(&audit_entry(&["a"])).unwrap().remove(0);
+            item.insert("changes".to_string(), bad);
+            let read = audit_entries_from_items(vec![item]);
+            assert_eq!(read.len(), 1);
+            assert!(read[0].changes.is_empty());
+        }
+        let mut item = audit_items(&audit_entry(&["a"])).unwrap().remove(0);
+        item.remove("changes");
+        assert!(audit_entries_from_items(vec![item])[0].changes.is_empty());
+    }
+
+    fn audit_query(
+        scope: db::AuditScope,
+        after: Option<&str>,
+        descending: bool,
+    ) -> db::ListAuditEntriesQuery {
+        db::ListAuditEntriesQuery {
+            scope,
+            entity_type: None,
+            page: db::ListAuditEntriesPage {
+                after: after.map(String::from),
+                limit: 11,
+                descending,
+            },
+        }
+    }
+
+    #[test]
+    fn a_location_audit_query_uses_the_location_index_and_rebuilds_the_start_key() {
+        let plan = audit_query_plan(&audit_query(
+            db::AuditScope::Location("loc-a".to_string()),
+            Some("1700000000#Ab3-_x"),
+            true,
+        ))
+        .unwrap();
+        assert_eq!(
+            plan,
+            AuditQueryPlan {
+                index_name: "location_id-sk-index",
+                hash_attr: "location_id",
+                hash_value: "loc-a".to_string(),
+                // Newest first is a backwards scan of the ascending sort key.
+                scan_forward: false,
+                // Base table key plus both index keys, all rebuilt from the cursor.
+                exclusive_start_key: Some(HashMap::from([
+                    ("id".to_string(), AttributeValue::S("Ab3-_x".to_string())),
+                    (
+                        "location_id".to_string(),
+                        AttributeValue::S("loc-a".to_string())
+                    ),
+                    (
+                        "sk".to_string(),
+                        AttributeValue::S("1700000000#Ab3-_x".to_string())
+                    ),
+                ])),
+                entity_type: None,
+            }
+        );
+    }
+
+    #[test]
+    fn an_all_scope_audit_query_uses_the_scope_index() {
+        let mut query = audit_query(db::AuditScope::All, Some("0000000005#zz"), false);
+        query.entity_type = Some(db::AuditEntityType::Person);
+        let plan = audit_query_plan(&query).unwrap();
+        assert_eq!(plan.index_name, "scope-sk-index");
+        assert_eq!(plan.hash_attr, "scope");
+        assert_eq!(plan.hash_value, "all");
+        assert!(plan.scan_forward);
+        assert_eq!(plan.entity_type, Some("person"));
+        let esk = plan.exclusive_start_key.unwrap();
+        assert_eq!(esk["scope"], AttributeValue::S("all".to_string()));
+        assert_eq!(esk["id"], AttributeValue::S("zz".to_string()));
+        assert!(!esk.contains_key("location_id"));
+    }
+
+    #[test]
+    fn an_audit_query_without_a_cursor_has_no_start_key() {
+        let plan = audit_query_plan(&audit_query(db::AuditScope::All, None, true)).unwrap();
+        assert_eq!(plan.exclusive_start_key, None);
+    }
+
+    #[test]
+    fn a_malformed_audit_cursor_is_an_error_not_a_request() {
+        for bad in [
+            "", "garbage", "123#", "#abc", "12x4#abc", "123#a b", "123#a#b",
+        ] {
+            assert!(
+                audit_query_plan(&audit_query(db::AuditScope::All, Some(bad), true)).is_err(),
+                "{bad:?} was accepted"
+            );
         }
     }
 }

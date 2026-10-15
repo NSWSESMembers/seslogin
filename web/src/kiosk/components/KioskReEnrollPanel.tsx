@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { Button } from "../../components/ui/Button";
 import { useEnrollmentWatch } from "../lib/useEnrollmentWatch";
 import { useEnrollmentQr } from "../lib/useEnrollmentQr";
@@ -13,18 +12,22 @@ import { FingerprintChip } from "../../components/FingerprintChip";
  * code works whatever state that kiosk is in and needs no clean-up beforehand.
  *
  * Hidden behind a button because showing it publishes this device's public key to the
- * server; there's no reason to do that every time someone opens the status dialog.
+ * server; there's no reason to do that every time someone opens the status dialog. The
+ * button lives with the dialog's other controls, so `shown` is the dialog's state.
  *
  * Deliberately renders no link (unlike the full enrollment screen): a kiosk that
  * navigates away from /kiosk needs someone with browser chrome to rescue it.
  */
 export default function KioskReEnrollPanel({
   currentKioskName,
+  shown,
+  onHide,
 }: {
   currentKioskName: string | null;
+  shown: boolean;
+  onHide: () => void;
 }) {
   const { profile, authMode, onKeyEnrolled } = useKioskEnvironment();
-  const [shown, setShown] = useState(false);
   const { info, published, fingerprint, qrDataUrl, error } = useEnrollmentQr(
     profile,
     shown,
@@ -41,17 +44,11 @@ export default function KioskReEnrollPanel({
   });
 
   if (!shown) {
-    return (
-      <div className="border-t border-line pt-4">
-        <Button variant="secondary" onClick={() => setShown(true)}>
-          Re-enroll this kiosk
-        </Button>
-      </div>
-    );
+    return null;
   }
 
   return (
-    <div className="flex flex-col items-center gap-3 border-t border-line pt-4">
+    <div className="flex flex-col items-center gap-2 border-t border-line pt-2">
       <p className="m-0 text-center text-sm">
         Have an administrator scan this to enroll this device as a different
         kiosk. That replaces{" "}
@@ -81,7 +78,7 @@ export default function KioskReEnrollPanel({
         </p>
       )}
 
-      <Button variant="secondary" onClick={() => setShown(false)}>
+      <Button variant="secondary" onClick={onHide}>
         Hide code
       </Button>
     </div>

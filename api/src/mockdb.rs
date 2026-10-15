@@ -206,7 +206,7 @@ impl db::Handler for Handler {
         &self,
         _id: &str,
         _change: db::SessionUpdateShape<'_>,
-    ) -> db::Result<()> {
+    ) -> db::Result<Option<u64>> {
         Self::unsupported()
     }
 
@@ -224,6 +224,7 @@ impl db::Handler for Handler {
 
     async fn create_api_token(
         &self,
+        _id: &str,
         _name: &str,
         _token_hash: &str,
         _location_grants: Vec<String>,
@@ -507,10 +508,15 @@ impl db::Handler for Handler {
 
     async fn create_user_token(
         &self,
+        _id: &str,
         _token_hash: &str,
         _user_id: &str,
         _expires_at: u64,
     ) -> db::Result<db::UserToken> {
+        Self::unsupported()
+    }
+
+    async fn get_user_token(&self, _id: &str) -> db::Result<Option<db::UserToken>> {
         Self::unsupported()
     }
 
@@ -628,6 +634,17 @@ impl db::Handler for Handler {
     }
 
     async fn delete_ephemeral_state(&self, _id: &str) -> db::Result<()> {
+        Self::unsupported()
+    }
+
+    async fn put_audit_entry(&self, _entry: &db::AuditEntry) -> db::Result<()> {
+        Self::unsupported()
+    }
+
+    async fn list_audit_entries(
+        &self,
+        _query: db::ListAuditEntriesQuery,
+    ) -> db::Result<Vec<db::AuditEntry>> {
         Self::unsupported()
     }
 }

@@ -237,6 +237,46 @@ No GSIs. The only access pattern is `GetItem` by `id` (called from `get_nitc_gro
 
 ---
 
+### `{prefix}audit_log`
+
+An append-only record of business database writes, shown in the admin UI. Entries are kept forever (no TTL). One item is written **per affected location** for each audited event, so a write touching two locations produces two items sharing an `event_id`.
+
+| Attribute     | Type | Role                                                                                      |
+| ------------- | ---- | ----------------------------------------------------------------------------------------- |
+| `id`          | S    | Hash key (PK) — 12-char nanoid, unique per item                                                    |
+| `location_id` | S    | GSI hash key (`location_id-sk-index`) — absent for global entities                        |
+| `scope`       | S    | GSI hash key (`scope-sk-index`) — `"all"` on exactly one item per event, otherwise absent |
+| `sk`          | S    | GSI sort key — `"{ts:010}#{id}"`                                                          |
+
+**GSIs:**
+
+| GSI                    | Hash key      | Sort key | Projection | Purpose                                                                    |
+| ---------------------- | ------------- | -------- | ---------- | -------------------------------------------------------------------------- |
+| `location_id-sk-index` | `location_id` | `sk`     | ALL        | Per-location view, newest first (`ScanIndexForward = false`)               |
+| `scope-sk-index`       | `scope`       | `sk`     | ALL        | All-locations view for super users, newest first, with no duplicate events |
+
+`sk` is `ts` (Unix seconds) zero-padded to 10 digits, then `#`, then the item `id`, so lexical order equals time order and two events in the same second never collide.
+
+Both indexes are **sparse** by design. Items for global entities (no location) carry no `location_id` and so are absent from the per-location index. `scope = "all"` is set on only one of the items written for an event, so the super-user view lists each event once even when the event was written to several locations.
+
+Access patterns: per-location newest-first (`Query` on `location_id-sk-index`) and all-locations newest-first for super users (`Query` on `scope-sk-index` with `scope = "all"`), both paginated on `sk`. The base table is only read by `id`.
+
+**Non-obvious attributes (not in table definition):**
+
+- `ts` (N) — Unix seconds when the event happened
+- `event_id` (S) — shared by every item written for the same event
+- `action` (S) — `create`, `update`, `delete` or `restore`
+- `entity_type` (S) — `user`, `person`, `period`, `session`, `api_token`, `location`, `category`, `nitc_group`, `nitc_tag`, `user_token`, `oauth_grant` or `webauthn_credential`
+- `entity_id` (S) — ID of the entity changed
+- `entity_label` (S) — human-readable name of the entity at the time; omitted when unknown
+- `actor_kind` (S) — `user`, `session` (kiosk), `api_token`, `period_link`, `system` (a job or the CLI), `unauthenticated` or `unknown`
+- `actor_id` (S) — the user/session/token ID, the period ID for a period link, or the job name for `system`; omitted for `unauthenticated`/`unknown`
+- `actor_via` (S) — `oauth_grant:<id>` (MCP), `user_token:<id>` or `oauth_client:<id>`; omitted for an ordinary web login and for non-user actors
+- `ip` (S) — caller's IP address; omitted when unknown
+- `changes` (S) — JSON array of `{"field", "before", "after"}`; a side that is absent (a create has no `before`, a cleared field has no `after`) is omitted. Secrets are never stored: a secret field that changed appears as `"[redacted]"`
+
+---
+
 ## Known issues and risks
 
 This section covers correctness bugs, race conditions, performance hazards, and consistency gaps in the current DynamoDB implementation (`api/src/dynamodb.rs`).

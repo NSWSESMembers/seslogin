@@ -4,8 +4,14 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from "react";
-import { Dialog, DialogActions, DialogTitle } from "../../components/ui/Dialog";
+import { Dialog } from "../../components/ui/Dialog";
 import { Button } from "../../components/ui/Button";
+import {
+  getCurrentEnvironment,
+  getScreen,
+  getTimezone,
+  getUptimeSecs,
+} from "../../lib/clientInfo";
 import { getClientUpdateState } from "../../lib/clientUpdate";
 import { getClientUpdateLeases } from "../../lib/clientUpdateLeases";
 import {
@@ -13,6 +19,7 @@ import {
   shortenGitRev,
 } from "../../lib/clientVersion";
 import { useEnvironmentInfo } from "../../lib/environmentInfo";
+import { cn } from "../../lib/tw";
 import { formatFullDateTime, formatShortDuration } from "../../lib/time";
 import { getKioskServerStatus } from "../lib/kioskServerStatus";
 import {
@@ -41,11 +48,34 @@ const CHECK_IN_STALE_SECS = 15 * 60;
 const PERIODS_POLL_OK_SECS = (POLL_INTERVAL_MS / 1000) * 2;
 const PERIODS_POLL_STALE_SECS = (POLL_INTERVAL_MS / 1000) * 4;
 
-function Row({ label, children }: { label: string; children: ReactNode }) {
+/**
+ * One label/value pair. The list is two pairs across from `sm` up; `wide` puts a value
+ * that is often long (an error message, the config flags) on a line of its own.
+ */
+function Row({
+  label,
+  wide = false,
+  children,
+}: {
+  label: string;
+  wide?: boolean;
+  children: ReactNode;
+}) {
   return (
     <>
-      <dt className="text-neutral-500 dark:text-neutral-400">{label}</dt>
-      <dd className="m-0 min-w-0 wrap-break-word">{children}</dd>
+      <dt
+        className={cn(
+          "text-neutral-500 dark:text-neutral-400",
+          wide && "sm:col-start-1",
+        )}
+      >
+        {label}
+      </dt>
+      <dd
+        className={cn("m-0 min-w-0 wrap-break-word", wide && "sm:col-span-3")}
+      >
+        {children}
+      </dd>
     </>
   );
 }
@@ -77,6 +107,14 @@ function checkInColour(
   return "text-red-700 dark:text-red-400";
 }
 
+function readTick() {
+  return {
+    now: Date.now(),
+    uptimeSecs: getUptimeSecs(),
+    screenSize: getScreen(),
+  };
+}
+
 /**
  * Read-only diagnostics for whoever is standing at the kiosk, opened by tapping the
  * logo. Everything is rendered from local state so it still works while the kiosk is
@@ -95,11 +133,14 @@ export default function KioskStatusDialog({
   const { profile, authMode } = useKioskEnvironment();
   const environmentInfo = useEnvironmentInfo();
   const { live, connectionState, lastPollAt } = useLivePeriods();
-  const [now, setNow] = useState(() => Date.now());
+  // Uptime and screen size are read on the tick alongside the clock: called bare in
+  // render, the React Compiler would cache them like any other no-input call.
+  const [{ now, uptimeSecs, screenSize }, setTick] = useState(readTick);
+  const [reEnrollShown, setReEnrollShown] = useState(false);
 
   useEffect(() => {
     const intervalId = window.setInterval(
-      () => setNow(Date.now()),
+      () => setTick(readTick()),
       TICK_INTERVAL_MS,
     );
     return () => window.clearInterval(intervalId);
@@ -108,6 +149,8 @@ export default function KioskStatusDialog({
   const serverStatus = getKioskServerStatus();
   const { pendingVersion } = getClientUpdateState();
   const updateLeases = getClientUpdateLeases();
+  const buildEnv = getCurrentEnvironment();
+  const timezone = getTimezone();
 
   // Subscribed rather than read on the tick: the React Compiler would cache a bare
   // getter call with no inputs, freezing whatever it returned on first render.
@@ -132,10 +175,56 @@ export default function KioskStatusDialog({
       : (now - serverStatus.lastSuccessAt) / 1000;
 
   return (
-    <Dialog onDismiss={onClose} className="text-base">
-      <DialogTitle>Kiosk status</DialogTitle>
+    <Dialog
+      onDismiss={onClose}
+      width="w-200"
+      className="gap-2 p-3 text-sm sm:p-4"
+    >
+      {/* Controls first, so they are reachable without scrolling on a short screen. */}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="m-0 text-lg font-bold">Kiosk status</h2>
+        <div className="flex flex-wrap justify-end gap-2">
+          {!reEnrollShown && (
+            <Button variant="secondary" onClick={() => setReEnrollShown(true)}>
+              Re-enroll this kiosk
+            </Button>
+          )}
+          {canFullscreen && (
+            <Button variant="secondary" onClick={onToggleFullscreen}>
+              {fullscreen ? "Exit full screen" : "Full screen"}
+            </Button>
+          )}
+          <Button variant="secondary" onClick={onClose}>
+            Close
+          </Button>
+          <Button variant="kiosk" onClick={() => window.location.reload()}>
+            Reload
+          </Button>
+        </div>
+      </div>
 
-      <dl className="m-0 grid grid-cols-[auto_1fr] gap-x-6 gap-y-2">
+      {fullscreenError != null && (
+        <p className="m-0 text-red-700 dark:text-red-400">
+          Could not change full screen: {fullscreenError}
+        </p>
+      )}
+      {isAppleMobileSafari() && !standalone && (
+        <p className="m-0 text-xs text-neutral-500 dark:text-neutral-400">
+          On an iPad, the most reliable full screen kiosk is a home screen app:
+          tap Share, then Add to Home Screen, and open the kiosk from the new
+          icon. The home screen app keeps its own storage, so it needs enrolling
+          again. Guided Access (Settings &gt; Accessibility) then stops anyone
+          leaving it.
+        </p>
+      )}
+
+      <KioskReEnrollPanel
+        currentKioskName={session?.name ?? null}
+        shown={reEnrollShown}
+        onHide={() => setReEnrollShown(false)}
+      />
+
+      <dl className="m-0 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 border-t border-line pt-2 text-left sm:grid-cols-[auto_1fr_auto_1fr]">
         <Row label="Kiosk">{session?.name ?? "unknown"}</Row>
         <Row label="Kiosk ID">
           <Mono>{session?.id ?? "unknown"}</Mono>
@@ -155,8 +244,17 @@ export default function KioskStatusDialog({
             </span>
           )}
         </Row>
+        <Row label="Failed check-ins">
+          {serverStatus.failureCount === 0 ? (
+            "none since load"
+          ) : (
+            <span className="text-amber-700 dark:text-amber-400">
+              {serverStatus.failureCount} since load
+            </span>
+          )}
+        </Row>
         {serverStatus.lastFailureAt != null && (
-          <Row label="Last failure">
+          <Row label="Last failure" wide>
             <span className="text-red-700 dark:text-red-400">
               {formatShortDuration((now - serverStatus.lastFailureAt) / 1000)}{" "}
               ago: {serverStatus.lastErrorMessage ?? "unknown error"}
@@ -223,6 +321,15 @@ export default function KioskStatusDialog({
               : shortenGitRev(environmentInfo.gitRev)}
           </Mono>
         </Row>
+        <Row label="Build">
+          {buildEnv === "prod" ? (
+            <Mono>{buildEnv}</Mono>
+          ) : (
+            <span className="font-mono text-red-700 dark:text-red-400">
+              {buildEnv}
+            </span>
+          )}
+        </Row>
         <Row label="Database">
           {environmentInfo == null ? (
             "unknown"
@@ -233,6 +340,9 @@ export default function KioskStatusDialog({
               NOT production
             </span>
           )}
+        </Row>
+        <Row label="Origin">
+          <Mono>{window.location.origin}</Mono>
         </Row>
         <Row label="Update">
           {pendingVersion == null
@@ -267,45 +377,23 @@ export default function KioskStatusDialog({
               ? "full screen"
               : "browser"}
         </Row>
+        <Row label="Screen">
+          <Mono>{screenSize ?? "unknown"}</Mono>
+        </Row>
         {categoryScale !== undefined && (
           <Row label="Category size">
             auto ({Math.round(categoryScale * 100)}%)
           </Row>
         )}
+        <Row label="Time zone">{timezone ?? "unknown"}</Row>
+        <Row label="Page uptime">
+          {uptimeSecs == null ? "unknown" : formatShortDuration(uptimeSecs)}
+        </Row>
 
-        <Row label="Config">{formatConfigFlags(session?.config ?? {})}</Row>
+        <Row label="Config" wide>
+          {formatConfigFlags(session?.config ?? {})}
+        </Row>
       </dl>
-
-      {isAppleMobileSafari() && !standalone && (
-        <p className="text-sm text-neutral-500 dark:text-neutral-400">
-          On an iPad, the most reliable full screen kiosk is a home screen app:
-          tap Share, then Add to Home Screen, and open the kiosk from the new
-          icon. The home screen app keeps its own storage, so it needs enrolling
-          again. Guided Access (Settings &gt; Accessibility) then stops anyone
-          leaving it.
-        </p>
-      )}
-      {fullscreenError != null && (
-        <p className="text-sm text-red-700 dark:text-red-400">
-          Could not change full screen: {fullscreenError}
-        </p>
-      )}
-
-      <KioskReEnrollPanel currentKioskName={session?.name ?? null} />
-
-      <DialogActions>
-        <Button variant="secondary" onClick={onClose}>
-          Close
-        </Button>
-        {canFullscreen && (
-          <Button variant="secondary" onClick={onToggleFullscreen}>
-            {fullscreen ? "Exit full screen" : "Full screen"}
-          </Button>
-        )}
-        <Button variant="kiosk" onClick={() => window.location.reload()}>
-          Reload
-        </Button>
-      </DialogActions>
     </Dialog>
   );
 }

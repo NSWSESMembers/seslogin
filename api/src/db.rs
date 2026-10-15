@@ -1,6 +1,27 @@
 use chrono::NaiveDate;
+use nanoid::nanoid;
+use serde::{Deserialize, Serialize};
 use std::future::Future;
 use thiserror::Error;
+
+const NANOID_ALPHABET: [char; 62] = [
+    '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I',
+    'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b',
+    'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u',
+    'v', 'w', 'x', 'y', 'z',
+];
+
+/// Generate a new unique ID for DB entities. Public so callers that need IDs
+/// before the record exists (e.g. `cli id`, for pre-allocating an ID to reuse
+/// verbatim across databases) use the exact same scheme rather than a
+/// hand-rolled one that could silently drift from it.
+///
+/// Lives here rather than in `dynamodb.rs` so code that is independent of the AWS
+/// implementation (the audit wrapper) can mint IDs too; `dynamodb::new_id` re-exports it.
+pub fn new_id() -> String {
+    // https://alex7kom.github.io/nano-nanoid-cc/?alphabet=0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz&size=12&speed=1000&speedUnit=hour
+    nanoid!(12, &NANOID_ALPHABET)
+}
 
 /// these errors are separated into groups because we want to handle them differently
 #[derive(Error, Debug)]
@@ -228,6 +249,13 @@ pub struct Session {
     /// [`is_live`](Self::is_live) is the test every caller that means "a working kiosk"
     /// must use.
     pub key_released_at: Option<u64>,
+    /// Bumped by every [`update_session`](Handler::update_session) that changes what
+    /// the kiosk shows or whether it can authenticate (`Fields`, `ReleaseKey`,
+    /// `Delete`), so a kiosk can tell a stale realtime message or refetch from a fresh
+    /// one. Heartbeats (`Info`) and reactivation (`ExtendKey`) leave it alone. A row
+    /// written before this existed reads as 0, so its first bump (to 1) still counts
+    /// as newer.
+    pub version: u64,
     pub created_at: Option<u64>,
     pub updated_at: Option<u64>,
 }
@@ -646,6 +674,194 @@ pub struct EphemeralState {
     pub expires_at: u64,
 }
 
+// ── Audit log ────────────────────────────────────────────────────────────────
+
+/// What an audited write did to its entity.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AuditAction {
+    Create,
+    Update,
+    Delete,
+    Restore,
+}
+
+impl AuditAction {
+    /// Stable string stored in the `action` attribute.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Create => "create",
+            Self::Update => "update",
+            Self::Delete => "delete",
+            Self::Restore => "restore",
+        }
+    }
+
+    /// Inverse of [`AuditAction::as_str`].
+    pub fn parse(s: &str) -> Option<Self> {
+        Some(match s {
+            "create" => Self::Create,
+            "update" => Self::Update,
+            "delete" => Self::Delete,
+            "restore" => Self::Restore,
+            _ => return None,
+        })
+    }
+}
+
+/// Which kind of record an audit entry is about.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AuditEntityType {
+    User,
+    Person,
+    Period,
+    Session,
+    ApiToken,
+    Location,
+    Category,
+    NitcGroup,
+    NitcTag,
+    UserToken,
+    OAuthGrant,
+    WebauthnCredential,
+}
+
+impl AuditEntityType {
+    /// Inverse of [`AuditEntityType::as_str`].
+    pub fn parse(s: &str) -> Option<Self> {
+        Some(match s {
+            "user" => Self::User,
+            "person" => Self::Person,
+            "period" => Self::Period,
+            "session" => Self::Session,
+            "api_token" => Self::ApiToken,
+            "location" => Self::Location,
+            "category" => Self::Category,
+            "nitc_group" => Self::NitcGroup,
+            "nitc_tag" => Self::NitcTag,
+            "user_token" => Self::UserToken,
+            "oauth_grant" => Self::OAuthGrant,
+            "webauthn_credential" => Self::WebauthnCredential,
+            _ => return None,
+        })
+    }
+
+    /// Stable string stored in the `entity_type` attribute.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::User => "user",
+            Self::Person => "person",
+            Self::Period => "period",
+            Self::Session => "session",
+            Self::ApiToken => "api_token",
+            Self::Location => "location",
+            Self::Category => "category",
+            Self::NitcGroup => "nitc_group",
+            Self::NitcTag => "nitc_tag",
+            Self::UserToken => "user_token",
+            Self::OAuthGrant => "oauth_grant",
+            Self::WebauthnCredential => "webauthn_credential",
+        }
+    }
+}
+
+/// One field of an entity that an audited write changed. `None` means the field was
+/// absent on that side (so a create has `before: None` throughout). Secrets are never
+/// carried here — the audit wrapper substitutes the string `"[redacted]"`.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct AuditFieldChange {
+    pub field: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub before: Option<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub after: Option<serde_json::Value>,
+}
+
+/// One recorded business write. A write that touches several locations is stored as one
+/// table item per location, all sharing `event_id`; see SCHEMA.md's `audit_log` section.
+#[derive(Clone, Debug, PartialEq)]
+pub struct AuditEntry {
+    /// Unique per stored item. The DB implementation mints one per item it writes, so
+    /// this is only the id of the entry as built; `event_id` is what groups items.
+    pub id: String,
+    pub event_id: String,
+    /// Unix seconds when the write happened.
+    pub ts: u64,
+    pub action: AuditAction,
+    pub entity_type: AuditEntityType,
+    pub entity_id: String,
+    /// Human-readable name of the entity at the time (e.g. a person's full name).
+    pub entity_label: Option<String>,
+    /// Every location the write affected. Empty for global entities (users, categories…).
+    pub location_ids: Vec<String>,
+    /// See [`crate::audit::Actor::kind`].
+    pub actor_kind: String,
+    pub actor_id: Option<String>,
+    pub actor_via: Option<String>,
+    pub ip: Option<String>,
+    pub changes: Vec<AuditFieldChange>,
+}
+
+impl AuditEntry {
+    /// The entry's sort key in the audit indexes; see [`audit_sk`].
+    pub fn sk(&self) -> String {
+        audit_sk(self.ts, &self.id)
+    }
+}
+
+/// The `sk` of an `audit_log` item: `ts` (Unix seconds) zero-padded to 10 digits, `#`,
+/// then the item `id`. Lexical order is time order, and the `id` makes it unique. It is
+/// also the paging cursor — the `id` it carries is the table's hash key, so a cursor holds
+/// everything DynamoDB needs for an `ExclusiveStartKey`.
+pub fn audit_sk(ts: u64, id: &str) -> String {
+    format!("{ts:010}#{id}")
+}
+
+/// Check that `cursor` has the shape of an [`audit_sk`] and return the item `id` inside
+/// it, or `None` for anything else. Callers treat `None` as a bad request: a cursor comes
+/// from the client, and a malformed one must not reach the database.
+pub fn parse_audit_cursor(cursor: &str) -> Option<&str> {
+    let (ts, id) = cursor.split_once('#')?;
+    let id_ok = !id.is_empty()
+        && id.len() <= 64
+        && id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
+    (!ts.is_empty() && ts.len() <= 20 && ts.chars().all(|c| c.is_ascii_digit()) && id_ok)
+        .then_some(id)
+}
+
+/// Which slice of the audit log to read.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum AuditScope {
+    /// Items for one location (`location_id-sk-index`). A write that touched several
+    /// locations has an item in each, so it shows up in every one of their views.
+    Location(String),
+    /// Every event once, including those of global entities (`scope-sk-index`).
+    All,
+}
+
+/// A page of the audit log, in the order `descending` names.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ListAuditEntriesPage {
+    /// Only entries strictly after this cursor (an [`audit_sk`]) in the page's order.
+    /// Reading backwards is the same query with `descending` flipped: the caller asks
+    /// for the entries after the cursor in the opposite order, nearest first.
+    pub after: Option<String>,
+    /// How many entries to return at most; callers fetch `page_size + 1` to learn
+    /// whether there is another page.
+    pub limit: i32,
+    /// Newest first when true.
+    pub descending: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ListAuditEntriesQuery {
+    pub scope: AuditScope,
+    /// Only entries about this kind of record.
+    pub entity_type: Option<AuditEntityType>,
+    pub page: ListAuditEntriesPage,
+}
+
 /// `Sync` is required so a `&impl Handler` (including the erased handle returned by
 /// [`crate::app::HasDb::db`]) can be held across `.await` inside the `Send` futures the
 /// GraphQL/Poem stack builds. Both implementors (`dynamodb::Handler`, `mockdb::Handler`)
@@ -808,13 +1024,18 @@ pub trait Handler: Sync {
         healthcheck_url: Option<&str>,
         key: Option<SessionKeyParams<'_>>,
     ) -> impl Future<Output = Result<Session>> + Send;
+    /// Returns the session's new [`version`](Session::version) for the shapes that bump
+    /// it (`Fields`, `ReleaseKey`, `Delete`), `None` for those that don't.
     fn update_session(
         &self,
         id: &str,
         change: SessionUpdateShape<'_>,
-    ) -> impl Future<Output = Result<()>> + Send;
+    ) -> impl Future<Output = Result<Option<u64>>> + Send;
 
+    /// Strongly consistent, so a token is verifiable the moment it's created.
     fn get_api_token(&self, id: &str) -> impl Future<Output = Result<Option<ApiToken>>> + Send;
+    /// Legacy `slgn_<secret>` tokens only, which carry no id. Goes away with
+    /// `token_hash-index` once they have all been revoked or replaced.
     fn get_api_token_by_hash(
         &self,
         token_hash: &str,
@@ -825,8 +1046,11 @@ pub trait Handler: Sync {
         &self,
         filter: ListApiTokensFilter,
     ) -> impl Future<Output = Result<Vec<ApiToken>>> + Send;
+    /// Caller supplies the id: it is embedded in the token (`slgn_<id>.<secret>`).
+    #[allow(clippy::too_many_arguments)]
     fn create_api_token(
         &self,
+        id: &str,
         name: &str,
         token_hash: &str,
         location_grants: Vec<String>,
@@ -1072,13 +1296,21 @@ pub trait Handler: Sync {
 
     // ── User tokens (opaque, hashed, sliding expiry) ─────────────────────────
 
+    /// Caller supplies the id: it is embedded in the token (`slu_<id>.<secret>`), so
+    /// it has to exist before the token can be minted and hashed.
     fn create_user_token(
         &self,
+        id: &str,
         token_hash: &str,
         user_id: &str,
         expires_at: u64,
     ) -> impl Future<Output = Result<UserToken>> + Send;
 
+    /// Strongly consistent, so a token is verifiable the moment it's issued.
+    fn get_user_token(&self, id: &str) -> impl Future<Output = Result<Option<UserToken>>> + Send;
+
+    /// Legacy `slu_<secret>` tokens only, which carry no id. Goes away with
+    /// `token_hash-index` once they have all expired.
     fn get_user_token_by_hash(
         &self,
         token_hash: &str,
@@ -1094,8 +1326,7 @@ pub trait Handler: Sync {
 
     // ── OAuth grants (MCP access/refresh tokens) ─────────────────────────────
 
-    /// Caller supplies the id (and every other field) — unlike `create_user_token`,
-    /// there's no separate mint step to hand an id back from.
+    /// Caller supplies the id (and every other field), as with `create_user_token`.
     fn create_oauth_grant(&self, grant: &OAuthGrant) -> impl Future<Output = Result<()>> + Send;
 
     fn get_oauth_grant(&self, id: &str) -> impl Future<Output = Result<Option<OAuthGrant>>> + Send;
@@ -1183,11 +1414,57 @@ pub trait Handler: Sync {
     ) -> impl Future<Output = Result<Option<EphemeralState>>> + Send;
 
     fn delete_ephemeral_state(&self, id: &str) -> impl Future<Output = Result<()>> + Send;
+
+    // ── Audit log ─────────────────────────────────────────────────────────────
+
+    /// Append an entry to the `audit_log` table. Callers go through
+    /// [`crate::audit::AuditingHandler`], which builds entries for business writes and
+    /// treats a failure here as non-fatal; nothing else should call this directly.
+    fn put_audit_entry(&self, entry: &AuditEntry) -> impl Future<Output = Result<()>> + Send;
+
+    /// One page of the audit log. Each returned entry is a single table item: its
+    /// `location_ids` holds that item's location (empty for a global entity), not every
+    /// location the event touched. A row that cannot be read is logged and skipped
+    /// rather than failing the page. An `after` cursor that is not an [`audit_sk`] is an
+    /// error; validate with [`parse_audit_cursor`] first to report it as a user error.
+    fn list_audit_entries(
+        &self,
+        query: ListAuditEntriesQuery,
+    ) -> impl Future<Output = Result<Vec<AuditEntry>>> + Send;
 }
 
 #[cfg(test)]
 mod tests {
-    use super::Session;
+    use super::{Session, audit_sk, parse_audit_cursor};
+
+    #[test]
+    fn an_audit_sk_is_a_valid_cursor_that_carries_its_id() {
+        let sk = audit_sk(1_700_000_000, "Ab3dEf6hIj9k");
+        assert_eq!(sk, "1700000000#Ab3dEf6hIj9k");
+        assert_eq!(parse_audit_cursor(&sk), Some("Ab3dEf6hIj9k"));
+        // Small timestamps are padded so lexical order stays time order.
+        assert_eq!(audit_sk(5, "x"), "0000000005#x");
+        assert!(audit_sk(9, "x") < audit_sk(10, "x"));
+    }
+
+    #[test]
+    fn audit_cursors_that_are_not_an_sk_are_rejected() {
+        for bad in [
+            "",
+            "#",
+            "1700000000",
+            "1700000000#",
+            "#abc",
+            "17x0#abc",
+            "1700000000#a#b",
+            "1700000000#a b",
+            "1700000000#a/b",
+            "-1#abc",
+        ] {
+            assert_eq!(parse_audit_cursor(bad), None, "{bad:?}");
+        }
+        assert_eq!(parse_audit_cursor(&format!("1#{}", "a".repeat(65))), None);
+    }
 
     fn session(active: bool, key_released_at: Option<u64>) -> Session {
         Session {
@@ -1206,6 +1483,7 @@ mod tests {
             key_fingerprint: None,
             key_expires_at: None,
             key_released_at,
+            version: 1,
             created_at: None,
             updated_at: None,
         }

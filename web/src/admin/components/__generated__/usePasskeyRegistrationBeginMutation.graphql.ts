@@ -1,7 +1,6 @@
 /**
- * @generated SignedSource<<1c14e28034975fb06c70250c7a7d275c>>
+ * @generated SignedSource<<47b2cf2ce039bd9d9cb38d586f18613a>>
  * @lightSyntaxTransform
- * @nogrep
  */
 
 /* tslint:disable */
@@ -55,7 +54,7 @@ return {
     "kind": "Fragment",
     "metadata": null,
     "name": "usePasskeyRegistrationBeginMutation",
-    "selections": (v0/*: any*/),
+    "selections": (v0/*:: as any*/),
     "type": "MutationRoot",
     "abstractKey": null
   },
@@ -64,7 +63,7 @@ return {
     "argumentDefinitions": [],
     "kind": "Operation",
     "name": "usePasskeyRegistrationBeginMutation",
-    "selections": (v0/*: any*/)
+    "selections": (v0/*:: as any*/)
   },
   "params": {
     "cacheID": "4d6681d29eca14bade9c236cb5ef0380",

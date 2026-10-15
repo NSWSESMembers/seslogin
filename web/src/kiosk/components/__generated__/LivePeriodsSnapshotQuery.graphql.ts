@@ -1,7 +1,6 @@
 /**
- * @generated SignedSource<<54cd10dad7d7cd331fe55e1804d93c55>>
+ * @generated SignedSource<<735cde7f44f8befc74681526c285ae48>>
  * @lightSyntaxTransform
- * @nogrep
  */
 
 /* tslint:disable */
@@ -88,7 +87,7 @@ v2 = {
           "name": "node",
           "plural": false,
           "selections": [
-            (v1/*: any*/),
+            (v1/*:: as any*/),
             {
               "alias": null,
               "args": null,
@@ -118,7 +117,7 @@ v2 = {
               "name": "person",
               "plural": false,
               "selections": [
-                (v1/*: any*/),
+                (v1/*:: as any*/),
                 {
                   "alias": null,
                   "args": null,
@@ -147,7 +146,7 @@ v2 = {
 };
 return {
   "fragment": {
-    "argumentDefinitions": (v0/*: any*/),
+    "argumentDefinitions": (v0/*:: as any*/),
     "kind": "Fragment",
     "metadata": {
       "throwOnFieldError": true
@@ -170,7 +169,7 @@ return {
             "name": "location",
             "plural": false,
             "selections": [
-              (v2/*: any*/)
+              (v2/*:: as any*/)
             ],
             "storageKey": null
           }
@@ -183,7 +182,7 @@ return {
   },
   "kind": "Request",
   "operation": {
-    "argumentDefinitions": (v0/*: any*/),
+    "argumentDefinitions": (v0/*:: as any*/),
     "kind": "Operation",
     "name": "LivePeriodsSnapshotQuery",
     "selections": [
@@ -203,12 +202,12 @@ return {
             "name": "location",
             "plural": false,
             "selections": [
-              (v2/*: any*/),
-              (v1/*: any*/)
+              (v2/*:: as any*/),
+              (v1/*:: as any*/)
             ],
             "storageKey": null
           },
-          (v1/*: any*/)
+          (v1/*:: as any*/)
         ],
         "storageKey": null
       }

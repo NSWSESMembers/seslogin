@@ -1,7 +1,6 @@
 /**
- * @generated SignedSource<<a34277967481b06c9207d96f1598c7db>>
+ * @generated SignedSource<<edeccd081f2eef2cdda89270e39f71a9>>
  * @lightSyntaxTransform
- * @nogrep
  */
 
 /* tslint:disable */
@@ -116,7 +115,7 @@ return {
     "kind": "Fragment",
     "metadata": null,
     "name": "KioskRealtimeTokenQuery",
-    "selections": (v0/*: any*/),
+    "selections": (v0/*:: as any*/),
     "type": "QueryRoot",
     "abstractKey": null
   },
@@ -125,7 +124,7 @@ return {
     "argumentDefinitions": [],
     "kind": "Operation",
     "name": "KioskRealtimeTokenQuery",
-    "selections": (v0/*: any*/)
+    "selections": (v0/*:: as any*/)
   },
   "params": {
     "cacheID": "2126a04a810a661f34bdfc3c98f1b009",

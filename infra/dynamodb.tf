@@ -458,6 +458,14 @@ resource "aws_dynamodb_table" "prod_user_token" {
     }
     projection_type = "KEYS_ONLY"
   }
+
+  # `expires_at` slides forward on each use (`TouchLastUsed`), so only tokens
+  # left unused past their lifetime are removed. Deletion is lazy (often up to
+  # a couple of days late); auth rejects expired tokens itself regardless.
+  ttl {
+    attribute_name = "expires_at"
+    enabled        = true
+  }
 }
 
 resource "aws_dynamodb_table" "prod_webauthn_credential" {
@@ -554,6 +562,68 @@ resource "aws_dynamodb_table" "prod_oauth_grant" {
   ttl {
     attribute_name = "expires_at"
     enabled        = true
+  }
+}
+
+# Audit log of business DB writes (one item per affected location per event).
+# Entries are kept forever (no TTL). `sk` is "{ts:010}#{id}" so lexical order is
+# time order.
+resource "aws_dynamodb_table" "prod_audit_log" {
+  name         = "${var.db_prefix}_audit_log"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "id"
+
+  deletion_protection_enabled = true
+
+  point_in_time_recovery {
+    enabled                 = true
+    recovery_period_in_days = 35
+  }
+
+  attribute {
+    name = "id"
+    type = "S"
+  }
+  attribute {
+    name = "location_id"
+    type = "S"
+  }
+  attribute {
+    name = "scope"
+    type = "S"
+  }
+  attribute {
+    name = "sk"
+    type = "S"
+  }
+
+  # Per-location view. Items for global entities have no location_id, so they
+  # are absent from this index (sparse).
+  global_secondary_index {
+    name = "location_id-sk-index"
+    key_schema {
+      attribute_name = "location_id"
+      key_type       = "HASH"
+    }
+    key_schema {
+      attribute_name = "sk"
+      key_type       = "RANGE"
+    }
+    projection_type = "ALL"
+  }
+  # Sparse index: `scope = "all"` is set on exactly one item per audited event,
+  # giving super users an all-locations view without duplicates.
+  global_secondary_index {
+    name = "scope-sk-index"
+    key_schema {
+      attribute_name = "scope"
+      key_type       = "HASH"
+    }
+    key_schema {
+      attribute_name = "sk"
+      key_type       = "RANGE"
+    }
+    projection_type = "ALL"
   }
 }
 

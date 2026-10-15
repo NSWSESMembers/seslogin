@@ -8,6 +8,7 @@
 use anyhow::{Result, anyhow};
 use chrono::{DateTime, Local, NaiveDate};
 use clap::{Parser, Subcommand};
+use seslogin::audit::{self, AuditContext, AuditingHandler};
 use seslogin::db::{
     ApiToken, Category, Handler, ListApiTokensFilter, ListLocationsFilter, ListPeriodsPage,
     ListSessionsQuery, Location, NitcEvent, NitcGroup, Period, PeriodCursor, Person, ScanCursor,
@@ -138,7 +139,7 @@ enum Object {
         #[arg(long, default_value_t = 1)]
         count: usize,
     },
-    /// Generate a signed JWT for a session or user (does not touch the DB).
+    /// Generate a signed kiosk session JWT (does not touch the DB).
     Jwt {
         /// JWT secret (overrides JWT_SECRET env var).
         #[arg(long)]
@@ -180,11 +181,6 @@ enum JwtCmd {
     Session {
         /// The session ID to embed in the JWT.
         session_id: String,
-    },
-    /// Generate a JWT for a user (default expiry: 1 hour).
-    User {
-        /// The user ID to embed in the JWT.
-        user_id: String,
     },
 }
 
@@ -833,6 +829,7 @@ async fn show_sessions(db: &impl Handler, sessions: &[Session]) {
             key_fingerprint,
             key_expires_at,
             key_released_at,
+            version,
             created_at,
             updated_at,
         } = s;
@@ -868,6 +865,7 @@ async fn show_sessions(db: &impl Handler, sessions: &[Session]) {
             ("key_expires_at", opt_ts(*key_expires_at)),
             ("key_released_at", opt_ts(*key_released_at)),
             ("config", serde_json::to_string(config).unwrap_or_default()),
+            ("version", version.to_string()),
             ("created_at", opt_ts(*created_at)),
             ("updated_at", opt_ts(*updated_at)),
         ]);
@@ -1236,6 +1234,11 @@ async fn show_nitc_events(db: &impl Handler, events: &[NitcEvent]) {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // Every write the CLI makes is audited as the `cli` system actor.
+    audit::scope(AuditContext::system("cli"), run_cli()).await
+}
+
+async fn run_cli() -> Result<()> {
     tracing_subscriber::fmt::init();
     seslogin::load_cli_env();
 
@@ -1523,25 +1526,21 @@ fn scan_outcomes<T>(rows: Vec<seslogin::db::Result<T>>) -> Vec<Result<(), String
         .collect()
 }
 
-/// Generate and print a signed JWT for a session or user. Does not touch the DB.
+/// Generate and print a signed kiosk session JWT. Does not touch the DB.
 fn run_jwt(jwt_secret: Option<String>, expire_s: Option<u64>, cmd: &JwtCmd) -> Result<()> {
     let secret = jwt_secret
         .or_else(|| std::env::var("JWT_SECRET").ok())
         .ok_or_else(|| anyhow!("JWT_SECRET is required (flag or env var)"))?;
 
-    let key = Key::new(&secret, None, None)?;
+    let key = Key::new(&secret, None)?;
 
     let expire_policy = match expire_s {
         Some(s) => ExpirePolicy::TimeSec(s),
-        None => match cmd {
-            JwtCmd::Session { .. } => ExpirePolicy::SessionDefault,
-            JwtCmd::User { .. } => ExpirePolicy::UserDefault,
-        },
+        None => ExpirePolicy::SessionDefault,
     };
 
     let token = match cmd {
         JwtCmd::Session { session_id } => key.make_session_jwt(session_id, expire_policy)?,
-        JwtCmd::User { user_id } => key.make_user_jwt(user_id, expire_policy)?,
     };
 
     println!("{token}");
@@ -1576,7 +1575,7 @@ async fn run_session_set_config_key(
         .transpose()?;
     debug_assert_eq!(value.is_some(), !clear);
 
-    let db = dynamodb::Handler::new(db_prefix, dry_run).await;
+    let db = AuditingHandler::new(dynamodb::Handler::new(db_prefix, dry_run).await);
 
     let mut sessions = match location {
         Some(loc) => db.list_sessions(ListSessionsQuery::ByLocation(loc)).await?,
@@ -1669,7 +1668,7 @@ async fn run_session_set_config_key(
 /// A dry run prints no token at all: the token only works because its hash was
 /// persisted, so a token issued without the write would be a link that 404s.
 async fn run_period_link(db_prefix: &str, cmd: &PeriodLinkCmd, dry_run: bool) -> Result<()> {
-    let db = dynamodb::Handler::new(db_prefix, dry_run).await;
+    let db = AuditingHandler::new(dynamodb::Handler::new(db_prefix, dry_run).await);
     match cmd {
         PeriodLinkCmd::Issue {
             period_id,
@@ -1727,7 +1726,7 @@ async fn run_period_create_signin(
         return Err(anyhow!("--hours-ago must be a non-negative number"));
     }
 
-    let db = dynamodb::Handler::new(db_prefix, dry_run).await;
+    let db = AuditingHandler::new(dynamodb::Handler::new(db_prefix, dry_run).await);
 
     let person = db
         .get_persons(&[person_id])
@@ -1811,7 +1810,7 @@ async fn run_session_edit(
         ));
     }
 
-    let db = dynamodb::Handler::new(db_prefix, dry_run).await;
+    let db = AuditingHandler::new(dynamodb::Handler::new(db_prefix, dry_run).await);
 
     let session = db
         .get_sessions(&[id])
@@ -1906,7 +1905,7 @@ async fn run_category_create(
     nitc_participant_type: Option<&str>,
     dry_run: bool,
 ) -> Result<()> {
-    let db = dynamodb::Handler::new(db_prefix, dry_run).await;
+    let db = AuditingHandler::new(dynamodb::Handler::new(db_prefix, dry_run).await);
 
     // Mirror `createCategory`'s implicit expectation (a category can only point at a
     // group that exists) so a typo'd group ID is caught here rather than silently
@@ -1957,7 +1956,7 @@ async fn run_category_edit(
     clear_nitc_participant_type: bool,
     dry_run: bool,
 ) -> Result<()> {
-    let db = dynamodb::Handler::new(db_prefix, dry_run).await;
+    let db = AuditingHandler::new(dynamodb::Handler::new(db_prefix, dry_run).await);
 
     let current = db
         .get_categories(&[id])
@@ -2044,7 +2043,7 @@ async fn run_nitc_group_create(
     tags: &[i32],
     dry_run: bool,
 ) -> Result<()> {
-    let db = dynamodb::Handler::new(db_prefix, dry_run).await;
+    let db = AuditingHandler::new(dynamodb::Handler::new(db_prefix, dry_run).await);
 
     println!(
         "{} NITC group {}: type={nitc_type:?} tags={tags:?}",
@@ -2077,7 +2076,7 @@ async fn run_nitc_group_edit(
     clear_tags: bool,
     dry_run: bool,
 ) -> Result<()> {
-    let db = dynamodb::Handler::new(db_prefix, dry_run).await;
+    let db = AuditingHandler::new(dynamodb::Handler::new(db_prefix, dry_run).await);
 
     let current = db
         .get_nitc_group(id)
@@ -2116,7 +2115,7 @@ async fn run_nitc_group_edit(
 /// Delete an NITC group. Opens its own DB handler in `read_only = dry_run` mode; the
 /// write itself is also skipped while dry-run.
 async fn run_nitc_group_delete(db_prefix: &str, id: &str, dry_run: bool) -> Result<()> {
-    let db = dynamodb::Handler::new(db_prefix, dry_run).await;
+    let db = AuditingHandler::new(dynamodb::Handler::new(db_prefix, dry_run).await);
 
     let group = db
         .get_nitc_group(id)

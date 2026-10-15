@@ -1,7 +1,6 @@
 /**
- * @generated SignedSource<<3ff6d0f8484cd846c59a7e12091c691a>>
+ * @generated SignedSource<<fccbe99c54fa27c9fee42ecc04ad7450>>
  * @lightSyntaxTransform
- * @nogrep
  */
 
 /* tslint:disable */
@@ -45,7 +44,7 @@ return {
         "name": "user",
         "plural": false,
         "selections": [
-          (v0/*: any*/)
+          (v0/*:: as any*/)
         ],
         "storageKey": null
       }
@@ -67,7 +66,7 @@ return {
         "name": "user",
         "plural": false,
         "selections": [
-          (v0/*: any*/),
+          (v0/*:: as any*/),
           {
             "alias": null,
             "args": null,

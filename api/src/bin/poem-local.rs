@@ -15,20 +15,26 @@
 
 use std::error::Error;
 
+use seslogin::audit::AuditingHandler;
 use seslogin::dynamodb;
 use seslogin::mockmail;
 use seslogin::mockqueue;
 use seslogin::mockrealtime;
 use seslogin::server;
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>> {
+fn main() -> Result<(), Box<dyn Error>> {
+    server::runtime()?.block_on(run())
+}
+
+async fn run() -> Result<(), Box<dyn Error>> {
     let startup = server::init()?;
     tracing::warn!(
         "poem-local: SQS, SES and Ably are mocked. Queue messages and realtime kiosk \
          events will be logged and dropped, and email will be logged instead of sent."
     );
-    let db = dynamodb::Handler::new(&startup.db_prefix, !startup.cli.enable_mutations).await;
+    let db = AuditingHandler::new(
+        dynamodb::Handler::new(&startup.db_prefix, !startup.cli.enable_mutations).await,
+    );
     let realtime = mockrealtime::Handler::new(startup.db_prefix.clone());
     server::run(
         startup,

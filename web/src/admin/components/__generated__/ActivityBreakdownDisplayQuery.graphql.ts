@@ -1,7 +1,6 @@
 /**
- * @generated SignedSource<<64f1f307aa6dff7f76a9b68f7e3588ad>>
+ * @generated SignedSource<<90c0ae0b2e00075f1d52321fe7862684>>
  * @lightSyntaxTransform
- * @nogrep
  */
 
 /* tslint:disable */
@@ -114,7 +113,7 @@ v6 = {
   "name": "person",
   "plural": false,
   "selections": [
-    (v3/*: any*/),
+    (v3/*:: as any*/),
     {
       "alias": null,
       "args": null,
@@ -137,8 +136,8 @@ v6 = {
       "name": "location",
       "plural": false,
       "selections": [
-        (v3/*: any*/),
-        (v5/*: any*/)
+        (v3/*:: as any*/),
+        (v5/*:: as any*/)
       ],
       "storageKey": null
     }
@@ -160,8 +159,8 @@ v8 = {
   "name": "category",
   "plural": false,
   "selections": [
-    (v3/*: any*/),
-    (v5/*: any*/),
+    (v3/*:: as any*/),
+    (v5/*:: as any*/),
     {
       "alias": null,
       "args": null,
@@ -187,17 +186,17 @@ v9 = [
     "name": "location",
     "plural": false,
     "selections": [
-      (v3/*: any*/),
+      (v3/*:: as any*/),
       {
         "alias": null,
-        "args": (v4/*: any*/),
+        "args": (v4/*:: as any*/),
         "concreteType": "MemberCategoryPeriodSummary",
         "kind": "LinkedField",
         "name": "periodSummaryByMemberByCategory",
         "plural": true,
         "selections": [
-          (v6/*: any*/),
-          (v7/*: any*/),
+          (v6/*:: as any*/),
+          (v7/*:: as any*/),
           {
             "alias": null,
             "args": null,
@@ -206,8 +205,8 @@ v9 = [
             "name": "categories",
             "plural": true,
             "selections": [
-              (v8/*: any*/),
-              (v7/*: any*/)
+              (v8/*:: as any*/),
+              (v7/*:: as any*/)
             ],
             "storageKey": null
           }
@@ -216,14 +215,14 @@ v9 = [
       },
       {
         "alias": null,
-        "args": (v4/*: any*/),
+        "args": (v4/*:: as any*/),
         "concreteType": "CategoryMemberPeriodSummary",
         "kind": "LinkedField",
         "name": "periodSummaryByCategoryByMember",
         "plural": true,
         "selections": [
-          (v8/*: any*/),
-          (v7/*: any*/),
+          (v8/*:: as any*/),
+          (v7/*:: as any*/),
           {
             "alias": null,
             "args": null,
@@ -232,8 +231,8 @@ v9 = [
             "name": "members",
             "plural": true,
             "selections": [
-              (v6/*: any*/),
-              (v7/*: any*/)
+              (v6/*:: as any*/),
+              (v7/*:: as any*/)
             ],
             "storageKey": null
           }
@@ -247,29 +246,29 @@ v9 = [
 return {
   "fragment": {
     "argumentDefinitions": [
-      (v0/*: any*/),
-      (v1/*: any*/),
-      (v2/*: any*/)
+      (v0/*:: as any*/),
+      (v1/*:: as any*/),
+      (v2/*:: as any*/)
     ],
     "kind": "Fragment",
     "metadata": {
       "throwOnFieldError": true
     },
     "name": "ActivityBreakdownDisplayQuery",
-    "selections": (v9/*: any*/),
+    "selections": (v9/*:: as any*/),
     "type": "QueryRoot",
     "abstractKey": null
   },
   "kind": "Request",
   "operation": {
     "argumentDefinitions": [
-      (v1/*: any*/),
-      (v2/*: any*/),
-      (v0/*: any*/)
+      (v1/*:: as any*/),
+      (v2/*:: as any*/),
+      (v0/*:: as any*/)
     ],
     "kind": "Operation",
     "name": "ActivityBreakdownDisplayQuery",
-    "selections": (v9/*: any*/)
+    "selections": (v9/*:: as any*/)
   },
   "params": {
     "cacheID": "d0eddfa011816ba916ad8d585eb08a63",

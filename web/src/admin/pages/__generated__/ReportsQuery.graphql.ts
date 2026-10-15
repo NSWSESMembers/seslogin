@@ -1,7 +1,6 @@
 /**
- * @generated SignedSource<<06618f98cd11dc267f0afd86cd12b8ee>>
+ * @generated SignedSource<<f7ed4a5abf4543f051432b3a083e8279>>
  * @lightSyntaxTransform
- * @nogrep
  */
 
 /* tslint:disable */
@@ -164,7 +163,7 @@ v13 = {
   "storageKey": null
 },
 v14 = [
-  (v13/*: any*/)
+  (v13/*:: as any*/)
 ],
 v15 = {
   "alias": null,
@@ -174,8 +173,8 @@ v15 = {
   "name": "category",
   "plural": false,
   "selections": [
-    (v6/*: any*/),
-    (v13/*: any*/)
+    (v6/*:: as any*/),
+    (v13/*:: as any*/)
   ],
   "storageKey": null
 },
@@ -187,7 +186,7 @@ v16 = {
   "name": "person",
   "plural": false,
   "selections": [
-    (v6/*: any*/),
+    (v6/*:: as any*/),
     {
       "alias": null,
       "args": null,
@@ -238,17 +237,17 @@ v17 = {
   "storageKey": null
 },
 v18 = [
-  (v13/*: any*/),
-  (v6/*: any*/)
+  (v13/*:: as any*/),
+  (v6/*:: as any*/)
 ];
 return {
   "fragment": {
     "argumentDefinitions": [
-      (v0/*: any*/),
-      (v1/*: any*/),
-      (v2/*: any*/),
-      (v3/*: any*/),
-      (v4/*: any*/)
+      (v0/*:: as any*/),
+      (v1/*:: as any*/),
+      (v2/*:: as any*/),
+      (v3/*:: as any*/),
+      (v4/*:: as any*/)
     ],
     "kind": "Fragment",
     "metadata": {
@@ -258,16 +257,16 @@ return {
     "selections": [
       {
         "alias": null,
-        "args": (v5/*: any*/),
+        "args": (v5/*:: as any*/),
         "concreteType": "Location",
         "kind": "LinkedField",
         "name": "location",
         "plural": false,
         "selections": [
-          (v6/*: any*/),
+          (v6/*:: as any*/),
           {
             "alias": null,
-            "args": (v7/*: any*/),
+            "args": (v7/*:: as any*/),
             "concreteType": "PeriodConnection",
             "kind": "LinkedField",
             "name": "periods",
@@ -289,12 +288,12 @@ return {
                     "name": "node",
                     "plural": false,
                     "selections": [
-                      (v6/*: any*/),
-                      (v8/*: any*/),
-                      (v9/*: any*/),
-                      (v10/*: any*/),
-                      (v11/*: any*/),
-                      (v12/*: any*/),
+                      (v6/*:: as any*/),
+                      (v8/*:: as any*/),
+                      (v9/*:: as any*/),
+                      (v10/*:: as any*/),
+                      (v11/*:: as any*/),
+                      (v12/*:: as any*/),
                       {
                         "alias": null,
                         "args": null,
@@ -302,7 +301,7 @@ return {
                         "kind": "LinkedField",
                         "name": "signedInSession",
                         "plural": false,
-                        "selections": (v14/*: any*/),
+                        "selections": (v14/*:: as any*/),
                         "storageKey": null
                       },
                       {
@@ -312,17 +311,17 @@ return {
                         "kind": "LinkedField",
                         "name": "signedOutSession",
                         "plural": false,
-                        "selections": (v14/*: any*/),
+                        "selections": (v14/*:: as any*/),
                         "storageKey": null
                       },
                       {
                         "kind": "CatchField",
-                        "field": (v15/*: any*/),
+                        "field": (v15/*:: as any*/),
                         "to": "RESULT"
                       },
                       {
                         "kind": "CatchField",
-                        "field": (v16/*: any*/),
+                        "field": (v16/*:: as any*/),
                         "to": "RESULT"
                       }
                     ],
@@ -331,7 +330,7 @@ return {
                 ],
                 "storageKey": null
               },
-              (v17/*: any*/)
+              (v17/*:: as any*/)
             ],
             "storageKey": null
           }
@@ -345,27 +344,27 @@ return {
   "kind": "Request",
   "operation": {
     "argumentDefinitions": [
-      (v3/*: any*/),
-      (v2/*: any*/),
-      (v0/*: any*/),
-      (v4/*: any*/),
-      (v1/*: any*/)
+      (v3/*:: as any*/),
+      (v2/*:: as any*/),
+      (v0/*:: as any*/),
+      (v4/*:: as any*/),
+      (v1/*:: as any*/)
     ],
     "kind": "Operation",
     "name": "ReportsQuery",
     "selections": [
       {
         "alias": null,
-        "args": (v5/*: any*/),
+        "args": (v5/*:: as any*/),
         "concreteType": "Location",
         "kind": "LinkedField",
         "name": "location",
         "plural": false,
         "selections": [
-          (v6/*: any*/),
+          (v6/*:: as any*/),
           {
             "alias": null,
-            "args": (v7/*: any*/),
+            "args": (v7/*:: as any*/),
             "concreteType": "PeriodConnection",
             "kind": "LinkedField",
             "name": "periods",
@@ -387,12 +386,12 @@ return {
                     "name": "node",
                     "plural": false,
                     "selections": [
-                      (v6/*: any*/),
-                      (v8/*: any*/),
-                      (v9/*: any*/),
-                      (v10/*: any*/),
-                      (v11/*: any*/),
-                      (v12/*: any*/),
+                      (v6/*:: as any*/),
+                      (v8/*:: as any*/),
+                      (v9/*:: as any*/),
+                      (v10/*:: as any*/),
+                      (v11/*:: as any*/),
+                      (v12/*:: as any*/),
                       {
                         "alias": null,
                         "args": null,
@@ -400,7 +399,7 @@ return {
                         "kind": "LinkedField",
                         "name": "signedInSession",
                         "plural": false,
-                        "selections": (v18/*: any*/),
+                        "selections": (v18/*:: as any*/),
                         "storageKey": null
                       },
                       {
@@ -410,18 +409,18 @@ return {
                         "kind": "LinkedField",
                         "name": "signedOutSession",
                         "plural": false,
-                        "selections": (v18/*: any*/),
+                        "selections": (v18/*:: as any*/),
                         "storageKey": null
                       },
-                      (v15/*: any*/),
-                      (v16/*: any*/)
+                      (v15/*:: as any*/),
+                      (v16/*:: as any*/)
                     ],
                     "storageKey": null
                   }
                 ],
                 "storageKey": null
               },
-              (v17/*: any*/)
+              (v17/*:: as any*/)
             ],
             "storageKey": null
           }

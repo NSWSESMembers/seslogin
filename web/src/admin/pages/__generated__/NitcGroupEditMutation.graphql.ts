@@ -1,7 +1,6 @@
 /**
- * @generated SignedSource<<0ef809600e72d8cf4c6063a04293afa2>>
+ * @generated SignedSource<<3078418d86dfc893e40e678b623465b8>>
  * @lightSyntaxTransform
- * @nogrep
  */
 
 /* tslint:disable */
@@ -77,7 +76,7 @@ v4 = [
     "name": "updateNitcGroup",
     "plural": false,
     "selections": [
-      (v3/*: any*/),
+      (v3/*:: as any*/),
       {
         "alias": null,
         "args": null,
@@ -93,7 +92,7 @@ v4 = [
         "name": "sesTags",
         "plural": true,
         "selections": [
-          (v3/*: any*/),
+          (v3/*:: as any*/),
           {
             "alias": null,
             "args": null,
@@ -111,27 +110,27 @@ v4 = [
 return {
   "fragment": {
     "argumentDefinitions": [
-      (v0/*: any*/),
-      (v1/*: any*/),
-      (v2/*: any*/)
+      (v0/*:: as any*/),
+      (v1/*:: as any*/),
+      (v2/*:: as any*/)
     ],
     "kind": "Fragment",
     "metadata": null,
     "name": "NitcGroupEditMutation",
-    "selections": (v4/*: any*/),
+    "selections": (v4/*:: as any*/),
     "type": "MutationRoot",
     "abstractKey": null
   },
   "kind": "Request",
   "operation": {
     "argumentDefinitions": [
-      (v0/*: any*/),
-      (v2/*: any*/),
-      (v1/*: any*/)
+      (v0/*:: as any*/),
+      (v2/*:: as any*/),
+      (v1/*:: as any*/)
     ],
     "kind": "Operation",
     "name": "NitcGroupEditMutation",
-    "selections": (v4/*: any*/)
+    "selections": (v4/*:: as any*/)
   },
   "params": {
     "cacheID": "3f612e3db2d6e4e41445ce2213e8f0c9",

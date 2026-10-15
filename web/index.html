@@ -8,7 +8,10 @@
          how a kiosk gets a reliable full screen there (see KioskStatusDialog). -->
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black" />
+    <!-- `default` rather than `black`/`black-translucent`, so the status bar is never
+         see-through: iOS 26+ otherwise blurs the page beneath it. The kiosk's sticky
+         title bar then gives the status bar its colour (see ScanTitleBar). -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="seslogin" />
     <link rel="apple-touch-icon" href="/image/logo.png" />
     <meta name="seslogin-client-version" content="%VITE_CLIENT_VERSION%" />

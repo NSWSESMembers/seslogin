@@ -131,6 +131,30 @@ describe("KioskStatusDialog", () => {
     expect(screen.getByText(/Failed to fetch/)).toBeDefined();
   });
 
+  it("counts failed check-ins since the page loaded", () => {
+    recordServerContactFailure(new Error("Failed to fetch"));
+    recordServerContactFailure(new Error("Failed to fetch"));
+    recordServerContactSuccess(null);
+    renderDialog();
+
+    expect(screen.getByText("2 since load")).toBeDefined();
+  });
+
+  it("shows what the kiosk reports about itself", () => {
+    renderDialog();
+
+    // Built without VITE_ENVIRONMENT, as in tests and local dev.
+    expect(screen.getByText("Build").nextElementSibling?.textContent).toBe(
+      "dev",
+    );
+    expect(screen.getByText(window.location.origin)).toBeDefined();
+    expect(
+      screen.getByText(Intl.DateTimeFormat().resolvedOptions().timeZone),
+    ).toBeDefined();
+    expect(document.body.textContent?.includes("Page uptime")).toBeTruthy();
+    expect(document.body.textContent?.includes("Screen")).toBeTruthy();
+  });
+
   it("shows what the API server reported about itself", () => {
     setEnvironmentInfo({ gitRev: "abc1234", isProdDb: true });
     renderDialog();

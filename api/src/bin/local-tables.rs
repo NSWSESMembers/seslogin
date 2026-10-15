@@ -209,7 +209,7 @@ const TABLES: &[Table] = &[
         hash: "id",
         attrs: &[Attr("id", S), Attr("token_hash", S)],
         gsis: &[keys_only("token_hash-index", "token_hash")],
-        ttl: None,
+        ttl: Some("expires_at"),
     },
     Table {
         name: "webauthn_credential",
@@ -231,6 +231,21 @@ const TABLES: &[Table] = &[
         attrs: &[Attr("id", S), Attr("user_id", S)],
         gsis: &[all("user_id-index", "user_id", None)],
         ttl: Some("expires_at"),
+    },
+    Table {
+        name: "audit_log",
+        hash: "id",
+        attrs: &[
+            Attr("id", S),
+            Attr("location_id", S),
+            Attr("scope", S),
+            Attr("sk", S),
+        ],
+        gsis: &[
+            all("location_id-sk-index", "location_id", Some("sk")),
+            all("scope-sk-index", "scope", Some("sk")),
+        ],
+        ttl: None,
     },
     Table {
         name: "test_pagination",

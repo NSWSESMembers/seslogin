@@ -222,7 +222,7 @@ make local-reset          # stop it and delete every local table and row
 make local-tables         # create any missing tables
 make local-tables-check   # fail if a table this codebase expects is missing
 make local-seed           # write local/seed/*.json into the database
-make local-clear          # delete rows the app writes (periods, ephemeral state, passkeys)
+make local-clear          # delete rows the app writes (periods, ephemeral state, passkeys, the audit log)
 make local-cli ARGS="..." # run the `cli` inspector/editor against the local database
 make local-seed-extract   # refresh local/seed/from-prod.json (the only step needing AWS)
 ```
@@ -255,8 +255,8 @@ Delete only for members member sync does not own, so Alice is the one to change 
 the read-only case. A fixture where every member is sync-owned makes the member edit form
 unreachable while looking perfectly fine.
 
-Log in with the seeded token — put `slu_localdev0000000000000000000super` (or
-`slu_localdev0000000000000000testunit`, or `slu_localdev0000000000000000readonly`) in `localStorage` under `admin_auth_token`, or send
+Log in with the seeded token — put `slu_TokenSuperUsr.localdev-super` (or
+`slu_TokenUnitUser.localdev-testunit`, or `slu_TokenReadOnly.localdev-readonly`) in `localStorage` under `admin_auth_token`, or send
 it as a bearer token to the API. Only its sha256 is stored, as in production. Otherwise use
 `--dev-auth-user super@seslogin.test`, or the real email-code flow, reading the code out of
 the log.
@@ -343,9 +343,9 @@ Unlike `mockdb`, the queue, mail and realtime mocks *succeed* — they exist so 
 > **Optional attributes: omit, don't write `Null`.** When an optional field is absent, leave the attribute off the item entirely — on `put_item` skip the `.item(...)` call; on `update_item` put it in a `REMOVE` clause rather than `SET`ting it to `AttributeValue::Null`. This is mandatory for any attribute that backs a GSI key (DynamoDB rejects a `Null` GSI key with a `ValidationException` — this was the cause of the category-creation bug) and is also required for String/Number Sets (which cannot be stored empty). Apply it uniformly to all optional attributes for consistency; hydration in `dynamodb.rs` already treats a missing attribute and `Null` identically.
 
 **Auth**: `api/src/auth.rs` — token verification dispatches on prefix:
-1. API tokens (`slgn_` prefix) — opaque hashed secrets for programmatic access
-2. User tokens (`slu_` prefix) — opaque hashed secrets issued via email-code auth
-3. JWT (no prefix) — session JWTs (single-use numeric kiosk codes → 14-day JWT) and user JWTs
+1. API tokens (`slgn_` prefix) — opaque hashed secrets for programmatic access, shaped `slgn_<id>.<secret>` and verified the same way as user tokens below. Legacy `slgn_<secret>` tokens never expire on their own, so they keep working through `token_hash-index` and log a `legacy-format API token used` warning naming the token, until each is replaced by hand
+2. User tokens (`slu_` prefix) — opaque hashed secrets issued via email-code auth, shaped `slu_<id>.<secret>` so verification is one strongly consistent `GetItem` by id plus a constant-time hash check. Legacy `slu_<secret>` tokens (no `.`) are still found through `token_hash-index`, but their sliding expiry is frozen so they all age out
+3. JWT (no prefix) — kiosk session JWTs only (single-use numeric kiosk codes → 14-day JWT). User JWTs are no longer issued or accepted; users authenticate with `slu_` tokens
 
 Authorization uses an `AuthRequirement` guard enum per field: `Session`, `UserOrSession`, `User`, `SuperUser`.
 
@@ -358,6 +358,8 @@ A user can see and revoke their own authorized grants — the "Connected apps" l
 **MCP interface**: `api/src/mcp.rs` serves `POST /mcp` (Model Context Protocol, Streamable HTTP, stateless/JSON — a hand-rolled JSON-RPC 2.0 dispatcher; see the module docs for why not the `rmcp` crate) so an AI client can manage the user list acting as a given user, with exactly their permissions: every tool runs a fixed GraphQL document with that user's `AuthInfo` attached, so existing guards (`SuperUser` on `users`/`createUser`/`updateUser`, self-only on `user(id)`) apply unchanged. See `api/README.md`'s "MCP interface" section for the tool list, connecting a client, and local testing.
 
 **DataLoader**: `api/src/dataloader.rs` — Batches DB lookups to avoid N+1 in GraphQL resolvers.
+
+**Audit log**: every *business* DB write is recorded in the `{prefix}_audit_log` table (see SCHEMA.md) with the actor, the affected location(s) and a field-level diff. `api/src/audit.rs`'s `AuditingHandler<D: db::Handler>` wraps the real handler and delegates every method; for an audited write it reads the "before" entity through the inner handler, performs the write, and — only if that succeeded — calls `put_audit_entry`. Who made the write is not an argument of any `db::Handler` method, so it travels in the `AUDIT_CONTEXT` task-local (`Actor` + client IP), set at each entry point: the GraphQL handlers in `server.rs` and `bin/lambda/handler.rs` and `mcp.rs` (from the request's `AuthInfo`, via `audit::scope_for_request`), the OAuth token endpoint, `member_sync::run` (`system: member-sync`), `location_sync::run`, the `cli` and `load-nitc-tags`; `request_metrics::request_spawner` copies it into DataLoader tasks. A write with no context in scope is still recorded, as actor `unknown`, with a warning. Audited: users (`Fields`, `EmailConfig`, `DisaggregateVirtualPeriods`), people, periods, kiosk sessions (create, code wipe, `Fields`/`ExtendKey`/`ReleaseKey`/`Delete`), API tokens (`Fields`/`Revoke`), locations (`Fields`/`Name`), categories, NITC groups and tags, user tokens, OAuth grants (create/delete) and passkeys (create/`Rename`/delete). Deliberately **not** audited: `AccessTime`, session `Info`, every `TouchLastUsed`, `LastSyncTime`, OAuth `Rotate`, login codes, WebAuthn/ephemeral state and the NITC export bookkeeping — they are plumbing, not business changes. Secrets (token hashes, passkey material, session codes and kiosk keys, OAuth secrets) are never stored; a field that changed but is secret is shown as `"[redacted]"`. **Auditing is best-effort**: a failed before-read is logged and the write proceeds, and a failed `put_audit_entry` (e.g. the table not created yet) is logged at `error!` and swallowed — the business write's own result is returned unchanged. **Reading the log**: `Location.auditLog` (any *user* with Admin **or** Read only access to the location, plus super users; kiosk sessions, API tokens and edit links are refused) and `Query.auditLog` (super users only: every event once, including global entities) — Relay connections in `api/src/graphql/audit_log.rs`, newest first, default 50 / max 200, backed by `db::Handler::list_audit_entries` (`AuditScope::Location` → `location_id-sk-index`, `AuditScope::All` → `scope-sk-index`; the cursor is the item's `sk`). A write touching several locations is an item in each, so it is in each location's log but once in the root one. `ip` and `actor.via` are returned to super users only; `actor.label` is resolved at read time through the dataloader. **Adding a new write method to `db::Handler`?** The trait has no default methods, so `AuditingHandler` will not compile until you classify it: audit it (read before, write, record after) or pass it through explicitly and say why.
 
 **Member sync**: `api/src/member_sync.rs` — Fetches paginated member list from SES API, diffs against local DB, plans and optionally applies changes (adopt IDs, create, update, soft-delete). Email sync (via the separate SES intranet search API) deliberately runs **last**, after the member changes are applied and `last_successful_member_sync` is stamped: it has its own endpoint and credential, so an outage there still fails the location into the DLQ but can no longer stop every location's primary member sync — which would both bury a real single-location failure in a fleet-wide DLQ flood and falsely trip the checker lambda's stale-location digest. In production, sync runs as two Lambdas: `dispatcher-lambda` (triggered by EventBridge every hour, `cron(0 * * * ? *)` UTC) hashes each location ID into one of 24 hour buckets and enqueues only the locations whose bucket matches the current UTC hour; `sync-members-lambda` consumes each SQS message and runs the sync for that location. Net effect: each location is synced once per 24-hour cycle at a consistent but distributed UTC hour. The SQS queue has a DLQ with 3 retries.
 
@@ -377,7 +379,7 @@ Absence writes are excluded from `max_mutations`: a location with a large but le
 
 **SES API client**: `api/src/ses_api.rs` — HTTP client with retry logic for the external headquarters system.
 
-**JWT**: `api/src/jwt.rs` — HMAC-SHA256 tokens with claims `{ user_id, exp }` or `{ session_id, exp }`.
+**JWT**: `api/src/jwt.rs` — HMAC-SHA256 kiosk session tokens with claims `{ session_id, exp }`. A JWT carrying `user_id` instead is rejected.
 
 ### Core Data Model
 

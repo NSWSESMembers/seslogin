@@ -16,6 +16,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: "/admin/activity", label: "Activity" },
   { to: "/admin/reports", label: "Reports" },
   { to: "/admin/sessions", label: "Kiosks" },
+  { to: "/admin/audit", label: "Audit log" },
   { to: "/admin/settings", label: "Settings" },
   { to: "/admin/locations", label: "Locations", superOnly: true },
   { to: "/admin/users", label: "Users", superOnly: true },

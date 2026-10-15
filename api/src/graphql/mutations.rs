@@ -745,7 +745,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         }
     }
 
-    /// Revoke the current user's opaque session token (no-op for JWT sessions).
+    /// Revoke the current user's opaque session token (no-op when not signed in with one).
     #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
     async fn logout(&self, ctx: &Context<'_>) -> Result<bool> {
         if let Some(AuthInfo::User {
@@ -1581,7 +1581,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
                 )
                 .await
             {
-                Ok(()) => info!(
+                Ok(_) => info!(
                     "Released {} key {} from kiosk session {} ({:?}) at location {} so its device \
                      could enroll as {:?} at location {}",
                     match holder {
@@ -1672,11 +1672,13 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
             .and_then(|ts| u64::try_from(ts).ok())
             .filter(|&ts| ts > 0);
 
-        let (secret, token_hash) = auth::generate_api_token_secret();
+        let id = crate::dynamodb::new_id();
+        let (secret, token_hash) = auth::generate_api_token_secret(&id);
         let rec = self
             .app
             .db()
             .create_api_token(
+                &id,
                 &name,
                 &token_hash,
                 location_grants,
