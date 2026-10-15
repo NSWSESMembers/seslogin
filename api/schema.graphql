@@ -326,7 +326,11 @@ type Location {
 		"""
 		Only entries about this kind of record
 		"""
-		entityType: AuditEntityType
+		entityType: AuditEntityType @deprecated(reason: "Use `entityTypes`"),
+		"""
+		Only entries about any of these kinds of record. Omitted or empty means every kind
+		"""
+		entityTypes: [AuditEntityType!]
 	): AuditEntryConnection!
 	nitcEnabled: Int
 	"""
@@ -937,7 +941,11 @@ type QueryRoot {
 		"""
 		Only entries about this kind of record
 		"""
-		entityType: AuditEntityType
+		entityType: AuditEntityType @deprecated(reason: "Use `entityTypes`"),
+		"""
+		Only entries about any of these kinds of record. Omitted or empty means every kind
+		"""
+		entityTypes: [AuditEntityType!]
 	): AuditEntryConnection!
 	users: [User!]!
 	categories: [Category!]!

@@ -255,7 +255,7 @@ Auditing is **best-effort**: if recording an entry fails it is logged at `error!
 
 ### Reading the log (GraphQL)
 
-Both views are Relay connections, **newest first**, default page 50 (max 200), and take `first`/`after` (towards older entries), `last`/`before` (back towards newer ones) and an optional `entityType` filter. A cursor is the item's `sk` (`{ts:010}#{id}`); a malformed one is a `BAD_REQUEST` error. `first` with `before`, or `last` with `after`, is rejected.
+Both views are Relay connections, **newest first**, default page 50 (max 200), and take `first`/`after` (towards older entries), `last`/`before` (back towards newer ones) and an optional `entityTypes` filter (any of the listed kinds; omitted or empty means every kind — the single `entityType` argument it replaces is deprecated but still accepted, and adds to the list). A cursor is the item's `sk` (`{ts:010}#{id}`); a malformed one is a `BAD_REQUEST` error. `first` with `before`, or `last` with `after`, is rejected.
 
 | Field | Who may read it | Shows |
 |---|---|---|
@@ -264,7 +264,7 @@ Both views are Relay connections, **newest first**, default page 50 (max 200), a
 
 Each `AuditEntry` has `timestamp` (Unix seconds), `action`, `entityType`, `entityId`, `entityLabel`, `location` (the item's own location; the first one a multi-location write touched in the all-locations view; null for global records), `actor { kind id via label }` and `changes { field before after }`. `before`/`after` are text: a JSON string comes back raw, anything else as compact JSON. `actor.label` is looked up at read time (user email, kiosk name, API token name, job name, "Period edit link"); an unknown `actor_kind` reads as `UNKNOWN`. `ip` and `actor.via` are personal data and are returned to **super users only** (null otherwise).
 
-An `entityType` filter is a `FilterExpression`, so a rare type in a busy log can read many rows to fill a page; a malformed row in the table is logged and skipped rather than failing the page.
+An `entityTypes` filter is a `FilterExpression` (`entity_type IN (...)`), so a rare type in a busy log can read many rows to fill a page; a malformed row in the table is logged and skipped rather than failing the page.
 
 To inspect entries locally after `make dev-local` / `make local-e2e`, scan the table in DynamoDB Local:
 

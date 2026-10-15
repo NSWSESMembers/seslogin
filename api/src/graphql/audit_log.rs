@@ -357,7 +357,7 @@ pub(super) async fn audit_log_connection<A: App + HasDb + Send + Sync + 'static>
     after: Option<String>,
     last: Option<i32>,
     before: Option<String>,
-    entity_type: Option<AuditEntityType>,
+    entity_types: Vec<AuditEntityType>,
 ) -> Result<AuditEntryConnection<A>> {
     let (page_size, is_last_mode) =
         pagination_args(first, last, DEFAULT_AUDIT_PAGE_SIZE, MAX_AUDIT_PAGE_SIZE)?;
@@ -384,7 +384,7 @@ pub(super) async fn audit_log_connection<A: App + HasDb + Send + Sync + 'static>
         .db()
         .list_audit_entries(db::ListAuditEntriesQuery {
             scope,
-            entity_type: entity_type.map(Into::into),
+            entity_types: entity_types.into_iter().map(Into::into).collect(),
             // Backwards paging is the same query in the opposite order: the rows nearest
             // the cursor come first and `build_connection` flips them back.
             page: db::ListAuditEntriesPage {
@@ -418,7 +418,7 @@ pub(super) async fn location_audit_log<A: App + HasDb + Send + Sync + 'static>(
     after: Option<String>,
     last: Option<i32>,
     before: Option<String>,
-    entity_type: Option<AuditEntityType>,
+    entity_types: Vec<AuditEntityType>,
 ) -> Result<AuditEntryConnection<A>> {
     if !matches!(ctx.data_opt::<AuthInfo>(), Some(AuthInfo::User { .. })) {
         return Err(ApiError::forbidden("The audit log is only available to users").into());
@@ -431,9 +431,23 @@ pub(super) async fn location_audit_log<A: App + HasDb + Send + Sync + 'static>(
         after,
         last,
         before,
-        entity_type,
+        entity_types,
     )
     .await
+}
+
+/// Merge the deprecated single `entityType` argument into `entityTypes`. Either, both or
+/// neither may be given; together they mean "any of these". Nothing at all means every
+/// kind.
+pub(super) fn merge_entity_types(
+    entity_type: Option<AuditEntityType>,
+    entity_types: Option<Vec<AuditEntityType>>,
+) -> Vec<AuditEntityType> {
+    entity_types
+        .unwrap_or_default()
+        .into_iter()
+        .chain(entity_type)
+        .collect()
 }
 
 #[cfg(test)]

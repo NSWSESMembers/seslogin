@@ -222,17 +222,35 @@ describe("AuditLog", () => {
     expect(screen.getByText(/IP 203\.0\.113\.9/)).toBeInTheDocument();
   });
 
-  it("filters by entity type on the server and starts again", async () => {
+  it("filters by several entity types on the server and starts again", async () => {
     const user = UserEvent.setup();
     const environment = renderPage();
     resolveLocation(environment, [entry(1)]);
     expect(await screen.findByText("Member 1")).toBeInTheDocument();
 
-    await user.selectOptions(screen.getByRole("combobox"), "Kiosk");
+    const filter = screen.getByLabelText("Show");
+    const apply = screen.getByRole("button", { name: "Apply" });
+    expect(apply).toBeDisabled();
+    await user.type(filter, "kiosk{Enter}");
+    await user.clear(filter);
+    await user.type(filter, "member{Enter}");
+    // Nothing is fetched until the selection is applied.
+    expect(environment.mock.getAllOperations()).toHaveLength(0);
 
+    await user.click(apply);
     expect(
       environment.mock.getMostRecentOperation().request.variables,
-    ).toMatchObject({ entityType: "SESSION", after: null, all: false });
+    ).toMatchObject({
+      // In the filter's own order, not the order they were picked.
+      entityTypes: ["PERSON", "SESSION"],
+      after: null,
+      all: false,
+    });
+    expect(apply).toBeDisabled();
+    resolveLocation(environment, []);
+    expect(
+      await screen.findByText("No changes of these kinds have been recorded."),
+    ).toBeInTheDocument();
   });
 
   it("loads more with the cursor and appends the rows", async () => {

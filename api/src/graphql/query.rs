@@ -1846,12 +1846,25 @@ impl<A: App + HasDb + Send + Sync> Location<A> {
         after: Option<String>,
         last: Option<i32>,
         before: Option<String>,
-        #[graphql(desc = "Only entries about this kind of record")] entity_type: Option<
-            AuditEntityType,
-        >,
+        #[graphql(
+            desc = "Only entries about this kind of record",
+            deprecation = "Use `entityTypes`"
+        )]
+        entity_type: Option<AuditEntityType>,
+        #[graphql(desc = "Only entries about any of these kinds of record. Omitted or \
+                          empty means every kind")]
+        entity_types: Option<Vec<AuditEntityType>>,
     ) -> Result<AuditEntryConnection<A>> {
-        audit_log::location_audit_log(ctx, &self.rec.id, first, after, last, before, entity_type)
-            .await
+        audit_log::location_audit_log(
+            ctx,
+            &self.rec.id,
+            first,
+            after,
+            last,
+            before,
+            audit_log::merge_entity_types(entity_type, entity_types),
+        )
+        .await
     }
 
     async fn nitc_enabled(&self) -> Option<i64> {
@@ -3605,9 +3618,14 @@ impl<A: App + HasDb + HasRealtime + Send + Sync + 'static> QueryRoot<A> {
         after: Option<String>,
         last: Option<i32>,
         before: Option<String>,
-        #[graphql(desc = "Only entries about this kind of record")] entity_type: Option<
-            AuditEntityType,
-        >,
+        #[graphql(
+            desc = "Only entries about this kind of record",
+            deprecation = "Use `entityTypes`"
+        )]
+        entity_type: Option<AuditEntityType>,
+        #[graphql(desc = "Only entries about any of these kinds of record. Omitted or \
+                          empty means every kind")]
+        entity_types: Option<Vec<AuditEntityType>>,
     ) -> Result<AuditEntryConnection<A>> {
         audit_log::audit_log_connection(
             ctx,
@@ -3616,7 +3634,7 @@ impl<A: App + HasDb + HasRealtime + Send + Sync + 'static> QueryRoot<A> {
             after,
             last,
             before,
-            entity_type,
+            audit_log::merge_entity_types(entity_type, entity_types),
         )
         .await
     }

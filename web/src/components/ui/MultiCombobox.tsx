@@ -66,6 +66,13 @@ export interface MultiComboboxProps {
   ) => readonly ComboboxOption[];
   /** Rendered as `{emptyText} “{query}”.` */
   emptyText?: string;
+  /**
+   * Open the full option list as soon as the field gains focus — by click or
+   * by Tab — before anything is typed. Off by default: on a long list (every
+   * location) a list that leaps open on Tab is noise, but on a short one
+   * seeing every option at once beats having to know what to type.
+   */
+  openOnFocus?: boolean;
 }
 
 /** `defaultValue` entries with no matching option — e.g. a grant pointing at a
@@ -96,6 +103,7 @@ export default function MultiCombobox({
   allowClear = !required,
   filter = filterOptions,
   emptyText = "No matches",
+  openOnFocus = false,
 }: MultiComboboxProps) {
   const [selectedIds, setSelectedIds] = useState<string[]>(() =>
     validIds(defaultValue, options),
@@ -108,6 +116,10 @@ export default function MultiCombobox({
 
   const wrapperRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  // Set on a mousedown that is about to focus the input. With `openOnFocus`
+  // the focus has already opened the list by the time the click arrives, so
+  // that click must not toggle it straight back shut.
+  const openedByPointerFocus = useRef(false);
   const listboxRef = useRef<HTMLUListElement>(null);
 
   const list = useComboboxList({
@@ -320,7 +332,21 @@ export default function MultiCombobox({
         spellCheck={false}
         onChange={handleChange}
         onKeyDown={handleKeyDown}
-        onClick={() => (list.open ? list.close() : list.search(""))}
+        onMouseDown={() => {
+          openedByPointerFocus.current =
+            openOnFocus && document.activeElement !== inputRef.current;
+        }}
+        onFocus={() => {
+          if (openOnFocus && !disabled && !list.open) list.search("");
+        }}
+        onClick={() => {
+          if (openedByPointerFocus.current) {
+            openedByPointerFocus.current = false;
+            return;
+          }
+          if (list.open) list.close();
+          else list.search("");
+        }}
         className={comboboxTokenInput}
       />
       {/* Carries the selection into FormData, one entry per pill — exactly

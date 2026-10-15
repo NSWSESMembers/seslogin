@@ -704,6 +704,44 @@ async fn the_entity_type_filter_applies_to_both_views_and_pages_correctly() {
 }
 
 #[tokio::test]
+async fn several_entity_types_match_any_of_them() {
+    let (app, _) = populated_app().await;
+    let auth = || user("a-admin", &["loc-a"], &[]);
+    let query = r#"query($loc: ID!, $ets: [AuditEntityType!], $et: AuditEntityType) {
+        location(id: $loc) {
+            auditLog(entityTypes: $ets, entityType: $et) { edges { node { entityType } } }
+        }
+    }"#;
+    let types_for = |vars: serde_json::Value| {
+        let app = app.clone();
+        async move {
+            let data = json_of(&run_vars(&app, auth(), query, vars).await);
+            let mut types: Vec<String> = nodes(&data["location"]["auditLog"])
+                .iter()
+                .map(|n| n["entityType"].as_str().unwrap().to_string())
+                .collect();
+            types.sort();
+            types
+        }
+    };
+
+    assert_eq!(
+        types_for(json!({ "loc": "loc-a", "ets": ["PERIOD", "PERSON"] })).await,
+        vec!["PERIOD", "PERSON", "PERSON", "PERSON"]
+    );
+    // The deprecated single argument still works, and adds to the list.
+    assert_eq!(
+        types_for(json!({ "loc": "loc-a", "ets": ["PERIOD"], "et": "PERSON" })).await,
+        vec!["PERIOD", "PERSON", "PERSON", "PERSON"]
+    );
+    // An empty list is no filter, the same as leaving it out.
+    assert_eq!(
+        types_for(json!({ "loc": "loc-a", "ets": [] })).await,
+        types_for(json!({ "loc": "loc-a" })).await
+    );
+}
+
+#[tokio::test]
 async fn bad_arguments_are_user_errors() {
     let (app, _) = populated_app().await;
     let auth = || user("a-admin", &["loc-a"], &[]);

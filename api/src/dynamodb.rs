@@ -1097,8 +1097,8 @@ struct AuditQueryPlan {
     hash_value: String,
     scan_forward: bool,
     exclusive_start_key: Option<HashMap<String, AttributeValue>>,
-    /// Value for the `entity_type` filter, if any.
-    entity_type: Option<&'static str>,
+    /// Values for the `entity_type IN (...)` filter, deduplicated. Empty means no filter.
+    entity_types: Vec<&'static str>,
 }
 
 /// Build the DynamoDB request shape for an audit query. Fails for a malformed cursor —
@@ -1136,7 +1136,15 @@ fn audit_query_plan(query: &db::ListAuditEntriesQuery) -> db::Result<AuditQueryP
         // there is no reversed output to undo.
         scan_forward: !query.page.descending,
         exclusive_start_key,
-        entity_type: query.entity_type.map(|t| t.as_str()),
+        entity_types: {
+            let mut types: Vec<&'static str> = Vec::new();
+            for t in &query.entity_types {
+                if !types.contains(&t.as_str()) {
+                    types.push(t.as_str());
+                }
+            }
+            types
+        },
     })
 }
 
@@ -4996,7 +5004,7 @@ impl db::Handler for Handler {
         // `Limit` bounds the items *read*, before the entity_type filter drops any, so a
         // filtered page can come back short while more rows remain. Read in bigger
         // chunks when filtering so a rare type needs fewer round trips.
-        let read_limit = if plan.entity_type.is_some() {
+        let read_limit = if !plan.entity_types.is_empty() {
             fetch_limit.max(100)
         } else {
             fetch_limit
@@ -5017,10 +5025,18 @@ impl db::Handler for Handler {
                 .limit(read_limit)
                 .scan_index_forward(plan.scan_forward)
                 .return_consumed_capacity(ReturnConsumedCapacity::Total);
-            if let Some(entity_type) = plan.entity_type {
+            if !plan.entity_types.is_empty() {
+                let placeholders: Vec<String> = (0..plan.entity_types.len())
+                    .map(|i| format!(":et{i}"))
+                    .collect();
                 builder = builder
-                    .filter_expression("entity_type = :et")
-                    .expression_attribute_values(":et", AttributeValue::S(entity_type.to_string()));
+                    .filter_expression(format!("entity_type IN ({})", placeholders.join(", ")));
+                for (placeholder, entity_type) in placeholders.into_iter().zip(&plan.entity_types) {
+                    builder = builder.expression_attribute_values(
+                        placeholder,
+                        AttributeValue::S(entity_type.to_string()),
+                    );
+                }
             }
             if let Some(esk) = exclusive_start_key.take() {
                 builder = builder.set_exclusive_start_key(Some(esk));
@@ -5571,7 +5587,7 @@ mod tests {
     ) -> db::ListAuditEntriesQuery {
         db::ListAuditEntriesQuery {
             scope,
-            entity_type: None,
+            entity_types: Vec::new(),
             page: db::ListAuditEntriesPage {
                 after: after.map(String::from),
                 limit: 11,
@@ -5608,7 +5624,7 @@ mod tests {
                         AttributeValue::S("1700000000#Ab3-_x".to_string())
                     ),
                 ])),
-                entity_type: None,
+                entity_types: Vec::new(),
             }
         );
     }
@@ -5616,13 +5632,18 @@ mod tests {
     #[test]
     fn an_all_scope_audit_query_uses_the_scope_index() {
         let mut query = audit_query(db::AuditScope::All, Some("0000000005#zz"), false);
-        query.entity_type = Some(db::AuditEntityType::Person);
+        query.entity_types = vec![
+            db::AuditEntityType::Person,
+            db::AuditEntityType::Period,
+            db::AuditEntityType::Person,
+        ];
         let plan = audit_query_plan(&query).unwrap();
         assert_eq!(plan.index_name, "scope-sk-index");
         assert_eq!(plan.hash_attr, "scope");
         assert_eq!(plan.hash_value, "all");
         assert!(plan.scan_forward);
-        assert_eq!(plan.entity_type, Some("person"));
+        // Duplicates are dropped rather than sent as repeated `IN` values.
+        assert_eq!(plan.entity_types, vec!["person", "period"]);
         let esk = plan.exclusive_start_key.unwrap();
         assert_eq!(esk["scope"], AttributeValue::S("all".to_string()));
         assert_eq!(esk["id"], AttributeValue::S("zz".to_string()));
