@@ -1,9 +1,8 @@
 /**
  * Leave a browser on the kiosk scan screen, enrolled as the seeded key kiosk.
  *
- * A kiosk normally reaches that screen by enrolling: an admin approves its public key, or
- * someone types a 6-digit code. Both are fine to test, and neither is what you want as a
- * *precondition* for testing a sign-in. So this installs the seeded keypair directly.
+ * A kiosk normally reaches that screen by enrolling: an admin scans its QR code to approve
+ * its public key. That is fine to test, but not what you want as a *precondition* for testing a sign-in. So this installs the seeded keypair directly.
  *
  * How it works — the two halves the app looks for:
  *   1. IndexedDB `seslogin-kiosk` / store `keys` / key `<profile>` holds a CryptoKeyPair.
@@ -86,7 +85,7 @@ await page.evaluate(
     const settings = JSON.parse(localStorage.getItem(key) ?? "{}");
     localStorage.setItem(
       key,
-      // Clear any JWT from a previous code enrolment: a stored token wins over authMode
+      // Clear any legacy JWT left in this profile: a stored token wins over authMode
       // and would put the kiosk back on the legacy path.
       JSON.stringify({
         ...settings,

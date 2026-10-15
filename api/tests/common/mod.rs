@@ -275,9 +275,6 @@ impl db::Handler for FakeDb {
             .map(|id| sessions.get(id.as_ref()).cloned())
             .collect())
     }
-    async fn get_session_id_by_code(&self, _code: &str) -> db::Result<Vec<String>> {
-        unsupported()
-    }
     async fn get_session_id_by_key_fingerprint(
         &self,
         fingerprint: &str,
@@ -290,9 +287,6 @@ impl db::Handler for FakeDb {
             .filter(|s| s.key_fingerprint.as_deref() == Some(fingerprint))
             .map(|s| s.id.clone())
             .collect())
-    }
-    async fn wipe_session_code(&self, _id: &str) -> db::Result<()> {
-        unsupported()
     }
     async fn list_sessions(&self, query: db::ListSessionsQuery) -> db::Result<Vec<db::Session>> {
         let db::ListSessionsQuery::ByLocation(location_id) = query;
@@ -476,7 +470,7 @@ impl db::Handler for FakeDb {
         name: &str,
         config: &serde_json::Map<String, serde_json::Value>,
         healthcheck_url: Option<&str>,
-        key: Option<db::SessionKeyParams<'_>>,
+        key: db::SessionKeyParams<'_>,
     ) -> db::Result<db::Session> {
         let mut sessions = self.sessions.lock().unwrap();
         let session = db::Session {
@@ -488,12 +482,12 @@ impl db::Handler for FakeDb {
             client_version: None,
             client_info: None,
             client_info_updated_at: None,
-            code: key.is_none().then(|| "123456".to_string()),
+            code: None,
             config: config.clone(),
             healthcheck_url: healthcheck_url.map(str::to_string),
-            public_key: key.map(|k| k.public_key.to_string()),
-            key_fingerprint: key.map(|k| k.fingerprint.to_string()),
-            key_expires_at: key.map(|k| k.expires_at),
+            public_key: Some(key.public_key.to_string()),
+            key_fingerprint: Some(key.fingerprint.to_string()),
+            key_expires_at: Some(key.expires_at),
             key_released_at: None,
             version: 1,
             created_at: Some(0),

@@ -411,7 +411,7 @@ than the thing standing between production data and a public repo.
 | **Test B Unit** (`TestBUnit001`) | Second unit, for cross-unit sign-in and for checking a grant is enforced. Member **Crossunit Tester** (`20000001`) |
 | **Users** | `super@seslogin.test` (super), `testunit@seslogin.test` (Admin at Test A Unit only) and `readonly@seslogin.test` (Read only at Test A Unit) |
 | **User tokens** | One ready-made login per user — see [Logging in](#logging-in) |
-| **Kiosk sessions** | `TestAKiosk01` at Test A Unit, enrolment code `123456`; `TestAKiosk02`, the same unit but **key-enrolled** |
+| **Kiosk sessions** | `TestAKiosk01` at Test A Unit, a **legacy JWT** kiosk; `TestAKiosk02`, the same unit but **key-enrolled** |
 | **Categories** | All 220, plus the 99 NITC groups they point at |
 
 Neither unit name contains the other, so a selector matching on name text can't hit both —
@@ -424,11 +424,13 @@ has one, so it hides both and shows the synced bullet
 changes a member, and Bob to check the read-only half. A fixture where every member is
 sync-owned looks fine and quietly makes the member edit form unreachable.
 
-**The two kiosks cover the two enrolment styles**, which are mutually exclusive — `code`
-and `key_fingerprint` both back GSIs, so a session carries one or the other:
+**The two kiosks cover the two ways a kiosk authenticates:**
 
-- `TestAKiosk01` is **code-enrolled**: type `123456` at the kiosk. Enrolling consumes the
-  code and swaps it for a JWT, so re-run `make local-seed` to put it back.
+- `TestAKiosk01` is a **legacy JWT kiosk**: it has no key, like the kiosks enrolled with a
+  6-digit setup code before that flow was removed. New kiosks can't be enrolled that way,
+  but existing ones keep working on their session JWT. Mint one with
+  `make local-cli ARGS="jwt session TestAKiosk01"` and store it as `scanAuthToken` in the
+  kiosk's `kiosk_<profile>` localStorage entry.
 - `TestAKiosk02` is **key-enrolled**: it carries the public half of a fixed P-256 keypair
   and signs every request with the private half (the `SLKey` scheme, see
   [api/src/session_key.rs](api/src/session_key.rs)). The private half is committed in

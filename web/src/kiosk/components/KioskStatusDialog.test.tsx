@@ -72,7 +72,6 @@ function renderDialog(
   return render(
     <KioskEnvironmentContext.Provider
       value={{
-        setToken: vitest.fn(),
         profile: "default",
         authMode,
         onKeyEnrolled,

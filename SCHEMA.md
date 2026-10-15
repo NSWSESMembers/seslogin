@@ -171,7 +171,7 @@ The `start_time` sort key across the location/person GSIs means DynamoDB returns
 
 | GSI                        | Hash key    | Sort key      | Projection | Purpose                                        |
 | -------------------------- | ----------- | ------------- | ---------- | ---------------------------------------------- |
-| `code-index`               | `code`      | —             | KEYS_ONLY  | Kiosk login: look up session by 6-digit code   |
+| `code-index`               | `code`      | —             | KEYS_ONLY  | Unused: setup-code enrolment was removed       |
 | `active-location_id-index` | `active`    | `location_id` | ALL        | Admin UI: list all live sessions at a location |
 | `active-super-index`       | `active`    | `super`       | ALL        | Admin UI: list all live super-sessions         |
 | `legacy_id-index`          | `legacy_id` | —             | KEYS_ONLY  | Migration: look up session by v1 legacy ID     |
@@ -180,12 +180,12 @@ The `active` attribute is set to `1` on creation and **removed** on soft-delete.
 
 The `super` attribute is a sentinel string `"1"` on super-sessions and is **absent** on regular sessions. It is the sort key of `active-super-index`; querying `active = 1 AND super = "1"` returns only live super-sessions.
 
-`code-index` uses `KEYS_ONLY` because the login flow only needs the session ID; the code is then wiped and a full `GetItem` fetches the session. Deleted sessions may still appear in `code-index` and `legacy_id-index` (the `active` attribute is not their hash key), so lookups against those indexes check for the presence of `active` on the returned item before returning a result.
+`code-index` backed the removed 6-digit setup-code enrolment and is no longer queried; it stays until the legacy code-enrolled kiosks are migrated. Deleted sessions may still appear in `legacy_id-index` (the `active` attribute is not its hash key), so lookups against it check for the presence of `active` on the returned item before returning a result.
 
 **Non-obvious attributes:**
 
 - `active` (N) — absent on deleted sessions; `1` on live ones
-- `code` (S) — absent after first use (wiped by `wipe_session_code`)
+- `code` (S) — legacy: an unredeemed 6-digit setup code on sessions created before setup-code enrolment was removed. Never written now, and nothing redeems it; `cli session list` shows such a session as `code (unredeemed)`
 - `super` (S) — present only on super-sessions, value `"1"`
 - `healthcheck_url` (S) — absent if not configured
 - `last_contact` (N) — Unix timestamp
@@ -291,12 +291,6 @@ The function reads the GSI to check for an existing event, then issues a bare `P
 
 The fix is to make the event ID deterministic from `(location_id, nitc_group_id, event_date)` — e.g. a UUID v5 namespaced hash — and add `ConditionExpression("attribute_not_exists(id)")` to the `PutItem`. On condition failure, re-read the item by its deterministic ID instead of re-querying the GSI.
 
-#### `wipe_session_code` — double-use of a session code
-
-`get_session_by_code` reads the session, the caller issues a JWT, then `wipe_session_code` removes the `code` attribute. A second concurrent request calling `get_session_by_code` with the same code between those two steps will also find the session. Both callers receive a valid JWT. The second JWT is for the session that should have been single-use.
-
-This is a short window (two calls in the same request lifecycle), but a malicious actor who intercepts or guesses a code could exploit it. The fix is to use a conditional `UpdateItem` that removes the code and returns `ALL_OLD` in a single atomic operation, treating a missing-code response as "already used".
-
 #### `end_period` — concurrent check-out
 
 `end_period` issues an unconditional `UpdateItem SET end_time = :now`. The caller reads the period first (to confirm it is active) and then calls `end_period`. Two concurrent check-out requests for the same member can both pass the "still active" read check and both write `end_time`. The result is idempotent (both set `end_time` to approximately the same timestamp), but the first check-out's `end_time` is silently overwritten. Adding `ConditionExpression("attribute_not_exists(end_time)")` would make the second call fail explicitly, which is easier to reason about and can be returned to the caller as a meaningful "already checked out" response.
@@ -388,8 +382,6 @@ When `only_active = true` is passed, the filter `attribute_not_exists(end_time) 
 ### GSI eventual consistency
 
 All GSI-based lookups use DynamoDB's default eventually-consistent reads. Strong consistency is not available on GSIs. This affects:
-
-- **`get_session_by_code`** (`code-index`): A kiosk that creates a new session and immediately scans the code could hit a replica that has not yet indexed the new item. The result is "code not found" on first attempt. This is the most user-visible case — a member scans a QR code and gets an error, then retries a second later and succeeds.
 
 - **`get_user_id_by_name`** (`email-index`): A newly created user attempting to log in immediately after account creation may not be found. Low risk in practice since account creation and first login are rarely within milliseconds of each other.
 

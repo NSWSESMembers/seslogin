@@ -529,20 +529,6 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
 
 #[Object]
 impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static> MutationRoot<A> {
-    async fn auth_session(&self, code: String) -> Option<String> {
-        let res = auth::issue_token_for_scan_code(&*self.app, &code).await;
-
-        match res {
-            Ok(token) => Some(token),
-            Err(e) => {
-                info!("Auth failed for code {}: {}", code, e);
-
-                // hide details of auth error from user
-                None
-            }
-        }
-    }
-
     /// Publish a kiosk's public key as a pending enrollment (public-key/QR flow). The
     /// kiosk re-submits every ~10 min while unenrolled; an admin then scans the kiosk's
     /// QR code to complete enrollment via [`enroll_session`]. Returns the server-computed
@@ -1489,43 +1475,6 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         Ok(true)
     }
 
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
-    async fn create_session(
-        &self,
-        ctx: &Context<'_>,
-        name: String,
-        location_id: ID,
-        config: Option<String>,
-        healthcheck_url: Option<String>,
-    ) -> Result<Session<A>> {
-        require_writable(ctx)?;
-        require_location_write_access(ctx, &location_id)?;
-        self.app
-            .db()
-            .get_locations(&[&location_id])
-            .await?
-            .into_iter()
-            .next()
-            .flatten()
-            .ok_or_else(|| anyhow!("Location {:?} not found", location_id))?;
-
-        let config = parse_session_config_json(config.as_deref())?;
-        let healthcheck_url = normalize_healthcheck_url(healthcheck_url.as_deref())?;
-        let item = self
-            .app
-            .db()
-            .create_session(
-                &location_id,
-                &name,
-                &config,
-                healthcheck_url.as_deref(),
-                None,
-            )
-            .await?;
-
-        Ok(Session::new(item))
-    }
-
     /// Complete a public-key kiosk enrollment: create a session bound to the public key a
     /// kiosk previously published via [`submit_enrollment_key`], identified by its
     /// `key_fingerprint`. The kiosk then authenticates every request by signing it (no
@@ -1672,11 +1621,11 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
                 &name,
                 &config,
                 healthcheck_url.as_deref(),
-                Some(db::SessionKeyParams {
+                db::SessionKeyParams {
                     public_key: &payload.public_key,
                     fingerprint: &key_fingerprint,
                     expires_at: now + crate::session_key::KEY_LIFETIME_S,
-                }),
+                },
             )
             .await?;
 

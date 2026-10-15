@@ -65,7 +65,7 @@ fn app_with_location() -> Arc<TestApp> {
             client_version: None,
             client_info: None,
             client_info_updated_at: None,
-            code: Some("123456".to_string()),
+            code: None,
             config: serde_json::Map::new(),
             healthcheck_url: None,
             public_key: None,
@@ -101,26 +101,22 @@ fn json(response: &async_graphql::Response) -> serde_json::Value {
     response.data.clone().into_json().unwrap()
 }
 
-const SESSIONS_QUERY: &str = r#"{ location(id: "loc-a") { viewerCanEdit sessions { id code } } }"#;
+const SESSIONS_QUERY: &str = r#"{ location(id: "loc-a") { viewerCanEdit sessions { id } } }"#;
 
 #[tokio::test]
-async fn read_only_user_can_read_but_sees_no_code_and_cannot_edit() {
+async fn read_only_user_can_read_but_cannot_edit() {
     let app = app_with_location();
     let data = json(&run(&app, auth(&[], &["loc-a"]), SESSIONS_QUERY).await);
     assert_eq!(data["location"]["viewerCanEdit"], false);
     assert_eq!(data["location"]["sessions"][0]["id"], "sess-1");
-    assert_eq!(
-        data["location"]["sessions"][0]["code"],
-        serde_json::Value::Null
-    );
 }
 
 #[tokio::test]
-async fn admin_user_sees_code_and_can_edit() {
+async fn admin_user_can_edit() {
     let app = app_with_location();
     let data = json(&run(&app, auth(&["loc-a"], &[]), SESSIONS_QUERY).await);
     assert_eq!(data["location"]["viewerCanEdit"], true);
-    assert_eq!(data["location"]["sessions"][0]["code"], "123456");
+    assert_eq!(data["location"]["sessions"][0]["id"], "sess-1");
 }
 
 #[tokio::test]
@@ -137,7 +133,7 @@ async fn read_only_user_writes_are_forbidden() {
     let writes = [
         r#"mutation { createPerson(locationId: "loc-a", firstName: "A", lastName: "B", memberNumber: "1") { id } }"#,
         r#"mutation { createPeriod(personId: "p", locationId: "loc-a", categoryId: "c", startTime: 1, endTime: 2) { id } }"#,
-        r#"mutation { createSession(name: "K", locationId: "loc-a") { id } }"#,
+        r#"mutation { deleteSession(id: "sess-1") }"#,
         r#"mutation { enqueueMemberSync(locationId: "loc-a") }"#,
     ];
     for write in writes {
@@ -156,7 +152,7 @@ async fn admin_user_passes_the_write_check() {
     let app = app_with_location();
     let writes = [
         r#"mutation { createPerson(locationId: "loc-a", firstName: "A", lastName: "B", memberNumber: "1") { id } }"#,
-        r#"mutation { createSession(name: "K", locationId: "loc-a") { id } }"#,
+        r#"mutation { deleteSession(id: "sess-1") }"#,
         r#"mutation { enqueueMemberSync(locationId: "loc-a") }"#,
     ];
     for write in writes {

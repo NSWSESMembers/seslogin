@@ -2886,16 +2886,6 @@ impl<A: App + HasDb + Send + Sync + 'static> Session<A> {
             .ok_or_else(|| anyhow!("Location with ID {} missing", self.rec.location_id))
     }
 
-    async fn code(&self, ctx: &Context<'_>) -> Option<&str> {
-        // The setup code enrols a kiosk, so it is a write-capable credential: only
-        // callers who can make changes here get it. Read only viewers see null.
-        if can_write_location(ctx, &self.rec.location_id) {
-            self.rec.code.as_deref()
-        } else {
-            None
-        }
-    }
-
     async fn healthcheck_url(&self) -> Option<&str> {
         self.rec.healthcheck_url.as_deref()
     }
@@ -2913,8 +2903,8 @@ impl<A: App + HasDb + Send + Sync + 'static> Session<A> {
     /// When this kiosk's key was released because its device was set up again by scanning
     /// its QR code, which moved the key onto a new kiosk entry. Non-null only for such a
     /// leftover: it no longer authenticates, can never come back online, and is safe to
-    /// delete. Null for every working kiosk — including a code-enrolled one, which looks
-    /// identical otherwise once its setup code has been used up.
+    /// delete. Null for every working kiosk — including a legacy code-enrolled one, which
+    /// otherwise looks identical.
     async fn key_released_at(&self) -> Option<i64> {
         self.rec.key_released_at.map(|t| t as i64)
     }

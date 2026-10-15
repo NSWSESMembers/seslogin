@@ -23,8 +23,8 @@
 //! record after), or pass it straight through *and say why* (bookkeeping such as
 //! `last_used_at` touches and NITC export state is deliberately not audited).
 //!
-//! Secrets never reach an entry: token hashes, passkey material, session codes, kiosk
-//! public keys and OAuth secrets are omitted, or replaced by the string `"[redacted]"`
+//! Secrets never reach an entry: token hashes, passkey material, kiosk public keys
+//! and OAuth secrets are omitted, or replaced by the string `"[redacted]"`
 //! where the fact that the field changed is worth showing.
 
 use std::future::Future;
@@ -590,7 +590,7 @@ pub fn period_update_locations(
 
 // ── Session ──────────────────────────────────────────────────────────────────
 
-/// `code` and `public_key` are secrets: only their presence is shown, as `"[redacted]"`.
+/// `public_key` is a secret: only its presence is shown, as `"[redacted]"`.
 /// `active` is carried so a soft delete reads `true → false`; it is dropped from a
 /// creation, where it would only say the obvious.
 fn session_fields(s: &Session) -> Fields {
@@ -600,7 +600,6 @@ fn session_fields(s: &Session) -> Fields {
         .with("config", map(&s.config))
         .with("healthcheck_url", opt_text(s.healthcheck_url.as_deref()))
         .with("active", flag(s.active))
-        .with("code", s.code.as_ref().and(redacted()))
         .with("public_key", s.public_key.as_ref().and(redacted()))
         .with("key_expires_at", opt_num(s.key_expires_at))
         .with("key_released_at", opt_num(s.key_released_at))
@@ -611,15 +610,6 @@ pub fn session_create_changes(s: &Session) -> Vec<AuditFieldChange> {
         .into_iter()
         .filter(|c| c.field != "active")
         .collect()
-}
-
-/// Redeeming a kiosk's one-time scan code removes it.
-pub fn session_wipe_code_changes() -> Vec<AuditFieldChange> {
-    vec![AuditFieldChange {
-        field: "code".to_string(),
-        before: redacted(),
-        after: None,
-    }]
 }
 
 /// Whether `update_session` with this shape is audited. `Info` is the kiosk's own
@@ -1287,7 +1277,7 @@ impl<D: db::Handler> db::Handler for AuditingHandler<D> {
         name: &str,
         config: &serde_json::Map<String, serde_json::Value>,
         healthcheck_url: Option<&str>,
-        key: Option<db::SessionKeyParams<'_>>,
+        key: db::SessionKeyParams<'_>,
     ) -> db::Result<Session> {
         let session = self
             .inner
@@ -1302,25 +1292,6 @@ impl<D: db::Handler> db::Handler for AuditingHandler<D> {
         )
         .await;
         Ok(session)
-    }
-
-    async fn wipe_session_code(&self, id: &str) -> db::Result<()> {
-        let before = self.before_session(id).await;
-        self.inner.wipe_session_code(id).await?;
-        // A session that had no code to wipe changed nothing.
-        if before.as_ref().is_some_and(|s| s.code.is_none()) {
-            return Ok(());
-        }
-        self.record(Recorded {
-            entity_type: AuditEntityType::Session,
-            entity_id: id,
-            action: AuditAction::Update,
-            label: before.as_ref().map(|s| s.name.clone()),
-            location_ids: before.iter().map(|s| s.location_id.clone()).collect(),
-            changes: session_wipe_code_changes(),
-        })
-        .await;
-        Ok(())
     }
 
     async fn update_session(
@@ -1837,10 +1808,6 @@ impl<D: db::Handler> db::Handler for AuditingHandler<D> {
         self.inner.get_sessions(ids).await
     }
 
-    async fn get_session_id_by_code(&self, code: &str) -> db::Result<Vec<String>> {
-        self.inner.get_session_id_by_code(code).await
-    }
-
     async fn get_session_id_by_key_fingerprint(
         &self,
         fingerprint: &str,
@@ -2269,7 +2236,7 @@ mod tests {
             client_version: None,
             client_info: None,
             client_info_updated_at: None,
-            code: Some("123456".to_string()),
+            code: None,
             config: serde_json::Map::new(),
             healthcheck_url: None,
             public_key: None,
@@ -2781,20 +2748,14 @@ mod tests {
     // ── Session ──────────────────────────────────────────────────────────────
 
     #[test]
-    fn session_create_redacts_the_code_and_the_key() {
+    fn session_create_redacts_the_key() {
         let mut keyed = session();
-        keyed.code = None;
         keyed.public_key = Some("MFkwEwYHKoZIzj0CAQ-secret-public-key".into());
         keyed.key_fingerprint = Some("deadbeef".into());
         keyed.key_expires_at = Some(5000);
 
-        let coded = session_create_changes(&session());
-        assert_eq!(change(&coded, "code").after, Some(json!(REDACTED)));
-        assert!(!fields(&coded).contains(&"active"));
-        let coded_json = serde_json::to_string(&coded).unwrap();
-        assert!(!coded_json.contains("123456"), "{coded_json}");
-
         let keyed_changes = session_create_changes(&keyed);
+        assert!(!fields(&keyed_changes).contains(&"active"));
         assert_eq!(
             change(&keyed_changes, "public_key").after,
             Some(json!(REDACTED))
@@ -2805,21 +2766,8 @@ mod tests {
     }
 
     #[test]
-    fn wiping_a_session_code_records_the_redaction() {
-        assert_eq!(
-            session_wipe_code_changes(),
-            vec![AuditFieldChange {
-                field: "code".into(),
-                before: Some(json!(REDACTED)),
-                after: None,
-            }]
-        );
-    }
-
-    #[test]
     fn session_update_shapes() {
         let mut keyed = session();
-        keyed.code = None;
         keyed.public_key = Some("pk".into());
         keyed.key_expires_at = Some(5000);
 

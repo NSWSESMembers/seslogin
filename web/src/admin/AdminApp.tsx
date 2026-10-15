@@ -26,7 +26,6 @@ import MembersList from "./pages/MembersList";
 import MembersNew from "./pages/MembersNew";
 import MembersEdit from "./pages/MembersEdit";
 import SessionsList from "./pages/SessionsList";
-import SessionsNew from "./pages/SessionsNew";
 import SessionsEdit from "./pages/SessionsEdit";
 import ActivityList from "./pages/ActivityList";
 import ActivityNew from "./pages/ActivityNew";
@@ -100,7 +99,6 @@ export default function AdminApp() {
         </Route>
         <Route path="sessions">
           <Route index element={<SessionsList />} />
-          <Route path="new" element={<SessionsNew />} />
           <Route path=":sessionId" element={<SessionsEdit />} />
         </Route>
         <Route path="activity">
