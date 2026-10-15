@@ -605,6 +605,7 @@ fn session_fields(s: &Session) -> Fields {
         .with("code", s.code.as_ref().and(redacted()))
         .with("key_expires_at", opt_num(s.key_expires_at))
         .with("key_released_at", opt_num(s.key_released_at))
+        .with("retired_at", opt_num(s.retired_at))
 }
 
 pub fn session_create_changes(s: &Session) -> Vec<AuditFieldChange> {
@@ -653,6 +654,14 @@ pub fn session_update_changes(
             after.set("public_key", None);
             after.set("code", None);
             after.set("key_expires_at", None);
+        }
+        db::SessionUpdateShape::Retire { .. } => {
+            action = AuditAction::Delete;
+            after.set("active", flag(false));
+            after.set("public_key", None);
+            after.set("code", None);
+            after.set("key_expires_at", None);
+            after.set("retired_at", num(now));
         }
     }
     (action, diff(&before, &after))
@@ -2246,6 +2255,7 @@ mod tests {
             key_fingerprint: None,
             key_expires_at: None,
             key_released_at: None,
+            retired_at: None,
             version: 1,
             created_at: Some(1),
             updated_at: Some(1),
@@ -2811,6 +2821,24 @@ mod tests {
         assert_eq!(change(&changes, "code").before, Some(json!(REDACTED)));
         assert_eq!(change(&changes, "code").after, None);
         assert!(!serde_json::to_string(&changes).unwrap().contains("123456"));
+
+        // Retiring an expired key session reads as a delete that also stamps
+        // `retired_at`, so the log tells it apart from an admin's delete.
+        let (action, changes) = session_update_changes(
+            Some(&keyed),
+            &db::SessionUpdateShape::Retire {
+                reason: db::RetireReason::KeyExpired,
+                unusable_before: 100,
+            },
+            900,
+        );
+        assert_eq!(action, AuditAction::Delete);
+        assert_eq!(
+            fields(&changes),
+            vec!["active", "public_key", "key_expires_at", "retired_at"]
+        );
+        assert_eq!(change(&changes, "public_key").before, Some(json!(REDACTED)));
+        assert_eq!(change(&changes, "retired_at").after, Some(json!(900)));
 
         let mut config = serde_json::Map::new();
         config.insert("theme".into(), json!("dark"));
