@@ -158,38 +158,85 @@ The `start_time` sort key across the location/person GSIs means DynamoDB returns
 
 ### `{prefix}session`
 
-| Attribute     | Type | Role                                                                  |
-| ------------- | ---- | --------------------------------------------------------------------- |
-| `id`          | S    | Hash key (PK) — UUID                                                  |
-| `code`        | S    | GSI hash key                                                          |
-| `location_id` | S    | GSI sort key                                                          |
-| `super`       | S    | GSI sort key                                                          |
-| `active`      | N    | GSI hash key — present (`1`) on live sessions, absent on deleted ones |
-| `legacy_id`   | S    | GSI hash key                                                          |
+Kiosk sessions. New kiosks enrol only by QR code; older kiosks set up with the since-removed 6-digit setup code still run on a session JWT. A row holds the fields of at most one:
+
+- **Key-enrolled** (QR / public-key flow): holds `public_key`, `key_fingerprint` and `key_expires_at`, and authenticates each request by signature (`SLKey`, see `api/src/session_key.rs`).
+- **Legacy JWT kiosk** (setup-code enrolled before that flow was removed): holds neither a code nor a key, and authenticates with a 14-day session JWT that it refreshes through `refreshToken`. No new ones are created. A session created with a code that was never redeemed still stores its `code`, but nothing can redeem it any more.
+
+| Attribute         | Type | Role                                                                  |
+| ----------------- | ---- | --------------------------------------------------------------------- |
+| `id`              | S    | Hash key (PK)                                                         |
+| `code`            | S    | GSI hash key — legacy: an unredeemed setup code, never written now    |
+| `active`          | N    | GSI hash key — present (`1`) on live sessions, absent on deleted ones |
+| `location_id`     | S    | GSI sort key                                                          |
+| `key_fingerprint` | S    | GSI hash key — present only while a key-enrolled session holds a key  |
 
 **GSIs:**
 
-| GSI                        | Hash key    | Sort key      | Projection | Purpose                                        |
-| -------------------------- | ----------- | ------------- | ---------- | ---------------------------------------------- |
-| `code-index`               | `code`      | —             | KEYS_ONLY  | Unused: setup-code enrolment was removed       |
-| `active-location_id-index` | `active`    | `location_id` | ALL        | Admin UI: list all live sessions at a location |
-| `active-super-index`       | `active`    | `super`       | ALL        | Admin UI: list all live super-sessions         |
-| `legacy_id-index`          | `legacy_id` | —             | KEYS_ONLY  | Migration: look up session by v1 legacy ID     |
+| GSI                        | Hash key          | Sort key      | Projection | Purpose                                                          |
+| -------------------------- | ----------------- | ------------- | ---------- | ---------------------------------------------------------------- |
+| `code-index`               | `code`            | —             | KEYS_ONLY  | Unused: setup-code enrolment was removed                         |
+| `active-location_id-index` | `active`          | `location_id` | ALL        | Admin UI and CLI: list a location's sessions                     |
+| `key_fingerprint-index`    | `key_fingerprint` | —             | KEYS_ONLY  | Signed kiosk requests and enrollment: find the session for a key |
 
-The `active` attribute is set to `1` on creation and **removed** on soft-delete. Because DynamoDB GSIs only project items that have the GSI hash key attribute, deleted sessions automatically disappear from `active-location_id-index` and `active-super-index` without any filter expression.
+All three are sparse: a row is in an index only while it has that index's hash key attribute.
 
-The `super` attribute is a sentinel string `"1"` on super-sessions and is **absent** on regular sessions. It is the sort key of `active-super-index`; querying `active = 1 AND super = "1"` returns only live super-sessions.
+`active` is set to `1` on creation and **removed** on soft-delete, so a deleted session disappears from `active-location_id-index` with no filter expression. Membership in that index is _not_ the same as being usable, though. Rows that can no longer authenticate keep `active` (see the lifecycle table below), so every caller that means "a working kiosk" must also check `Session::is_live` and, for a key kiosk, `key_expires_at`.
 
-`code-index` backed the removed 6-digit setup-code enrolment and is no longer queried; it stays until the legacy code-enrolled kiosks are migrated. Deleted sessions may still appear in `legacy_id-index` (the `active` attribute is not its hash key), so lookups against it check for the presence of `active` on the returned item before returning a result.
+`key_fingerprint-index` is `KEYS_ONLY`: the caller only needs the session ID, and fetches the full row with `GetItem`. `code-index` backed the removed setup-code enrolment and is no longer queried; it stays in infra until the legacy JWT kiosks are migrated.
+
+There is no `active-super-index` or `legacy_id-index`. Super-sessions are gone, and v1 IDs are no longer looked up. `legacy_id` is still _stored_ on the 91 rows migrated from v1, but nothing indexes or reads it.
 
 **Non-obvious attributes:**
 
-- `active` (N) — absent on deleted sessions; `1` on live ones
+- `active` (N) — `1` on live rows; absent on deleted ones
 - `code` (S) — legacy: an unredeemed 6-digit setup code on sessions created before setup-code enrolment was removed. Never written now, and nothing redeems it; `cli session list` shows such a session as `code (unredeemed)`
-- `super` (S) — present only on super-sessions, value `"1"`
+- `public_key` (S) — base64 SPKI DER of the kiosk's P-256 key; key-enrolled only
+- `key_fingerprint` (S) — hex SHA-256 of `public_key`; key-enrolled only
+- `key_expires_at` (N) — Unix seconds after which signed requests stop authenticating. Slid forward to now + 14 days by the throttled `last_contact` refresh, and set to a short window by `reactivateSession`
+- `key_released_at` (N) — set when the session's key was handed to a new session enrolled from the same device (`ReleaseKey`). Such a row can never come back online
+- `last_contact` (N) — Unix timestamp of the last authenticated request, refreshed at most once per `LAST_CONTACT_REFRESH_SECS`
+- `client_version` (S), `client_info_updated_at` (N) and the `client_*` attributes — the kiosk's self-reported diagnostics
+- `config` (S) — JSON-serialised map of UI config key/value pairs
 - `healthcheck_url` (S) — absent if not configured
-- `last_contact` (N) — Unix timestamp
-- `config` (M) — JSON-like map of UI config key/value pairs
+- `created_at` (N) — absent on rows migrated from v1
+- `updated_at` (N) — touched by every write except the `last_contact` heartbeat. **Cannot be used to date when a session died:** 115 active rows were bulk-rewritten on 2026-09-08
+- `v` (N) — version, bumped by writes that change what a kiosk shows or whether it can authenticate; absent (read as 0) on rows that predate it
+- `legacy_id` (S) — v1 session ID; unindexed and unused
+
+**Lifecycle and index membership:**
+
+| State           | How it gets there                                                  | `active-location_id-index` | `key_fingerprint-index` | `code-index`      | Can authenticate                            | Unusable since           |
+| --------------- | ------------------------------------------------------------------ | -------------------------- | ----------------------- | ----------------- | ------------------------------------------- | ------------------------ |
+| Live key        | Enrolled, and the kiosk checked in within 14 days                  | yes                        | yes                     | —                 | yes                                         | —                        |
+| Expired key     | No contact for 14 days                                             | yes                        | yes                     | —                 | no, but an admin can `reactivateSession` it | `key_expires_at`         |
+| Released key    | Its device re-enrolled as another session (`ReleaseKey`)           | yes                        | —                       | —                 | no, never again                             | `key_released_at`        |
+| Unredeemed code | Created with a setup code that was never entered                   | yes                        | —                       | yes               | no — setup-code enrolment was removed       | since that removal       |
+| Legacy JWT      | Setup code redeemed (before removal); the kiosk holds a JWT        | yes                        | —                       | —                 | while its last JWT is unexpired             | `last_contact` + 14 days |
+| Deleted         | An admin deleted it (`Delete` removes `active` and the key fields) | —                          | —                       | if it held a code | no                                          | `updated_at`             |
+
+A legacy JWT kiosk can't be revived once its JWT lapses: only a valid JWT can refresh a JWT, and it has no code or key to fall back on (the kiosk app drops to the QR enrolment screen). The JWT's expiry is never more than 14 days (plus the `last_contact` refresh throttle) after `last_contact`.
+
+**Known gaps (from a prod scan on 2026-10-15):**
+
+- **Nothing retires unusable rows.** Released and expired key sessions, and lapsed legacy JWT kiosks, keep `active` forever, so they stay in `active-location_id-index` (and expired keys stay in `key_fingerprint-index`). On 2026-10-15, 108 of the 150 rows in `active-location_id-index` could never authenticate again, and 33 had been dead for more than a year.
+- **`Delete` does not remove `code`.** A session deleted before its code was redeemed stays in `code-index` (6 rows). Harmless now that nothing reads that index, but it keeps the rows there.
+- **Unredeemed codes linger.** 4 sessions created 70–149 days earlier still hold a code that can no longer be redeemed.
+- **Disabling a location does not touch its sessions.** 2 rows sat at a disabled location.
+- **v1 migration rows.** 64 sessions were imported as `active` with neither a code nor a key and never contacted v2, so they were unusable from the moment of import.
+
+Prod snapshot on 2026-10-15 (236 rows):
+
+| State                         | Rows | Indexes                                   |
+| ----------------------------- | ---- | ----------------------------------------- |
+| Live key                      | 15   | `active-location_id`, `key_fingerprint`   |
+| Live legacy JWT               | 23   | `active-location_id`                      |
+| Unredeemed code               | 4    | `active-location_id`, `code`              |
+| Expired key                   | 5    | `active-location_id`, `key_fingerprint`   |
+| Released key                  | 4    | `active-location_id`                      |
+| Legacy JWT, lapsed            | 99   | `active-location_id` (68 of them from v1) |
+| Deleted, still holding a code | 6    | `code`                                    |
+| Deleted                       | 80   | none                                      |
 
 ---
 
