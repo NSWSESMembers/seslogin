@@ -489,6 +489,7 @@ impl db::Handler for FakeDb {
             key_fingerprint: Some(key.fingerprint.to_string()),
             key_expires_at: Some(key.expires_at),
             key_released_at: None,
+            retired_at: None,
             version: 1,
             created_at: Some(0),
             updated_at: Some(0),
@@ -530,6 +531,7 @@ impl db::Handler for FakeDb {
             }
             db::SessionUpdateShape::Delete => {
                 session.active = false;
+                session.code = None;
                 session.key_fingerprint = None;
                 session.public_key = None;
                 session.key_expires_at = None;
@@ -553,6 +555,36 @@ impl db::Handler for FakeDb {
                 session.key_expires_at = Some(expires_at);
                 // Like DynamoDB: no version bump.
                 return Ok(None);
+            }
+            db::SessionUpdateShape::Retire {
+                reason,
+                unusable_before,
+            } => {
+                // The same conditions as the real conditional write.
+                let before = |t: Option<u64>| t.is_some_and(|t| t < unusable_before);
+                let still_retirable = session.active
+                    && match reason {
+                        db::RetireReason::KeyReleased => before(session.key_released_at),
+                        db::RetireReason::KeyExpired => {
+                            session.public_key.is_some() && before(session.key_expires_at)
+                        }
+                        db::RetireReason::LegacyIdle => {
+                            session.public_key.is_none()
+                                && session.key_released_at.is_none()
+                                && before(session.last_contact)
+                        }
+                    };
+                if !still_retirable {
+                    return Err(db::Error::NotFound(format!(
+                        "session {id} is no longer retirable"
+                    )));
+                }
+                session.active = false;
+                session.code = None;
+                session.key_fingerprint = None;
+                session.public_key = None;
+                session.key_expires_at = None;
+                session.retired_at = Some(seslogin::clock::now_sec());
             }
             db::SessionUpdateShape::Info { .. } | db::SessionUpdateShape::ExtendKey { .. } => {
                 return unsupported();
@@ -730,12 +762,18 @@ impl db::Handler for FakeDb {
     ) -> db::Result<db::ScanPage<db::Period>> {
         unsupported()
     }
+    /// One page holding every session, in id order.
     async fn scan_sessions(
         &self,
         _cursor: Option<db::ScanCursor>,
         _limit: i32,
     ) -> db::Result<db::ScanPage<db::Session>> {
-        unsupported()
+        let mut rows: Vec<db::Session> = self.sessions.lock().unwrap().values().cloned().collect();
+        rows.sort_by(|a, b| a.id.cmp(&b.id));
+        Ok(db::ScanPage {
+            rows: rows.into_iter().map(Ok).collect(),
+            next: None,
+        })
     }
     async fn scan_user_tokens(
         &self,

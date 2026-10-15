@@ -74,6 +74,7 @@ fn session(id: &str, key: Option<(&str, &str)>) -> db::Session {
         key_fingerprint: key.map(|(_, fp)| fp.to_string()),
         key_expires_at: key.map(|_| u64::MAX),
         key_released_at: None,
+        retired_at: None,
         version: 1,
         created_at: Some(0),
         updated_at: Some(0),
