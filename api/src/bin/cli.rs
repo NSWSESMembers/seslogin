@@ -839,6 +839,7 @@ async fn show_sessions(db: &impl Handler, sessions: &[Session]) {
             ("name", name.clone()),
             ("location_id", decorate(location_id, locs.get(location_id))),
             ("active", bool_str(*active)),
+            ("auth_method", session_auth_method(s, now_secs())),
             ("code", opt_str(code)),
             ("client_version", opt_str(client_version)),
             ("last_contact", opt_ts(*last_contact)),
@@ -2397,6 +2398,7 @@ async fn run(db: &impl Handler, object: Object) -> Result<()> {
                 let sessions = list_sessions(db, location).await?;
                 let loc_ids: Vec<String> = sessions.iter().map(|s| s.location_id.clone()).collect();
                 let locs = location_names(db, &loc_ids).await;
+                let now = now_secs();
                 let rows: Vec<Vec<String>> = sessions
                     .iter()
                     .map(|s| {
@@ -2409,6 +2411,7 @@ async fn run(db: &impl Handler, object: Object) -> Result<()> {
                             // Retired kiosks stay listed (their device was enrolled as
                             // another kiosk), so say which rows are still working.
                             if s.is_live() { "live" } else { "replaced" }.to_string(),
+                            session_auth_method(s, now),
                             opt_str(&s.client_version),
                             s.last_contact
                                 .map(relative)
@@ -2422,6 +2425,7 @@ async fn run(db: &impl Handler, object: Object) -> Result<()> {
                         "name",
                         "location",
                         "state",
+                        "auth",
                         "client_version",
                         "last_contact",
                     ],
@@ -2429,7 +2433,8 @@ async fn run(db: &impl Handler, object: Object) -> Result<()> {
                 );
             }
             SessionCmd::ListActive { minutes, location } => {
-                let cutoff = now_secs().saturating_sub(minutes * 60);
+                let now = now_secs();
+                let cutoff = now.saturating_sub(minutes * 60);
                 let mut sessions = list_sessions(db, location).await?;
                 // list_sessions sorts by last_contact descending; keep only working
                 // kiosks that have checked in within the window (a kiosk retired by a
@@ -2447,6 +2452,7 @@ async fn run(db: &impl Handler, object: Object) -> Result<()> {
                                 .cloned()
                                 .unwrap_or_else(|| s.location_id.clone()),
                             s.name.clone(),
+                            session_auth_method(s, now),
                             opt_str(&s.client_version),
                             s.last_contact
                                 .map(relative)
@@ -2456,7 +2462,14 @@ async fn run(db: &impl Handler, object: Object) -> Result<()> {
                     .collect();
                 println!("Kiosks active in the last {} minute(s):\n", minutes);
                 print_table(
-                    &["id", "location", "kiosk", "client_version", "last_contact"],
+                    &[
+                        "id",
+                        "location",
+                        "kiosk",
+                        "auth",
+                        "client_version",
+                        "last_contact",
+                    ],
                     &rows,
                 );
             }
@@ -2865,6 +2878,29 @@ async fn list_activity_summary_subscriptions(db: &impl Handler) -> Result<()> {
 
     print_table(&["email", "unit"], &rows);
     Ok(())
+}
+
+/// How a kiosk authenticates: `key` for one enrolled through the QR / public-key flow
+/// (each request signed with its device key), `code` for one set up with a 6-digit code
+/// (redeemed for a 14-day session JWT). A code-enrolled kiosk keeps no trace of its
+/// method once the code is used up, so `code` is also what a session with neither a
+/// code nor a key reads as — except a key-released leftover, which looks the same and
+/// is told apart by `key_released_at`.
+fn session_auth_method(s: &Session, now: u64) -> String {
+    if s.key_fingerprint.is_some() {
+        if s.key_expires_at.is_some_and(|t| t < now) {
+            "key (expired)"
+        } else {
+            "key"
+        }
+    } else if s.key_released_at.is_some() {
+        "key (released)"
+    } else if s.code.is_some() {
+        "code (unredeemed)"
+    } else {
+        "code"
+    }
+    .to_string()
 }
 
 /// List sessions for one location, or across all enabled locations when `None`.
