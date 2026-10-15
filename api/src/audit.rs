@@ -1837,6 +1837,11 @@ impl<D: db::Handler> db::Handler for AuditingHandler<D> {
         self.inner.list_sessions(query).await
     }
 
+    // A read.
+    async fn list_session_ids_with_code(&self) -> db::Result<Vec<String>> {
+        self.inner.list_session_ids_with_code().await
+    }
+
     async fn list_people_for_location(
         &self,
         location_id: &str,

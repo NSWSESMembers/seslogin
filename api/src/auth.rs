@@ -8,7 +8,6 @@ use crate::app::HasQueues;
 use crate::client_info::ClientReport;
 use crate::db;
 use crate::db::Handler;
-use crate::jwt;
 use crate::queue::Handler as _;
 
 #[derive(Debug, Error)]
@@ -169,11 +168,6 @@ pub fn caller_info(auth: Option<&AuthInfo>) -> (CallerType, String) {
     }
 }
 
-pub fn issue_token_for_session_id<A: App + HasDb>(app: &A, session_id: &str) -> Result<String> {
-    app.jwt()
-        .make_session_jwt(session_id, jwt::ExpirePolicy::SessionDefault)
-}
-
 pub(crate) async fn fetch_update_user_auth_info<A: App + HasDb>(
     app: &A,
     user_id: String,
@@ -277,36 +271,6 @@ async fn touch_session<A: App + HasDb + HasQueues>(
         }
     }
     Ok(())
-}
-
-async fn fetch_update_session_auth_info<A: App + HasDb + HasQueues>(
-    app: &A,
-    session_id: String,
-    client: &ClientReport,
-) -> Result<AuthInfo, AuthError> {
-    let primary_session = match app.db().get_sessions(&[&session_id]).await {
-        Ok(mut v) => v.pop().flatten(),
-        Err(db::Error::NotFound(_)) => None,
-        Err(e) => return Err(classify_db_err("fetch session from db", e)),
-    };
-    let session =
-        primary_session.ok_or_else(|| AuthError::Permanent("Session not found".into()))?;
-
-    // A soft-deleted session (the `active` marker removed) must not keep working
-    // just because it still holds a valid 14-day JWT. Reject it so deleting a kiosk
-    // signs it out on its next request. Same for one whose key has been released, which
-    // keeps `active` to stay listed: its device now belongs to another kiosk, so any JWT
-    // it still holds has to stop working too.
-    if !session.is_live() {
-        return Err(AuthError::Permanent("Session not found".into()));
-    }
-
-    touch_session(app, &session, client, false).await?;
-
-    Ok(AuthInfo::Session {
-        id: session.id,
-        location: session.location_id,
-    })
 }
 
 /// Authenticate a request signed with an enrolled kiosk key. `header_rest` is the
@@ -434,18 +398,6 @@ async fn verify_token_with_api_token<A: App + HasDb>(
     })
 }
 
-async fn verify_token_with_jwt<A: App + HasDb + HasQueues>(
-    app: &A,
-    token: &str,
-    client: &ClientReport,
-) -> Result<AuthInfo, AuthError> {
-    let parsed_jwt = app
-        .jwt()
-        .verify_jwt(token)
-        .map_err(|e| AuthError::Permanent(format!("Failed to verify JWT: {:#}", e)))?;
-    fetch_update_session_auth_info(app, parsed_jwt.session_id, client).await
-}
-
 /// The row id an `slu_<id>.<secret>` / `slgn_<id>.<secret>` token embeds, which
 /// locates its row by primary key. Neither half may be empty. A token with no `.`
 /// predates ids (a base64url secret can't contain one); every such token has expired
@@ -569,7 +521,7 @@ async fn verify_token_with_period_link<A: App + HasDb>(
 pub async fn verify_token<A: App + HasDb + HasQueues>(
     app: &A,
     token: &str,
-    client: &ClientReport,
+    _client: &ClientReport,
 ) -> Result<AuthInfo, AuthError> {
     if token.starts_with(API_TOKEN_PREFIX) {
         return verify_token_with_api_token(app, token).await;
@@ -583,7 +535,13 @@ pub async fn verify_token<A: App + HasDb + HasQueues>(
         return verify_token_with_period_link(app, token).await;
     }
 
-    verify_token_with_jwt(app, token, client).await
+    // Anything else would once have been a kiosk session JWT, from the since-removed
+    // setup-code enrolment. Those kiosks have all converted to key auth (or must be
+    // re-enrolled by QR), so the JWT is refused without even being verified. A 401 drops
+    // such a kiosk to its QR enrolment screen.
+    Err(AuthError::Permanent(
+        "Unrecognised token (kiosk setup-code tokens are no longer accepted)".into(),
+    ))
 }
 
 /// Dispatch an `Authorization` header value to the right verifier by scheme:
@@ -620,6 +578,7 @@ mod verify_token_tests {
     use super::*;
     use crate::app::{self, MyApp};
     use crate::client_info::ClientReport;
+    use crate::jwt;
     use crate::{mockdb, mockmail, mockqueue, mockrealtime};
 
     fn app() -> MyApp<mockdb::Handler, mockqueue::Handler, mockmail::Handler, mockrealtime::Handler>
@@ -635,13 +594,27 @@ mod verify_token_tests {
     }
 
     /// `verify_token` must keep rejecting `slat_`/`slrt_` OAuth tokens: they carry no
-    /// prefix it recognizes, so they fall through to the JWT verifier and fail as a
-    /// malformed JWT — never reaching (and, with mockdb, never able to reach) the DB.
-    /// `oauth::verify_access_token` is the only accepted entry point for them.
+    /// prefix it recognizes, so they are refused as unrecognised — never reaching (and,
+    /// with mockdb, never able to reach) the DB. `oauth::verify_access_token` is the
+    /// only accepted entry point for them.
     #[tokio::test]
     async fn rejects_oauth_access_token() {
         let app = app();
         let result = verify_token(&app, "slat_abc123.somesecret", &ClientReport::default()).await;
+        assert!(matches!(result, Err(AuthError::Permanent(_))));
+    }
+
+    /// A kiosk session JWT that verifies perfectly well is still refused, and without a
+    /// DB read: mockdb fails every call as a transient error, so a `Permanent` result
+    /// shows the token was turned away before any lookup.
+    #[tokio::test]
+    async fn rejects_a_valid_session_jwt() {
+        let app = app();
+        let token = jwt::Key::new("test", None)
+            .unwrap()
+            .make_session_jwt("Sess1", jwt::ExpirePolicy::SessionDefault)
+            .unwrap();
+        let result = verify_token(&app, &token, &ClientReport::default()).await;
         assert!(matches!(result, Err(AuthError::Permanent(_))));
     }
 

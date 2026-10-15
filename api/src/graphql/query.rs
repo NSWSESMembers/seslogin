@@ -20,7 +20,6 @@ use xxhash_rust::xxh64::xxh64;
 use crate::app::App;
 use crate::app::HasDb;
 use crate::app::HasRealtime;
-use crate::auth;
 use crate::auth::AuthInfo;
 use crate::db;
 use crate::db::Handler;
@@ -3484,15 +3483,15 @@ impl<A: App + HasDb + HasRealtime + Send + Sync + 'static> QueryRoot<A> {
         Ok(Session::new(rec))
     }
 
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::Session)")]
-    async fn refresh_token(&self, ctx: &Context<'_>) -> Result<String> {
-        let session_id = match ctx.data_opt::<AuthInfo>() {
-            Some(AuthInfo::Session { id, .. }) => id,
-            _ => return Err(anyhow!("Cannot refresh token without session auth")),
-        };
-
-        let app = ctx.data_unchecked::<Arc<A>>().clone();
-        auth::issue_token_for_session_id(&*app, session_id)
+    /// Always empty. Kiosk session JWTs are no longer accepted, so there is nothing to
+    /// refresh; the field stays only so a kiosk bundle loaded before that change can still
+    /// run its session query.
+    #[graphql(
+        guard = "AuthGuard::new(AuthRequirement::Session)",
+        deprecation = "Kiosk session JWTs are no longer accepted; always returns an empty string"
+    )]
+    async fn refresh_token(&self) -> String {
+        String::new()
     }
 
     /// A signed Ably token request scoped to exactly this kiosk's own

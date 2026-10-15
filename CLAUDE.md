@@ -262,15 +262,12 @@ ready-made user token for each, two kiosk sessions at Test A Unit — `TestAKios
 with the 99 NITC groups they reference. Neither unit name contains the other, so a selector
 matching on name text cannot hit both.
 
-The two kiosks cover the two ways a kiosk authenticates. `TestAKiosk01` stands in for the
-kiosks enrolled with a 6-digit setup code before that flow was removed: it has no key and
-authenticates with a session JWT (`make local-cli ARGS="jwt session TestAKiosk01"`). New
-kiosks can only enrol by QR code; legacy JWT kiosks keep working until they convert
-themselves to key auth (`convertSessionToKey`, scheduled by `web/src/kiosk/lib/keyConversion.ts`).
-On local dev and test.seslogin.com any JWT kiosk converts after 2 minutes of page uptime, so
-`TestAKiosk01` becomes a key kiosk if left open that long; `make local-seed` restores it.
-`TestAKiosk02` holds
-the public half of a fixed P-256 keypair and signs each request with the private half
+`TestAKiosk01` stands in for a kiosk enrolled with
+the removed 6-digit setup code that never converted to key auth: it has no key, and its
+session JWT (`make local-cli ARGS="jwt session TestAKiosk01"`) is now refused, so a kiosk
+holding one drops to the QR enrolment screen. `make local-cli ARGS="--dry-run session
+purge-legacy"` lists it as a row the legacy purge would delete. `TestAKiosk02` is the working
+kiosk: it holds the public half of a fixed P-256 keypair and signs each request with the private half
 (`SLKey`, see `api/src/session_key.rs`); the private half is committed in
 `local/seed/kiosk-signing-key.json` — a throwaway key valid only against a local database.
 Regenerating it means updating both files.
@@ -376,7 +373,7 @@ Unlike `mockdb`, the queue, mail and realtime mocks *succeed* — they exist so 
 **Auth**: `api/src/auth.rs` — token verification dispatches on prefix:
 1. API tokens (`slgn_` prefix) — opaque hashed secrets for programmatic access, shaped `slgn_<id>.<secret>` and verified the same way as user tokens below
 2. User tokens (`slu_` prefix) — opaque hashed secrets issued via email-code auth, shaped `slu_<id>.<secret>` so verification is one strongly consistent `GetItem` by id plus a constant-time hash check. Neither table has a hash index; a legacy `slu_<secret>`/`slgn_<secret>` token (no `.`) is refused
-3. JWT (no prefix) — kiosk session JWTs only, held by kiosks enrolled with the since-removed 6-digit setup code (14-day, refreshed while in use). No new ones are issued by enrolment, and each such kiosk converts itself to key auth on a staggered schedule (`convertSessionToKey`, with a signature proving it holds the key). User JWTs are no longer issued or accepted; users authenticate with `slu_` tokens
+3. Anything else is refused, including the session JWTs once held by kiosks enrolled with the since-removed 6-digit setup code. Those kiosks converted themselves to key auth (`convertSessionToKey`, with a signature proving they hold the key); one that didn't drops to the QR enrolment screen. `cli session purge-legacy` deletes the leftover rows. User JWTs are no longer issued or accepted; users authenticate with `slu_` tokens
 
 Authorization uses an `AuthRequirement` guard enum per field: `Session`, `UserOrSession`, `User`, `SuperUser`.
 

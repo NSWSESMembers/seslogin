@@ -333,6 +333,16 @@ impl db::Handler for FakeDb {
             .cloned()
             .collect())
     }
+    async fn list_session_ids_with_code(&self) -> db::Result<Vec<String>> {
+        Ok(self
+            .sessions
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|s| s.code.is_some())
+            .map(|s| s.id.clone())
+            .collect())
+    }
     async fn list_people_for_location(
         &self,
         location_id: &str,
