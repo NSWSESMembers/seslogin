@@ -1,4 +1,4 @@
-use anyhow::{Result, anyhow};
+use anyhow::Result;
 use thiserror::Error;
 use tracing::warn;
 
@@ -167,43 +167,6 @@ pub fn caller_info(auth: Option<&AuthInfo>) -> (CallerType, String) {
         // The token itself is never logged; the period it grants is the useful id.
         Some(AuthInfo::PeriodLink { period_id }) => (CallerType::PeriodLink, period_id.clone()),
     }
-}
-
-pub async fn issue_token_for_scan_code<A: App + HasDb>(app: &A, code: &str) -> Result<String> {
-    if code.is_empty() {
-        return Err(anyhow!("Scan code cannot be empty"));
-    }
-    let ids = app.db().get_session_id_by_code(code).await?;
-    let session_id = db::at_most_one(ids, || "Multiple sessions share this scan code".to_string())?
-        .ok_or_else(|| anyhow!("Invalid code"))?;
-
-    // Verify the resolved session actually exists and is live (the code GSI still
-    // contains soft-deleted sessions, since deletion only removes the `active` marker).
-    let session = app
-        .db()
-        .get_sessions(&[&session_id])
-        .await?
-        .pop()
-        .flatten()
-        .ok_or_else(|| anyhow!("Invalid code"))?;
-    if !session.is_live() {
-        return Err(anyhow!("Invalid code"));
-    }
-
-    // The kiosk is redeeming its own code: attribute the wipe to it rather than to the
-    // (unauthenticated) request that carried the code.
-    crate::audit::scope(
-        crate::audit::AuditContext::new(
-            crate::audit::Actor::Session {
-                id: session.id.clone(),
-            },
-            crate::audit::current_ip(),
-        ),
-        app.db().wipe_session_code(&session.id),
-    )
-    .await?;
-
-    issue_token_for_session_id(app, &session.id)
 }
 
 pub fn issue_token_for_session_id<A: App + HasDb>(app: &A, session_id: &str) -> Result<String> {

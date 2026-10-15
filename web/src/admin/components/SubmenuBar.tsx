@@ -108,14 +108,7 @@ export default function SubmenuBar({
   }
 
   if (isSessionsSection) {
-    return (
-      <Submenu
-        items={[
-          { to: "/admin/sessions", label: "List" },
-          ...(canEdit ? [{ to: "/admin/sessions/new", label: "New" }] : []),
-        ]}
-      />
-    );
+    return <Submenu items={[{ to: "/admin/sessions", label: "List" }]} />;
   }
 
   if (isSuper && isLocationsSection) {

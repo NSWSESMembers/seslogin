@@ -78,7 +78,6 @@ function renderListener(authMode: KioskAuthMode = "jwt") {
   const view = render(
     <KioskEnvironmentContext.Provider
       value={{
-        setToken: vi.fn(),
         profile: "default",
         authMode,
         onKeyEnrolled: vi.fn(),

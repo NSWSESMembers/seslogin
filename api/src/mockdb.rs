@@ -73,18 +73,10 @@ impl db::Handler for Handler {
         Self::unsupported()
     }
 
-    async fn get_session_id_by_code(&self, _code: &str) -> db::Result<Vec<String>> {
-        Self::unsupported()
-    }
-
     async fn get_session_id_by_key_fingerprint(
         &self,
         _fingerprint: &str,
     ) -> db::Result<Vec<String>> {
-        Self::unsupported()
-    }
-
-    async fn wipe_session_code(&self, _id: &str) -> db::Result<()> {
         Self::unsupported()
     }
 
@@ -197,7 +189,7 @@ impl db::Handler for Handler {
         _name: &str,
         _config: &serde_json::Map<String, serde_json::Value>,
         _healthcheck_url: Option<&str>,
-        _key: Option<db::SessionKeyParams<'_>>,
+        _key: db::SessionKeyParams<'_>,
     ) -> db::Result<Session> {
         Self::unsupported()
     }

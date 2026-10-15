@@ -258,8 +258,6 @@ enum LocationCmd {
 enum SessionCmd {
     /// Show one or more sessions by ID.
     Get { ids: Vec<String> },
-    /// Look up a session by its kiosk code.
-    GetByCode { code: String },
     /// List sessions. Without --location, lists across all enabled locations.
     List {
         #[arg(long)]
@@ -2378,22 +2376,6 @@ async fn run(db: &impl Handler, object: Object) -> Result<()> {
                         .await?;
                 show_sessions(db, &sessions).await;
             }
-            SessionCmd::GetByCode { code } => {
-                let ids = db.get_session_id_by_code(&code).await?;
-                // Fetch the resolved ids, keeping only those that still exist.
-                let sessions: Vec<Session> =
-                    db.get_sessions(&ids).await?.into_iter().flatten().collect();
-                if sessions.is_empty() {
-                    println!("No session with code {code}");
-                } else {
-                    if sessions.len() > 1 {
-                        println!("⚠ {} sessions share code {code}", sessions.len());
-                    }
-                    let resolved: Vec<&str> = sessions.iter().map(|s| s.id.as_str()).collect();
-                    println!("Resolved to ids: {}\n", resolved.join(", "));
-                    show_sessions(db, &sessions).await;
-                }
-            }
             SessionCmd::List { location } => {
                 let sessions = list_sessions(db, location).await?;
                 let loc_ids: Vec<String> = sessions.iter().map(|s| s.location_id.clone()).collect();
@@ -2885,7 +2867,8 @@ async fn list_activity_summary_subscriptions(db: &impl Handler) -> Result<()> {
 /// (redeemed for a 14-day session JWT). A code-enrolled kiosk keeps no trace of its
 /// method once the code is used up, so `code` is also what a session with neither a
 /// code nor a key reads as — except a key-released leftover, which looks the same and
-/// is told apart by `key_released_at`.
+/// is told apart by `key_released_at`. Setup codes can no longer be redeemed, so a
+/// `code (unredeemed)` session is dead: nothing can ever authenticate as it.
 fn session_auth_method(s: &Session, now: u64) -> String {
     if s.key_fingerprint.is_some() {
         if s.key_expires_at.is_some_and(|t| t < now) {

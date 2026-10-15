@@ -416,7 +416,6 @@ type MemberPeriodSummary {
 }
 
 type MutationRoot {
-	authSession(code: String!): String
 	"""
 	Publish a kiosk's public key as a pending enrollment (public-key/QR flow). The
 	kiosk re-submits every ~10 min while unenrolled; an admin then scans the kiosk's
@@ -485,7 +484,6 @@ type MutationRoot {
 	"""
 	sendPeriodEditLink(id: ID!): String!
 	deletePeriod(id: ID!): Boolean!
-	createSession(name: String!, locationId: ID!, config: String, healthcheckUrl: String): Session!
 	"""
 	Complete a public-key kiosk enrollment: create a session bound to the public key a
 	kiosk previously published via [`submit_enrollment_key`], identified by its
@@ -1045,7 +1043,6 @@ type Session {
 	name: String!
 	locationId: ID!
 	location: Location!
-	code: String
 	healthcheckUrl: String
 	config: JSON!
 	"""
@@ -1057,8 +1054,8 @@ type Session {
 	When this kiosk's key was released because its device was set up again by scanning
 	its QR code, which moved the key onto a new kiosk entry. Non-null only for such a
 	leftover: it no longer authenticates, can never come back online, and is safe to
-	delete. Null for every working kiosk — including a code-enrolled one, which looks
-	identical otherwise once its setup code has been used up.
+	delete. Null for every working kiosk — including a legacy code-enrolled one, which
+	otherwise looks identical.
 	"""
 	keyReleasedAt: Int
 	"""

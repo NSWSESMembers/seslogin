@@ -3,7 +3,6 @@ use crate::db::{
     ApiToken, Category, EphemeralState, Error, ListSessionsQuery, Location, LoginCode, OAuthGrant,
     Period, Person, Session, User, UserToken, WebauthnCredential, WebauthnState,
 };
-use crate::nonce;
 use crate::request_metrics::METRICS;
 use anyhow::anyhow;
 use aws_config::meta::region::RegionProviderChain;
@@ -1656,32 +1655,6 @@ impl db::Handler for Handler {
         self.get_records("session", ids).await
     }
 
-    async fn get_session_id_by_code(&self, code: &str) -> db::Result<Vec<String>> {
-        let resp = self
-            .client
-            .query()
-            .table_name(self.table_name("session"))
-            .index_name("code-index")
-            .key_condition_expression("code = :code")
-            .expression_attribute_values(":code", AttributeValue::S(code.to_string()))
-            .return_consumed_capacity(ReturnConsumedCapacity::Total)
-            .send()
-            .await
-            .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
-        record_capacity(
-            "get_session_id_by_code",
-            resp.consumed_capacity(),
-            CapKind::Read,
-        );
-
-        Ok(resp
-            .items
-            .unwrap_or_default()
-            .into_iter()
-            .map(|item| Item(item).id())
-            .collect::<HydrationResult<Vec<String>>>()?)
-    }
-
     async fn get_session_id_by_key_fingerprint(
         &self,
         fingerprint: &str,
@@ -1709,34 +1682,6 @@ impl db::Handler for Handler {
             .into_iter()
             .map(|item| Item(item).id())
             .collect::<HydrationResult<Vec<String>>>()?)
-    }
-
-    async fn wipe_session_code(&self, id: &str) -> db::Result<()> {
-        if self.read_only {
-            return Err(db::Error::MutationDisabled);
-        }
-        let resp = self
-            .client
-            .update_item()
-            .table_name(self.table_name("session"))
-            .key("id", AttributeValue::S(id.to_string()))
-            .condition_expression("attribute_exists(id)")
-            .update_expression("SET updated_at = :updated_at REMOVE code")
-            .expression_attribute_values(
-                ":updated_at",
-                AttributeValue::N(crate::clock::now_sec().to_string()),
-            )
-            .return_consumed_capacity(ReturnConsumedCapacity::Total)
-            .send()
-            .await
-            .map_err(|e| map_update_err(e, format!("Session {}", id)))?;
-        record_capacity(
-            "wipe_session_code",
-            resp.consumed_capacity(),
-            CapKind::Write,
-        );
-
-        Ok(())
     }
 
     async fn list_sessions(&self, query: ListSessionsQuery) -> db::Result<Vec<Session>> {
@@ -2803,7 +2748,7 @@ impl db::Handler for Handler {
         name: &str,
         config: &serde_json::Map<String, serde_json::Value>,
         healthcheck_url: Option<&str>,
-        key: Option<db::SessionKeyParams<'_>>,
+        key: db::SessionKeyParams<'_>,
     ) -> db::Result<Session> {
         if self.read_only {
             return Err(db::Error::MutationDisabled);
@@ -2825,32 +2770,16 @@ impl db::Handler for Handler {
             .item("created_at", AttributeValue::N(unix_time.to_string()))
             .item("updated_at", AttributeValue::N(unix_time.to_string()))
             .item("active", AttributeValue::N("1".to_string()))
-            .item("v", AttributeValue::N("1".to_string()));
-
-        // A key-enrolled session (QR/public-key flow) authenticates by signature and
-        // has no 6-digit code; a code-enrolled session gets a code and no key. The two
-        // are mutually exclusive — `code` and `key_fingerprint` both back GSIs, so the
-        // unused one is omitted entirely (never written as Null).
-        let code = match key {
-            Some(k) => {
-                request = request
-                    .item("public_key", AttributeValue::S(k.public_key.to_string()))
-                    .item(
-                        "key_fingerprint",
-                        AttributeValue::S(k.fingerprint.to_string()),
-                    )
-                    .item(
-                        "key_expires_at",
-                        AttributeValue::N(k.expires_at.to_string()),
-                    );
-                None
-            }
-            None => {
-                let code = nonce::generate_code(6);
-                request = request.item("code", AttributeValue::S(code.clone()));
-                Some(code)
-            }
-        };
+            .item("v", AttributeValue::N("1".to_string()))
+            .item("public_key", AttributeValue::S(key.public_key.to_string()))
+            .item(
+                "key_fingerprint",
+                AttributeValue::S(key.fingerprint.to_string()),
+            )
+            .item(
+                "key_expires_at",
+                AttributeValue::N(key.expires_at.to_string()),
+            );
 
         if let Some(healthcheck_url) = healthcheck_url {
             request = request.item(
@@ -2876,12 +2805,12 @@ impl db::Handler for Handler {
             // A kiosk reports itself on its first authenticated request, not at creation.
             client_info: None,
             client_info_updated_at: None,
-            code,
+            code: None,
             config: config.clone(),
             healthcheck_url: healthcheck_url.map(str::to_string),
-            public_key: key.map(|k| k.public_key.to_string()),
-            key_fingerprint: key.map(|k| k.fingerprint.to_string()),
-            key_expires_at: key.map(|k| k.expires_at),
+            public_key: Some(key.public_key.to_string()),
+            key_fingerprint: Some(key.fingerprint.to_string()),
+            key_expires_at: Some(key.expires_at),
             key_released_at: None,
             version: 1,
             created_at: Some(unix_time),

@@ -75,7 +75,6 @@ describe("SubmenuBar", () => {
 
   it.each([
     ["/admin/members", "New"],
-    ["/admin/sessions", "New"],
     ["/admin/activity", "New Period"],
   ])(
     "shows the New link on %s when the location is editable",
@@ -102,6 +101,11 @@ describe("SubmenuBar", () => {
       ).toBeInTheDocument();
     },
   );
+
+  it("offers no New link on /admin/sessions: kiosks are added by scanning their QR code", () => {
+    renderSubmenuBar("/admin/sessions", false, true);
+    expect(screen.queryByRole("link", { name: "New" })).not.toBeInTheDocument();
+  });
 
   it("keeps super-only New links regardless of the selected location's edit rights", () => {
     renderSubmenuBar("/admin/locations", true, false);
