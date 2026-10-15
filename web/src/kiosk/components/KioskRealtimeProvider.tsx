@@ -7,7 +7,6 @@ import {
 } from "react";
 import { useRelayEnvironment } from "react-relay";
 import { createRealtimeConnection } from "../lib/realtimeClient";
-import { hasLiveView } from "../lib/livePeriods";
 import { fetchRealtimeToken } from "./KioskRealtimeToken";
 import {
   KioskRealtimeContext,
@@ -24,16 +23,17 @@ const CONNECTING: KioskRealtimeState = { status: "connecting" };
  * (LivePeriodsProvider) take a channel off it with `connection.channel(name)`
  * and release it when done; they never open or close the connection.
  *
- * The token `kioskRealtimeToken` returns names the session's location, so the
- * connection is rebuilt whenever the session or its location changes. It is
- * only opened while something needs it: today, a live "who's signed in" view.
+ * The token `kioskRealtimeToken` returns names the session and its location,
+ * so the connection is rebuilt whenever either changes. Every kiosk with a
+ * session holds one: its own session channel (SessionPushListener) is how it
+ * hears about admin edits and re-enrollment.
  */
 export function KioskRealtimeProvider({ children }: { children: ReactNode }) {
   const environment = useRelayEnvironment();
   const session = useKioskSession();
   const sessionId = session?.id ?? null;
   const locationId = session?.location.id ?? null;
-  const enabled = sessionId != null && hasLiveView(session?.config);
+  const enabled = sessionId != null;
   const [generation, setGeneration] = useState(0);
 
   // Tagged with the connection attempt it describes, so a stale result (from

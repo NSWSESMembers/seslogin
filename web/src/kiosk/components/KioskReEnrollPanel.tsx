@@ -35,8 +35,9 @@ export default function KioskReEnrollPanel({
 
   // A code-authenticated kiosk keeps using its stored JWT — and so keeps showing the
   // old kiosk — until we notice the key has been enrolled and hand over to it. Kiosks
-  // already signing with the key need no handover: their next session refresh resolves
-  // whichever session now holds the key.
+  // already signing with the key need no handover: the server tells their old session
+  // to refetch (`session.changed`, see SessionPushListener), which resolves the key to
+  // whichever session now holds it.
   useEnrollmentWatch({
     info,
     enabled: published && shown && authMode === "jwt",

@@ -43,6 +43,7 @@ const session = {
   id: "sess123",
   name: "Front Desk",
   config: { guests: true, theme: "dark" },
+  version: 1,
   location: { id: "loc456", name: "Test Unit" },
 };
 
