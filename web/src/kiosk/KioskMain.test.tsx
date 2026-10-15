@@ -73,6 +73,7 @@ function sessionConfigHandler(config: Record<string, unknown>) {
           id: "mockId",
           name: "mockName",
           config,
+          version: 1,
           location: {
             id: "mockLocationId",
             name: "mockLocation",

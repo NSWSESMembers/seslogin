@@ -5,7 +5,6 @@ import {
   PanelTitle,
   PanelIntro,
 } from "../../components/ui/Panel";
-import { Button } from "../../components/ui/Button";
 import LoadingIndicator from "../../components/LoadingIndicator";
 import { FingerprintChip } from "../../components/FingerprintChip";
 import { useEnrollmentQr } from "../lib/useEnrollmentQr";
@@ -86,11 +85,9 @@ function StepIcon({ children }: { children: ReactNode }) {
 export default function KioskEnrollment({
   profile,
   onEnrolled,
-  onUseCodeInstead,
 }: {
   profile: string;
   onEnrolled: () => void;
-  onUseCodeInstead: () => void;
 }) {
   const { info, published, fingerprint, enrollUrl, qrDataUrl } =
     useEnrollmentQr(profile);
@@ -145,7 +142,7 @@ export default function KioskEnrollment({
           </p>
         )}
 
-        <ol className="mb-6 flex flex-col gap-4">
+        <ol className="flex flex-col gap-4">
           {STEPS.map((step, index) => (
             <li key={index} className="flex items-start gap-3">
               <StepIcon>{step.icon}</StepIcon>
@@ -153,10 +150,6 @@ export default function KioskEnrollment({
             </li>
           ))}
         </ol>
-
-        <Button type="button" size="panel" onClick={onUseCodeInstead}>
-          Use a setup code instead
-        </Button>
       </PanelBox>
     </Panel>
   );

@@ -37,7 +37,6 @@ const DOCUMENTED: &[&str] = &[
     "10000001",
     "10000002",
     "20000001",
-    "123456",
 ];
 
 fn repo_root() -> PathBuf {
@@ -148,15 +147,12 @@ fn synthetic_references_resolve() {
 }
 
 #[test]
-fn sessions_pick_exactly_one_enrolment_style() {
+fn sessions_carry_no_setup_code() {
     for session in rows(&synthetic(), "session") {
-        let by_code = s(session, "code").is_some();
-        let by_key = s(session, "key_fingerprint").is_some();
-        // `code` and `key_fingerprint` each back a GSI, so a session carries one or the
-        // other. Both would make it findable two ways; neither leaves it unreachable.
+        // Setup codes can no longer be redeemed, so a seeded one would only mislead.
         assert!(
-            by_code ^ by_key,
-            "session {} must have exactly one of code / key_fingerprint (code={by_code}, key={by_key})",
+            s(session, "code").is_none(),
+            "session {} carries a setup code",
             id(session)
         );
 

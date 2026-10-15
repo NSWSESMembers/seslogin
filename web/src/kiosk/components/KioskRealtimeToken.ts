@@ -2,8 +2,8 @@ import { fetchQuery, graphql, type IEnvironment } from "relay-runtime";
 import type { KioskRealtimeTokenQuery } from "./__generated__/KioskRealtimeTokenQuery.graphql";
 
 // These fields aren't read in this file: `fetchRealtimeToken` hands the whole
-// payload back to LivePeriodsProvider, which passes `tokenRequest` straight
-// through to ably-js's authCallback and `channel` to createRealtimeClient. Same
+// payload back to KioskRealtimeProvider, which passes `tokenRequest` straight
+// through to ably-js's authCallback and the channel names to its consumers. Same
 // pattern (and same disable) as KioskTokenSessionFetcher.tsx and
 // UserInfoProvider.tsx.
 /* eslint-disable relay/unused-fields */
@@ -11,6 +11,7 @@ const query = graphql`
   query KioskRealtimeTokenQuery {
     kioskRealtimeToken {
       channel
+      sessionChannel
       tokenRequest {
         keyName
         ttl

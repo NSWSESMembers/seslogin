@@ -12,7 +12,11 @@
 //! arrive, instead of polling GraphQL. A kiosk waiting to be enrolled (the
 //! public-key/QR flow) likewise subscribes to a per-key-fingerprint channel
 //! ([`enrollment_channel`]) and is told [`EnrollmentCompleted`] when an admin
-//! enrolls or reactivates it, instead of polling for its session. See
+//! enrolls or reactivates it, instead of polling for its session. An enrolled
+//! kiosk also subscribes to its own session's channel ([`session_channel`]) and
+//! is told [`SessionUpdated`] when an admin edits it, or [`SessionChanged`] when
+//! it should refetch (its key was released to a new session, or it was deleted).
+//! See
 //! CLAUDE.md, "Queue, mail and realtime abstraction" and the `ABLY_API_KEY`
 //! configuration bullet.
 
@@ -29,6 +33,16 @@ pub const EVENT_PERIOD_CLOSED: &str = "period.closed";
 /// Event name for a kiosk's pending enrollment having been completed.
 pub const EVENT_ENROLLMENT_COMPLETED: &str = "enrollment.completed";
 
+/// Event name for an admin edit of a session, carrying its new name and config.
+pub const EVENT_SESSION_UPDATED: &str = "session.updated";
+/// Event name telling a session's kiosk to refetch it.
+pub const EVENT_SESSION_CHANGED: &str = "session.changed";
+
+/// Largest serialized [`SessionUpdated`] sent as is. Ably caps a message at
+/// 64 KiB by default; past this, [`SessionChanged`] goes instead and the kiosk
+/// fetches the session itself.
+pub const MAX_SESSION_UPDATED_BYTES: usize = 60 * 1024;
+
 /// The Ably channel a location's kiosks publish and subscribe to.
 ///
 /// Namespaced by database prefix, not by deployment: every deployed
@@ -39,6 +53,14 @@ pub const EVENT_ENROLLMENT_COMPLETED: &str = "enrollment.completed";
 /// callers never assemble it by hand.
 pub fn kiosk_channel(db_prefix: &str, location_id: &str) -> String {
     format!("kiosk:{db_prefix}:{location_id}")
+}
+
+/// The Ably channel one enrolled kiosk session subscribes to, for changes to
+/// that session alone. Under the same `kiosk:` namespace as [`kiosk_channel`],
+/// so the `kiosk:*` capability the Ably key already holds covers it; the extra
+/// `session:` segment keeps it from ever naming a location's channel.
+pub fn session_channel(db_prefix: &str, session_id: &str) -> String {
+    format!("kiosk:{db_prefix}:session:{session_id}")
 }
 
 /// The Ably channel a not-yet-enrolled kiosk subscribes to, one per public-key
@@ -56,6 +78,31 @@ pub fn enrollment_channel(db_prefix: &str, fingerprint: &str) -> String {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EnrollmentCompleted {}
+
+/// Published on [`session_channel`] when an admin edits the session. Carries
+/// everything the kiosk shows from the session record, so it can apply the change
+/// without a round trip; `version` (the session's, after this write) lets it drop
+/// a message older than what it already has.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionUpdated {
+    pub session_id: String,
+    pub version: u64,
+    pub name: String,
+    pub config: serde_json::Map<String, serde_json::Value>,
+}
+
+/// Published on [`session_channel`] when the kiosk should refetch its session
+/// rather than apply anything: its key was released to a newly enrolled session,
+/// it was deleted, or a [`SessionUpdated`] would have been too large. Content-free
+/// apart from `version`; the kiosk's own authenticated refetch decides what it is
+/// now.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionChanged {
+    pub session_id: String,
+    pub version: u64,
+}
 
 /// Published when a period is opened (a member sign-in or a guest sign-in).
 /// Times are Unix seconds, matching the GraphQL `startTime` field.
@@ -101,11 +148,14 @@ pub struct TokenRequest {
     pub mac: String,
 }
 
-/// A signed token request together with the channel it authorizes, returned to
+/// A signed token request together with the channels it authorizes, returned to
 /// a kiosk so it can hand `token_request` straight to ably-js's `authCallback`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct KioskToken {
     pub channel: String,
+    /// The kiosk's own [`session_channel`], also covered by `token_request`. `None`
+    /// for an enrollment token, which has no session yet.
+    pub session_channel: Option<String>,
     pub token_request: TokenRequest,
 }
 
@@ -138,6 +188,18 @@ pub trait Handler: Sync {
         message_id: &str,
     ) -> impl Future<Output = Result<()>> + Send;
 
+    /// Publish an admin edit of a session to that session's channel.
+    fn publish_session_updated(
+        &self,
+        event: &SessionUpdated,
+    ) -> impl Future<Output = Result<()>> + Send;
+
+    /// Tell a session's kiosk to refetch it.
+    fn publish_session_changed(
+        &self,
+        event: &SessionChanged,
+    ) -> impl Future<Output = Result<()>> + Send;
+
     /// Build a signed, subscribe-only token request scoped to exactly one
     /// key's enrollment channel. `None` means realtime is disabled. The caller
     /// is responsible for having checked the key has a live pending
@@ -148,7 +210,8 @@ pub trait Handler: Sync {
     ) -> impl Future<Output = Result<Option<KioskToken>>> + Send;
 
     /// Build a signed, subscribe-only token request scoped to exactly one
-    /// location's channel. `None` means realtime is disabled (no Ably key
+    /// location's channel and the session's own [`session_channel`]. `None` means
+    /// realtime is disabled (no Ably key
     /// configured) — callers fall back to polling.
     fn kiosk_token_request(
         &self,
@@ -191,6 +254,51 @@ mod tests {
             enrollment_channel("seslogin_prod", "abc123"),
             kiosk_channel("seslogin_prod", "abc123"),
         );
+    }
+
+    #[test]
+    fn session_channel_cannot_name_a_location_channel() {
+        assert_eq!(
+            session_channel("seslogin_prod", "S1"),
+            "kiosk:seslogin_prod:session:S1"
+        );
+        assert_ne!(
+            session_channel("seslogin_prod", "S1"),
+            kiosk_channel("seslogin_prod", "S1"),
+        );
+        assert_ne!(
+            session_channel("seslogin_prod", "S1"),
+            session_channel("seslogin_test", "S1"),
+        );
+    }
+
+    #[test]
+    fn session_events_serialize_camel_case() {
+        let mut config = serde_json::Map::new();
+        config.insert("theme".to_string(), serde_json::json!("dark"));
+        let json = serde_json::to_value(SessionUpdated {
+            session_id: "s1".to_string(),
+            version: 2,
+            name: "Front desk".to_string(),
+            config,
+        })
+        .unwrap();
+        assert_eq!(
+            json,
+            serde_json::json!({
+                "sessionId": "s1",
+                "version": 2,
+                "name": "Front desk",
+                "config": { "theme": "dark" },
+            })
+        );
+
+        let json = serde_json::to_value(SessionChanged {
+            session_id: "s1".to_string(),
+            version: 3,
+        })
+        .unwrap();
+        assert_eq!(json, serde_json::json!({ "sessionId": "s1", "version": 3 }));
     }
 
     #[test]

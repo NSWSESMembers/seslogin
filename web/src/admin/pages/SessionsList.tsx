@@ -79,8 +79,8 @@ function Row({
   const { notifyError, notifySuccess } = useNotify();
   // Its computer was set up again by scanning its QR code, which moved the key onto a new
   // entry. Nothing here can revive this one — it's a leftover kept so the change is
-  // visible. Needs the server's marker: a code-enrolled kiosk whose setup code has been
-  // used up also ends up with no code and no key, and that one is perfectly healthy.
+  // visible. Needs the server's marker: a legacy code-enrolled kiosk also has no key,
+  // and that one is perfectly healthy.
   const isReplacedKiosk = session.keyReleasedAt != null;
   const [commitMutation, isMutationInFlight] =
     useMutation<SessionsListDeleteMutation>(graphql`
@@ -193,7 +193,6 @@ function Row({
         )}
       </Td>
       <Td>{timeSinceAccess}</Td>
-      {canEdit && <Td>{session.code}</Td>}
       <Td className="text-sm">
         {session.keyFingerprint ? (
           <FingerprintChip
@@ -315,7 +314,6 @@ export default function SessionsList() {
           sessions {
             id
             name
-            code
             lastContact
             clientVersion
             keyEnrolled
@@ -347,11 +345,11 @@ export default function SessionsList() {
   return (
     <>
       <p className="my-4">
-        Use this page to create and manage access to the system through the
-        kiosk module. Once a kiosk setup code has been entered into a computer,
-        that computer will have access until the entry here is deleted or it
-        expires. Kiosks expire if the computer using it does not access the
-        system for a period of 2 weeks.
+        Use this page to manage access to the system through the kiosk module.
+        To add a kiosk, open the kiosk module on the computer and scan the QR
+        code it shows. That computer will then have access until the entry here
+        is deleted or it expires. Kiosks expire if the computer using it does
+        not access the system for a period of 2 weeks.
       </p>
       <p className="my-4">
         An expired kiosk that was set up by scanning a QR code can be brought
@@ -383,7 +381,6 @@ export default function SessionsList() {
             {isDev && <Th>ID</Th>}
             <Th>Name</Th>
             <Th>Last contact</Th>
-            {canEdit && <Th>Code</Th>}
             <Th>Device key</Th>
             <Th>Version</Th>
             <Th>Environment</Th>

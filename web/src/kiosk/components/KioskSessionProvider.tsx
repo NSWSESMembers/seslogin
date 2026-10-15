@@ -1,9 +1,24 @@
-import { type ReactNode, useCallback, useEffect, useState } from "react";
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { useRelayEnvironment } from "react-relay";
 import LoadingIndicator from "../../components/LoadingIndicator";
 import { KioskSessionContext, type KioskSession } from "./KioskSessionContext";
-import startKioskTokenSessionFetcher from "./KioskTokenSessionFetcher";
+import startKioskTokenSessionFetcher, {
+  type KioskSessionFetcher,
+} from "./KioskTokenSessionFetcher";
+import { KioskRealtimeProvider } from "./KioskRealtimeProvider";
 import { LivePeriodsProvider } from "./LivePeriodsProvider";
+import { SessionPushListener } from "./SessionPushListener";
+import {
+  acceptFetchedSession,
+  applySessionUpdated,
+  type SessionUpdatedPayload,
+} from "../lib/sessionPush";
 
 export {
   KioskSessionContext,
@@ -25,6 +40,7 @@ function deepEqualSession(
   return (
     left.id === right.id &&
     left.name === right.name &&
+    left.version === right.version &&
     JSON.stringify(left.config) === JSON.stringify(right.config) &&
     left.location.id === right.location.id &&
     left.location.name === right.location.name
@@ -48,9 +64,13 @@ export function KioskSessionProvider({
   const [session, setSession] = useState<KioskSession | null>(null);
   const [isInitialFetchComplete, setIsInitialFetchComplete] = useState(false);
 
+  const fetcher = useRef<KioskSessionFetcher | null>(null);
+
   const setSessionAndTrackInitialFetch = useCallback(
     (nextSession: KioskSession | null) => {
       setSession((previousSession) =>
+        // A fetch that lags a push already applied mustn't roll it back.
+        !acceptFetchedSession(previousSession, nextSession) ||
         deepEqualSession(previousSession, nextSession)
           ? previousSession
           : nextSession,
@@ -60,13 +80,33 @@ export function KioskSessionProvider({
     [],
   );
 
+  const applyPushedUpdate = useCallback((push: SessionUpdatedPayload) => {
+    setSession((previousSession) => applySessionUpdated(previousSession, push));
+  }, []);
+
+  const refreshNow = useCallback(() => fetcher.current?.refreshNow(), []);
+
+  // Kept outside the fetcher too, so a fetcher restarted by the effect below
+  // starts on the right interval.
+  const pushLive = useRef(false);
+  const setPushLive = useCallback((live: boolean) => {
+    pushLive.current = live;
+    fetcher.current?.setPushLive(live);
+  }, []);
+
   useEffect(() => {
-    return startKioskTokenSessionFetcher({
+    const started = startKioskTokenSessionFetcher({
       environment,
       setToken,
       setSession: setSessionAndTrackInitialFetch,
       persistRefreshedToken,
+      pushLive: pushLive.current,
     });
+    fetcher.current = started;
+    return () => {
+      started.stop();
+      fetcher.current = null;
+    };
   }, [
     environment,
     setSessionAndTrackInitialFetch,
@@ -74,12 +114,20 @@ export function KioskSessionProvider({
     persistRefreshedToken,
   ]);
 
-  // LivePeriodsProvider needs both the Relay environment (available above, via
-  // KioskRelayEnvironment/KioskKeyRelayEnvironment) and useKioskSession() (only
-  // available below, inside KioskSessionContext.Provider) — so it's mounted
-  // here rather than in either of those.
+  // KioskRealtimeProvider and LivePeriodsProvider need both the Relay
+  // environment (available above, via KioskRelayEnvironment/
+  // KioskKeyRelayEnvironment) and useKioskSession() (only available below,
+  // inside KioskSessionContext.Provider) — so they're mounted here rather than
+  // in either of those.
   const body = isInitialFetchComplete ? (
-    <LivePeriodsProvider>{children}</LivePeriodsProvider>
+    <KioskRealtimeProvider>
+      <SessionPushListener
+        onUpdated={applyPushedUpdate}
+        refreshNow={refreshNow}
+        onLiveChange={setPushLive}
+      />
+      <LivePeriodsProvider>{children}</LivePeriodsProvider>
+    </KioskRealtimeProvider>
   ) : (
     <LoadingIndicator />
   );

@@ -68,6 +68,19 @@ export type LivePeriodsState = ReadonlyMap<string, LiveEntry>;
  * `period.opened` from resurrecting it, before it's pruned. */
 export const TOMBSTONE_TTL_MS = 24 * 60 * 60 * 1000;
 
+/** Whether a session's config turns on any view that shows who's signed in,
+ * and so needs the live list (and, through it, a realtime connection). */
+export function hasLiveView(
+  config: Readonly<Record<string, unknown>> | null | undefined,
+): boolean {
+  return !!(
+    config?.status ||
+    config?.signedInStatus ||
+    config?.signedInStatusInline ||
+    config?.guests
+  );
+}
+
 export function createLivePeriodsState(): LivePeriodsState {
   return new Map();
 }

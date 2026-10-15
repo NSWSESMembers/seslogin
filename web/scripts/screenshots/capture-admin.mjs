@@ -33,7 +33,6 @@ console.log("saved admin-dashboard");
 const routes = [
   ["members", "admin-members-list"],
   ["sessions", "admin-sessions-list"],
-  ["sessions/new", "admin-session-new"],
   ["reports", "admin-reports"],
   ["settings", "admin-settings"],
   ["activity", "admin-activity"],

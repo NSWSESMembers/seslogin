@@ -1,4 +1,4 @@
-use anyhow::{Result, anyhow};
+use anyhow::Result;
 use thiserror::Error;
 use tracing::warn;
 
@@ -169,43 +169,6 @@ pub fn caller_info(auth: Option<&AuthInfo>) -> (CallerType, String) {
     }
 }
 
-pub async fn issue_token_for_scan_code<A: App + HasDb>(app: &A, code: &str) -> Result<String> {
-    if code.is_empty() {
-        return Err(anyhow!("Scan code cannot be empty"));
-    }
-    let ids = app.db().get_session_id_by_code(code).await?;
-    let session_id = db::at_most_one(ids, || "Multiple sessions share this scan code".to_string())?
-        .ok_or_else(|| anyhow!("Invalid code"))?;
-
-    // Verify the resolved session actually exists and is live (the code GSI still
-    // contains soft-deleted sessions, since deletion only removes the `active` marker).
-    let session = app
-        .db()
-        .get_sessions(&[&session_id])
-        .await?
-        .pop()
-        .flatten()
-        .ok_or_else(|| anyhow!("Invalid code"))?;
-    if !session.is_live() {
-        return Err(anyhow!("Invalid code"));
-    }
-
-    // The kiosk is redeeming its own code: attribute the wipe to it rather than to the
-    // (unauthenticated) request that carried the code.
-    crate::audit::scope(
-        crate::audit::AuditContext::new(
-            crate::audit::Actor::Session {
-                id: session.id.clone(),
-            },
-            crate::audit::current_ip(),
-        ),
-        app.db().wipe_session_code(&session.id),
-    )
-    .await?;
-
-    issue_token_for_session_id(app, &session.id)
-}
-
 pub fn issue_token_for_session_id<A: App + HasDb>(app: &A, session_id: &str) -> Result<String> {
     app.jwt()
         .make_session_jwt(session_id, jwt::ExpirePolicy::SessionDefault)
@@ -271,7 +234,7 @@ async fn touch_session<A: App + HasDb + HasQueues>(
 ) -> Result<(), AuthError> {
     // Only refresh last_contact if it's older than this window, to reduce DB
     // write load. The admin UI only renders last_contact at minute+ granularity
-    // (the "online" status dot uses a 10-minute green band), so finer precision
+    // (the "online" status dot uses a 20-minute green band), so finer precision
     // here just burns writes (each one also rewrites the ALL-projection GSI and
     // adds PITR churn).
     //

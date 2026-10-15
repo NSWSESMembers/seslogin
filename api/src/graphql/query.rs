@@ -275,6 +275,10 @@ pub struct KioskRealtimeToken {
     /// signal for `enrollmentRealtimeToken`. Pass straight to `ably-js`'s
     /// `channels.get(channel)`.
     pub channel: String,
+    /// The kiosk's own session channel, which the token also covers: it carries
+    /// `session.updated` (an admin edit, with the new name and config) and
+    /// `session.changed` (refetch the session). Null for `enrollmentRealtimeToken`.
+    pub session_channel: Option<String>,
     pub token_request: AblyTokenRequest,
 }
 
@@ -1396,7 +1400,10 @@ const MAX_PERIOD_PAGE_SIZE: usize = 1000;
 const DAY_SECONDS: u64 = 24 * 60 * 60;
 const THIRTY_DAYS_SECONDS: u64 = 30 * DAY_SECONDS;
 const SEVEN_DAYS_SECONDS: u64 = 7 * DAY_SECONDS;
-const ONLINE_SESSION_SECONDS: u64 = 15 * 60;
+/// A kiosk whose `last_contact` is newer than this counts as online. A kiosk with
+/// realtime session pushes polls (and so refreshes `last_contact`) every 15 min
+/// ±10%, so this leaves room for one slow or splayed poll.
+const ONLINE_SESSION_SECONDS: u64 = 20 * 60;
 // Cap requested in review of the attendance heatmap (PR #50): scanning a
 // long range for `period_summary_by_day_by_member` costs DB usage that
 // scales with the time covered, so bound it to a year (+1 day to cover a
@@ -2879,16 +2886,6 @@ impl<A: App + HasDb + Send + Sync + 'static> Session<A> {
             .ok_or_else(|| anyhow!("Location with ID {} missing", self.rec.location_id))
     }
 
-    async fn code(&self, ctx: &Context<'_>) -> Option<&str> {
-        // The setup code enrols a kiosk, so it is a write-capable credential: only
-        // callers who can make changes here get it. Read only viewers see null.
-        if can_write_location(ctx, &self.rec.location_id) {
-            self.rec.code.as_deref()
-        } else {
-            None
-        }
-    }
-
     async fn healthcheck_url(&self) -> Option<&str> {
         self.rec.healthcheck_url.as_deref()
     }
@@ -2906,8 +2903,8 @@ impl<A: App + HasDb + Send + Sync + 'static> Session<A> {
     /// When this kiosk's key was released because its device was set up again by scanning
     /// its QR code, which moved the key onto a new kiosk entry. Non-null only for such a
     /// leftover: it no longer authenticates, can never come back online, and is safe to
-    /// delete. Null for every working kiosk — including a code-enrolled one, which looks
-    /// identical otherwise once its setup code has been used up.
+    /// delete. Null for every working kiosk — including a legacy code-enrolled one, which
+    /// otherwise looks identical.
     async fn key_released_at(&self) -> Option<i64> {
         self.rec.key_released_at.map(|t| t as i64)
     }
@@ -3489,6 +3486,7 @@ impl<A: App + HasDb + HasRealtime + Send + Sync + 'static> QueryRoot<A> {
             .await?;
         Ok(token.map(|t| KioskRealtimeToken {
             channel: t.channel,
+            session_channel: t.session_channel,
             token_request: t.token_request.into(),
         }))
     }
@@ -3526,6 +3524,7 @@ impl<A: App + HasDb + HasRealtime + Send + Sync + 'static> QueryRoot<A> {
             .await?;
         Ok(token.map(|t| KioskRealtimeToken {
             channel: t.channel,
+            session_channel: t.session_channel,
             token_request: t.token_request.into(),
         }))
     }

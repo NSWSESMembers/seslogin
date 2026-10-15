@@ -224,12 +224,16 @@ pub struct Session {
     /// the two move together today, but a snapshot that stops being refreshed while the
     /// kiosk keeps checking in is exactly the anomaly worth being able to see.
     pub client_info_updated_at: Option<u64>,
+    /// Legacy: the 6-digit setup code of a session created before setup-code enrolment
+    /// was removed and never redeemed. Never written any more, and nothing redeems it —
+    /// read only so tooling can spot those dead sessions.
     pub code: Option<String>,
     pub config: serde_json::Map<String, serde_json::Value>,
     pub healthcheck_url: Option<String>,
     /// Base64 (standard) SPKI DER of the kiosk's enrolled ECDSA P-256 public key.
-    /// Present only for key-enrolled sessions (the QR/public-key flow); code-enrolled
-    /// sessions leave this unset.
+    /// Present only for key-enrolled sessions (the QR/public-key flow); legacy
+    /// code-enrolled sessions, which authenticate with a JWT, leave this unset. Every new
+    /// session is key-enrolled.
     pub public_key: Option<String>,
     /// Hex SHA-256 of the SPKI DER above. Backs the `key_fingerprint-index` GSI, so it
     /// must be omitted (never written as Null) when absent.
@@ -240,8 +244,7 @@ pub struct Session {
     /// Unix seconds at which this session's key was released so its device could enroll
     /// into a new session (see [`SessionUpdateShape::ReleaseKey`]). Set on such a
     /// leftover, which can never come back online — and the only thing that tells one
-    /// apart from a healthy code-enrolled kiosk, since both end up with no `code` and no
-    /// key fields.
+    /// apart from a healthy legacy code-enrolled kiosk, since both have no key fields.
     ///
     /// Deliberately not a soft delete: the record keeps its `active` marker so it stays
     /// listed at its own location, showing the admins there that the kiosk was replaced
@@ -908,15 +911,6 @@ pub trait Handler: Sync {
         &self,
         ids: &[T],
     ) -> impl Future<Output = Result<Vec<Option<Session>>>> + Send;
-    /// Returns the IDs of every session whose scan code matches (from the code GSI).
-    /// Expected to be at most one; returns multiple only when the uniqueness invariant
-    /// has been violated. Does not verify the underlying rows — callers should fetch each
-    /// ID with [`get_sessions`](Self::get_sessions) to confirm it exists.
-    fn get_session_id_by_code(
-        &self,
-        code: &str,
-    ) -> impl Future<Output = Result<Vec<String>>> + Send;
-    fn wipe_session_code(&self, id: &str) -> impl Future<Output = Result<()>> + Send;
     fn list_sessions(
         &self,
         query: ListSessionsQuery,
@@ -1022,7 +1016,7 @@ pub trait Handler: Sync {
         name: &str,
         config: &serde_json::Map<String, serde_json::Value>,
         healthcheck_url: Option<&str>,
-        key: Option<SessionKeyParams<'_>>,
+        key: SessionKeyParams<'_>,
     ) -> impl Future<Output = Result<Session>> + Send;
     /// Returns the session's new [`version`](Session::version) for the shapes that bump
     /// it (`Fields`, `ReleaseKey`, `Delete`), `None` for those that don't.

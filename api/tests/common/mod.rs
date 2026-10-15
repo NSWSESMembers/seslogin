@@ -23,7 +23,8 @@ use seslogin::mockrealtime;
 
 /// A tiny in-memory `db::Handler` covering only what the token endpoint
 /// touches: users (read + `AccessTime` touch), `ephemeral_state`, and
-/// `oauth_grant`. Every other method panics — see the module docs.
+/// `oauth_grant` — plus enough of sessions for the session mutations. Every
+/// other method panics — see the module docs.
 #[derive(Default)]
 pub(crate) struct FakeDb {
     pub(crate) users: Mutex<HashMap<String, User>>,
@@ -274,17 +275,18 @@ impl db::Handler for FakeDb {
             .map(|id| sessions.get(id.as_ref()).cloned())
             .collect())
     }
-    async fn get_session_id_by_code(&self, _code: &str) -> db::Result<Vec<String>> {
-        unsupported()
-    }
     async fn get_session_id_by_key_fingerprint(
         &self,
-        _fingerprint: &str,
+        fingerprint: &str,
     ) -> db::Result<Vec<String>> {
-        unsupported()
-    }
-    async fn wipe_session_code(&self, _id: &str) -> db::Result<()> {
-        unsupported()
+        Ok(self
+            .sessions
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|s| s.key_fingerprint.as_deref() == Some(fingerprint))
+            .map(|s| s.id.clone())
+            .collect())
     }
     async fn list_sessions(&self, query: db::ListSessionsQuery) -> db::Result<Vec<db::Session>> {
         let db::ListSessionsQuery::ByLocation(location_id) = query;
@@ -464,20 +466,80 @@ impl db::Handler for FakeDb {
     }
     async fn create_session(
         &self,
-        _location_id: &str,
-        _name: &str,
-        _config: &serde_json::Map<String, serde_json::Value>,
-        _healthcheck_url: Option<&str>,
-        _key: Option<db::SessionKeyParams<'_>>,
+        location_id: &str,
+        name: &str,
+        config: &serde_json::Map<String, serde_json::Value>,
+        healthcheck_url: Option<&str>,
+        key: db::SessionKeyParams<'_>,
     ) -> db::Result<db::Session> {
-        unsupported()
+        let mut sessions = self.sessions.lock().unwrap();
+        let session = db::Session {
+            id: format!("created-{}", sessions.len() + 1),
+            name: name.to_string(),
+            location_id: location_id.to_string(),
+            active: true,
+            last_contact: None,
+            client_version: None,
+            client_info: None,
+            client_info_updated_at: None,
+            code: None,
+            config: config.clone(),
+            healthcheck_url: healthcheck_url.map(str::to_string),
+            public_key: Some(key.public_key.to_string()),
+            key_fingerprint: Some(key.fingerprint.to_string()),
+            key_expires_at: Some(key.expires_at),
+            key_released_at: None,
+            version: 1,
+            created_at: Some(0),
+            updated_at: Some(0),
+        };
+        sessions.insert(session.id.clone(), session.clone());
+        Ok(session)
     }
+    /// The shapes that change what a kiosk shows, bumping `version` as the real
+    /// implementation does. The heartbeat and reactivation shapes stay unsupported.
     async fn update_session(
         &self,
-        _id: &str,
-        _change: db::SessionUpdateShape<'_>,
+        id: &str,
+        change: db::SessionUpdateShape<'_>,
     ) -> db::Result<Option<u64>> {
-        unsupported()
+        let mut sessions = self.sessions.lock().unwrap();
+        let Some(session) = sessions.get_mut(id) else {
+            return Err(db::Error::NotFound(format!("session {id}")));
+        };
+        match change {
+            db::SessionUpdateShape::Fields {
+                name,
+                config,
+                healthcheck_url,
+            } => {
+                session.name = name.to_string();
+                session.config = config.clone();
+                session.healthcheck_url = healthcheck_url.map(str::to_string);
+            }
+            db::SessionUpdateShape::ReleaseKey { fingerprint } => {
+                if session.key_fingerprint.as_deref() != Some(fingerprint) {
+                    return Err(db::Error::NotFound(format!(
+                        "session {id} no longer holds {fingerprint}"
+                    )));
+                }
+                session.key_fingerprint = None;
+                session.public_key = None;
+                session.key_expires_at = None;
+                session.key_released_at = Some(0);
+            }
+            db::SessionUpdateShape::Delete => {
+                session.active = false;
+                session.key_fingerprint = None;
+                session.public_key = None;
+                session.key_expires_at = None;
+            }
+            db::SessionUpdateShape::Info { .. } | db::SessionUpdateShape::ExtendKey { .. } => {
+                return unsupported();
+            }
+        }
+        session.version += 1;
+        Ok(Some(session.version))
     }
     async fn get_api_token(&self, id: &str) -> db::Result<Option<db::ApiToken>> {
         Ok(self.api_tokens.lock().unwrap().get(id).cloned())

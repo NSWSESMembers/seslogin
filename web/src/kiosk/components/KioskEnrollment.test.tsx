@@ -40,13 +40,7 @@ function setDevice({
 }
 
 function renderEnrollment() {
-  return render(
-    <KioskEnrollment
-      profile="default"
-      onEnrolled={() => {}}
-      onUseCodeInstead={() => {}}
-    />,
-  );
+  return render(<KioskEnrollment profile="default" onEnrolled={() => {}} />);
 }
 
 describe("KioskEnrollment on an iPad", () => {

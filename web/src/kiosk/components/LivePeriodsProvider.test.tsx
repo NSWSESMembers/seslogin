@@ -14,37 +14,56 @@ import { graphql, HttpResponse, type GraphQLResponseResolver } from "msw";
 import { RelayEnvironmentProvider } from "react-relay";
 import { getGraphQLEndpoint } from "../../lib/api";
 import { createKioskGraphQLEnvironment } from "../../lib/environments";
-import { KioskSessionContext } from "./KioskSessionContext";
+import { KioskSessionContext, type KioskSession } from "./KioskSessionContext";
+import { KioskRealtimeProvider } from "./KioskRealtimeProvider";
 import { LivePeriodsProvider } from "./LivePeriodsProvider";
 import { useLivePeriods } from "./useLivePeriods";
 import { EVENT_PERIOD_OPENED } from "../lib/livePeriods";
 import type {
   RealtimeChannelStateChange,
-  RealtimeClient,
+  RealtimeConnection,
   RealtimeConnectionStateChange,
   RealtimeMessage,
 } from "../lib/realtimeClient";
 
-// LivePeriodsProvider talks to ably-js only through this seam — replace it with
-// a fake whose listeners tests can fire by hand, so no real network or jsdom
-// WebSocket is ever involved.
+// KioskRealtimeProvider and LivePeriodsProvider talk to ably-js only through
+// this seam — replace it with a fake whose listeners tests can fire by hand, so
+// no real network or jsdom WebSocket is ever involved.
 vi.mock("../lib/realtimeClient", () => ({
-  createRealtimeClient: vi.fn(),
+  createRealtimeConnection: vi.fn(),
 }));
-import { createRealtimeClient } from "../lib/realtimeClient";
+import { createRealtimeConnection } from "../lib/realtimeClient";
 
-/** A controllable stand-in for the object `createRealtimeClient` resolves to. */
+/** A controllable stand-in for the shared connection `createRealtimeConnection`
+ * resolves to, holding one channel at a time. */
 function makeFakeRealtimeClient() {
-  const messageListeners: Array<(m: RealtimeMessage) => void> = [];
-  const channelListeners: Array<(c: RealtimeChannelStateChange) => void> = [];
-  const connectionListeners: Array<(c: RealtimeConnectionStateChange) => void> =
-    [];
+  let messageListeners: Array<(m: RealtimeMessage) => void> = [];
+  let channelListeners: Array<(c: RealtimeChannelStateChange) => void> = [];
+  const connectionListeners = new Set<
+    (c: RealtimeConnectionStateChange) => void
+  >();
+  const channelNames: string[] = [];
+  let released = 0;
   let closed = false;
 
-  const client: RealtimeClient = {
-    subscribe: (listener) => messageListeners.push(listener),
-    onChannelStateChange: (listener) => channelListeners.push(listener),
-    onConnectionStateChange: (listener) => connectionListeners.push(listener),
+  const client: RealtimeConnection = {
+    state: "connected",
+    channel: (name) => {
+      channelNames.push(name);
+      return {
+        subscribe: (listener) => messageListeners.push(listener),
+        onChannelStateChange: (listener) => channelListeners.push(listener),
+        release: () => {
+          released += 1;
+          messageListeners = [];
+          channelListeners = [];
+        },
+      };
+    },
+    onConnectionStateChange: (listener) => {
+      connectionListeners.add(listener);
+      return () => connectionListeners.delete(listener);
+    },
     close: () => {
       closed = true;
     },
@@ -58,6 +77,9 @@ function makeFakeRealtimeClient() {
       channelListeners.forEach((l) => l(change)),
     emitConnectionState: (change: RealtimeConnectionStateChange) =>
       connectionListeners.forEach((l) => l(change)),
+    channelNames,
+    releasedCount: () => released,
+    connectionListenerCount: () => connectionListeners.size,
     isClosed: () => closed,
   };
 }
@@ -69,6 +91,7 @@ const TOKEN_RESPONSE = {
   data: {
     kioskRealtimeToken: {
       channel: "kiosk:seslogin_test:loc1",
+      sessionChannel: "kiosk:seslogin_test:session:sess1",
       tokenRequest: {
         keyName: "app.key",
         ttl: 3_600_000,
@@ -121,14 +144,15 @@ const server = setupServer(tokenHandler(), snapshotHandler([]));
 beforeAll(() => server.listen());
 afterEach(() => {
   server.resetHandlers();
-  vi.mocked(createRealtimeClient).mockReset();
+  vi.mocked(createRealtimeConnection).mockReset();
 });
 afterAll(() => server.close());
 
-const session = {
+const session: KioskSession = {
   id: "sess1",
   name: "Test Kiosk",
   config: { signedInStatus: true },
+  version: 1,
   location: { id: "loc1", name: "Test Location" },
 };
 
@@ -149,17 +173,19 @@ function Consumer() {
   );
 }
 
-function renderProvider() {
+function renderProvider(kioskSession: KioskSession = session) {
   const environment = createKioskGraphQLEnvironment(
     () => "test-token",
     () => {},
   );
   return render(
     <RelayEnvironmentProvider environment={environment}>
-      <KioskSessionContext.Provider value={{ session }}>
-        <LivePeriodsProvider>
-          <Consumer />
-        </LivePeriodsProvider>
+      <KioskSessionContext.Provider value={{ session: kioskSession }}>
+        <KioskRealtimeProvider>
+          <LivePeriodsProvider>
+            <Consumer />
+          </LivePeriodsProvider>
+        </KioskRealtimeProvider>
       </KioskSessionContext.Provider>
     </RelayEnvironmentProvider>,
   );
@@ -186,17 +212,19 @@ describe("LivePeriodsProvider", () => {
       expect(screen.getByText("Alice Anderson")).toBeInTheDocument(),
     );
     expect(screen.getByTestId("live")).toHaveTextContent("false");
-    expect(createRealtimeClient).not.toHaveBeenCalled();
+    expect(createRealtimeConnection).not.toHaveBeenCalled();
   });
 
   it("goes live once the channel attaches, after fetching a snapshot", async () => {
     const fake = makeFakeRealtimeClient();
-    vi.mocked(createRealtimeClient).mockResolvedValue(fake.client);
+    vi.mocked(createRealtimeConnection).mockResolvedValue(fake.client);
     server.use(snapshotHandler([node()]));
 
     renderProvider();
 
-    await waitFor(() => expect(createRealtimeClient).toHaveBeenCalledOnce());
+    await waitFor(() =>
+      expect(createRealtimeConnection).toHaveBeenCalledOnce(),
+    );
     expect(screen.getByTestId("live")).toHaveTextContent("false");
 
     // Every attach — including the very first — arrives with resumed: false,
@@ -221,11 +249,13 @@ describe("LivePeriodsProvider", () => {
     );
 
     const fake = makeFakeRealtimeClient();
-    vi.mocked(createRealtimeClient).mockResolvedValue(fake.client);
+    vi.mocked(createRealtimeConnection).mockResolvedValue(fake.client);
 
     renderProvider();
 
-    await waitFor(() => expect(createRealtimeClient).toHaveBeenCalledOnce());
+    await waitFor(() =>
+      expect(createRealtimeConnection).toHaveBeenCalledOnce(),
+    );
     act(() => fake.emitChannelState({ current: "attached", resumed: false }));
     await waitFor(() => expect(snapshotCalls).toBe(1));
 
@@ -251,7 +281,7 @@ describe("LivePeriodsProvider", () => {
 
   it("resumed attach doesn't need a resync and keeps existing data", async () => {
     const fake = makeFakeRealtimeClient();
-    vi.mocked(createRealtimeClient).mockResolvedValue(fake.client);
+    vi.mocked(createRealtimeConnection).mockResolvedValue(fake.client);
     let snapshotCalls = 0;
     server.use(
       relayEndpoint.query("LivePeriodsSnapshotQuery", () => {
@@ -261,7 +291,9 @@ describe("LivePeriodsProvider", () => {
     );
 
     renderProvider();
-    await waitFor(() => expect(createRealtimeClient).toHaveBeenCalledOnce());
+    await waitFor(() =>
+      expect(createRealtimeConnection).toHaveBeenCalledOnce(),
+    );
 
     act(() => fake.emitChannelState({ current: "attached", resumed: false }));
     await waitFor(() => expect(snapshotCalls).toBe(1));
@@ -282,7 +314,7 @@ describe("LivePeriodsProvider", () => {
 
   it("buffers messages received while a resync snapshot is in flight, then replays them", async () => {
     const fake = makeFakeRealtimeClient();
-    vi.mocked(createRealtimeClient).mockResolvedValue(fake.client);
+    vi.mocked(createRealtimeConnection).mockResolvedValue(fake.client);
 
     let releaseSnapshot: (() => void) | undefined;
     const gate = new Promise<void>((resolve) => {
@@ -298,7 +330,9 @@ describe("LivePeriodsProvider", () => {
     );
 
     renderProvider();
-    await waitFor(() => expect(createRealtimeClient).toHaveBeenCalledOnce());
+    await waitFor(() =>
+      expect(createRealtimeConnection).toHaveBeenCalledOnce(),
+    );
 
     act(() => fake.emitChannelState({ current: "attached", resumed: false }));
     // The resync's snapshot fetch is now in flight (gated on `gate`).
@@ -328,7 +362,7 @@ describe("LivePeriodsProvider", () => {
 
   it("overlapping resyncs don't lose a message buffered before the second one starts", async () => {
     const fake = makeFakeRealtimeClient();
-    vi.mocked(createRealtimeClient).mockResolvedValue(fake.client);
+    vi.mocked(createRealtimeConnection).mockResolvedValue(fake.client);
 
     let releaseSnapshot: (() => void) | undefined;
     const gate = new Promise<void>((resolve) => {
@@ -342,7 +376,9 @@ describe("LivePeriodsProvider", () => {
     );
 
     renderProvider();
-    await waitFor(() => expect(createRealtimeClient).toHaveBeenCalledOnce());
+    await waitFor(() =>
+      expect(createRealtimeConnection).toHaveBeenCalledOnce(),
+    );
 
     // First resync starts; its snapshot fetch is gated in flight.
     act(() => fake.emitChannelState({ current: "attached", resumed: false }));
@@ -376,6 +412,41 @@ describe("LivePeriodsProvider", () => {
     await waitFor(() =>
       expect(screen.getByText("Dana Diaz")).toBeInTheDocument(),
     );
+  });
+
+  it("leaves the location channel alone on a kiosk with no live view", async () => {
+    const fake = makeFakeRealtimeClient();
+    vi.mocked(createRealtimeConnection).mockResolvedValue(fake.client);
+
+    renderProvider({ ...session, config: {} });
+
+    // Every kiosk holds the shared connection (for its session channel), but
+    // nothing here needs the period events on the location channel.
+    await waitFor(() =>
+      expect(createRealtimeConnection).toHaveBeenCalledOnce(),
+    );
+    expect(screen.getByTestId("loading")).toHaveTextContent("false");
+    expect(fake.channelNames).toEqual([]);
+  });
+
+  it("subscribes to the location channel on the shared connection, and only releases it on unmount", async () => {
+    const fake = makeFakeRealtimeClient();
+    vi.mocked(createRealtimeConnection).mockResolvedValue(fake.client);
+
+    const { unmount } = renderProvider();
+
+    await waitFor(() =>
+      expect(fake.channelNames).toEqual(["kiosk:seslogin_test:loc1"]),
+    );
+    expect(fake.connectionListenerCount()).toBe(1);
+
+    unmount();
+
+    // The provider gives back its channel and listener; closing the
+    // connection itself is KioskRealtimeProvider's call, which also unmounted.
+    expect(fake.releasedCount()).toBe(1);
+    expect(fake.connectionListenerCount()).toBe(0);
+    expect(fake.isClosed()).toBe(true);
   });
 
   it("falls back to polling and shows a retryable error when the snapshot fails", async () => {

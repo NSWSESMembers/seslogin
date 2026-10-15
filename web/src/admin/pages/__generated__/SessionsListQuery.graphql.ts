@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<2f6991f5478ec3b9040c4932b86c155e>>
+ * @generated SignedSource<<55aeb3a7d9bd4dd7e73307ae5722ad26>>
  * @lightSyntaxTransform
  */
 
@@ -20,7 +20,6 @@ export type SessionsListQuery$data = {
         readonly origin: string | null | undefined;
       } | null | undefined;
       readonly clientVersion: string | null | undefined;
-      readonly code: string | null | undefined;
       readonly id: string;
       readonly keyEnrolled: boolean;
       readonly keyExpiresAt: number | null | undefined;
@@ -82,13 +81,6 @@ v2 = [
             "args": null,
             "kind": "ScalarField",
             "name": "name",
-            "storageKey": null
-          },
-          {
-            "alias": null,
-            "args": null,
-            "kind": "ScalarField",
-            "name": "code",
             "storageKey": null
           },
           {
@@ -192,16 +184,16 @@ return {
     "selections": (v2/*:: as any*/)
   },
   "params": {
-    "cacheID": "f798ce5b8098ada2e0251fbc3e78929f",
+    "cacheID": "0857e8a8517e6cfce7a3d4b81614e386",
     "id": null,
     "metadata": {},
     "name": "SessionsListQuery",
     "operationKind": "query",
-    "text": "query SessionsListQuery(\n  $location: ID!\n) {\n  location(id: $location) {\n    id\n    sessions {\n      id\n      name\n      code\n      lastContact\n      clientVersion\n      keyEnrolled\n      keyExpiresAt\n      keyFingerprint\n      reactivatable\n      keyReleasedAt\n      clientInfo {\n        env\n        origin\n      }\n    }\n  }\n}\n"
+    "text": "query SessionsListQuery(\n  $location: ID!\n) {\n  location(id: $location) {\n    id\n    sessions {\n      id\n      name\n      lastContact\n      clientVersion\n      keyEnrolled\n      keyExpiresAt\n      keyFingerprint\n      reactivatable\n      keyReleasedAt\n      clientInfo {\n        env\n        origin\n      }\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "5ee3f0afd43c90a54e1a8ab05c295410";
+(node as any).hash = "24acf42029ea2be994a045891301d4aa";
 
 export default node;

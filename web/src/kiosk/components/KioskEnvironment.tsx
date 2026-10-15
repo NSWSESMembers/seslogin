@@ -3,7 +3,6 @@ import KioskRelayEnvironment from "./KioskRelayEnvironment";
 import KioskKeyRelayEnvironment from "./KioskKeyRelayEnvironment";
 import { KioskEnvironmentContext } from "./KioskEnvironmentContext";
 import { KioskSessionProvider } from "./KioskSessionProvider";
-import KioskSetup from "../pages/KioskSetup";
 import KioskEnrollment from "./KioskEnrollment";
 
 const OLD_SETTINGS_KEY = "appSettings";
@@ -12,18 +11,21 @@ const SETTINGS_PREFIX = "kiosk_";
 type AppSettingsStorage = {
   scanAuthToken?: string | null;
   scanAuthTokenIssuedAt?: number | null;
-  /** Which auth flow this kiosk last used: legacy 6-digit JWT, or public-key signing. */
+  /**
+   * Which auth flow this kiosk last used: legacy JWT (from a since-removed 6-digit setup
+   * code, still honoured for kiosks enrolled that way), or public-key signing.
+   */
   authMode?: "jwt" | "key" | null;
   [key: string]: unknown;
 };
 
 /**
  * - `enrolling`: default; showing the QR code, waiting for an admin to enroll this key.
- * - `setup-code`: the 6-digit code entry screen, reached via "use a setup code instead".
- * - `authed-jwt`: authenticated via the legacy code→JWT flow.
+ * - `authed-jwt`: authenticated with a JWT from the legacy setup-code flow. New kiosks
+ *   can no longer get one; this only keeps already-enrolled ones working.
  * - `authed-key`: authenticated by signing each request with the enrolled key.
  */
-type KioskAuthState = "setup-code" | "enrolling" | "authed-jwt" | "authed-key";
+type KioskAuthState = "enrolling" | "authed-jwt" | "authed-key";
 
 function readAppSettings(profile: string): AppSettingsStorage {
   let settingsJson = localStorage.getItem(`${SETTINGS_PREFIX}${profile}`);
@@ -127,18 +129,18 @@ export default function KioskEnvironment({
 
   const contextValue = useMemo(
     () => ({
-      setToken,
       profile,
       authMode:
         authState === "authed-key" ? ("key" as const) : ("jwt" as const),
       onKeyEnrolled: onEnrolled,
     }),
-    [setToken, profile, authState, onEnrolled],
+    [profile, authState, onEnrolled],
   );
 
+  // A legacy JWT kiosk that loses its token can only come back by enrolling its key.
   const onJwtUnauthorized = useCallback(() => {
     clearToken();
-    setAuthState("setup-code");
+    setAuthState("enrolling");
   }, [clearToken]);
 
   // Key mode 401: session was disabled. Revert to enrollment but keep the key — it
@@ -147,22 +149,10 @@ export default function KioskEnvironment({
     setAuthState("enrolling");
   }, []);
 
-  const startEnrollment = useCallback(() => setAuthState("enrolling"), []);
-  const useCodeInstead = useCallback(() => setAuthState("setup-code"), []);
-
   let body: ReactNode;
   switch (authState) {
-    case "setup-code":
-      body = <KioskSetup onEnrollWithQr={startEnrollment} />;
-      break;
     case "enrolling":
-      body = (
-        <KioskEnrollment
-          profile={profile}
-          onEnrolled={onEnrolled}
-          onUseCodeInstead={useCodeInstead}
-        />
-      );
+      body = <KioskEnrollment profile={profile} onEnrolled={onEnrolled} />;
       break;
     case "authed-jwt":
       body = (

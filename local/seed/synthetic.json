@@ -118,11 +118,10 @@
     ],
     "session": [
       {
-        "_comment": "A code-enrolled kiosk at Test A Unit, so kiosk testing does not have to start by creating one. Enrolling consumes the code and swaps it for a JWT — re-run `make local-seed` to put it back. `config` is a JSON document stored as a string; empty means kiosk defaults. A code-enrolled session must not also carry key_fingerprint: both back GSIs and the two enrolment styles are mutually exclusive.",
+        "_comment": "A legacy code-enrolled kiosk at Test A Unit: no key, so it authenticates with a session JWT, like the kiosks enrolled with a 6-digit setup code before that flow was removed. Mint one with `make local-cli ARGS=\"jwt session TestAKiosk01\"` and store it as `scanAuthToken` in localStorage `kiosk_<profile>`. `config` is a JSON document stored as a string; empty means kiosk defaults. Carries no `code`: setup codes can no longer be redeemed.",
         "id": { "S": "TestAKiosk01" },
         "name": { "S": "Test A Unit kiosk" },
         "location_id": { "S": "TestAUnit001" },
-        "code": { "S": "123456" },
         "config": { "S": "{}" },
         "active": { "N": "1" },
         "last_contact": { "N": "1767225600" },
@@ -130,7 +129,7 @@
         "updated_at": { "N": "1767225600" }
       },
       {
-        "_comment": "A key-enrolled kiosk at Test A Unit — the other half of the pair. Instead of a code it carries the public key of a fixed keypair, and signs every request with the private half (SLKey scheme, see api/src/session_key.rs). local/seed/kiosk-signing-key.json holds the matching private key and local/examples/kiosk-scan.mjs installs it, so kiosk testing can start on the scan screen rather than at enrolment. key_expires_at is 2100 so the fixture does not rot. Must not also carry a code: `code` and `key_fingerprint` both back GSIs and the two enrolment styles are mutually exclusive.",
+        "_comment": "A key-enrolled kiosk at Test A Unit — the other half of the pair. Instead of a code it carries the public key of a fixed keypair, and signs every request with the private half (SLKey scheme, see api/src/session_key.rs). local/seed/kiosk-signing-key.json holds the matching private key and local/examples/kiosk-scan.mjs installs it, so kiosk testing can start on the scan screen rather than at enrolment. key_expires_at is 2100 so the fixture does not rot.",
         "id": { "S": "TestAKiosk02" },
         "name": { "S": "Test A Unit key kiosk" },
         "location_id": { "S": "TestAUnit001" },
