@@ -13,24 +13,22 @@ import {
   createLivePeriodsState,
   EVENT_PERIOD_CLOSED,
   EVENT_PERIOD_OPENED,
+  hasLiveView,
   parseClosedPayload,
   parseOpenedPayload,
   selectGuestPeriods,
   selectPeriods,
   type LivePeriodsState,
 } from "../lib/livePeriods";
-import {
-  createRealtimeClient,
-  type RealtimeClient,
-  type RealtimeMessage,
+import type {
+  RealtimeChannel,
+  RealtimeConnection,
+  RealtimeMessage,
 } from "../lib/realtimeClient";
 import { getErrorMessage } from "../../lib/relayErrors";
 import { useKioskSession } from "./useKioskSession";
 import { LivePeriodsContext, type LiveOwnResult } from "./LivePeriodsContext";
-import {
-  fetchRealtimeToken,
-  type KioskRealtimeTokenPayload,
-} from "./KioskRealtimeToken";
+import { useKioskRealtime } from "./useKioskRealtime";
 import { fetchLivePeriodsSnapshot } from "./LivePeriodsSnapshot";
 
 export {
@@ -67,9 +65,11 @@ const CONNECTION_FALLBACK_STATES = new Set([
  * polling queries.
  *
  * Design, in one place since no single function tells the whole story:
- * - `kioskRealtimeToken` (see KioskRealtimeToken.ts) returns `null` when
- *   realtime is disabled server-side (no `ABLY_API_KEY`) — that's not an
- *   error, it just means this kiosk polls instead.
+ * - The Ably connection belongs to KioskRealtimeProvider; this provider only
+ *   takes the location channel off it, and releases it again. While that
+ *   provider reports `unavailable` — realtime disabled server-side (no
+ *   `ABLY_API_KEY`), which is not an error, or no token or connection to be
+ *   had — this kiosk polls instead.
  * - Every message and snapshot row carries `Period.version`. `livePeriods.ts`'s
  *   reducer only ever accepts a strictly newer version per period id, and
  *   keeps a closed period as a tombstone rather than deleting it, so an
@@ -99,14 +99,14 @@ const CONNECTION_FALLBACK_STATES = new Set([
 export function LivePeriodsProvider({ children }: { children: ReactNode }) {
   const environment = useRelayEnvironment();
   const session = useKioskSession();
-  const config = session?.config;
-  const active = !!(
-    config?.status ||
-    config?.signedInStatus ||
-    config?.signedInStatusInline ||
-    config?.guests
-  );
+  const active = hasLiveView(session?.config);
   const locationId = session?.location.id ?? null;
+  const realtime = useKioskRealtime();
+  const realtimeStatus = realtime.status;
+  const connection = realtime.status === "ready" ? realtime.connection : null;
+  const locationChannel =
+    realtime.status === "ready" ? realtime.locationChannel : null;
+  const retryRealtime = realtime.retry;
 
   const [state, setState] = useState<LivePeriodsState>(createLivePeriodsState);
   const [loading, setLoading] = useState(true);
@@ -119,7 +119,8 @@ export function LivePeriodsProvider({ children }: { children: ReactNode }) {
   const retry = useCallback(() => {
     setError(null);
     setRetryGeneration((g) => g + 1);
-  }, []);
+    if (realtimeStatus === "unavailable") retryRealtime();
+  }, [realtimeStatus, retryRealtime]);
 
   // Applies the kiosk's own scan/guest mutation result immediately, ahead of
   // the Ably echo (or the next poll). Independent of the effect below so it
@@ -144,7 +145,8 @@ export function LivePeriodsProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
     let pollTimerId: number | null = null;
     let resyncTimerId: number | null = null;
-    let realtimeClient: RealtimeClient | null = null;
+    let channel: RealtimeChannel | null = null;
+    let stopConnectionListener: (() => void) | null = null;
     // Non-null while a resync snapshot fetch is in flight: messages arriving
     // during that window are queued here instead of applied immediately, then
     // replayed once the snapshot has been applied — see the doc comment above.
@@ -274,22 +276,9 @@ export function LivePeriodsProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    async function setupRealtime(token: KioskRealtimeTokenPayload) {
-      const client = await createRealtimeClient({
-        channel: token.channel,
-        fetchTokenRequest: async () => {
-          const fresh = await fetchRealtimeToken(environment);
-          if (fresh == null) {
-            throw new Error("Kiosk realtime token is no longer available");
-          }
-          return fresh.tokenRequest;
-        },
-      });
-      if (cancelled) {
-        client.close();
-        return;
-      }
-      realtimeClient = client;
+    function attachChannel(shared: RealtimeConnection, name: string) {
+      const client = shared.channel(name);
+      channel = client;
 
       client.subscribe((message) => {
         if (messageQueue) {
@@ -317,7 +306,13 @@ export function LivePeriodsProvider({ children }: { children: ReactNode }) {
         }
       });
 
-      client.onConnectionStateChange((change) => {
+      // The connection is shared and may have been up (or down) long before
+      // this channel joined it, so start from where it is now.
+      setConnectionState(shared.state);
+      if (CONNECTION_FALLBACK_STATES.has(shared.state)) {
+        startPolling();
+      }
+      stopConnectionListener = shared.onConnectionStateChange((change) => {
         if (cancelled) return;
         setConnectionState(change.current);
         if (CONNECTION_FALLBACK_STATES.has(change.current)) {
@@ -336,43 +331,24 @@ export function LivePeriodsProvider({ children }: { children: ReactNode }) {
       }, RESYNC_INTERVAL_MS);
     }
 
-    async function start() {
+    function start() {
       setLoading(true);
       setError(null);
       setLive(false);
       setConnectionState(null);
       setLastPollAt(null);
 
-      let token: KioskRealtimeTokenPayload | null;
-      try {
-        token = await fetchRealtimeToken(environment);
-      } catch (err) {
-        console.error(
-          "Failed to fetch kiosk realtime token; falling back to polling",
-          err,
-        );
-        token = null;
-      }
-      if (cancelled) return;
-
-      if (token == null) {
-        startPolling();
-        return;
-      }
-
-      try {
-        await setupRealtime(token);
-      } catch (err) {
-        if (cancelled) return;
-        console.error(
-          "Failed to start kiosk realtime subscription; falling back to polling",
-          err,
-        );
+      if (connection != null && locationChannel != null) {
+        attachChannel(connection, locationChannel);
+      } else if (realtimeStatus !== "connecting") {
+        // Disabled server-side, or no token or connection: poll. While still
+        // connecting there's nothing to do yet — this effect runs again once
+        // KioskRealtimeProvider settles either way.
         startPolling();
       }
     }
 
-    void start();
+    start();
 
     return () => {
       cancelled = true;
@@ -380,9 +356,18 @@ export function LivePeriodsProvider({ children }: { children: ReactNode }) {
       if (resyncTimerId != null) {
         window.clearInterval(resyncTimerId);
       }
-      realtimeClient?.close();
+      stopConnectionListener?.();
+      channel?.release();
     };
-  }, [environment, active, locationId, retryGeneration]);
+  }, [
+    environment,
+    active,
+    locationId,
+    retryGeneration,
+    realtimeStatus,
+    connection,
+    locationChannel,
+  ]);
 
   // `active` gates the *public* value rather than the effect resetting
   // internal state: nothing above needs to run for an inactive provider, and
