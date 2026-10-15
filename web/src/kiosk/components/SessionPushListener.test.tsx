@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type {
   RealtimeChannelStateChange,
   RealtimeConnection,
+  RealtimeConnectionStateChange,
   RealtimeMessage,
 } from "../lib/realtimeClient";
 import {
@@ -30,6 +31,9 @@ const session: KioskSession = {
 function makeFakeConnection() {
   let messageListeners: Array<(m: RealtimeMessage) => void> = [];
   let stateListeners: Array<(c: RealtimeChannelStateChange) => void> = [];
+  const connectionListeners = new Set<
+    (c: RealtimeConnectionStateChange) => void
+  >();
   const channelNames: string[] = [];
   let released = 0;
   const connection: RealtimeConnection = {
@@ -46,7 +50,10 @@ function makeFakeConnection() {
         },
       };
     },
-    onConnectionStateChange: () => () => {},
+    onConnectionStateChange: (listener) => {
+      connectionListeners.add(listener);
+      return () => connectionListeners.delete(listener);
+    },
     close: () => {},
   };
   return {
@@ -57,6 +64,9 @@ function makeFakeConnection() {
       act(() => messageListeners.forEach((l) => l(message))),
     emitState: (change: RealtimeChannelStateChange) =>
       act(() => stateListeners.forEach((l) => l(change))),
+    emitConnectionState: (change: RealtimeConnectionStateChange) =>
+      act(() => connectionListeners.forEach((l) => l(change))),
+    connectionListenerCount: () => connectionListeners.size,
   };
 }
 
@@ -64,6 +74,7 @@ function renderListener(authMode: KioskAuthMode = "jwt") {
   const fake = makeFakeConnection();
   const onUpdated = vi.fn();
   const refreshNow = vi.fn();
+  const onLiveChange = vi.fn();
   const view = render(
     <KioskEnvironmentContext.Provider
       value={{
@@ -83,12 +94,16 @@ function renderListener(authMode: KioskAuthMode = "jwt") {
             retry: vi.fn(),
           }}
         >
-          <SessionPushListener onUpdated={onUpdated} refreshNow={refreshNow} />
+          <SessionPushListener
+            onUpdated={onUpdated}
+            refreshNow={refreshNow}
+            onLiveChange={onLiveChange}
+          />
         </KioskRealtimeContext.Provider>
       </KioskSessionContext.Provider>
     </KioskEnvironmentContext.Provider>,
   );
-  return { ...fake, onUpdated, refreshNow, ...view };
+  return { ...fake, onUpdated, refreshNow, onLiveChange, ...view };
 }
 
 afterEach(() => {
@@ -135,6 +150,34 @@ describe("SessionPushListener", () => {
     expect(refreshNow).not.toHaveBeenCalled();
     emitState({ current: "attached", resumed: false });
     expect(refreshNow).toHaveBeenCalledOnce();
+  });
+
+  it("reports live only while the channel is attached and the connection is up", () => {
+    const {
+      emitState,
+      emitConnectionState,
+      onLiveChange,
+      connectionListenerCount,
+      unmount,
+    } = renderListener();
+
+    emitState({ current: "attached", resumed: false });
+    expect(onLiveChange).toHaveBeenLastCalledWith(true);
+
+    // Disconnected: the channel can still read "attached" for a while.
+    emitConnectionState({ current: "disconnected" });
+    expect(onLiveChange).toHaveBeenLastCalledWith(false);
+    emitConnectionState({ current: "connected" });
+    expect(onLiveChange).toHaveBeenLastCalledWith(true);
+
+    emitState({ current: "suspended", resumed: false });
+    expect(onLiveChange).toHaveBeenLastCalledWith(false);
+    emitState({ current: "attached", resumed: true });
+    expect(onLiveChange).toHaveBeenLastCalledWith(true);
+
+    unmount();
+    expect(onLiveChange).toHaveBeenLastCalledWith(false);
+    expect(connectionListenerCount()).toBe(0);
   });
 
   it("in key mode, waits for the key to resolve to the new session before refetching", async () => {

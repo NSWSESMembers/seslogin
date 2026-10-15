@@ -86,12 +86,21 @@ export function KioskSessionProvider({
 
   const refreshNow = useCallback(() => fetcher.current?.refreshNow(), []);
 
+  // Kept outside the fetcher too, so a fetcher restarted by the effect below
+  // starts on the right interval.
+  const pushLive = useRef(false);
+  const setPushLive = useCallback((live: boolean) => {
+    pushLive.current = live;
+    fetcher.current?.setPushLive(live);
+  }, []);
+
   useEffect(() => {
     const started = startKioskTokenSessionFetcher({
       environment,
       setToken,
       setSession: setSessionAndTrackInitialFetch,
       persistRefreshedToken,
+      pushLive: pushLive.current,
     });
     fetcher.current = started;
     return () => {
@@ -115,6 +124,7 @@ export function KioskSessionProvider({
       <SessionPushListener
         onUpdated={applyPushedUpdate}
         refreshNow={refreshNow}
+        onLiveChange={setPushLive}
       />
       <LivePeriodsProvider>{children}</LivePeriodsProvider>
     </KioskRealtimeProvider>

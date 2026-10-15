@@ -1400,7 +1400,10 @@ const MAX_PERIOD_PAGE_SIZE: usize = 1000;
 const DAY_SECONDS: u64 = 24 * 60 * 60;
 const THIRTY_DAYS_SECONDS: u64 = 30 * DAY_SECONDS;
 const SEVEN_DAYS_SECONDS: u64 = 7 * DAY_SECONDS;
-const ONLINE_SESSION_SECONDS: u64 = 15 * 60;
+/// A kiosk whose `last_contact` is newer than this counts as online. A kiosk with
+/// realtime session pushes polls (and so refreshes `last_contact`) every 15 min
+/// ±10%, so this leaves room for one slow or splayed poll.
+const ONLINE_SESSION_SECONDS: u64 = 20 * 60;
 // Cap requested in review of the attendance heatmap (PR #50): scanning a
 // long range for `period_summary_by_day_by_member` costs DB usage that
 // scales with the time covered, so bound it to a year (+1 day to cover a
