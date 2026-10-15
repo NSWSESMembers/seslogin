@@ -51,15 +51,7 @@ function deepEqualSession(
  * Provider component that receives and provides kiosk session info.
  * Wraps children and makes session data available via useKioskSession() hook.
  */
-export function KioskSessionProvider({
-  setToken,
-  persistRefreshedToken = true,
-  children,
-}: {
-  setToken: (token: string) => void;
-  persistRefreshedToken?: boolean;
-  children: ReactNode;
-}) {
+export function KioskSessionProvider({ children }: { children: ReactNode }) {
   const environment = useRelayEnvironment();
   const [session, setSession] = useState<KioskSession | null>(null);
   const [isInitialFetchComplete, setIsInitialFetchComplete] = useState(false);
@@ -97,9 +89,7 @@ export function KioskSessionProvider({
   useEffect(() => {
     const started = startKioskTokenSessionFetcher({
       environment,
-      setToken,
       setSession: setSessionAndTrackInitialFetch,
-      persistRefreshedToken,
       pushLive: pushLive.current,
     });
     fetcher.current = started;
@@ -107,12 +97,7 @@ export function KioskSessionProvider({
       started.stop();
       fetcher.current = null;
     };
-  }, [
-    environment,
-    setSessionAndTrackInitialFetch,
-    setToken,
-    persistRefreshedToken,
-  ]);
+  }, [environment, setSessionAndTrackInitialFetch]);
 
   // KioskRealtimeProvider and LivePeriodsProvider need both the Relay
   // environment (available above, via KioskRelayEnvironment/

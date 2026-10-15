@@ -426,11 +426,11 @@ sync-owned looks fine and quietly makes the member edit form unreachable.
 
 **The two kiosks cover the two ways a kiosk authenticates:**
 
-- `TestAKiosk01` is a **legacy JWT kiosk**: it has no key, like the kiosks enrolled with a
-  6-digit setup code before that flow was removed. New kiosks can't be enrolled that way,
-  but existing ones keep working on their session JWT. Mint one with
-  `make local-cli ARGS="jwt session TestAKiosk01"` and store it as `scanAuthToken` in the
-  kiosk's `kiosk_<profile>` localStorage entry.
+- `TestAKiosk01` is a **legacy JWT kiosk** that never converted: it has no key, like the
+  kiosks enrolled with a 6-digit setup code before that flow was removed. Session JWTs are
+  now refused, so a kiosk holding one (`make local-cli ARGS="jwt session TestAKiosk01"`,
+  stored as `scanAuthToken` in its `kiosk_<profile>` localStorage entry) lands on the QR
+  enrolment screen. `cli session purge-legacy` would delete it.
 - `TestAKiosk02` is **key-enrolled**: it carries the public half of a fixed P-256 keypair
   and signs every request with the private half (the `SLKey` scheme, see
   [api/src/session_key.rs](api/src/session_key.rs)). The private half is committed in

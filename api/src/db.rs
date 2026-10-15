@@ -1021,6 +1021,10 @@ pub trait Handler: Sync {
         &self,
         fingerprint: &str,
     ) -> impl Future<Output = Result<Vec<String>>> + Send;
+    /// Returns the IDs of every session, soft-deleted or not, that still holds a legacy
+    /// setup `code` (a scan of the sparse `code-index` GSI). Only the one-off legacy
+    /// purge (`cli session purge-legacy`) uses it.
+    fn list_session_ids_with_code(&self) -> impl Future<Output = Result<Vec<String>>> + Send;
     fn create_session(
         &self,
         location_id: &str,

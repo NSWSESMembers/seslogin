@@ -32,8 +32,8 @@ struct Cli {
     db_prefix: Option<String>,
 
     /// Report what the command would change without writing anything. Only the
-    /// write commands (`session set-config-key`, `session edit`, `period-link
-    /// issue`) act on it; the inspectors never write either way.
+    /// write commands (`session set-config-key`, `session purge-legacy`, `session
+    /// edit`, `period-link issue`) act on it; the inspectors never write either way.
     #[arg(long, global = true, default_value_t = false)]
     dry_run: bool,
 
@@ -293,6 +293,13 @@ enum SessionCmd {
         #[arg(long)]
         location: Option<String>,
     },
+    /// Soft-delete every legacy setup-code (JWT) kiosk session, now that session JWTs
+    /// are refused: each active session with no key that was never released (the
+    /// `code` / `code (unredeemed)` rows in `session list`), plus any deleted session
+    /// still holding an old setup `code`. WRITES to the `session` table, audited as
+    /// `cli` — pass the global `--dry-run` to preview instead. Walks every location,
+    /// including disabled ones.
+    PurgeLegacy,
     /// Edit a single key-enrolled session's key-lifecycle state. WRITES to the
     /// `session` table (and, for --require-reactivation, the `ephemeral_state`
     /// table) — pass the global `--dry-run` to preview instead.
@@ -1301,6 +1308,13 @@ async fn run_cli() -> Result<()> {
         .await;
     }
 
+    if let Object::Session {
+        cmd: SessionCmd::PurgeLegacy,
+    } = &cli.object
+    {
+        return run_session_purge_legacy(&db_prefix, cli.dry_run).await;
+    }
+
     // Category and NITC group writes: same story, each opens its own handler
     // (read-only under --dry-run) rather than the shared read-only one.
     if let Object::Category {
@@ -1656,6 +1670,69 @@ async fn run_session_set_config_key(
         "\n{} complete: {} session(s) examined, {changed} to change, {unchanged} already matched.",
         if dry_run { "dry-run" } else { "apply" },
         sessions.len(),
+    );
+    Ok(())
+}
+
+/// Soft-delete the sessions left over from setup-code enrolment. See
+/// [`SessionCmd::PurgeLegacy`]. Like `set-config-key`, opens its own handler, read-only
+/// under `--dry-run`.
+async fn run_session_purge_legacy(db_prefix: &str, dry_run: bool) -> Result<()> {
+    let db = AuditingHandler::new(dynamodb::Handler::new(db_prefix, dry_run).await);
+
+    // Active legacy kiosks: no key, never released. Everything that authenticated with a
+    // session JWT, plus v1 imports that never authenticated at all.
+    let mut targets: Vec<(Session, &str)> = Vec::new();
+    let mut seen = HashSet::new();
+    for loc in db.list_locations(ListLocationsFilter::All).await? {
+        for s in db
+            .list_sessions(ListSessionsQuery::ByLocation(loc.id.clone()))
+            .await?
+        {
+            if s.is_live() && s.key_fingerprint.is_none() && s.public_key.is_none() {
+                seen.insert(s.id.clone());
+                targets.push((s, "delete legacy kiosk"));
+            }
+        }
+    }
+    // Anything still holding a setup code, deleted or not. `Delete` on an already-deleted
+    // row just removes the `code` (and bumps `v`), which is all it needs.
+    let with_code = db.list_session_ids_with_code().await?;
+    for s in db.get_sessions(&with_code).await?.into_iter().flatten() {
+        if seen.insert(s.id.clone()) {
+            targets.push((s, "clear setup code of deleted session"));
+        }
+    }
+
+    let now = now_secs();
+    let rows: Vec<Vec<String>> = targets
+        .iter()
+        .map(|(s, action)| {
+            vec![
+                s.id.clone(),
+                s.name.clone(),
+                s.location_id.clone(),
+                session_auth_method(s, now),
+                opt_ts(s.last_contact),
+                action.to_string(),
+            ]
+        })
+        .collect();
+    print_table(
+        &["id", "name", "location", "auth", "last_contact", "action"],
+        &rows,
+    );
+
+    if !dry_run {
+        for (s, _) in &targets {
+            db.update_session(&s.id, SessionUpdateShape::Delete).await?;
+        }
+    }
+    println!(
+        "\n{} complete: {} session(s) {}.",
+        if dry_run { "dry-run" } else { "apply" },
+        targets.len(),
+        if dry_run { "would be purged" } else { "purged" },
     );
     Ok(())
 }
@@ -2458,6 +2535,10 @@ async fn run(db: &impl Handler, object: Object) -> Result<()> {
             // Handled in `main` before the shared read-only DB is opened.
             SessionCmd::SetConfigKey { .. } => {
                 unreachable!("set-config-key is handled before the read-only DB is opened")
+            }
+            // Handled in `main` before the shared read-only DB is opened.
+            SessionCmd::PurgeLegacy => {
+                unreachable!("purge-legacy is handled before the read-only DB is opened")
             }
             // Handled in `main` before the shared read-only DB is opened.
             SessionCmd::Edit { .. } => {

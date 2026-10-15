@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<338cdf38bbbde43394fb68263104a41f>>
+ * @generated SignedSource<<02cff2d9eb3f272d9aa27f2527a081af>>
  * @lightSyntaxTransform
  */
 
@@ -14,7 +14,6 @@ export type KioskTokenSessionFetcherQuery$data = {
     readonly gitRev: string;
     readonly isProdDb: boolean;
   };
-  readonly refresh_token: string;
   readonly session: {
     readonly config: any;
     readonly id: string;
@@ -48,13 +47,6 @@ v1 = {
   "storageKey": null
 },
 v2 = [
-  {
-    "alias": "refresh_token",
-    "args": null,
-    "kind": "ScalarField",
-    "name": "refreshToken",
-    "storageKey": null
-  },
   {
     "alias": null,
     "args": null,
@@ -146,16 +138,16 @@ return {
     "selections": (v2/*:: as any*/)
   },
   "params": {
-    "cacheID": "a3465928a81e28d75dfa6d35f04c007b",
+    "cacheID": "b512c18913aba3d9b810a55edad6f1b2",
     "id": null,
     "metadata": {},
     "name": "KioskTokenSessionFetcherQuery",
     "operationKind": "query",
-    "text": "query KioskTokenSessionFetcherQuery {\n  refresh_token: refreshToken\n  session {\n    id\n    name\n    config\n    version\n    keyExpiresAt\n    location {\n      id\n      name\n    }\n  }\n  environment {\n    gitRev\n    isProdDb\n  }\n}\n"
+    "text": "query KioskTokenSessionFetcherQuery {\n  session {\n    id\n    name\n    config\n    version\n    keyExpiresAt\n    location {\n      id\n      name\n    }\n  }\n  environment {\n    gitRev\n    isProdDb\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "8863bcb91b93d1a139f4d7333a9ddb6a";
+(node as any).hash = "21d00cabcf31009539f645074e9780e7";
 
 export default node;

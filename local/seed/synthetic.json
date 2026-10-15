@@ -118,7 +118,7 @@
     ],
     "session": [
       {
-        "_comment": "A legacy code-enrolled kiosk at Test A Unit: no key, so it authenticates with a session JWT, like the kiosks enrolled with a 6-digit setup code before that flow was removed. Mint one with `make local-cli ARGS=\"jwt session TestAKiosk01\"` and store it as `scanAuthToken` in localStorage `kiosk_<profile>`. `config` is a JSON document stored as a string; empty means kiosk defaults. Carries no `code`: setup codes can no longer be redeemed.",
+        "_comment": "A legacy code-enrolled kiosk at Test A Unit that never converted to key auth: no key, like the kiosks enrolled with a 6-digit setup code before that flow was removed. Its session JWT (`make local-cli ARGS=\"jwt session TestAKiosk01\"`) is refused, and `cli session purge-legacy` would delete it. `config` is a JSON document stored as a string; empty means kiosk defaults. Carries no `code`: setup codes can no longer be redeemed.",
         "id": { "S": "TestAKiosk01" },
         "name": { "S": "Test A Unit kiosk" },
         "location_id": { "S": "TestAUnit001" },

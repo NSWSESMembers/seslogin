@@ -14,9 +14,8 @@ import {
 
 /**
  * - `enrolling`: default; showing the QR code, waiting for an admin to enroll this key.
- * - `authed-jwt`: authenticated with a JWT from the legacy setup-code flow. New kiosks
- *   can no longer get one; this only keeps already-enrolled ones working until
- *   `KioskKeyConversion` moves them onto their key.
+ * - `authed-jwt`: holding a JWT from the legacy setup-code flow. The server now refuses
+ *   those, so this lasts only until the first request 401s into `enrolling`.
  * - `authed-key`: authenticated by signing each request with the enrolled key.
  */
 type KioskAuthState = "enrolling" | "authed-jwt" | "authed-key";
@@ -47,24 +46,6 @@ export default function KioskEnvironment({
   });
 
   const getToken = useCallback(() => scanAuthTokenRef.current, []);
-
-  const setToken = useCallback(
-    (token: string) => {
-      const issuedAt = Date.now();
-      const currentSettings = readAppSettings(profile);
-
-      writeAppSettings(profile, {
-        ...currentSettings,
-        scanAuthToken: token,
-        scanAuthTokenIssuedAt: issuedAt,
-        authMode: "jwt",
-      });
-
-      scanAuthTokenRef.current = token;
-      setAuthState("authed-jwt");
-    },
-    [profile],
-  );
 
   const clearToken = useCallback(() => {
     const currentSettings = readAppSettings(profile);
@@ -117,7 +98,7 @@ export default function KioskEnvironment({
           getToken={getToken}
           onUnauthorized={onJwtUnauthorized}
         >
-          <KioskSessionProvider setToken={setToken}>
+          <KioskSessionProvider>
             <KioskKeyConversion profile={profile} />
             {children}
           </KioskSessionProvider>
@@ -130,12 +111,7 @@ export default function KioskEnvironment({
           profile={profile}
           onUnauthorized={onKeyUnauthorized}
         >
-          <KioskSessionProvider
-            setToken={setToken}
-            persistRefreshedToken={false}
-          >
-            {children}
-          </KioskSessionProvider>
+          <KioskSessionProvider>{children}</KioskSessionProvider>
         </KioskKeyRelayEnvironment>
       );
       break;

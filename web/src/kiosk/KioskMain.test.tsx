@@ -68,7 +68,6 @@ function sessionConfigHandler(config: Record<string, unknown>) {
   return relayEndpoint.query("KioskTokenSessionFetcherQuery", () => {
     return HttpResponse.json({
       data: {
-        refresh_token: "not-a-refreshed-token",
         session: {
           id: "mockId",
           name: "mockName",

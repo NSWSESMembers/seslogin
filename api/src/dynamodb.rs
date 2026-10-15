@@ -1692,6 +1692,21 @@ impl db::Handler for Handler {
             .collect::<HydrationResult<Vec<String>>>()?)
     }
 
+    async fn list_session_ids_with_code(&self) -> db::Result<Vec<String>> {
+        // A scan, but of `code-index`: the index is sparse (only rows holding a `code`)
+        // and KEYS_ONLY, so this reads a handful of tiny items, not the session table.
+        Ok(scan_all_items("list_session_ids_with_code", || {
+            self.client
+                .scan()
+                .table_name(self.table_name("session"))
+                .index_name("code-index")
+        })
+        .await?
+        .into_iter()
+        .map(|item| Item(item).id())
+        .collect::<HydrationResult<Vec<String>>>()?)
+    }
+
     async fn list_sessions(&self, query: ListSessionsQuery) -> db::Result<Vec<Session>> {
         query_all("list_sessions", || {
             let builder = self
