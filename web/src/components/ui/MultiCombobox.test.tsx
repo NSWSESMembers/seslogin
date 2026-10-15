@@ -94,6 +94,31 @@ describe("opening and closing", () => {
     expect(input()).toHaveAttribute("aria-expanded", "false");
   });
 
+  test("with openOnFocus, tabbing in opens it and shows every option", async () => {
+    const { user } = renderMultiCombobox({ openOnFocus: true });
+    await user.tab();
+    expect(input()).toHaveAttribute("aria-expanded", "true");
+    expect(optionLabels()).toHaveLength(CATEGORIES.length);
+  });
+
+  test("with openOnFocus, clicking in opens it and leaves it open", async () => {
+    const { user } = renderMultiCombobox({ openOnFocus: true });
+    await user.click(input());
+    expect(input()).toHaveAttribute("aria-expanded", "true");
+    // A second click, once focused, still toggles it shut.
+    await user.click(input());
+    expect(input()).toHaveAttribute("aria-expanded", "false");
+  });
+
+  test("with openOnFocus, it opens again on returning to the field", async () => {
+    const { user } = renderMultiCombobox({ openOnFocus: true });
+    await user.tab();
+    await user.keyboard("{Escape}");
+    await user.click(document.body);
+    await user.tab();
+    expect(input()).toHaveAttribute("aria-expanded", "true");
+  });
+
   test("ArrowDown opens it with the first option active", async () => {
     const { user } = renderMultiCombobox();
     await user.tab();

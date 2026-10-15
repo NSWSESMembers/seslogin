@@ -27,10 +27,14 @@ import LoadingIndicator from "../../components/LoadingIndicator";
 import { AdminTable, Th, Td } from "../../components/ui/Table";
 import { Button } from "../../components/ui/Button";
 import { Muted } from "../../components/ui/Muted";
-import Select from "../../components/ui/Select";
+import MultiCombobox from "../../components/ui/MultiCombobox";
 import { StatusMessage } from "../../components/ui/StatusMessage";
 
 const AUDIT_PAGE_SIZE = 50;
+
+const ENTITY_TYPE_OPTIONS = Object.entries(ENTITY_TYPE_LABELS).map(
+  ([value, label]) => ({ value, label }),
+);
 
 // Below the md breakpoint six columns don't fit a phone, so each entry becomes a
 // small card instead: the header row goes and every cell is a labelled line.
@@ -82,11 +86,11 @@ const auditLogQuery = graphql`
     $all: Boolean!
     $first: Int!
     $after: String
-    $entityType: AuditEntityType
+    $entityTypes: [AuditEntityType!]
   ) @throwOnFieldError {
     location(id: $location) @skip(if: $all) {
       id
-      auditLog(first: $first, after: $after, entityType: $entityType) {
+      auditLog(first: $first, after: $after, entityTypes: $entityTypes) {
         edges {
           node {
             ...AuditLog_entry
@@ -98,7 +102,7 @@ const auditLogQuery = graphql`
         }
       }
     }
-    auditLog(first: $first, after: $after, entityType: $entityType)
+    auditLog(first: $first, after: $after, entityTypes: $entityTypes)
       @include(if: $all) {
       edges {
         node {
@@ -137,7 +141,11 @@ export default function AuditLog() {
   const { isSuper } = useUserInfo();
   const location = useSelectedLocation();
   const [allLocations, setAllLocations] = useState(false);
-  const [entityType, setEntityType] = useState<AuditEntityType | "">("");
+  // Empty means every kind. Kept in ENTITY_TYPE_LABELS order, so the same
+  // selection always makes the same key and query variables.
+  const [entityTypes, setEntityTypes] = useState<
+    ReadonlyArray<AuditEntityType>
+  >([]);
   // Only super users can ask for the cross-location log; never trust stale state.
   const all = isSuper && allLocations;
 
@@ -149,23 +157,7 @@ export default function AuditLog() {
           : `Changes made at ${location.name}, newest first.`}
       </p>
       <div className="mb-3 flex flex-wrap items-center gap-3">
-        <label className="flex items-center gap-2">
-          <span className="text-sm font-semibold text-ink-strong">Show</span>
-          <Select
-            width="auto"
-            value={entityType}
-            onChange={(e) =>
-              setEntityType(e.target.value as AuditEntityType | "")
-            }
-          >
-            <option value="">All changes</option>
-            {Object.entries(ENTITY_TYPE_LABELS).map(([type, label]) => (
-              <option key={type} value={type}>
-                {label}
-              </option>
-            ))}
-          </Select>
-        </label>
+        <EntityTypeFilter value={entityTypes} onChange={setEntityTypes} />
         {isSuper && (
           <label className="flex items-center gap-2">
             <input
@@ -180,31 +172,81 @@ export default function AuditLog() {
       <Suspense fallback={<LoadingIndicator />}>
         {/* Keyed so any change of view starts again from the first page. */}
         <AuditLogContent
-          key={`${all}|${location.id}|${entityType}`}
+          key={`${all}|${location.id}|${entityTypes.join(",")}`}
           all={all}
           locationId={location.id}
-          entityType={entityType === "" ? null : entityType}
+          entityTypes={entityTypes}
         />
       </Suspense>
     </>
   );
 }
 
+/** In ENTITY_TYPE_LABELS order, so the same selection is the same request. */
+function inFilterOrder(selected: ReadonlyArray<string>): AuditEntityType[] {
+  return ENTITY_TYPE_OPTIONS.filter((option) =>
+    selected.includes(option.value),
+  ).map((option) => option.value as AuditEntityType);
+}
+
+/**
+ * Which kinds of record to show, as a typeahead with one pill per kind — the
+ * same control as the daily email's location picker, except that the list
+ * opens on focus: there are only a dozen kinds, so showing them all beats
+ * making the user guess what to type. Empty shows everything.
+ * Picks are held until Apply, so building up a selection doesn't refetch the
+ * log on every pill.
+ */
+function EntityTypeFilter({
+  value,
+  onChange,
+}: {
+  value: ReadonlyArray<AuditEntityType>;
+  onChange: (next: ReadonlyArray<AuditEntityType>) => void;
+}) {
+  const [pending, setPending] = useState<ReadonlyArray<AuditEntityType>>(value);
+  const changed = pending.join(",") !== value.join(",");
+
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <label
+        htmlFor="auditEntityTypes"
+        className="text-sm font-semibold text-ink-strong"
+      >
+        Show
+      </label>
+      <MultiCombobox
+        id="auditEntityTypes"
+        options={ENTITY_TYPE_OPTIONS}
+        defaultValue={value}
+        onChange={(selected) => setPending(inFilterOrder(selected))}
+        placeholder="All changes"
+        emptyText="No kinds of change match"
+        width="auto"
+        openOnFocus
+      />
+      <Button size="row" onClick={() => onChange(pending)} disabled={!changed}>
+        Apply
+      </Button>
+    </div>
+  );
+}
+
 function AuditLogContent({
   all,
   locationId,
-  entityType,
+  entityTypes,
 }: {
   all: boolean;
   locationId: string;
-  entityType: AuditEntityType | null;
+  entityTypes: ReadonlyArray<AuditEntityType>;
 }) {
   const relayEnvironment = useRelayEnvironment();
   const variables = {
     location: locationId,
     all,
     first: AUDIT_PAGE_SIZE,
-    entityType,
+    entityTypes,
   };
   const data = useRetryableLazyLoadQuery<AuditLogQuery>(auditLogQuery, {
     ...variables,
@@ -259,9 +301,11 @@ function AuditLogContent({
   if (refs.length === 0) {
     return (
       <Muted className="my-4">
-        {entityType
-          ? `No ${entityTypeLabel(entityType)} changes have been recorded.`
-          : "No changes have been recorded yet."}
+        {entityTypes.length === 1
+          ? `No ${entityTypeLabel(entityTypes[0])} changes have been recorded.`
+          : entityTypes.length > 1
+            ? "No changes of these kinds have been recorded."
+            : "No changes have been recorded yet."}
       </Muted>
     );
   }

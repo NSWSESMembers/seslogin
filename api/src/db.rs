@@ -860,8 +860,8 @@ pub struct ListAuditEntriesPage {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ListAuditEntriesQuery {
     pub scope: AuditScope,
-    /// Only entries about this kind of record.
-    pub entity_type: Option<AuditEntityType>,
+    /// Only entries about one of these kinds of record. Empty means every kind.
+    pub entity_types: Vec<AuditEntityType>,
     pub page: ListAuditEntriesPage,
 }
 

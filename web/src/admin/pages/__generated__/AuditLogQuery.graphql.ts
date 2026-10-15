@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<629f0dbca12dfb2a377507f5cef05d6c>>
+ * @generated SignedSource<<3f7b212d9426e69355bd8c437fdc6820>>
  * @lightSyntaxTransform
  */
 
@@ -13,7 +13,7 @@ export type AuditEntityType = "API_TOKEN" | "CATEGORY" | "LOCATION" | "NITC_GROU
 export type AuditLogQuery$variables = {
   after?: string | null | undefined;
   all: boolean;
-  entityType?: AuditEntityType | null | undefined;
+  entityTypes?: ReadonlyArray<AuditEntityType> | null | undefined;
   first: number;
   location: string;
 };
@@ -63,7 +63,7 @@ v1 = {
 v2 = {
   "defaultValue": null,
   "kind": "LocalArgument",
-  "name": "entityType"
+  "name": "entityTypes"
 },
 v3 = {
   "defaultValue": null,
@@ -97,8 +97,8 @@ v7 = [
   },
   {
     "kind": "Variable",
-    "name": "entityType",
-    "variableName": "entityType"
+    "name": "entityTypes",
+    "variableName": "entityTypes"
   },
   {
     "kind": "Variable",
@@ -474,16 +474,16 @@ return {
     ]
   },
   "params": {
-    "cacheID": "4237c100a2af799ec2fd11bfad4f37c7",
+    "cacheID": "c084b500f5af1691a738170a8308b08d",
     "id": null,
     "metadata": {},
     "name": "AuditLogQuery",
     "operationKind": "query",
-    "text": "query AuditLogQuery(\n  $location: ID!\n  $all: Boolean!\n  $first: Int!\n  $after: String\n  $entityType: AuditEntityType\n) {\n  location(id: $location) @skip(if: $all) {\n    id\n    auditLog(first: $first, after: $after, entityType: $entityType) {\n      edges {\n        node {\n          ...AuditLog_entry\n          id\n        }\n      }\n      pageInfo {\n        hasNextPage\n        endCursor\n      }\n    }\n  }\n  auditLog(first: $first, after: $after, entityType: $entityType) @include(if: $all) {\n    edges {\n      node {\n        ...AuditLog_entry\n        id\n      }\n    }\n    pageInfo {\n      hasNextPage\n      endCursor\n    }\n  }\n}\n\nfragment AuditLog_entry on AuditEntry {\n  id\n  timestamp\n  action\n  entityType\n  entityId\n  entityLabel\n  location {\n    id\n    name\n  }\n  actor {\n    kind\n    actorId: id\n    via\n    label\n  }\n  ip\n  changes {\n    field\n    before\n    after\n  }\n}\n"
+    "text": "query AuditLogQuery(\n  $location: ID!\n  $all: Boolean!\n  $first: Int!\n  $after: String\n  $entityTypes: [AuditEntityType!]\n) {\n  location(id: $location) @skip(if: $all) {\n    id\n    auditLog(first: $first, after: $after, entityTypes: $entityTypes) {\n      edges {\n        node {\n          ...AuditLog_entry\n          id\n        }\n      }\n      pageInfo {\n        hasNextPage\n        endCursor\n      }\n    }\n  }\n  auditLog(first: $first, after: $after, entityTypes: $entityTypes) @include(if: $all) {\n    edges {\n      node {\n        ...AuditLog_entry\n        id\n      }\n    }\n    pageInfo {\n      hasNextPage\n      endCursor\n    }\n  }\n}\n\nfragment AuditLog_entry on AuditEntry {\n  id\n  timestamp\n  action\n  entityType\n  entityId\n  entityLabel\n  location {\n    id\n    name\n  }\n  actor {\n    kind\n    actorId: id\n    via\n    label\n  }\n  ip\n  changes {\n    field\n    before\n    after\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "f3ce65ff7ce56b753fc1427940a3ea77";
+(node as any).hash = "fb849a111d093b630783c94fcd3a928b";
 
 export default node;

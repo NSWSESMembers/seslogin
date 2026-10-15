@@ -978,7 +978,9 @@ impl db::Handler for FakeDb {
                 items.push(item);
             }
         }
-        items.retain(|e| query.entity_type.is_none_or(|t| e.entity_type == t));
+        items.retain(|e| {
+            query.entity_types.is_empty() || query.entity_types.contains(&e.entity_type)
+        });
         items.sort_by_key(|e| e.sk());
         if query.page.descending {
             items.reverse();
