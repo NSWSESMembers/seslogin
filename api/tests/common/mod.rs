@@ -534,6 +534,26 @@ impl db::Handler for FakeDb {
                 session.public_key = None;
                 session.key_expires_at = None;
             }
+            db::SessionUpdateShape::AttachKey {
+                public_key,
+                fingerprint,
+                expires_at,
+            } => {
+                if !session.active
+                    || session.key_fingerprint.is_some()
+                    || session.public_key.is_some()
+                    || session.key_released_at.is_some()
+                {
+                    return Err(db::Error::NotFound(format!(
+                        "session {id} is not a legacy kiosk that can take a key"
+                    )));
+                }
+                session.public_key = Some(public_key.to_string());
+                session.key_fingerprint = Some(fingerprint.to_string());
+                session.key_expires_at = Some(expires_at);
+                // Like DynamoDB: no version bump.
+                return Ok(None);
+            }
             db::SessionUpdateShape::Info { .. } | db::SessionUpdateShape::ExtendKey { .. } => {
                 return unsupported();
             }

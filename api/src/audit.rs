@@ -642,6 +642,10 @@ pub fn session_update_changes(
         db::SessionUpdateShape::ExtendKey { expires_at } => {
             after.set("key_expires_at", num(*expires_at));
         }
+        db::SessionUpdateShape::AttachKey { expires_at, .. } => {
+            after.set("public_key", redacted());
+            after.set("key_expires_at", num(*expires_at));
+        }
         db::SessionUpdateShape::ReleaseKey { .. } => {
             after.set("public_key", None);
             after.set("key_expires_at", None);
@@ -2794,6 +2798,23 @@ mod tests {
         );
         assert_eq!(change(&changes, "public_key").before, Some(json!(REDACTED)));
         assert_eq!(change(&changes, "key_released_at").after, Some(json!(77)));
+
+        // A legacy JWT kiosk converting to key auth: the key shows only as redacted.
+        let (action, changes) = session_update_changes(
+            Some(&session()),
+            &db::SessionUpdateShape::AttachKey {
+                public_key: "MFkw-secret-public-key",
+                fingerprint: "deadbeef",
+                expires_at: 9000,
+            },
+            1,
+        );
+        assert_eq!(action, AuditAction::Update);
+        assert_eq!(fields(&changes), vec!["public_key", "key_expires_at"]);
+        assert_eq!(change(&changes, "public_key").after, Some(json!(REDACTED)));
+        let attach_json = serde_json::to_string(&changes).unwrap();
+        assert!(!attach_json.contains("secret-public-key"), "{attach_json}");
+        assert!(!attach_json.contains("deadbeef"), "{attach_json}");
 
         let (action, changes) =
             session_update_changes(Some(&keyed), &db::SessionUpdateShape::Delete, 1);

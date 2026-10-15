@@ -397,6 +397,17 @@ pub enum SessionUpdateShape<'a> {
     ExtendKey {
         expires_at: u64,
     },
+    /// Give a legacy setup-code (JWT) kiosk an enrolled key, so it can switch to signing
+    /// its requests. Sets the key fields exactly as a key-enrolled create would. Like
+    /// `ExtendKey` it leaves `version` alone: nothing the kiosk shows changes.
+    ///
+    /// Fails with [`Error::NotFound`] unless the row is active, holds no key and was
+    /// never released, so it can only ever turn a JWT kiosk into a key one.
+    AttachKey {
+        public_key: &'a str,
+        fingerprint: &'a str,
+        expires_at: u64,
+    },
     /// Drop the key fields from a session that is *not* being deleted, freeing its
     /// `key_fingerprint-index` slot so the same device can enroll into a fresh session,
     /// and stamp `key_released_at` to mark the leftover. Deliberately leaves `active`

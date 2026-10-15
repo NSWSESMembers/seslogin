@@ -1919,6 +1919,109 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         )?))
     }
 
+    /// Convert the calling kiosk from a legacy setup-code JWT to key auth, by attaching
+    /// `public_key` to its own session. The kiosk drives this itself (no admin involved)
+    /// and then switches to signing every request with the key's private half.
+    ///
+    /// `proof` is a signed key header — the part after `SLKey ` — over
+    /// `slkey-convert:<session id>`, showing the caller holds that private half. Without
+    /// it, anyone holding the JWT could bind a key they don't control (or another
+    /// device's) to the session.
+    ///
+    /// Idempotent: a kiosk whose session already holds this key gets `Ok`, so a lost
+    /// response heals on the next attempt. Fails with `CONFLICT` if another session holds
+    /// the key; the kiosk just stays on its JWT and tries again later.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Session)")]
+    async fn convert_session_to_key(
+        &self,
+        ctx: &Context<'_>,
+        public_key: String,
+        proof: String,
+    ) -> Result<Session<A>> {
+        require_writable(ctx)?;
+        let session_id = match ctx.data_opt::<AuthInfo>() {
+            Some(AuthInfo::Session { id, .. }) => id.clone(),
+            _ => return Err(anyhow!("Cannot convert a session without session auth")),
+        };
+
+        let now = crate::clock::now_sec();
+        let fingerprint =
+            crate::session_key::verify_conversion_proof(&public_key, &proof, &session_id, now)
+                .map_err(|e| ApiError::bad_request(format!("Invalid key proof: {e:#}")))?;
+
+        let existing = self
+            .app
+            .db()
+            .get_sessions(&[&session_id])
+            .await?
+            .into_iter()
+            .next()
+            .flatten()
+            .ok_or_else(|| ApiError::not_found("Session", &session_id))?;
+
+        match existing.key_fingerprint.as_deref() {
+            Some(held) if held == fingerprint => return Ok(Session::new(existing)),
+            Some(_) => {
+                return Err(ApiError::new(
+                    ErrorCode::Conflict,
+                    "This kiosk already has a different key",
+                )
+                .into());
+            }
+            None => {}
+        }
+
+        // Only one session may hold a fingerprint (`auth` rejects the key outright if two
+        // ever do). Unlike enrollment, never take it from another session: this kiosk is
+        // still working on its JWT, so it can simply try again later.
+        let holders = self
+            .app
+            .db()
+            .get_session_id_by_key_fingerprint(&fingerprint)
+            .await?;
+        if holders.iter().any(|id| *id != session_id) {
+            return Err(ApiError::new(
+                ErrorCode::Conflict,
+                "This key already belongs to another kiosk",
+            )
+            .into());
+        }
+
+        self.app
+            .db()
+            .update_session(
+                &session_id,
+                db::SessionUpdateShape::AttachKey {
+                    public_key: &public_key,
+                    fingerprint: &fingerprint,
+                    expires_at: now + crate::session_key::KEY_LIFETIME_S,
+                },
+            )
+            .await
+            .map_err(|e| -> anyhow::Error {
+                match e {
+                    // The conditional write refused: the row gained a key (a concurrent
+                    // conversion with another key), or was deleted or released since
+                    // the read above.
+                    db::Error::NotFound(_) => ApiError::new(
+                        ErrorCode::Conflict,
+                        "This kiosk can no longer be converted to key auth",
+                    )
+                    .into(),
+                    e => e.into(),
+                }
+            })?;
+        info!(
+            "Converted kiosk session {} ({:?}) at location {} from JWT to key {}",
+            existing.id, existing.name, existing.location_id, fingerprint
+        );
+
+        let rec = self.app.db().get_sessions(&[&session_id]).await?;
+        Ok(Session::new(rec.into_iter().next().flatten().ok_or_else(
+            || ApiError::not_found("Session", &session_id),
+        )?))
+    }
+
     #[graphql(guard = "AuthGuard::new(AuthRequirement::SuperUser)")]
     async fn create_location(
         &self,

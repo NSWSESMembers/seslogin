@@ -4,59 +4,22 @@ import KioskKeyRelayEnvironment from "./KioskKeyRelayEnvironment";
 import { KioskEnvironmentContext } from "./KioskEnvironmentContext";
 import { KioskSessionProvider } from "./KioskSessionProvider";
 import KioskEnrollment from "./KioskEnrollment";
-
-const OLD_SETTINGS_KEY = "appSettings";
-const SETTINGS_PREFIX = "kiosk_";
-
-type AppSettingsStorage = {
-  scanAuthToken?: string | null;
-  scanAuthTokenIssuedAt?: number | null;
-  /**
-   * Which auth flow this kiosk last used: legacy JWT (from a since-removed 6-digit setup
-   * code, still honoured for kiosks enrolled that way), or public-key signing.
-   */
-  authMode?: "jwt" | "key" | null;
-  [key: string]: unknown;
-};
+import { KioskKeyConversion } from "./KioskKeyConversion";
+import {
+  markKeyEnrolled,
+  readAppSettings,
+  writeAppSettings,
+  type AppSettingsStorage,
+} from "../lib/kioskSettings";
 
 /**
  * - `enrolling`: default; showing the QR code, waiting for an admin to enroll this key.
  * - `authed-jwt`: authenticated with a JWT from the legacy setup-code flow. New kiosks
- *   can no longer get one; this only keeps already-enrolled ones working.
+ *   can no longer get one; this only keeps already-enrolled ones working until
+ *   `KioskKeyConversion` moves them onto their key.
  * - `authed-key`: authenticated by signing each request with the enrolled key.
  */
 type KioskAuthState = "enrolling" | "authed-jwt" | "authed-key";
-
-function readAppSettings(profile: string): AppSettingsStorage {
-  let settingsJson = localStorage.getItem(`${SETTINGS_PREFIX}${profile}`);
-  if (settingsJson == null) {
-    settingsJson = localStorage.getItem(OLD_SETTINGS_KEY);
-    if (settingsJson != null) {
-      localStorage.removeItem(OLD_SETTINGS_KEY);
-      localStorage.setItem(`${SETTINGS_PREFIX}${profile}`, settingsJson);
-    } else {
-      return {};
-    }
-  }
-
-  try {
-    const parsed = JSON.parse(settingsJson);
-    if (parsed != null && typeof parsed === "object") {
-      return parsed as AppSettingsStorage;
-    }
-  } catch (error) {
-    console.error("Failed to parse app settings from localStorage", error);
-  }
-
-  return {};
-}
-
-function writeAppSettings(profile: string, settings: AppSettingsStorage) {
-  localStorage.setItem(
-    `${SETTINGS_PREFIX}${profile}`,
-    JSON.stringify(settings),
-  );
-}
 
 export default function KioskEnvironment({
   profile,
@@ -116,13 +79,7 @@ export default function KioskEnvironment({
   }, [profile]);
 
   const onEnrolled = useCallback(() => {
-    const currentSettings = readAppSettings(profile);
-    writeAppSettings(profile, {
-      ...currentSettings,
-      authMode: "key",
-      scanAuthToken: null,
-      scanAuthTokenIssuedAt: null,
-    });
+    markKeyEnrolled(profile);
     scanAuthTokenRef.current = null;
     setAuthState("authed-key");
   }, [profile]);
@@ -161,6 +118,7 @@ export default function KioskEnvironment({
           onUnauthorized={onJwtUnauthorized}
         >
           <KioskSessionProvider setToken={setToken}>
+            <KioskKeyConversion profile={profile} />
             {children}
           </KioskSessionProvider>
         </KioskRelayEnvironment>
