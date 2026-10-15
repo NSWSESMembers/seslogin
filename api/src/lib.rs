@@ -33,6 +33,7 @@ pub mod server;
 pub mod ses_api;
 pub mod sesmail;
 pub mod session_key;
+pub mod session_retire;
 pub mod sqs;
 pub mod telemetry;
 pub mod text_table;

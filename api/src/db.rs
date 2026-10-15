@@ -252,9 +252,15 @@ pub struct Session {
     /// [`is_live`](Self::is_live) is the test every caller that means "a working kiosk"
     /// must use.
     pub key_released_at: Option<u64>,
+    /// Unix seconds at which the daily retirement job hid this session, having found it
+    /// unusable for longer than its grace period (see [`crate::session_retire`] and
+    /// [`SessionUpdateShape::Retire`]). Such a row is soft-deleted like an admin delete —
+    /// no `active`, no key, no code — and this stamp is what tells the two apart. The row
+    /// itself stays, so its id still resolves to its name and location.
+    pub retired_at: Option<u64>,
     /// Bumped by every [`update_session`](Handler::update_session) that changes what
     /// the kiosk shows or whether it can authenticate (`Fields`, `ReleaseKey`,
-    /// `Delete`), so a kiosk can tell a stale realtime message or refetch from a fresh
+    /// `Delete`, `Retire`), so a kiosk can tell a stale realtime message or refetch from a fresh
     /// one. Heartbeats (`Info`) and reactivation (`ExtendKey`) leave it alone. A row
     /// written before this existed reads as 0, so its first bump (to 1) still counts
     /// as newer.
@@ -409,6 +415,42 @@ pub enum SessionUpdateShape<'a> {
         fingerprint: &'a str,
     },
     Delete,
+    /// Hide a session that has been unusable for longer than its grace period (see
+    /// [`crate::session_retire`]): remove `active`, so it leaves `active-location_id-index`,
+    /// clear any leftover `code` and key fields, and stamp `retired_at`.
+    ///
+    /// Conditional on the session still being in the state it was planned from, with
+    /// the timestamp that `reason` names still before `unusable_before`. A kiosk that
+    /// came back, or was reactivated, in the meantime has moved that timestamp on, so
+    /// the write fails with [`Error::NotFound`] rather than retiring a working kiosk.
+    Retire {
+        reason: RetireReason,
+        unusable_before: u64,
+    },
+}
+
+/// Why a session is being retired, which also names the attribute that dates it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum RetireReason {
+    /// Its key was handed to a new session enrolled from the same device. Dated by
+    /// `key_released_at`.
+    KeyReleased,
+    /// Its key lapsed after two weeks without contact and nobody reactivated it. Dated
+    /// by `key_expires_at`.
+    KeyExpired,
+    /// A legacy kiosk with no key, whose session JWT has lapsed. Dated by
+    /// `last_contact`, which no JWT outlives by more than its 14-day lifetime.
+    LegacyIdle,
+}
+
+impl RetireReason {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::KeyReleased => "key released",
+            Self::KeyExpired => "key expired",
+            Self::LegacyIdle => "legacy idle",
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -1477,6 +1519,7 @@ mod tests {
             key_fingerprint: None,
             key_expires_at: None,
             key_released_at,
+            retired_at: None,
             version: 1,
             created_at: None,
             updated_at: None,

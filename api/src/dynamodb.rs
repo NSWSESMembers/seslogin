@@ -395,6 +395,7 @@ impl TryInto<Session> for Item {
             key_fingerprint: self.string_field("key_fingerprint")?,
             key_expires_at: self.i64_field("key_expires_at")?.map(|i| i as u64),
             key_released_at: self.i64_field("key_released_at")?.map(|i| i as u64),
+            retired_at: self.i64_field("retired_at")?.map(|i| i as u64),
             // 0, not 1, for a row written before versions existed: its first bump
             // (`ADD v` creates the attribute at 1) must read as newer than what a kiosk
             // already holds for it.
@@ -2812,6 +2813,7 @@ impl db::Handler for Handler {
             key_fingerprint: Some(key.fingerprint.to_string()),
             key_expires_at: Some(key.expires_at),
             key_released_at: None,
+            retired_at: None,
             version: 1,
             created_at: Some(unix_time),
             updated_at: Some(unix_time),
@@ -3049,6 +3051,58 @@ impl db::Handler for Handler {
                     .await
                     .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
                 record_capacity("delete_session", resp.consumed_capacity(), CapKind::Write);
+                Ok(Some(returned_version(resp.attributes())?))
+            }
+            db::SessionUpdateShape::Retire {
+                reason,
+                unusable_before,
+            } => {
+                // The same REMOVE list as `Delete`, plus a `retired_at` stamp. The
+                // condition re-checks the state the retirement was planned from: a kiosk
+                // that has since come back (or been reactivated) has moved the dating
+                // timestamp on, so the write fails instead of hiding a working kiosk.
+                let condition = match reason {
+                    db::RetireReason::KeyReleased => {
+                        "attribute_exists(active) AND key_released_at < :before"
+                    }
+                    db::RetireReason::KeyExpired => {
+                        "attribute_exists(active) AND attribute_exists(public_key) \
+                         AND key_expires_at < :before"
+                    }
+                    db::RetireReason::LegacyIdle => {
+                        "attribute_exists(active) AND attribute_not_exists(public_key) \
+                         AND attribute_not_exists(key_released_at) AND last_contact < :before"
+                    }
+                };
+                let now = crate::clock::now_sec();
+                let resp = self
+                    .client
+                    .update_item()
+                    .table_name(self.table_name("session"))
+                    .key("id", AttributeValue::S(id.to_string()))
+                    .condition_expression(condition)
+                    .update_expression(
+                        "SET updated_at = :now, retired_at = :now \
+                         REMOVE active, code, key_fingerprint, public_key, key_expires_at \
+                         ADD v :one",
+                    )
+                    .expression_attribute_values(
+                        ":before",
+                        AttributeValue::N(unusable_before.to_string()),
+                    )
+                    .expression_attribute_values(":now", AttributeValue::N(now.to_string()))
+                    .expression_attribute_values(":one", AttributeValue::N("1".to_string()))
+                    .return_values(ReturnValue::UpdatedNew)
+                    .return_consumed_capacity(ReturnConsumedCapacity::Total)
+                    .send()
+                    .await
+                    .map_err(|e| {
+                        map_update_err(
+                            e,
+                            format!("Session {id} is no longer retirable as {}", reason.as_str()),
+                        )
+                    })?;
+                record_capacity("retire_session", resp.consumed_capacity(), CapKind::Write);
                 Ok(Some(returned_version(resp.attributes())?))
             }
         }
