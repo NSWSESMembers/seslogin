@@ -590,7 +590,8 @@ pub fn period_update_locations(
 
 // ── Session ──────────────────────────────────────────────────────────────────
 
-/// `public_key` is a secret: only its presence is shown, as `"[redacted]"`.
+/// `public_key` and a legacy setup `code` are secrets: only their presence is shown, as
+/// `"[redacted]"`.
 /// `active` is carried so a soft delete reads `true → false`; it is dropped from a
 /// creation, where it would only say the obvious.
 fn session_fields(s: &Session) -> Fields {
@@ -601,6 +602,7 @@ fn session_fields(s: &Session) -> Fields {
         .with("healthcheck_url", opt_text(s.healthcheck_url.as_deref()))
         .with("active", flag(s.active))
         .with("public_key", s.public_key.as_ref().and(redacted()))
+        .with("code", s.code.as_ref().and(redacted()))
         .with("key_expires_at", opt_num(s.key_expires_at))
         .with("key_released_at", opt_num(s.key_released_at))
 }
@@ -649,6 +651,7 @@ pub fn session_update_changes(
             action = AuditAction::Delete;
             after.set("active", flag(false));
             after.set("public_key", None);
+            after.set("code", None);
             after.set("key_expires_at", None);
         }
     }
@@ -2797,6 +2800,17 @@ mod tests {
         assert_eq!(action, AuditAction::Delete);
         assert_eq!(change(&changes, "active").before, Some(json!(true)));
         assert_eq!(change(&changes, "active").after, Some(json!(false)));
+
+        // A legacy session still holding an unredeemed setup code loses it on delete;
+        // the code itself never reaches the log.
+        let mut with_code = session();
+        with_code.code = Some("123456".into());
+        let (_, changes) =
+            session_update_changes(Some(&with_code), &db::SessionUpdateShape::Delete, 1);
+        assert_eq!(fields(&changes), vec!["active", "code"]);
+        assert_eq!(change(&changes, "code").before, Some(json!(REDACTED)));
+        assert_eq!(change(&changes, "code").after, None);
+        assert!(!serde_json::to_string(&changes).unwrap().contains("123456"));
 
         let mut config = serde_json::Map::new();
         config.insert("theme".into(), json!("dark"));
