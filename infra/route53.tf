@@ -174,6 +174,30 @@ resource "aws_route53_record" "ses_dkim" {
   records = ["${each.value}.dkim.amazonses.com"]
 }
 
+# ── SES Easy DKIM (toolbox account identity) ──────────────────────────────────
+# A second seslogin.com SES identity lives in the toolbox AWS account
+# (732005674673) and is managed by the toolbox repo's Terraform
+# (additional_mail_domains), so its tokens are static here rather than read from
+# a resource. Re-pull with `terraform output dns_records_required` there if that
+# identity is ever recreated or its DKIM keys are regenerated. Don't delete
+# these alongside the records above: both identities sign mail for the domain.
+locals {
+  toolbox_ses_dkim_tokens = [
+    "d5fnfpmu3gsuczpgyebklgl5c34jg3w6",
+    "6bvg33e72lynx2zprtafhis2jxqtvxri",
+    "q74xl7m6fu5omwzzqscbg6zymqx6mgen",
+  ]
+}
+
+resource "aws_route53_record" "toolbox_ses_dkim" {
+  for_each = toset(local.toolbox_ses_dkim_tokens)
+  zone_id  = aws_route53_zone.seslogin.zone_id
+  name     = "${each.value}._domainkey.seslogin.com"
+  type     = "CNAME"
+  ttl      = 1800
+  records  = ["${each.value}.dkim.amazonses.com"]
+}
+
 output "zone_nameservers" {
   description = "Set these as the NS records for seslogin.com at the external registrar (Phase 3 cutover)."
   value       = aws_route53_zone.seslogin.name_servers
