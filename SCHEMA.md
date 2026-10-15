@@ -221,7 +221,7 @@ A legacy JWT kiosk can't be revived once its JWT lapses: only a valid JWT can re
 
 **Known gaps (from a prod scan on 2026-10-15):**
 
-- **Nothing retired unusable rows.** Released and expired key sessions, and lapsed legacy JWT kiosks, kept `active` forever, so they stayed in `active-location_id-index` (and expired keys stayed in `key_fingerprint-index`). `SessionUpdateShape::Retire` (`api/src/session_retire.rs`, `cli session retire-stale`) now hides them 14 days after they become unusable. On 2026-10-15, 108 of the 150 rows in `active-location_id-index` could never authenticate again, and 33 had been dead for more than a year.
+- **Nothing retired unusable rows.** Released and expired key sessions, and lapsed legacy JWT kiosks, kept `active` forever, so they stayed in `active-location_id-index` (and expired keys stayed in `key_fingerprint-index`). `SessionUpdateShape::Retire` (`api/src/session_retire.rs`) now hides them 14 days after they become unusable, run daily by the checker Lambda (and by hand with `cli session retire-stale`). On 2026-10-15, 108 of the 150 rows in `active-location_id-index` could never authenticate again, and 33 had been dead for more than a year.
 - **`Delete` did not remove `code`.** A session deleted before its code was redeemed stayed in `code-index` (6 rows). `Delete` now removes `code` too; rows deleted before that change still hold one until a one-off pass clears them.
 - **Unredeemed codes linger.** 4 sessions created 70–149 days earlier still hold a code that can no longer be redeemed.
 - **Disabling a location does not touch its sessions.** 2 rows sat at a disabled location.
