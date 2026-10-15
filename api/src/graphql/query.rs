@@ -275,6 +275,10 @@ pub struct KioskRealtimeToken {
     /// signal for `enrollmentRealtimeToken`. Pass straight to `ably-js`'s
     /// `channels.get(channel)`.
     pub channel: String,
+    /// The kiosk's own session channel, which the token also covers: it carries
+    /// `session.updated` (an admin edit, with the new name and config) and
+    /// `session.changed` (refetch the session). Null for `enrollmentRealtimeToken`.
+    pub session_channel: Option<String>,
     pub token_request: AblyTokenRequest,
 }
 
@@ -3489,6 +3493,7 @@ impl<A: App + HasDb + HasRealtime + Send + Sync + 'static> QueryRoot<A> {
             .await?;
         Ok(token.map(|t| KioskRealtimeToken {
             channel: t.channel,
+            session_channel: t.session_channel,
             token_request: t.token_request.into(),
         }))
     }
@@ -3526,6 +3531,7 @@ impl<A: App + HasDb + HasRealtime + Send + Sync + 'static> QueryRoot<A> {
             .await?;
         Ok(token.map(|t| KioskRealtimeToken {
             channel: t.channel,
+            session_channel: t.session_channel,
             token_request: t.token_request.into(),
         }))
     }
