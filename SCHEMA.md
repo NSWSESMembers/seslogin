@@ -206,21 +206,21 @@ There is no `active-super-index` or `legacy_id-index`. Super-sessions are gone, 
 
 **Lifecycle and index membership:**
 
-| State           | How it gets there                                                  | `active-location_id-index` | `key_fingerprint-index` | `code-index`      | Can authenticate                            | Unusable since           |
-| --------------- | ------------------------------------------------------------------ | -------------------------- | ----------------------- | ----------------- | ------------------------------------------- | ------------------------ |
-| Live key        | Enrolled, and the kiosk checked in within 14 days                  | yes                        | yes                     | —                 | yes                                         | —                        |
-| Expired key     | No contact for 14 days                                             | yes                        | yes                     | —                 | no, but an admin can `reactivateSession` it | `key_expires_at`         |
-| Released key    | Its device re-enrolled as another session (`ReleaseKey`)           | yes                        | —                       | —                 | no, never again                             | `key_released_at`        |
-| Unredeemed code | Created with a setup code that was never entered                   | yes                        | —                       | yes               | no — setup-code enrolment was removed       | since that removal       |
-| Legacy JWT      | Setup code redeemed (before removal); the kiosk holds a JWT        | yes                        | —                       | —                 | while its last JWT is unexpired             | `last_contact` + 14 days |
-| Deleted         | An admin deleted it (`Delete` removes `active` and the key fields) | —                          | —                       | if it held a code | no                                          | `updated_at`             |
+| State           | How it gets there                                                   | `active-location_id-index` | `key_fingerprint-index` | `code-index`                                   | Can authenticate                            | Unusable since           |
+| --------------- | ------------------------------------------------------------------- | -------------------------- | ----------------------- | ---------------------------------------------- | ------------------------------------------- | ------------------------ |
+| Live key        | Enrolled, and the kiosk checked in within 14 days                   | yes                        | yes                     | —                                              | yes                                         | —                        |
+| Expired key     | No contact for 14 days                                              | yes                        | yes                     | —                                              | no, but an admin can `reactivateSession` it | `key_expires_at`         |
+| Released key    | Its device re-enrolled as another session (`ReleaseKey`)            | yes                        | —                       | —                                              | no, never again                             | `key_released_at`        |
+| Unredeemed code | Created with a setup code that was never entered                    | yes                        | —                       | yes                                            | no — setup-code enrolment was removed       | since that removal       |
+| Legacy JWT      | Setup code redeemed (before removal); the kiosk holds a JWT         | yes                        | —                       | —                                              | while its last JWT is unexpired             | `last_contact` + 14 days |
+| Deleted         | An admin deleted it (`Delete` removes `active`, `code`, key fields) | —                          | —                       | only if deleted before `Delete` removed `code` | no                                          | `updated_at`             |
 
 A legacy JWT kiosk can't be revived once its JWT lapses: only a valid JWT can refresh a JWT, and it has no code or key to fall back on (the kiosk app drops to the QR enrolment screen). The JWT's expiry is never more than 14 days (plus the `last_contact` refresh throttle) after `last_contact`.
 
 **Known gaps (from a prod scan on 2026-10-15):**
 
 - **Nothing retires unusable rows.** Released and expired key sessions, and lapsed legacy JWT kiosks, keep `active` forever, so they stay in `active-location_id-index` (and expired keys stay in `key_fingerprint-index`). On 2026-10-15, 108 of the 150 rows in `active-location_id-index` could never authenticate again, and 33 had been dead for more than a year.
-- **`Delete` does not remove `code`.** A session deleted before its code was redeemed stays in `code-index` (6 rows). Harmless now that nothing reads that index, but it keeps the rows there.
+- **`Delete` did not remove `code`.** A session deleted before its code was redeemed stayed in `code-index` (6 rows). `Delete` now removes `code` too; rows deleted before that change still hold one until a one-off pass clears them.
 - **Unredeemed codes linger.** 4 sessions created 70–149 days earlier still hold a code that can no longer be redeemed.
 - **Disabling a location does not touch its sessions.** 2 rows sat at a disabled location.
 - **v1 migration rows.** 64 sessions were imported as `active` with neither a code nor a key and never contacted v2, so they were unusable from the moment of import.

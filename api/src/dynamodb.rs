@@ -3028,14 +3028,15 @@ impl db::Handler for Handler {
                 // Removing `active` soft-deletes the session. Also drop the key fields so
                 // a disabled key-enrolled session releases its fingerprint (the GSI row
                 // disappears): its next signed request 401s, and the same key is free to
-                // re-enroll into a fresh session.
+                // re-enroll into a fresh session. A legacy unredeemed `code` goes too, so
+                // a deleted session leaves nothing behind in `code-index`.
                 let resp = self
                     .client
                     .update_item()
                     .table_name(self.table_name("session"))
                     .key("id", AttributeValue::S(id.to_string()))
                     .update_expression(
-                        "SET updated_at = :updated_at REMOVE active, key_fingerprint, public_key, key_expires_at ADD v :one",
+                        "SET updated_at = :updated_at REMOVE active, code, key_fingerprint, public_key, key_expires_at ADD v :one",
                     )
                     .expression_attribute_values(
                         ":updated_at",
