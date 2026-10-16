@@ -214,7 +214,7 @@ the MCP authorization spec's discovery flow.
 
 | tool | what it does |
 |---|---|
-| `whoami` | Who you're authenticated as: id, email, `isSuper`, and the locations you can access. |
+| `whoami` | Who you're authenticated as: id, email, `isSuper`, the locations you can access, and your own settings (`emailSummaryLocationIds`, `disaggregateVirtualPeriods`). |
 | `list_users` | List every admin user. Super user only. |
 | `get_user` | Look up one user by id. A non-super caller may only look up themselves. |
 | `create_user` | Create a user (email, `isSuper`, `locationGrants`, optional `readOnlyLocationGrants`). Super user only. |
@@ -249,15 +249,32 @@ the MCP authorization spec's discovery flow.
 | `create_location` / `update_location` | Add or change a location: `name`, `enabled`, `nitcEnabled` (when NITC export starts; `null` turns it off) and `nitcCompleteOnExport`. `update_location` changes only the fields passed. No SES headquarters field: the site's pages don't set it (location sync does). Super user only. |
 | `list_api_tokens` / `get_api_token` | API tokens (`slgn_`): name, `locationGrants`, `readOnly`, creator, `expiresAt`, `revokedAt`, `lastUsedAt`. Never a secret or hash. Super user only. |
 | `update_api_token` / `revoke_api_token` | Change a token's name, locations, `readOnly` or `expiresAt` (only passed fields change; `expiresAt: null` = never expires), or revoke it for good. Super user only. |
+| `get_audit_log` | The record of changes, newest first: `entries` (time, action, `entityType`, `entityLabel`, location, actor, field-level `changes`) and `pageInfo`. With `locationId` it is that location's log, open to Admin, Read only and super users; without it, every location plus global records (users, categories, tokens), super user only. `entityTypes` filters by kind; `first` (max 200) and `after` page. `ip` and `actor.via` are shown to super users only. |
+| `update_my_settings` | Change your own `dailyEmailLocationIds` (the complete list of locations whose daily summary you get; locations you can access only) and/or `disaggregateVirtualPeriods`. Passing neither is an error. |
+| `list_connected_apps` / `revoke_connected_app` | The AI clients and other apps you have authorised (the Connected apps page): client name, redirect host, created/last used, `refreshExpiresAt`, with `thisConnection` on the grant the call itself came in on. Revoking that one ends the session (`endedThisConnection`). `userId` (list) is super user only for anyone but yourself; a super user can revoke anyone's grant, anyone else only their own. |
+| `list_passkeys` / `rename_passkey` / `delete_passkey` | Your passkeys: id, name, created/last used, never key material. Rename and delete work on your own passkeys only, even for a super user; `list_passkeys`'s `userId` is super user only for anyone but yourself. Adding a passkey is done in the browser. |
+| `submit_feedback` | Send the seslogin team a help request as a Toolbox ticket from your own address (subject, message). Sends real email. If Toolbox isn't configured on the server the tool says so and points at support@seslogin.com, like the site's help dialog. |
 
-**Not exposed, on purpose:** creating API tokens (an MCP grant is revocable and
-expires, while an `slgn_` token is a long-lived credential that works on `/graphql`
-outside this tool set, so a grant must not be able to mint one; the API token tools
-never return a secret or hash); enrolling or reactivating
-kiosks (`enrollSession`, `reactivateSession`, `pendingEnrollmentKey` — a device
-is only bound to a location by a person scanning its QR code in the browser);
-login, logout and auth codes; passkey registration and login; approving OAuth
-authorizations; token refresh; and every kiosk-only or edit-link-only field.
+**Not exposed, on purpose:**
+
+- *Creating API tokens* (`createApiToken`). An MCP grant is revocable and expires, while an
+  `slgn_` token is a long-lived credential that works on `/graphql` outside this tool set,
+  so a grant must not be able to mint one. The API token tools never return a secret or
+  hash.
+- *Enrolling or reactivating kiosks, and the pending-enrolment lookup* (`enrollSession`,
+  `reactivateSession`, `pendingEnrollmentKey`). A device is only bound to a location by a
+  person scanning its QR code in the browser.
+- *Login, logout and auth codes.* They mint or end the credentials this endpoint is
+  already authenticated with.
+- *Passkey registration and login.* The WebAuthn ceremonies need the user's authenticator
+  in the browser. Passkeys can be listed, renamed and deleted.
+- *OAuth consent* (`approveOauthAuthorization`, `oauthAuthorizationRequest`). Approving an
+  app is the user's own decision on the site, not an AI client's. Connected apps can be
+  listed and revoked.
+- *`refreshToken`.* It re-issues a kiosk's session JWT (`Session`-guarded) and means
+  nothing for a user.
+- *Kiosk-only (`Session`-guarded) and edit-link-only (`PeriodLink`) fields.* They
+  authenticate a device or a member's single link, neither of which can be this user.
 
 **Times.** Any time argument takes Unix seconds (an integer) or a string: RFC 3339
 with an offset (`2026-10-16T09:00:00+11:00`), a local `YYYY-MM-DDTHH:MM[:SS]` /
@@ -282,12 +299,12 @@ Every tool runs a **fixed** GraphQL document against the in-process schema
 with your verified identity attached exactly as the GraphQL endpoint itself
 builds a request, so a non-super token gets the same authorization errors
 from `list_users`/`create_user`/etc. that the admin UI would; only `whoami`,
-`get_user` (on your own id), the category reads and the location/member/period/report/kiosk
+`get_user` (on your own id), the category reads, the own-account tools (settings, connected apps, passkeys, feedback), `get_audit_log` for your own locations and the location/member/period/report/kiosk
 tools (for your own locations) work; the category/NITC/location/API-token administration
 tools are `SuperUser` in GraphQL and refuse everyone else. Where a GraphQL read doesn't itself check the caller's grants
-(`location`, `Location.people`, `person`, and the six `Location.periodSummaryBy*` resolvers behind `summarize_activity`), the tool does, and the period and kiosk
+(`location`, `Location.people`, `person` and the six `Location.periodSummaryBy*` resolvers behind `summarize_activity`), the tool does, and the period and kiosk
 tools check again even where the resolver does (`period`, `Location.periods`,
-`Person.periods`, `Query.session`, `Location.sessions`), so a tool only ever narrows access. A tool failure (a guard rejection, a
+`Person.periods`, `Query.session`, `Location.sessions`, `Location.auditLog`), so a tool only ever narrows access. A tool failure (a guard rejection, a
 validation error) comes back as an ordinary JSON-RPC *success* whose
 `CallToolResult` carries `isError: true` and the message — not a transport
 error — so a client can show it inline rather than treating the whole request

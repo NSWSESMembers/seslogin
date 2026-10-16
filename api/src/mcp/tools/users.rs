@@ -12,7 +12,7 @@ use crate::app::{App, HasDb, HasMail, HasQueues, HasRealtime};
 /// for them — kept as one literal so the tools' documents can't drift
 /// from each other field-by-field.
 const USER_SELECTION: &str = "id email isSuper isDev enabled accessTime locationGrantIds readOnlyLocationGrantIds \
-     locations { id name }";
+     emailSummaryLocationIds disaggregateVirtualPeriods locations { id name }";
 
 fn user_query() -> String {
     format!("query McpUser($id: ID) {{ user(id: $id) {{ {USER_SELECTION} }} }}")
@@ -58,6 +58,8 @@ fn user_object_schema() -> Value {
             "accessTime": { "type": ["integer", "null"] },
             "locationGrantIds": { "type": "array", "items": { "type": "string" } },
             "readOnlyLocationGrantIds": { "type": "array", "items": { "type": "string" } },
+            "emailSummaryLocationIds": { "type": "array", "items": { "type": "string" } },
+            "disaggregateVirtualPeriods": { "type": "boolean" },
             "locations": {
                 "type": "array",
                 "items": {
@@ -94,8 +96,10 @@ pub(super) fn catalogue() -> Vec<Value> {
             "name": "whoami",
             "title": "Who am I",
             "description": "Look up the currently authenticated seslogin user: their id, \
-                email, whether they're a super user, and the locations they can access. \
-                Use this first to learn who you're acting as and what they can see.",
+                email, whether they're a super user, the locations they can access, and \
+                their own settings (`emailSummaryLocationIds`, the locations whose daily \
+                summary email they get, and `disaggregateVirtualPeriods`; change them with \
+                `update_my_settings`). Use this first to learn who you're acting as and what they can see.",
             "inputSchema": { "type": "object", "properties": {} },
             "outputSchema": user_output_schema(),
             "annotations": { "title": "Who am I", "readOnlyHint": true, "idempotentHint": true },
