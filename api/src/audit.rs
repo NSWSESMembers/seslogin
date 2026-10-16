@@ -602,7 +602,6 @@ fn session_fields(s: &Session) -> Fields {
         .with("healthcheck_url", opt_text(s.healthcheck_url.as_deref()))
         .with("active", flag(s.active))
         .with("public_key", s.public_key.as_ref().and(redacted()))
-        .with("code", s.code.as_ref().and(redacted()))
         .with("key_expires_at", opt_num(s.key_expires_at))
         .with("key_released_at", opt_num(s.key_released_at))
 }
@@ -642,10 +641,6 @@ pub fn session_update_changes(
         db::SessionUpdateShape::ExtendKey { expires_at } => {
             after.set("key_expires_at", num(*expires_at));
         }
-        db::SessionUpdateShape::AttachKey { expires_at, .. } => {
-            after.set("public_key", redacted());
-            after.set("key_expires_at", num(*expires_at));
-        }
         db::SessionUpdateShape::ReleaseKey { .. } => {
             after.set("public_key", None);
             after.set("key_expires_at", None);
@@ -655,7 +650,6 @@ pub fn session_update_changes(
             action = AuditAction::Delete;
             after.set("active", flag(false));
             after.set("public_key", None);
-            after.set("code", None);
             after.set("key_expires_at", None);
         }
     }
@@ -1828,11 +1822,6 @@ impl<D: db::Handler> db::Handler for AuditingHandler<D> {
         self.inner.list_sessions(query).await
     }
 
-    // A read.
-    async fn list_session_ids_with_code(&self) -> db::Result<Vec<String>> {
-        self.inner.list_session_ids_with_code().await
-    }
-
     async fn list_people_for_location(
         &self,
         location_id: &str,
@@ -2248,7 +2237,6 @@ mod tests {
             client_version: None,
             client_info: None,
             client_info_updated_at: None,
-            code: None,
             config: serde_json::Map::new(),
             healthcheck_url: None,
             public_key: None,
@@ -2804,39 +2792,11 @@ mod tests {
         assert_eq!(change(&changes, "public_key").before, Some(json!(REDACTED)));
         assert_eq!(change(&changes, "key_released_at").after, Some(json!(77)));
 
-        // A legacy JWT kiosk converting to key auth: the key shows only as redacted.
-        let (action, changes) = session_update_changes(
-            Some(&session()),
-            &db::SessionUpdateShape::AttachKey {
-                public_key: "MFkw-secret-public-key",
-                fingerprint: "deadbeef",
-                expires_at: 9000,
-            },
-            1,
-        );
-        assert_eq!(action, AuditAction::Update);
-        assert_eq!(fields(&changes), vec!["public_key", "key_expires_at"]);
-        assert_eq!(change(&changes, "public_key").after, Some(json!(REDACTED)));
-        let attach_json = serde_json::to_string(&changes).unwrap();
-        assert!(!attach_json.contains("secret-public-key"), "{attach_json}");
-        assert!(!attach_json.contains("deadbeef"), "{attach_json}");
-
         let (action, changes) =
             session_update_changes(Some(&keyed), &db::SessionUpdateShape::Delete, 1);
         assert_eq!(action, AuditAction::Delete);
         assert_eq!(change(&changes, "active").before, Some(json!(true)));
         assert_eq!(change(&changes, "active").after, Some(json!(false)));
-
-        // A legacy session still holding an unredeemed setup code loses it on delete;
-        // the code itself never reaches the log.
-        let mut with_code = session();
-        with_code.code = Some("123456".into());
-        let (_, changes) =
-            session_update_changes(Some(&with_code), &db::SessionUpdateShape::Delete, 1);
-        assert_eq!(fields(&changes), vec!["active", "code"]);
-        assert_eq!(change(&changes, "code").before, Some(json!(REDACTED)));
-        assert_eq!(change(&changes, "code").after, None);
-        assert!(!serde_json::to_string(&changes).unwrap().contains("123456"));
 
         let mut config = serde_json::Map::new();
         config.insert("theme".into(), json!("dark"));

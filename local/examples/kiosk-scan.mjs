@@ -83,17 +83,7 @@ await page.evaluate(
 
     const key = `kiosk_${profile}`;
     const settings = JSON.parse(localStorage.getItem(key) ?? "{}");
-    localStorage.setItem(
-      key,
-      // Clear any legacy JWT left in this profile: a stored token wins over authMode
-      // and would put the kiosk back on the legacy path.
-      JSON.stringify({
-        ...settings,
-        authMode: "key",
-        scanAuthToken: null,
-        scanAuthTokenIssuedAt: null,
-      }),
-    );
+    localStorage.setItem(key, JSON.stringify({ ...settings, authMode: "key" }));
   },
   {
     profile: PROFILE,

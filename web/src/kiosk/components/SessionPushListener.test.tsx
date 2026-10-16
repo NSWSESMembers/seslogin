@@ -6,10 +6,7 @@ import type {
   RealtimeConnectionStateChange,
   RealtimeMessage,
 } from "../lib/realtimeClient";
-import {
-  KioskEnvironmentContext,
-  type KioskAuthMode,
-} from "./KioskEnvironmentContext";
+import { KioskEnvironmentContext } from "./KioskEnvironmentContext";
 import { KioskRealtimeContext } from "./KioskRealtimeContext";
 import { KioskSessionContext, type KioskSession } from "./KioskSessionContext";
 import { SessionPushListener } from "./SessionPushListener";
@@ -70,7 +67,7 @@ function makeFakeConnection() {
   };
 }
 
-function renderListener(authMode: KioskAuthMode = "jwt") {
+function renderListener() {
   const fake = makeFakeConnection();
   const onUpdated = vi.fn();
   const refreshNow = vi.fn();
@@ -79,7 +76,6 @@ function renderListener(authMode: KioskAuthMode = "jwt") {
     <KioskEnvironmentContext.Provider
       value={{
         profile: "default",
-        authMode,
         onKeyEnrolled: vi.fn(),
       }}
     >
@@ -134,7 +130,8 @@ describe("SessionPushListener", () => {
   });
 
   it("refetches on a newer session.changed, and ignores a stale one", async () => {
-    const { emit, refreshNow } = renderListener("jwt");
+    vi.mocked(fetchKeySessionId).mockResolvedValue("s-new");
+    const { emit, refreshNow } = renderListener();
     emit({ name: "session.changed", data: { sessionId: "s1", version: 3 } });
     emit({ name: "session.changed", data: { sessionId: "s2", version: 9 } });
     expect(refreshNow).not.toHaveBeenCalled();
@@ -179,13 +176,13 @@ describe("SessionPushListener", () => {
     expect(connectionListenerCount()).toBe(0);
   });
 
-  it("in key mode, waits for the key to resolve to the new session before refetching", async () => {
+  it("waits for the key to resolve to the new session before refetching", async () => {
     vi.useFakeTimers();
     vi.mocked(fetchKeySessionId)
       .mockResolvedValueOnce(null) // the index hasn't caught up yet
       .mockResolvedValueOnce("s1") // still the old session
       .mockResolvedValueOnce("s-new");
-    const { emit, refreshNow } = renderListener("key");
+    const { emit, refreshNow } = renderListener();
 
     emit({ name: "session.changed", data: { sessionId: "s1", version: 4 } });
     await vi.advanceTimersByTimeAsync(0);
@@ -201,10 +198,10 @@ describe("SessionPushListener", () => {
     expect(refreshNow).toHaveBeenCalledOnce();
   });
 
-  it("in key mode, refetches anyway once the retries run out (the session was deleted)", async () => {
+  it("refetches anyway once the retries run out (the session was deleted)", async () => {
     vi.useFakeTimers();
     vi.mocked(fetchKeySessionId).mockResolvedValue(null);
-    const { emit, refreshNow } = renderListener("key");
+    const { emit, refreshNow } = renderListener();
 
     emit({ name: "session.changed", data: { sessionId: "s1", version: 4 } });
     await vi.advanceTimersByTimeAsync(500 + 1000 + 2000 + 4000 + 8000);

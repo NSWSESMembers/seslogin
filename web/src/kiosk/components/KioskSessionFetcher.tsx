@@ -1,7 +1,7 @@
 import { graphql } from "react-relay";
 import { fetchQuery } from "relay-runtime";
 import type { IEnvironment } from "relay-runtime";
-import type { KioskTokenSessionFetcherQuery } from "./__generated__/KioskTokenSessionFetcherQuery.graphql";
+import type { KioskSessionFetcherQuery } from "./__generated__/KioskSessionFetcherQuery.graphql";
 import type { KioskSession } from "./KioskSessionContext";
 import { setEnvironmentInfo } from "../../lib/environmentInfo";
 import {
@@ -32,7 +32,7 @@ export const LIVE_SESSION_REFRESH_INTERVAL_MS = DEV
 // admin/components/UserInfoProvider.tsx.
 /* eslint-disable relay/unused-fields */
 const kioskRefreshQuery = graphql`
-  query KioskTokenSessionFetcherQuery {
+  query KioskSessionFetcherQuery {
     session {
       id
       name
@@ -63,7 +63,7 @@ export interface KioskSessionFetcher {
   stop: () => void;
 }
 
-export default function startKioskTokenSessionFetcher({
+export default function startKioskSessionFetcher({
   environment,
   setSession,
   pushLive: initialPushLive = false,
@@ -115,7 +115,7 @@ export default function startKioskTokenSessionFetcher({
     }
 
     inFlight = true;
-    fetchQuery<KioskTokenSessionFetcherQuery>(
+    fetchQuery<KioskSessionFetcherQuery>(
       environment,
       kioskRefreshQuery,
       {},

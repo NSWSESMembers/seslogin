@@ -65,7 +65,6 @@ fn app_with_location() -> Arc<TestApp> {
             client_version: None,
             client_info: None,
             client_info_updated_at: None,
-            code: None,
             config: serde_json::Map::new(),
             healthcheck_url: None,
             public_key: None,

@@ -14,7 +14,7 @@ export type KioskServerStatus = {
   lastFailureAt: number | null;
   /** Message from that failure, cleared on the next success. */
   lastErrorMessage: string | null;
-  /** Unix seconds; when the enrolled key expires. Null for code/JWT kiosks. */
+  /** Unix seconds; when the enrolled key expires. Null until the server has said. */
   keyExpiresAt: number | null;
   /**
    * Failed refreshes since the page loaded. Monotonic — deliberately *not* cleared on

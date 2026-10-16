@@ -3,15 +3,15 @@ use std::sync::Arc;
 
 use seslogin::app;
 use seslogin::graphql;
-use seslogin::jwt;
 use seslogin::mockdb;
 use seslogin::mockmail;
 use seslogin::mockqueue;
 use seslogin::mockrealtime;
+use seslogin::server_secret::ServerSecret;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let key = jwt::Key::new("schema-export", None)?;
+    let key = ServerSecret::new("schema-export");
     let db = mockdb::Handler::new();
     // Nothing here dispatches anything; the mocks keep schema export off the network.
     let app = Arc::new(app::new(
