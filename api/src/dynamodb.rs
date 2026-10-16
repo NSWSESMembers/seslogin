@@ -2987,6 +2987,58 @@ impl db::Handler for Handler {
                 record_capacity("update_session", resp.consumed_capacity(), CapKind::Write);
                 Ok(None)
             }
+            db::SessionUpdateShape::AttachKey {
+                public_key,
+                fingerprint,
+                expires_at,
+            } => {
+                // The condition is what makes this a one-way JWT → key conversion: it
+                // never overwrites an enrolled key (which would hijack a key kiosk), and
+                // never revives a deleted or released record. A conditional-check
+                // failure surfaces as `NotFound`.
+                let resp = self
+                    .client
+                    .update_item()
+                    .table_name(self.table_name("session"))
+                    .key("id", AttributeValue::S(id.to_string()))
+                    .condition_expression(
+                        "attribute_exists(active) AND attribute_not_exists(key_fingerprint) \
+                         AND attribute_not_exists(public_key) \
+                         AND attribute_not_exists(key_released_at)",
+                    )
+                    .update_expression(
+                        "SET public_key = :public_key, key_fingerprint = :fp, \
+                         key_expires_at = :key_expires_at, updated_at = :updated_at",
+                    )
+                    .expression_attribute_values(
+                        ":public_key",
+                        AttributeValue::S(public_key.to_string()),
+                    )
+                    .expression_attribute_values(":fp", AttributeValue::S(fingerprint.to_string()))
+                    .expression_attribute_values(
+                        ":key_expires_at",
+                        AttributeValue::N(expires_at.to_string()),
+                    )
+                    .expression_attribute_values(
+                        ":updated_at",
+                        AttributeValue::N(crate::clock::now_sec().to_string()),
+                    )
+                    .return_consumed_capacity(ReturnConsumedCapacity::Total)
+                    .send()
+                    .await
+                    .map_err(|e| {
+                        map_update_err(
+                            e,
+                            format!("Session {id} is not a legacy kiosk that can take a key"),
+                        )
+                    })?;
+                record_capacity(
+                    "attach_session_key",
+                    resp.consumed_capacity(),
+                    CapKind::Write,
+                );
+                Ok(None)
+            }
             db::SessionUpdateShape::ReleaseKey { fingerprint } => {
                 // Same REMOVE list as `Delete` minus `active`: the record stays in its
                 // location's kiosk list, it just stops holding the fingerprint, so the GSI

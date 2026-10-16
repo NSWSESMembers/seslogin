@@ -519,6 +519,21 @@ type MutationRoot {
 	which restores its normal two-week window. Otherwise the grant simply lapses.
 	"""
 	reactivateSession(id: ID!): Session!
+	"""
+	Convert the calling kiosk from a legacy setup-code JWT to key auth, by attaching
+	`public_key` to its own session. The kiosk drives this itself (no admin involved)
+	and then switches to signing every request with the key's private half.
+	
+	`proof` is a signed key header — the part after `SLKey ` — over
+	`slkey-convert:<session id>`, showing the caller holds that private half. Without
+	it, anyone holding the JWT could bind a key they don't control (or another
+	device's) to the session.
+	
+	Idempotent: a kiosk whose session already holds this key gets `Ok`, so a lost
+	response heals on the next attempt. Fails with `CONFLICT` if another session holds
+	the key; the kiosk just stays on its JWT and tries again later.
+	"""
+	convertSessionToKey(publicKey: String!, proof: String!): Session!
 	createLocation(name: String!, nitcEnabled: Int): Location!
 	updateLocation(id: ID!, name: String!, enabled: Boolean!, nitcEnabled: Int, nitcCompleteOnExport: Boolean): Location!
 	createCategory(name: String!, isVirtual: Boolean!, nitcGroupId: String, nitcParticipantType: String): Category!

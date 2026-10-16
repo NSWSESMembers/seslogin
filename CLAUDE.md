@@ -240,7 +240,11 @@ matching on name text cannot hit both.
 The two kiosks cover the two ways a kiosk authenticates. `TestAKiosk01` stands in for the
 kiosks enrolled with a 6-digit setup code before that flow was removed: it has no key and
 authenticates with a session JWT (`make local-cli ARGS="jwt session TestAKiosk01"`). New
-kiosks can only enrol by QR code; legacy JWT kiosks keep working. `TestAKiosk02` holds
+kiosks can only enrol by QR code; legacy JWT kiosks keep working until they convert
+themselves to key auth (`convertSessionToKey`, scheduled by `web/src/kiosk/lib/keyConversion.ts`).
+On local dev and test.seslogin.com any JWT kiosk converts after 2 minutes of page uptime, so
+`TestAKiosk01` becomes a key kiosk if left open that long; `make local-seed` restores it.
+`TestAKiosk02` holds
 the public half of a fixed P-256 keypair and signs each request with the private half
 (`SLKey`, see `api/src/session_key.rs`); the private half is committed in
 `local/seed/kiosk-signing-key.json` — a throwaway key valid only against a local database.
@@ -347,7 +351,7 @@ Unlike `mockdb`, the queue, mail and realtime mocks *succeed* — they exist so 
 **Auth**: `api/src/auth.rs` — token verification dispatches on prefix:
 1. API tokens (`slgn_` prefix) — opaque hashed secrets for programmatic access, shaped `slgn_<id>.<secret>` and verified the same way as user tokens below. Legacy `slgn_<secret>` tokens never expire on their own, so they keep working through `token_hash-index` and log a `legacy-format API token used` warning naming the token, until each is replaced by hand
 2. User tokens (`slu_` prefix) — opaque hashed secrets issued via email-code auth, shaped `slu_<id>.<secret>` so verification is one strongly consistent `GetItem` by id plus a constant-time hash check. Legacy `slu_<secret>` tokens (no `.`) are still found through `token_hash-index`, but their sliding expiry is frozen so they all age out
-3. JWT (no prefix) — kiosk session JWTs only, held by kiosks enrolled with the since-removed 6-digit setup code (14-day, refreshed while in use). No new ones are issued by enrolment. User JWTs are no longer issued or accepted; users authenticate with `slu_` tokens
+3. JWT (no prefix) — kiosk session JWTs only, held by kiosks enrolled with the since-removed 6-digit setup code (14-day, refreshed while in use). No new ones are issued by enrolment, and each such kiosk converts itself to key auth on a staggered schedule (`convertSessionToKey`, with a signature proving it holds the key). User JWTs are no longer issued or accepted; users authenticate with `slu_` tokens
 
 Authorization uses an `AuthRequirement` guard enum per field: `Session`, `UserOrSession`, `User`, `SuperUser`.
 

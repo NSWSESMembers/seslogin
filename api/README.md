@@ -304,6 +304,21 @@ Two rules govern the parsing, both enforced by tests in `client_info.rs`:
 
 Sizes are bounded (2 KB per header, 128 characters per field, 256 for the user agent).
 
+## Converting setup-code kiosks to key auth
+
+Kiosks enrolled with the removed 6-digit setup code authenticate with a session JWT. Each
+one moves itself onto key auth, without an admin: while still on its JWT, the kiosk calls
+`convertSessionToKey(publicKey, proof)`. `proof` is its ordinary `SLKey` request
+signature (minus the scheme) over the body `slkey-convert:<session id>`, which shows it
+holds the private half of the key. The server attaches the key to the caller's own session
+(`SessionUpdateShape::AttachKey`, conditional on the row being live with no key and never
+released) and the kiosk reloads into key mode.
+
+When a kiosk converts is decided in the client (`web/src/kiosk/lib/keyConversion.ts`), not
+the server. The mutation is idempotent for the same key, and returns `CONFLICT` if another
+session holds the key; the kiosk then stays on its JWT and tries again later. JWTs keep
+working for converted sessions until they are rejected outright.
+
 ## SES member sync
 
 Set `ses_api_headquarters_id` per location via the admin UI before syncing.
