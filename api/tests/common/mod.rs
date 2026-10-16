@@ -301,10 +301,18 @@ impl db::Handler for FakeDb {
     }
     async fn list_people_for_location(
         &self,
-        _location_id: &str,
-        _skip_deleted: bool,
+        location_id: &str,
+        skip_deleted: bool,
     ) -> db::Result<Vec<db::Person>> {
-        unsupported()
+        Ok(self
+            .persons
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|p| p.location_id == location_id)
+            .filter(|p| !skip_deleted || p.deleted.is_none())
+            .cloned()
+            .collect())
     }
     async fn list_periods_for_location(
         &self,
@@ -1080,6 +1088,35 @@ pub(crate) fn seed_location(
             last_successful_member_sync: None,
             created_at: 0,
             updated_at: 0,
+        },
+    );
+}
+
+/// Insert a [`db::Person`] directly. `ses_api_person_id` set means member sync owns them.
+#[allow(dead_code)] // see `seed_super_user`'s doc comment
+pub(crate) fn seed_person(
+    app: &MyApp<FakeDb, mockqueue::Handler, mockmail::Handler, mockrealtime::Handler>,
+    id: &str,
+    location_id: &str,
+    first_name: &str,
+    last_name: &str,
+    member_number: &str,
+    ses_api_person_id: Option<&str>,
+) {
+    app.db.persons.lock().unwrap().insert(
+        id.to_string(),
+        db::Person {
+            id: id.to_string(),
+            location_id: location_id.to_string(),
+            first_name: first_name.to_string(),
+            last_name: last_name.to_string(),
+            registration_number: Some(member_number.to_string()),
+            ses_api_person_id: ses_api_person_id.map(str::to_string),
+            email: None,
+            deleted: None,
+            missing_since: None,
+            created_at: Some(1_760_000_000),
+            updated_at: Some(1_760_000_000),
         },
     );
 }
