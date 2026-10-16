@@ -211,11 +211,11 @@ pub fn add_sydney_times(value: &mut Value) {
 /// What kind of value an updatable field holds, so [`merge_update`] can validate the
 /// caller's argument (and name it in the error) rather than leave it to GraphQL.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-// `Int` and `Json` are for the kiosk tools of a later change; `coerce` already handles them.
-#[allow(dead_code)]
 pub enum Kind {
     Str,
     Bool,
+    // No tool has an integer field to update yet; `coerce` already handles it.
+    #[allow(dead_code)]
     Int,
     StrArray,
     /// Unix seconds or any [`TIME_FORMATS`] string; becomes Unix seconds.

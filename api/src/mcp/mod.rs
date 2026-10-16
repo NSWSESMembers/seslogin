@@ -185,7 +185,9 @@ fn initialize_result(params: &Value) -> Value {
             the record (`create_period`, `update_period`, `delete_period`), email a member \
             a link to fix an entry (`send_period_edit_link`), run the reports (`get_dashboard`, \
             `summarize_activity` grouped by member/category/day, `members_last_seen`; durations \
-            are seconds), and, for super users, manage the admin user list (`list_users`, `create_user`, `update_user`, \
+            are seconds), see and manage a location's kiosks (`list_kiosks`, `get_kiosk`, \
+            `update_kiosk`, `delete_kiosk`; adding or reactivating a kiosk is done on the admin \
+            site's Kiosks page by scanning its QR code), and, for super users, manage the admin user list (`list_users`, `create_user`, `update_user`, \
             `disable_user`/`enable_user`). Every tool acts with the authenticated caller's \
             own permissions: Admin can change a location, Read only can only view, and a \
             non-super user can only look up themselves. Time arguments take Unix seconds or \
