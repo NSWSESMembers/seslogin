@@ -10,8 +10,10 @@ use serde_json::{Value, json};
 use super::{ToolCtx, ToolOutcome};
 use crate::app::{App, HasDb, HasMail, HasQueues, HasRealtime};
 
+mod categories;
 mod locations;
 mod members;
+mod periods;
 mod users;
 
 /// Every tool's `tools/list` entry, in a stable order.
@@ -19,6 +21,8 @@ pub(super) fn catalogue() -> Vec<Value> {
     let mut tools = users::catalogue();
     tools.extend(locations::catalogue());
     tools.extend(members::catalogue());
+    tools.extend(categories::catalogue());
+    tools.extend(periods::catalogue());
     tools
 }
 
@@ -33,7 +37,13 @@ where
     if let Some(outcome) = locations::call(ctx, name, args).await {
         return Some(outcome);
     }
-    members::call(ctx, name, args).await
+    if let Some(outcome) = members::call(ctx, name, args).await {
+        return Some(outcome);
+    }
+    if let Some(outcome) = categories::call(ctx, name, args).await {
+        return Some(outcome);
+    }
+    periods::call(ctx, name, args).await
 }
 
 /// Which MCP annotations a tool carries (see the module docs of `mcp`).

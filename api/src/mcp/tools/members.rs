@@ -215,7 +215,7 @@ where
 }
 
 /// A member's location id, without the other details, for access checks.
-async fn member_location<A>(ctx: &ToolCtx<'_, A>, id: &str) -> Result<String, ToolError>
+pub(super) async fn member_location<A>(ctx: &ToolCtx<'_, A>, id: &str) -> Result<String, ToolError>
 where
     A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static,
 {

@@ -16,7 +16,10 @@ use std::sync::Arc;
 
 use serde_json::{Value, json};
 
-use common::{FakeDb, fake_app, seed_location, seed_person, seed_super_user, seed_user};
+use common::{
+    FakeDb, fake_app, seed_category, seed_location, seed_period, seed_person, seed_super_user,
+    seed_user,
+};
 use seslogin::app::MyApp;
 use seslogin::graphql;
 use seslogin::mcp;
@@ -360,6 +363,15 @@ async fn tools_list_lists_every_tool() {
         "update_member",
         "delete_member",
         "sync_members",
+        "list_categories",
+        "get_category",
+        "list_periods",
+        "list_member_periods",
+        "get_period",
+        "create_period",
+        "update_period",
+        "delete_period",
+        "send_period_edit_link",
     ] {
         assert!(
             names.contains(&expected),
@@ -1159,4 +1171,743 @@ async fn results_carry_sydney_time_beside_unix_seconds() {
             .unwrap()
             .contains("accessTimeSydney")
     );
+}
+
+// ── tools/call: categories and periods ───────────────────────────────────────
+
+/// 2026-10-16 09:00 in Sydney (AEDT, UTC+11), and an hour and two hours later.
+const NINE: i64 = 1_792_101_600;
+const TEN: i64 = NINE + 3600;
+const ELEVEN: i64 = NINE + 7200;
+
+/// A period at `location_id` with nothing else set; the caller fills in who and what.
+fn period(id: &str, location_id: &str, start: i64, end: Option<i64>) -> seslogin::db::Period {
+    seslogin::db::Period {
+        id: id.to_string(),
+        person_id: None,
+        guest_name: None,
+        comment: None,
+        location_id: location_id.to_string(),
+        category_id: None,
+        start_time: start as u64,
+        end_time: end.map(|e| e as u64),
+        signed_in_session_id: None,
+        signed_out_session_id: None,
+        version: 1,
+        nitc_event_id: None,
+        nitc_participant_id: None,
+        nitc_exported_version: None,
+        deleted: None,
+        created_at: Some(1_760_000_000),
+        updated_at: Some(1_760_000_000),
+    }
+}
+
+/// [`seed_unit`] plus categories and one period of each kind at `loc-1`: Alice's closed
+/// one (`pr-alice`, with a comment), Bob's still open with no category yet (`pr-bob`), a
+/// guest's (`pr-guest`), and Carol's at the other unit.
+fn seed_activity(app: &App) {
+    seed_unit(app);
+    seed_category(app, "c-train", "Training", true);
+    seed_category(app, "c-ops", "Operations", true);
+    seed_category(app, "c-old", "Retired", false);
+    let own = |p: &mut seslogin::db::Period, person: &str, category: Option<&str>| {
+        p.person_id = Some(person.to_string());
+        p.category_id = category.map(str::to_string);
+    };
+    let mut alice = period("pr-alice", "loc-1", NINE, Some(TEN));
+    own(&mut alice, "p-alice", Some("c-train"));
+    alice.comment = Some("original".into());
+    seed_period(app, alice);
+    let mut bob = period("pr-bob", "loc-1", TEN, None);
+    own(&mut bob, "p-bob", None);
+    seed_period(app, bob);
+    let mut guest = period("pr-guest", "loc-1", ELEVEN, Some(ELEVEN + 600));
+    guest.guest_name = Some("Gina Guest".into());
+    guest.comment = Some("visitor".into());
+    seed_period(app, guest);
+    let mut carol = period("pr-carol", "loc-2", NINE, Some(TEN));
+    own(&mut carol, "p-carol", Some("c-ops"));
+    seed_period(app, carol);
+}
+
+fn error_text(result: &Value) -> String {
+    result["content"][0]["text"]
+        .as_str()
+        .unwrap_or_default()
+        .to_string()
+}
+
+fn stored_period(app: &App, id: &str) -> seslogin::db::Period {
+    app.db.periods.lock().unwrap()[id].clone()
+}
+
+#[tokio::test]
+async fn categories_are_listed_for_any_signed_in_user() {
+    let (app, schema) = setup();
+    seed_activity(&app);
+    let bearer = grant_user(&app, "user-1", &[], &[]).await;
+
+    let result = run_tool(&app, &schema, &bearer, "list_categories", json!({})).await;
+    assert_eq!(result["isError"], false, "{result:?}");
+    let names: Vec<&str> = result["structuredContent"]["categories"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| c["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(names, vec!["Operations", "Training"]);
+
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "list_categories",
+        json!({ "includeDisabled": true }),
+    )
+    .await;
+    assert_eq!(
+        result["structuredContent"]["categories"]
+            .as_array()
+            .unwrap()
+            .len(),
+        3
+    );
+
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "get_category",
+        json!({ "id": "c-old" }),
+    )
+    .await;
+    assert_eq!(result["isError"], false, "{result:?}");
+    assert_eq!(result["structuredContent"]["category"]["name"], "Retired");
+    assert_eq!(result["structuredContent"]["category"]["enabled"], false);
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "get_category",
+        json!({ "id": "nope" }),
+    )
+    .await;
+    assert_eq!(result["isError"], true);
+}
+
+#[tokio::test]
+async fn read_only_users_can_read_but_not_write_periods() {
+    let (app, schema) = setup();
+    seed_activity(&app);
+    app.db
+        .persons
+        .lock()
+        .unwrap()
+        .get_mut("p-alice")
+        .unwrap()
+        .email = Some("alice@example.com".into());
+    let bearer = grant_user(&app, "user-1", &[], &["loc-1"]).await;
+
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "list_periods",
+        json!({ "locationId": "loc-1" }),
+    )
+    .await;
+    assert_eq!(result["isError"], false, "{result:?}");
+    let periods = result["structuredContent"]["periods"].as_array().unwrap();
+    // Newest start first.
+    let ids: Vec<&str> = periods.iter().map(|p| p["id"].as_str().unwrap()).collect();
+    assert_eq!(ids, vec!["pr-guest", "pr-bob", "pr-alice"]);
+    assert_eq!(
+        result["structuredContent"]["pageInfo"]["hasNextPage"],
+        false
+    );
+    let alice = &periods[2];
+    assert_eq!(alice["person"]["firstName"], "Alice");
+    assert_eq!(alice["person"]["memberNumber"], "1001");
+    assert_eq!(alice["person"]["location"]["name"], "Test Unit");
+    assert_eq!(alice["category"]["name"], "Training");
+    assert_eq!(alice["comment"], "original");
+    assert_eq!(alice["startTime"], NINE);
+    assert_eq!(alice["startTimeSydney"], "2026-10-16T09:00:00+11:00");
+    assert!(alice["person"].get("email").is_none());
+    assert_eq!(periods[0]["guestName"], "Gina Guest");
+    assert_eq!(periods[0]["person"], Value::Null);
+
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "get_period",
+        json!({ "id": "pr-alice" }),
+    )
+    .await;
+    assert_eq!(result["isError"], false, "{result:?}");
+    assert_eq!(result["structuredContent"]["period"]["id"], "pr-alice");
+
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "list_member_periods",
+        json!({ "memberId": "p-alice" }),
+    )
+    .await;
+    assert_eq!(result["isError"], false, "{result:?}");
+    assert_eq!(
+        result["structuredContent"]["member"]["lastName"],
+        "Anderson"
+    );
+    assert_eq!(result["structuredContent"]["periods"][0]["id"], "pr-alice");
+
+    for (tool, arguments) in [
+        (
+            "create_period",
+            json!({ "memberId": "p-alice", "locationId": "loc-1", "categoryId": "c-ops",
+                    "startTime": NINE, "endTime": TEN }),
+        ),
+        (
+            "update_period",
+            json!({ "id": "pr-alice", "comment": "changed" }),
+        ),
+        (
+            "update_period",
+            json!({ "id": "pr-guest", "guestName": "Someone Else" }),
+        ),
+        ("delete_period", json!({ "id": "pr-alice" })),
+        ("send_period_edit_link", json!({ "id": "pr-alice" })),
+    ] {
+        let result = run_tool(&app, &schema, &bearer, tool, arguments).await;
+        assert_eq!(result["isError"], true, "{tool}: {result:?}");
+    }
+    assert_eq!(app.db.periods.lock().unwrap().len(), 4);
+    let alice = stored_period(&app, "pr-alice");
+    assert_eq!(alice.comment.as_deref(), Some("original"));
+    assert!(alice.deleted.is_none());
+    assert_eq!(
+        stored_period(&app, "pr-guest").guest_name.as_deref(),
+        Some("Gina Guest")
+    );
+    assert!(app.mail.sent().is_empty());
+    assert!(app.queues.sent().is_empty());
+}
+
+#[tokio::test]
+async fn a_user_with_no_grant_is_refused_period_reads_too() {
+    let (app, schema) = setup();
+    seed_activity(&app);
+    // Admin of the other unit only.
+    let bearer = grant_user(&app, "user-1", &["loc-2"], &[]).await;
+
+    for (tool, arguments) in [
+        ("list_periods", json!({ "locationId": "loc-1" })),
+        (
+            "list_periods",
+            json!({ "locationId": "loc-1", "onlyActive": true }),
+        ),
+        ("list_member_periods", json!({ "memberId": "p-alice" })),
+        ("get_period", json!({ "id": "pr-alice" })),
+        ("get_period", json!({ "id": "pr-guest" })),
+    ] {
+        let result = run_tool(&app, &schema, &bearer, tool, arguments).await;
+        assert_eq!(result["isError"], true, "{tool}: {result:?}");
+        assert!(error_text(&result).contains("Not authorized"), "{result:?}");
+        assert!(result.get("structuredContent").is_none());
+    }
+    // Their own unit still works.
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "list_periods",
+        json!({ "locationId": "loc-2" }),
+    )
+    .await;
+    assert_eq!(result["isError"], false, "{result:?}");
+    assert_eq!(result["structuredContent"]["periods"][0]["id"], "pr-carol");
+}
+
+#[tokio::test]
+async fn an_admin_can_create_edit_delete_and_email_a_link_for_periods() {
+    let (app, schema) = setup();
+    seed_activity(&app);
+    app.db
+        .persons
+        .lock()
+        .unwrap()
+        .get_mut("p-alice")
+        .unwrap()
+        .email = Some("alice@example.com".into());
+    let bearer = grant_user(&app, "user-1", &["loc-1"], &[]).await;
+
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "create_period",
+        json!({ "memberId": "p-bob", "locationId": "loc-1", "categoryId": "c-ops",
+                "startTime": NINE, "endTime": TEN, "comment": "by hand" }),
+    )
+    .await;
+    assert_eq!(result["isError"], false, "{result:?}");
+    let created = &result["structuredContent"]["period"];
+    assert_eq!(created["person"]["firstName"], "Bob");
+    assert_eq!(created["category"]["name"], "Operations");
+    assert_eq!(created["comment"], "by hand");
+    let id = created["id"].as_str().unwrap().to_string();
+    assert_eq!(
+        app.queues.sent(),
+        vec![seslogin::mockqueue::Message::PeriodNitcExport {
+            period_id: id.clone()
+        }]
+    );
+
+    // An unknown category is refused and nothing is added.
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "create_period",
+        json!({ "memberId": "p-bob", "locationId": "loc-1", "categoryId": "nope",
+                "startTime": NINE, "endTime": TEN }),
+    )
+    .await;
+    assert_eq!(result["isError"], true);
+    // End before start is refused.
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "create_period",
+        json!({ "memberId": "p-bob", "locationId": "loc-1", "categoryId": "c-ops",
+                "startTime": TEN, "endTime": NINE }),
+    )
+    .await;
+    assert_eq!(result["isError"], true);
+    // And so is a unit the admin has no grant for.
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "create_period",
+        json!({ "memberId": "p-carol", "locationId": "loc-2", "categoryId": "c-ops",
+                "startTime": NINE, "endTime": TEN }),
+    )
+    .await;
+    assert_eq!(result["isError"], true);
+    assert_eq!(app.db.periods.lock().unwrap().len(), 5);
+
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "send_period_edit_link",
+        json!({ "id": "pr-alice" }),
+    )
+    .await;
+    assert_eq!(result["isError"], false, "{result:?}");
+    assert_eq!(result["structuredContent"]["sentTo"], "alice@example.com");
+    let sent = app.mail.sent();
+    assert_eq!(sent.len(), 1);
+    assert_eq!(sent[0].to, "alice@example.com");
+    // A second link for the same period is held back by the cooldown.
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "send_period_edit_link",
+        json!({ "id": "pr-alice" }),
+    )
+    .await;
+    assert_eq!(result["isError"], true);
+    assert!(error_text(&result).contains("recently"), "{result:?}");
+    // A guest has no member to email.
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "send_period_edit_link",
+        json!({ "id": "pr-guest" }),
+    )
+    .await;
+    assert_eq!(result["isError"], true);
+    assert!(error_text(&result).contains("guest"), "{result:?}");
+    assert_eq!(app.mail.sent().len(), 1);
+
+    let result = run_tool(&app, &schema, &bearer, "delete_period", json!({ "id": id })).await;
+    assert_eq!(result["isError"], false, "{result:?}");
+    assert!(stored_period(&app, &id).deleted.is_some());
+    // A deleted period no longer lists.
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "list_periods",
+        json!({ "locationId": "loc-1" }),
+    )
+    .await;
+    let ids: Vec<&str> = result["structuredContent"]["periods"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| p["id"].as_str().unwrap())
+        .collect();
+    assert!(!ids.contains(&id.as_str()), "{ids:?}");
+}
+
+#[tokio::test]
+async fn a_partial_period_update_keeps_what_was_not_passed() {
+    let (app, schema) = setup();
+    seed_activity(&app);
+    let bearer = grant_user(&app, "user-1", &["loc-1"], &[]).await;
+
+    // Only the category changes: times and comment stay.
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "update_period",
+        json!({ "id": "pr-alice", "categoryId": "c-ops" }),
+    )
+    .await;
+    assert_eq!(result["isError"], false, "{result:?}");
+    let stored = stored_period(&app, "pr-alice");
+    assert_eq!(stored.category_id.as_deref(), Some("c-ops"));
+    assert_eq!(stored.start_time, NINE as u64);
+    assert_eq!(stored.end_time, Some(TEN as u64));
+    assert_eq!(stored.comment.as_deref(), Some("original"));
+    assert_eq!(
+        result["structuredContent"]["period"]["category"]["name"],
+        "Operations"
+    );
+
+    // Only the end time changes (comment absent keeps it).
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "update_period",
+        json!({ "id": "pr-alice", "endTime": ELEVEN }),
+    )
+    .await;
+    assert_eq!(result["isError"], false, "{result:?}");
+    let stored = stored_period(&app, "pr-alice");
+    assert_eq!(stored.end_time, Some(ELEVEN as u64));
+    assert_eq!(stored.category_id.as_deref(), Some("c-ops"));
+    assert_eq!(stored.comment.as_deref(), Some("original"));
+
+    // A new comment replaces it.
+    run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "update_period",
+        json!({ "id": "pr-alice", "comment": "revised" }),
+    )
+    .await;
+    assert_eq!(
+        stored_period(&app, "pr-alice").comment.as_deref(),
+        Some("revised")
+    );
+
+    // `null` clears it.
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "update_period",
+        json!({ "id": "pr-alice", "comment": null }),
+    )
+    .await;
+    assert_eq!(result["isError"], false, "{result:?}");
+    let stored = stored_period(&app, "pr-alice");
+    assert_eq!(stored.comment, None);
+    assert_eq!(stored.end_time, Some(ELEVEN as u64));
+    assert_eq!(
+        result["structuredContent"]["period"]["comment"],
+        Value::Null
+    );
+
+    // An end before the start is refused and changes nothing.
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "update_period",
+        json!({ "id": "pr-alice", "endTime": NINE - 60 }),
+    )
+    .await;
+    assert_eq!(result["isError"], true);
+    assert_eq!(
+        stored_period(&app, "pr-alice").end_time,
+        Some(ELEVEN as u64)
+    );
+
+    // A member period has no guest name.
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "update_period",
+        json!({ "id": "pr-alice", "guestName": "Nope" }),
+    )
+    .await;
+    assert_eq!(result["isError"], true);
+    assert!(error_text(&result).contains("guestName"), "{result:?}");
+}
+
+#[tokio::test]
+async fn an_open_member_period_needs_an_end_and_a_category() {
+    let (app, schema) = setup();
+    seed_activity(&app);
+    let bearer = grant_user(&app, "user-1", &["loc-1"], &[]).await;
+
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "update_period",
+        json!({ "id": "pr-bob", "comment": "forgot to sign out" }),
+    )
+    .await;
+    assert_eq!(result["isError"], true);
+    assert!(error_text(&result).contains("endTime"), "{result:?}");
+
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "update_period",
+        json!({ "id": "pr-bob", "endTime": ELEVEN }),
+    )
+    .await;
+    assert_eq!(result["isError"], true);
+    assert!(error_text(&result).contains("categoryId"), "{result:?}");
+    assert_eq!(stored_period(&app, "pr-bob").end_time, None);
+
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "update_period",
+        json!({ "id": "pr-bob", "endTime": ELEVEN, "categoryId": "c-ops" }),
+    )
+    .await;
+    assert_eq!(result["isError"], false, "{result:?}");
+    let stored = stored_period(&app, "pr-bob");
+    assert_eq!(stored.end_time, Some(ELEVEN as u64));
+    assert_eq!(stored.start_time, TEN as u64);
+    assert_eq!(stored.category_id.as_deref(), Some("c-ops"));
+}
+
+#[tokio::test]
+async fn a_guest_period_is_updated_through_the_guest_mutation() {
+    let (app, schema) = setup();
+    seed_activity(&app);
+    let bearer = grant_user(&app, "user-1", &["loc-1"], &[]).await;
+
+    // Only the name changes: times and comment stay; no category is touched.
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "update_period",
+        json!({ "id": "pr-guest", "guestName": "Georgina Guest" }),
+    )
+    .await;
+    assert_eq!(result["isError"], false, "{result:?}");
+    let stored = stored_period(&app, "pr-guest");
+    assert_eq!(stored.guest_name.as_deref(), Some("Georgina Guest"));
+    assert_eq!(stored.start_time, ELEVEN as u64);
+    assert_eq!(stored.end_time, Some(ELEVEN as u64 + 600));
+    assert_eq!(stored.comment.as_deref(), Some("visitor"));
+    assert_eq!(stored.category_id, None);
+    assert_eq!(
+        result["structuredContent"]["period"]["guestName"],
+        "Georgina Guest"
+    );
+
+    // Times and a cleared comment.
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "update_period",
+        json!({ "id": "pr-guest", "endTime": ELEVEN + 1800, "comment": null }),
+    )
+    .await;
+    assert_eq!(result["isError"], false, "{result:?}");
+    let stored = stored_period(&app, "pr-guest");
+    assert_eq!(stored.end_time, Some(ELEVEN as u64 + 1800));
+    assert_eq!(stored.guest_name.as_deref(), Some("Georgina Guest"));
+    assert_eq!(stored.comment, None);
+
+    // A guest has no category.
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "update_period",
+        json!({ "id": "pr-guest", "categoryId": "c-ops" }),
+    )
+    .await;
+    assert_eq!(result["isError"], true);
+    assert!(error_text(&result).contains("categoryId"), "{result:?}");
+    assert_eq!(stored_period(&app, "pr-guest").category_id, None);
+}
+
+#[tokio::test]
+async fn period_times_are_accepted_as_strings_and_filter_by_start() {
+    let (app, schema) = setup();
+    seed_activity(&app);
+    let bearer = grant_user(&app, "user-1", &["loc-1"], &[]).await;
+
+    // Naive local time is Sydney; an explicit offset names the same instant.
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "create_period",
+        json!({ "memberId": "p-bob", "locationId": "loc-1", "categoryId": "c-train",
+                "startTime": "2026-10-16 12:00", "endTime": "2026-10-16T13:00:00+11:00" }),
+    )
+    .await;
+    assert_eq!(result["isError"], false, "{result:?}");
+    let created = &result["structuredContent"]["period"];
+    assert_eq!(created["startTime"], NINE + 3 * 3600);
+    assert_eq!(created["endTime"], NINE + 4 * 3600);
+    assert_eq!(created["endTimeSydney"], "2026-10-16T13:00:00+11:00");
+
+    // `start`/`end` select by start time: 09:30..10:30 holds only the 10:00 starts.
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "list_periods",
+        json!({ "locationId": "loc-1", "start": "2026-10-16T09:30", "end": "2026-10-16T10:30:00+11:00" }),
+    )
+    .await;
+    assert_eq!(result["isError"], false, "{result:?}");
+    let ids: Vec<&str> = result["structuredContent"]["periods"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| p["id"].as_str().unwrap())
+        .collect();
+    assert_eq!(ids, vec!["pr-bob"]);
+
+    // Integers still work, and update accepts strings too.
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "list_periods",
+        json!({ "locationId": "loc-1", "start": NINE, "end": NINE + 1 }),
+    )
+    .await;
+    assert_eq!(result["structuredContent"]["periods"][0]["id"], "pr-alice");
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "update_period",
+        json!({ "id": "pr-alice", "startTime": "2026-10-16T09:15" }),
+    )
+    .await;
+    assert_eq!(result["isError"], false, "{result:?}");
+    assert_eq!(
+        stored_period(&app, "pr-alice").start_time,
+        (NINE + 900) as u64
+    );
+
+    // A bad value names the argument; start without end explains itself.
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "create_period",
+        json!({ "memberId": "p-bob", "locationId": "loc-1", "categoryId": "c-train",
+                "startTime": "yesterday", "endTime": TEN }),
+    )
+    .await;
+    assert_eq!(result["isError"], true);
+    assert!(error_text(&result).contains("startTime"), "{result:?}");
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "list_periods",
+        json!({ "locationId": "loc-1", "start": NINE }),
+    )
+    .await;
+    assert_eq!(result["isError"], true);
+    assert!(error_text(&result).contains("together"), "{result:?}");
+}
+
+#[tokio::test]
+async fn list_periods_filters_by_activity_and_category_and_pages() {
+    let (app, schema) = setup();
+    seed_activity(&app);
+    let bearer = grant_user(&app, "user-1", &[], &["loc-1"]).await;
+    let ids = |result: &Value| -> Vec<String> {
+        result["structuredContent"]["periods"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|p| p["id"].as_str().unwrap().to_string())
+            .collect()
+    };
+
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "list_periods",
+        json!({ "locationId": "loc-1", "onlyActive": true }),
+    )
+    .await;
+    assert_eq!(ids(&result), vec!["pr-bob"]);
+    assert_eq!(
+        result["structuredContent"]["periods"][0]["endTime"],
+        Value::Null
+    );
+
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "list_periods",
+        json!({ "locationId": "loc-1", "categoryIds": ["c-train"] }),
+    )
+    .await;
+    assert_eq!(ids(&result), vec!["pr-alice"]);
+
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "list_periods",
+        json!({ "locationId": "loc-1", "first": 2 }),
+    )
+    .await;
+    assert_eq!(ids(&result), vec!["pr-guest", "pr-bob"]);
+    assert_eq!(result["structuredContent"]["pageInfo"]["hasNextPage"], true);
+    assert!(result["structuredContent"]["pageInfo"]["endCursor"].is_string());
+
+    for first in [0, 1001] {
+        let result = run_tool(
+            &app,
+            &schema,
+            &bearer,
+            "list_periods",
+            json!({ "locationId": "loc-1", "first": first }),
+        )
+        .await;
+        assert_eq!(result["isError"], true, "first={first}");
+        assert!(error_text(&result).contains("first"));
+    }
 }

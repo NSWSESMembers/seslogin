@@ -179,7 +179,11 @@ fn initialize_result(params: &Value) -> Value {
             locations. Start with `list_locations` (the units you can see) and `whoami` \
             (who you are acting as). You can look up and manage members (`list_members`, \
             `get_member`, `find_member_by_number`, `create_member`, `update_member`, \
-            `delete_member`), queue a member sync (`sync_members`), and, for super users, \
+            `delete_member`), queue a member sync (`sync_members`), read the activity categories \
+            (`list_categories`), see who is signed in or what happened (`list_periods` with \
+            `onlyActive` for the Current page, `list_member_periods`, `get_period`), correct \
+            the record (`create_period`, `update_period`, `delete_period`), email a member \
+            a link to fix an entry (`send_period_edit_link`), and, for super users, \
             manage the admin user list (`list_users`, `create_user`, `update_user`, \
             `disable_user`/`enable_user`). Every tool acts with the authenticated caller's \
             own permissions: Admin can change a location, Read only can only view, and a \

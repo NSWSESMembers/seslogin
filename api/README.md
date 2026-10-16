@@ -227,6 +227,14 @@ the MCP authorization spec's discovery flow.
 | `find_member_by_number` | As `get_member`, looked up by member number. "Not found" and "no grant" give the same error. |
 | `create_member` / `update_member` / `delete_member` | Manage members. `update_member` changes only the fields passed. Admin (or super user) only; Read only is refused. Members owned by member sync (`syncManaged`) can be changed but the next sync may undo it, and the admin site doesn't offer it. |
 | `sync_members` | Queue a member sync for a location. Admin (or super user) only. |
+| `list_categories` / `get_category` | The activity categories a period is filed under (name, `enabled`, `isVirtual`, NITC group). Disabled ones are left out of the list unless `includeDisabled`. Global, so any signed-in user. |
+| `list_periods` | A location's activity periods, newest first, with member name/number (or `guestName`), category, comment and sign-in/out kiosk names. `onlyActive` is who is signed in now (the Current page); `start` and `end` (together) select by when a period started; `categoryIds`, `first` and `after` filter and page. This also covers the Reports export. Admin, Read only or super user. |
+| `list_member_periods` | One member's periods, same shape and paging, optionally by `categoryIds`. Needs a grant for the member's location. |
+| `get_period` | One period. Needs a grant for its location. |
+| `create_period` | Add a finished period for a member (member, location, category, start, end, optional comment). Admin (or super user) only. |
+| `update_period` | Change times, comment and category (member periods, via `updatePeriodTimeCategory`) or guest name (guest periods, via `updateGuestPeriod`), as the admin edit page does. Only passed fields change; `comment: null` clears it, leaving it out keeps it. Admin (or super user) only. |
+| `delete_period` | Delete a period. Admin (or super user) only. |
+| `send_period_edit_link` | Email the member a link to correct a period. Sends real email; subject to a reminder cooldown; guests can't be sent one. Admin (or super user) only. |
 
 **Not exposed, on purpose:** creating API tokens; enrolling or reactivating
 kiosks (`enrollSession`, `reactivateSession`, `pendingEnrollmentKey` — a device
@@ -254,10 +262,11 @@ Every tool runs a **fixed** GraphQL document against the in-process schema
 with your verified identity attached exactly as the GraphQL endpoint itself
 builds a request, so a non-super token gets the same authorization errors
 from `list_users`/`create_user`/etc. that the admin UI would; only `whoami`,
-`get_user` (on your own id) and the location/member tools (for your own
-locations) work. Where a GraphQL read doesn't itself check the caller's grants
-(`location`, `Location.people`, `person`), the tool does, so it only ever
-narrows access. A tool failure (a guard rejection, a
+`get_user` (on your own id), the category tools and the location/member/period
+tools (for your own locations) work. Where a GraphQL read doesn't itself check the caller's grants
+(`location`, `Location.people`, `person`), the tool does, and the period tools
+check again even where the resolver does (`period`, `Location.periods`,
+`Person.periods`), so a tool only ever narrows access. A tool failure (a guard rejection, a
 validation error) comes back as an ordinary JSON-RPC *success* whose
 `CallToolResult` carries `isError: true` and the message — not a transport
 error — so a client can show it inline rather than treating the whole request
