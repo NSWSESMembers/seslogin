@@ -242,8 +242,18 @@ the MCP authorization spec's discovery flow.
 | `get_kiosk` | One kiosk, same shape. Needs a grant for its location. |
 | `update_kiosk` | Change `name`, `config` (a JSON object that replaces the whole config) or `healthcheckUrl`; only passed fields change, `healthcheckUrl: null` clears it, leaving it out keeps it. Admin (or super user) only. |
 | `delete_kiosk` | Delete a kiosk (the device must be set up again by QR code). Also how to remove a replaced leftover. Admin (or super user) only. |
+| `create_category` / `update_category` | Add or change an activity category (`name`, `isVirtual`, `enabled`, NITC group and participant type). `update_category` changes only the fields passed; `nitcGroupId` and `nitcParticipantType` can be cleared with `null`. Super user only. |
+| `list_nitc_groups` / `get_nitc_group` | The NITC groups (SES non-incident type and tags) with the `categories` that export as each. Super user only. |
+| `create_nitc_group` / `update_nitc_group` / `delete_nitc_group` | Manage NITC groups. `update_nitc_group` changes only the fields passed (`nitcTagIds` replaces the whole list). Deleting does not check categories still using the group. Super user only. |
+| `list_ses_nonincident_tags` / `list_ses_reference_data` | The valid values for those forms: SES tag ids, `nonincidentTypes` (a group's `nitcType`) and `participantTypes` (a category's `nitcParticipantType`; fetched from SES, so can fail when SES is unreachable). Super user only. |
+| `create_location` / `update_location` | Add or change a location: `name`, `enabled`, `nitcEnabled` (when NITC export starts; `null` turns it off) and `nitcCompleteOnExport`. `update_location` changes only the fields passed. No SES headquarters field: the site's pages don't set it (location sync does). Super user only. |
+| `list_api_tokens` / `get_api_token` | API tokens (`slgn_`): name, `locationGrants`, `readOnly`, creator, `expiresAt`, `revokedAt`, `lastUsedAt`. Never a secret or hash. Super user only. |
+| `update_api_token` / `revoke_api_token` | Change a token's name, locations, `readOnly` or `expiresAt` (only passed fields change; `expiresAt: null` = never expires), or revoke it for good. Super user only. |
 
-**Not exposed, on purpose:** creating API tokens; enrolling or reactivating
+**Not exposed, on purpose:** creating API tokens (an MCP grant is revocable and
+expires, while an `slgn_` token is a long-lived credential that works on `/graphql`
+outside this tool set, so a grant must not be able to mint one; the API token tools
+never return a secret or hash); enrolling or reactivating
 kiosks (`enrollSession`, `reactivateSession`, `pendingEnrollmentKey` — a device
 is only bound to a location by a person scanning its QR code in the browser);
 login, logout and auth codes; passkey registration and login; approving OAuth
@@ -272,8 +282,9 @@ Every tool runs a **fixed** GraphQL document against the in-process schema
 with your verified identity attached exactly as the GraphQL endpoint itself
 builds a request, so a non-super token gets the same authorization errors
 from `list_users`/`create_user`/etc. that the admin UI would; only `whoami`,
-`get_user` (on your own id), the category tools and the location/member/period/report/kiosk
-tools (for your own locations) work. Where a GraphQL read doesn't itself check the caller's grants
+`get_user` (on your own id), the category reads and the location/member/period/report/kiosk
+tools (for your own locations) work; the category/NITC/location/API-token administration
+tools are `SuperUser` in GraphQL and refuse everyone else. Where a GraphQL read doesn't itself check the caller's grants
 (`location`, `Location.people`, `person`, and the six `Location.periodSummaryBy*` resolvers behind `summarize_activity`), the tool does, and the period and kiosk
 tools check again even where the resolver does (`period`, `Location.periods`,
 `Person.periods`, `Query.session`, `Location.sessions`), so a tool only ever narrows access. A tool failure (a guard rejection, a

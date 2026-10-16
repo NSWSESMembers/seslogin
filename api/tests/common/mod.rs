@@ -36,6 +36,8 @@ pub(crate) struct FakeDb {
     pub(crate) periods: Mutex<HashMap<String, db::Period>>,
     pub(crate) categories: Mutex<HashMap<String, db::Category>>,
     pub(crate) api_tokens: Mutex<HashMap<String, db::ApiToken>>,
+    pub(crate) nitc_groups: Mutex<HashMap<String, db::NitcGroup>>,
+    pub(crate) nitc_tags: Mutex<Vec<db::NitcTag>>,
     /// Every entry `put_audit_entry` was given, in order. See [`FakeDb::audit_entries`].
     pub(crate) audit_log: Mutex<Vec<db::AuditEntry>>,
     /// Makes `put_audit_entry` fail, like the audit table not existing yet.
@@ -675,9 +677,16 @@ impl db::Handler for FakeDb {
     }
     async fn list_api_tokens(
         &self,
-        _filter: db::ListApiTokensFilter,
+        filter: db::ListApiTokensFilter,
     ) -> db::Result<Vec<db::ApiToken>> {
-        unsupported()
+        Ok(self
+            .api_tokens
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|t| matches!(filter, db::ListApiTokensFilter::All) || t.revoked_at.is_none())
+            .cloned()
+            .collect())
     }
     async fn create_api_token(
         &self,
@@ -712,25 +721,51 @@ impl db::Handler for FakeDb {
         id: &str,
         change: db::ApiTokenUpdateShape<'_>,
     ) -> db::Result<()> {
+        let mut tokens = self.api_tokens.lock().unwrap();
+        let token = tokens
+            .get_mut(id)
+            .ok_or_else(|| db::Error::NotFound(id.to_string()))?;
         match change {
             db::ApiTokenUpdateShape::TouchLastUsed => {
-                let mut tokens = self.api_tokens.lock().unwrap();
-                let token = tokens
-                    .get_mut(id)
-                    .ok_or_else(|| db::Error::NotFound(id.to_string()))?;
                 token.last_used_at = Some(seslogin::clock::now_sec());
-                Ok(())
             }
-            _ => unsupported(),
+            db::ApiTokenUpdateShape::Fields {
+                name,
+                location_grants,
+                read_only,
+                expires_at,
+            } => {
+                token.name = name.to_string();
+                token.location_grants = location_grants;
+                token.read_only = read_only;
+                token.expires_at = expires_at;
+            }
+            db::ApiTokenUpdateShape::Revoke => {
+                token.revoked_at = Some(seslogin::clock::now_sec());
+            }
         }
+        Ok(())
     }
     async fn create_location(
         &self,
-        _name: &str,
-        _nitc_enabled: Option<u64>,
-        _ses_api_headquarters_id: Option<&str>,
+        name: &str,
+        nitc_enabled: Option<u64>,
+        ses_api_headquarters_id: Option<&str>,
     ) -> db::Result<db::Location> {
-        unsupported()
+        let id = seslogin::dynamodb::new_id();
+        let location = Location {
+            id: id.clone(),
+            name: name.to_string(),
+            enabled: true,
+            nitc_enabled,
+            nitc_complete_on_export: true,
+            ses_api_headquarters_id: ses_api_headquarters_id.map(str::to_string),
+            last_successful_member_sync: None,
+            created_at: seslogin::clock::now_sec(),
+            updated_at: seslogin::clock::now_sec(),
+        };
+        self.locations.lock().unwrap().insert(id, location.clone());
+        Ok(location)
     }
     async fn get_locations<T: AsRef<str> + Sync>(
         &self,
@@ -750,10 +785,30 @@ impl db::Handler for FakeDb {
     }
     async fn update_location(
         &self,
-        _id: &str,
-        _change: db::LocationUpdateShape<'_>,
+        id: &str,
+        change: db::LocationUpdateShape<'_>,
     ) -> db::Result<()> {
-        unsupported()
+        let mut locations = self.locations.lock().unwrap();
+        let location = locations
+            .get_mut(id)
+            .ok_or_else(|| db::Error::NotFound(id.to_string()))?;
+        match change {
+            db::LocationUpdateShape::Fields {
+                name,
+                enabled,
+                nitc_enabled,
+                nitc_complete_on_export,
+            } => {
+                location.name = name.to_string();
+                location.enabled = enabled;
+                location.nitc_enabled = nitc_enabled;
+                if let Some(complete) = nitc_complete_on_export {
+                    location.nitc_complete_on_export = complete;
+                }
+            }
+            _ => return unsupported(),
+        }
+        Ok(())
     }
     async fn list_categories(&self) -> db::Result<Vec<db::Category>> {
         Ok(self.categories.lock().unwrap().values().cloned().collect())
@@ -770,24 +825,47 @@ impl db::Handler for FakeDb {
     }
     async fn create_category(
         &self,
-        _id: Option<&str>,
-        _name: &str,
-        _is_virtual: bool,
-        _nitc_group_id: Option<&str>,
-        _nitc_participant_type: Option<&str>,
+        id: Option<&str>,
+        name: &str,
+        is_virtual: bool,
+        nitc_group_id: Option<&str>,
+        nitc_participant_type: Option<&str>,
     ) -> db::Result<db::Category> {
-        unsupported()
+        let id = id
+            .map(str::to_string)
+            .unwrap_or_else(seslogin::dynamodb::new_id);
+        let category = db::Category {
+            id: id.clone(),
+            name: name.to_string(),
+            enabled: true,
+            is_virtual,
+            nitc_participant_type: nitc_participant_type.map(str::to_string),
+            nitc_group_id: nitc_group_id.map(str::to_string),
+            created_at: seslogin::clock::now_sec(),
+            updated_at: seslogin::clock::now_sec(),
+        };
+        self.categories.lock().unwrap().insert(id, category.clone());
+        Ok(category)
     }
     async fn update_category(
         &self,
-        _id: &str,
-        _name: &str,
-        _active: bool,
-        _is_virtual: bool,
-        _nitc_group_id: Option<&str>,
-        _nitc_participant_type: Option<&str>,
+        id: &str,
+        name: &str,
+        active: bool,
+        is_virtual: bool,
+        nitc_group_id: Option<&str>,
+        nitc_participant_type: Option<&str>,
     ) -> db::Result<()> {
-        unsupported()
+        let mut categories = self.categories.lock().unwrap();
+        let category = categories
+            .get_mut(id)
+            .ok_or_else(|| db::Error::NotFound(id.to_string()))?;
+        category.name = name.to_string();
+        category.enabled = active;
+        category.is_virtual = is_virtual;
+        category.nitc_group_id = nitc_group_id.map(str::to_string);
+        category.nitc_participant_type = nitc_participant_type.map(str::to_string);
+        Ok(())
     }
     async fn list_nitc_events_for_day(
         &self,
@@ -855,33 +933,51 @@ impl db::Handler for FakeDb {
     ) -> db::Result<db::ScanPage<db::NitcEvent>> {
         unsupported()
     }
-    async fn get_nitc_group(&self, _id: &str) -> db::Result<Option<db::NitcGroup>> {
-        unsupported()
+    async fn get_nitc_group(&self, id: &str) -> db::Result<Option<db::NitcGroup>> {
+        Ok(self.nitc_groups.lock().unwrap().get(id).cloned())
     }
     async fn list_nitc_groups(&self) -> db::Result<Vec<db::NitcGroup>> {
-        unsupported()
+        Ok(self.nitc_groups.lock().unwrap().values().cloned().collect())
     }
     async fn create_nitc_group(
         &self,
-        _id: Option<&str>,
-        _nitc_type: &str,
-        _nitc_tag_ids: &[i32],
+        id: Option<&str>,
+        nitc_type: &str,
+        nitc_tag_ids: &[i32],
     ) -> db::Result<db::NitcGroup> {
-        unsupported()
+        let id = id
+            .map(str::to_string)
+            .unwrap_or_else(seslogin::dynamodb::new_id);
+        let group = db::NitcGroup {
+            id: id.clone(),
+            nitc_type: nitc_type.to_string(),
+            nitc_tag_ids: nitc_tag_ids.to_vec(),
+            created_at: Some(seslogin::clock::now_sec()),
+            updated_at: Some(seslogin::clock::now_sec()),
+        };
+        self.nitc_groups.lock().unwrap().insert(id, group.clone());
+        Ok(group)
     }
     async fn update_nitc_group(
         &self,
-        _id: &str,
-        _nitc_type: &str,
-        _nitc_tag_ids: &[i32],
+        id: &str,
+        nitc_type: &str,
+        nitc_tag_ids: &[i32],
     ) -> db::Result<()> {
-        unsupported()
+        let mut groups = self.nitc_groups.lock().unwrap();
+        let group = groups
+            .get_mut(id)
+            .ok_or_else(|| db::Error::NotFound(id.to_string()))?;
+        group.nitc_type = nitc_type.to_string();
+        group.nitc_tag_ids = nitc_tag_ids.to_vec();
+        Ok(())
     }
-    async fn delete_nitc_group(&self, _id: &str) -> db::Result<()> {
-        unsupported()
+    async fn delete_nitc_group(&self, id: &str) -> db::Result<()> {
+        self.nitc_groups.lock().unwrap().remove(id);
+        Ok(())
     }
     async fn list_nitc_tags(&self) -> db::Result<Vec<db::NitcTag>> {
-        Ok(vec![])
+        Ok(self.nitc_tags.lock().unwrap().clone())
     }
     async fn put_nitc_tag(&self, _tag: &db::NitcTag) -> db::Result<()> {
         Ok(())

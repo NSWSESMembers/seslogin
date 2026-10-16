@@ -55,7 +55,10 @@
 //! async `call()` that returns `None` for a name that isn't theirs;
 //! `tools/mod.rs` chains them. A new tool is one catalogue entry plus one `call` arm.
 //!
-//! **Deliberately not exposed**, by decision of the repo owner: creating API tokens,
+//! **Deliberately not exposed**, by decision of the repo owner: creating API tokens
+//! (an MCP grant is revocable and expires, while an `slgn_` token is a long-lived credential
+//! that works on `/graphql` outside this tool set, so a grant must not be able to mint one;
+//! the API token tools list, edit and revoke only and never return a secret or hash),
 //! enrolling or reactivating kiosks (`enrollSession`, `reactivateSession`,
 //! `pendingEnrollmentKey` — a device is only bound to a location by a person
 //! scanning its QR code in the browser), login/logout and auth codes, passkey
@@ -188,7 +191,13 @@ fn initialize_result(params: &Value) -> Value {
             are seconds), see and manage a location's kiosks (`list_kiosks`, `get_kiosk`, \
             `update_kiosk`, `delete_kiosk`; adding or reactivating a kiosk is done on the admin \
             site's Kiosks page by scanning its QR code), and, for super users, manage the admin user list (`list_users`, `create_user`, `update_user`, \
-            `disable_user`/`enable_user`). Every tool acts with the authenticated caller's \
+            `disable_user`/`enable_user`), categories (`create_category`, `update_category`), \
+            NITC groups (`list_nitc_groups`, `get_nitc_group`, `create_nitc_group`, \
+            `update_nitc_group`, `delete_nitc_group`, with `list_ses_nonincident_tags` and \
+            `list_ses_reference_data` for the valid tag, type and participant-type values), \
+            locations (`create_location`, `update_location`) and API tokens (`list_api_tokens`, \
+            `get_api_token`, `update_api_token`, `revoke_api_token`; tokens can only be created on \
+            the admin site). Every tool acts with the authenticated caller's \
             own permissions: Admin can change a location, Read only can only view, and a \
             non-super user can only look up themselves. Time arguments take Unix seconds or \
             an RFC 3339 / local date-time string (Australia/Sydney unless an offset is given); \
