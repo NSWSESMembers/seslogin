@@ -59,7 +59,6 @@ fn session(id: &str, location_id: &str, key_fingerprint: Option<&str>) -> db::Se
         client_version: None,
         client_info: None,
         client_info_updated_at: None,
-        code: None,
         config: serde_json::Map::new(),
         healthcheck_url: None,
         public_key: key_fingerprint.map(|_| "pk".to_string()),

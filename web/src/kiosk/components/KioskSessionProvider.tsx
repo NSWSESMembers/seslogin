@@ -8,9 +8,9 @@ import {
 import { useRelayEnvironment } from "react-relay";
 import LoadingIndicator from "../../components/LoadingIndicator";
 import { KioskSessionContext, type KioskSession } from "./KioskSessionContext";
-import startKioskTokenSessionFetcher, {
+import startKioskSessionFetcher, {
   type KioskSessionFetcher,
-} from "./KioskTokenSessionFetcher";
+} from "./KioskSessionFetcher";
 import { KioskRealtimeProvider } from "./KioskRealtimeProvider";
 import { LivePeriodsProvider } from "./LivePeriodsProvider";
 import { SessionPushListener } from "./SessionPushListener";
@@ -87,7 +87,7 @@ export function KioskSessionProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    const started = startKioskTokenSessionFetcher({
+    const started = startKioskSessionFetcher({
       environment,
       setSession: setSessionAndTrackInitialFetch,
       pushLive: pushLive.current,
@@ -100,10 +100,9 @@ export function KioskSessionProvider({ children }: { children: ReactNode }) {
   }, [environment, setSessionAndTrackInitialFetch]);
 
   // KioskRealtimeProvider and LivePeriodsProvider need both the Relay
-  // environment (available above, via KioskRelayEnvironment/
-  // KioskKeyRelayEnvironment) and useKioskSession() (only available below,
-  // inside KioskSessionContext.Provider) — so they're mounted here rather than
-  // in either of those.
+  // environment (available above, via KioskKeyRelayEnvironment) and
+  // useKioskSession() (only available below, inside KioskSessionContext.Provider)
+  // — so they're mounted here rather than in either of those.
   const body = isInitialFetchComplete ? (
     <KioskRealtimeProvider>
       <SessionPushListener

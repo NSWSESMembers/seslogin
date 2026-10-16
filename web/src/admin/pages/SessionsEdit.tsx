@@ -18,7 +18,7 @@ function SessionsEditForm() {
 
   // The `clientInfo` selection is handed to SessionClientInfo whole rather than read
   // field by field, so the lint rule can't see the usage. Same disable as in
-  // kiosk/components/KioskTokenSessionFetcher.tsx.
+  // kiosk/components/KioskSessionFetcher.tsx.
   /* eslint-disable relay/unused-fields */
   const data = useRetryableLazyLoadQuery<SessionsEditQuery>(
     graphql`

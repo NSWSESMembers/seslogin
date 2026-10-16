@@ -9,6 +9,18 @@ import { setupServer } from "msw/node";
 import { graphql, HttpResponse } from "msw";
 import KioskMain from "./KioskMain";
 
+// jsdom has no IndexedDB to hold the kiosk's key, so stand in for the key store and
+// signer. The mock API never checks the signature.
+vi.mock("./lib/kioskKey", () => ({
+  getOrCreateKioskKey: () =>
+    Promise.resolve({
+      keyPair: {},
+      publicKeySpkiB64: "test-public-key",
+      fingerprint: "abc123",
+    }),
+  buildSignedAuthHeader: () => Promise.resolve("SLKey abc123.0.sig"),
+}));
+
 const FOUND_USER = "40050107";
 const FOUND_USER_RESPONSE = {
   data: {
@@ -56,16 +68,13 @@ function signOutUserResponse(quickPick: unknown = null) {
 // a real leaf category id from the category tree in
 // web/src/lib/categories.ts (Training > AIIMS)
 const QUICK_PICK_CATEGORY_ID = "RX2bfpU6ppvV";
-const SETTINGS = {
-  scanAuthToken: "mock-token",
-  scanAuthTokenIssuedAt: new Date().getTime(),
-};
+const SETTINGS = { authMode: "key" };
 
 const relayUrl = getGraphQLEndpoint();
 const relayEndpoint = graphql.link(relayUrl);
 
 function sessionConfigHandler(config: Record<string, unknown>) {
-  return relayEndpoint.query("KioskTokenSessionFetcherQuery", () => {
+  return relayEndpoint.query("KioskSessionFetcherQuery", () => {
     return HttpResponse.json({
       data: {
         session: {

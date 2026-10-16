@@ -196,7 +196,7 @@ struct RegisterResponse {
     client_id_issued_at: u64,
 }
 
-/// `POST /oauth/register`. `app` is only used for its JWT-derived client-id
+/// `POST /oauth/register`. `app` is only used for its server-secret-derived client-id
 /// signing key, so this stays sync and DB-free — nothing about registration is
 /// stored (see [`oauth::encode_client_id`]).
 pub fn register<A: App>(app: &A, body: &[u8]) -> HttpReply {
@@ -251,7 +251,8 @@ pub fn register<A: App>(app: &A, body: &[u8]) -> HttpReply {
         redirect_uris: req.redirect_uris.clone(),
         iat: now,
     };
-    let client_id = oauth::encode_client_id(&app.jwt().oauth_client_id_key(), &registration);
+    let client_id =
+        oauth::encode_client_id(&app.server_secret().oauth_client_id_key(), &registration);
 
     HttpReply::json(
         201,
@@ -396,7 +397,7 @@ async fn token_authorization_code<A: App + HasDb>(
         return error_reply(400, "invalid_grant", "Malformed authorization code");
     };
 
-    let key = app.jwt().oauth_client_id_key();
+    let key = app.server_secret().oauth_client_id_key();
     if oauth::decode_client_id(&key, client_id).is_none() {
         return error_reply(401, "invalid_client", "Unknown client");
     }
@@ -549,15 +550,15 @@ async fn token_refresh<A: App + HasDb>(app: &A, params: &HashMap<String, String>
 mod tests {
     use super::*;
     use crate::app::{self, MyApp};
-    use crate::jwt;
     use crate::mockdb;
     use crate::mockmail;
     use crate::mockqueue;
     use crate::mockrealtime;
+    use crate::server_secret::ServerSecret;
 
     fn app() -> MyApp<mockdb::Handler, mockqueue::Handler, mockmail::Handler, mockrealtime::Handler>
     {
-        let key = jwt::Key::new("test-secret", None).expect("valid test JWT key");
+        let key = ServerSecret::new("test-secret");
         app::new(
             mockdb::Handler::new(),
             key,

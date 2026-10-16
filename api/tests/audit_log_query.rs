@@ -17,10 +17,10 @@ use seslogin::audit::{self, AuditingHandler};
 use seslogin::auth::AuthInfo;
 use seslogin::db::{self, Handler as _};
 use seslogin::graphql::{self, ClientIp};
-use seslogin::jwt;
 use seslogin::mockmail;
 use seslogin::mockqueue;
 use seslogin::mockrealtime;
+use seslogin::server_secret::ServerSecret;
 
 type TestApp =
     MyApp<AuditingHandler<FakeDb>, mockqueue::Handler, mockmail::Handler, mockrealtime::Handler>;
@@ -104,7 +104,6 @@ fn db_session(id: &str, name: &str) -> db::Session {
         client_version: None,
         client_info: None,
         client_info_updated_at: None,
-        code: None,
         config: serde_json::Map::new(),
         healthcheck_url: None,
         public_key: None,
@@ -223,7 +222,7 @@ fn labels_of(connection: &serde_json::Value) -> Vec<&str> {
 async fn populated_app() -> (Arc<TestApp>, String) {
     let app = app::new(
         AuditingHandler::new(FakeDb::default()),
-        jwt::Key::new("test-secret", None).expect("valid test JWT key"),
+        ServerSecret::new("test-secret"),
         0,
         mockqueue::Handler::new(),
         mockmail::Handler::new(),

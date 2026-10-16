@@ -4,7 +4,7 @@ import type { KioskRealtimeTokenQuery } from "./__generated__/KioskRealtimeToken
 // These fields aren't read in this file: `fetchRealtimeToken` hands the whole
 // payload back to KioskRealtimeProvider, which passes `tokenRequest` straight
 // through to ably-js's authCallback and the channel names to its consumers. Same
-// pattern (and same disable) as KioskTokenSessionFetcher.tsx and
+// pattern (and same disable) as KioskSessionFetcher.tsx and
 // UserInfoProvider.tsx.
 /* eslint-disable relay/unused-fields */
 const query = graphql`

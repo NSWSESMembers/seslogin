@@ -26,11 +26,11 @@ use crate::app::{self, MyApp};
 use crate::auth;
 use crate::db;
 use crate::graphql;
-use crate::jwt;
 use crate::mail;
 use crate::queue;
 use crate::realtime;
 use crate::request_metrics::{self, RequestMetrics};
+use crate::server_secret::ServerSecret;
 use crate::telemetry;
 
 type Schema<H, Q, M, R> = async_graphql::Schema<
@@ -42,10 +42,6 @@ type Schema<H, Q, M, R> = async_graphql::Schema<
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
 pub struct Cli {
-    /// JWT expiry time for sessions in seconds (default: 1h in dev)
-    #[arg(short, long, default_value_t = 1209600)]
-    pub session_expiry_s: u64,
-
     /// Inject lag for all responses
     #[arg(short, long, default_value_t = 0)]
     pub response_lag_ms: u64,
@@ -67,7 +63,7 @@ pub struct Cli {
 /// Everything a server needs that doesn't depend on which backends it uses.
 pub struct Startup {
     pub cli: Cli,
-    pub key: jwt::Key,
+    pub secret: ServerSecret,
     pub dev_auth: Option<auth::DevAuthConfig>,
     pub db_prefix: String,
 }
@@ -103,8 +99,7 @@ pub fn init() -> Result<Startup, Box<dyn Error>> {
     let cli = Cli::parse();
 
     let var = env::var("JWT_SECRET").expect("JWT_SECRET must be set");
-    let secret = var.trim();
-    let key = jwt::Key::new(secret, Some(cli.session_expiry_s))?;
+    let secret = ServerSecret::new(var.trim());
 
     let dev_auth = match (&cli.dev_auth_session, &cli.dev_auth_user) {
         (Some(_), Some(_)) => {
@@ -127,7 +122,7 @@ pub fn init() -> Result<Startup, Box<dyn Error>> {
 
     Ok(Startup {
         cli,
-        key,
+        secret,
         dev_auth,
         db_prefix,
     })
@@ -389,12 +384,15 @@ where
     R: realtime::Handler + Send + Sync + 'static,
 {
     let Startup {
-        cli, key, dev_auth, ..
+        cli,
+        secret,
+        dev_auth,
+        ..
     } = startup;
     let webauthn = Arc::new(app::build_webauthn()?);
     let app = Arc::new(app::new(
         db,
-        key,
+        secret,
         cli.response_lag_ms,
         queues,
         mailer,

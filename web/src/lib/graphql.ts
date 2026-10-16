@@ -51,7 +51,7 @@ function nextRequestLeaseId(): string {
 
 /**
  * Supplies the `Authorization` header value for a request. Either:
- *  - a static full header value (e.g. `Bearer <jwt>`), or `null` for none, or
+ *  - a static full header value (e.g. `Bearer <token>`), or `null` for none, or
  *  - an async producer called with the exact serialized request body — used by the
  *    kiosk key flow, which signs the body hash. The same body string is then sent, so
  *    the signature always matches what the server hashes.

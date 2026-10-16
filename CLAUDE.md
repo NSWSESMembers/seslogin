@@ -232,17 +232,13 @@ make local-seed-extract   # refresh local/seed/from-prod.json (the only step nee
 Unit** (`TestBUnit001`, member Crossunit Tester `20000001`, for cross-unit sign-in) — three
 users (`super@seslogin.test`, `testunit@seslogin.test` Admin at Test A Unit only, and
 `readonly@seslogin.test` Read only at Test A Unit — use it to check write refusals), a
-ready-made user token for each, two kiosk sessions at Test A Unit — `TestAKiosk01`
-(legacy JWT kiosk, no key) and `TestAKiosk02` (key-enrolled) — and all 220 categories
+ready-made user token for each, a key-enrolled kiosk session at Test A Unit
+(`TestAKiosk02`), and all 220 categories
 with the 99 NITC groups they reference. Neither unit name contains the other, so a selector
 matching on name text cannot hit both.
 
-`TestAKiosk01` stands in for a kiosk enrolled with
-the removed 6-digit setup code that never converted to key auth: it has no key, and its
-session JWT (`make local-cli ARGS="jwt session TestAKiosk01"`) is now refused, so a kiosk
-holding one drops to the QR enrolment screen. `make local-cli ARGS="--dry-run session
-purge-legacy"` lists it as a row the legacy purge would delete. `TestAKiosk02` is the working
-kiosk: it holds the public half of a fixed P-256 keypair and signs each request with the private half
+`TestAKiosk02` holds the public half of a fixed P-256 keypair and signs each request with
+the private half
 (`SLKey`, see `api/src/session_key.rs`); the private half is committed in
 `local/seed/kiosk-signing-key.json` — a throwaway key valid only against a local database.
 Regenerating it means updating both files.
@@ -348,7 +344,7 @@ Unlike `mockdb`, the queue, mail and realtime mocks *succeed* — they exist so 
 **Auth**: `api/src/auth.rs` — token verification dispatches on prefix:
 1. API tokens (`slgn_` prefix) — opaque hashed secrets for programmatic access, shaped `slgn_<id>.<secret>` and verified the same way as user tokens below. Legacy `slgn_<secret>` tokens never expire on their own, so they keep working through `token_hash-index` and log a `legacy-format API token used` warning naming the token, until each is replaced by hand
 2. User tokens (`slu_` prefix) — opaque hashed secrets issued via email-code auth, shaped `slu_<id>.<secret>` so verification is one strongly consistent `GetItem` by id plus a constant-time hash check. Legacy `slu_<secret>` tokens (no `.`) are still found through `token_hash-index`, but their sliding expiry is frozen so they all age out
-3. Anything else is refused, including the session JWTs once held by kiosks enrolled with the since-removed 6-digit setup code. Those kiosks converted themselves to key auth (`convertSessionToKey`, with a signature proving they hold the key); one that didn't drops to the QR enrolment screen. `cli session purge-legacy` deletes the leftover rows. User JWTs are no longer issued or accepted; users authenticate with `slu_` tokens
+3. `slp_` — single-period edit links (see `api/src/period_link.rs`). Anything else is refused: there are no JWTs, for users or kiosks. Kiosks authenticate only with an `Authorization: SLKey <fp>.<ts>.<sig>` header, signing each request with their enrolled key (`api/src/session_key.rs`, `auth::verify_signed_key`)
 
 Authorization uses an `AuthRequirement` guard enum per field: `Session`, `UserOrSession`, `User`, `SuperUser`.
 
@@ -382,7 +378,7 @@ Absence writes are excluded from `max_mutations`: a location with a large but le
 
 **SES API client**: `api/src/ses_api.rs` — HTTP client with retry logic for the external headquarters system.
 
-**JWT**: `api/src/jwt.rs` — HMAC-SHA256 kiosk session tokens with claims `{ session_id, exp }`. A JWT carrying `user_id` instead is rejected.
+**Server secret**: `api/src/server_secret.rs` — the `JWT_SECRET` value (named for the kiosk session JWTs it once signed). Its only use now is deriving the key that signs stateless OAuth client ids, so rotating it makes every MCP client register again.
 
 ### Core Data Model
 
@@ -402,7 +398,7 @@ All entities use soft deletes (`deleted` flag).
 Environment variables (loaded from `.env` and `.env.secret`; see
 [.env.secret.example](.env.secret.example) for the full secret list):
 - `DB_PREFIX` — DynamoDB table name prefix. `.env` sets `seslogin_test` (dev snapshot); deployed envs use `seslogin_prod`.
-- `JWT_SECRET` — JWT signing key
+- `JWT_SECRET` — server HMAC secret; derives the OAuth client-id signing key (`api/src/server_secret.rs`). No JWTs are issued any more
 - `SES_API_BASE_URL` / `SES_API_KEY` — External member sync API
 - `SES_INTRANET_SEARCH_API_BASE_URL` / `SES_INTRANET_SEARCH_API_KEY` — SES intranet contact-directory search, used to sync member emails. Separate credential from `SES_API_KEY` (uses the `Ocp-Apim-Subscription-Key` header).
 - `MEMBER_SYNC_QUEUE_URL` / `NITC_EXPORT_QUEUE_URL` / `HEALTHCHECK_QUEUE_URL` — SQS queue URLs. All three are required by `poem` and by the API Lambda. `poem-local` never reads them.

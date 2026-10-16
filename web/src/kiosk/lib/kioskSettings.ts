@@ -1,14 +1,15 @@
 const OLD_SETTINGS_KEY = "appSettings";
 const SETTINGS_PREFIX = "kiosk_";
 
+/**
+ * Keys a kiosk enrolled with the removed 6-digit setup code stored its session JWT
+ * under. JWTs are refused now, so they are dropped wherever the settings are read.
+ */
+const LEGACY_JWT_KEYS = ["scanAuthToken", "scanAuthTokenIssuedAt"];
+
 export type AppSettingsStorage = {
-  scanAuthToken?: string | null;
-  scanAuthTokenIssuedAt?: number | null;
-  /**
-   * Which auth flow this kiosk last used: legacy JWT (from a since-removed 6-digit setup
-   * code, still honoured for kiosks enrolled that way), or public-key signing.
-   */
-  authMode?: "jwt" | "key" | null;
+  /** `"key"` once this kiosk's key has been enrolled (anything else: not yet). */
+  authMode?: string | null;
   [key: string]: unknown;
 };
 
@@ -28,7 +29,14 @@ export function readAppSettings(profile: string): AppSettingsStorage {
   try {
     const parsed = JSON.parse(settingsJson);
     if (parsed != null && typeof parsed === "object") {
-      return parsed as AppSettingsStorage;
+      const settings = parsed as AppSettingsStorage;
+      if (LEGACY_JWT_KEYS.some((key) => key in settings)) {
+        for (const key of LEGACY_JWT_KEYS) {
+          delete settings[key];
+        }
+        writeAppSettings(profile, settings);
+      }
+      return settings;
     }
   } catch (error) {
     console.error("Failed to parse app settings from localStorage", error);
@@ -48,14 +56,9 @@ export function writeAppSettings(
 }
 
 /**
- * Record that this kiosk now authenticates with its enrolled key, dropping any stored
- * JWT. The next load starts straight in key mode.
+ * Record that this kiosk now authenticates with its enrolled key. The next load starts
+ * straight in key mode.
  */
 export function markKeyEnrolled(profile: string) {
-  writeAppSettings(profile, {
-    ...readAppSettings(profile),
-    authMode: "key",
-    scanAuthToken: null,
-    scanAuthTokenIssuedAt: null,
-  });
+  writeAppSettings(profile, { ...readAppSettings(profile), authMode: "key" });
 }
