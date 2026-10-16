@@ -14,6 +14,7 @@ mod categories;
 mod locations;
 mod members;
 mod periods;
+mod reports;
 mod users;
 
 /// Every tool's `tools/list` entry, in a stable order.
@@ -23,6 +24,7 @@ pub(super) fn catalogue() -> Vec<Value> {
     tools.extend(members::catalogue());
     tools.extend(categories::catalogue());
     tools.extend(periods::catalogue());
+    tools.extend(reports::catalogue());
     tools
 }
 
@@ -43,7 +45,10 @@ where
     if let Some(outcome) = categories::call(ctx, name, args).await {
         return Some(outcome);
     }
-    periods::call(ctx, name, args).await
+    if let Some(outcome) = periods::call(ctx, name, args).await {
+        return Some(outcome);
+    }
+    reports::call(ctx, name, args).await
 }
 
 /// Which MCP annotations a tool carries (see the module docs of `mcp`).

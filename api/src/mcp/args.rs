@@ -178,6 +178,8 @@ const TIMESTAMP_FIELDS: &[&str] = &[
     "timestamp",
     "refreshExpiresAt",
     "asOf",
+    "dayStart",
+    "lastSeen",
 ];
 
 /// Walk a result and, beside every integer [`TIMESTAMP_FIELDS`] entry, add
