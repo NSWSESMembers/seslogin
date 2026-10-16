@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<02cff2d9eb3f272d9aa27f2527a081af>>
+ * @generated SignedSource<<c4077a20d49270e1d7a849d2fbc967ee>>
  * @lightSyntaxTransform
  */
 
@@ -8,8 +8,8 @@
 // @ts-nocheck
 
 import { ConcreteRequest } from 'relay-runtime';
-export type KioskTokenSessionFetcherQuery$variables = Record<PropertyKey, never>;
-export type KioskTokenSessionFetcherQuery$data = {
+export type KioskSessionFetcherQuery$variables = Record<PropertyKey, never>;
+export type KioskSessionFetcherQuery$data = {
   readonly environment: {
     readonly gitRev: string;
     readonly isProdDb: boolean;
@@ -26,9 +26,9 @@ export type KioskTokenSessionFetcherQuery$data = {
     readonly version: number;
   };
 };
-export type KioskTokenSessionFetcherQuery = {
-  response: KioskTokenSessionFetcherQuery$data;
-  variables: KioskTokenSessionFetcherQuery$variables;
+export type KioskSessionFetcherQuery = {
+  response: KioskSessionFetcherQuery$data;
+  variables: KioskSessionFetcherQuery$variables;
 };
 
 const node: ConcreteRequest = (function(){
@@ -125,7 +125,7 @@ return {
     "argumentDefinitions": [],
     "kind": "Fragment",
     "metadata": null,
-    "name": "KioskTokenSessionFetcherQuery",
+    "name": "KioskSessionFetcherQuery",
     "selections": (v2/*:: as any*/),
     "type": "QueryRoot",
     "abstractKey": null
@@ -134,20 +134,20 @@ return {
   "operation": {
     "argumentDefinitions": [],
     "kind": "Operation",
-    "name": "KioskTokenSessionFetcherQuery",
+    "name": "KioskSessionFetcherQuery",
     "selections": (v2/*:: as any*/)
   },
   "params": {
-    "cacheID": "b512c18913aba3d9b810a55edad6f1b2",
+    "cacheID": "e279248074497135026cefd9fe2c7412",
     "id": null,
     "metadata": {},
-    "name": "KioskTokenSessionFetcherQuery",
+    "name": "KioskSessionFetcherQuery",
     "operationKind": "query",
-    "text": "query KioskTokenSessionFetcherQuery {\n  session {\n    id\n    name\n    config\n    version\n    keyExpiresAt\n    location {\n      id\n      name\n    }\n  }\n  environment {\n    gitRev\n    isProdDb\n  }\n}\n"
+    "text": "query KioskSessionFetcherQuery {\n  session {\n    id\n    name\n    config\n    version\n    keyExpiresAt\n    location {\n      id\n      name\n    }\n  }\n  environment {\n    gitRev\n    isProdDb\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "21d00cabcf31009539f645074e9780e7";
+(node as any).hash = "c40c95a104039d8a56e83b2597a24e24";
 
 export default node;

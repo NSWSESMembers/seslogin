@@ -482,7 +482,7 @@ pub async fn issue_user_token<A: App + HasDb>(app: &A, user_id: &str) -> Result<
     let id = crate::dynamodb::new_id();
     let secret = mint_id_bound_token(USER_TOKEN_PREFIX, &id);
     let hash = hash_token(&secret);
-    let expires_at = crate::expire::ExpirePolicy::UserTokenDefault.from_now();
+    let expires_at = crate::clock::now_sec() + crate::expire::DEFAULT_USER_EXPIRE_S;
     // The caller is unauthenticated until this very call succeeds (email-code and
     // passkey login), so attribute the new token to the user it is for.
     crate::audit::scope(
@@ -518,11 +518,7 @@ async fn verify_token_with_period_link<A: App + HasDb>(
     }
 }
 
-pub async fn verify_token<A: App + HasDb + HasQueues>(
-    app: &A,
-    token: &str,
-    _client: &ClientReport,
-) -> Result<AuthInfo, AuthError> {
+pub async fn verify_token<A: App + HasDb>(app: &A, token: &str) -> Result<AuthInfo, AuthError> {
     if token.starts_with(API_TOKEN_PREFIX) {
         return verify_token_with_api_token(app, token).await;
     }
@@ -535,17 +531,14 @@ pub async fn verify_token<A: App + HasDb + HasQueues>(
         return verify_token_with_period_link(app, token).await;
     }
 
-    // Anything else would once have been a kiosk session JWT, from the since-removed
-    // setup-code enrolment. Those kiosks have all converted to key auth (or must be
-    // re-enrolled by QR), so the JWT is refused without even being verified. A 401 drops
-    // such a kiosk to its QR enrolment screen.
-    Err(AuthError::Permanent(
-        "Unrecognised token (kiosk setup-code tokens are no longer accepted)".into(),
-    ))
+    // Kiosks authenticate with a signed key (`SLKey`), never a bearer token. Anything
+    // else — including a session JWT left over from the removed setup-code enrolment —
+    // is refused without a DB read.
+    Err(AuthError::Permanent("Unrecognised token".into()))
 }
 
 /// Dispatch an `Authorization` header value to the right verifier by scheme:
-/// `Bearer <token>` → opaque/JWT tokens; `SLKey <fp>.<ts>.<sig>` → signed kiosk key
+/// `Bearer <token>` → opaque tokens; `SLKey <fp>.<ts>.<sig>` → signed kiosk key
 /// (binds `body_hash_hex`). Returns `None` when there is no recognized header, so the
 /// request proceeds unauthenticated (the guards then reject anything that requires auth).
 /// Shared by the poem server and the Lambda handler.
@@ -557,7 +550,7 @@ pub async fn verify_authorization_header<A: App + HasDb + HasQueues>(
 ) -> Option<Result<AuthInfo, AuthError>> {
     let auth_header = auth_header?;
     if let Some(token) = auth_header.strip_prefix("Bearer ") {
-        Some(verify_token(app, token, client).await)
+        Some(verify_token(app, token).await)
     } else if let Some(rest) = auth_header.strip_prefix(crate::session_key::SESSION_KEY_SCHEME) {
         Some(verify_signed_key(app, rest, body_hash_hex, client).await)
     } else {
@@ -577,15 +570,14 @@ pub fn generate_api_token_secret(id: &str) -> (String, String) {
 mod verify_token_tests {
     use super::*;
     use crate::app::{self, MyApp};
-    use crate::client_info::ClientReport;
-    use crate::jwt;
+    use crate::server_secret::ServerSecret;
     use crate::{mockdb, mockmail, mockqueue, mockrealtime};
 
     fn app() -> MyApp<mockdb::Handler, mockqueue::Handler, mockmail::Handler, mockrealtime::Handler>
     {
         app::new(
             mockdb::Handler::new(),
-            jwt::Key::new("test", None).expect("valid test JWT key"),
+            ServerSecret::new("test"),
             0,
             mockqueue::Handler::new(),
             mockmail::Handler::new(),
@@ -600,28 +592,24 @@ mod verify_token_tests {
     #[tokio::test]
     async fn rejects_oauth_access_token() {
         let app = app();
-        let result = verify_token(&app, "slat_abc123.somesecret", &ClientReport::default()).await;
+        let result = verify_token(&app, "slat_abc123.somesecret").await;
         assert!(matches!(result, Err(AuthError::Permanent(_))));
     }
 
-    /// A kiosk session JWT that verifies perfectly well is still refused, and without a
-    /// DB read: mockdb fails every call as a transient error, so a `Permanent` result
-    /// shows the token was turned away before any lookup.
+    /// An unprefixed token — the shape of a kiosk session JWT from the removed
+    /// setup-code enrolment — is refused without a DB read: mockdb fails every call as
+    /// a transient error, so a `Permanent` result shows no lookup happened.
     #[tokio::test]
-    async fn rejects_a_valid_session_jwt() {
+    async fn rejects_an_unprefixed_token() {
         let app = app();
-        let token = jwt::Key::new("test", None)
-            .unwrap()
-            .make_session_jwt("Sess1", jwt::ExpirePolicy::SessionDefault)
-            .unwrap();
-        let result = verify_token(&app, &token, &ClientReport::default()).await;
+        let result = verify_token(&app, "eyJhbGciOiJIUzI1NiJ9.eyJzZXNzaW9uX2lkIjoiUyJ9.c2ln").await;
         assert!(matches!(result, Err(AuthError::Permanent(_))));
     }
 
     #[tokio::test]
     async fn rejects_oauth_refresh_token() {
         let app = app();
-        let result = verify_token(&app, "slrt_abc123.somesecret", &ClientReport::default()).await;
+        let result = verify_token(&app, "slrt_abc123.somesecret").await;
         assert!(matches!(result, Err(AuthError::Permanent(_))));
     }
 }

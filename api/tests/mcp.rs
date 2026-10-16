@@ -2312,7 +2312,6 @@ fn seed_kiosks(app: &App) {
         client_version: None,
         client_info: None,
         client_info_updated_at: None,
-        code: None,
         config: serde_json::Map::new(),
         healthcheck_url: None,
         public_key: Some("PUBKEY-MUST-NOT-LEAK".into()),

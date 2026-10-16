@@ -160,7 +160,7 @@ pub fn rotate_grant(
 /// with `grant_id` set.
 ///
 /// Deliberately not called from [`crate::auth::verify_token`] /
-/// `verify_authorization_header` — those stay JWT/`slu_`/`slgn_` only, so an MCP
+/// `verify_authorization_header` — those stay `slu_`/`slgn_`/`slp_` only, so an MCP
 /// token gains no access to the GraphQL endpoint. A future MCP request handler
 /// calls this directly instead.
 ///
@@ -253,7 +253,7 @@ pub struct ClientRegistration {
 
 /// Encode a [`ClientRegistration`] as a self-verifying `client_id`:
 /// `base64url(JSON)` + `.` + `base64url(HMAC-SHA256)`, signed with `key` (derived
-/// from `JWT_SECRET` via [`crate::jwt::Key::oauth_client_id_key`]). Nothing is
+/// from `JWT_SECRET` via [`crate::server_secret::ServerSecret::oauth_client_id_key`]). Nothing is
 /// stored — [`decode_client_id`] with the same key is the only way to read it back,
 /// and a tampered payload fails that check.
 pub fn encode_client_id(key: &[u8], registration: &ClientRegistration) -> String {

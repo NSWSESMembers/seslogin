@@ -16,10 +16,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use seslogin::app::{self, MyApp};
 use seslogin::db::{self, EphemeralState, Location, OAuthGrant, OAuthGrantUpdateShape, User};
-use seslogin::jwt;
 use seslogin::mockmail;
 use seslogin::mockqueue;
 use seslogin::mockrealtime;
+use seslogin::server_secret::ServerSecret;
 
 /// A tiny in-memory `db::Handler` covering only what the token endpoint
 /// touches: users (read + `AccessTime` touch), `ephemeral_state`, and
@@ -335,16 +335,6 @@ impl db::Handler for FakeDb {
             .cloned()
             .collect())
     }
-    async fn list_session_ids_with_code(&self) -> db::Result<Vec<String>> {
-        Ok(self
-            .sessions
-            .lock()
-            .unwrap()
-            .values()
-            .filter(|s| s.code.is_some())
-            .map(|s| s.id.clone())
-            .collect())
-    }
     async fn list_people_for_location(
         &self,
         location_id: &str,
@@ -628,7 +618,6 @@ impl db::Handler for FakeDb {
             client_version: None,
             client_info: None,
             client_info_updated_at: None,
-            code: None,
             config: config.clone(),
             healthcheck_url: healthcheck_url.map(str::to_string),
             public_key: Some(key.public_key.to_string()),
@@ -677,30 +666,9 @@ impl db::Handler for FakeDb {
             }
             db::SessionUpdateShape::Delete => {
                 session.active = false;
-                session.code = None;
                 session.key_fingerprint = None;
                 session.public_key = None;
                 session.key_expires_at = None;
-            }
-            db::SessionUpdateShape::AttachKey {
-                public_key,
-                fingerprint,
-                expires_at,
-            } => {
-                if !session.active
-                    || session.key_fingerprint.is_some()
-                    || session.public_key.is_some()
-                    || session.key_released_at.is_some()
-                {
-                    return Err(db::Error::NotFound(format!(
-                        "session {id} is not a legacy kiosk that can take a key"
-                    )));
-                }
-                session.public_key = Some(public_key.to_string());
-                session.key_fingerprint = Some(fingerprint.to_string());
-                session.key_expires_at = Some(expires_at);
-                // Like DynamoDB: no version bump.
-                return Ok(None);
             }
             db::SessionUpdateShape::Retire {
                 reason,
@@ -726,7 +694,6 @@ impl db::Handler for FakeDb {
                     )));
                 }
                 session.active = false;
-                session.code = None;
                 session.key_fingerprint = None;
                 session.public_key = None;
                 session.key_expires_at = None;
@@ -1346,7 +1313,7 @@ impl db::Handler for FakeDb {
 #[allow(dead_code)] // see `seed_super_user`'s doc comment
 pub(crate) fn fake_app()
 -> MyApp<FakeDb, mockqueue::Handler, mockmail::Handler, mockrealtime::Handler> {
-    let key = jwt::Key::new("test-secret", None).expect("valid test JWT key");
+    let key = ServerSecret::new("test-secret");
     app::new(
         FakeDb::default(),
         key,

@@ -23,7 +23,6 @@ fn session(id: &str) -> db::Session {
         client_version: None,
         client_info: None,
         client_info_updated_at: None,
-        code: None,
         config: serde_json::Map::new(),
         healthcheck_url: None,
         public_key: None,
@@ -62,7 +61,6 @@ fn fixture(now: u64) -> AuditingHandler<FakeDb> {
         },
         db::Session {
             last_contact: Some(now - JWT - GRACE_S - DAY),
-            code: Some("123456".into()),
             ..session("legacy-dead")
         },
         db::Session {
@@ -133,7 +131,6 @@ async fn dead_sessions_are_retired_and_everything_else_is_left_alone() {
         let s = get(&db, id);
         assert!(!s.active, "{id} should be retired");
         assert!(s.retired_at.is_some(), "{id} should be stamped");
-        assert_eq!(s.code, None, "{id} should hold no code");
         assert_eq!(s.key_fingerprint, None, "{id} should hold no key");
         assert_eq!(s.public_key, None, "{id} should hold no key");
         // Still resolvable to who and where it was.

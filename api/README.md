@@ -386,65 +386,19 @@ Two rules govern the parsing, both enforced by tests in `client_info.rs`:
 
 Sizes are bounded (2 KB per header, 128 characters per field, 256 for the user agent).
 
-## Converting setup-code kiosks to key auth
+## Kiosk authentication
 
-Kiosks enrolled with the removed 6-digit setup code authenticate with a session JWT. Each
-one moves itself onto key auth, without an admin: while still on its JWT, the kiosk calls
-`convertSessionToKey(publicKey, proof)`. `proof` is its ordinary `SLKey` request
-signature (minus the scheme) over the body `slkey-convert:<session id>`, which shows it
-holds the private half of the key. The server attaches the key to the caller's own session
-(`SessionUpdateShape::AttachKey`, conditional on the row being live with no key and never
-released) and the kiosk reloads into key mode.
+Kiosks authenticate only with a signed key. An admin enrols a kiosk by scanning its QR
+code (`submitEnrollmentKey` / `enrollSession`). From then on, the kiosk sends
+`Authorization: SLKey <fingerprint>.<timestamp>.<signature>` with every request, signing
+the request body with its non-extractable P-256 key (`api/src/session_key.rs`,
+`auth::verify_signed_key`).
 
-When a kiosk converts is decided in the client (`web/src/kiosk/lib/keyConversion.ts`), not
-the server. The mutation is idempotent for the same key, and returns `CONFLICT` if another
-session holds the key; the kiosk then stays on its JWT and tries again later.
-
-Session JWTs are now refused outright (`auth::verify_token` turns away any token without a
-recognised prefix, before any DB read), so a kiosk that never converted gets a 401 and drops
-to its QR enrolment screen, where an admin can enrol it afresh. `refreshToken` survives
-only as a deprecated field that returns `""`, so an already-loaded bundle's session query
-still validates.
-
-### Runbook: retiring JWT kiosks
-
-Every command below runs against **production** (`DB_PREFIX=seslogin_prod`). Read each
-dry run before applying anything.
-
-1. **Before deploying the JWT rejection**, check the fleet has converted. Once the
-   conversion window has passed (21:00 Sydney, Sat 2026-10-17), list the sessions:
-
-   ```bash
-   cd api && DB_PREFIX=seslogin_prod RUST_LOG=info cargo run --bin cli -- session list
-   ```
-
-   Any row with `auth` = `code` and a recent `last_contact` is a kiosk still running on a
-   JWT. Lapsed rows (no contact for weeks, or v1 imports that never made contact) are
-   expected. Investigate a recent one before going further: is it running an old
-   `client_version`, or is its conversion failing? Check the API logs for
-   `convertSessionToKey`. Once the rejection is deployed, such a kiosk can only come back
-   by being enrolled again by QR.
-2. **Deploy** the rejection to `test`, then `preprod`, then `prod`. All three share the
-   production database, so the first deploy already refuses JWTs wherever it serves.
-3. **Preview the purge.** It lists every active session with no key that was never
-   released, plus any deleted session still holding an old setup `code`:
-
-   ```bash
-   cd api && DB_PREFIX=seslogin_prod RUST_LOG=info cargo run --bin cli -- --dry-run session purge-legacy
-   ```
-
-4. **Apply** it by running the same command without `--dry-run`. Each row is
-   soft-deleted (`SessionUpdateShape::Delete`, which also strips `code`) and audited as
-   actor `cli`. Then run the dry run again: it should list nothing.
-5. **Optional: rotate `JWT_SECRET`** (`jwt_secret` / `jwt_secret_test` in
-   `infra/variables.tf`). JWTs are never stored, so after steps 1–4 there is no JWT data
-   left in the database. Rotating also makes any session JWT still sitting in a browser
-   unverifiable even if the JWT path came back. But OAuth client IDs are derived from the
-   same secret (`jwt::Key::oauth_client_id_key`), so rotating it makes every MCP client
-   register again. Skip this unless that is acceptable.
-
-After this, the follow-up that removes the JWT and conversion code can land once
-`cli session list-active` shows no kiosk on a `client_version` older than this change.
+Kiosks once set up with a 6-digit setup code authenticated with a session JWT. They
+converted themselves to key auth through a temporary `convertSessionToKey` mutation, and
+the leftovers were purged. JWTs are no longer issued or accepted, and any bearer token
+without a recognised prefix is refused. `JWT_SECRET` keeps its name but now only derives
+the OAuth client-id signing key (`api/src/server_secret.rs`).
 
 ## SES member sync
 

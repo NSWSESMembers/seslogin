@@ -300,16 +300,11 @@ pub struct Session {
     /// the two move together today, but a snapshot that stops being refreshed while the
     /// kiosk keeps checking in is exactly the anomaly worth being able to see.
     pub client_info_updated_at: Option<u64>,
-    /// Legacy: the 6-digit setup code of a session created before setup-code enrolment
-    /// was removed and never redeemed. Never written any more, and nothing redeems it —
-    /// read only so tooling can spot those dead sessions.
-    pub code: Option<String>,
     pub config: serde_json::Map<String, serde_json::Value>,
     pub healthcheck_url: Option<String>,
     /// Base64 (standard) SPKI DER of the kiosk's enrolled ECDSA P-256 public key.
-    /// Present only for key-enrolled sessions (the QR/public-key flow); legacy
-    /// code-enrolled sessions, which authenticate with a JWT, leave this unset. Every new
-    /// session is key-enrolled.
+    /// Every session is created with one (the QR/public-key flow); it is dropped only
+    /// when the key is released or the session deleted.
     pub public_key: Option<String>,
     /// Hex SHA-256 of the SPKI DER above. Backs the `key_fingerprint-index` GSI, so it
     /// must be omitted (never written as Null) when absent.
@@ -319,8 +314,7 @@ pub struct Session {
     pub key_expires_at: Option<u64>,
     /// Unix seconds at which this session's key was released so its device could enroll
     /// into a new session (see [`SessionUpdateShape::ReleaseKey`]). Set on such a
-    /// leftover, which can never come back online — and the only thing that tells one
-    /// apart from a healthy legacy code-enrolled kiosk, since both have no key fields.
+    /// leftover, which can never come back online.
     ///
     /// Deliberately not a soft delete: the record keeps its `active` marker so it stays
     /// listed at its own location, showing the admins there that the kiosk was replaced
@@ -491,17 +485,6 @@ pub enum SessionUpdateShape<'a> {
     /// `last_contact` alone, so the admin status dot keeps telling the truth and the
     /// throttle in `auth::touch_session` stays open for the kiosk's redeeming request.
     ExtendKey {
-        expires_at: u64,
-    },
-    /// Give a legacy setup-code (JWT) kiosk an enrolled key, so it can switch to signing
-    /// its requests. Sets the key fields exactly as a key-enrolled create would. Like
-    /// `ExtendKey` it leaves `version` alone: nothing the kiosk shows changes.
-    ///
-    /// Fails with [`Error::NotFound`] unless the row is active, holds no key and was
-    /// never released, so it can only ever turn a JWT kiosk into a key one.
-    AttachKey {
-        public_key: &'a str,
-        fingerprint: &'a str,
         expires_at: u64,
     },
     /// Drop the key fields from a session that is *not* being deleted, freeing its
@@ -1194,10 +1177,6 @@ pub trait Handler: Sync {
         &self,
         fingerprint: &str,
     ) -> impl Future<Output = Result<Vec<String>>> + Send;
-    /// Returns the IDs of every session, soft-deleted or not, that still holds a legacy
-    /// setup `code` (a scan of the sparse `code-index` GSI). Only the one-off legacy
-    /// purge (`cli session purge-legacy`) uses it.
-    fn list_session_ids_with_code(&self) -> impl Future<Output = Result<Vec<String>>> + Send;
     fn create_session(
         &self,
         location_id: &str,
@@ -1663,7 +1642,6 @@ mod tests {
             client_version: None,
             client_info: None,
             client_info_updated_at: None,
-            code: None,
             config: serde_json::Map::new(),
             healthcheck_url: None,
             public_key: None,

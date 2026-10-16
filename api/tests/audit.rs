@@ -16,10 +16,10 @@ use seslogin::audit::{self, AuditingHandler};
 use seslogin::auth::AuthInfo;
 use seslogin::db::{self, AuditAction, AuditEntityType, Handler as _};
 use seslogin::graphql::{self, ClientIp};
-use seslogin::jwt;
 use seslogin::mockmail;
 use seslogin::mockqueue;
 use seslogin::mockrealtime;
+use seslogin::server_secret::ServerSecret;
 
 type TestApp =
     MyApp<AuditingHandler<FakeDb>, mockqueue::Handler, mockmail::Handler, mockrealtime::Handler>;
@@ -53,7 +53,7 @@ fn admin_of(location: &str) -> AuthInfo {
 fn app() -> Arc<TestApp> {
     let app = app::new(
         AuditingHandler::new(FakeDb::default()),
-        jwt::Key::new("test-secret", None).expect("valid test JWT key"),
+        ServerSecret::new("test-secret"),
         0,
         mockqueue::Handler::new(),
         mockmail::Handler::new(),

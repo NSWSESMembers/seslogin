@@ -1,12 +1,12 @@
 use crate::db;
-use crate::jwt;
 use crate::mail;
 use crate::queue;
 use crate::realtime;
+use crate::server_secret::ServerSecret;
 use webauthn_rs::prelude::{Webauthn, WebauthnBuilder};
 
 pub trait App {
-    fn jwt(&self) -> &jwt::Key;
+    fn server_secret(&self) -> &ServerSecret;
     fn response_lag(&self) -> u64;
 }
 
@@ -66,7 +66,7 @@ pub trait HasRealtime {
 /// environment variable is a worse thing to deploy than two binaries.
 pub struct MyApp<DBH: db::Handler, Q: queue::Handler, M: mail::Handler, R: realtime::Handler> {
     pub db: DBH,
-    pub jwt: jwt::Key,
+    pub server_secret: ServerSecret,
     pub response_lag: u64,
     pub queues: Q,
     pub mail: M,
@@ -75,7 +75,7 @@ pub struct MyApp<DBH: db::Handler, Q: queue::Handler, M: mail::Handler, R: realt
 
 pub fn new<DBH: db::Handler, Q: queue::Handler, M: mail::Handler, R: realtime::Handler>(
     db: DBH,
-    jwt: jwt::Key,
+    server_secret: ServerSecret,
     response_lag: u64,
     queues: Q,
     mail: M,
@@ -83,7 +83,7 @@ pub fn new<DBH: db::Handler, Q: queue::Handler, M: mail::Handler, R: realtime::H
 ) -> MyApp<DBH, Q, M, R> {
     MyApp {
         db,
-        jwt,
+        server_secret,
         response_lag,
         queues,
         mail,
@@ -94,8 +94,8 @@ pub fn new<DBH: db::Handler, Q: queue::Handler, M: mail::Handler, R: realtime::H
 impl<DBH: db::Handler, Q: queue::Handler, M: mail::Handler, R: realtime::Handler> App
     for MyApp<DBH, Q, M, R>
 {
-    fn jwt(&self) -> &jwt::Key {
-        &self.jwt
+    fn server_secret(&self) -> &ServerSecret {
+        &self.server_secret
     }
     fn response_lag(&self) -> u64 {
         self.response_lag

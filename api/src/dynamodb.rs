@@ -508,7 +508,6 @@ impl TryInto<Session> for Item {
                 (info != crate::client_info::ClientInfo::default()).then_some(info)
             },
             client_info_updated_at: self.i64_field("client_info_updated_at")?.map(|i| i as u64),
-            code: self.string_field("code")?,
             config: {
                 let raw = self.string_field("config")?;
                 match raw {
@@ -1870,21 +1869,6 @@ impl db::Handler for Handler {
             .collect::<HydrationResult<Vec<String>>>()?)
     }
 
-    async fn list_session_ids_with_code(&self) -> db::Result<Vec<String>> {
-        // A scan, but of `code-index`: the index is sparse (only rows holding a `code`)
-        // and KEYS_ONLY, so this reads a handful of tiny items, not the session table.
-        Ok(scan_all_items("list_session_ids_with_code", || {
-            self.client
-                .scan()
-                .table_name(self.table_name("session"))
-                .index_name("code-index")
-        })
-        .await?
-        .into_iter()
-        .map(|item| Item(item).id())
-        .collect::<HydrationResult<Vec<String>>>()?)
-    }
-
     async fn list_sessions(&self, query: ListSessionsQuery) -> db::Result<Vec<Session>> {
         query_all("list_sessions", || {
             let builder = self
@@ -3084,7 +3068,6 @@ impl db::Handler for Handler {
             // A kiosk reports itself on its first authenticated request, not at creation.
             client_info: None,
             client_info_updated_at: None,
-            code: None,
             config: config.clone(),
             healthcheck_url: healthcheck_url.map(str::to_string),
             public_key: Some(key.public_key.to_string()),
@@ -3231,7 +3214,7 @@ impl db::Handler for Handler {
             }
             db::SessionUpdateShape::ExtendKey { expires_at } => {
                 // The condition keeps the write honest: a soft-deleted session (no
-                // `active`) or a code-enrolled one (no `public_key`) can never grow a
+                // `active`) or one with no key (no `public_key`) can never grow a
                 // `key_expires_at` attribute, whatever the caller asks for.
                 let resp = self
                     .client
@@ -3259,65 +3242,12 @@ impl db::Handler for Handler {
                 record_capacity("update_session", resp.consumed_capacity(), CapKind::Write);
                 Ok(None)
             }
-            db::SessionUpdateShape::AttachKey {
-                public_key,
-                fingerprint,
-                expires_at,
-            } => {
-                // The condition is what makes this a one-way JWT → key conversion: it
-                // never overwrites an enrolled key (which would hijack a key kiosk), and
-                // never revives a deleted or released record. A conditional-check
-                // failure surfaces as `NotFound`.
-                let resp = self
-                    .client
-                    .update_item()
-                    .table_name(self.table_name("session"))
-                    .key("id", AttributeValue::S(id.to_string()))
-                    .condition_expression(
-                        "attribute_exists(active) AND attribute_not_exists(key_fingerprint) \
-                         AND attribute_not_exists(public_key) \
-                         AND attribute_not_exists(key_released_at)",
-                    )
-                    .update_expression(
-                        "SET public_key = :public_key, key_fingerprint = :fp, \
-                         key_expires_at = :key_expires_at, updated_at = :updated_at",
-                    )
-                    .expression_attribute_values(
-                        ":public_key",
-                        AttributeValue::S(public_key.to_string()),
-                    )
-                    .expression_attribute_values(":fp", AttributeValue::S(fingerprint.to_string()))
-                    .expression_attribute_values(
-                        ":key_expires_at",
-                        AttributeValue::N(expires_at.to_string()),
-                    )
-                    .expression_attribute_values(
-                        ":updated_at",
-                        AttributeValue::N(crate::clock::now_sec().to_string()),
-                    )
-                    .return_consumed_capacity(ReturnConsumedCapacity::Total)
-                    .send()
-                    .await
-                    .map_err(|e| {
-                        map_update_err(
-                            e,
-                            format!("Session {id} is not a legacy kiosk that can take a key"),
-                        )
-                    })?;
-                record_capacity(
-                    "attach_session_key",
-                    resp.consumed_capacity(),
-                    CapKind::Write,
-                );
-                Ok(None)
-            }
             db::SessionUpdateShape::ReleaseKey { fingerprint } => {
                 // Same REMOVE list as `Delete` minus `active`: the record stays in its
                 // location's kiosk list, it just stops holding the fingerprint, so the GSI
                 // row disappears and the device is free to enroll into a new session.
                 // `key_released_at` marks it as a leftover that can never come back
-                // online; `Session::is_live` reads that, which is what stops a JWT the old
-                // kiosk still holds from working.
+                // online; `Session::is_live` reads that.
                 //
                 // The condition keeps this honest against a race — `reactivateSession`, or
                 // another admin enrolling the same device: release only while the row still
@@ -3360,15 +3290,14 @@ impl db::Handler for Handler {
                 // Removing `active` soft-deletes the session. Also drop the key fields so
                 // a disabled key-enrolled session releases its fingerprint (the GSI row
                 // disappears): its next signed request 401s, and the same key is free to
-                // re-enroll into a fresh session. A legacy unredeemed `code` goes too, so
-                // a deleted session leaves nothing behind in `code-index`.
+                // re-enroll into a fresh session.
                 let resp = self
                     .client
                     .update_item()
                     .table_name(self.table_name("session"))
                     .key("id", AttributeValue::S(id.to_string()))
                     .update_expression(
-                        "SET updated_at = :updated_at REMOVE active, code, key_fingerprint, public_key, key_expires_at ADD v :one",
+                        "SET updated_at = :updated_at REMOVE active, key_fingerprint, public_key, key_expires_at ADD v :one",
                     )
                     .expression_attribute_values(
                         ":updated_at",
@@ -3413,7 +3342,7 @@ impl db::Handler for Handler {
                     .condition_expression(condition)
                     .update_expression(
                         "SET updated_at = :now, retired_at = :now \
-                         REMOVE active, code, key_fingerprint, public_key, key_expires_at \
+                         REMOVE active, key_fingerprint, public_key, key_expires_at \
                          ADD v :one",
                     )
                     .expression_attribute_values(

@@ -6,10 +6,10 @@ vi.mock("relay-runtime", async (importOriginal) => ({
   fetchQuery: vi.fn(),
 }));
 import { fetchQuery } from "relay-runtime";
-import startKioskTokenSessionFetcher, {
+import startKioskSessionFetcher, {
   LIVE_SESSION_REFRESH_INTERVAL_MS,
   SESSION_REFRESH_INTERVAL_MS,
-} from "./KioskTokenSessionFetcher";
+} from "./KioskSessionFetcher";
 
 const response = {
   session: {
@@ -50,7 +50,7 @@ afterEach(() => {
 });
 
 function start(pushLive = false) {
-  return startKioskTokenSessionFetcher({
+  return startKioskSessionFetcher({
     environment: {} as IEnvironment,
     setSession: vi.fn(),
     pushLive,
@@ -62,7 +62,7 @@ async function settle() {
   await vi.advanceTimersByTimeAsync(0);
 }
 
-describe("startKioskTokenSessionFetcher", () => {
+describe("startKioskSessionFetcher", () => {
   it("polls on the ordinary interval while nothing is pushed", async () => {
     const fetcher = start();
     expect(fetchQuery).toHaveBeenCalledTimes(1);

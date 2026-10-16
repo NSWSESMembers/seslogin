@@ -207,10 +207,6 @@ resource "aws_dynamodb_table" "test_session" {
     type = "S"
   }
   attribute {
-    name = "code"
-    type = "S"
-  }
-  attribute {
     name = "location_id"
     type = "S"
   }
@@ -223,14 +219,6 @@ resource "aws_dynamodb_table" "test_session" {
     type = "S"
   }
 
-  global_secondary_index {
-    name = "code-index"
-    key_schema {
-      attribute_name = "code"
-      key_type       = "HASH"
-    }
-    projection_type = "KEYS_ONLY"
-  }
   global_secondary_index {
     name = "active-location_id-index"
     key_schema {

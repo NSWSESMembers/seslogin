@@ -16,7 +16,6 @@ use seslogin::db::{
     PersonUpdateShape, ScanCursor, Session, SessionUpdateShape, User,
 };
 use seslogin::dynamodb;
-use seslogin::jwt::{ExpirePolicy, Key};
 use seslogin::request_metrics::{self, RequestMetrics};
 use seslogin::ses_api;
 use seslogin::text_table::{DIVIDER, print_detail, print_table};
@@ -33,9 +32,8 @@ struct Cli {
     db_prefix: Option<String>,
 
     /// Report what the command would change without writing anything. Only the
-    /// write commands (`session set-config-key`, `session purge-legacy`, `session
-    /// edit`, `person clear-badges`, `period-link issue`) act on it; the inspectors
-    /// never write either way.
+    /// write commands (`session set-config-key`, `session edit`, `person clear-badges`,
+    /// `period-link issue`) act on it; the inspectors never write either way.
     #[arg(long, global = true, default_value_t = false)]
     dry_run: bool,
 
@@ -141,17 +139,6 @@ enum Object {
         #[arg(long, default_value_t = 1)]
         count: usize,
     },
-    /// Generate a signed kiosk session JWT (does not touch the DB).
-    Jwt {
-        /// JWT secret (overrides JWT_SECRET env var).
-        #[arg(long)]
-        jwt_secret: Option<String>,
-        /// Override JWT expiry in seconds.
-        #[arg(long)]
-        expire_s: Option<u64>,
-        #[command(subcommand)]
-        cmd: JwtCmd,
-    },
 }
 
 #[derive(clap::ValueEnum, Clone, Copy, Debug)]
@@ -174,15 +161,6 @@ enum PeriodLinkCmd {
         /// token, e.g. --base-url http://localhost:5173
         #[arg(long)]
         base_url: Option<String>,
-    },
-}
-
-#[derive(Subcommand, Debug)]
-enum JwtCmd {
-    /// Generate a JWT for a session (default expiry: 14 days).
-    Session {
-        /// The session ID to embed in the JWT.
-        session_id: String,
     },
 }
 
@@ -305,13 +283,6 @@ enum SessionCmd {
         #[arg(long)]
         location: Option<String>,
     },
-    /// Soft-delete every legacy setup-code (JWT) kiosk session, now that session JWTs
-    /// are refused: each active session with no key that was never released (the
-    /// `code` / `code (unredeemed)` rows in `session list`), plus any deleted session
-    /// still holding an old setup `code`. WRITES to the `session` table, audited as
-    /// `cli` — pass the global `--dry-run` to preview instead. Walks every location,
-    /// including disabled ones.
-    PurgeLegacy,
     /// Edit a single key-enrolled session's key-lifecycle state. WRITES to the
     /// `session` table (and, for --require-reactivation, the `ephemeral_state`
     /// table) — pass the global `--dry-run` to preview instead.
@@ -987,7 +958,6 @@ async fn show_sessions(db: &impl Handler, sessions: &[Session]) {
             client_version,
             client_info,
             client_info_updated_at,
-            code,
             config,
             healthcheck_url,
             public_key,
@@ -1006,7 +976,6 @@ async fn show_sessions(db: &impl Handler, sessions: &[Session]) {
             ("location_id", decorate(location_id, locs.get(location_id))),
             ("active", bool_str(*active)),
             ("auth_method", session_auth_method(s, now_secs())),
-            ("code", opt_str(code)),
             ("client_version", opt_str(client_version)),
             ("last_contact", opt_ts(*last_contact)),
             ("client_env", opt_str(&info.env)),
@@ -1420,18 +1389,8 @@ async fn run_cli() -> Result<()> {
         return Ok(());
     }
 
-    // JWT generation is self-contained and needs no DB — handle it before requiring DB_PREFIX.
-    if let Object::Jwt {
-        jwt_secret,
-        expire_s,
-        cmd,
-    } = &cli.object
-    {
-        return run_jwt(jwt_secret.clone(), *expire_s, cmd);
-    }
-
     // SES reference-data lookups talk to SES directly and touch no DB — handle
-    // before requiring DB_PREFIX, same as Jwt above.
+    // before requiring DB_PREFIX.
     if let Object::Ses { cmd } = &cli.object {
         return run_ses(cmd).await;
     }
@@ -1476,14 +1435,6 @@ async fn run_cli() -> Result<()> {
     } = &cli.object
     {
         return run_session_retire_stale(&db_prefix, *grace_days, cli.dry_run).await;
-    }
-
-    // And for purging legacy JWT kiosks.
-    if let Object::Session {
-        cmd: SessionCmd::PurgeLegacy,
-    } = &cli.object
-    {
-        return run_session_purge_legacy(&db_prefix, cli.dry_run).await;
     }
 
     // And for wiping badge state.
@@ -1718,28 +1669,6 @@ fn scan_outcomes<T>(rows: Vec<seslogin::db::Result<T>>) -> Vec<Result<(), String
         .collect()
 }
 
-/// Generate and print a signed kiosk session JWT. Does not touch the DB.
-fn run_jwt(jwt_secret: Option<String>, expire_s: Option<u64>, cmd: &JwtCmd) -> Result<()> {
-    let secret = jwt_secret
-        .or_else(|| std::env::var("JWT_SECRET").ok())
-        .ok_or_else(|| anyhow!("JWT_SECRET is required (flag or env var)"))?;
-
-    let key = Key::new(&secret, None)?;
-
-    let expire_policy = match expire_s {
-        Some(s) => ExpirePolicy::TimeSec(s),
-        None => ExpirePolicy::SessionDefault,
-    };
-
-    let token = match cmd {
-        JwtCmd::Session { session_id } => key.make_session_jwt(session_id, expire_policy)?,
-    };
-
-    println!("{token}");
-
-    Ok(())
-}
-
 /// Bulk-set or clear one JSON config key across active sessions. Opens its own DB
 /// handler since this writes to the `session` table when not in dry-run mode;
 /// `read_only` on the handler is set to `dry_run` itself, so a dry run cannot write
@@ -1925,69 +1854,6 @@ async fn run_session_set_config_key(
         "\n{} complete: {} session(s) examined, {changed} to change, {unchanged} already matched.",
         if dry_run { "dry-run" } else { "apply" },
         sessions.len(),
-    );
-    Ok(())
-}
-
-/// Soft-delete the sessions left over from setup-code enrolment. See
-/// [`SessionCmd::PurgeLegacy`]. Like `set-config-key`, opens its own handler, read-only
-/// under `--dry-run`.
-async fn run_session_purge_legacy(db_prefix: &str, dry_run: bool) -> Result<()> {
-    let db = AuditingHandler::new(dynamodb::Handler::new(db_prefix, dry_run).await);
-
-    // Active legacy kiosks: no key, never released. Everything that authenticated with a
-    // session JWT, plus v1 imports that never authenticated at all.
-    let mut targets: Vec<(Session, &str)> = Vec::new();
-    let mut seen = HashSet::new();
-    for loc in db.list_locations(ListLocationsFilter::All).await? {
-        for s in db
-            .list_sessions(ListSessionsQuery::ByLocation(loc.id.clone()))
-            .await?
-        {
-            if s.is_live() && s.key_fingerprint.is_none() && s.public_key.is_none() {
-                seen.insert(s.id.clone());
-                targets.push((s, "delete legacy kiosk"));
-            }
-        }
-    }
-    // Anything still holding a setup code, deleted or not. `Delete` on an already-deleted
-    // row just removes the `code` (and bumps `v`), which is all it needs.
-    let with_code = db.list_session_ids_with_code().await?;
-    for s in db.get_sessions(&with_code).await?.into_iter().flatten() {
-        if seen.insert(s.id.clone()) {
-            targets.push((s, "clear setup code of deleted session"));
-        }
-    }
-
-    let now = now_secs();
-    let rows: Vec<Vec<String>> = targets
-        .iter()
-        .map(|(s, action)| {
-            vec![
-                s.id.clone(),
-                s.name.clone(),
-                s.location_id.clone(),
-                session_auth_method(s, now),
-                opt_ts(s.last_contact),
-                action.to_string(),
-            ]
-        })
-        .collect();
-    print_table(
-        &["id", "name", "location", "auth", "last_contact", "action"],
-        &rows,
-    );
-
-    if !dry_run {
-        for (s, _) in &targets {
-            db.update_session(&s.id, SessionUpdateShape::Delete).await?;
-        }
-    }
-    println!(
-        "\n{} complete: {} session(s) {}.",
-        if dry_run { "dry-run" } else { "apply" },
-        targets.len(),
-        if dry_run { "would be purged" } else { "purged" },
     );
     Ok(())
 }
@@ -2281,7 +2147,7 @@ async fn run_session_edit(
         (session.key_fingerprint.clone(), session.public_key.clone())
     else {
         return Err(anyhow!(
-            "session {id} was set up with a setup code, not a key — it can't be reactivated"
+            "session {id} has no enrolled key — it can't be reactivated"
         ));
     };
 
@@ -2605,8 +2471,8 @@ async fn run_nitc_group_delete(db_prefix: &str, id: &str, dry_run: bool) -> Resu
     Ok(())
 }
 
-/// List live SES reference data (NITC types/tags, participant types). Self-contained
-/// like `run_jwt`: no DB, just the SES API client built from env vars.
+/// List live SES reference data (NITC types/tags, participant types). Self-contained:
+/// no DB, just the SES API client built from env vars.
 async fn run_ses(cmd: &SesCmd) -> Result<()> {
     let client = ses_client()?;
     match cmd {
@@ -2908,10 +2774,6 @@ async fn run(db: &impl Handler, object: Object) -> Result<()> {
             // Handled in `main` before the shared read-only DB is opened.
             SessionCmd::SetConfigKey { .. } => {
                 unreachable!("set-config-key is handled before the read-only DB is opened")
-            }
-            // Handled in `main` before the shared read-only DB is opened.
-            SessionCmd::PurgeLegacy => {
-                unreachable!("purge-legacy is handled before the read-only DB is opened")
             }
             // Handled in `main` before the shared read-only DB is opened.
             SessionCmd::Edit { .. } => {
@@ -3260,7 +3122,6 @@ async fn run(db: &impl Handler, object: Object) -> Result<()> {
 
         // Handled in `main` before the shared read-only DB is opened.
         Object::Id { .. } => unreachable!("id is handled before DB setup"),
-        Object::Jwt { .. } => unreachable!("jwt is handled before DB setup"),
         Object::Ses { .. } => unreachable!("ses is handled before DB setup"),
         Object::PeriodLink { .. } => {
             unreachable!("period-link is handled before the read-only DB is opened")
@@ -3320,14 +3181,10 @@ async fn list_activity_summary_subscriptions(db: &impl Handler) -> Result<()> {
     Ok(())
 }
 
-/// How a kiosk authenticates: `key` for one enrolled through the QR / public-key flow
-/// (each request signed with its device key), `code` for one set up with a 6-digit code
-/// (redeemed for a 14-day session JWT). A code-enrolled kiosk keeps no trace of its
-/// method once the code is used up, so `code` is also what a session with neither a
-/// code nor a key reads as — except a key-released leftover, which looks the same and
-/// is told apart by `key_released_at`. Setup codes can no longer be redeemed, so a
-/// `code (unredeemed)` session is dead: nothing can ever authenticate as it. A retired
-/// session has lost every trace of its method, so it just reads as `retired`.
+/// The state of a kiosk's enrolled key. Every kiosk signs its requests with a device
+/// key; `none` is a session with no key that was never released — a leftover from the
+/// removed setup-code enrolment, which nothing can authenticate as.
+/// A retired session reads as `retired`: retirement stripped whatever key it had.
 fn session_auth_method(s: &Session, now: u64) -> String {
     if s.retired_at.is_some() {
         "retired"
@@ -3339,10 +3196,8 @@ fn session_auth_method(s: &Session, now: u64) -> String {
         }
     } else if s.key_released_at.is_some() {
         "key (released)"
-    } else if s.code.is_some() {
-        "code (unredeemed)"
     } else {
-        "code"
+        "none"
     }
     .to_string()
 }
