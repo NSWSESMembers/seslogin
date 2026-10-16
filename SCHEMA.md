@@ -158,10 +158,10 @@ The `start_time` sort key across the location/person GSIs means DynamoDB returns
 
 ### `{prefix}session`
 
-Kiosk sessions. New kiosks enrol only by QR code; older kiosks set up with the since-removed 6-digit setup code still run on a session JWT. A row holds the fields of at most one:
+Kiosk sessions. New kiosks enrol only by QR code. Older kiosks set up with the since-removed 6-digit setup code ran on a session JWT until they converted themselves to key auth (`convertSessionToKey`); session JWTs are now refused. A row holds the fields of at most one:
 
 - **Key-enrolled** (QR / public-key flow): holds `public_key`, `key_fingerprint` and `key_expires_at`, and authenticates each request by signature (`SLKey`, see `api/src/session_key.rs`).
-- **Legacy JWT kiosk** (setup-code enrolled before that flow was removed): holds neither a code nor a key, and authenticates with a 14-day session JWT that it refreshes through `refreshToken`. No new ones are created. A session created with a code that was never redeemed still stores its `code`, but nothing can redeem it any more.
+- **Legacy JWT kiosk** (setup-code enrolled before that flow was removed, and never converted): holds neither a code nor a key, and can no longer authenticate — session JWTs are refused. No new ones are created, and `cli session purge-legacy` soft-deletes the ones left. A session created with a code that was never redeemed still stores its `code`, but nothing can redeem it any more.
 
 | Attribute         | Type | Role                                                                  |
 | ----------------- | ---- | --------------------------------------------------------------------- |
@@ -212,10 +212,10 @@ There is no `active-super-index` or `legacy_id-index`. Super-sessions are gone, 
 | Expired key     | No contact for 14 days                                              | yes                        | yes                     | —                                              | no, but an admin can `reactivateSession` it | `key_expires_at`         |
 | Released key    | Its device re-enrolled as another session (`ReleaseKey`)            | yes                        | —                       | —                                              | no, never again                             | `key_released_at`        |
 | Unredeemed code | Created with a setup code that was never entered                    | yes                        | —                       | yes                                            | no — setup-code enrolment was removed       | since that removal       |
-| Legacy JWT      | Setup code redeemed (before removal); the kiosk holds a JWT         | yes                        | —                       | —                                              | while its last JWT is unexpired             | `last_contact` + 14 days |
+| Legacy JWT      | Setup code redeemed (before removal); never converted to a key      | yes                        | —                       | —                                              | no — session JWTs are refused               | since that change        |
 | Deleted         | An admin deleted it (`Delete` removes `active`, `code`, key fields) | —                          | —                       | only if deleted before `Delete` removed `code` | no                                          | `updated_at`             |
 
-A legacy JWT kiosk can't be revived once its JWT lapses: only a valid JWT can refresh a JWT, and it has no code or key to fall back on (the kiosk app drops to the QR enrolment screen). The JWT's expiry is never more than 14 days (plus the `last_contact` refresh throttle) after `last_contact`.
+A legacy JWT kiosk can't be revived: it has no code or key to fall back on (the kiosk app drops to the QR enrolment screen), so it must be enrolled afresh. `cli session purge-legacy` soft-deletes every Legacy JWT and Unredeemed code row, and removes `code` from Deleted rows still holding one.
 
 **Known gaps (from a prod scan on 2026-10-15):**
 

@@ -895,7 +895,12 @@ type QueryRoot {
 		"""
 		id: ID
 	): Session!
-	refreshToken: String!
+	"""
+	Always empty. Kiosk session JWTs are no longer accepted, so there is nothing to
+	refresh; the field stays only so a kiosk bundle loaded before that change can still
+	run its session query.
+	"""
+	refreshToken: String! @deprecated(reason: "Kiosk session JWTs are no longer accepted; always returns an empty string")
 	"""
 	A signed Ably token request scoped to exactly this kiosk's own
 	location channel (`kiosk:<db_prefix>:<location_id>`, subscribe-only).
@@ -1207,6 +1212,10 @@ type User {
 	oauthGrants: [OauthGrant!]!
 }
 
+"""
+Marks an element of a GraphQL schema as no longer supported.
+"""
+directive @deprecated(reason: String = "No longer supported") on FIELD_DEFINITION | ARGUMENT_DEFINITION | INPUT_FIELD_DEFINITION | ENUM_VALUE
 """
 Directs the executor to include this field or fragment only when the `if` argument is true.
 """

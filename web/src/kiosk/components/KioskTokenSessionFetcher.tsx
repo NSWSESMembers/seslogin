@@ -20,7 +20,7 @@ export const SESSION_REFRESH_INTERVAL_MS = DEV
  * How often it polls while its session channel is live: admin edits and
  * re-enrollment arrive as pushes then (see SessionPushListener), so the poll is
  * only the heartbeat — it keeps `last_contact` fresh (the admin status dot and
- * dashboard), pings the healthcheck URL, renews the JWT, and proves the kiosk can
+ * dashboard), pings the healthcheck URL, and proves the kiosk can
  * still authenticate. Their thresholds are sized for this interval.
  */
 export const LIVE_SESSION_REFRESH_INTERVAL_MS = DEV
@@ -33,7 +33,6 @@ export const LIVE_SESSION_REFRESH_INTERVAL_MS = DEV
 /* eslint-disable relay/unused-fields */
 const kioskRefreshQuery = graphql`
   query KioskTokenSessionFetcherQuery {
-    refresh_token: refreshToken
     session {
       id
       name
@@ -66,19 +65,13 @@ export interface KioskSessionFetcher {
 
 export default function startKioskTokenSessionFetcher({
   environment,
-  setToken,
   setSession,
-  persistRefreshedToken = true,
   pushLive: initialPushLive = false,
 }: {
   environment: IEnvironment;
-  setToken: (token: string) => void;
   setSession: (session: KioskSession | null) => void;
   /** Whether session changes are already being pushed when this starts. */
   pushLive?: boolean;
-  // Key-enrolled kiosks authenticate by signing each request, so the JWT that
-  // `refreshToken` still returns must not be persisted or used. Set false for them.
-  persistRefreshedToken?: boolean;
 }): KioskSessionFetcher {
   let timeoutId: number | null = null;
   let isCancelled = false;
@@ -140,7 +133,6 @@ export default function startKioskTokenSessionFetcher({
           setEnvironmentInfo(response.environment);
         }
 
-        const refreshedToken = response?.refresh_token;
         const refreshedSession = response?.session
           ? {
               id: response.session.id,
@@ -153,9 +145,6 @@ export default function startKioskTokenSessionFetcher({
               },
             }
           : null;
-        if (refreshedToken && persistRefreshedToken) {
-          setToken(refreshedToken);
-        }
         setSession(refreshedSession);
 
         scheduleNext();
