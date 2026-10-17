@@ -301,20 +301,36 @@ impl db::Handler for FakeDb {
     }
     async fn list_people_for_location(
         &self,
-        _location_id: &str,
-        _skip_deleted: bool,
+        location_id: &str,
+        skip_deleted: bool,
     ) -> db::Result<Vec<db::Person>> {
-        unsupported()
+        Ok(self
+            .persons
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|p| p.location_id == location_id)
+            .filter(|p| !skip_deleted || p.deleted.is_none())
+            .cloned()
+            .collect())
     }
     async fn list_periods_for_location(
         &self,
-        _location_id: &str,
-        _only_active: bool,
+        location_id: &str,
+        only_active: bool,
         _timestamp_range: Option<(u64, u64)>,
         _category_ids: Option<&[String]>,
         _page: db::ListPeriodsPage,
     ) -> db::Result<Vec<db::Period>> {
-        unsupported()
+        Ok(self
+            .periods
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|p| p.location_id == location_id)
+            .filter(|p| !only_active || p.end_time.is_none())
+            .cloned()
+            .collect())
     }
     async fn list_periods_for_person(
         &self,
@@ -1080,6 +1096,32 @@ pub(crate) fn seed_location(
             last_successful_member_sync: None,
             created_at: 0,
             updated_at: 0,
+        },
+    );
+}
+
+/// Insert a member ([`db::Person`]) at `location_id` directly.
+#[allow(dead_code)] // see `seed_super_user`'s doc comment
+pub(crate) fn seed_person(
+    app: &MyApp<FakeDb, mockqueue::Handler, mockmail::Handler, mockrealtime::Handler>,
+    id: &str,
+    location_id: &str,
+    registration_number: &str,
+) {
+    app.db.persons.lock().unwrap().insert(
+        id.to_string(),
+        db::Person {
+            id: id.to_string(),
+            location_id: location_id.to_string(),
+            first_name: format!("First {id}"),
+            last_name: format!("Last {id}"),
+            registration_number: Some(registration_number.to_string()),
+            ses_api_person_id: None,
+            email: Some(format!("{id}@example.com")),
+            deleted: None,
+            missing_since: None,
+            created_at: Some(0),
+            updated_at: Some(0),
         },
     );
 }
