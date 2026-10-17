@@ -110,7 +110,8 @@ function TransactionLoading(props: { transaction: TransactionLoadingType }) {
       <span
         className={`${transactionBase} bg-yellow-300 dark:bg-yellow-700 dark:text-white`}
       >
-        Fetching information for {props.transaction.memberId}
+        Fetching information for{" "}
+        {props.transaction.name ?? props.transaction.memberId}
       </span>
       <span
         className={`${loadingSpinnerBase} animate-spin opacity-100 motion-reduce:animate-none`}
@@ -222,6 +223,10 @@ export default function ScanScreenMain(props: {
   statusEnabled?: boolean;
   onOpenStatusDialog?: () => void;
   signedInInline?: boolean;
+  /** Start sign-out for a member picked from the always-visible list. */
+  onSignOutFromList?: (periodId: string, name: string) => void;
+  /** True while a sign-out is already being started or is on screen. */
+  signOutFromListDisabled?: boolean;
 }) {
   const {
     onFocusInputReady,
@@ -235,6 +240,8 @@ export default function ScanScreenMain(props: {
     statusEnabled,
     onOpenStatusDialog,
     signedInInline,
+    onSignOutFromList,
+    signOutFromListDisabled,
   } = props;
   const nonProdDb = useNonProdDb();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -588,7 +595,10 @@ export default function ScanScreenMain(props: {
         <div
           className={`min-w-0 flex-3 border-l-[4.5px] p-4 ${nonProdDb ? "border-danger-env" : "border-brand"}`}
         >
-          <ScanSignedInPanel />
+          <ScanSignedInPanel
+            onSignOut={onSignOutFromList}
+            signOutDisabled={signOutFromListDisabled}
+          />
         </div>
       </div>
     </div>

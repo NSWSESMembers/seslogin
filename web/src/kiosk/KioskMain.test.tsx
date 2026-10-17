@@ -2,7 +2,7 @@ import "@testing-library/jest-dom/vitest";
 import { vi, describe, it, expect, beforeEach } from "vitest";
 import UserEvent from "@testing-library/user-event";
 import type { UserEvent as UserEventInstance } from "@testing-library/user-event";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import { getGraphQLEndpoint } from "../lib/api";
 import { beforeAll, afterEach, afterAll } from "vitest";
 import { setupServer } from "msw/node";
@@ -1124,5 +1124,545 @@ describe("KioskMain signed-in status inline panel", () => {
       expect(screen.getByText("Alice Anderson")).toBeInTheDocument(),
     );
     expect(screen.getByRole("textbox")).toHaveFocus();
+  });
+});
+
+describe("KioskMain signed-in list sign out", () => {
+  const nowSecs = Math.floor(Date.now() / 1000);
+  const TWO_PEOPLE = [
+    {
+      id: "period-1",
+      version: 1,
+      startTime: nowSecs - 60 * 60,
+      guestName: null,
+      person: { id: "person-1", firstName: "Alice", lastName: "Anderson" },
+    },
+    {
+      id: "period-2",
+      version: 1,
+      startTime: nowSecs - 60 * 30,
+      guestName: "Jamie Visitor",
+      person: null,
+    },
+  ];
+  const TWO_MEMBERS = [
+    TWO_PEOPLE[0],
+    {
+      id: "period-3",
+      version: 1,
+      startTime: nowSecs - 60 * 20,
+      guestName: null,
+      person: { id: "person-3", firstName: "Bob", lastName: "Brown" },
+    },
+  ];
+  const SIGN_OUT_CONFIG = {
+    signedInStatusInline: true,
+    signedInStatusSignOut: true,
+  };
+
+  type StartVariables = { id: string; quickPick: boolean };
+
+  // The people behind each row, so the server's answer matches the row pressed.
+  const PEOPLE_BY_PERIOD: Record<
+    string,
+    { firstName: string; lastName: string }
+  > = {
+    "period-1": { firstName: "Alice", lastName: "Anderson" },
+    "period-3": { firstName: "Bob", lastName: "Brown" },
+  };
+
+  // What a list press asks the server: start the sign-out for this exact period.
+  // It answers with the same SIGN_OUT_PENDING result a scan of a signed-in member
+  // does, so the kiosk carries on to the category screen as it would after a scan.
+  function startSignOutHandler(
+    onCall?: (variables: StartVariables) => void,
+    gate?: Promise<void>,
+  ) {
+    return relayEndpoint.mutation(
+      "ScanControllerStartSignOutMutation",
+      async ({ variables }) => {
+        onCall?.(variables as StartVariables);
+        await gate;
+        const id = (variables as StartVariables).id;
+        const result = signOutUserResponse(null).data.scanRegister2;
+        return HttpResponse.json({
+          data: {
+            scanStartSignOut: {
+              ...result,
+              period: {
+                ...result.period,
+                startTime: nowSecs - 60 * 60,
+                id,
+                person: { id: `person-of-${id}`, ...PEOPLE_BY_PERIOD[id] },
+              },
+            },
+          },
+        });
+      },
+    );
+  }
+
+  // The server refuses a stale row with a code and a message written for the kiosk.
+  function refusedStartSignOutHandler(code: string, message: string) {
+    return relayEndpoint.mutation("ScanControllerStartSignOutMutation", () =>
+      HttpResponse.json({
+        data: null,
+        errors: [{ message, extensions: { code } }],
+      }),
+    );
+  }
+
+  // A scan toggles sign-in/out, so a list press must never reach it.
+  function register2Spy(registered: string[]) {
+    return relayEndpoint.mutation(
+      "ScanControllerRegister2Mutation",
+      ({ variables }) => {
+        registered.push(variables.memberNumber);
+        return HttpResponse.json(signOutUserResponse(null));
+      },
+    );
+  }
+
+  async function pressSignOutOf(
+    user: UserEventInstance,
+    name = "Alice Anderson",
+  ) {
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: `Sign out ${name}` }),
+      ).toBeInTheDocument(),
+    );
+    await user.click(screen.getByRole("button", { name: `Sign out ${name}` }));
+  }
+
+  // Every scan screen stays mounted off to the side (inert) until its turn, so
+  // "Categories is in the document" is true from the start. Wait for it to be the
+  // screen that is actually on.
+  async function expectCategoryScreen() {
+    await waitFor(() =>
+      expect(screen.getByText("Categories").closest("[inert]")).toBeNull(),
+    );
+  }
+
+  // Finish the sign-out the list started: pick a category, confirm, and report
+  // what the kiosk finally submitted.
+  function signOutSpy(submitted: Array<Record<string, unknown>>) {
+    return relayEndpoint.mutation(
+      "ScanControllerSignOutMutation",
+      ({ variables }) => {
+        submitted.push(variables as Record<string, unknown>);
+        const id = (variables as { id: string }).id;
+        return HttpResponse.json({
+          data: {
+            scanSignOut: {
+              id,
+              version: 2,
+              person: { id: `person-of-${id}`, ...PEOPLE_BY_PERIOD[id] },
+              startTime: (variables as { startTime: number }).startTime,
+              endTime: (variables as { endTime: number }).endTime,
+              category: { id: "RX2bfpU6ppvV", name: "AIIMS" },
+            },
+          },
+        });
+      },
+    );
+  }
+
+  async function finishSignOut(user: UserEventInstance) {
+    await expectCategoryScreen();
+    await user.click(screen.getByText("Training"));
+    await user.click(screen.getByText("AIIMS"));
+    await waitFor(() =>
+      expect(screen.getByText("Confirm")).toBeInTheDocument(),
+    );
+    const confirm = await waitFor(() => {
+      const found = screen
+        .getAllByRole("button", { name: "Submit" })
+        .find((b) => b.textContent?.trim() === "Submit");
+      expect(found).toBeDefined();
+      return found!;
+    });
+    await user.click(confirm);
+  }
+
+  it("shows no Sign out buttons on the plain always-visible list", async () => {
+    server.use(
+      sessionConfigHandler({ signedInStatusInline: true }),
+      snapshotHandler(TWO_PEOPLE),
+    );
+    await setupTest();
+
+    await waitFor(() =>
+      expect(screen.getByText("Alice Anderson")).toBeInTheDocument(),
+    );
+    expect(
+      screen.queryByRole("button", { name: /^Sign out/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows nothing for sign out without the always-visible list", async () => {
+    server.use(
+      sessionConfigHandler({ signedInStatusSignOut: true }),
+      snapshotHandler(TWO_PEOPLE),
+    );
+    await setupTest();
+
+    expect(screen.queryByText("Currently signed in")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /^Sign out/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("offers Sign out for members but not guests", async () => {
+    server.use(
+      sessionConfigHandler(SIGN_OUT_CONFIG),
+      snapshotHandler(TWO_PEOPLE),
+    );
+    await setupTest();
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Sign out Alice Anderson" }),
+      ).toBeInTheDocument(),
+    );
+    // Guests have no card to scan and keep their own dialog.
+    expect(screen.getByText("Jamie Visitor (Guest)")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /Sign out Jamie/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("starts the normal sign-out for the row that was pressed, without a scan", async () => {
+    const started: StartVariables[] = [];
+    const registered: string[] = [];
+    server.use(
+      sessionConfigHandler(SIGN_OUT_CONFIG),
+      snapshotHandler(TWO_PEOPLE),
+      startSignOutHandler((variables) => started.push(variables)),
+      register2Spy(registered),
+    );
+    const user = await setupTest();
+
+    await pressSignOutOf(user);
+
+    // Not signed out outright: the member still picks a category and confirms.
+    await expectCategoryScreen();
+    expect(started).toEqual([{ id: "period-1", quickPick: false }]);
+    // The scan path toggles sign-in/out, so the list press must never use it.
+    expect(registered).toEqual([]);
+  });
+
+  it("asks for the quick pick when the kiosk uses it", async () => {
+    const started: StartVariables[] = [];
+    server.use(
+      sessionConfigHandler({ ...SIGN_OUT_CONFIG, quickPickCategories: true }),
+      snapshotHandler(TWO_PEOPLE),
+      startSignOutHandler((variables) => started.push(variables)),
+    );
+    const user = await setupTest();
+
+    await pressSignOutOf(user);
+
+    await waitFor(() => expect(started).toHaveLength(1));
+    expect(started[0]).toEqual({ id: "period-1", quickPick: true });
+  });
+
+  it("hands focus back to the member ID input after the press", async () => {
+    server.use(
+      sessionConfigHandler(SIGN_OUT_CONFIG),
+      snapshotHandler(TWO_PEOPLE),
+      startSignOutHandler(),
+    );
+    const user = await setupTest();
+
+    await pressSignOutOf(user);
+
+    expect(screen.getByRole("textbox")).toHaveFocus();
+  });
+
+  it("shows who it is fetching for, and greys the buttons out, while it starts", async () => {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    server.use(
+      sessionConfigHandler(SIGN_OUT_CONFIG),
+      snapshotHandler(TWO_MEMBERS),
+      startSignOutHandler(undefined, gate),
+    );
+    const user = await setupTest();
+
+    await pressSignOutOf(user);
+
+    await waitFor(() =>
+      expect(
+        screen.getByText(/Fetching information for\s+Alice Anderson/),
+      ).toBeInTheDocument(),
+    );
+    expect(
+      screen.getByRole("button", { name: "Sign out Bob Brown" }),
+    ).toBeDisabled();
+
+    release();
+    await expectCategoryScreen();
+  });
+
+  it("says so when the row is already signed out, and goes no further", async () => {
+    const registered: string[] = [];
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    server.use(
+      sessionConfigHandler(SIGN_OUT_CONFIG),
+      snapshotHandler(TWO_PEOPLE),
+      refusedStartSignOutHandler("CONFLICT", "Already signed out"),
+      register2Spy(registered),
+    );
+    const user = await setupTest();
+
+    await pressSignOutOf(user);
+
+    await waitFor(() =>
+      expect(
+        screen.getByText(
+          "could not sign out Alice Anderson: Already signed out",
+        ),
+      ).toBeInTheDocument(),
+    );
+    // A stale row can never become a fresh sign-in.
+    expect(registered).toEqual([]);
+    // The category screen stays parked off to the side (inert) rather than coming on.
+    expect(screen.getByText("Categories").closest("[inert]")).not.toBeNull();
+  });
+
+  it.each([
+    ["CONFLICT", "Already signed out"],
+    ["NOT_FOUND", "That sign-in no longer exists"],
+  ])(
+    "fetches the list again after a %s refusal, so the dead row goes",
+    async (code, message) => {
+      let snapshots = 0;
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      server.use(
+        sessionConfigHandler(SIGN_OUT_CONFIG),
+        relayEndpoint.query("LivePeriodsSnapshotQuery", () => {
+          snapshots += 1;
+          return HttpResponse.json({
+            data: {
+              session: {
+                location: {
+                  periods: {
+                    // Alice is gone by the second fetch.
+                    edges: (snapshots === 1
+                      ? TWO_MEMBERS
+                      : [TWO_MEMBERS[1]]
+                    ).map((node) => ({ node })),
+                  },
+                },
+              },
+            },
+          });
+        }),
+        refusedStartSignOutHandler(code, message),
+      );
+      const user = await setupTest();
+
+      await pressSignOutOf(user);
+
+      await waitFor(() => expect(snapshots).toBeGreaterThan(1));
+      await waitFor(() =>
+        expect(screen.queryByText("Alice Anderson")).not.toBeInTheDocument(),
+      );
+      expect(screen.getByText("Bob Brown")).toBeInTheDocument();
+    },
+  );
+
+  it("says so when the row's sign-in no longer exists", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    server.use(
+      sessionConfigHandler(SIGN_OUT_CONFIG),
+      snapshotHandler(TWO_PEOPLE),
+      refusedStartSignOutHandler("NOT_FOUND", "That sign-in no longer exists"),
+    );
+    const user = await setupTest();
+
+    await pressSignOutOf(user);
+
+    await waitFor(() =>
+      expect(
+        screen.getByText(
+          "could not sign out Alice Anderson: That sign-in no longer exists",
+        ),
+      ).toBeInTheDocument(),
+    );
+  });
+
+  it("reports a failed request and lets the operator try again", async () => {
+    let calls = 0;
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    server.use(
+      sessionConfigHandler(SIGN_OUT_CONFIG),
+      snapshotHandler(TWO_PEOPLE),
+      relayEndpoint.mutation(
+        "ScanControllerStartSignOutMutation",
+        ({ variables }) => {
+          calls += 1;
+          if (calls === 1) {
+            return HttpResponse.json(
+              { errors: [{ message: "boom" }] },
+              { status: 500 },
+            );
+          }
+          const result = signOutUserResponse(null).data.scanRegister2;
+          return HttpResponse.json({
+            data: {
+              scanStartSignOut: {
+                ...result,
+                period: {
+                  ...result.period,
+                  startTime: nowSecs - 60 * 60,
+                  id: (variables as StartVariables).id,
+                  person: { id: "person-1", ...PEOPLE_BY_PERIOD["period-1"] },
+                },
+              },
+            },
+          });
+        },
+      ),
+    );
+    const user = await setupTest();
+
+    await pressSignOutOf(user);
+
+    await waitFor(() =>
+      expect(
+        screen.getByText(
+          "network issue while starting the sign-out for Alice Anderson",
+        ),
+      ).toBeInTheDocument(),
+    );
+    // Nothing was started, so the button comes back and works.
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Sign out Alice Anderson" }),
+      ).toBeEnabled(),
+    );
+    await pressSignOutOf(user);
+    await expectCategoryScreen();
+    expect(calls).toBe(2);
+  });
+
+  it("ignores a second press while the first is still starting", async () => {
+    const started: StartVariables[] = [];
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    server.use(
+      sessionConfigHandler(SIGN_OUT_CONFIG),
+      snapshotHandler(TWO_MEMBERS),
+      startSignOutHandler((variables) => started.push(variables), gate),
+    );
+    const user = await setupTest();
+    await waitFor(() =>
+      expect(screen.getByText("Bob Brown")).toBeInTheDocument(),
+    );
+    const alice = screen.getByRole("button", {
+      name: "Sign out Alice Anderson",
+    });
+    const bob = screen.getByRole("button", { name: "Sign out Bob Brown" });
+
+    await user.click(alice);
+    await user.click(alice);
+    await user.click(bob);
+
+    expect(started).toEqual([{ id: "period-1", quickPick: false }]);
+    release();
+    await expectCategoryScreen();
+    expect(started).toHaveLength(1);
+  });
+
+  it("does not run a card scanned while the sign-out is starting", async () => {
+    const registered: string[] = [];
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    server.use(
+      sessionConfigHandler(SIGN_OUT_CONFIG),
+      snapshotHandler(TWO_PEOPLE),
+      startSignOutHandler(undefined, gate),
+      register2Spy(registered),
+    );
+    const user = await setupTest();
+
+    await pressSignOutOf(user);
+    await user.keyboard(FOUND_USER + "{Enter}");
+
+    expect(registered).toEqual([]);
+    release();
+    await expectCategoryScreen();
+    expect(registered).toEqual([]);
+  });
+
+  it("ignores a second press in the same moment as the first", async () => {
+    const started: StartVariables[] = [];
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    server.use(
+      sessionConfigHandler(SIGN_OUT_CONFIG),
+      snapshotHandler(TWO_PEOPLE),
+      startSignOutHandler((variables) => started.push(variables), gate),
+    );
+    await setupTest();
+    const alice = await screen.findByRole("button", {
+      name: "Sign out Alice Anderson",
+    });
+
+    // Both presses land before React re-renders, so neither the greyed-out
+    // buttons nor the transaction state can have caught the first yet.
+    act(() => {
+      alice.click();
+      alice.click();
+    });
+
+    // A second request, had one been sent, would reach the server before the
+    // first one is let go, so it is already counted once the sign-out goes on.
+    release();
+    await expectCategoryScreen();
+    expect(started).toEqual([{ id: "period-1", quickPick: false }]);
+  });
+
+  it("submits the sign-out for the row that was pressed, then lets another be started straight away", async () => {
+    const started: StartVariables[] = [];
+    const submitted: Array<Record<string, unknown>> = [];
+    server.use(
+      sessionConfigHandler(SIGN_OUT_CONFIG),
+      snapshotHandler(TWO_MEMBERS),
+      startSignOutHandler((variables) => started.push(variables)),
+      signOutSpy(submitted),
+    );
+    const user = await setupTest();
+
+    await pressSignOutOf(user, "Alice Anderson");
+    await finishSignOut(user);
+
+    // What the kiosk finally submitted is the pressed row's period, not a guess.
+    await waitFor(() => expect(submitted).toHaveLength(1));
+    expect(submitted[0]).toMatchObject({ id: "period-1" });
+
+    // The finished sign-out must not leave the other rows locked until it ages
+    // out of the log a minute later.
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Sign out Bob Brown" }),
+      ).toBeEnabled(),
+    );
+    await pressSignOutOf(user, "Bob Brown");
+    await expectCategoryScreen();
+    expect(started).toEqual([
+      { id: "period-1", quickPick: false },
+      { id: "period-3", quickPick: false },
+    ]);
   });
 });

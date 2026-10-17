@@ -41,7 +41,7 @@ interface SessionFormProps {
 type ConfigEditorMode = "basic" | "advanced";
 type SessionMode = "scan" | "status";
 type KioskTheme = "auto" | "light" | "dark";
-type SignedInStatusMode = "off" | "button" | "inline";
+type SignedInStatusMode = "off" | "button" | "inline" | "inlineSignOut";
 type InterfaceMode = "auto" | "mouseKeyboard" | "touch";
 type ConfigObject = Record<string, unknown>;
 
@@ -207,8 +207,10 @@ function getInterfaceModeFromConfig(config: ConfigObject): InterfaceMode {
  * `signedInStatus` and `signedInStatusInline` (see ScanController) are two
  * independent config keys, but a button that opens the list you're already
  * looking at would be pointless, so the admin UI presents them as one
- * mutually-exclusive three-way choice rather than two checkboxes whose
- * combination would need a hidden precedence rule.
+ * mutually-exclusive choice rather than two checkboxes whose
+ * combination would need a hidden precedence rule. "Visible + Sign out" is the
+ * always-visible list plus a third key, `signedInStatusSignOut`, which the
+ * kiosk ignores without `signedInStatusInline`.
  */
 function withSignedInStatusMode(
   config: ConfigObject,
@@ -217,10 +219,16 @@ function withSignedInStatusMode(
   const next = { ...config };
   delete next.signedInStatus;
   delete next.signedInStatusInline;
+  delete next.signedInStatusSignOut;
   if (mode === "button") {
     next.signedInStatus = true;
   } else if (mode === "inline") {
     next.signedInStatusInline = true;
+  } else if (mode === "inlineSignOut") {
+    // Sign out is a refinement of the always-visible list, so it rides on top of
+    // `signedInStatusInline` rather than standing alone.
+    next.signedInStatusInline = true;
+    next.signedInStatusSignOut = true;
   }
   return next;
 }
@@ -229,7 +237,7 @@ function getSignedInStatusModeFromConfig(
   config: ConfigObject,
 ): SignedInStatusMode {
   if (config.signedInStatusInline) {
-    return "inline";
+    return config.signedInStatusSignOut ? "inlineSignOut" : "inline";
   }
   return config.signedInStatus ? "button" : "off";
 }
@@ -473,6 +481,10 @@ function BasicSessionModeFields({
               { value: "off", label: "Off" },
               { value: "button", label: "Button" },
               { value: "inline", label: "Always visible" },
+              {
+                value: "inlineSignOut",
+                label: "Visible + Sign out",
+              },
             ]}
             onChange={onSignedInStatusModeChange}
           />
@@ -482,6 +494,9 @@ function BasicSessionModeFields({
             kiosk to it. "Button" adds a button on the scan screen that opens
             the list; "Always visible" shows it beside the scan screen
             permanently, so it's visible at a glance without pressing anything.
+            "Visible + Sign out" also adds a Sign out button to each member,
+            which starts the usual sign-out steps for them — handy for signing
+            out people who forgot to.
           </Muted>
         </FormField>
       )}
