@@ -66,6 +66,7 @@ fn session(id: &str, location_id: &str, key_fingerprint: Option<&str>) -> db::Se
         key_fingerprint: key_fingerprint.map(str::to_string),
         key_expires_at: key_fingerprint.map(|_| u64::MAX),
         key_released_at: None,
+        retired_at: None,
         version: 1,
         created_at: Some(0),
         updated_at: Some(0),

@@ -311,6 +311,17 @@ enum SessionCmd {
         #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
         dry_run: bool,
     },
+    /// Retire every session that has been unable to authenticate for longer than the
+    /// grace period: released or expired keys, and legacy JWT kiosks whose last token
+    /// has lapsed. A retired session leaves its location's kiosk list but keeps its
+    /// row, so its id still resolves. This is the same pass the checker Lambda runs
+    /// daily. WRITES to the `session` table — pass the global `--dry-run` to preview
+    /// instead.
+    RetireStale {
+        /// Days a session must have been unusable before it is retired.
+        #[arg(long, default_value_t = seslogin::session_retire::GRACE_S / 86_400)]
+        grace_days: u64,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -827,6 +838,7 @@ async fn show_sessions(db: &impl Handler, sessions: &[Session]) {
             key_fingerprint,
             key_expires_at,
             key_released_at,
+            retired_at,
             version,
             created_at,
             updated_at,
@@ -863,6 +875,7 @@ async fn show_sessions(db: &impl Handler, sessions: &[Session]) {
             ("key_fingerprint", opt_str(key_fingerprint)),
             ("key_expires_at", opt_ts(*key_expires_at)),
             ("key_released_at", opt_ts(*key_released_at)),
+            ("retired_at", opt_ts(*retired_at)),
             ("config", serde_json::to_string(config).unwrap_or_default()),
             ("version", version.to_string()),
             ("created_at", opt_ts(*created_at)),
@@ -1301,6 +1314,14 @@ async fn run_cli() -> Result<()> {
         .await;
     }
 
+    // And for retiring dead sessions.
+    if let Object::Session {
+        cmd: SessionCmd::RetireStale { grace_days },
+    } = &cli.object
+    {
+        return run_session_retire_stale(&db_prefix, *grace_days, cli.dry_run).await;
+    }
+
     // Category and NITC group writes: same story, each opens its own handler
     // (read-only under --dry-run) rather than the shared read-only one.
     if let Object::Category {
@@ -1554,6 +1575,82 @@ fn run_jwt(jwt_secret: Option<String>, expire_s: Option<u64>, cmd: &JwtCmd) -> R
 ///
 /// `value_json` and `clear` are mutually exclusive and clap enforces that exactly
 /// one is given, so `value_json.is_some() == !clear` always holds here.
+async fn run_session_retire_stale(db_prefix: &str, grace_days: u64, dry_run: bool) -> Result<()> {
+    let db = AuditingHandler::new(dynamodb::Handler::new(db_prefix, dry_run).await);
+    let now = now_secs();
+    let summary = seslogin::session_retire::run(&db, now, grace_days * 86_400, dry_run).await?;
+
+    let loc_ids: Vec<String> = summary
+        .planned
+        .iter()
+        .map(|(s, _)| s.location_id.clone())
+        .collect();
+    let locs = location_names(&db, &loc_ids).await;
+    let rows: Vec<Vec<String>> = summary
+        .planned
+        .iter()
+        .map(|(s, plan)| {
+            vec![
+                s.id.clone(),
+                s.name.clone(),
+                locs.get(&s.location_id)
+                    .cloned()
+                    .unwrap_or_else(|| s.location_id.clone()),
+                plan.reason.as_str().to_string(),
+                relative(plan.unusable_since),
+                s.last_contact
+                    .map(relative)
+                    .unwrap_or_else(|| "never".to_string()),
+            ]
+        })
+        .collect();
+    print_table(
+        &[
+            "id",
+            "name",
+            "location",
+            "reason",
+            "unusable_since",
+            "last_contact",
+        ],
+        &rows,
+    );
+    println!(
+        "\n{} session(s) scanned; {} {}{}{}",
+        summary.scanned,
+        if dry_run {
+            summary.planned.len()
+        } else {
+            summary.retired
+        },
+        if dry_run {
+            "would be retired"
+        } else {
+            "retired"
+        },
+        if summary.skipped_changed > 0 {
+            format!(
+                "; {} left alone (changed since the scan)",
+                summary.skipped_changed
+            )
+        } else {
+            String::new()
+        },
+        if summary.has_errors() {
+            format!(
+                "; {} failed, {} unreadable — see the log",
+                summary.failed, summary.unreadable
+            )
+        } else {
+            String::new()
+        },
+    );
+    if summary.has_errors() {
+        return Err(anyhow!("session retirement finished with errors"));
+    }
+    Ok(())
+}
+
 async fn run_session_set_config_key(
     db_prefix: &str,
     key: &str,
@@ -2463,6 +2560,10 @@ async fn run(db: &impl Handler, object: Object) -> Result<()> {
             SessionCmd::Edit { .. } => {
                 unreachable!("edit is handled before the read-only DB is opened")
             }
+            // Handled in `main` before the shared read-only DB is opened.
+            SessionCmd::RetireStale { .. } => {
+                unreachable!("retire-stale is handled before the read-only DB is opened")
+            }
         },
 
         Object::Period { cmd } => match cmd {
@@ -2868,9 +2969,12 @@ async fn list_activity_summary_subscriptions(db: &impl Handler) -> Result<()> {
 /// method once the code is used up, so `code` is also what a session with neither a
 /// code nor a key reads as — except a key-released leftover, which looks the same and
 /// is told apart by `key_released_at`. Setup codes can no longer be redeemed, so a
-/// `code (unredeemed)` session is dead: nothing can ever authenticate as it.
+/// `code (unredeemed)` session is dead: nothing can ever authenticate as it. A retired
+/// session has lost every trace of its method, so it just reads as `retired`.
 fn session_auth_method(s: &Session, now: u64) -> String {
-    if s.key_fingerprint.is_some() {
+    if s.retired_at.is_some() {
+        "retired"
+    } else if s.key_fingerprint.is_some() {
         if s.key_expires_at.is_some_and(|t| t < now) {
             "key (expired)"
         } else {
