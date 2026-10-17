@@ -171,8 +171,8 @@ user's grants from that user's edit page.
 endpoint at `POST <API base>/mcp` — the "Streamable HTTP" transport, run
 stateless with plain JSON responses (no `Mcp-Session-Id`, no SSE; Lambda can't
 hold sessions). It lets an AI client (Claude Code, a claude.ai custom
-connector, Cursor, …) manage seslogin's user list on your behalf, acting **as
-you, with exactly your permissions** — see `mcp.rs`'s module docs for why this
+connector, Cursor, …) work with seslogin on your behalf, acting **as
+you, with exactly your permissions** — see `mcp/mod.rs`'s module docs for why this
 is a small hand-rolled JSON-RPC 2.0 dispatcher rather than the `rmcp` crate,
 and for how every tool call still goes through the same GraphQL guards the
 admin UI does.
@@ -217,16 +217,47 @@ the MCP authorization spec's discovery flow.
 | `whoami` | Who you're authenticated as: id, email, `isSuper`, and the locations you can access. |
 | `list_users` | List every admin user. Super user only. |
 | `get_user` | Look up one user by id. A non-super caller may only look up themselves. |
-| `list_locations` | List every location (id, name) — resolve a name to the id `create_user`/`update_user` expect in `locationGrants`. Super user only. |
 | `create_user` | Create a user (email, `isSuper`, `locationGrants`, optional `readOnlyLocationGrants`). Super user only. |
 | `update_user` | Change a user's email/`isSuper`/`isDev`/`locationGrants`/`readOnlyLocationGrants`; omitted fields keep their current value. Never touches `enabled`. Super user only. |
 | `disable_user` / `enable_user` | Flip `enabled` — seslogin has no user delete, only disable. Super user only. |
+| `list_locations` | The locations you can access (id, name, `enabled`, `viewerCanEdit`, `nitcEnabled`, `lastSuccessfulMemberSync`): every enabled one for a super user, otherwise your Admin and Read only grants. Start here for location ids. |
+| `get_location` | One location's details (adds NITC and SES headquarters settings, created/updated). Needs a grant for it. |
+| `list_members` | A location's active members, optionally filtered by `query` (case-insensitive substring of first/last/full name or member number). Deleted members are never listed. Each carries `syncManaged` (`sesApiPersonId` set). Admin, Read only or super user. |
+| `get_member` | One member, with their `lastPeriod`. Needs a grant for their location. |
+| `find_member_by_number` | As `get_member`, looked up by member number. "Not found" and "no grant" give the same error. |
+| `create_member` / `update_member` / `delete_member` | Manage members. `update_member` changes only the fields passed. Admin (or super user) only; Read only is refused. Members owned by member sync (`syncManaged`) can be changed but the next sync may undo it, and the admin site doesn't offer it. |
+| `sync_members` | Queue a member sync for a location. Admin (or super user) only. |
+
+**Not exposed, on purpose:** creating API tokens; enrolling or reactivating
+kiosks (`enrollSession`, `reactivateSession`, `pendingEnrollmentKey` — a device
+is only bound to a location by a person scanning its QR code in the browser);
+login, logout and auth codes; passkey registration and login; approving OAuth
+authorizations; token refresh; and every kiosk-only or edit-link-only field.
+
+**Times.** Any time argument takes Unix seconds (an integer) or a string: RFC 3339
+with an offset (`2026-10-16T09:00:00+11:00`), a local `YYYY-MM-DDTHH:MM[:SS]` /
+`YYYY-MM-DD HH:MM[:SS]`, or a date `YYYY-MM-DD` (midnight). Strings without an
+offset are Australia/Sydney local time (a time that happens twice at the DST
+fall-back takes the earlier one; one that doesn't exist is an error). Results
+keep each Unix-seconds timestamp and add a `<name>Sydney` RFC 3339 sibling
+(`createdAt` and `createdAtSydney`). Durations stay in seconds.
+
+**Partial updates.** `update_*` tools fetch the record, overlay only the arguments
+you pass and send the whole thing: an omitted argument keeps its value, and on
+a nullable field an explicit `null` clears it (stated per tool).
+
+**Structure.** `src/mcp/mod.rs` is the transport; `src/mcp/args.rs` the argument,
+time and merge helpers; `src/mcp/tools/<domain>.rs` the tools, each with a
+`catalogue()` and a `call()` that `tools/mod.rs` chains.
 
 Every tool runs a **fixed** GraphQL document against the in-process schema
 with your verified identity attached exactly as the GraphQL endpoint itself
 builds a request, so a non-super token gets the same authorization errors
-from `list_users`/`create_user`/etc. that the admin UI would; only `whoami`
-and `get_user` (on your own id) work. A tool failure (a guard rejection, a
+from `list_users`/`create_user`/etc. that the admin UI would; only `whoami`,
+`get_user` (on your own id) and the location/member tools (for your own
+locations) work. Where a GraphQL read doesn't itself check the caller's grants
+(`location`, `Location.people`, `person`), the tool does, so it only ever
+narrows access. A tool failure (a guard rejection, a
 validation error) comes back as an ordinary JSON-RPC *success* whose
 `CallToolResult` carries `isError: true` and the message — not a transport
 error — so a client can show it inline rather than treating the whole request
