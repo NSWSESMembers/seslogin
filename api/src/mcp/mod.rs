@@ -55,16 +55,26 @@
 //! async `call()` that returns `None` for a name that isn't theirs;
 //! `tools/mod.rs` chains them. A new tool is one catalogue entry plus one `call` arm.
 //!
-//! **Deliberately not exposed**, by decision of the repo owner: creating API tokens
-//! (an MCP grant is revocable and expires, while an `slgn_` token is a long-lived credential
-//! that works on `/graphql` outside this tool set, so a grant must not be able to mint one;
-//! the API token tools list, edit and revoke only and never return a secret or hash),
-//! enrolling or reactivating kiosks (`enrollSession`, `reactivateSession`,
-//! `pendingEnrollmentKey` — a device is only bound to a location by a person
-//! scanning its QR code in the browser), login/logout and auth codes, passkey
-//! registration and login ceremonies, OAuth authorization approval
-//! (`approveOauthAuthorization`, `oauthAuthorizationRequest`), token refresh, and
-//! every kiosk-only (`Session`-guarded) or edit-link-only (`PeriodLink`) field.
+//! **Deliberately not exposed**, by decision of the repo owner, each for a reason:
+//! - *Creating API tokens* (`createApiToken`): an MCP grant is revocable and expires, while
+//!   an `slgn_` token is a long-lived credential that works on `/graphql` outside this
+//!   tool set, so a grant must not be able to mint one. The API token tools list, edit and
+//!   revoke only and never return a secret or hash.
+//! - *Enrolling, reactivating and looking up pending kiosks* (`enrollSession`,
+//!   `reactivateSession`, `pendingEnrollmentKey`): a device is only bound to a location by a
+//!   person scanning its QR code in the browser.
+//! - *Login, logout and auth codes*: they mint or end the credentials this endpoint is
+//!   already authenticated with.
+//! - *Passkey registration and login* (the WebAuthn ceremonies): they need the user's
+//!   authenticator in the browser. Passkeys can be listed, renamed and deleted.
+//! - *OAuth consent* (`approveOauthAuthorization`, `oauthAuthorizationRequest`): approving
+//!   an app is the user's own decision on the site, never an AI client's. Connected apps can
+//!   be listed and revoked.
+//! - *`refreshToken`*: re-issues a kiosk's session JWT, so it is `Session`-guarded and
+//!   meaningless for a user. (This endpoint's own `slat_` refresh is the OAuth token
+//!   endpoint's job, not a tool.)
+//! - *Kiosk-only (`Session`-guarded) and edit-link-only (`PeriodLink`) fields*: they
+//!   authenticate a device or a member's single link, neither of which can be this user.
 //!
 //! **Auth.** Only an OAuth `slat_` access token audience-bound to `<api
 //! base>/mcp` is accepted here — see [`oauth::verify_access_token`]. Missing
@@ -180,28 +190,37 @@ fn initialize_result(params: &Value) -> Value {
         },
         "instructions": "seslogin tracks member check-in/check-out attendance across \
             locations. Start with `list_locations` (the units you can see) and `whoami` \
-            (who you are acting as). You can look up and manage members (`list_members`, \
-            `get_member`, `find_member_by_number`, `create_member`, `update_member`, \
-            `delete_member`), queue a member sync (`sync_members`), read the activity categories \
-            (`list_categories`), see who is signed in or what happened (`list_periods` with \
-            `onlyActive` for the Current page, `list_member_periods`, `get_period`), correct \
-            the record (`create_period`, `update_period`, `delete_period`), email a member \
-            a link to fix an entry (`send_period_edit_link`), run the reports (`get_dashboard`, \
-            `summarize_activity` grouped by member/category/day, `members_last_seen`; durations \
-            are seconds), see and manage a location's kiosks (`list_kiosks`, `get_kiosk`, \
-            `update_kiosk`, `delete_kiosk`; adding or reactivating a kiosk is done on the admin \
-            site's Kiosks page by scanning its QR code), and, for super users, manage the admin user list (`list_users`, `create_user`, `update_user`, \
+            (who you are acting as, with your own settings). You can look up and manage \
+            members (`list_members`, `get_member`, `find_member_by_number`, `create_member`, \
+            `update_member`, `delete_member`), queue a member sync (`sync_members`), read the \
+            activity categories (`list_categories`), see who is signed in or what happened \
+            (`list_periods` with `onlyActive` for the Current page, `list_member_periods`, \
+            `get_period`), correct the record (`create_period`, `update_period`, \
+            `delete_period`), email a member a link to fix an entry (`send_period_edit_link`), \
+            run the reports (`get_dashboard`, `summarize_activity` grouped by \
+            member/category/day, `members_last_seen`; durations are seconds), see and manage \
+            a location's kiosks (`list_kiosks`, `get_kiosk`, `update_kiosk`, `delete_kiosk`; \
+            adding or reactivating a kiosk is done on the admin site's Kiosks page by scanning \
+            its QR code), and read who changed what (`get_audit_log`, per location, or across \
+            everything for a super user). For your own account: your settings \
+            (`update_my_settings`: daily summary emails and virtual-period display), the apps \
+            you have connected (`list_connected_apps`, `revoke_connected_app`; revoking the one \
+            you are using ends this session), your passkeys (`list_passkeys`, `rename_passkey`, \
+            `delete_passkey`; adding one is done in the browser) and a help request to the \
+            seslogin team (`submit_feedback`, which sends a real message). For super users \
+            there is also the admin user list (`list_users`, `create_user`, `update_user`, \
             `disable_user`/`enable_user`), categories (`create_category`, `update_category`), \
             NITC groups (`list_nitc_groups`, `get_nitc_group`, `create_nitc_group`, \
             `update_nitc_group`, `delete_nitc_group`, with `list_ses_nonincident_tags` and \
             `list_ses_reference_data` for the valid tag, type and participant-type values), \
-            locations (`create_location`, `update_location`) and API tokens (`list_api_tokens`, \
-            `get_api_token`, `update_api_token`, `revoke_api_token`; tokens can only be created on \
-            the admin site). Every tool acts with the authenticated caller's \
-            own permissions: Admin can change a location, Read only can only view, and a \
-            non-super user can only look up themselves. Time arguments take Unix seconds or \
-            an RFC 3339 / local date-time string (Australia/Sydney unless an offset is given); \
-            results add a `...Sydney` string beside each Unix-seconds timestamp.",
+            locations (`create_location`, `update_location`) and API tokens \
+            (`list_api_tokens`, `get_api_token`, `update_api_token`, `revoke_api_token`; \
+            tokens can only be created on the admin site). Every tool acts with the \
+            authenticated caller's own permissions: Admin can change a location, Read only \
+            can only view, and a non-super user can only look up themselves. Time arguments \
+            take Unix seconds or an RFC 3339 / local date-time string (Australia/Sydney \
+            unless an offset is given); results add a `...Sydney` string beside each \
+            Unix-seconds timestamp.",
     })
 }
 
@@ -253,6 +272,15 @@ where
     /// Whether the caller is a super user.
     pub(crate) fn is_super(&self) -> bool {
         matches!(self.auth_info, AuthInfo::User { is_super: true, .. })
+    }
+
+    /// The id of the OAuth grant this request came in on (the caller's "connected
+    /// app" entry), if any.
+    pub(crate) fn grant_id(&self) -> Option<&str> {
+        match self.auth_info {
+            AuthInfo::User { grant_id, .. } => grant_id.as_deref(),
+            _ => None,
+        }
     }
 
     /// Refuse unless the caller can view `location_id` (any grant, or super).

@@ -43,6 +43,7 @@ pub(crate) struct FakeDb {
     /// Makes `put_audit_entry` fail, like the audit table not existing yet.
     pub(crate) fail_audit_writes: AtomicBool,
     pub(crate) user_tokens: Mutex<HashMap<String, db::UserToken>>,
+    pub(crate) webauthn_credentials: Mutex<HashMap<String, db::WebauthnCredential>>,
 }
 
 impl FakeDb {
@@ -126,7 +127,22 @@ impl db::Handler for FakeDb {
                 user.updated_at = seslogin::clock::now_sec();
                 Ok(())
             }
-            _ => unsupported(),
+            db::UserUpdateShape::EmailConfig { email_config } => {
+                let mut users = self.users.lock().unwrap();
+                let user = users
+                    .get_mut(id)
+                    .ok_or_else(|| db::Error::NotFound(id.to_string()))?;
+                user.email_config = email_config;
+                Ok(())
+            }
+            db::UserUpdateShape::DisaggregateVirtualPeriods { value } => {
+                let mut users = self.users.lock().unwrap();
+                let user = users
+                    .get_mut(id)
+                    .ok_or_else(|| db::Error::NotFound(id.to_string()))?;
+                user.disaggregate_virtual_periods = value;
+                Ok(())
+            }
         }
     }
 
@@ -1158,28 +1174,48 @@ impl db::Handler for FakeDb {
     }
     async fn get_webauthn_credential(
         &self,
-        _id: &str,
+        id: &str,
     ) -> db::Result<Option<db::WebauthnCredential>> {
-        unsupported()
+        Ok(self.webauthn_credentials.lock().unwrap().get(id).cloned())
     }
     async fn list_webauthn_credentials_by_user(
         &self,
-        _user_id: &str,
+        user_id: &str,
     ) -> db::Result<Vec<db::WebauthnCredential>> {
-        unsupported()
+        let mut creds: Vec<_> = self
+            .webauthn_credentials
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|c| c.user_id == user_id)
+            .cloned()
+            .collect();
+        creds.sort_by(|a, b| a.id.cmp(&b.id));
+        Ok(creds)
     }
     async fn count_webauthn_credentials_by_user(&self, _user_id: &str) -> db::Result<usize> {
         unsupported()
     }
     async fn update_webauthn_credential(
         &self,
-        _id: &str,
-        _change: db::WebauthnCredentialUpdate,
+        id: &str,
+        change: db::WebauthnCredentialUpdate,
     ) -> db::Result<()> {
-        unsupported()
+        match change {
+            db::WebauthnCredentialUpdate::Rename(name) => {
+                let mut creds = self.webauthn_credentials.lock().unwrap();
+                let cred = creds
+                    .get_mut(id)
+                    .ok_or_else(|| db::Error::NotFound(id.to_string()))?;
+                cred.name = name;
+                Ok(())
+            }
+            db::WebauthnCredentialUpdate::TouchLastUsed { .. } => unsupported(),
+        }
     }
-    async fn delete_webauthn_credential(&self, _id: &str) -> db::Result<()> {
-        unsupported()
+    async fn delete_webauthn_credential(&self, id: &str) -> db::Result<()> {
+        self.webauthn_credentials.lock().unwrap().remove(id);
+        Ok(())
     }
     async fn put_webauthn_state(
         &self,

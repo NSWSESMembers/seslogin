@@ -17,8 +17,8 @@ use std::sync::Arc;
 use serde_json::{Value, json};
 
 use common::{
-    FakeDb, fake_app, seed_category, seed_location, seed_period, seed_person, seed_super_user,
-    seed_user,
+    FakeDb, fake_app, seed_category, seed_grant, seed_location, seed_period, seed_person,
+    seed_super_user, seed_user,
 };
 use seslogin::app::MyApp;
 use seslogin::graphql;
@@ -394,6 +394,14 @@ async fn tools_list_lists_every_tool() {
         "get_api_token",
         "update_api_token",
         "revoke_api_token",
+        "get_audit_log",
+        "update_my_settings",
+        "list_connected_apps",
+        "revoke_connected_app",
+        "list_passkeys",
+        "rename_passkey",
+        "delete_passkey",
+        "submit_feedback",
     ] {
         assert!(
             names.contains(&expected),
@@ -3375,4 +3383,645 @@ async fn a_super_user_can_list_update_and_revoke_api_tokens_without_seeing_a_sec
     assert_eq!(result["isError"], false, "{result:?}");
     assert!(result["structuredContent"]["apiToken"]["revokedAt"].is_i64());
     assert!(result["structuredContent"]["apiToken"]["revokedAtSydney"].is_string());
+}
+
+// ── tools/call: audit log, settings and the caller's own account ─────────────
+
+fn audit_entry(
+    id: &str,
+    ts: u64,
+    entity_type: seslogin::db::AuditEntityType,
+    location_ids: &[&str],
+) -> seslogin::db::AuditEntry {
+    seslogin::db::AuditEntry {
+        id: id.to_string(),
+        event_id: id.to_string(),
+        ts,
+        action: seslogin::db::AuditAction::Update,
+        entity_type,
+        entity_id: format!("{id}-entity"),
+        entity_label: Some(format!("Label {id}")),
+        location_ids: location_ids.iter().map(|s| s.to_string()).collect(),
+        actor_kind: "user".to_string(),
+        actor_id: Some("admin-1".to_string()),
+        actor_via: Some("oauth_grant:g-1".to_string()),
+        ip: Some("203.0.113.9".to_string()),
+        changes: vec![],
+    }
+}
+
+fn seed_audit_log(app: &App) {
+    use seslogin::db::AuditEntityType as T;
+    *app.db.audit_log.lock().unwrap() = vec![
+        audit_entry("e-person", NINE as u64, T::Person, &["loc-1"]),
+        audit_entry("e-period", TEN as u64, T::Period, &["loc-1"]),
+        audit_entry("e-other", ELEVEN as u64, T::Person, &["loc-2"]),
+        audit_entry("e-user", ELEVEN as u64 + 10, T::User, &[]),
+    ];
+}
+
+fn entry_ids(result: &Value) -> Vec<&str> {
+    result["structuredContent"]["entries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| e["id"].as_str().unwrap())
+        .collect()
+}
+
+#[tokio::test]
+async fn location_audit_logs_are_readable_by_admin_and_read_only_users_only() {
+    let (app, schema) = setup();
+    seed_unit(&app);
+    seed_audit_log(&app);
+    let admin = grant_user(&app, "admin-u", &["loc-1"], &[]).await;
+    let reader = grant_user(&app, "reader-u", &[], &["loc-1"]).await;
+    let stranger = grant_user(&app, "stranger-u", &["loc-2"], &[]).await;
+
+    for bearer in [&admin, &reader] {
+        let result = run_tool(
+            &app,
+            &schema,
+            bearer,
+            "get_audit_log",
+            json!({ "locationId": "loc-1" }),
+        )
+        .await;
+        assert_eq!(result["isError"], false, "{result:?}");
+        // Newest first, only this location's.
+        assert_eq!(entry_ids(&result), ["e-period", "e-person"]);
+        let first = &result["structuredContent"]["entries"][0];
+        assert_eq!(first["entityType"], "PERIOD");
+        assert_eq!(first["action"], "UPDATE");
+        assert_eq!(first["entityLabel"], "Label e-period");
+        assert_eq!(first["timestamp"], TEN);
+        assert!(first["timestampSydney"].is_string());
+        assert_eq!(first["location"]["id"], "loc-1");
+        // Personal data is for super users only.
+        assert_eq!(first["ip"], Value::Null);
+        assert_eq!(first["actor"]["via"], Value::Null);
+        assert_eq!(first["actor"]["id"], "admin-1");
+        assert_eq!(
+            result["structuredContent"]["pageInfo"]["hasNextPage"],
+            false
+        );
+    }
+
+    // No grant for the location: refused, and so is asking for another unit's log.
+    let result = run_tool(
+        &app,
+        &schema,
+        &stranger,
+        "get_audit_log",
+        json!({ "locationId": "loc-1" }),
+    )
+    .await;
+    assert_eq!(result["isError"], true, "{result:?}");
+    assert!(error_text(&result).contains("Not authorized"));
+    let nobody = grant_user(&app, "nobody-u", &[], &[]).await;
+    let result = run_tool(
+        &app,
+        &schema,
+        &nobody,
+        "get_audit_log",
+        json!({ "locationId": "loc-1" }),
+    )
+    .await;
+    assert_eq!(result["isError"], true, "{result:?}");
+}
+
+#[tokio::test]
+async fn only_a_super_user_can_read_the_global_audit_log() {
+    let (app, schema) = setup();
+    seed_unit(&app);
+    seed_audit_log(&app);
+    let admin = grant_user(&app, "admin-u", &["loc-1"], &[]).await;
+
+    // Without a location a non-super user is told so, whatever their grants.
+    let result = run_tool(&app, &schema, &admin, "get_audit_log", json!({})).await;
+    assert_eq!(result["isError"], true, "{result:?}");
+    assert!(error_text(&result).contains("locationId"), "{result:?}");
+
+    let bearer = super_bearer(&app).await;
+    let result = run_tool(&app, &schema, &bearer, "get_audit_log", json!({})).await;
+    assert_eq!(result["isError"], false, "{result:?}");
+    assert_eq!(
+        entry_ids(&result),
+        ["e-user", "e-other", "e-period", "e-person"]
+    );
+    // Super users see the personal-data fields, and the global record has no location.
+    let entries = result["structuredContent"]["entries"].as_array().unwrap();
+    assert_eq!(entries[0]["location"], Value::Null);
+    assert_eq!(entries[0]["ip"], "203.0.113.9");
+    assert_eq!(entries[0]["actor"]["via"], "oauth_grant:g-1");
+
+    // A super user may also read one location's log.
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "get_audit_log",
+        json!({ "locationId": "loc-2" }),
+    )
+    .await;
+    assert_eq!(result["isError"], false, "{result:?}");
+    assert_eq!(entry_ids(&result), ["e-other"]);
+}
+
+#[tokio::test]
+async fn the_audit_log_filters_by_entity_type_and_pages() {
+    let (app, schema) = setup();
+    seed_unit(&app);
+    seed_audit_log(&app);
+    let bearer = super_bearer(&app).await;
+
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "get_audit_log",
+        json!({ "entityTypes": ["PERSON", "user"] }),
+    )
+    .await;
+    assert_eq!(result["isError"], false, "{result:?}");
+    assert_eq!(entry_ids(&result), ["e-user", "e-other", "e-person"]);
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "get_audit_log",
+        json!({ "locationId": "loc-1", "entityTypes": ["PERIOD"] }),
+    )
+    .await;
+    assert_eq!(entry_ids(&result), ["e-period"]);
+
+    // Pages of three: the cursor continues towards older entries.
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "get_audit_log",
+        json!({ "first": 3 }),
+    )
+    .await;
+    assert_eq!(entry_ids(&result), ["e-user", "e-other", "e-period"]);
+    let page = &result["structuredContent"]["pageInfo"];
+    assert_eq!(page["hasNextPage"], true);
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "get_audit_log",
+        json!({ "first": 3, "after": page["endCursor"] }),
+    )
+    .await;
+    assert_eq!(entry_ids(&result), ["e-person"]);
+
+    // Bad arguments are named.
+    for arguments in [
+        json!({ "entityTypes": ["PEOPLE"] }),
+        json!({ "first": 0 }),
+        json!({ "first": 201 }),
+        json!({ "after": "not-a-cursor" }),
+    ] {
+        let result = run_tool(&app, &schema, &bearer, "get_audit_log", arguments.clone()).await;
+        assert_eq!(result["isError"], true, "{arguments}: {result:?}");
+    }
+}
+
+#[tokio::test]
+async fn update_my_settings_changes_each_setting_independently() {
+    let (app, schema) = setup();
+    seed_unit(&app);
+    let bearer = grant_user(&app, "user-1", &["loc-1"], &["loc-2"]).await;
+
+    let whoami = run_tool(&app, &schema, &bearer, "whoami", json!({})).await;
+    let user = &whoami["structuredContent"]["user"];
+    assert_eq!(user["emailSummaryLocationIds"], json!([]));
+    assert_eq!(user["disaggregateVirtualPeriods"], false);
+
+    // The flag alone leaves the email list as it was.
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "update_my_settings",
+        json!({ "disaggregateVirtualPeriods": true }),
+    )
+    .await;
+    assert_eq!(result["isError"], false, "{result:?}");
+    assert_eq!(
+        result["structuredContent"]["settings"],
+        json!({ "emailSummaryLocationIds": [], "disaggregateVirtualPeriods": true })
+    );
+    assert!(app.db.users.lock().unwrap()["user-1"].disaggregate_virtual_periods);
+
+    // The email list alone leaves the flag as it was.
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "update_my_settings",
+        json!({ "dailyEmailLocationIds": ["loc-1"] }),
+    )
+    .await;
+    assert_eq!(result["isError"], false, "{result:?}");
+    assert_eq!(
+        result["structuredContent"]["settings"],
+        json!({ "emailSummaryLocationIds": ["loc-1"], "disaggregateVirtualPeriods": true })
+    );
+    let whoami = run_tool(&app, &schema, &bearer, "whoami", json!({})).await;
+    let user = &whoami["structuredContent"]["user"];
+    assert_eq!(user["emailSummaryLocationIds"], json!(["loc-1"]));
+    assert_eq!(user["disaggregateVirtualPeriods"], true);
+
+    // Both at once; an empty list turns the emails off.
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "update_my_settings",
+        json!({ "dailyEmailLocationIds": [], "disaggregateVirtualPeriods": false }),
+    )
+    .await;
+    assert_eq!(result["isError"], false, "{result:?}");
+    assert_eq!(
+        result["structuredContent"]["settings"],
+        json!({ "emailSummaryLocationIds": [], "disaggregateVirtualPeriods": false })
+    );
+
+    // Nothing to change is an error, as is a location the caller cannot see; a bad
+    // second argument must not half-apply the first.
+    seed_location(&app, "loc-3", "Third Unit");
+    let bad = [
+        json!({}),
+        json!({ "dailyEmailLocationIds": null, "disaggregateVirtualPeriods": null }),
+        json!({ "dailyEmailLocationIds": ["loc-3"] }),
+        json!({ "dailyEmailLocationIds": ["loc-1"], "disaggregateVirtualPeriods": "yes" }),
+    ];
+    for arguments in bad {
+        let result = run_tool(
+            &app,
+            &schema,
+            &bearer,
+            "update_my_settings",
+            arguments.clone(),
+        )
+        .await;
+        assert_eq!(result["isError"], true, "{arguments}: {result:?}");
+    }
+    assert!(
+        app.db.users.lock().unwrap()["user-1"]
+            .email_config
+            .is_empty()
+    );
+}
+
+#[tokio::test]
+async fn a_user_lists_and_revokes_their_own_connected_apps() {
+    let (app, schema) = setup();
+    let bearer = grant_user(&app, "user-1", &[], &[]).await;
+    seed_user(&app, "user-2", true);
+    let now = seslogin::clock::now_sec();
+    seed_grant(&app, "g-mine", "user-1", "Other Client", now - 100);
+    seed_grant(&app, "g-theirs", "user-2", "Their Client", now - 50);
+
+    let result = run_tool(&app, &schema, &bearer, "list_connected_apps", json!({})).await;
+    assert_eq!(result["isError"], false, "{result:?}");
+    assert_no_secret("list_connected_apps", &result);
+    let apps = result["structuredContent"]["connectedApps"]
+        .as_array()
+        .unwrap();
+    let ids: Vec<&str> = apps.iter().map(|g| g["id"].as_str().unwrap()).collect();
+    // Newest first: this connection's grant was minted just now.
+    assert_eq!(apps.len(), 2, "{apps:?}");
+    assert_eq!(ids[1], "g-mine");
+    assert_eq!(apps[0]["thisConnection"], true);
+    assert_eq!(apps[0]["clientName"], "Test Client");
+    assert_eq!(apps[0]["redirectHost"], "claude.ai");
+    assert!(apps[0]["createdAtSydney"].is_string());
+    assert!(apps[0]["refreshExpiresAtSydney"].is_string());
+    assert!(apps[1].get("thisConnection").is_none());
+
+    // Revoke the other one: the connection keeps working.
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "revoke_connected_app",
+        json!({ "id": "g-mine" }),
+    )
+    .await;
+    assert_eq!(result["isError"], false, "{result:?}");
+    assert_eq!(
+        result["structuredContent"],
+        json!({ "revoked": true, "id": "g-mine", "endedThisConnection": false })
+    );
+    assert!(!app.db.oauth_grants.lock().unwrap().contains_key("g-mine"));
+    let result = run_tool(&app, &schema, &bearer, "list_connected_apps", json!({})).await;
+    assert_eq!(
+        result["structuredContent"]["connectedApps"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+}
+
+#[tokio::test]
+async fn a_non_super_user_cannot_list_or_revoke_other_peoples_connected_apps() {
+    let (app, schema) = setup();
+    let bearer = grant_user(&app, "user-1", &[], &[]).await;
+    seed_user(&app, "user-2", true);
+    seed_grant(
+        &app,
+        "g-theirs",
+        "user-2",
+        "Their Client",
+        seslogin::clock::now_sec(),
+    );
+
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "list_connected_apps",
+        json!({ "userId": "user-2" }),
+    )
+    .await;
+    assert_eq!(result["isError"], true, "{result:?}");
+    // The same "not found" a missing grant gets, so ids cannot be probed.
+    for id in ["g-theirs", "g-nope"] {
+        let result = run_tool(
+            &app,
+            &schema,
+            &bearer,
+            "revoke_connected_app",
+            json!({ "id": id }),
+        )
+        .await;
+        assert_eq!(result["isError"], true, "{result:?}");
+        assert!(error_text(&result).contains("not found"), "{result:?}");
+    }
+    assert!(app.db.oauth_grants.lock().unwrap().contains_key("g-theirs"));
+
+    // A super user may do both.
+    let admin = super_bearer(&app).await;
+    let result = run_tool(
+        &app,
+        &schema,
+        &admin,
+        "list_connected_apps",
+        json!({ "userId": "user-2" }),
+    )
+    .await;
+    assert_eq!(result["isError"], false, "{result:?}");
+    assert_eq!(
+        result["structuredContent"]["connectedApps"][0]["id"],
+        "g-theirs"
+    );
+    let result = run_tool(
+        &app,
+        &schema,
+        &admin,
+        "revoke_connected_app",
+        json!({ "id": "g-theirs" }),
+    )
+    .await;
+    assert_eq!(result["isError"], false, "{result:?}");
+    assert!(!app.db.oauth_grants.lock().unwrap().contains_key("g-theirs"));
+}
+
+#[tokio::test]
+async fn revoking_the_grant_in_use_ends_the_connection() {
+    let (app, schema) = setup();
+    seed_user(&app, "user-1", true);
+    let token = access_token_for(&app, "user-1").await;
+    let bearer = format!("Bearer {token}");
+
+    let result = run_tool(&app, &schema, &bearer, "list_connected_apps", json!({})).await;
+    let id = result["structuredContent"]["connectedApps"][0]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert_eq!(
+        result["structuredContent"]["connectedApps"][0]["thisConnection"],
+        true
+    );
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "revoke_connected_app",
+        json!({ "id": id }),
+    )
+    .await;
+    assert_eq!(result["isError"], false, "{result:?}");
+    assert_eq!(result["structuredContent"]["endedThisConnection"], true);
+
+    let reply = post(&app, &schema, Some(&bearer), tool_call("whoami", json!({}))).await;
+    assert_eq!(reply.status, 401);
+    assert!(reply.header("www-authenticate").is_some());
+}
+
+const PASSKEY_MATERIAL: &str = "PASSKEY-MATERIAL-MUST-NOT-LEAK";
+
+fn seed_passkey(app: &App, id: &str, user_id: &str, name: &str) {
+    app.db.webauthn_credentials.lock().unwrap().insert(
+        id.to_string(),
+        seslogin::db::WebauthnCredential {
+            id: id.to_string(),
+            user_id: user_id.to_string(),
+            name: name.to_string(),
+            passkey_json: PASSKEY_MATERIAL.to_string(),
+            created_at: NINE as u64,
+            last_used_at: Some(TEN as u64),
+        },
+    );
+}
+
+#[tokio::test]
+async fn a_user_lists_renames_and_deletes_their_own_passkeys() {
+    let (app, schema) = setup();
+    let bearer = grant_user(&app, "user-1", &[], &[]).await;
+    seed_user(&app, "user-2", true);
+    seed_passkey(&app, "pk-1", "user-1", "Laptop");
+    seed_passkey(&app, "pk-2", "user-1", "Phone");
+    seed_passkey(&app, "pk-other", "user-2", "Their key");
+
+    let result = run_tool(&app, &schema, &bearer, "list_passkeys", json!({})).await;
+    assert_eq!(result["isError"], false, "{result:?}");
+    assert!(!result.to_string().contains(PASSKEY_MATERIAL));
+    let keys = result["structuredContent"]["passkeys"].as_array().unwrap();
+    assert_eq!(keys.len(), 2);
+    assert_eq!(keys[0]["id"], "pk-1");
+    assert_eq!(keys[0]["name"], "Laptop");
+    assert_eq!(keys[0]["lastUsedAt"], TEN);
+    assert!(keys[0]["createdAtSydney"].is_string());
+
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "rename_passkey",
+        json!({ "id": "pk-1", "name": "  Work laptop " }),
+    )
+    .await;
+    assert_eq!(result["isError"], false, "{result:?}");
+    assert!(!result.to_string().contains(PASSKEY_MATERIAL));
+    assert_eq!(
+        result["structuredContent"]["passkey"]["name"],
+        "Work laptop"
+    );
+    assert_eq!(
+        app.db.webauthn_credentials.lock().unwrap()["pk-1"].name,
+        "Work laptop"
+    );
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "rename_passkey",
+        json!({ "id": "pk-1", "name": "   " }),
+    )
+    .await;
+    assert_eq!(result["isError"], true, "{result:?}");
+
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "delete_passkey",
+        json!({ "id": "pk-2" }),
+    )
+    .await;
+    assert_eq!(result["isError"], false, "{result:?}");
+    assert_eq!(
+        result["structuredContent"],
+        json!({ "deleted": true, "id": "pk-2" })
+    );
+    assert!(
+        !app.db
+            .webauthn_credentials
+            .lock()
+            .unwrap()
+            .contains_key("pk-2")
+    );
+    assert_eq!(app.db.webauthn_credentials.lock().unwrap().len(), 2);
+}
+
+#[tokio::test]
+async fn passkeys_of_another_user_cannot_be_listed_renamed_or_deleted() {
+    let (app, schema) = setup();
+    let bearer = grant_user(&app, "user-1", &[], &[]).await;
+    seed_user(&app, "user-2", true);
+    seed_passkey(&app, "pk-other", "user-2", "Their key");
+
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "list_passkeys",
+        json!({ "userId": "user-2" }),
+    )
+    .await;
+    assert_eq!(result["isError"], true, "{result:?}");
+    for (tool, arguments) in [
+        (
+            "rename_passkey",
+            json!({ "id": "pk-other", "name": "Mine now" }),
+        ),
+        ("delete_passkey", json!({ "id": "pk-other" })),
+    ] {
+        let result = run_tool(&app, &schema, &bearer, tool, arguments).await;
+        assert_eq!(result["isError"], true, "{tool}: {result:?}");
+        assert!(error_text(&result).contains("not found"), "{result:?}");
+    }
+    // Not even a super user changes someone else's passkey, but they may look.
+    let admin = super_bearer(&app).await;
+    for (tool, arguments) in [
+        (
+            "rename_passkey",
+            json!({ "id": "pk-other", "name": "Mine now" }),
+        ),
+        ("delete_passkey", json!({ "id": "pk-other" })),
+    ] {
+        let result = run_tool(&app, &schema, &admin, tool, arguments).await;
+        assert_eq!(result["isError"], true, "{tool}: {result:?}");
+    }
+    let result = run_tool(
+        &app,
+        &schema,
+        &admin,
+        "list_passkeys",
+        json!({ "userId": "user-2" }),
+    )
+    .await;
+    assert_eq!(result["isError"], false, "{result:?}");
+    assert_eq!(
+        result["structuredContent"]["passkeys"][0]["name"],
+        "Their key"
+    );
+    let stored = app.db.webauthn_credentials.lock().unwrap()["pk-other"].clone();
+    assert_eq!(stored.name, "Their key");
+}
+
+#[tokio::test]
+async fn the_account_tools_carry_the_right_annotations() {
+    let (app, schema) = setup();
+    seed_user(&app, "user-1", true);
+    let token = access_token_for(&app, "user-1").await;
+    let reply = post(
+        &app,
+        &schema,
+        Some(&format!("Bearer {token}")),
+        rpc("tools/list", json!({})),
+    )
+    .await;
+    let tools = reply.json["result"]["tools"].as_array().unwrap();
+    let annotation = |name: &str, key: &str| {
+        tools.iter().find(|t| t["name"] == name).unwrap()["annotations"][key].clone()
+    };
+    for name in ["get_audit_log", "list_connected_apps", "list_passkeys"] {
+        assert_eq!(annotation(name, "readOnlyHint"), true, "{name}");
+    }
+    for name in ["revoke_connected_app", "delete_passkey"] {
+        assert_eq!(annotation(name, "destructiveHint"), true, "{name}");
+    }
+    assert_eq!(annotation("submit_feedback", "openWorldHint"), true);
+    // Registration and login ceremonies are never tools.
+    assert!(
+        !tools
+            .iter()
+            .any(|t| t["name"].as_str().unwrap().contains("register"))
+    );
+}
+
+#[tokio::test]
+async fn feedback_without_toolbox_says_so_and_points_at_support() {
+    // `TOOLBOX_*` is never set in the test environment.
+    let (app, schema) = setup();
+    let bearer = grant_user(&app, "user-1", &[], &[]).await;
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "submit_feedback",
+        json!({ "subject": "Broken", "message": "It is." }),
+    )
+    .await;
+    assert_eq!(result["isError"], true, "{result:?}");
+    let text = error_text(&result);
+    assert!(text.contains("support@seslogin.com"), "{text}");
+    assert!(text.contains("isn't available"), "{text}");
+
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "submit_feedback",
+        json!({ "subject": "Broken" }),
+    )
+    .await;
+    assert_eq!(result["isError"], true, "{result:?}");
 }
