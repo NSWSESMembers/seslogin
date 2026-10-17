@@ -183,8 +183,9 @@ fn initialize_result(params: &Value) -> Value {
             (`list_categories`), see who is signed in or what happened (`list_periods` with \
             `onlyActive` for the Current page, `list_member_periods`, `get_period`), correct \
             the record (`create_period`, `update_period`, `delete_period`), email a member \
-            a link to fix an entry (`send_period_edit_link`), and, for super users, \
-            manage the admin user list (`list_users`, `create_user`, `update_user`, \
+            a link to fix an entry (`send_period_edit_link`), run the reports (`get_dashboard`, \
+            `summarize_activity` grouped by member/category/day, `members_last_seen`; durations \
+            are seconds), and, for super users, manage the admin user list (`list_users`, `create_user`, `update_user`, \
             `disable_user`/`enable_user`). Every tool acts with the authenticated caller's \
             own permissions: Admin can change a location, Read only can only view, and a \
             non-super user can only look up themselves. Time arguments take Unix seconds or \

@@ -372,6 +372,9 @@ async fn tools_list_lists_every_tool() {
         "update_period",
         "delete_period",
         "send_period_edit_link",
+        "get_dashboard",
+        "summarize_activity",
+        "members_last_seen",
     ] {
         assert!(
             names.contains(&expected),
@@ -1910,4 +1913,351 @@ async fn list_periods_filters_by_activity_and_category_and_pages() {
         assert_eq!(result["isError"], true, "first={first}");
         assert!(error_text(&result).contains("first"));
     }
+}
+
+// ── tools/call: reports ──────────────────────────────────────────────────────
+
+/// Every report call against `loc-1`, covering the whole seeded day.
+fn report_calls() -> Vec<(&'static str, Value)> {
+    let mut calls = vec![
+        (
+            "get_dashboard",
+            json!({ "locationId": "loc-1", "asOf": ELEVEN + 3600 }),
+        ),
+        ("members_last_seen", json!({ "locationId": "loc-1" })),
+    ];
+    for group_by in [
+        "member",
+        "category",
+        "member_category",
+        "category_member",
+        "day_category_member",
+        "day_member",
+    ] {
+        calls.push((
+            "summarize_activity",
+            json!({ "locationId": "loc-1", "start": NINE - 3600, "end": ELEVEN + 3600,
+                    "groupBy": group_by }),
+        ));
+    }
+    calls
+}
+
+#[tokio::test]
+async fn a_read_only_user_can_run_every_report() {
+    let (app, schema) = setup();
+    seed_activity(&app);
+    let bearer = grant_user(&app, "user-1", &[], &["loc-1"]).await;
+    for (tool, arguments) in report_calls() {
+        let result = run_tool(&app, &schema, &bearer, tool, arguments.clone()).await;
+        assert_eq!(result["isError"], false, "{tool} {arguments}: {result:?}");
+    }
+}
+
+#[tokio::test]
+async fn a_user_with_no_grant_is_refused_every_report() {
+    let (app, schema) = setup();
+    seed_activity(&app);
+    // Admin of the other unit only.
+    let bearer = grant_user(&app, "user-1", &["loc-2"], &[]).await;
+    for (tool, arguments) in report_calls() {
+        let result = run_tool(&app, &schema, &bearer, tool, arguments.clone()).await;
+        assert_eq!(result["isError"], true, "{tool} {arguments}: {result:?}");
+        assert!(error_text(&result).contains("Not authorized"), "{result:?}");
+        assert!(result.get("structuredContent").is_none());
+    }
+}
+
+#[tokio::test]
+async fn the_dashboard_counts_the_seeded_activity() {
+    let (app, schema) = setup();
+    seed_activity(&app);
+    let bearer = grant_user(&app, "user-1", &[], &["loc-1"]).await;
+
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "get_dashboard",
+        json!({ "locationId": "loc-1", "asOf": "2026-10-16T13:00" }),
+    )
+    .await;
+    assert_eq!(result["isError"], false, "{result:?}");
+    let content = &result["structuredContent"];
+    assert_eq!(content["location"]["name"], "Test Unit");
+    let d = &content["dashboard"];
+    assert_eq!(d["asOf"], ELEVEN + 7200);
+    assert_eq!(d["asOfSydney"], "2026-10-16T13:00:00+11:00");
+    assert_eq!(d["totalMembers"], 2);
+    // Alice and Bob; the guest and Carol (another unit's period) don't count.
+    assert_eq!(d["activeMembers24H"], 2);
+    assert_eq!(d["checkIns7D"], 2);
+    // Alice's hour, plus Bob's open period up to `asOf` (three hours).
+    assert_eq!(d["totalTime7D"], 3600 + 3 * 3600);
+    let days = d["dailyPeriods7D"].as_array().unwrap();
+    assert_eq!(days.len(), 7);
+    assert!(days[0]["dayStartSydney"].is_string());
+    let names: Vec<&str> = d["topCategories7D"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| c["categoryName"].as_str().unwrap())
+        .collect();
+    assert!(names.contains(&"Training"), "{names:?}");
+}
+
+#[tokio::test]
+async fn each_group_by_dispatches_to_its_own_resolver() {
+    let (app, schema) = setup();
+    seed_activity(&app);
+    let bearer = grant_user(&app, "user-1", &[], &["loc-1"]).await;
+    let summarize = |group_by: &'static str| {
+        let (app, schema, bearer) = (app.clone(), &schema, bearer.clone());
+        async move {
+            run_tool(
+                &app,
+                schema,
+                &bearer,
+                "summarize_activity",
+                json!({ "locationId": "loc-1", "start": "2026-10-16", "end": "2026-10-17",
+                        "groupBy": group_by }),
+            )
+            .await
+        }
+    };
+
+    // member: Alice's hour. Bob is still open (no duration) and the guest is left out.
+    let result = summarize("member").await;
+    assert_eq!(result["isError"], false, "{result:?}");
+    let c = &result["structuredContent"];
+    assert_eq!(c["groupBy"], "member");
+    assert_eq!(c["startTime"], NINE - 9 * 3600);
+    assert_eq!(c["startTimeSydney"], "2026-10-16T00:00:00+11:00");
+    let rows = c["members"].as_array().unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0]["person"]["firstName"], "Alice");
+    assert_eq!(rows[0]["person"]["memberNumber"], "1001");
+    assert_eq!(rows[0]["person"]["location"]["name"], "Test Unit");
+    assert_eq!(rows[0]["totalTime"], 3600);
+    assert_eq!(rows[0]["totalTimeVirtual"], 0);
+
+    // category: Training (Alice), with the category's name. The guest has no category.
+    let result = summarize("category").await;
+    let rows = result["structuredContent"]["categories"]
+        .as_array()
+        .unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0]["category"]["name"], "Training");
+    assert_eq!(rows[0]["totalTime"], 3600);
+
+    // member_category: members, each with their categories.
+    let result = summarize("member_category").await;
+    let rows = result["structuredContent"]["members"].as_array().unwrap();
+    assert_eq!(rows[0]["person"]["lastName"], "Anderson");
+    assert_eq!(rows[0]["categories"][0]["category"]["name"], "Training");
+
+    // category_member: categories, each with their members.
+    let result = summarize("category_member").await;
+    let rows = result["structuredContent"]["categories"]
+        .as_array()
+        .unwrap();
+    assert_eq!(rows[0]["category"]["name"], "Training");
+    assert_eq!(rows[0]["members"][0]["person"]["firstName"], "Alice");
+
+    // day_category_member: a Sydney date string, then categories, then members.
+    let result = summarize("day_category_member").await;
+    let rows = result["structuredContent"]["days"].as_array().unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0]["date"], "2026-10-16");
+    assert_eq!(rows[0]["totalTime"], 3600);
+    assert_eq!(
+        rows[0]["categories"][0]["members"][0]["person"]["firstName"],
+        "Alice"
+    );
+
+    // day_member counts every period, including Bob's open one, with `periodCount`.
+    let result = summarize("day_member").await;
+    let rows = result["structuredContent"]["days"].as_array().unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0]["date"], "2026-10-16");
+    let members = rows[0]["members"].as_array().unwrap();
+    assert_eq!(members.len(), 2);
+    assert_eq!(members[0]["person"]["firstName"], "Alice");
+    assert_eq!(members[0]["periodCount"], 1);
+    assert_eq!(members[1]["person"]["firstName"], "Bob");
+    assert_eq!(members[1]["totalTime"], 0);
+    assert_eq!(members[1]["periodCount"], 1);
+
+    // A date is not a timestamp: it gets no `...Sydney` sibling.
+    assert!(rows[0].get("dateSydney").is_none());
+}
+
+#[tokio::test]
+async fn category_ids_are_only_accepted_where_the_resolver_takes_them() {
+    let (app, schema) = setup();
+    seed_activity(&app);
+    let bearer = grant_user(&app, "user-1", &[], &["loc-1"]).await;
+    let range = |group_by: &str, categories: Value| {
+        json!({ "locationId": "loc-1", "start": NINE - 3600, "end": ELEVEN + 3600,
+                "groupBy": group_by, "categoryIds": categories })
+    };
+
+    for group_by in [
+        "category",
+        "member_category",
+        "category_member",
+        "day_category_member",
+    ] {
+        let result = run_tool(
+            &app,
+            &schema,
+            &bearer,
+            "summarize_activity",
+            range(group_by, json!(["c-train"])),
+        )
+        .await;
+        assert_eq!(result["isError"], true, "{group_by}: {result:?}");
+        let text = error_text(&result);
+        assert!(text.contains("categoryIds"), "{text}");
+        assert!(text.contains("member, day_member"), "{text}");
+        // An empty list is "no filter", so it is fine anywhere.
+        let result = run_tool(
+            &app,
+            &schema,
+            &bearer,
+            "summarize_activity",
+            range(group_by, json!([])),
+        )
+        .await;
+        assert_eq!(result["isError"], false, "{group_by}: {result:?}");
+    }
+
+    // The two that take it filter by it.
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "summarize_activity",
+        range("member", json!(["c-ops"])),
+    )
+    .await;
+    assert_eq!(result["isError"], false, "{result:?}");
+    assert_eq!(
+        result["structuredContent"]["members"],
+        json!([]),
+        "no one trained in c-ops"
+    );
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "summarize_activity",
+        range("day_member", json!(["c-train"])),
+    )
+    .await;
+    assert_eq!(result["isError"], false, "{result:?}");
+    let members = result["structuredContent"]["days"][0]["members"]
+        .as_array()
+        .unwrap();
+    assert_eq!(members.len(), 1);
+    assert_eq!(members[0]["person"]["firstName"], "Alice");
+}
+
+#[tokio::test]
+async fn summarize_activity_rejects_bad_arguments_clearly() {
+    let (app, schema) = setup();
+    seed_activity(&app);
+    let bearer = grant_user(&app, "user-1", &[], &["loc-1"]).await;
+    for (arguments, expect) in [
+        (
+            json!({ "locationId": "loc-1", "start": NINE, "end": TEN, "groupBy": "week" }),
+            "groupBy",
+        ),
+        (
+            json!({ "locationId": "loc-1", "start": TEN, "end": NINE, "groupBy": "member" }),
+            "before",
+        ),
+        (
+            json!({ "locationId": "loc-1", "start": "last week", "end": TEN, "groupBy": "member" }),
+            "start",
+        ),
+        (
+            json!({ "locationId": "loc-1", "start": NINE, "end": NINE + 367 * 86_400,
+                    "groupBy": "day_member" }),
+            "366",
+        ),
+        (
+            json!({ "locationId": "loc-1", "start": NINE, "end": TEN }),
+            "groupBy",
+        ),
+    ] {
+        let result = run_tool(&app, &schema, &bearer, "summarize_activity", arguments).await;
+        assert_eq!(result["isError"], true, "{expect}: {result:?}");
+        assert!(error_text(&result).contains(expect), "{result:?}");
+    }
+}
+
+#[tokio::test]
+async fn members_last_seen_orders_members_and_marks_the_never_seen() {
+    let (app, schema) = setup();
+    seed_activity(&app);
+    seed_person(&app, "p-dave", "loc-1", "Dave", "Adams", "1003", None);
+    let bearer = grant_user(&app, "user-1", &[], &["loc-1"]).await;
+    let names = |result: &Value| -> Vec<String> {
+        result["structuredContent"]["members"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|m| m["firstName"].as_str().unwrap().to_string())
+            .collect()
+    };
+
+    // Bob's open period started at ten; Alice's ended at ten; Dave has none.
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "members_last_seen",
+        json!({ "locationId": "loc-1" }),
+    )
+    .await;
+    assert_eq!(result["isError"], false, "{result:?}");
+    assert_eq!(names(&result), vec!["Alice", "Bob", "Dave"]);
+    let rows = result["structuredContent"]["members"].as_array().unwrap();
+    assert_eq!(rows[0]["lastSeen"], TEN);
+    assert_eq!(rows[0]["lastSeenSydney"], "2026-10-16T10:00:00+11:00");
+    assert_eq!(rows[0]["memberNumber"], "1001");
+    assert_eq!(rows[1]["lastSeen"], TEN);
+    assert_eq!(rows[2]["lastSeen"], Value::Null);
+    assert_eq!(rows[2]["secondsAgo"], Value::Null);
+    assert!(rows[0]["secondsAgo"].as_i64().unwrap() > 0);
+
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "members_last_seen",
+        json!({ "locationId": "loc-1", "sort": "alphabetical" }),
+    )
+    .await;
+    assert_eq!(names(&result), vec!["Dave", "Alice", "Bob"]);
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "members_last_seen",
+        json!({ "locationId": "loc-1", "sort": "least_recent" }),
+    )
+    .await;
+    assert_eq!(names(&result).last().unwrap(), "Dave");
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "members_last_seen",
+        json!({ "locationId": "loc-1", "sort": "oldest" }),
+    )
+    .await;
+    assert_eq!(result["isError"], true);
+    assert!(error_text(&result).contains("sort"));
 }

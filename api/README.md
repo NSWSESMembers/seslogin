@@ -228,13 +228,16 @@ the MCP authorization spec's discovery flow.
 | `create_member` / `update_member` / `delete_member` | Manage members. `update_member` changes only the fields passed. Admin (or super user) only; Read only is refused. Members owned by member sync (`syncManaged`) can be changed but the next sync may undo it, and the admin site doesn't offer it. |
 | `sync_members` | Queue a member sync for a location. Admin (or super user) only. |
 | `list_categories` / `get_category` | The activity categories a period is filed under (name, `enabled`, `isVirtual`, NITC group). Disabled ones are left out of the list unless `includeDisabled`. Global, so any signed-in user. |
-| `list_periods` | A location's activity periods, newest first, with member name/number (or `guestName`), category, comment and sign-in/out kiosk names. `onlyActive` is who is signed in now (the Current page); `start` and `end` (together) select by when a period started; `categoryIds`, `first` and `after` filter and page. This also covers the Reports export. Admin, Read only or super user. |
+| `list_periods` | A location's activity periods, newest first, with member name/number (or `guestName`), category, comment and sign-in/out kiosk names. `onlyActive` is who is signed in now (the Current page); `start` and `end` (together) select by when a period started; `categoryIds`, `first` and `after` filter and page. This also covers the Reports page's export. Admin, Read only or super user. |
 | `list_member_periods` | One member's periods, same shape and paging, optionally by `categoryIds`. Needs a grant for the member's location. |
 | `get_period` | One period. Needs a grant for its location. |
 | `create_period` | Add a finished period for a member (member, location, category, start, end, optional comment). Admin (or super user) only. |
 | `update_period` | Change times, comment and category (member periods, via `updatePeriodTimeCategory`) or guest name (guest periods, via `updateGuestPeriod`), as the admin edit page does. Only passed fields change; `comment: null` clears it, leaving it out keeps it. Admin (or super user) only. |
 | `delete_period` | Delete a period. Admin (or super user) only. |
 | `send_period_edit_link` | Email the member a link to correct a period. Sends real email; subject to a reminder cooldown; guests can't be sent one. Admin (or super user) only. |
+| `get_dashboard` | The admin Home page for a location: member and check-in counts (24h / 7d / 30d, with the virtual split), total and average durations, kiosk counts, last member sync, the 7 daily buckets and the top categories. `asOf` moves the windows. Durations are seconds; the daily buckets are UTC days. Admin, Read only or super user. |
+| `summarize_activity` | Time per member / category over a range, grouped by `groupBy`: `member`, `category`, `member_category`, `category_member`, `day_category_member` or `day_member` (the Totals, Breakdown, Daily breakdown and Heatmap pages). `start`/`end` select by when a period started. `categoryIds` is accepted only by `member` and `day_member`; other groupings reject it. Durations are seconds (completed periods only); a day's `date` is a Sydney `YYYY-MM-DD`. Admin, Read only or super user. |
+| `members_last_seen` | Each active member of a location with when they were last seen (end of their latest period, or its start if still open, at any location; null if never) and `secondsAgo`; `sort` by `recent`, `least_recent` or `alphabetical` (the Last seen page). Admin, Read only or super user. |
 
 **Not exposed, on purpose:** creating API tokens; enrolling or reactivating
 kiosks (`enrollSession`, `reactivateSession`, `pendingEnrollmentKey` — a device
@@ -248,7 +251,10 @@ with an offset (`2026-10-16T09:00:00+11:00`), a local `YYYY-MM-DDTHH:MM[:SS]` /
 offset are Australia/Sydney local time (a time that happens twice at the DST
 fall-back takes the earlier one; one that doesn't exist is an error). Results
 keep each Unix-seconds timestamp and add a `<name>Sydney` RFC 3339 sibling
-(`createdAt` and `createdAtSydney`). Durations stay in seconds.
+(`createdAt` and `createdAtSydney`). Durations stay in seconds. Report day buckets come
+in two kinds: `dailyPeriods7D[].dayStart` in `get_dashboard` is a Unix time at the start
+of a *UTC* day, while the `date` in `summarize_activity` is a Sydney calendar date
+string.
 
 **Partial updates.** `update_*` tools fetch the record, overlay only the arguments
 you pass and send the whole thing: an omitted argument keeps its value, and on
@@ -262,9 +268,9 @@ Every tool runs a **fixed** GraphQL document against the in-process schema
 with your verified identity attached exactly as the GraphQL endpoint itself
 builds a request, so a non-super token gets the same authorization errors
 from `list_users`/`create_user`/etc. that the admin UI would; only `whoami`,
-`get_user` (on your own id), the category tools and the location/member/period
+`get_user` (on your own id), the category tools and the location/member/period/report
 tools (for your own locations) work. Where a GraphQL read doesn't itself check the caller's grants
-(`location`, `Location.people`, `person`), the tool does, and the period tools
+(`location`, `Location.people`, `person`, and the six `Location.periodSummaryBy*` resolvers behind `summarize_activity`), the tool does, and the period tools
 check again even where the resolver does (`period`, `Location.periods`,
 `Person.periods`), so a tool only ever narrows access. A tool failure (a guard rejection, a
 validation error) comes back as an ordinary JSON-RPC *success* whose
