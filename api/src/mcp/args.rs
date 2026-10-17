@@ -15,10 +15,6 @@
 //!   field, so a tool fetches the current record and overlays only the arguments the
 //!   caller passed.
 
-// The time readers, `Kind::{Int, Time, Json}` and the other optional readers are for the
-// tools of later changes in this stack (periods, reports, kiosks, …); they are tested here.
-#![allow(dead_code)]
-
 use chrono::{DateTime, LocalResult, NaiveDate, NaiveDateTime, TimeZone};
 use chrono_tz::Australia::Sydney;
 use serde_json::{Map, Value, json};
@@ -88,6 +84,8 @@ fn strings(name: &str, v: &Value) -> Result<Vec<String>, ToolError> {
         .collect()
 }
 
+// Not used by a tool yet; the later kiosk and report tools take required id lists.
+#[allow(dead_code)]
 pub fn str_array_arg(args: &Value, name: &str) -> Result<Vec<String>, ToolError> {
     strings(name, present(args, name).ok_or_else(|| invalid(name))?)
 }
@@ -211,6 +209,8 @@ pub fn add_sydney_times(value: &mut Value) {
 /// What kind of value an updatable field holds, so [`merge_update`] can validate the
 /// caller's argument (and name it in the error) rather than leave it to GraphQL.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+// `Int` and `Json` are for the kiosk tools of a later change; `coerce` already handles them.
+#[allow(dead_code)]
 pub enum Kind {
     Str,
     Bool,

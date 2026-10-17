@@ -34,6 +34,7 @@ pub(crate) struct FakeDb {
     pub(crate) sessions: Mutex<HashMap<String, db::Session>>,
     pub(crate) persons: Mutex<HashMap<String, db::Person>>,
     pub(crate) periods: Mutex<HashMap<String, db::Period>>,
+    pub(crate) categories: Mutex<HashMap<String, db::Category>>,
     pub(crate) api_tokens: Mutex<HashMap<String, db::ApiToken>>,
     /// Every entry `put_audit_entry` was given, in order. See [`FakeDb::audit_entries`].
     pub(crate) audit_log: Mutex<Vec<db::AuditEntry>>,
@@ -58,6 +59,21 @@ impl FakeDb {
             entry.ts = base + 10 * i as u64;
         }
     }
+}
+
+/// Whether a period passes a category filter (`None` = no filter).
+fn matches_categories(period: &db::Period, category_ids: Option<&[String]>) -> bool {
+    category_ids.is_none_or(|ids| period.category_id.as_ref().is_some_and(|c| ids.contains(c)))
+}
+
+/// Order by start time as the real index does and cut to the page size. Cursors are not
+/// modelled: a test that pages checks `hasNextPage`, which needs only the limit.
+fn sort_and_limit(periods: &mut Vec<db::Period>, page: &db::ListPeriodsPage) {
+    periods.sort_by(|a, b| (a.start_time, &a.id).cmp(&(b.start_time, &b.id)));
+    if page.descending {
+        periods.reverse();
+    }
+    periods.truncate(page.limit.max(0) as usize);
 }
 
 pub(crate) fn unsupported<T>() -> db::Result<T> {
@@ -316,23 +332,35 @@ impl db::Handler for FakeDb {
     }
     async fn list_periods_for_location(
         &self,
-        _location_id: &str,
-        _only_active: bool,
-        _timestamp_range: Option<(u64, u64)>,
-        _category_ids: Option<&[String]>,
-        _page: db::ListPeriodsPage,
+        location_id: &str,
+        only_active: bool,
+        timestamp_range: Option<(u64, u64)>,
+        category_ids: Option<&[String]>,
+        page: db::ListPeriodsPage,
     ) -> db::Result<Vec<db::Period>> {
-        unsupported()
+        let mut found: Vec<db::Period> = self
+            .periods
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|p| p.location_id == location_id && p.deleted.is_none())
+            .filter(|p| !only_active || p.end_time.is_none())
+            .filter(|p| timestamp_range.is_none_or(|(lo, hi)| (lo..=hi).contains(&p.start_time)))
+            .filter(|p| matches_categories(p, category_ids))
+            .cloned()
+            .collect();
+        sort_and_limit(&mut found, &page);
+        Ok(found)
     }
     async fn list_periods_for_person(
         &self,
         person_id: &str,
         location_id: Option<&str>,
         only_unfinished: Option<bool>,
-        _category_ids: Option<&[String]>,
-        _page: db::ListPeriodsPage,
+        category_ids: Option<&[String]>,
+        page: db::ListPeriodsPage,
     ) -> db::Result<Vec<db::Period>> {
-        Ok(self
+        let mut found: Vec<db::Period> = self
             .periods
             .lock()
             .unwrap()
@@ -340,8 +368,11 @@ impl db::Handler for FakeDb {
             .filter(|p| p.person_id.as_deref() == Some(person_id))
             .filter(|p| location_id.is_none_or(|l| p.location_id == l))
             .filter(|p| only_unfinished != Some(true) || p.end_time.is_none())
+            .filter(|p| matches_categories(p, category_ids))
             .cloned()
-            .collect())
+            .collect();
+        sort_and_limit(&mut found, &page);
+        Ok(found)
     }
     async fn get_periods<T: AsRef<str> + Sync>(
         &self,
@@ -456,21 +487,82 @@ impl db::Handler for FakeDb {
     }
     async fn create_period(
         &self,
-        _person_id: &str,
-        _location_id: &str,
-        _category_id: &str,
-        _start_time: u64,
-        _end_time: u64,
-        _comment: Option<&str>,
+        person_id: &str,
+        location_id: &str,
+        category_id: &str,
+        start_time: u64,
+        end_time: u64,
+        comment: Option<&str>,
     ) -> db::Result<db::Period> {
-        unsupported()
+        let now = seslogin::clock::now_sec();
+        let period = db::Period {
+            id: seslogin::dynamodb::new_id(),
+            person_id: Some(person_id.to_string()),
+            guest_name: None,
+            comment: comment.map(str::to_string),
+            location_id: location_id.to_string(),
+            category_id: Some(category_id.to_string()),
+            start_time,
+            end_time: Some(end_time),
+            signed_in_session_id: None,
+            signed_out_session_id: None,
+            version: 1,
+            nitc_event_id: None,
+            nitc_participant_id: None,
+            nitc_exported_version: None,
+            deleted: None,
+            created_at: Some(now),
+            updated_at: Some(now),
+        };
+        self.periods
+            .lock()
+            .unwrap()
+            .insert(period.id.clone(), period.clone());
+        Ok(period)
     }
-    async fn update_period(
-        &self,
-        _id: &str,
-        _change: db::PeriodUpdateShape<'_>,
-    ) -> db::Result<u64> {
-        unsupported()
+    /// The shapes the admin edit pages use (member times/category, guest, delete),
+    /// bumping `version` as the real implementation does.
+    async fn update_period(&self, id: &str, change: db::PeriodUpdateShape<'_>) -> db::Result<u64> {
+        let mut periods = self.periods.lock().unwrap();
+        let period = periods
+            .get_mut(id)
+            .ok_or_else(|| db::Error::NotFound(id.to_string()))?;
+        let apply_comment = |period: &mut db::Period, comment: Option<Option<&str>>| {
+            if let Some(comment) = comment {
+                period.comment = comment.map(str::to_string);
+            }
+        };
+        match change {
+            db::PeriodUpdateShape::TimeCategory {
+                start_time,
+                end_time,
+                category_id,
+                comment,
+                ..
+            } => {
+                period.start_time = start_time as u64;
+                period.end_time = Some(end_time as u64);
+                period.category_id = Some(category_id.to_string());
+                apply_comment(period, comment);
+            }
+            db::PeriodUpdateShape::Guest {
+                guest_name,
+                start_time,
+                end_time,
+                comment,
+            } => {
+                period.guest_name = Some(guest_name.to_string());
+                period.start_time = start_time as u64;
+                period.end_time = Some(end_time as u64);
+                apply_comment(period, comment);
+            }
+            db::PeriodUpdateShape::Delete => {
+                period.deleted = Some(seslogin::clock::now_sec());
+            }
+            db::PeriodUpdateShape::Fields { .. } => return unsupported(),
+        }
+        period.version += 1;
+        Ok(period.version)
     }
     async fn create_session(
         &self,
@@ -696,13 +788,17 @@ impl db::Handler for FakeDb {
         unsupported()
     }
     async fn list_categories(&self) -> db::Result<Vec<db::Category>> {
-        unsupported()
+        Ok(self.categories.lock().unwrap().values().cloned().collect())
     }
     async fn get_categories<T: AsRef<str> + Sync>(
         &self,
-        _ids: &[T],
+        ids: &[T],
     ) -> db::Result<Vec<Option<db::Category>>> {
-        unsupported()
+        let categories = self.categories.lock().unwrap();
+        Ok(ids
+            .iter()
+            .map(|id| categories.get(id.as_ref()).cloned())
+            .collect())
     }
     async fn create_category(
         &self,
@@ -1215,4 +1311,41 @@ pub(crate) fn seed_grant(
         .unwrap()
         .insert(id.to_string(), grant.clone());
     grant
+}
+
+/// Insert a [`db::Category`] directly.
+#[allow(dead_code)] // see `seed_super_user`'s doc comment
+pub(crate) fn seed_category(
+    app: &MyApp<FakeDb, mockqueue::Handler, mockmail::Handler, mockrealtime::Handler>,
+    id: &str,
+    name: &str,
+    enabled: bool,
+) {
+    app.db.categories.lock().unwrap().insert(
+        id.to_string(),
+        db::Category {
+            id: id.to_string(),
+            name: name.to_string(),
+            enabled,
+            is_virtual: false,
+            nitc_participant_type: None,
+            nitc_group_id: None,
+            created_at: 0,
+            updated_at: 0,
+        },
+    );
+}
+
+/// Insert a [`db::Period`] directly: a member's (`person_id`) or a guest's (`guest_name`),
+/// open when `end_time` is `None`.
+#[allow(dead_code)] // see `seed_super_user`'s doc comment
+pub(crate) fn seed_period(
+    app: &MyApp<FakeDb, mockqueue::Handler, mockmail::Handler, mockrealtime::Handler>,
+    period: db::Period,
+) {
+    app.db
+        .periods
+        .lock()
+        .unwrap()
+        .insert(period.id.clone(), period);
 }
