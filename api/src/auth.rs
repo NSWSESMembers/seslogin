@@ -220,7 +220,7 @@ pub(crate) async fn fetch_update_user_auth_info<A: App + HasDb>(
 }
 
 /// Throttled "touch" of a session on a successful authenticated request: refreshes
-/// `last_contact` (and enqueues a healthcheck) at most once per [`LAST_CONTACT_REFRESH_SECS`].
+/// `last_contact` (and pings the healthcheck URL) at most once per [`LAST_CONTACT_REFRESH_SECS`].
 /// When `extend_key` is set, the same write also slides `key_expires_at` forward to
 /// `now + KEY_LIFETIME_S` — this is how a key-enrolled kiosk keeps its 14-day window
 /// alive at no extra write cost. The client's self-reported [`ClientReport`] rides along
@@ -270,16 +270,10 @@ async fn touch_session<A: App + HasDb + HasQueues>(
             }
             Err(e) => return Err(AuthError::Transient(e.to_string())),
         }
-        if let Some(healthcheck_url) = &session.healthcheck_url
-            && let Err(e) = app
-                .queues()
-                .enqueue_healthcheck(&session.id, healthcheck_url)
-                .await
-        {
-            warn!(
-                "Failed to enqueue healthcheck for session {}: {:?}",
-                session.id, e
-            );
+        if let Some(healthcheck_url) = &session.healthcheck_url {
+            app.queues()
+                .ping_healthcheck(&session.id, healthcheck_url)
+                .await;
         }
     }
     Ok(())
