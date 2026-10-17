@@ -23,8 +23,15 @@ export type QuickPickSuggestions = {
   person: QuickPickCategory[];
 };
 
-export type LoadPersonAction = MemberIdWithUuid & {
+/** What the loading row shows: the member ID that was scanned or typed, or, when a
+ * sign-out is started from the list and there is no member ID, the member's name. */
+type LoadingLabel =
+  | { memberId: string; name?: undefined }
+  | { memberId?: undefined; name: string };
+
+export type LoadPersonAction = LoadingLabel & {
   type: "LOAD_PERSON";
+  uuid: string;
 };
 
 export type PersonResolvedAction = {
@@ -164,7 +171,8 @@ export type TransactionSignedOut = {
   quickPick?: QuickPickSuggestions;
 };
 
-export type TransactionLoading = MemberIdWithUuid & {
+export type TransactionLoading = LoadingLabel & {
+  uuid: string;
   status: "LOADING";
 };
 
@@ -201,7 +209,9 @@ export function reducer(
     case "LOAD_PERSON": {
       const newTransaction: TransactionLoading = {
         uuid: action.uuid,
-        memberId: action.memberId,
+        ...(action.name === undefined
+          ? { memberId: action.memberId }
+          : { name: action.name }),
         status: "LOADING",
       };
       return {
