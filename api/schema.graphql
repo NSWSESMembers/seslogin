@@ -868,6 +868,12 @@ type QueryRoot {
 		"""
 		id: ID!
 	): Person!
+	"""
+	The person with this member number, or null if there is none *or* the caller
+	cannot read the person's home location, so it cannot be used to probe for member
+	numbers at other units. Kiosk sign-in doesn't use this: `scanRegister2` looks the
+	number up itself, which is what lets members sign in away from their own unit.
+	"""
 	personByRegistrationNumber(
 		"""
 		Registration/member number to look up

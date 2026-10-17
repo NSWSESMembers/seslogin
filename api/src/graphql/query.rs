@@ -1893,6 +1893,7 @@ impl<A: App + HasDb + Send + Sync> Location<A> {
     }
 
     async fn people(&self, ctx: &Context<'_>) -> Result<Vec<Person<A>>> {
+        require_location_access(ctx, &self.rec.id)?;
         let app = ctx.data_unchecked::<Arc<A>>();
         let items = app
             .db()
@@ -1995,6 +1996,7 @@ impl<A: App + HasDb + Send + Sync> Location<A> {
         let category_filter: Option<Vec<String>> =
             categories.map(|cs| cs.into_iter().map(|c| c.0).collect());
 
+        require_location_access(ctx, &self.rec.id)?;
         let app = ctx.data_unchecked::<Arc<A>>();
         let periods = app
             .db()
@@ -2080,6 +2082,7 @@ impl<A: App + HasDb + Send + Sync> Location<A> {
         let range_end = u64::try_from(end_time)
             .map_err(|_| anyhow!("end_time must be a non-negative unix timestamp"))?;
 
+        require_location_access(ctx, &self.rec.id)?;
         let app = ctx.data_unchecked::<Arc<A>>();
         let periods = app
             .db()
@@ -2135,6 +2138,7 @@ impl<A: App + HasDb + Send + Sync> Location<A> {
         let range_end = u64::try_from(end_time)
             .map_err(|_| anyhow!("end_time must be a non-negative unix timestamp"))?;
 
+        require_location_access(ctx, &self.rec.id)?;
         let app = ctx.data_unchecked::<Arc<A>>();
         let periods = app
             .db()
@@ -2206,6 +2210,7 @@ impl<A: App + HasDb + Send + Sync> Location<A> {
         let range_end = u64::try_from(end_time)
             .map_err(|_| anyhow!("end_time must be a non-negative unix timestamp"))?;
 
+        require_location_access(ctx, &self.rec.id)?;
         let app = ctx.data_unchecked::<Arc<A>>();
         let periods = app
             .db()
@@ -2279,6 +2284,7 @@ impl<A: App + HasDb + Send + Sync> Location<A> {
         let range_end = u64::try_from(end_time)
             .map_err(|_| anyhow!("end_time must be a non-negative unix timestamp"))?;
 
+        require_location_access(ctx, &self.rec.id)?;
         let app = ctx.data_unchecked::<Arc<A>>();
         let periods = app
             .db()
@@ -2379,6 +2385,7 @@ impl<A: App + HasDb + Send + Sync> Location<A> {
         let category_filter: Option<Vec<String>> =
             categories.map(|cs| cs.into_iter().map(|c| c.0).collect());
 
+        require_location_access(ctx, &self.rec.id)?;
         let app = ctx.data_unchecked::<Arc<A>>();
         let periods = app
             .db()
@@ -3312,6 +3319,7 @@ impl<A: App + HasDb + HasRealtime + Send + Sync + 'static> QueryRoot<A> {
         if id.is_empty() {
             return Err(anyhow!("Location ID cannot be empty"));
         }
+        require_location_access(ctx, &id)?;
 
         let loader = ctx.data_unchecked::<DataLoader<DatabaseLoader<A>>>();
         let rec = loader
@@ -3341,10 +3349,18 @@ impl<A: App + HasDb + HasRealtime + Send + Sync + 'static> QueryRoot<A> {
             .map_err(|e| anyhow!("Failed to load person via DataLoader: {}", e))?
             .flatten()
             .ok_or_else(|| anyhow!("Person with ID {:?} missing", id))?;
+        // Checked against the person's home location. A member visiting another unit
+        // is still visible there through `Period.person`, which is how kiosks and that
+        // unit's admins reach them; this lookup by id is not.
+        require_location_access(ctx, &rec.rec.location_id)?;
 
         Ok(rec)
     }
 
+    /// The person with this member number, or null if there is none *or* the caller
+    /// cannot read the person's home location, so it cannot be used to probe for member
+    /// numbers at other units. Kiosk sign-in doesn't use this: `scanRegister2` looks the
+    /// number up itself, which is what lets members sign in away from their own unit.
     #[graphql(guard = "AuthGuard::new(AuthRequirement::Authenticated)")]
     async fn person_by_registration_number(
         &self,
@@ -3368,6 +3384,12 @@ impl<A: App + HasDb + HasRealtime + Send + Sync + 'static> QueryRoot<A> {
         else {
             return Ok(None);
         };
+        let Some(person) = app.db().get_persons(&[&person_id]).await?.pop().flatten() else {
+            return Ok(None);
+        };
+        if require_location_access(ctx, &person.location_id).is_err() {
+            return Ok(None);
+        }
 
         Ok(Some(PersonRef {
             id: ID(person_id),
