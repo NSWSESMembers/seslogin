@@ -29,10 +29,15 @@ import type {
   ScanControllerSignOutMutation,
   ScanControllerSignOutMutation$data,
 } from "./__generated__/ScanControllerSignOutMutation.graphql";
+import type {
+  ScanControllerStartSignOutMutation,
+  ScanControllerStartSignOutMutation$data,
+} from "./__generated__/ScanControllerStartSignOutMutation.graphql";
 import { useKioskSession } from "./useKioskSession";
 import type { ScreenPosition } from "../../styles";
 import { isValidMemberIdText } from "../../lib/memberId";
 import {
+  getErrorCode,
   getServerErrorMessage,
   isMutationFieldError,
 } from "../../lib/relayErrors";
@@ -52,7 +57,7 @@ export default function ScanController(props: {
   onSigningOutNameChange?: (name: string | null) => void;
 }) {
   const session = useKioskSession();
-  const { applyOwnResult } = useLivePeriods();
+  const { applyOwnResult, retry: refreshLivePeriods } = useLivePeriods();
   const guestsEnabled = !!session?.config?.guests;
   const quickPickCategories = !!session?.config?.quickPickCategories;
   const interfaceMode = interfaceModeFromConfig(session?.config?.interfaceMode);
@@ -65,15 +70,21 @@ export default function ScanController(props: {
   );
   const signedInStatus = !!session?.config?.signedInStatus;
   const signedInStatusInline = !!session?.config?.signedInStatusInline;
+  // Rides on the always-visible list (see SessionForm), so it means nothing
+  // without it.
+  const signedInStatusSignOut =
+    signedInStatusInline && !!session?.config?.signedInStatusSignOut;
   // A button that opens the very list already sitting on screen would be
   // pointless, so inline mode takes over from the button rather than the two
-  // stacking (see SessionForm, which presents them as one three-way choice).
+  // stacking (see SessionForm, which presents them as one choice).
   const signedInStatusButton = signedInStatus && !signedInStatusInline;
 
   const [transactionState, dispatchTransaction] = useReducer(reducer, {
     transactions: [],
   });
   const focusMainInputRef = useRef<(() => void) | null>(null);
+  const listSignOutBusyRef = useRef(false);
+  const [listSignOutBusy, setListSignOutBusy] = useState(false);
   const [guestDialogOpen, setGuestDialogOpen] = useState(false);
   const [statusDialogOpen, setStatusDialogOpen] = useState(false);
 
@@ -169,6 +180,48 @@ export default function ScanController(props: {
         }
       }
     `);
+  // Start signing out one specific row of the signed-in list. Same result as a
+  // scan of a signed-in member (state SIGN_OUT_PENDING), but it names the period
+  // instead of a member number, so it can't sign anyone in and acts on the row
+  // that was pressed. Nothing is written.
+  const [commitStartSignOutMutation] =
+    useMutation<ScanControllerStartSignOutMutation>(graphql`
+      mutation ScanControllerStartSignOutMutation(
+        $id: ID!
+        $quickPick: Boolean!
+      ) {
+        scanStartSignOut(id: $id, quickPick: $quickPick) {
+          state
+          period {
+            id
+            version
+            startTime
+            endTime
+            person {
+              id
+              firstName
+              lastName
+            }
+          }
+          quickPick {
+            locationCategories {
+              category {
+                id
+              }
+              recentPeople {
+                id
+                firstName
+              }
+            }
+            personCategories {
+              category {
+                id
+              }
+            }
+          }
+        }
+      }
+    `);
   const [commitSignOutMutation, signOutIsInFlight] =
     useMutation<ScanControllerSignOutMutation>(graphql`
       mutation ScanControllerSignOutMutation(
@@ -199,6 +252,39 @@ export default function ScanController(props: {
         }
       }
     `);
+
+  // The sign-out screens take over from here, whether the sign-out was started
+  // by a scan or from the signed-in list.
+  function resolveSignOutPending(
+    uuid: string,
+    result:
+      | ScanControllerRegister2Mutation$data["scanRegister2"]
+      | ScanControllerStartSignOutMutation$data["scanStartSignOut"],
+  ) {
+    const startTime = new Date(result.period!.startTime! * 1000);
+    const quickPick = result.quickPick;
+    dispatchTransaction({
+      type: "PERSON_RESOLVED",
+      uuid,
+      periodId: result.period!.id,
+      person: result.period!.person!,
+      status: "SIGNED_OUT",
+      startTime,
+      // Null when this kiosk didn't ask for it, or when the server couldn't
+      // build it — either way the sign-out screen shows the full category tree.
+      quickPick: quickPick
+        ? {
+            location: quickPick.locationCategories.map((entry) => ({
+              categoryId: entry.category.id,
+              peopleNames: entry.recentPeople.map((p) => p.firstName),
+            })),
+            person: quickPick.personCategories.map((entry) => ({
+              categoryId: entry.category.id,
+            })),
+          }
+        : undefined,
+    });
+  }
 
   async function completeSubmit(ids: MemberIdWithUuid) {
     const { memberId, uuid } = ids;
@@ -277,29 +363,7 @@ export default function ScanController(props: {
       return;
     } else if (state == "SIGN_OUT_PENDING") {
       audioSuccess.play();
-      const startTime = new Date(res.scanRegister2.period!.startTime! * 1000);
-      const quickPick = res.scanRegister2.quickPick;
-      dispatchTransaction({
-        type: "PERSON_RESOLVED",
-        uuid,
-        periodId: res.scanRegister2.period!.id,
-        person: res.scanRegister2.period!.person!,
-        status: "SIGNED_OUT",
-        startTime,
-        // Null when this kiosk didn't ask for it, or when the server couldn't
-        // build it — either way the sign-out screen shows the full category tree.
-        quickPick: quickPick
-          ? {
-              location: quickPick.locationCategories.map((entry) => ({
-                categoryId: entry.category.id,
-                peopleNames: entry.recentPeople.map((p) => p.firstName),
-              })),
-              person: quickPick.personCategories.map((entry) => ({
-                categoryId: entry.category.id,
-              })),
-            }
-          : undefined,
-      });
+      resolveSignOutPending(uuid, res.scanRegister2);
       return;
     }
 
@@ -333,6 +397,68 @@ export default function ScanController(props: {
     // purposefully not awaited - we want the form submission to be considered complete
     // so we can re-render
     completeSubmit({ memberId, uuid });
+  }
+
+  // Sign someone out from the always-visible list. The list knows the period, so
+  // ask the server to start the sign-out for exactly that row: the usual
+  // forgot-to-sign-out / category / time steps follow, so a person still
+  // confirms every sign-out.
+  async function handleSignOutFromList(periodId: string, name: string) {
+    // One at a time. The ref makes this hold for two presses in the same tick,
+    // before a re-render could disable the buttons.
+    if (
+      listSignOutBusyRef.current ||
+      transactionState.transactions[0]?.status === "LOADING"
+    ) {
+      return;
+    }
+    listSignOutBusyRef.current = true;
+    setListSignOutBusy(true);
+    // The press that triggered this left focus on the list's button; a scan
+    // landing in the next moment would be typed into it and lost.
+    focusMainInputRef.current?.();
+
+    const uuid = crypto.randomUUID();
+    dispatchTransaction({ type: "LOAD_PERSON", uuid, name });
+
+    let res: ScanControllerStartSignOutMutation$data;
+    try {
+      res = await new Promise((resolve, reject) => {
+        commitStartSignOutMutation({
+          // Only worth the server's extra reads if this kiosk shows the screen.
+          variables: { id: periodId, quickPick: quickPickCategories },
+          onCompleted: resolve,
+          onError: reject,
+        });
+      });
+    } catch (err) {
+      console.error("Error starting sign-out from the list:", err);
+      audioError.play();
+      // The server refuses a stale row with a code and a message written for the
+      // kiosk ("That sign-in no longer exists", "Already signed out"). Nothing
+      // was written, so there is nothing to clean up.
+      const serverMessage = getServerErrorMessage(err);
+      dispatchTransaction({
+        type: "ERROR",
+        uuid,
+        message: serverMessage
+          ? `could not sign out ${name}: ${serverMessage}`
+          : "network issue while starting the sign-out for " + name,
+      });
+      // The row we pressed is out of date (already signed out, or gone), so the
+      // list is too: fetch it again rather than leave a dead row to be pressed.
+      const code = getErrorCode(err);
+      if (code === "CONFLICT" || code === "NOT_FOUND") {
+        refreshLivePeriods();
+      }
+      return;
+    } finally {
+      listSignOutBusyRef.current = false;
+      setListSignOutBusy(false);
+    }
+
+    audioSuccess.play();
+    resolveSignOutPending(uuid, res.scanStartSignOut);
   }
 
   // most recent transaction
@@ -545,6 +671,14 @@ export default function ScanController(props: {
         statusEnabled={signedInStatusButton}
         onOpenStatusDialog={openStatusDialog}
         signedInInline={signedInStatusInline}
+        onSignOutFromList={
+          signedInStatusSignOut ? handleSignOutFromList : undefined
+        }
+        // transactionUuid is set only while a sign-out screen is up (a finished
+        // sign-out stays in the log for a minute but no longer blocks the list).
+        signOutFromListDisabled={
+          listSignOutBusy || !memberIdEnabled || transactionUuid !== null
+        }
       />
       <ScanScreenForgotSignOut
         screenPosition={forgotSignOutPos}
