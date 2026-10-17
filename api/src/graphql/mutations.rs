@@ -352,6 +352,39 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         }
     }
 
+    /// The `SIGN_OUT_PENDING` result for an open member period at this kiosk's
+    /// location, shared by `scanRegister2` and `scanStartSignOut`. Writes nothing.
+    async fn sign_out_pending(
+        &self,
+        location_id: &str,
+        person_id: &str,
+        period: db::Period,
+        quick_pick: Option<bool>,
+    ) -> RegisterResult<A> {
+        // The person is signed in *here*, which is the whole authorization for the
+        // quick-pick: it is only ever built for someone standing at this kiosk, so
+        // their own history is fair game even when they belong to another unit.
+        let quick_pick = if quick_pick.unwrap_or(false) {
+            match build_quick_pick(self.app.as_ref(), location_id, person_id).await {
+                Ok(qp) => Some(qp),
+                // Never fail a sign-out over a shortcut list. The kiosk treats a null
+                // quick-pick as "nothing to suggest" and shows the full category tree.
+                Err(e) => {
+                    warn!("failed to build quick pick for person {person_id}: {e:?}");
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
+        RegisterResult {
+            state: RegisterState::SignOutPending,
+            period: Some(Period::new(period)),
+            quick_pick,
+        }
+    }
+
     /// Publish that a period was newly opened (member or guest sign-in). Best
     /// effort, like `enqueue_nitc_export`: a failure is logged and never fails
     /// the mutation. Runs inline, not spawned — the Lambda freezes background
@@ -2237,29 +2270,10 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
             .next();
 
         if let Some(period) = existing_unfinished_period {
-            // The person is signed in *here*, which is the whole authorization for the
-            // quick-pick: it is only ever built for someone standing at this kiosk, so
-            // their own history is fair game even when they belong to another unit.
-            let quick_pick = if quick_pick.unwrap_or(false) {
-                match build_quick_pick(self.app.as_ref(), location_id, &person_id).await {
-                    Ok(qp) => Some(qp),
-                    // Never fail a sign-out over a shortcut list. The kiosk treats a null
-                    // quick-pick as "nothing to suggest" and shows the full category tree.
-                    Err(e) => {
-                        warn!("failed to build quick pick for person {person_id}: {e:?}");
-                        None
-                    }
-                }
-            } else {
-                None
-            };
-
             // already signed in — return pending state without modifying the period
-            Ok(RegisterResult {
-                state: RegisterState::SignOutPending,
-                period: Some(Period::new(period)),
-                quick_pick,
-            })
+            Ok(self
+                .sign_out_pending(location_id, &person_id, period, quick_pick)
+                .await)
         } else {
             // no existing unfinished period, so sign them in
             let rec = self
@@ -2275,6 +2289,58 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
                 quick_pick: None,
             })
         }
+    }
+
+    /// Start signing out one specific open member period, picked from the kiosk's
+    /// signed-in list rather than by scanning a member number. Returns the same
+    /// `SIGN_OUT_PENDING` result as `scanRegister2`, so the kiosk carries on to
+    /// `scanSignOut` exactly as after a scan.
+    ///
+    /// Unlike `scanRegister2` this never signs anyone in, and it acts on the period
+    /// named rather than the person's newest open one. A row the kiosk shows from a
+    /// stale list is refused instead: `NOT_FOUND` when the period is gone or deleted,
+    /// `CONFLICT` when it is already signed out, `BAD_REQUEST` for a guest period
+    /// (which `scanGuestSignOut` closes). Nothing is written.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Session)")]
+    async fn scan_start_sign_out(
+        &self,
+        ctx: &Context<'_>,
+        id: ID,
+        #[graphql(desc = "As for `scanRegister2`'s `quickPick`.")] quick_pick: Option<bool>,
+    ) -> Result<RegisterResult<A>> {
+        require_writable(ctx)?;
+
+        let location_id = match ctx.data_opt::<AuthInfo>() {
+            Some(AuthInfo::Session { location, .. }) => location,
+            _ => {
+                return Err(anyhow!(
+                    "Cannot call scan_start_sign_out without session auth"
+                ));
+            }
+        };
+
+        // Surfaced on the kiosk, so the messages describe the row, not the record.
+        let period = self
+            .app
+            .db()
+            .get_periods(&[&id])
+            .await?
+            .into_iter()
+            .next()
+            .flatten()
+            .filter(|p| p.deleted.is_none())
+            .ok_or_else(|| ApiError::new(ErrorCode::NotFound, "That sign-in no longer exists"))?;
+        require_location_write_access(ctx, &period.location_id)?;
+        let Some(person_id) = period.person_id.clone() else {
+            return Err(ApiError::bad_request("Not a member sign-in").into());
+        };
+        if period.end_time.is_some() {
+            return Err(ApiError::new(ErrorCode::Conflict, "Already signed out").into());
+        }
+
+        Ok(self
+            .sign_out_pending(location_id, &person_id, period, quick_pick)
+            .await)
     }
 
     #[graphql(guard = "AuthGuard::new(AuthRequirement::Session)")]

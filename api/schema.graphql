@@ -547,6 +547,24 @@ type MutationRoot {
 		"""
 		quickPick: Boolean
 	): RegisterResult!
+	"""
+	Start signing out one specific open member period, picked from the kiosk's
+	signed-in list rather than by scanning a member number. Returns the same
+	`SIGN_OUT_PENDING` result as `scanRegister2`, so the kiosk carries on to
+	`scanSignOut` exactly as after a scan.
+	
+	Unlike `scanRegister2` this never signs anyone in, and it acts on the period
+	named rather than the person's newest open one. A row the kiosk shows from a
+	stale list is refused instead: `NOT_FOUND` when the period is gone or deleted,
+	`CONFLICT` when it is already signed out, `BAD_REQUEST` for a guest period
+	(which `scanGuestSignOut` closes). Nothing is written.
+	"""
+	scanStartSignOut(		id: ID!,
+		"""
+		As for `scanRegister2`'s `quickPick`.
+		"""
+		quickPick: Boolean
+	): RegisterResult!
 	scanSignOut(id: ID!, startTime: Int!, endTime: Int!, categoryId: ID!): Period!
 	"""
 	Sign in a guest (non-member) at the kiosk. Creates an open period with no
