@@ -480,8 +480,9 @@ function BasicSessionModeFields({
             Who's currently signed in at this location and how long they've been
             signed in for — the Status mode's information without giving up the
             kiosk to it. "Button" adds a button on the scan screen that opens
-            the list; "Always visible" shows it beside the scan screen
-            permanently, so it's visible at a glance without pressing anything.
+            the list; "Always visible" shows it on the scan screen permanently
+            (beside the input on a wide screen, below it on a narrow one), so
+            it's visible at a glance without pressing anything.
           </Muted>
         </FormField>
       )}
