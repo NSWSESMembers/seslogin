@@ -375,6 +375,10 @@ async fn tools_list_lists_every_tool() {
         "get_dashboard",
         "summarize_activity",
         "members_last_seen",
+        "list_kiosks",
+        "get_kiosk",
+        "update_kiosk",
+        "delete_kiosk",
     ] {
         assert!(
             names.contains(&expected),
@@ -2260,4 +2264,337 @@ async fn members_last_seen_orders_members_and_marks_the_never_seen() {
     .await;
     assert_eq!(result["isError"], true);
     assert!(error_text(&result).contains("sort"));
+}
+
+// ── tools/call: kiosks ───────────────────────────────────────────────────────
+
+/// Two kiosks at `loc-1` (one never heard from, one with a config and health check
+/// URL) and one at `loc-2`.
+fn seed_kiosks(app: &App) {
+    seed_unit(app);
+    let kiosk = |id: &str, name: &str, location: &str| seslogin::db::Session {
+        id: id.to_string(),
+        name: name.to_string(),
+        location_id: location.to_string(),
+        active: true,
+        last_contact: None,
+        client_version: None,
+        client_info: None,
+        client_info_updated_at: None,
+        code: None,
+        config: serde_json::Map::new(),
+        healthcheck_url: None,
+        public_key: Some("PUBKEY-MUST-NOT-LEAK".into()),
+        key_fingerprint: Some(format!("fp-{id}")),
+        key_expires_at: Some((NINE + 1_000_000) as u64),
+        key_released_at: None,
+        version: 1,
+        created_at: Some(NINE as u64),
+        updated_at: Some(NINE as u64),
+    };
+    let mut front = kiosk("k-front", "Front desk", "loc-1");
+    front.last_contact = Some(TEN as u64);
+    front.client_version = Some("abc1234".into());
+    front.client_info = Some(seslogin::client_info::ClientInfo {
+        env: Some("prod".into()),
+        ..Default::default()
+    });
+    front.config = json!({ "theme": "dark", "guests": true })
+        .as_object()
+        .unwrap()
+        .clone();
+    front.healthcheck_url = Some("https://hc.example.com/ping".into());
+    let mut hall = kiosk("k-hall", "Hall", "loc-1");
+    hall.key_fingerprint = None;
+    hall.public_key = None;
+    hall.key_expires_at = None;
+    let other = kiosk("k-other", "Elsewhere", "loc-2");
+    let mut sessions = app.db.sessions.lock().unwrap();
+    for k in [front, hall, other] {
+        sessions.insert(k.id.clone(), k);
+    }
+}
+
+fn stored_kiosk(app: &App, id: &str) -> seslogin::db::Session {
+    app.db.sessions.lock().unwrap()[id].clone()
+}
+
+#[tokio::test]
+async fn read_only_users_can_read_but_not_write_kiosks() {
+    let (app, schema) = setup();
+    seed_kiosks(&app);
+    let bearer = grant_user(&app, "user-1", &[], &["loc-1"]).await;
+
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "list_kiosks",
+        json!({ "locationId": "loc-1" }),
+    )
+    .await;
+    assert_eq!(result["isError"], false, "{result:?}");
+    let kiosks = result["structuredContent"]["kiosks"].as_array().unwrap();
+    // Most recent contact first, the never-contacted one last; the other unit's is absent.
+    let ids: Vec<&str> = kiosks.iter().map(|k| k["id"].as_str().unwrap()).collect();
+    assert_eq!(ids, vec!["k-front", "k-hall"]);
+    let front = &kiosks[0];
+    assert_eq!(front["name"], "Front desk");
+    assert_eq!(front["lastContact"], TEN);
+    assert_eq!(front["lastContactSydney"], "2026-10-16T10:00:00+11:00");
+    assert_eq!(front["keyExpiresAt"], NINE + 1_000_000);
+    assert!(front["keyExpiresAtSydney"].is_string());
+    assert_eq!(front["keyFingerprint"], "fp-k-front");
+    assert_eq!(front["keyEnrolled"], true);
+    assert_eq!(front["keyReleasedAt"], Value::Null);
+    assert_eq!(front["reactivatable"], false);
+    assert_eq!(front["config"]["theme"], "dark");
+    assert_eq!(front["healthcheckUrl"], "https://hc.example.com/ping");
+    assert_eq!(front["clientInfo"]["env"], "prod");
+    assert_eq!(kiosks[1]["keyEnrolled"], false);
+    assert!(!result.to_string().contains("PUBKEY-MUST-NOT-LEAK"));
+
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "get_kiosk",
+        json!({ "id": "k-hall" }),
+    )
+    .await;
+    assert_eq!(result["isError"], false, "{result:?}");
+    assert_eq!(result["structuredContent"]["kiosk"]["name"], "Hall");
+
+    for (tool, arguments) in [
+        (
+            "update_kiosk",
+            json!({ "id": "k-front", "name": "Renamed" }),
+        ),
+        ("update_kiosk", json!({ "id": "k-front", "config": {} })),
+        ("delete_kiosk", json!({ "id": "k-front" })),
+    ] {
+        let result = run_tool(&app, &schema, &bearer, tool, arguments).await;
+        assert_eq!(result["isError"], true, "{tool}: {result:?}");
+    }
+    let front = stored_kiosk(&app, "k-front");
+    assert_eq!(front.name, "Front desk");
+    assert_eq!(front.config["theme"], "dark");
+    assert!(front.active);
+}
+
+#[tokio::test]
+async fn a_user_with_no_grant_is_refused_kiosk_reads() {
+    let (app, schema) = setup();
+    seed_kiosks(&app);
+    // Admin of the other unit only.
+    let bearer = grant_user(&app, "user-1", &["loc-2"], &[]).await;
+
+    for (tool, arguments) in [
+        ("list_kiosks", json!({ "locationId": "loc-1" })),
+        ("get_kiosk", json!({ "id": "k-front" })),
+        (
+            "update_kiosk",
+            json!({ "id": "k-front", "name": "Mine now" }),
+        ),
+        ("delete_kiosk", json!({ "id": "k-front" })),
+    ] {
+        let result = run_tool(&app, &schema, &bearer, tool, arguments).await;
+        assert_eq!(result["isError"], true, "{tool}: {result:?}");
+        assert!(result.get("structuredContent").is_none());
+    }
+    let reads = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "get_kiosk",
+        json!({ "id": "k-front" }),
+    )
+    .await;
+    assert!(error_text(&reads).contains("Not authorized"), "{reads:?}");
+    assert_eq!(stored_kiosk(&app, "k-front").name, "Front desk");
+    assert!(stored_kiosk(&app, "k-front").active);
+
+    // Their own unit still works.
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "list_kiosks",
+        json!({ "locationId": "loc-2" }),
+    )
+    .await;
+    assert_eq!(result["isError"], false, "{result:?}");
+    assert_eq!(result["structuredContent"]["kiosks"][0]["id"], "k-other");
+}
+
+#[tokio::test]
+async fn an_admin_can_update_and_delete_kiosks() {
+    let (app, schema) = setup();
+    seed_kiosks(&app);
+    let bearer = grant_user(&app, "user-1", &["loc-1"], &[]).await;
+
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "update_kiosk",
+        json!({ "id": "k-hall", "name": "Back hall" }),
+    )
+    .await;
+    assert_eq!(result["isError"], false, "{result:?}");
+    assert_eq!(result["structuredContent"]["kiosk"]["name"], "Back hall");
+    assert_eq!(stored_kiosk(&app, "k-hall").name, "Back hall");
+
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "delete_kiosk",
+        json!({ "id": "k-hall" }),
+    )
+    .await;
+    assert_eq!(result["isError"], false, "{result:?}");
+    assert_eq!(result["structuredContent"]["deleted"], true);
+    assert!(!stored_kiosk(&app, "k-hall").active);
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "list_kiosks",
+        json!({ "locationId": "loc-1" }),
+    )
+    .await;
+    let ids: Vec<&str> = result["structuredContent"]["kiosks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|k| k["id"].as_str().unwrap())
+        .collect();
+    assert_eq!(ids, vec!["k-front"]);
+
+    // Another unit's kiosk is out of reach.
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "delete_kiosk",
+        json!({ "id": "k-other" }),
+    )
+    .await;
+    assert_eq!(result["isError"], true, "{result:?}");
+    assert!(stored_kiosk(&app, "k-other").active);
+}
+
+#[tokio::test]
+async fn a_partial_kiosk_update_keeps_what_was_not_passed() {
+    let (app, schema) = setup();
+    seed_kiosks(&app);
+    let bearer = grant_user(&app, "user-1", &["loc-1"], &[]).await;
+
+    // Only the name: config and health check URL stay.
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "update_kiosk",
+        json!({ "id": "k-front", "name": "Reception" }),
+    )
+    .await;
+    assert_eq!(result["isError"], false, "{result:?}");
+    let front = stored_kiosk(&app, "k-front");
+    assert_eq!(front.name, "Reception");
+    assert_eq!(front.config["theme"], "dark");
+    assert_eq!(front.config["guests"], true);
+    assert_eq!(
+        front.healthcheck_url.as_deref(),
+        Some("https://hc.example.com/ping")
+    );
+    // Keys and contact are untouched.
+    assert_eq!(front.key_fingerprint.as_deref(), Some("fp-k-front"));
+    assert_eq!(front.last_contact, Some(TEN as u64));
+
+    // A config object replaces the whole config; the name and URL stay.
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "update_kiosk",
+        json!({ "id": "k-front", "config": { "status": true, "theme": "light" } }),
+    )
+    .await;
+    assert_eq!(result["isError"], false, "{result:?}");
+    assert_eq!(
+        result["structuredContent"]["kiosk"]["config"],
+        json!({ "status": true, "theme": "light" })
+    );
+    let front = stored_kiosk(&app, "k-front");
+    assert_eq!(front.name, "Reception");
+    assert_eq!(
+        serde_json::Value::Object(front.config.clone()),
+        json!({ "status": true, "theme": "light" })
+    );
+    assert_eq!(
+        front.healthcheck_url.as_deref(),
+        Some("https://hc.example.com/ping")
+    );
+
+    // A new URL changes just the URL.
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "update_kiosk",
+        json!({ "id": "k-front", "healthcheckUrl": "https://hc.example.com/other" }),
+    )
+    .await;
+    assert_eq!(result["isError"], false, "{result:?}");
+    let front = stored_kiosk(&app, "k-front");
+    assert_eq!(
+        front.healthcheck_url.as_deref(),
+        Some("https://hc.example.com/other")
+    );
+    assert_eq!(front.config["status"], true);
+
+    // Absent keeps it; an explicit null clears it.
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "update_kiosk",
+        json!({ "id": "k-front", "name": "Reception 2" }),
+    )
+    .await;
+    assert_eq!(result["isError"], false, "{result:?}");
+    assert!(stored_kiosk(&app, "k-front").healthcheck_url.is_some());
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "update_kiosk",
+        json!({ "id": "k-front", "healthcheckUrl": null }),
+    )
+    .await;
+    assert_eq!(result["isError"], false, "{result:?}");
+    assert_eq!(
+        result["structuredContent"]["kiosk"]["healthcheckUrl"],
+        Value::Null
+    );
+    let front = stored_kiosk(&app, "k-front");
+    assert_eq!(front.healthcheck_url, None);
+    assert_eq!(front.name, "Reception 2");
+    assert_eq!(front.config["status"], true);
+
+    // `config` must be an object, and the backend's URL rule still applies.
+    for arguments in [
+        json!({ "id": "k-front", "config": "{\"theme\":\"dark\"}" }),
+        json!({ "id": "k-front", "config": null }),
+        json!({ "id": "k-front", "healthcheckUrl": "ftp://example.com" }),
+        json!({ "id": "k-front", "name": null }),
+    ] {
+        let result = run_tool(&app, &schema, &bearer, "update_kiosk", arguments.clone()).await;
+        assert_eq!(result["isError"], true, "{arguments}: {result:?}");
+    }
+    let front = stored_kiosk(&app, "k-front");
+    assert_eq!(front.name, "Reception 2");
+    assert_eq!(front.config["status"], true);
 }

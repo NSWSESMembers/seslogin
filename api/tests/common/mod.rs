@@ -311,7 +311,7 @@ impl db::Handler for FakeDb {
             .lock()
             .unwrap()
             .values()
-            .filter(|s| s.location_id == location_id)
+            .filter(|s| s.active && s.location_id == location_id)
             .cloned()
             .collect())
     }

@@ -238,6 +238,10 @@ the MCP authorization spec's discovery flow.
 | `get_dashboard` | The admin Home page for a location: member and check-in counts (24h / 7d / 30d, with the virtual split), total and average durations, kiosk counts, last member sync, the 7 daily buckets and the top categories. `asOf` moves the windows. Durations are seconds; the daily buckets are UTC days. Admin, Read only or super user. |
 | `summarize_activity` | Time per member / category over a range, grouped by `groupBy`: `member`, `category`, `member_category`, `category_member`, `day_category_member` or `day_member` (the Totals, Breakdown, Daily breakdown and Heatmap pages). `start`/`end` select by when a period started. `categoryIds` is accepted only by `member` and `day_member`; other groupings reject it. Durations are seconds (completed periods only); a day's `date` is a Sydney `YYYY-MM-DD`. Admin, Read only or super user. |
 | `members_last_seen` | Each active member of a location with when they were last seen (end of their latest period, or its start if still open, at any location; null if never) and `secondsAgo`; `sort` by `recent`, `least_recent` or `alphabetical` (the Last seen page). Admin, Read only or super user. |
+| `list_kiosks` | A location's kiosks, most recent contact first: name, `lastContact`, client version, `keyFingerprint`, `keyExpiresAt`, `reactivatable`, `healthcheckUrl`, `config` and the kiosk's self-reported `clientInfo`. `keyReleasedAt` set marks a replaced leftover that no longer works. Admin, Read only or super user. |
+| `get_kiosk` | One kiosk, same shape. Needs a grant for its location. |
+| `update_kiosk` | Change `name`, `config` (a JSON object that replaces the whole config) or `healthcheckUrl`; only passed fields change, `healthcheckUrl: null` clears it, leaving it out keeps it. Admin (or super user) only. |
+| `delete_kiosk` | Delete a kiosk (the device must be set up again by QR code). Also how to remove a replaced leftover. Admin (or super user) only. |
 
 **Not exposed, on purpose:** creating API tokens; enrolling or reactivating
 kiosks (`enrollSession`, `reactivateSession`, `pendingEnrollmentKey` — a device
@@ -268,11 +272,11 @@ Every tool runs a **fixed** GraphQL document against the in-process schema
 with your verified identity attached exactly as the GraphQL endpoint itself
 builds a request, so a non-super token gets the same authorization errors
 from `list_users`/`create_user`/etc. that the admin UI would; only `whoami`,
-`get_user` (on your own id), the category tools and the location/member/period/report
+`get_user` (on your own id), the category tools and the location/member/period/report/kiosk
 tools (for your own locations) work. Where a GraphQL read doesn't itself check the caller's grants
-(`location`, `Location.people`, `person`, and the six `Location.periodSummaryBy*` resolvers behind `summarize_activity`), the tool does, and the period tools
-check again even where the resolver does (`period`, `Location.periods`,
-`Person.periods`), so a tool only ever narrows access. A tool failure (a guard rejection, a
+(`location`, `Location.people`, `person`, and the six `Location.periodSummaryBy*` resolvers behind `summarize_activity`), the tool does, and the period and kiosk
+tools check again even where the resolver does (`period`, `Location.periods`,
+`Person.periods`, `Query.session`, `Location.sessions`), so a tool only ever narrows access. A tool failure (a guard rejection, a
 validation error) comes back as an ordinary JSON-RPC *success* whose
 `CallToolResult` carries `isError: true` and the message — not a transport
 error — so a client can show it inline rather than treating the whole request

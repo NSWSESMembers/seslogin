@@ -11,6 +11,7 @@ use super::{ToolCtx, ToolOutcome};
 use crate::app::{App, HasDb, HasMail, HasQueues, HasRealtime};
 
 mod categories;
+mod kiosks;
 mod locations;
 mod members;
 mod periods;
@@ -25,6 +26,7 @@ pub(super) fn catalogue() -> Vec<Value> {
     tools.extend(categories::catalogue());
     tools.extend(periods::catalogue());
     tools.extend(reports::catalogue());
+    tools.extend(kiosks::catalogue());
     tools
 }
 
@@ -48,7 +50,10 @@ where
     if let Some(outcome) = periods::call(ctx, name, args).await {
         return Some(outcome);
     }
-    reports::call(ctx, name, args).await
+    if let Some(outcome) = reports::call(ctx, name, args).await {
+        return Some(outcome);
+    }
+    kiosks::call(ctx, name, args).await
 }
 
 /// Which MCP annotations a tool carries (see the module docs of `mcp`).
