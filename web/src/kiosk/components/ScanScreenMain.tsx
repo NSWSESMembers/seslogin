@@ -580,13 +580,15 @@ export default function ScanScreenMain(props: {
   // shared px-2.5 with -mx-2.5, so the panel reaches the screen's true right
   // edge instead of leaving a gap there; the main column's own px-2.5 puts
   // that inset back on both sides, since there's no gap left to separate it
-  // from the divider.
+  // from the divider. Below 1024px (a phone, or a tablet held upright) a 30%
+  // column is too narrow to read a name in, so the list stacks under the input
+  // instead and the screen scrolls.
   return (
     <div {...scanViewProps(screenPosition, "inset-y-0")}>
-      <div className="-mx-2.5 flex h-full">
-        <div className="min-w-0 flex-7 px-2.5">{mainColumn}</div>
+      <div className="-mx-2.5 flex h-full flex-col lg:flex-row">
+        <div className="min-w-0 px-2.5 lg:flex-7">{mainColumn}</div>
         <div
-          className={`min-w-0 flex-3 border-l-[4.5px] p-4 ${nonProdDb ? "border-danger-env" : "border-brand"}`}
+          className={`min-w-0 border-t-[4.5px] p-4 lg:flex-3 lg:border-t-0 lg:border-l-[4.5px] ${nonProdDb ? "border-danger-env" : "border-brand"}`}
         >
           <ScanSignedInPanel />
         </div>
