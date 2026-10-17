@@ -379,12 +379,35 @@ async fn tools_list_lists_every_tool() {
         "get_kiosk",
         "update_kiosk",
         "delete_kiosk",
+        "create_category",
+        "update_category",
+        "list_nitc_groups",
+        "get_nitc_group",
+        "create_nitc_group",
+        "update_nitc_group",
+        "delete_nitc_group",
+        "list_ses_nonincident_tags",
+        "list_ses_reference_data",
+        "create_location",
+        "update_location",
+        "list_api_tokens",
+        "get_api_token",
+        "update_api_token",
+        "revoke_api_token",
     ] {
         assert!(
             names.contains(&expected),
             "missing tool {expected}: {names:?}"
         );
     }
+
+    // An MCP grant must never be able to mint a long-lived `slgn_` credential.
+    assert!(
+        !names
+            .iter()
+            .any(|n| n.contains("api_token") && n.contains("create")),
+        "no tool may create API tokens: {names:?}"
+    );
 
     // The MCP spec requires an object at the root of every `outputSchema` (when
     // there is one), and clients validate `structuredContent` against it.
@@ -2597,4 +2620,759 @@ async fn a_partial_kiosk_update_keeps_what_was_not_passed() {
     let front = stored_kiosk(&app, "k-front");
     assert_eq!(front.name, "Reception 2");
     assert_eq!(front.config["status"], true);
+}
+
+// ── tools/call: super-user administration ────────────────────────────────────
+
+const TOKEN_HASH: &str = "HASH-MUST-NOT-LEAK";
+
+fn seed_api_token(app: &App, id: &str, name: &str, grants: &[&str]) {
+    app.db.api_tokens.lock().unwrap().insert(
+        id.to_string(),
+        seslogin::db::ApiToken {
+            id: id.to_string(),
+            name: name.to_string(),
+            token_hash: TOKEN_HASH.to_string(),
+            location_grants: grants.iter().map(|s| s.to_string()).collect(),
+            read_only: false,
+            created_at: NINE as u64,
+            created_by_user_id: "admin-1".to_string(),
+            expires_at: Some((NINE + 1_000_000) as u64),
+            revoked_at: None,
+            last_used_at: Some(TEN as u64),
+        },
+    );
+}
+
+fn seed_nitc(app: &App) {
+    let tag = |id: i32, name: &str| seslogin::db::NitcTag {
+        id,
+        name: name.to_string(),
+        primary_activity_name: "Community".to_string(),
+    };
+    *app.db.nitc_tags.lock().unwrap() =
+        vec![tag(1, "Training"), tag(2, "Education"), tag(3, "Fete")];
+    app.db.nitc_groups.lock().unwrap().insert(
+        "g-train".to_string(),
+        seslogin::db::NitcGroup {
+            id: "g-train".to_string(),
+            nitc_type: "Training".to_string(),
+            nitc_tag_ids: vec![1, 2],
+            created_at: Some(NINE as u64),
+            updated_at: Some(NINE as u64),
+        },
+    );
+    seed_category(app, "c-drill", "Drill", true);
+    app.db
+        .categories
+        .lock()
+        .unwrap()
+        .get_mut("c-drill")
+        .unwrap()
+        .nitc_group_id = Some("g-train".to_string());
+}
+
+/// A super user's bearer token.
+async fn super_bearer(app: &App) -> String {
+    seed_super_user(app, "admin-1", true);
+    format!("Bearer {}", access_token_for(app, "admin-1").await)
+}
+
+#[tokio::test]
+async fn a_non_super_user_is_refused_every_administration_tool() {
+    let (app, schema) = setup();
+    seed_unit(&app);
+    seed_nitc(&app);
+    seed_api_token(&app, "t-1", "Reporting", &["loc-1"]);
+    // An Admin of the location is still not a super user.
+    let bearer = grant_user(&app, "user-1", &["loc-1"], &[]).await;
+
+    let calls = [
+        ("create_category", json!({ "name": "New" })),
+        (
+            "update_category",
+            json!({ "id": "c-drill", "name": "Renamed" }),
+        ),
+        ("list_nitc_groups", json!({})),
+        ("get_nitc_group", json!({ "id": "g-train" })),
+        (
+            "create_nitc_group",
+            json!({ "nitcType": "Training", "nitcTagIds": [] }),
+        ),
+        (
+            "update_nitc_group",
+            json!({ "id": "g-train", "nitcType": "Education" }),
+        ),
+        ("delete_nitc_group", json!({ "id": "g-train" })),
+        ("list_ses_nonincident_tags", json!({})),
+        ("list_ses_reference_data", json!({})),
+        ("create_location", json!({ "name": "New Unit" })),
+        (
+            "update_location",
+            json!({ "id": "loc-1", "name": "Renamed" }),
+        ),
+        ("list_api_tokens", json!({})),
+        ("get_api_token", json!({ "id": "t-1" })),
+        (
+            "update_api_token",
+            json!({ "id": "t-1", "name": "Renamed" }),
+        ),
+        ("revoke_api_token", json!({ "id": "t-1" })),
+    ];
+    for (name, arguments) in calls {
+        let result = run_tool(&app, &schema, &bearer, name, arguments).await;
+        assert_eq!(result["isError"], true, "{name}: {result:?}");
+        assert!(
+            error_text(&result).contains("super user"),
+            "{name}: {result:?}"
+        );
+        assert!(result.get("structuredContent").is_none(), "{name}");
+    }
+
+    // And nothing changed.
+    assert_eq!(app.db.categories.lock().unwrap()["c-drill"].name, "Drill");
+    assert_eq!(app.db.categories.lock().unwrap().len(), 1);
+    assert_eq!(app.db.locations.lock().unwrap().len(), 2);
+    assert_eq!(app.db.locations.lock().unwrap()["loc-1"].name, "Test Unit");
+    assert_eq!(app.db.nitc_groups.lock().unwrap().len(), 1);
+    assert_eq!(
+        app.db.nitc_groups.lock().unwrap()["g-train"].nitc_type,
+        "Training"
+    );
+    let tokens = app.db.api_tokens.lock().unwrap();
+    assert_eq!(tokens["t-1"].name, "Reporting");
+    assert_eq!(tokens["t-1"].revoked_at, None);
+}
+
+#[tokio::test]
+async fn a_super_user_can_create_and_partially_update_categories() {
+    let (app, schema) = setup();
+    seed_nitc(&app);
+    let bearer = super_bearer(&app).await;
+
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "create_category",
+        json!({
+            "name": "Rescue",
+            "isVirtual": true,
+            "nitcGroupId": "g-train",
+            "nitcParticipantType": "Member",
+        }),
+    )
+    .await;
+    assert_eq!(result["isError"], false, "{result:?}");
+    let created = &result["structuredContent"]["category"];
+    assert_eq!(created["name"], "Rescue");
+    assert_eq!(created["enabled"], true);
+    assert_eq!(created["isVirtual"], true);
+    assert_eq!(created["nitcGroupId"], "g-train");
+    assert_eq!(created["nitcGroup"]["nitcType"], "Training");
+    let id = created["id"].as_str().unwrap().to_string();
+
+    // Only `enabled`: everything else stays.
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "update_category",
+        json!({ "id": id, "enabled": false }),
+    )
+    .await;
+    assert_eq!(result["isError"], false, "{result:?}");
+    let stored = app.db.categories.lock().unwrap()[&id].clone();
+    assert!(!stored.enabled);
+    assert_eq!(stored.name, "Rescue");
+    assert!(stored.is_virtual);
+    assert_eq!(stored.nitc_group_id.as_deref(), Some("g-train"));
+    assert_eq!(stored.nitc_participant_type.as_deref(), Some("Member"));
+
+    // A rename keeps it disabled; and `enabled: true` toggles it back.
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "update_category",
+        json!({ "id": id, "name": "Rescue ops" }),
+    )
+    .await;
+    assert_eq!(result["isError"], false, "{result:?}");
+    assert!(!app.db.categories.lock().unwrap()[&id].enabled);
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "update_category",
+        json!({ "id": id, "enabled": true }),
+    )
+    .await;
+    assert_eq!(result["isError"], false, "{result:?}");
+    let stored = app.db.categories.lock().unwrap()[&id].clone();
+    assert!(stored.enabled);
+    assert_eq!(stored.name, "Rescue ops");
+
+    // `null` clears one NITC field and leaves the other.
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "update_category",
+        json!({ "id": id, "nitcGroupId": null }),
+    )
+    .await;
+    assert_eq!(result["isError"], false, "{result:?}");
+    assert_eq!(
+        result["structuredContent"]["category"]["nitcGroupId"],
+        Value::Null
+    );
+    let stored = app.db.categories.lock().unwrap()[&id].clone();
+    assert_eq!(stored.nitc_group_id, None);
+    assert_eq!(stored.nitc_participant_type.as_deref(), Some("Member"));
+
+    // Bad arguments are errors and change nothing.
+    for arguments in [
+        json!({ "id": id, "name": null }),
+        json!({ "id": id, "name": "  " }),
+        json!({ "id": id, "enabled": "yes" }),
+        json!({ "id": "missing", "enabled": true }),
+    ] {
+        let result = run_tool(&app, &schema, &bearer, "update_category", arguments.clone()).await;
+        assert_eq!(result["isError"], true, "{arguments}: {result:?}");
+    }
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "create_category",
+        json!({ "name": "" }),
+    )
+    .await;
+    assert_eq!(result["isError"], true, "{result:?}");
+    assert_eq!(app.db.categories.lock().unwrap()[&id].name, "Rescue ops");
+}
+
+#[tokio::test]
+async fn a_super_user_can_manage_nitc_groups_and_read_the_reference_data() {
+    let (app, schema) = setup();
+    seed_nitc(&app);
+    let bearer = super_bearer(&app).await;
+
+    // The tag list.
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "list_ses_nonincident_tags",
+        json!({}),
+    )
+    .await;
+    assert_eq!(result["isError"], false, "{result:?}");
+    let tags = result["structuredContent"]["tags"].as_array().unwrap();
+    assert_eq!(tags.len(), 3);
+    assert_eq!(tags[0]["id"], "1");
+    assert_eq!(tags[0]["name"], "Training");
+
+    // The SES value lists need the SES API, which a test has no credential for: the
+    // call is not refused as a guard would, it fails as a tool error, not a protocol one.
+    let result = run_tool(&app, &schema, &bearer, "list_ses_reference_data", json!({})).await;
+    if result["isError"] == true {
+        assert!(!error_text(&result).is_empty());
+    } else {
+        assert!(result["structuredContent"]["referenceData"]["participantTypes"].is_array());
+    }
+
+    // List and get show the group's tags and the categories that use it.
+    let result = run_tool(&app, &schema, &bearer, "list_nitc_groups", json!({})).await;
+    assert_eq!(result["isError"], false, "{result:?}");
+    let groups = result["structuredContent"]["nitcGroups"]
+        .as_array()
+        .unwrap();
+    assert_eq!(groups.len(), 1);
+    assert_eq!(groups[0]["id"], "g-train");
+    assert_eq!(groups[0]["nitcType"], "Training");
+    assert_eq!(groups[0]["sesTags"].as_array().unwrap().len(), 2);
+    assert_eq!(
+        groups[0]["categories"],
+        json!([{ "id": "c-drill", "name": "Drill" }])
+    );
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "get_nitc_group",
+        json!({ "id": "g-train" }),
+    )
+    .await;
+    assert_eq!(result["isError"], false, "{result:?}");
+    assert_eq!(
+        result["structuredContent"]["nitcGroup"]["categories"][0]["id"],
+        "c-drill"
+    );
+
+    // Create, with a chosen id and with a generated one.
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "create_nitc_group",
+        json!({ "id": "g-fete", "nitcType": "Community event", "nitcTagIds": [3] }),
+    )
+    .await;
+    assert_eq!(result["isError"], false, "{result:?}");
+    assert_eq!(result["structuredContent"]["nitcGroup"]["id"], "g-fete");
+    assert_eq!(
+        result["structuredContent"]["nitcGroup"]["sesTags"][0]["name"],
+        "Fete"
+    );
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "create_nitc_group",
+        json!({ "nitcType": "Other", "nitcTagIds": [] }),
+    )
+    .await;
+    assert_eq!(result["isError"], false, "{result:?}");
+    let generated = result["structuredContent"]["nitcGroup"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert!(!generated.is_empty());
+    assert_eq!(app.db.nitc_groups.lock().unwrap().len(), 3);
+
+    // A partial update: the type alone keeps the tags; the tags alone keep the type.
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "update_nitc_group",
+        json!({ "id": "g-train", "nitcType": "Education" }),
+    )
+    .await;
+    assert_eq!(result["isError"], false, "{result:?}");
+    let stored = app.db.nitc_groups.lock().unwrap()["g-train"].clone();
+    assert_eq!(stored.nitc_type, "Education");
+    assert_eq!(stored.nitc_tag_ids, vec![1, 2]);
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "update_nitc_group",
+        json!({ "id": "g-train", "nitcTagIds": [3] }),
+    )
+    .await;
+    assert_eq!(result["isError"], false, "{result:?}");
+    let stored = app.db.nitc_groups.lock().unwrap()["g-train"].clone();
+    assert_eq!(stored.nitc_type, "Education");
+    assert_eq!(stored.nitc_tag_ids, vec![3]);
+    // `[]` removes every tag.
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "update_nitc_group",
+        json!({ "id": "g-train", "nitcTagIds": [] }),
+    )
+    .await;
+    assert_eq!(result["isError"], false, "{result:?}");
+    assert!(
+        app.db.nitc_groups.lock().unwrap()["g-train"]
+            .nitc_tag_ids
+            .is_empty()
+    );
+
+    // Unknown tags, wrong types and an unknown group are errors that change nothing.
+    for (name, arguments) in [
+        (
+            "create_nitc_group",
+            json!({ "nitcType": "X", "nitcTagIds": [99] }),
+        ),
+        ("create_nitc_group", json!({ "nitcType": "X" })),
+        (
+            "create_nitc_group",
+            json!({ "nitcType": "X", "nitcTagIds": ["1"] }),
+        ),
+        (
+            "update_nitc_group",
+            json!({ "id": "g-train", "nitcTagIds": [99] }),
+        ),
+        (
+            "update_nitc_group",
+            json!({ "id": "g-train", "nitcType": null }),
+        ),
+        (
+            "update_nitc_group",
+            json!({ "id": "g-train", "nitcTagIds": null }),
+        ),
+        (
+            "update_nitc_group",
+            json!({ "id": "nope", "nitcType": "X" }),
+        ),
+        ("get_nitc_group", json!({ "id": "nope" })),
+    ] {
+        let result = run_tool(&app, &schema, &bearer, name, arguments.clone()).await;
+        assert_eq!(result["isError"], true, "{name} {arguments}: {result:?}");
+    }
+    assert_eq!(app.db.nitc_groups.lock().unwrap().len(), 3);
+    assert_eq!(
+        app.db.nitc_groups.lock().unwrap()["g-train"].nitc_type,
+        "Education"
+    );
+
+    // Delete.
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "delete_nitc_group",
+        json!({ "id": "g-fete" }),
+    )
+    .await;
+    assert_eq!(result["isError"], false, "{result:?}");
+    assert_eq!(
+        result["structuredContent"],
+        json!({ "deleted": true, "id": "g-fete" })
+    );
+    assert!(!app.db.nitc_groups.lock().unwrap().contains_key("g-fete"));
+}
+
+#[tokio::test]
+async fn a_super_user_can_create_and_partially_update_locations() {
+    let (app, schema) = setup();
+    seed_location(&app, "loc-1", "Test Unit");
+    let bearer = super_bearer(&app).await;
+
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "create_location",
+        json!({ "name": "Fresh Unit", "nitcEnabled": "2027-01-01T00:00:00Z" }),
+    )
+    .await;
+    assert_eq!(result["isError"], false, "{result:?}");
+    let created = &result["structuredContent"]["location"];
+    assert_eq!(created["name"], "Fresh Unit");
+    assert_eq!(created["enabled"], true);
+    assert_eq!(created["nitcEnabled"], 1_798_761_600);
+    assert!(
+        created["nitcEnabledSydney"]
+            .as_str()
+            .unwrap()
+            .starts_with("2027-01-01T11:00:00")
+    );
+    let id = created["id"].as_str().unwrap().to_string();
+    // Without nitcEnabled there is no export.
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "create_location",
+        json!({ "name": "Plain" }),
+    )
+    .await;
+    assert_eq!(result["isError"], false, "{result:?}");
+    assert_eq!(
+        result["structuredContent"]["location"]["nitcEnabled"],
+        Value::Null
+    );
+
+    // Only the name: everything else stays.
+    app.db
+        .locations
+        .lock()
+        .unwrap()
+        .get_mut(&id)
+        .unwrap()
+        .nitc_complete_on_export = false;
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "update_location",
+        json!({ "id": id, "name": "Fresh Unit 2" }),
+    )
+    .await;
+    assert_eq!(result["isError"], false, "{result:?}");
+    let stored = app.db.locations.lock().unwrap()[&id].clone();
+    assert_eq!(stored.name, "Fresh Unit 2");
+    assert!(stored.enabled);
+    assert_eq!(stored.nitc_enabled, Some(1_798_761_600));
+    assert!(!stored.nitc_complete_on_export);
+
+    // `enabled` alone toggles it; a time string moves nitcEnabled (Sydney midnight, AEDT).
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "update_location",
+        json!({ "id": id, "enabled": false, "nitcEnabled": "2027-02-01" }),
+    )
+    .await;
+    assert_eq!(result["isError"], false, "{result:?}");
+    let stored = app.db.locations.lock().unwrap()[&id].clone();
+    assert!(!stored.enabled);
+    assert_eq!(
+        stored.nitc_enabled,
+        Some(1_798_761_600 + 31 * 86_400 - 11 * 3600)
+    );
+    assert_eq!(stored.name, "Fresh Unit 2");
+
+    // `nitcCompleteOnExport` alone; then `null` clears nitcEnabled and keeps the rest.
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "update_location",
+        json!({ "id": id, "nitcCompleteOnExport": true }),
+    )
+    .await;
+    assert_eq!(result["isError"], false, "{result:?}");
+    assert!(app.db.locations.lock().unwrap()[&id].nitc_complete_on_export);
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "update_location",
+        json!({ "id": id, "nitcEnabled": null }),
+    )
+    .await;
+    assert_eq!(result["isError"], false, "{result:?}");
+    assert_eq!(
+        result["structuredContent"]["location"]["nitcEnabled"],
+        Value::Null
+    );
+    let stored = app.db.locations.lock().unwrap()[&id].clone();
+    assert_eq!(stored.nitc_enabled, None);
+    assert!(!stored.enabled);
+    assert!(stored.nitc_complete_on_export);
+
+    for arguments in [
+        json!({ "id": id, "name": null }),
+        json!({ "id": id, "name": "" }),
+        json!({ "id": id, "enabled": null }),
+        json!({ "id": id, "nitcEnabled": "not a time" }),
+        json!({ "id": "missing", "name": "X" }),
+    ] {
+        let result = run_tool(&app, &schema, &bearer, "update_location", arguments.clone()).await;
+        assert_eq!(result["isError"], true, "{arguments}: {result:?}");
+    }
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "create_location",
+        json!({ "name": " " }),
+    )
+    .await;
+    assert_eq!(result["isError"], true, "{result:?}");
+    assert_eq!(app.db.locations.lock().unwrap()[&id].name, "Fresh Unit 2");
+}
+
+/// Every key in a JSON value, at any depth.
+fn all_keys(value: &Value, out: &mut Vec<String>) {
+    match value {
+        Value::Object(map) => {
+            for (k, v) in map {
+                out.push(k.clone());
+                all_keys(v, out);
+            }
+        }
+        Value::Array(items) => items.iter().for_each(|v| all_keys(v, out)),
+        _ => {}
+    }
+}
+
+/// No secret, hash or credential in a tool result, in any key or in its text.
+fn assert_no_secret(name: &str, result: &Value) {
+    let mut keys = Vec::new();
+    all_keys(result, &mut keys);
+    for key in keys {
+        let k = key.to_lowercase();
+        assert!(
+            !(k.contains("secret") || k.contains("hash") || k == "token"),
+            "{name} returned a `{key}` field"
+        );
+    }
+    assert!(
+        !result.to_string().contains(TOKEN_HASH),
+        "{name} leaked the hash"
+    );
+}
+
+#[tokio::test]
+async fn a_super_user_can_list_update_and_revoke_api_tokens_without_seeing_a_secret() {
+    let (app, schema) = setup();
+    seed_location(&app, "loc-1", "Test Unit");
+    seed_location(&app, "loc-2", "Other Unit");
+    seed_api_token(&app, "t-1", "Reporting", &["loc-1"]);
+    seed_api_token(&app, "t-2", "Backups", &[]);
+    let bearer = super_bearer(&app).await;
+
+    let result = run_tool(&app, &schema, &bearer, "list_api_tokens", json!({})).await;
+    assert_eq!(result["isError"], false, "{result:?}");
+    assert_no_secret("list_api_tokens", &result);
+    let tokens = result["structuredContent"]["apiTokens"].as_array().unwrap();
+    assert_eq!(tokens.len(), 2);
+    assert_eq!(tokens[0]["id"], "t-1");
+    assert_eq!(tokens[0]["name"], "Reporting");
+    assert_eq!(tokens[0]["locationGrants"], json!(["loc-1"]));
+    assert_eq!(tokens[0]["readOnly"], false);
+    assert_eq!(tokens[0]["lastUsedAt"], TEN);
+    assert!(tokens[0]["expiresAtSydney"].is_string());
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "get_api_token",
+        json!({ "id": "t-1" }),
+    )
+    .await;
+    assert_eq!(result["isError"], false, "{result:?}");
+    assert_no_secret("get_api_token", &result);
+    assert_eq!(result["structuredContent"]["apiToken"]["id"], "t-1");
+
+    // Only the name: the grants, flag and expiry stay.
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "update_api_token",
+        json!({ "id": "t-1", "name": "Reporting 2" }),
+    )
+    .await;
+    assert_eq!(result["isError"], false, "{result:?}");
+    assert_no_secret("update_api_token", &result);
+    let stored = app.db.api_tokens.lock().unwrap()["t-1"].clone();
+    assert_eq!(stored.name, "Reporting 2");
+    assert_eq!(stored.location_grants, vec!["loc-1".to_string()]);
+    assert!(!stored.read_only);
+    assert_eq!(stored.expires_at, Some((NINE + 1_000_000) as u64));
+    // The hash is untouched by an update.
+    assert_eq!(stored.token_hash, TOKEN_HASH);
+
+    // Grants, read-only and a string expiry in one go.
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "update_api_token",
+        json!({
+            "id": "t-1",
+            "locationGrants": ["loc-1", "loc-2"],
+            "readOnly": true,
+            "expiresAt": "2027-01-01T00:00:00Z",
+        }),
+    )
+    .await;
+    assert_eq!(result["isError"], false, "{result:?}");
+    let stored = app.db.api_tokens.lock().unwrap()["t-1"].clone();
+    assert_eq!(
+        stored.location_grants,
+        vec!["loc-1".to_string(), "loc-2".to_string()]
+    );
+    assert!(stored.read_only);
+    assert_eq!(stored.expires_at, Some(1_798_761_600));
+    assert_eq!(stored.name, "Reporting 2");
+
+    // `null` clears the expiry and keeps the rest; omitting it keeps it.
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "update_api_token",
+        json!({ "id": "t-1", "readOnly": false }),
+    )
+    .await;
+    assert_eq!(result["isError"], false, "{result:?}");
+    assert_eq!(
+        app.db.api_tokens.lock().unwrap()["t-1"].expires_at,
+        Some(1_798_761_600)
+    );
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "update_api_token",
+        json!({ "id": "t-1", "expiresAt": null }),
+    )
+    .await;
+    assert_eq!(result["isError"], false, "{result:?}");
+    assert_eq!(
+        result["structuredContent"]["apiToken"]["expiresAt"],
+        Value::Null
+    );
+    let stored = app.db.api_tokens.lock().unwrap()["t-1"].clone();
+    assert_eq!(stored.expires_at, None);
+    assert!(!stored.read_only);
+    assert_eq!(stored.location_grants.len(), 2);
+
+    // Bad arguments change nothing; the backend still checks the locations exist.
+    for arguments in [
+        json!({ "id": "t-1", "name": null }),
+        json!({ "id": "t-1", "name": " " }),
+        json!({ "id": "t-1", "locationGrants": ["nowhere"] }),
+        json!({ "id": "t-1", "locationGrants": [1] }),
+        json!({ "id": "t-1", "readOnly": null }),
+        json!({ "id": "t-1", "expiresAt": "tomorrow-ish" }),
+        json!({ "id": "missing", "name": "X" }),
+    ] {
+        let result = run_tool(
+            &app,
+            &schema,
+            &bearer,
+            "update_api_token",
+            arguments.clone(),
+        )
+        .await;
+        assert_eq!(result["isError"], true, "{arguments}: {result:?}");
+    }
+    assert_eq!(
+        app.db.api_tokens.lock().unwrap()["t-1"]
+            .location_grants
+            .len(),
+        2
+    );
+
+    // Revoke: it drops out of the list and shows `revokedAt` when fetched.
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "revoke_api_token",
+        json!({ "id": "t-2" }),
+    )
+    .await;
+    assert_eq!(result["isError"], false, "{result:?}");
+    assert_no_secret("revoke_api_token", &result);
+    assert_eq!(
+        result["structuredContent"],
+        json!({ "revoked": true, "id": "t-2" })
+    );
+    assert!(
+        app.db.api_tokens.lock().unwrap()["t-2"]
+            .revoked_at
+            .is_some()
+    );
+    let result = run_tool(&app, &schema, &bearer, "list_api_tokens", json!({})).await;
+    let ids: Vec<&str> = result["structuredContent"]["apiTokens"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|t| t["id"].as_str().unwrap())
+        .collect();
+    assert_eq!(ids, ["t-1"]);
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "get_api_token",
+        json!({ "id": "t-2" }),
+    )
+    .await;
+    assert_eq!(result["isError"], false, "{result:?}");
+    assert!(result["structuredContent"]["apiToken"]["revokedAt"].is_i64());
+    assert!(result["structuredContent"]["apiToken"]["revokedAtSydney"].is_string());
 }

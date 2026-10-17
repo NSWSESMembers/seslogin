@@ -94,6 +94,23 @@ pub fn opt_str_array_arg(args: &Value, name: &str) -> Result<Option<Vec<String>>
     present(args, name).map(|v| strings(name, v)).transpose()
 }
 
+/// An optional array of integers that fit a GraphQL `Int` (e.g. SES tag ids).
+pub fn opt_i32_array_arg(args: &Value, name: &str) -> Result<Option<Vec<i32>>, ToolError> {
+    let Some(v) = present(args, name) else {
+        return Ok(None);
+    };
+    v.as_array()
+        .ok_or_else(|| invalid(name))?
+        .iter()
+        .map(|e| {
+            e.as_i64()
+                .and_then(|n| i32::try_from(n).ok())
+                .ok_or_else(|| invalid(name))
+        })
+        .collect::<Result<Vec<_>, _>>()
+        .map(Some)
+}
+
 pub fn time_arg(args: &Value, name: &str) -> Result<i64, ToolError> {
     parse_time(name, present(args, name).ok_or_else(|| invalid(name))?)
 }

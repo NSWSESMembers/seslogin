@@ -10,10 +10,12 @@ use serde_json::{Value, json};
 use super::{ToolCtx, ToolOutcome};
 use crate::app::{App, HasDb, HasMail, HasQueues, HasRealtime};
 
+mod api_tokens;
 mod categories;
 mod kiosks;
 mod locations;
 mod members;
+mod nitc;
 mod periods;
 mod reports;
 mod users;
@@ -27,6 +29,8 @@ pub(super) fn catalogue() -> Vec<Value> {
     tools.extend(periods::catalogue());
     tools.extend(reports::catalogue());
     tools.extend(kiosks::catalogue());
+    tools.extend(nitc::catalogue());
+    tools.extend(api_tokens::catalogue());
     tools
 }
 
@@ -53,7 +57,13 @@ where
     if let Some(outcome) = reports::call(ctx, name, args).await {
         return Some(outcome);
     }
-    kiosks::call(ctx, name, args).await
+    if let Some(outcome) = kiosks::call(ctx, name, args).await {
+        return Some(outcome);
+    }
+    if let Some(outcome) = nitc::call(ctx, name, args).await {
+        return Some(outcome);
+    }
+    api_tokens::call(ctx, name, args).await
 }
 
 /// Which MCP annotations a tool carries (see the module docs of `mcp`).
