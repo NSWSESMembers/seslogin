@@ -2319,6 +2319,7 @@ fn seed_kiosks(app: &App) {
         key_fingerprint: Some(format!("fp-{id}")),
         key_expires_at: Some((NINE + 1_000_000) as u64),
         key_released_at: None,
+        retired_at: None,
         version: 1,
         created_at: Some(NINE as u64),
         updated_at: Some(NINE as u64),
