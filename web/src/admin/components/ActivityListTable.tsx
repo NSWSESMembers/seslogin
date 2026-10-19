@@ -4,6 +4,7 @@ import { formatTime, formatTimeDiff } from "../../lib/time";
 import { unwrapCatch } from "../../lib/relayCatch";
 import { graphql, isValueResult, readInlineData } from "relay-runtime";
 import { useMutation } from "react-relay";
+import { useLocation } from "react-router";
 import type { ActivityListTableDeleteMutation } from "./__generated__/ActivityListTableDeleteMutation.graphql";
 import type {
   ActivityListTableRemindMutation,
@@ -23,6 +24,7 @@ import { Button, ButtonLink } from "../../components/ui/Button";
 import { Popover } from "../../components/ui/Popover";
 import { StatusMessage } from "../../components/ui/StatusMessage";
 import CommentIndicator from "./CommentIndicator";
+import { editReturnState } from "./editReturnTo";
 
 type Firstcol = "location" | "person";
 
@@ -211,6 +213,7 @@ function Row<T extends ActivityListTable_period$key>({
   const signedInSession = unwrapCatch(period.signedInSession);
   const signedOutSession = unwrapCatch(period.signedOutSession);
   const { notifyError, notifySuccess } = useNotify();
+  const location = useLocation();
   const [commitMutation, isMutationInFlight] =
     useMutation<ActivityListTableDeleteMutation>(graphql`
       mutation ActivityListTableDeleteMutation($id: ID!) {
@@ -339,7 +342,11 @@ function Row<T extends ActivityListTable_period$key>({
       <Td options>
         {canEdit && (
           <div className="flex justify-end gap-1">
-            <ButtonLink size="row" to={`/admin/activity/${period.id}`}>
+            <ButtonLink
+              size="row"
+              to={`/admin/activity/${period.id}`}
+              state={editReturnState(location.pathname + location.search)}
+            >
               Edit
             </ButtonLink>
             {/* Still being trialled, so dev-tagged users only. The guest check is
