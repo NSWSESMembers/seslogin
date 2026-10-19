@@ -27,6 +27,9 @@ declare module "relay-test-utils" {
       request: OperationDescriptor,
       payload: ReadonlyArray<GraphQLSingularResponse> | GraphQLSingularResponse,
     ): void;
+    rejectMostRecentOperation(
+      error: Error | ((operation: OperationDescriptor) => Error),
+    ): void;
     getAllOperations(): ReadonlyArray<OperationDescriptor>;
     getMostRecentOperation(): OperationDescriptor;
     resolveMostRecentOperation(
