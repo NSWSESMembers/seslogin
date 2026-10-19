@@ -466,14 +466,7 @@ function BasicSessionModeFields({
         </FormField>
       )}
       {sessionMode === "scan" && (
-        <FormField
-          label={
-            <span className="inline-flex items-center gap-2">
-              Who's here
-              <BetaBadge />
-            </span>
-          }
-        >
+        <FormField label={<span>Who's here</span>}>
           <SegmentedControl
             label="Who's here"
             value={signedInStatusMode}
