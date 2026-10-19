@@ -13,7 +13,7 @@ import SessionEnroll from "./SessionEnroll";
  * seslogin token, Relay environment, user info, notifications), but skips the
  * dashboard's chrome entirely — no menu bar, submenu, title bar, or location
  * interstitial — and the passkey-enrollment nudge, so scanning the code goes straight
- * to one focused, mobile-sized form. `SessionEnroll` supplies its own full-screen
+ * to one focused form. `SessionEnroll` supplies its own full-screen
  * card layout (matching the login screen it may have just been shown), so there's
  * nothing to wrap it in here beyond the error/suspense boundaries every query needs.
  */
