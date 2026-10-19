@@ -1666,3 +1666,115 @@ describe("KioskMain signed-in list sign out", () => {
     ]);
   });
 });
+
+describe("KioskMain confirm visitors", () => {
+  const VISITOR = "40050109";
+
+  // Answers CONFIRM_VISITOR while the kiosk asks, and signs in once it doesn't,
+  // recording the variables of every call.
+  function visitorHandler(calls: Array<Record<string, unknown>>) {
+    return relayEndpoint.mutation(
+      "ScanControllerRegister2Mutation",
+      ({ variables }) => {
+        calls.push(variables);
+        if (variables.confirmVisitor) {
+          return HttpResponse.json({
+            data: {
+              scanRegister2: {
+                state: "CONFIRM_VISITOR",
+                period: null,
+                quickPick: null,
+                person: {
+                  id: `person-${VISITOR}`,
+                  firstName: "Vic",
+                  lastName: "Visitor",
+                  location: { id: "otherLocationId", name: "Other Unit" },
+                },
+              },
+            },
+          });
+        }
+        return HttpResponse.json({
+          data: {
+            scanRegister2: {
+              state: "SIGNED_IN",
+              person: null,
+              quickPick: null,
+              period: {
+                id: "period-visitor",
+                version: 1,
+                startTime: Math.floor(Date.now() / 1000),
+                endTime: null,
+                person: {
+                  id: `person-${VISITOR}`,
+                  firstName: "Vic",
+                  lastName: "Visitor",
+                },
+              },
+            },
+          },
+        });
+      },
+    );
+  }
+
+  it("asks a visitor to confirm, then signs them in on Yes", async () => {
+    const calls: Array<Record<string, unknown>> = [];
+    server.use(
+      sessionConfigHandler({ confirmVisitors: true }),
+      visitorHandler(calls),
+    );
+    const user = await setupTest();
+
+    await user.type(screen.getByRole("textbox"), `${VISITOR}{enter}`);
+    expect(
+      await screen.findByRole("heading", { name: "Are you Vic Visitor?" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Other Unit")).toBeInTheDocument();
+    expect(calls).toHaveLength(1);
+    expect(calls[0].confirmVisitor).toBe(true);
+
+    await user.click(screen.getByRole("button", { name: "Yes, sign me in" }));
+    await waitFor(() =>
+      expect(screen.getByText("Vic Visitor")).toBeInTheDocument(),
+    );
+    expect(
+      screen.queryByRole("heading", { name: "Are you Vic Visitor?" }),
+    ).not.toBeInTheDocument();
+    expect(calls).toHaveLength(2);
+    expect(calls[1].confirmVisitor).toBe(false);
+  });
+
+  it("drops the scan on No without signing anyone in", async () => {
+    const calls: Array<Record<string, unknown>> = [];
+    server.use(
+      sessionConfigHandler({ confirmVisitors: true }),
+      visitorHandler(calls),
+    );
+    const user = await setupTest();
+
+    await user.type(screen.getByRole("textbox"), `${VISITOR}{enter}`);
+    await user.click(await screen.findByRole("button", { name: "No" }));
+
+    expect(
+      screen.queryByRole("heading", { name: "Are you Vic Visitor?" }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("Vic Visitor")).not.toBeInTheDocument();
+    expect(calls).toHaveLength(1);
+    // The kiosk is ready for the next scan.
+    expect(screen.getByRole("textbox")).not.toBeDisabled();
+  });
+
+  it("doesn't ask when the kiosk option is off", async () => {
+    const calls: Array<Record<string, unknown>> = [];
+    server.use(visitorHandler(calls));
+    const user = await setupTest();
+
+    await user.type(screen.getByRole("textbox"), `${VISITOR}{enter}`);
+    await waitFor(() =>
+      expect(screen.getByText("Vic Visitor")).toBeInTheDocument(),
+    );
+    expect(calls).toHaveLength(1);
+    expect(calls[0].confirmVisitor).toBe(false);
+  });
+});

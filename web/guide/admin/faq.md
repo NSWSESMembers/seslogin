@@ -10,6 +10,12 @@ Yes. Any member of any unit can sign in and out at any kiosk. Their time is
 recorded in your unit's activity, with their home unit shown under their name,
 and also appears in their own history.
 
+## People keep signing in as the wrong person
+
+That's almost always a mistyped SES ID that happens to belong to someone at
+another unit. Turn on [Confirm visitors](kiosks.md#options) for the kiosk: it
+then asks anyone from another unit to confirm their name before signing them in.
+
 ## Can we have more than one kiosk?
 
 Yes, as many as you like. Members don't need to sign out at the same kiosk they

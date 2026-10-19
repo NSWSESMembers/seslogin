@@ -464,6 +464,18 @@ export const SHOTS = [
         minWidth: 0,
       });
 
+      // Crossunit Tester belongs to Test B Unit, so Confirm visitors asks first.
+      // No leaves nothing behind for the shots after this one.
+      await enter("20000001");
+      const question = kiosk.getByRole("heading", { name: /^Are you / });
+      const yes = kiosk.getByRole("button", { name: "Yes, sign me in" });
+      await snap(kiosk, "kiosk-confirm-visitor", {
+        highlight: [{ locator: yes, where: "below" }],
+        frame: [question, yes],
+        minWidth: 0,
+      });
+      await kiosk.getByRole("button", { name: "No", exact: true }).click();
+
       await kiosk.waitForTimeout(3000);
       await enter("10000001");
       await snap(kiosk, "kiosk-quick-pick", {
