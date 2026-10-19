@@ -16,6 +16,9 @@ import ScanScreenAdjust from "./ScanScreenAdjust";
 import ScanScreenForgotSignOut from "./ScanScreenForgotSignOut";
 import ScanGuestDialog from "./ScanGuestDialog";
 import ScanStatusDialog from "./ScanStatusDialog";
+import ScanVisitorConfirmDialog, {
+  type VisitorConfirmation,
+} from "./ScanVisitorConfirmDialog";
 import ScanScreenQuickPick from "./ScanScreenQuickPick";
 import {
   blockClientUpdates,
@@ -60,6 +63,7 @@ export default function ScanController(props: {
   const { applyOwnResult, retry: refreshLivePeriods } = useLivePeriods();
   const guestsEnabled = !!session?.config?.guests;
   const quickPickCategories = !!session?.config?.quickPickCategories;
+  const confirmVisitors = !!session?.config?.confirmVisitors;
   const interfaceMode = interfaceModeFromConfig(session?.config?.interfaceMode);
   // Resolved once per config change rather than every render: the device
   // doesn't change under a running kiosk, and an auto guess that flipped
@@ -87,6 +91,11 @@ export default function ScanController(props: {
   const [listSignOutBusy, setListSignOutBusy] = useState(false);
   const [guestDialogOpen, setGuestDialogOpen] = useState(false);
   const [statusDialogOpen, setStatusDialogOpen] = useState(false);
+  // A scan waiting on "Are you …?" (see ScanVisitorConfirmDialog). Its
+  // transaction stays LOADING meanwhile, which holds off the next scan.
+  const [pendingVisitor, setPendingVisitor] = useState<
+    (VisitorConfirmation & { uuid: string }) | null
+  >(null);
 
   // Opening the list must hand focus straight back to the member ID input: the
   // press that opened it left focus on the button, and the list holds no scan
@@ -147,9 +156,21 @@ export default function ScanController(props: {
       mutation ScanControllerRegister2Mutation(
         $memberNumber: String!
         $quickPick: Boolean!
+        $confirmVisitor: Boolean!
       ) {
-        scanRegister2(memberNumber: $memberNumber, quickPick: $quickPick) {
+        scanRegister2(
+          memberNumber: $memberNumber
+          quickPick: $quickPick
+          confirmVisitor: $confirmVisitor
+        ) {
           state
+          person {
+            firstName
+            lastName
+            location {
+              name
+            }
+          }
           period {
             id
             version
@@ -286,7 +307,12 @@ export default function ScanController(props: {
     });
   }
 
-  async function completeSubmit(ids: MemberIdWithUuid) {
+  // `confirmVisitor` is false for the repeat of a scan the member has just
+  // confirmed is theirs.
+  async function completeSubmit(
+    ids: MemberIdWithUuid,
+    confirmVisitor: boolean = confirmVisitors,
+  ) {
     const { memberId, uuid } = ids;
     focusMainInputRef.current?.();
 
@@ -295,7 +321,11 @@ export default function ScanController(props: {
       res = await new Promise((resolve, reject) => {
         commitRegister2Mutation({
           // Only worth the server's extra reads if this kiosk shows the screen.
-          variables: { memberNumber: memberId, quickPick: quickPickCategories },
+          variables: {
+            memberNumber: memberId,
+            quickPick: quickPickCategories,
+            confirmVisitor,
+          },
           onCompleted: resolve,
           onError: reject,
         });
@@ -365,6 +395,15 @@ export default function ScanController(props: {
       audioSuccess.play();
       resolveSignOutPending(uuid, res.scanRegister2);
       return;
+    } else if (state == "CONFIRM_VISITOR") {
+      const person = res.scanRegister2.person!;
+      setPendingVisitor({
+        uuid,
+        memberId,
+        name: `${person.firstName} ${person.lastName}`,
+        homeUnitName: person.location.name,
+      });
+      return;
     }
 
     console.log("Response:", res);
@@ -397,6 +436,24 @@ export default function ScanController(props: {
     // purposefully not awaited - we want the form submission to be considered complete
     // so we can re-render
     completeSubmit({ memberId, uuid });
+  }
+
+  // Memoized: the dialog's no-answer timer restarts whenever this changes.
+  const cancelVisitor = useCallback(() => {
+    if (!pendingVisitor) return;
+    dispatchTransaction({
+      type: "CANCEL_TRANSACTION",
+      uuid: pendingVisitor.uuid,
+    });
+    setPendingVisitor(null);
+    focusMainInputRef.current?.();
+  }, [pendingVisitor]);
+
+  function confirmVisitor() {
+    if (!pendingVisitor) return;
+    const { uuid, memberId } = pendingVisitor;
+    setPendingVisitor(null);
+    completeSubmit({ uuid, memberId }, false);
   }
 
   // Sign someone out from the always-visible list. The list knows the period, so
@@ -708,6 +765,14 @@ export default function ScanController(props: {
         isSubmitting={signOutIsInFlight}
       />
       {statusDialogOpen && <ScanStatusDialog onClose={closeStatusDialog} />}
+      {pendingVisitor && (
+        <ScanVisitorConfirmDialog
+          visitor={pendingVisitor}
+          locationName={session?.location.name ?? null}
+          onConfirm={confirmVisitor}
+          onCancel={cancelVisitor}
+        />
+      )}
       {guestDialogOpen && (
         <ScanGuestDialog
           onClose={() => {

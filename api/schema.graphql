@@ -545,7 +545,11 @@ type MutationRoot {
 		"""
 		Also compute the sign-out quick-pick shortcuts (see RegisterResult.quickPick). Opt-in: it costs extra reads, and a kiosk with the quick-pick screen turned off has no use for them.
 		"""
-		quickPick: Boolean
+		quickPick: Boolean,
+		"""
+		Before signing in a member whose home unit isn't this kiosk's location, return `CONFIRM_VISITOR` instead and write nothing, so the kiosk can check a mistyped number isn't about to sign in the wrong person. The kiosk repeats the call without it once they confirm. Has no effect on a sign-out, which shows the member's name before anything is written.
+		"""
+		confirmVisitor: Boolean
 	): RegisterResult!
 	"""
 	Start signing out one specific open member period, picked from the kiosk's
@@ -1036,12 +1040,23 @@ type RegisterResult {
 	category tree rather than failing the scan.
 	"""
 	quickPick: QuickPick
+	"""
+	Who the member number belongs to. Only populated when `state` is
+	`CONFIRM_VISITOR`; otherwise read it from `period.person`.
+	"""
+	person: Person
 }
 
 enum RegisterState {
 	NOT_FOUND
 	SIGNED_IN
 	SIGN_OUT_PENDING
+	"""
+	The member belongs to another unit and would have been signed in here, but
+	the kiosk asked to confirm that first (`confirmVisitor`). Nothing was
+	written; `person` says who the number belongs to.
+	"""
+	CONFIRM_VISITOR
 }
 
 type SesHeadquarters {
