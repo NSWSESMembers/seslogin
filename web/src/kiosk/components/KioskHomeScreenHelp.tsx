@@ -38,7 +38,8 @@ export default function KioskHomeScreenHelp({
         <PanelTitle>Add this kiosk to the Home Screen</PanelTitle>
         <PanelIntro>
           On an iPad, the kiosk works best as a Home Screen app: it fills the
-          whole screen, without the browser's toolbars, and stays awake.
+          whole screen, without the browser's toolbars, and is better at staying
+          awake.
         </PanelIntro>
 
         <ol className="mb-6 flex list-none flex-col gap-4 p-0">
