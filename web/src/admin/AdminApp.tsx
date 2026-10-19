@@ -1,4 +1,4 @@
-import { Routes, Route } from "react-router";
+import { Routes, Route, Navigate, useLocation, useParams } from "react-router";
 import { Suspense } from "react";
 
 import NotFound from "../components/NotFound";
@@ -45,6 +45,15 @@ import SettingsConnectedApps from "./pages/SettingsConnectedApps";
 import SettingsDailyEmail from "./pages/SettingsDailyEmail";
 import SettingsActivityDisplay from "./pages/SettingsActivityDisplay";
 
+/** The guide used to live at /admin/guide; send old links to /guide/admin. */
+function GuideRedirect() {
+  const rest = useParams()["*"] ?? "";
+  const { hash } = useLocation();
+  return (
+    <Navigate to={`/guide/admin${rest ? `/${rest}` : ""}${hash}`} replace />
+  );
+}
+
 // Mounted at /admin/* — paths here are relative to /admin.
 export default function AdminApp() {
   return (
@@ -64,6 +73,8 @@ export default function AdminApp() {
           </AuthenticatedSession>
         }
       />
+      {/* Outside AdminLayout: the guide is public, so no sign-in first. */}
+      <Route path="guide/*" element={<GuideRedirect />} />
       <Route element={<AdminLayout />}>
         <Route index element={<AdminHome />} />
         <Route path="locations">

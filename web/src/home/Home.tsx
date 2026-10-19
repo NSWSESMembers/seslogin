@@ -1,6 +1,6 @@
 import { Link } from "react-router";
 import logo from "../assets/logo.svg";
-import { AdminIcon, KioskIcon } from "./HomeIcons";
+import { AdminIcon, GuideIcon, KioskIcon } from "./HomeIcons";
 
 export default function Home() {
   return (
@@ -41,6 +41,22 @@ export default function Home() {
                 reports and view activity
               </p>
               <AdminIcon className="size-16.25 shrink-0 text-navy group-hover:text-navy-light group-hover:[--icon-accent:var(--color-accent-light)] max-md:hidden" />
+            </Link>
+          </li>
+
+          <li className="text-left">
+            <Link
+              to="/guide"
+              className="group mx-auto flex w-full max-w-150 items-center gap-4 border-b border-line-strong px-5 py-1.25 text-ink no-underline md:min-h-16.25"
+            >
+              <span className="shrink-0 font-title text-4xl font-bold whitespace-nowrap text-accent group-hover:text-accent-light">
+                Guide
+              </span>
+              <p className="my-4 flex-1 text-navy group-hover:text-navy-light">
+                Learn how to use SES Login, whether you run your unit or sign in
+                at a kiosk
+              </p>
+              <GuideIcon className="size-16.25 shrink-0 text-navy group-hover:text-navy-light group-hover:[--icon-accent:var(--color-accent-light)] max-md:hidden" />
             </Link>
           </li>
         </ul>

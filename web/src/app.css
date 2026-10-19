@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "./guide/guide.css";
 
 /* Dark mode is driven by the OS setting (`prefers-color-scheme`) by default, and
  * can be pinned explicitly within any `[data-theme="dark"]` / `[data-theme="light"]`

@@ -22,5 +22,9 @@
     "noUncheckedSideEffectImports": true,
     "types": ["node"]
   },
-  "include": ["vite.config.ts"]
+  "include": [
+    "vite.config.ts",
+    "guidePlugin.ts",
+    "src/guide/virtual-guides.d.ts"
+  ]
 }

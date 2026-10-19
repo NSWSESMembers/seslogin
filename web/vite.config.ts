@@ -4,6 +4,7 @@ import react, { reactCompilerPreset } from "@vitejs/plugin-react";
 import babel from "@rolldown/plugin-babel";
 import relay from "vite-plugin-relay";
 import tailwindcss from "@tailwindcss/vite";
+import guidePlugin from "./guidePlugin.ts";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -27,6 +28,7 @@ export default defineConfig({
     react(),
     babel({ presets: [reactCompilerPreset()] }),
     tailwindcss(),
+    guidePlugin(resolve(__dirname, "guide")),
   ],
   test: {
     globals: true,
