@@ -108,6 +108,13 @@ local-clear:
 local-cli:
 	@$(LOCAL_ENV) cd api && cargo run --quiet --bin cli -- $(ARGS)
 
+# Re-capture the admin guide's screenshots (web/guide/screenshots/) from the local
+# stack, which must be up (make local-e2e). Resets the local database first.
+#   make guide-screenshots              # all of them
+#   make guide-screenshots SHOTS=kiosks # only those whose name starts "kiosks"
+guide-screenshots:
+	@node local/guide/capture.mjs $(SHOTS)
+
 local-tables:
 	@$(LOCAL_ENV) cd api && cargo run --quiet --bin local-tables
 

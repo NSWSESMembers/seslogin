@@ -17,6 +17,8 @@ report. Each step links to the full topic if you want more.
 2. Enter the email address your account was set up with and press **Send code**.
 3. Check your email for a six-digit code, enter it, and press **Verify code**.
 
+![The sign-in screen, with the email box and Send code button highlighted](../screenshots/sign-in-email.png "Enter your email and press Send code.")
+
 You'll be offered a **passkey** so that next time you can sign in with Face ID,
 a fingerprint or your device PIN instead of waiting for an email. It's worth
 setting one up. See [Signing in](signing-in.md).
@@ -42,6 +44,8 @@ You need a computer or tablet with a web browser, at your unit.
 2. Scan the QR code with your phone's camera and sign in if asked.
 3. Choose your unit, give the kiosk a name (such as "Front desk"), and press
    **Save**.
+
+![A kiosk showing its setup QR code](../screenshots/kiosk-qr.png "The kiosk shows a QR code — scan it with your phone.")
 
 Within a few seconds the kiosk switches over and is ready to use. Try it: type
 your own SES ID and press enter to sign in, then do it again to sign out.
@@ -71,11 +75,21 @@ This guide is on the SES Login site at **/guide/admin**, and anyone can read it
 without signing in. Get there from **Guide** on the home page, or from **User
 guide** at the right-hand end of the admin menu, which opens it in a new tab.
 
+![The SES Login home page, with the Guide button highlighted](../screenshots/home-guide-button.png "Guide, on the home page.")
+
+![The guides home page: search, and a card each for the admin and kiosk guides](../screenshots/guide-home.png "Choose a guide, or search both.")
+
+![The admin menu, with the User guide link at its right-hand end highlighted](../screenshots/menu-bar.png "The User guide link, at the end of the menu.")
+
 Search from the top of any guide page. **Print or save as PDF**, on the guide's
 contents page, puts the whole guide on one page.
 
+![The guide's contents page, showing search results for "kiosk expired", with the search box highlighted](../screenshots/guide-search.png "Search the guide, or print all of it.")
+
 On each topic page, the list down the side jumps between topics, **On this page**
 jumps to a section, and **Print this page** prints just that topic.
+
+![A guide page, with the topic list, On this page and Print this page highlighted](../screenshots/guide-page.png "Find your way around a topic.")
 
 Members have their own [kiosk guide](../kiosk/quick-start.md), for signing in and
 out.

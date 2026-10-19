@@ -8,6 +8,8 @@ Your kiosk may show **Currently signed in**: everyone signed in at the unit, and
 how long they've been here. Depending on how your unit set the kiosk up, it's
 always on the screen beside the SES ID box, or behind a button.
 
+![The Currently signed in list, with a Sign out button for each member](../screenshots/kiosk-whos-here.png "Who's here, with Sign out buttons.")
+
 ## Signing out someone who forgot
 
 If your unit has turned it on, each person in the list has a **Sign out** button.

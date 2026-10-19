@@ -26,15 +26,23 @@ sign in to the admin dashboard on).
 
 1. On the kiosk computer, open SES Login and choose **Kiosk**. It shows a QR
    code.
+
+   ![The kiosk setup screen with its QR code highlighted](../screenshots/kiosk-qr.png "The kiosk waiting to be set up.")
+
 2. Scan the QR code with your phone's camera. It opens the setup page for this
    kiosk — sign in if you're asked to.
 3. Choose your unit under **Location**, and give the kiosk a **Name** that says
    where it is, such as "Front desk" or "Training room".
+
+   ![The setup page on a phone, with the Location and Name fields highlighted](../screenshots/kiosk-enrol.png "On your phone: choose the unit and name the kiosk.")
+
 4. Check the [settings](#kiosk-settings) — the defaults suit most units.
 5. Press **Save**.
 
 Within a few seconds the kiosk switches over by itself and shows
 "Please enter or scan your SES ID". It's ready to use.
+
+![The kiosk ready for use, with the SES ID box highlighted](../screenshots/kiosk-ready.png "A kiosk ready for members to sign in.")
 
 > [!TIP]
 > Bookmark the kiosk page in the kiosk's browser, or set it as the home page,
@@ -44,6 +52,8 @@ Within a few seconds the kiosk switches over by itself and shows
 
 You choose these when you set a kiosk up, and can change them later with
 **Edit** on the **Kiosks** page. The defaults suit most units.
+
+![The kiosk settings on a phone, with the Mode and Options sections highlighted](../screenshots/kiosk-settings.png "Mode and Options are the settings most units change.")
 
 ### Mode
 
@@ -103,6 +113,8 @@ page's **Guide** button leads there.
 - **Last contact** is how long ago the kiosk last checked in;
 - **Edit** renames a kiosk or changes its [settings](#kiosk-settings);
 - **Delete** removes it, and the computer stops working as a kiosk.
+
+![The Kiosks page, with a kiosk's health light, last contact and Edit and Delete buttons highlighted](../screenshots/kiosks-list.png "A healthy kiosk that checked in moments ago.")
 
 Only Admins can add, change or delete kiosks.
 

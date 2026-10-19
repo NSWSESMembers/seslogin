@@ -19,6 +19,8 @@ first, grouped by day with a count of entries and members.
   **Categories**.
 - Scroll down to load older entries.
 
+![The activity list, with the filter, a day heading and an entry's Edit and Delete buttons highlighted](../screenshots/activity-list.png "Previous Periods: every entry, grouped by day.")
+
 ## Seeing which kiosk was used
 
 Each entry remembers the kiosk the member signed in at and the one they signed
@@ -35,6 +37,8 @@ it already had.
 arrived. Someone still on the list long after they've gone home probably forgot
 to sign out — [fix their entry](#correcting-an-entry).
 
+![Incomplete Periods, highlighting a member who signed in yesterday and the Edit button next to them](../screenshots/incomplete-periods.png "Bob signed in yesterday and never signed out.")
+
 ## Correcting an entry
 
 Admins can correct any entry, including one that's still open.
@@ -45,6 +49,8 @@ Admins can correct any entry, including one that's still open.
    time** copies the start into the end so you only have to change the hour.
 3. Add a **Comment** if it helps explain the change.
 4. Press **Save**.
+
+![The edit form, with the end time and its adjustment buttons, and Save, highlighted](../screenshots/activity-edit.png "Set the right finish time, then press Save.")
 
 You'll be warned if the end time is before the start, or more than 24 hours
 after it.

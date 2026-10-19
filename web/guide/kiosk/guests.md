@@ -14,6 +14,8 @@ box.
 2. Enter the guest's **Name**, and a **Reason for visit** if you like.
 3. Press **Sign in**.
 
+![The guest dialog, with Name and Reason for visit](../screenshots/kiosk-guest.png "Signing a guest in.")
+
 ## Signing a guest out
 
 Press **Guest sign in / out** again. Under **Currently signed in guests**, press

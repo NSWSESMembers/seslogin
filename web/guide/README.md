@@ -80,7 +80,8 @@ lightly — people bookmark and share these links. Each guide starts with a
   ```
 
   The alt text (in `[...]`) is required: describe what the picture shows for
-  someone who can't see it. The quoted title becomes the caption.
+  someone who can't see it. The quoted title becomes the caption. See
+  [Screenshots](#screenshots) below for making them.
 
 - Callouts:
 
@@ -96,8 +97,32 @@ Not supported, and rejected by the build: raw HTML, and images anywhere but
 
 ## Screenshots
 
-Screenshots live in `screenshots/`, as PNGs captured at 2x: the guides show them
-at half their pixel size so they stay sharp on high-resolution screens.
+Screenshots are **generated, not taken by hand**, so they all look the same and
+can be refreshed whenever the UI changes. `local/guide/shots.mjs` drives the app on
+the local stack — the dashboard for the admin guide, a real kiosk for the kiosk
+guide — rings the elements a page talks about in orange (with an optional label),
+and crops to the part of the screen that matters. Everything on screen is the
+invented demo unit from `local/guide/seed-demo.mjs`.
+
+It uses Playwright, which isn't a dependency of the repo — install it at the repo
+root once, as for [local/examples](../../local/examples/README.md):
+`npm i playwright --no-save && npx playwright install chromium`.
+
+```bash
+make local-e2e                         # the local stack (no AWS needed)
+make guide-screenshots                 # re-capture all of them
+make guide-screenshots SHOTS=kiosk-    # just the ones named kiosk-*
+```
+
+To add one, add a `snap(...)` to a scene in `local/guide/shots.mjs` (the file
+explains how), capture it, and reference it from the page. **When a UI change
+alters a screen that's pictured, re-capture it in the same PR** — a stale
+screenshot is as misleading as stale text. The build fails if a page references a
+screenshot that doesn't exist (the dev server shows a placeholder instead, so you
+can write the reference first).
+
+Commit the PNGs. They are captured at 2x and shown at half size, so they stay
+sharp on high-resolution screens.
 
 ## Style
 

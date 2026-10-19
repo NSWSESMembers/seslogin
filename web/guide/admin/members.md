@@ -11,6 +11,8 @@ from other units can still sign in at your kiosks — they just aren't listed he
 
 Type part of a name or SES ID into the filter at the top of the list.
 
+![The Members page, with the filter box, a member's green dot, and the Activity, Edit and Delete buttons highlighted](../screenshots/members-list.png "The member list. A green dot means the member comes from SES.")
+
 ## Members kept up to date from SES
 
 For most units, SES Login copies your members in from SES records automatically,
@@ -81,6 +83,8 @@ record is still being set up.
 1. Open **Members** and choose **New**.
 2. Enter their **Given name**, **Surname** and **SES ID**.
 3. Press **Save**.
+
+![The new member form, filled in, with Save highlighted](../screenshots/members-new.png "Adding a member.")
 
 They can sign in at any kiosk straight away.
 

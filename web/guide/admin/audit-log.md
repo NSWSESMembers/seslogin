@@ -17,6 +17,8 @@ Each row shows **When** the change happened, **Who** made it, the **Action**
 "Who" is usually a person's email address. Changes made automatically show what
 made them instead — for example, the daily update of members from SES.
 
+![The audit log, with the Show filter and a Details button highlighted](../screenshots/audit-log.png "Recent changes at the unit, newest first.")
+
 ## Filtering
 
 Use **Show** to pick one or more kinds of change — for example, only activity

@@ -16,6 +16,8 @@ that says "Please enter or scan your SES ID".
 
 The kiosk shows your name and the time you signed in. That's it.
 
+![The kiosk, waiting for an SES ID](../screenshots/kiosk-ready.png "Type your SES ID here.")
+
 ## Signing out
 
 1. Enter your **SES ID** again.

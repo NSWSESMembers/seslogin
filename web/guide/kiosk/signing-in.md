@@ -14,6 +14,8 @@ keyboard.
 
 When you're signed in, the kiosk shows your name and the time.
 
+![The kiosk confirming "Priya Nair signed in at" a time](../screenshots/kiosk-signed-in.png "Signed in.")
+
 > [!TIP]
 > Entering your SES ID **toggles** you: the first time signs you in, the next
 > time signs you out. If you're not sure whether you're signed in, check the
