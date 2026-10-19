@@ -710,6 +710,6 @@ runs will fail with a `ValidationException` that doesn't obviously point at the 
 - [README.md](README.md) — project overview, branches, deployments
 - [CONTRIBUTING.md](CONTRIBUTING.md) — submitting a PR
 - [SCHEMA.md](SCHEMA.md) — data model
-- [MANUAL.md](MANUAL.md) — operator documentation
+- [web/guide/](web/guide/) — the admin and kiosk user guides, compiled into the app at `/guide`
 - [api/README.md](api/README.md) — API internals and member sync
 - [web/README.md](web/README.md) — web-specific npm scripts

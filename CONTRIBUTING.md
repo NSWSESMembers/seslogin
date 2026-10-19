@@ -42,8 +42,35 @@ cd web && npm run relay
 - **Every PR/commit must be safe to deploy on its own.** It must pass CI (`make check` && `make test`) and stand correctly by itself — don't leave a PR in a half-working state that only becomes correct once a later PR in the stack lands. If a change genuinely can't be split into independently-deployable steps, that's a signal to reconsider the approach before opening the PR.
 - Write a clear commit message / PR description explaining what the change does and why.
 - If the change is non-trivial, include a short note on how you tested it.
+- **If it changes what admins see or do, update the [admin user guide](#user-guide) in the same PR.** The PR template asks.
 
 There's no formal issue requirement for small fixes, but for larger changes it's worth opening an issue first to discuss the approach.
+
+## User guide
+
+SES Login has two user guides, published at `/guide` with no sign-in needed: the
+**admin guide** for unit administrators and the **kiosk guide** for members. Readers
+can search and print them. Their source is Markdown in [`web/guide/`](web/guide/)
+(`admin/` and `kiosk/`), compiled into the web build — see
+[web/guide/README.md](web/guide/README.md) for how to write a page.
+
+**Every PR that changes the admin or kiosk UI, or how a feature behaves for
+users, updates the matching guide in the same PR**: describe the new feature,
+correct the steps that changed, rename what was renamed, and re-capture any
+screenshot of a screen that changed (`make guide-screenshots`). A kiosk change
+usually touches both guides — the kiosk guide for members, the admin guide's
+kiosk settings for administrators. A feature isn't finished until the people
+using it can find out how.
+
+A UI change can skip the guides only when no user-visible behaviour changes — a
+refactor, a styling fix, a test. Say so in the PR description ("Guide: not
+needed — refactor only").
+
+The build checks the guides: a broken link between pages, a missing screenshot,
+or a page missing its title fails `npm run build` and so CI. Whether the *words*
+are right is up to the author and the reviewer — reviewers, read the guide diff
+alongside the UI diff. The guides are public, so they must never describe
+anything only signed-in users should see.
 
 ## Code style
 
