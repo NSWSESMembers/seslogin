@@ -410,7 +410,7 @@ Environment variables (loaded from `.env` and `.env.secret`; see
 - `JWT_SECRET` — JWT signing key
 - `SES_API_BASE_URL` / `SES_API_KEY` — External member sync API
 - `SES_INTRANET_SEARCH_API_BASE_URL` / `SES_INTRANET_SEARCH_API_KEY` — SES intranet contact-directory search, used to sync member emails. Separate credential from `SES_API_KEY` (uses the `Ocp-Apim-Subscription-Key` header).
-- `MEMBER_SYNC_QUEUE_URL` / `NITC_EXPORT_QUEUE_URL` / `HEALTHCHECK_QUEUE_URL` — SQS queue URLs. All three are required by `poem` and by the API Lambda. `poem-local` never reads them.
+- `MEMBER_SYNC_QUEUE_URL` / `NITC_EXPORT_QUEUE_URL` — SQS queue URLs. Both are required by `poem` and by the API Lambda. `poem-local` never reads them. Kiosk healthcheck pings are not queued: the API makes them inline (`api/src/healthcheck.rs`), public addresses only.
 - `MOCK_MAIL_DIR` — `poem-local` only: also write each "sent" message to a file in this directory. Optional; messages are logged either way.
 - `AWS_ENDPOINT_URL_DYNAMODB` — read natively by the AWS SDK; points DynamoDB traffic at the local container. Set by `local/local.env`.
 - `TURNSTILE_SECRET_KEY` — Cloudflare Turnstile secret for verifying login CAPTCHA tokens

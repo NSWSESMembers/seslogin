@@ -75,15 +75,11 @@ impl queue::Handler for Handler {
         })
     }
 
-    async fn enqueue_healthcheck(
-        &self,
-        session_id: &str,
-        healthcheck_url: &str,
-    ) -> queue::Result<()> {
-        self.record(Message::Healthcheck {
+    async fn ping_healthcheck(&self, session_id: &str, healthcheck_url: &str) {
+        let _ = self.record(Message::Healthcheck {
             session_id: session_id.to_string(),
             healthcheck_url: healthcheck_url.to_string(),
-        })
+        });
     }
 }
 

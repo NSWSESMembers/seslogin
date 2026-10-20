@@ -5,10 +5,11 @@
 //! [`crate::mockqueue`] is an in-process implementation that records messages
 //! instead of sending them, so the API can run with no AWS account at all.
 //!
-//! One trait covers all three queues the API dispatches to (member sync, NITC
-//! export, healthcheck) because the API always has all three configured together.
-//! The worker binaries, which each own exactly one queue, call the lower-level
-//! send functions in [`crate::sqs`] directly.
+//! One trait covers both queues the API dispatches to (member sync, NITC export)
+//! because the API always has both configured together, plus the kiosk healthcheck
+//! ping, which is not queued (see [`Handler::ping_healthcheck`]). The worker
+//! binaries, which each own exactly one queue, call the lower-level send functions
+//! in [`crate::sqs`] directly.
 
 use std::future::Future;
 use thiserror::Error;
@@ -53,12 +54,15 @@ pub trait Handler: Sync {
         version: u64,
     ) -> impl Future<Output = Result<()>> + Send;
 
-    /// Ping a kiosk session's configured healthcheck URL.
-    fn enqueue_healthcheck(
+    /// Ping a kiosk session's configured healthcheck URL. Not queued: the real
+    /// implementation makes the request inline ([`crate::healthcheck::ping`]) and
+    /// never fails. It lives on this trait so that `poem-local`, which may be pointed
+    /// at a snapshot holding real kiosks' URLs, records the ping instead of sending it.
+    fn ping_healthcheck(
         &self,
         session_id: &str,
         healthcheck_url: &str,
-    ) -> impl Future<Output = Result<()>> + Send;
+    ) -> impl Future<Output = ()> + Send;
 }
 
 #[cfg(test)]
