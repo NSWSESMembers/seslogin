@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<6ad5f4dee0d15bfcbb119427b2d752c5>>
+ * @generated SignedSource<<c7ffb24af3d84219bd40421c06a6c268>>
  * @lightSyntaxTransform
  */
 
@@ -14,6 +14,9 @@ export type UserNewQuery$data = {
     readonly id: string;
     readonly name: string;
   }>;
+  readonly users: ReadonlyArray<{
+    readonly email: string;
+  }>;
 };
 export type UserNewQuery = {
   response: UserNewQuery$data;
@@ -21,33 +24,39 @@ export type UserNewQuery = {
 };
 
 const node: ConcreteRequest = (function(){
-var v0 = [
-  {
-    "alias": null,
-    "args": null,
-    "concreteType": "Location",
-    "kind": "LinkedField",
-    "name": "locations",
-    "plural": true,
-    "selections": [
-      {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "id",
-        "storageKey": null
-      },
-      {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "name",
-        "storageKey": null
-      }
-    ],
-    "storageKey": null
-  }
-];
+var v0 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
+  "name": "id",
+  "storageKey": null
+},
+v1 = {
+  "alias": null,
+  "args": null,
+  "concreteType": "Location",
+  "kind": "LinkedField",
+  "name": "locations",
+  "plural": true,
+  "selections": [
+    (v0/*:: as any*/),
+    {
+      "alias": null,
+      "args": null,
+      "kind": "ScalarField",
+      "name": "name",
+      "storageKey": null
+    }
+  ],
+  "storageKey": null
+},
+v2 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
+  "name": "email",
+  "storageKey": null
+};
 return {
   "fragment": {
     "argumentDefinitions": [],
@@ -56,7 +65,21 @@ return {
       "throwOnFieldError": true
     },
     "name": "UserNewQuery",
-    "selections": (v0/*:: as any*/),
+    "selections": [
+      (v1/*:: as any*/),
+      {
+        "alias": null,
+        "args": null,
+        "concreteType": "User",
+        "kind": "LinkedField",
+        "name": "users",
+        "plural": true,
+        "selections": [
+          (v2/*:: as any*/)
+        ],
+        "storageKey": null
+      }
+    ],
     "type": "QueryRoot",
     "abstractKey": null
   },
@@ -65,19 +88,34 @@ return {
     "argumentDefinitions": [],
     "kind": "Operation",
     "name": "UserNewQuery",
-    "selections": (v0/*:: as any*/)
+    "selections": [
+      (v1/*:: as any*/),
+      {
+        "alias": null,
+        "args": null,
+        "concreteType": "User",
+        "kind": "LinkedField",
+        "name": "users",
+        "plural": true,
+        "selections": [
+          (v2/*:: as any*/),
+          (v0/*:: as any*/)
+        ],
+        "storageKey": null
+      }
+    ]
   },
   "params": {
-    "cacheID": "6d6b5d994f963862139042031bc09a43",
+    "cacheID": "f32adb08e30b2f4ed95f2727eb9f378c",
     "id": null,
     "metadata": {},
     "name": "UserNewQuery",
     "operationKind": "query",
-    "text": "query UserNewQuery {\n  locations {\n    id\n    name\n  }\n}\n"
+    "text": "query UserNewQuery {\n  locations {\n    id\n    name\n  }\n  users {\n    email\n    id\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "3a1a7cc7ccecb7ff5f7f7dc63093b1d1";
+(node as any).hash = "c7a3eedc72154374464aa0a98afe0ead";
 
 export default node;
