@@ -105,3 +105,36 @@ describe("SessionForm Who's here", () => {
     ).toHaveAttribute("aria-pressed", "false");
   });
 });
+
+describe("SessionForm Confirm visitors", () => {
+  async function toggleAndSave(initialConfig: Record<string, unknown>) {
+    cleanup();
+    const onSubmit = vi.fn();
+    render(
+      <SessionForm
+        initialName="Kiosk"
+        initialConfig={JSON.stringify(initialConfig)}
+        initialHealthcheckUrl=""
+        isMutationInFlight={false}
+        onSubmit={onSubmit}
+      />,
+    );
+    const user = UserEvent.setup();
+    await user.click(
+      screen.getByRole("checkbox", { name: /Confirm visitors/ }),
+    );
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    const formData = onSubmit.mock.calls[0][0] as FormData;
+    return JSON.parse(formData.get("config") as string);
+  }
+
+  it("turns the option on", async () => {
+    const config = await toggleAndSave({ guests: true });
+    expect(config).toEqual({ guests: true, confirmVisitors: true });
+  });
+
+  it("drops the key when turned off", async () => {
+    const config = await toggleAndSave({ confirmVisitors: true });
+    expect(config).toEqual({});
+  });
+});

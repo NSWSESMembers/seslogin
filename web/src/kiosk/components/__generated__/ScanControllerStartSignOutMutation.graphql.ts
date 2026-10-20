@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<893375f3dcd8684c264636b9ab263bcd>>
+ * @generated SignedSource<<476d5c9827ca81d4f1b5a16f5affb270>>
  * @lightSyntaxTransform
  */
 
@@ -8,7 +8,7 @@
 // @ts-nocheck
 
 import { ConcreteRequest } from 'relay-runtime';
-export type RegisterState = "NOT_FOUND" | "SIGNED_IN" | "SIGN_OUT_PENDING" | "%future added value";
+export type RegisterState = "CONFIRM_VISITOR" | "NOT_FOUND" | "SIGNED_IN" | "SIGN_OUT_PENDING" | "%future added value";
 export type ScanControllerStartSignOutMutation$variables = {
   id: string;
   quickPick: boolean;

@@ -71,6 +71,8 @@ interface BasicSessionModeFieldsProps {
   onGuestsChange: (next: boolean) => void;
   quickPickCategories: boolean;
   onQuickPickCategoriesChange: (next: boolean) => void;
+  confirmVisitors: boolean;
+  onConfirmVisitorsChange: (next: boolean) => void;
   interfaceMode: InterfaceMode;
   onInterfaceModeChange: (next: InterfaceMode) => void;
   signedInStatusMode: SignedInStatusMode;
@@ -176,6 +178,23 @@ function withQuickPickCategories(
 
 function getQuickPickCategoriesFromConfig(config: ConfigObject): boolean {
   return !!config.quickPickCategories;
+}
+
+function withConfirmVisitors(
+  config: ConfigObject,
+  enabled: boolean,
+): ConfigObject {
+  const next = { ...config };
+  if (enabled) {
+    next.confirmVisitors = true;
+  } else {
+    delete next.confirmVisitors;
+  }
+  return next;
+}
+
+function getConfirmVisitorsFromConfig(config: ConfigObject): boolean {
+  return !!config.confirmVisitors;
 }
 
 /**
@@ -362,6 +381,8 @@ function BasicSessionModeFields({
   onGuestsChange,
   quickPickCategories,
   onQuickPickCategoriesChange,
+  confirmVisitors,
+  onConfirmVisitorsChange,
   interfaceMode,
   onInterfaceModeChange,
   signedInStatusMode,
@@ -439,6 +460,18 @@ function BasicSessionModeFields({
               }
               title="Quick pick categories"
               description="on the sign-out screen, show quick-pick buttons for the location's and the member's own recently-used categories before the full category list, so people converge on the same categories instead of picking slightly different ones each time"
+            />
+            <OptionRow
+              input={
+                <input
+                  type="checkbox"
+                  checked={confirmVisitors}
+                  onChange={(e) => onConfirmVisitorsChange(e.target.checked)}
+                  className="mt-0.5"
+                />
+              }
+              title="Confirm visitors"
+              description="before signing in a member from another unit, ask them to confirm their name and unit, so a mistyped member ID doesn't sign in the wrong person"
             />
           </OptionList>
         </FormField>
@@ -582,6 +615,7 @@ export default function SessionForm({
   const sessionMode = getSessionModeFromConfig(parsedConfig);
   const guests = getGuestsFromConfig(parsedConfig);
   const quickPickCategories = getQuickPickCategoriesFromConfig(parsedConfig);
+  const confirmVisitors = getConfirmVisitorsFromConfig(parsedConfig);
   const interfaceMode = getInterfaceModeFromConfig(parsedConfig);
   const signedInStatusMode = getSignedInStatusModeFromConfig(parsedConfig);
   const theme = getThemeFromConfig(parsedConfig);
@@ -605,6 +639,14 @@ export default function SessionForm({
 
   function handleQuickPickCategoriesChange(enabled: boolean) {
     const nextConfig = withQuickPickCategories(
+      parseConfigObject(configJson),
+      enabled,
+    );
+    setConfigJson(JSON.stringify(nextConfig, null, 2));
+  }
+
+  function handleConfirmVisitorsChange(enabled: boolean) {
+    const nextConfig = withConfirmVisitors(
       parseConfigObject(configJson),
       enabled,
     );
@@ -651,6 +693,8 @@ export default function SessionForm({
             onGuestsChange={handleGuestsChange}
             quickPickCategories={quickPickCategories}
             onQuickPickCategoriesChange={handleQuickPickCategoriesChange}
+            confirmVisitors={confirmVisitors}
+            onConfirmVisitorsChange={handleConfirmVisitorsChange}
             interfaceMode={interfaceMode}
             onInterfaceModeChange={handleInterfaceModeChange}
             signedInStatusMode={signedInStatusMode}

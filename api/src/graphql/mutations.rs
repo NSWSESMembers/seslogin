@@ -188,6 +188,10 @@ enum RegisterState {
     NotFound,
     SignedIn,
     SignOutPending,
+    /// The member belongs to another unit and would have been signed in here, but
+    /// the kiosk asked to confirm that first (`confirmVisitor`). Nothing was
+    /// written; `person` says who the number belongs to.
+    ConfirmVisitor,
 }
 
 #[derive(SimpleObject)]
@@ -202,6 +206,9 @@ struct RegisterResult<A: App + HasDb + Send + Sync + 'static> {
     /// also what a failed build returns, so the kiosk falls back to the full
     /// category tree rather than failing the scan.
     quick_pick: Option<QuickPick<A>>,
+    /// Who the member number belongs to. Only populated when `state` is
+    /// `CONFIRM_VISITOR`; otherwise read it from `period.person`.
+    person: Option<Person<A>>,
 }
 
 #[derive(SimpleObject)]
@@ -382,6 +389,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
             state: RegisterState::SignOutPending,
             period: Some(Period::new(period)),
             quick_pick,
+            person: None,
         }
     }
 
@@ -2217,6 +2225,14 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
                     off has no use for them."
         )]
         quick_pick: Option<bool>,
+        #[graphql(
+            desc = "Before signing in a member whose home unit isn't this kiosk's location, \
+                    return `CONFIRM_VISITOR` instead and write nothing, so the kiosk can \
+                    check a mistyped number isn't about to sign in the wrong person. The \
+                    kiosk repeats the call without it once they confirm. Has no effect on \
+                    a sign-out, which shows the member's name before anything is written."
+        )]
+        confirm_visitor: Option<bool>,
     ) -> Result<RegisterResult<A>> {
         require_writable(ctx)?;
 
@@ -2246,6 +2262,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
                 state: RegisterState::NotFound,
                 period: None,
                 quick_pick: None,
+                person: None,
             });
         };
 
@@ -2275,6 +2292,24 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
                 .sign_out_pending(location_id, &person_id, period, quick_pick)
                 .await)
         } else {
+            if confirm_visitor.unwrap_or(false) {
+                let loader = ctx.data_unchecked::<DataLoader<DatabaseLoader<A>>>();
+                let person = loader
+                    .load_one(PersonId(ID(person_id.clone())))
+                    .await
+                    .map_err(|e| anyhow!("Failed to load person via DataLoader: {}", e))?
+                    .flatten()
+                    .ok_or_else(|| anyhow!("Person with ID {person_id} missing"))?;
+                if person.rec.location_id != *location_id {
+                    return Ok(RegisterResult {
+                        state: RegisterState::ConfirmVisitor,
+                        period: None,
+                        quick_pick: None,
+                        person: Some(person),
+                    });
+                }
+            }
+
             // no existing unfinished period, so sign them in
             let rec = self
                 .app
@@ -2287,6 +2322,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
                 state: RegisterState::SignedIn,
                 period: Some(Period::new(rec)),
                 quick_pick: None,
+                person: None,
             })
         }
     }

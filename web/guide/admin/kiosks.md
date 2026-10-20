@@ -69,6 +69,10 @@ You choose these when you set a kiosk up, and can change them later with
 - **Quick pick categories**: when a member signs out, shows buttons for the
   categories your unit and that member have used recently, before the full list.
   It saves time, and keeps everyone choosing the same categories.
+- **Confirm visitors**: before signing in a member from another unit, the kiosk
+  shows their name and home unit and asks "Are you …?". Most mistyped SES IDs
+  belong to someone at another unit, so this stops people signing in as the
+  wrong person. Members of your own unit are signed in straight away, as usual.
 
 ### Other settings
 
@@ -98,7 +102,9 @@ forgot to sign out. Choosing **Yeah** back-dates the sign-out to one hour after
 they arrived, and they can then correct the times before signing back in.
 
 Members from other units can sign in at your kiosks. Their time appears in your
-unit's activity, with their home unit shown under their name.
+unit's activity, with their home unit shown under their name. With
+[Confirm visitors](#options) turned on, the kiosk asks them to confirm who they
+are first.
 
 The [kiosk guide](../kiosk/quick-start.md) explains all this for members. Point
 your unit at it: it's at **/guide/kiosk** on the SES Login site, and the home
