@@ -1,4 +1,4 @@
-/* Icons for the two options on the home page.
+/* Icons for the options on the home page.
  *
  * Inline rather than files under `assets/` because these are static chrome,
  * not the data-driven category art. Drawn on the same 48-unit grid, 2.4
@@ -59,6 +59,26 @@ export function AdminIcon({ className }: IconProps) {
         strokeWidth={3}
       />
       <circle cx="24" cy="28" r="2.1" className="icon-accent" stroke="none" />
+    </svg>
+  );
+}
+
+/** An open book: the user guides. */
+export function GuideIcon({ className }: IconProps) {
+  return (
+    <svg
+      viewBox="0 0 48 48"
+      aria-hidden="true"
+      className={`icon-stroke ${className ?? ""}`}
+      {...strokeProps}
+    >
+      <path d="M24 12 C19 8.5 12 8 6 9.5 V37 C12 35.5 19 36 24 39.5 C29 36 36 35.5 42 37 V9.5 C36 8 29 8.5 24 12 Z" />
+      <path d="M24 12 V39.5" />
+      <path
+        d="M11 17 C14 16.4 17 16.6 19.5 17.6 M11 23 C14 22.4 17 22.6 19.5 23.6"
+        className="icon-accent-stroke"
+        strokeWidth={3}
+      />
     </svg>
   );
 }

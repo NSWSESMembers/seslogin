@@ -25,6 +25,26 @@ function linksContainer() {
 }
 
 describe("MenuBar", () => {
+  it("keeps the user guide outside the collapsible menu on phones", () => {
+    renderMenuBar("/admin");
+    const links = screen.getAllByRole("link", { name: "User guide" });
+    expect(links).toHaveLength(2);
+    for (const link of links) {
+      expect(link).toHaveAttribute("href", "/guide/admin");
+      expect(link).toHaveAttribute("target", "_blank");
+    }
+    // One sits beside the mobile toggle (never collapsed), one at the far right
+    // of the desktop menu.
+    expect(linksContainer()).not.toContainElement(links[0]);
+    expect(linksContainer()).toContainElement(links[1]);
+    expect(links[1].className).toContain("md:ml-auto");
+  });
+
+  it("doesn't repeat the guide link's name on the mobile toggle", () => {
+    renderMenuBar("/admin/guide/kiosks");
+    expect(screen.getByRole("button", { name: "Menu" })).toBeInTheDocument();
+  });
+
   it("shows the current section name on the mobile toggle", () => {
     renderMenuBar("/admin");
     expect(screen.getByRole("button", { name: "Home" })).toBeInTheDocument();

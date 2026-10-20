@@ -21,6 +21,7 @@ import Home from "./home/Home";
 const AdminApp = lazyWithReload("admin", () => import("./admin/AdminApp"));
 const EnrollApp = lazyWithReload("enroll", () => import("./enroll/EnrollApp"));
 const KioskMain = lazyWithReload("kiosk", () => import("./kiosk/KioskMain"));
+const GuideApp = lazyWithReload("guide", () => import("./guide/GuideApp"));
 const StatusDemo = lazyWithReload("demo", () => import("./demo/StatusDemo"));
 const TimeEntryDemo = lazyWithReload(
   "demo",
@@ -57,6 +58,9 @@ export default function Router() {
             <Route path="/" element={<HomeLayout />}>
               <Route index element={<Home />} />
             </Route>
+
+            {/* User guides - public, static pages compiled from web/guide/ */}
+            <Route path="/guide/*" element={<GuideApp />} />
 
             {/* Admin routes - auth required at /admin/* */}
             <Route path="/admin/*" element={<AdminApp />} />
