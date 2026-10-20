@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { graphql, useMutation } from "react-relay";
 import type { RecordSourceSelectorProxy } from "relay-runtime";
-import { useNavigate, useParams } from "react-router";
+import { useLocation, useNavigate, useParams } from "react-router";
 import { useRetryableLazyLoadQuery } from "../../components/useRetryableLazyLoadQuery";
 import { dateToInputDateTimeLocal } from "../../lib/time";
 import useSelectedLocation from "../components/useSelectedLocation";
@@ -18,10 +18,12 @@ import { Button } from "../../components/ui/Button";
 import { StatusMessage } from "../../components/ui/StatusMessage";
 import useCanEditSelectedLocation from "../components/useCanEditSelectedLocation";
 import ReadOnlyNotice from "../components/ReadOnlyNotice";
+import { editReturnTo } from "../components/editReturnTo";
 
 function ActivityEditForm() {
   const params = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const { notifyError, notifySuccess } = useNotify();
   const selectedLocation = useSelectedLocation();
   const locationId = selectedLocation.id;
@@ -198,7 +200,7 @@ function ActivityEditForm() {
       return;
     }
     notifySuccess("Activity entry saved");
-    navigate("/admin/activity");
+    navigate(editReturnTo(location.state, "/admin/activity"));
   }
 
   // only offer enabled categories, but keep this period's current category in
