@@ -20,3 +20,6 @@ local/.e2e/
 # Only web/ has a package.json, but the Playwright examples in local/examples are
 # run with a playwright installed wherever Node can resolve it -- often here.
 /node_modules/
+
+# Guide tooling scratch (screenshot/video work files)
+local/.guide/

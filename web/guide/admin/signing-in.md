@@ -13,6 +13,8 @@ or with a passkey saved on your phone or computer.
 2. Enter your email address and press **Send code**.
 3. Enter the six-digit code from the email and press **Verify code**.
 
+![The code screen, with the code box and Verify code button highlighted](../screenshots/sign-in-code.png "Enter the code from your email, then press Verify code.")
+
 The code expires after 10 minutes. If it doesn't arrive, check your junk mail,
 make sure you typed the address your account was set up with, and press
 **Start over** to try again.
@@ -33,6 +35,8 @@ it can't be guessed or phished, and never leaves your device.
 After you sign in with an email code, SES Login offers to add one. Press
 **Add a passkey** and follow your device's prompts, or **Maybe later** to skip
 (you'll be asked again in a day or so).
+
+![The offer to add a passkey, with Add a passkey and Maybe later highlighted](../screenshots/passkey-prompt.png "Add a passkey now, or choose Maybe later.")
 
 You can also add one at any time from **Settings → Passkeys**. You can save up
 to 10 — one for each phone or computer you use.

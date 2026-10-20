@@ -7,6 +7,8 @@ order: 40
 If you've been signed in for more than 12 hours, the kiosk assumes you probably
 forgot to sign out last time, and asks.
 
+![The kiosk asking "Did you forget to sign out?", with two answers](../screenshots/kiosk-forgot.png "Did you forget to sign out?")
+
 ## "Yeah, I forgot"
 
 The kiosk closes your old visit for you, with a finish time one hour after you

@@ -20,6 +20,8 @@ Get an email each day summarising the previous day's activity at your unit.
 2. Tick each unit you want included.
 3. Press **Save**.
 
+![Daily Email Summary settings, with the unit's tick box and Save highlighted](../screenshots/daily-email.png "Tick each unit you want in your daily email.")
+
 Emails are sent just after midnight. Untick a unit and save to stop them.
 
 ## Activity display

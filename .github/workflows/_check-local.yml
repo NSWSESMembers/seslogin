@@ -31,18 +31,19 @@ jobs:
           cache-dependency-path: web/package-lock.json
       - name: Install web dependencies (for prettier)
         run: cd web && npm ci
-      # Deliberately local/examples only, not all of local/: local/seed/*.json is written
-      # by `local-seed extract` in serde_json's pretty format, so prettier would fight the
-      # generator and fail after every legitimate re-extract.
-      - name: Check local/examples formatting
-        run: cd web && npx prettier --check ../local/examples
+      # Deliberately local/examples and local/guide only, not all of local/:
+      # local/seed/*.json is written by `local-seed extract` in serde_json's pretty
+      # format, so prettier would fight the generator and fail after every legitimate
+      # re-extract.
+      - name: Check local/examples and local/guide formatting
+        run: cd web && npx prettier --check ../local/examples ../local/guide
       - name: Check local/ scripts parse
-        run: for f in local/examples/*.mjs; do node --check "$f"; done
+        run: for f in local/examples/*.mjs local/guide/*.mjs; do node --check "$f"; done
 
       # dynamodb.sh and e2e.sh are the two pieces of the local stack with no other
       # coverage at all: nothing compiles them and nothing type-checks them.
       - name: Shellcheck the local stack scripts
-        run: shellcheck local/*.sh
+        run: shellcheck local/*.sh local/guide/*.sh
 
       # Fixture invariants: paired values agreeing, references resolving, docs and
       # fixtures naming the same ids. Needs no database.
