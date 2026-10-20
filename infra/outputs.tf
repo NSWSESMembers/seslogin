@@ -1,8 +1,3 @@
-output "healthcheck_queue_url" {
-  description = "URL of the healthcheck SQS queue"
-  value       = aws_sqs_queue.healthcheck.url
-}
-
 output "nitc_queue_url" {
   description = "URL of the NITC export SQS queue"
   value       = aws_sqs_queue.nitc_export.url

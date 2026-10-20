@@ -42,7 +42,6 @@ resource "aws_iam_role_policy" "api_lambda_sqs_send" {
       Resource = [
         aws_sqs_queue.member_sync.arn,
         aws_sqs_queue.nitc_export.arn,
-        aws_sqs_queue.healthcheck.arn,
       ]
     }]
   })
@@ -185,36 +184,6 @@ resource "aws_iam_role_policy" "nitc_export_lambda_sqs" {
         "sqs:SendMessage",
       ]
       Resource = aws_sqs_queue.nitc_export.arn
-    }]
-  })
-}
-
-# ── Healthcheck lambda role ────────────────────────────────────────────────────
-
-resource "aws_iam_role" "healthcheck_lambda" {
-  name               = "seslogin-healthcheck-lambda-role"
-  assume_role_policy = data.aws_iam_policy_document.lambda_assume_role.json
-}
-
-resource "aws_iam_role_policy_attachment" "healthcheck_lambda_logs" {
-  role       = aws_iam_role.healthcheck_lambda.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
-}
-
-resource "aws_iam_role_policy" "healthcheck_lambda_sqs_consume" {
-  name = "sqs-consume"
-  role = aws_iam_role.healthcheck_lambda.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Effect = "Allow"
-      Action = [
-        "sqs:ReceiveMessage",
-        "sqs:DeleteMessage",
-        "sqs:GetQueueAttributes",
-      ]
-      Resource = aws_sqs_queue.healthcheck.arn
     }]
   })
 }

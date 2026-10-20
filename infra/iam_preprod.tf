@@ -20,7 +20,6 @@ resource "aws_iam_role_policy" "preprod_api_lambda_sqs_send" {
       Resource = [
         aws_sqs_queue.member_sync.arn,
         aws_sqs_queue.nitc_export.arn,
-        aws_sqs_queue.healthcheck.arn,
       ]
     }]
   })
