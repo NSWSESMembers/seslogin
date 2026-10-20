@@ -12,6 +12,10 @@ Every `*.md` file in those folders (except any starting with `_`) is a page. The
 web build compiles them into the app; readers can search both guides and print
 either from `/guide/<guide>/print`. Screenshots for both live in `screenshots/`.
 
+**Any change to what admins or kiosk users see or do should update the matching
+guide in the same PR.** See [CONTRIBUTING.md](../../CONTRIBUTING.md#user-guide)
+for the policy.
+
 ## Previewing
 
 `npm run dev` (or `make dev` / `make dev-local`) and open

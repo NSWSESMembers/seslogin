@@ -49,7 +49,7 @@ infra/  Terraform for AWS infrastructure
 
 > **Note:** `infra/` is published as a reference for the canonical seslogin.com deployment — it hardcodes the production AWS account, DNS zone, and ACM records, so `terraform apply` from a fork will not work without adapting bucket names, domains, and IAM resources. Use it as a worked example, not a turnkey deploy.
 
-See [DEVELOPMENT.md](DEVELOPMENT.md) for local setup, [SCHEMA.md](SCHEMA.md) for the data model, and [MANUAL.md](MANUAL.md) for operator documentation.
+See [DEVELOPMENT.md](DEVELOPMENT.md) for local setup, [SCHEMA.md](SCHEMA.md) for the data model, and [web/guide/](web/guide/) for the admin and kiosk user guides (published at `/guide`).
 
 ---
 
