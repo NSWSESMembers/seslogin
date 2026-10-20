@@ -8,9 +8,21 @@ export function Panel({ children }: { children: ReactNode }) {
   );
 }
 
-export function PanelBox({ children }: { children: ReactNode }) {
+/**
+ * `wide` is for a panel holding a full labelled form (`FieldList`), whose label column
+ * leaves too little room for the inputs at the default width.
+ */
+export function PanelBox({
+  wide = false,
+  children,
+}: {
+  wide?: boolean;
+  children: ReactNode;
+}) {
   return (
-    <div className="w-[min(640px,100%)] rounded-none border-0 bg-surface-panel p-6 text-left shadow-none sm:rounded-[28px] sm:border sm:border-[rgba(139,75,36,0.18)] sm:p-10 sm:shadow-[0_24px_80px_rgba(101,53,30,0.16)] sm:dark:border-white/10 sm:dark:shadow-[0_24px_80px_rgba(0,0,0,0.55)]">
+    <div
+      className={`${wide ? "w-[min(880px,100%)]" : "w-[min(640px,100%)]"} rounded-none border-0 bg-surface-panel p-6 text-left shadow-none sm:rounded-[28px] sm:border sm:border-[rgba(139,75,36,0.18)] sm:p-10 sm:shadow-[0_24px_80px_rgba(101,53,30,0.16)] sm:dark:border-white/10 sm:dark:shadow-[0_24px_80px_rgba(0,0,0,0.55)]`}
+    >
       {children}
     </div>
   );

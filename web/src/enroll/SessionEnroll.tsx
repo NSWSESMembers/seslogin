@@ -143,7 +143,7 @@ function SessionEnrollForm({ fingerprint }: { fingerprint: string }) {
 
   return (
     <Panel>
-      <PanelBox>
+      <PanelBox wide>
         <PanelTitle>Enroll this kiosk</PanelTitle>
         <PanelIntro>
           Choose the location it belongs to and give it a name to describe the

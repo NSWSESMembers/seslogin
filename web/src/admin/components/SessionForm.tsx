@@ -295,14 +295,14 @@ function SegmentedControl<T extends string>({
 }: SegmentedControlProps<T>) {
   return (
     <div
-      className="inline-flex overflow-hidden rounded-lg border border-line-strong"
+      className="inline-grid max-w-full auto-cols-fr grid-flow-col overflow-hidden rounded-lg border border-line-strong"
       role="group"
       aria-label={label}
     >
       {options.map((option, index) => (
         <button
           key={option.value}
-          className={`m-0 min-w-23 cursor-pointer rounded-none border-0 bg-surface-raised px-3 py-1.5 text-ink hover:bg-surface-sunken aria-pressed:bg-navy aria-pressed:text-surface aria-pressed:hover:bg-navy-active ${index > 0 ? "border-l border-line-strong" : ""}`}
+          className={`m-0 min-w-0 cursor-pointer rounded-none border-0 bg-surface-raised px-3 py-1.5 text-ink hover:bg-surface-sunken aria-pressed:bg-navy aria-pressed:text-surface aria-pressed:hover:bg-navy-active sm:min-w-23 ${index > 0 ? "border-l border-line-strong" : ""}`}
           type="button"
           onClick={() => onChange(option.value)}
           aria-pressed={value === option.value}
