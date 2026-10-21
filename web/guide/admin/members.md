@@ -15,13 +15,13 @@ Type part of a name or SES ID into the filter at the top of the list.
 
 ## Members kept up to date from SES
 
-For most units, SES Login copies your members in from SES records automatically,
+For most units, SESLogin copies your members in from SES records automatically,
 once a day. These members have a **green dot**:
 
 - their name and SES ID come from SES, so you can't edit or delete them here —
   correct them in SES and the change arrives within a day;
 - new members appear within a day of being added in SES;
-- members who leave your unit in SES are removed from SES Login automatically —
+- members who leave your unit in SES are removed from SESLogin automatically —
   see [below](#when-members-leave-your-unit).
 
 The top of the member list shows **Last successful member sync**. If it's more
@@ -31,7 +31,7 @@ daily update.
 
 ## When members leave your unit
 
-When someone no longer appears in your unit's list in SES, SES Login doesn't
+When someone no longer appears in your unit's list in SES, SESLogin doesn't
 remove them straight away, because they may only be moving to another unit, or
 SES may be briefly out of step.
 
@@ -60,7 +60,7 @@ brings them back, with their history.
   lose members it simply hadn't heard about.
 - If an unusually large share of your unit would be removed at once, which
   usually means a problem at SES rather than a mass departure, the update stops
-  for your unit without changing anything, and the SES Login maintainers check it
+  for your unit without changing anything, and the SESLogin maintainers check it
   by hand.
 
 ### Someone is marked by mistake

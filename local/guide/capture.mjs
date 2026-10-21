@@ -43,15 +43,7 @@ const ORANGE = "#f28c28";
 
 // Runs in every page and frame: the production look, without dev-only chrome.
 function presentation() {
-  const relabel = () => {
-    const walk = document.createTreeWalker(
-      document.documentElement,
-      NodeFilter.SHOW_TEXT,
-    );
-    for (let n = walk.nextNode(); n; n = walk.nextNode()) {
-      if (n.nodeValue.includes("SES Activity"))
-        n.nodeValue = n.nodeValue.replaceAll("SES Activity", "SES Login");
-    }
+  const hideDevChrome = () => {
     for (const el of document.querySelectorAll(
       "footer a, footer span, .fixed, [class*='bottom-']",
     )) {
@@ -59,7 +51,7 @@ function presentation() {
       if (t === "GraphiQL" || t === "dev") el.style.visibility = "hidden";
     }
   };
-  new MutationObserver(relabel).observe(document, {
+  new MutationObserver(hideDevChrome).observe(document, {
     childList: true,
     subtree: true,
     characterData: true,

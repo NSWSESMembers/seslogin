@@ -53,7 +53,7 @@ export default function Home() {
                 Guide
               </span>
               <p className="my-4 flex-1 text-navy group-hover:text-navy-light">
-                Learn how to use SES Login, whether you run your unit or sign in
+                Learn how to use SESLogin, whether you run your unit or sign in
                 at a kiosk
               </p>
               <GuideIcon className="size-16.25 shrink-0 text-navy group-hover:text-navy-light group-hover:[--icon-accent:var(--color-accent-light)] max-md:hidden" />

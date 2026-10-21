@@ -15,7 +15,7 @@ const STEPS: ReactNode[] = [
     Choose <strong>Add to Home Screen</strong>, then tap <strong>Add</strong>.
   </>,
   <>
-    Close this tab, open <strong>seslogin</strong> from the new Home Screen
+    Close this tab, open <strong>SESLogin</strong> from the new Home Screen
     icon, and enroll the kiosk there.
   </>,
 ];

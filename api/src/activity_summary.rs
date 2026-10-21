@@ -156,7 +156,7 @@ pub async fn run(
             .collect();
 
         // Build email.
-        let subject = format!("SES Activity Summary — {}", date_label);
+        let subject = format!("SESLogin Summary — {}", date_label);
         let html = build_summary_html(
             &date_label,
             &locations_data
@@ -265,7 +265,7 @@ fn build_summary_html(
 <html lang="en">
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
 <body style="font-family:Arial,Helvetica,sans-serif;max-width:600px;margin:0 auto;padding:16px;color:#222;background:#fff">
-<h2 style="color:#1a56db;margin-top:0">SES Activity Summary &mdash; {date}</h2>
+<h2 style="color:#1a56db;margin-top:0">SESLogin Summary &mdash; {date}</h2>
 "#,
         date = date_label
     );

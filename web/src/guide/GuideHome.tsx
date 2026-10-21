@@ -21,7 +21,7 @@ export default function GuideHome() {
         How can we help?
       </h1>
       <p className="mt-3 max-w-2xl text-lg text-ink-muted">
-        Guides to running your unit on SES Login, and to signing in and out at
+        Guides to running your unit on SESLogin, and to signing in and out at
         your unit's kiosk.
       </p>
 

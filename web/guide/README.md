@@ -1,6 +1,6 @@
 # User guides — source
 
-SES Login has two user guides, published on the site at **/guide** for anyone to
+SESLogin has two user guides, published on the site at **/guide** for anyone to
 read, no sign-in needed:
 
 | Folder   | Guide       | For                                        | On the site    |
@@ -135,7 +135,7 @@ sharp on high-resolution screens.
   **Kiosks**, **Save**).
 - The kiosk guide is for members, who may never see the dashboard: keep it short,
   and send anything an administrator has to do to the admin guide.
-- The product is **SES Login**. NITCs live in **Beacon**.
+- The product is **SESLogin** — one word, never "SES Login" or "seslogin". NITCs live in **Beacon**.
 - Australian spelling (organise, colour).
 - In the admin guide, say when something needs the **Admin** role rather than
   **Read only** — see `admin/roles-and-access.md`.

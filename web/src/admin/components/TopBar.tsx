@@ -18,7 +18,7 @@ export default function TopBar({ username }: TopBarProps) {
       }
     >
       <a href="/" className="text-white no-underline hover:underline">
-        SES Activity
+        SESLogin
       </a>
       {nonProdDb && (
         // Absolutely positioned so it centres on the bar itself rather than on

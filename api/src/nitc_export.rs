@@ -768,7 +768,7 @@ pub async fn sync_nitc_event<D: db::Handler>(
         );
         (
             "SESLOGIN - unused".to_string(),
-            "Event created by SES Activity NITC export - previously had entries but they have all been removed".to_string(),
+            "Event created by SESLogin NITC export - previously had entries but they have all been removed".to_string(),
             event_start,
             event_end,
             Vec::<SesParticipantUpsert>::new(),
@@ -831,7 +831,7 @@ pub async fn sync_nitc_event<D: db::Handler>(
 
         (
             event_name,
-            "Event created by SES Activity NITC export".to_string(),
+            "Event created by SESLogin NITC export".to_string(),
             start_rfc,
             end_rfc,
             participants,

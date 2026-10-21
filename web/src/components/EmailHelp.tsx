@@ -7,7 +7,7 @@ import { SUPPORT_EMAIL, SUPPORT_MAILTO } from "../lib/support";
 export function HelpUses() {
   return (
     <ul className="my-4 list-disc pl-6">
-      <li>ask for help using seslogin</li>
+      <li>ask for help using SESLogin</li>
       <li>report a bug or something that doesn&apos;t look right</li>
       <li>get a new user set up</li>
       <li>request a new feature or suggest an improvement</li>
@@ -24,7 +24,7 @@ export function EmailHelp({ onClose }: { onClose?: () => void }) {
   return (
     <div className="text-left">
       <p className="my-4">
-        Email the seslogin team at <a href={SUPPORT_MAILTO}>{SUPPORT_EMAIL}</a>{" "}
+        Email the SESLogin team at <a href={SUPPORT_MAILTO}>{SUPPORT_EMAIL}</a>{" "}
         about anything, for example to:
       </p>
       <HelpUses />

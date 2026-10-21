@@ -188,7 +188,7 @@ fn initialize_result(params: &Value) -> Value {
             "name": "seslogin",
             "version": crate::environment::GIT_REV,
         },
-        "instructions": "seslogin tracks member check-in/check-out attendance across \
+        "instructions": "SESLogin tracks member check-in/check-out attendance across \
             locations. Start with `list_locations` (the units you can see) and `whoami` \
             (who you are acting as, with your own settings). You can look up and manage \
             members (`list_members`, `get_member`, `find_member_by_number`, `create_member`, \
@@ -207,7 +207,7 @@ fn initialize_result(params: &Value) -> Value {
             you have connected (`list_connected_apps`, `revoke_connected_app`; revoking the one \
             you are using ends this session), your passkeys (`list_passkeys`, `rename_passkey`, \
             `delete_passkey`; adding one is done in the browser) and a help request to the \
-            seslogin team (`submit_feedback`, which sends a real message). For super users \
+            SESLogin team (`submit_feedback`, which sends a real message). For super users \
             there is also the admin user list (`list_users`, `create_user`, `update_user`, \
             `disable_user`/`enable_user`), categories (`create_category`, `update_category`), \
             NITC groups (`list_nitc_groups`, `get_nitc_group`, `create_nitc_group`, \

@@ -53,12 +53,12 @@ describe("Footer support link", () => {
     await openHelp(screen, environment, true);
 
     expect(
-      await screen.findByText(/Send the seslogin team a message/),
+      await screen.findByText(/Send the SESLogin team a message/),
     ).toBeInTheDocument();
-    expect(screen.getByText("ask for help using seslogin")).toBeInTheDocument();
+    expect(screen.getByText("ask for help using SESLogin")).toBeInTheDocument();
     expect(screen.getByText("admin@example.com")).toBeInTheDocument();
     expect(
-      screen.queryByText(/Email the seslogin team/),
+      screen.queryByText(/Email the SESLogin team/),
     ).not.toBeInTheDocument();
 
     const user = UserEvent.setup();
@@ -94,9 +94,9 @@ describe("Footer support link", () => {
     await openHelp(screen, environment, false);
 
     expect(
-      await screen.findByText(/Email the seslogin team at/),
+      await screen.findByText(/Email the SESLogin team at/),
     ).toBeInTheDocument();
-    expect(screen.getByText("ask for help using seslogin")).toBeInTheDocument();
+    expect(screen.getByText("ask for help using SESLogin")).toBeInTheDocument();
     expect(
       screen.getByRole("link", { name: "Write an email" }),
     ).toHaveAttribute("href", "mailto:support@seslogin.com");
@@ -107,6 +107,6 @@ describe("Footer support link", () => {
     await UserEvent.setup().click(
       screen.getByRole("button", { name: "Close" }),
     );
-    expect(screen.queryByText(/Email the seslogin team at/)).toBeNull();
+    expect(screen.queryByText(/Email the SESLogin team at/)).toBeNull();
   });
 });

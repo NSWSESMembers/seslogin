@@ -123,7 +123,7 @@ async fn check_member_sync(db: &impl Handler, sns_topic_arn: &str, now: u64) -> 
 
     sns.publish()
         .topic_arn(sns_topic_arn)
-        .subject("seslogin: member sync stale alert")
+        .subject("SESLogin: member sync stale alert")
         .message(&message)
         .send()
         .await

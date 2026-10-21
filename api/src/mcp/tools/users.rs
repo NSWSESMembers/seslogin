@@ -95,7 +95,7 @@ pub(super) fn catalogue() -> Vec<Value> {
         json!({
             "name": "whoami",
             "title": "Who am I",
-            "description": "Look up the currently authenticated seslogin user: their id, \
+            "description": "Look up the currently authenticated SESLogin user: their id, \
                 email, whether they're a super user, the locations they can access, and \
                 their own settings (`emailSummaryLocationIds`, the locations whose daily \
                 summary email they get, and `disaggregateVirtualPeriods`; change them with \
@@ -107,7 +107,7 @@ pub(super) fn catalogue() -> Vec<Value> {
         json!({
             "name": "list_users",
             "title": "List users",
-            "description": "List every seslogin admin user (id, email, super/dev/enabled \
+            "description": "List every SESLogin admin user (id, email, super/dev/enabled \
                 flags, last access time, and their location grants with names). Only a \
                 super user may call this — a non-super caller gets an error and should use \
                 `whoami` instead.",
@@ -118,7 +118,7 @@ pub(super) fn catalogue() -> Vec<Value> {
         json!({
             "name": "get_user",
             "title": "Get user",
-            "description": "Look up one seslogin user by id. A non-super caller may only \
+            "description": "Look up one SESLogin user by id. A non-super caller may only \
                 look up their own id — use `whoami` if you don't already know it.",
             "inputSchema": user_input_schema(),
             "outputSchema": user_output_schema(),
@@ -127,7 +127,7 @@ pub(super) fn catalogue() -> Vec<Value> {
         json!({
             "name": "create_user",
             "title": "Create user",
-            "description": "Create a new seslogin admin user. `locationGrants` is a list \
+            "description": "Create a new SESLogin admin user. `locationGrants` is a list \
                 of location ids (see `list_locations`) where the user is an Admin (can \
                 view and change); pass an empty list for a user with no admin access. \
                 `readOnlyLocationGrants` optionally lists locations where the user is Read \
@@ -157,7 +157,7 @@ pub(super) fn catalogue() -> Vec<Value> {
         json!({
             "name": "update_user",
             "title": "Update user",
-            "description": "Update a seslogin user's email, super/dev flags, or location \
+            "description": "Update a SESLogin user's email, super/dev flags, or location \
                 grants (`locationGrants` = Admin, `readOnlyLocationGrants` = Read only; a \
                 location may not be in both). Only the fields you pass are changed — anything omitted (including \
                 `enabled`, which this tool never touches; use `disable_user`/`enable_user` \
@@ -180,7 +180,7 @@ pub(super) fn catalogue() -> Vec<Value> {
         json!({
             "name": "disable_user",
             "title": "Disable user",
-            "description": "Disable a seslogin user, immediately revoking their access \
+            "description": "Disable a SESLogin user, immediately revoking their access \
                 (including any MCP/OAuth grants they've approved — every request re-checks \
                 `enabled`). Only a super user may call this.",
             "inputSchema": user_input_schema(),
@@ -190,7 +190,7 @@ pub(super) fn catalogue() -> Vec<Value> {
         json!({
             "name": "enable_user",
             "title": "Enable user",
-            "description": "Re-enable a previously disabled seslogin user. Only a super \
+            "description": "Re-enable a previously disabled SESLogin user. Only a super \
                 user may call this.",
             "inputSchema": user_input_schema(),
             "outputSchema": user_output_schema(),

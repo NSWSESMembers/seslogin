@@ -29,8 +29,9 @@ Authoring rules are in [web/guide/README.md](web/guide/README.md).
 **Any change to what admins or kiosk users see or do must update the matching
 guide in the same PR** — new features get documented, changed steps get corrected.
 Only changes with no user-visible effect skip it, and the PR description says so
-("Guide: not needed — …"). The product is called **SES Login** in all user-facing
-text, and NITCs are exported to **Beacon**. The guides are public, so they must not
+("Guide: not needed — …"). The product is called **SESLogin** (one word, that
+capitalisation) in all user-facing text; `seslogin` is only the codename in code and
+identifiers. NITCs are exported to **Beacon**. The guides are public, so they must not
 describe anything only signed-in users should see. A broken link between guide
 pages, or a reference to a missing screenshot, fails the web build.
 

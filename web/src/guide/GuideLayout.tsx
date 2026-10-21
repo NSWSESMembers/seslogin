@@ -28,7 +28,7 @@ export default function GuideLayout({ children }: { children: ReactNode }) {
           >
             <img src={logo} alt="" className="size-8" />
             <span className="font-title text-lg font-bold text-navy">
-              SES Login{" "}
+              SESLogin{" "}
               <span className="font-normal text-ink-muted max-sm:hidden">
                 Guide
               </span>
@@ -82,7 +82,7 @@ export default function GuideLayout({ children }: { children: ReactNode }) {
 
       <footer className="border-t border-line print:hidden">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-6 text-sm text-ink-muted">
-          <span>SES Login · NSW SES Volunteers</span>
+          <span>SESLogin · NSW SES Volunteers</span>
           <span className="flex gap-5">
             <Link to="/" className="text-ink-muted underline">
               Home

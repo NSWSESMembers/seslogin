@@ -34,7 +34,7 @@ export default function GuidePrint() {
 
       <header className="mb-10">
         <p className="text-sm font-semibold tracking-wide text-ink-muted uppercase">
-          SES Login
+          SESLogin
         </p>
         <h1 className="font-title text-4xl font-bold text-navy">
           {meta.title}

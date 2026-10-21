@@ -19,12 +19,12 @@ sign in to the admin dashboard on).
 - A reasonably steady internet connection. Kiosks cope with brief drop-outs, but
   a flaky connection slows sign-ins down.
 - Ideally, a computer that stays on, doesn't lock itself when idle, and opens the
-  SES Login kiosk page by itself after a power cut. See
+  SESLogin kiosk page by itself after a power cut. See
   [Keeping a kiosk running](#keeping-a-kiosk-running).
 
 ## Setting up a kiosk
 
-1. On the kiosk computer, open SES Login and choose **Kiosk**. It shows a QR
+1. On the kiosk computer, open SESLogin and choose **Kiosk**. It shows a QR
    code.
 
    ![The kiosk setup screen with its QR code highlighted](../screenshots/kiosk-qr.png "The kiosk waiting to be set up.")
@@ -107,7 +107,7 @@ unit's activity, with their home unit shown under their name. With
 are first.
 
 The [kiosk guide](../kiosk/quick-start.md) explains all this for members. Point
-your unit at it: it's at **/guide/kiosk** on the SES Login site, and the home
+your unit at it: it's at **/guide/kiosk** on the SESLogin site, and the home
 page's **Guide** button leads there.
 
 ## The Kiosks page
@@ -148,7 +148,7 @@ don't need it, or leave it: it's removed automatically after two weeks.
 
 - Set the computer not to sleep, lock or log out when idle, and to switch back on
   after a power cut.
-- Make the browser open the SES Login kiosk page when the computer starts.
+- Make the browser open the SESLogin kiosk page when the computer starts.
 - On Windows, Chrome has a kiosk mode that runs full-screen with no browser
   controls — [this guide](https://superuser.com/a/1363172) explains how.
 - On a Raspberry Pi, [FullPageOS](https://github.com/guysoft/FullPageOS/) boots

@@ -16,14 +16,14 @@ describe("HelpLink with EmailHelp (home page footer)", () => {
     expect(link).toHaveAttribute("href", "mailto:support@seslogin.com");
     await user.click(link);
 
-    expect(screen.getByText(/Email the seslogin team at/)).toBeInTheDocument();
-    expect(screen.getByText("ask for help using seslogin")).toBeInTheDocument();
+    expect(screen.getByText(/Email the SESLogin team at/)).toBeInTheDocument();
+    expect(screen.getByText("ask for help using SESLogin")).toBeInTheDocument();
     expect(
       screen.getByRole("link", { name: "Write an email" }),
     ).toHaveAttribute("href", "mailto:support@seslogin.com");
     expect(screen.queryByRole("textbox")).toBeNull();
 
     await user.click(screen.getByRole("button", { name: "Close" }));
-    expect(screen.queryByText(/Email the seslogin team at/)).toBeNull();
+    expect(screen.queryByText(/Email the SESLogin team at/)).toBeNull();
   });
 });

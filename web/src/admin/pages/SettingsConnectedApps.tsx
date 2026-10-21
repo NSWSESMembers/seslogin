@@ -68,7 +68,7 @@ export default function SettingsConnectedApps() {
     <div>
       <SectionHeading>Connected apps</SectionHeading>
       <p className="my-4">
-        AI tools you connect through seslogin's MCP interface — for example
+        AI tools you connect through SESLogin's MCP interface — for example
         Claude Code or a claude.ai custom connector — appear here once you
         approve them. Each one can act as you, with your permissions. Disconnect
         anything you no longer use or don't recognize.

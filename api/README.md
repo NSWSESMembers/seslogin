@@ -1,4 +1,4 @@
-# GraphQL API server for seslogin
+# GraphQL API server for SESLogin
 
 > **First-time setup — including AWS access and secrets — is in
 > [DEVELOPMENT.md](../DEVELOPMENT.md).** This file covers API-specific details.
@@ -171,7 +171,7 @@ user's grants from that user's edit page.
 endpoint at `POST <API base>/mcp` — the "Streamable HTTP" transport, run
 stateless with plain JSON responses (no `Mcp-Session-Id`, no SSE; Lambda can't
 hold sessions). It lets an AI client (Claude Code, a claude.ai custom
-connector, Cursor, …) work with seslogin on your behalf, acting **as
+connector, Cursor, …) work with SESLogin on your behalf, acting **as
 you, with exactly your permissions** — see `mcp/mod.rs`'s module docs for why this
 is a small hand-rolled JSON-RPC 2.0 dispatcher rather than the `rmcp` crate,
 and for how every tool call still goes through the same GraphQL guards the
@@ -219,7 +219,7 @@ the MCP authorization spec's discovery flow.
 | `get_user` | Look up one user by id. A non-super caller may only look up themselves. |
 | `create_user` | Create a user (email, `isSuper`, `locationGrants`, optional `readOnlyLocationGrants`). Super user only. |
 | `update_user` | Change a user's email/`isSuper`/`isDev`/`locationGrants`/`readOnlyLocationGrants`; omitted fields keep their current value. Never touches `enabled`. Super user only. |
-| `disable_user` / `enable_user` | Flip `enabled` — seslogin has no user delete, only disable. Super user only. |
+| `disable_user` / `enable_user` | Flip `enabled` — SESLogin has no user delete, only disable. Super user only. |
 | `list_locations` | The locations you can access (id, name, `enabled`, `viewerCanEdit`, `nitcEnabled`, `lastSuccessfulMemberSync`): every enabled one for a super user, otherwise your Admin and Read only grants. Start here for location ids. |
 | `get_location` | One location's details (adds NITC and SES headquarters settings, created/updated). Needs a grant for it. |
 | `list_members` | A location's active members, optionally filtered by `query` (case-insensitive substring of first/last/full name or member number). Deleted members are never listed. Each carries `syncManaged` (`sesApiPersonId` set). Admin, Read only or super user. |

@@ -4,7 +4,7 @@ summary: Hours by member and category, the attendance heatmap, and spreadsheet d
 order: 60
 ---
 
-SES Login has several views of your unit's activity. All of them work for both
+SESLogin has several views of your unit's activity. All of them work for both
 Admin and Read only users.
 
 ## The dashboard

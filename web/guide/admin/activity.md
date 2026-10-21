@@ -4,7 +4,7 @@ summary: See who has signed in, fix entries, and record time members forgot to l
 order: 50
 ---
 
-Each time a member signs in and out, SES Login records an **activity entry**
+Each time a member signs in and out, SESLogin records an **activity entry**
 (sometimes called a period): who, when, for how long, and the category they
 chose. The **Activity** menu is where you check and correct them.
 
