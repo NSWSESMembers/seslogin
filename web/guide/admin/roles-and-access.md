@@ -22,14 +22,14 @@ Read only users see a notice on pages they can't change, and the buttons for
 changes are hidden.
 
 Unit-wide settings, such as the unit's name and [NITC export](nitc.md), are
-managed by the SES Login maintainers. Ask them for changes.
+managed by the SESLogin maintainers. Ask them for changes.
 
 Someone can hold different roles at different units — for example, Admin at
 their own unit and Read only at a neighbouring one.
 
 ## Getting access
 
-Accounts are created by the SES Login maintainers. To get access for yourself or
+Accounts are created by the SESLogin maintainers. To get access for yourself or
 someone at your unit, use **Help/Feedback?** at the bottom of any admin page, or
 email [support@seslogin.com](mailto:support@seslogin.com), with:
 

@@ -104,7 +104,7 @@ fn build_period_reminder_email(
          This link works for the next 48 hours and only opens this one entry. \
          If the details above are already correct, you don't need to do anything.\n\n\
          Thanks,\n\
-         SES Activity administrators\n",
+         SESLogin administrators\n",
         reminder_greeting(first_name),
         reminder_activity_line(category_name),
         format_reminder_datetime(start_time),
@@ -138,7 +138,7 @@ fn build_period_still_open_reminder_email(
          If you aren't ready to sign out yet you can come back here and click \
          link later.\n\n\
          Thanks,\n\
-         SES Activity administrators\n",
+         SESLogin administrators\n",
         reminder_greeting(first_name),
         reminder_activity_line(category_name),
         format_reminder_datetime(start_time),
@@ -263,7 +263,7 @@ fn validate_feedback(subject: &str, message: &str) -> Result<(String, String)> {
 /// whoever handles the ticket can find the account without asking.
 fn feedback_body(message: &str, user_id: &str, email: &str, site: &str) -> String {
     format!(
-        "{message}\n\n--\nSent from the seslogin help page ({site}) by {email} (user {user_id})."
+        "{message}\n\n--\nSent from the SESLogin help page ({site}) by {email} (user {user_id})."
     )
 }
 
@@ -705,7 +705,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
             return true;
         }
 
-        let subject = "Your seslogin login code";
+        let subject = "Your SESLogin login code";
         let body = format!(
             "Your login code is: {}\n\nThis code expires in 10 minutes. Do not share it.\n\nIf you did not request this code, you can ignore this email.",
             code
@@ -2546,7 +2546,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         Ok(true)
     }
 
-    /// Send feedback or a help request to the seslogin team, as a ticket in
+    /// Send feedback or a help request to the SESLogin team, as a ticket in
     /// Toolbox. Replies go to the caller's own email address, which is read from
     /// their user record — never from the request — because Toolbox trusts it as
     /// already verified. Fails when feedback isn't configured on this server (see

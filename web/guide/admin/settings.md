@@ -32,7 +32,7 @@ separately in the dashboard and activity views, then press **Save**.
 
 ## Connected apps
 
-If you connect an AI tool (such as Claude) to SES Login, it appears under
+If you connect an AI tool (such as Claude) to SESLogin, it appears under
 **Settings → Connected Apps** once you approve it. A connected app can act as
 you, with your permissions. Disconnect anything you no longer use or don't
 recognise.

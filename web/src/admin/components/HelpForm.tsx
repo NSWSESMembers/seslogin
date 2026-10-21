@@ -83,7 +83,7 @@ export default function HelpForm({ onSent, onCancel }: HelpFormProps) {
   return (
     <div className="text-left">
       <p className="my-4">
-        Send the seslogin team a message about anything, for example to:
+        Send the SESLogin team a message about anything, for example to:
       </p>
       <HelpUses />
       <p className="my-4">

@@ -1,6 +1,6 @@
 # Announcement emails
 
-HTML emails announcing new SES Activity features to administrators, sent through the
+HTML emails announcing new SESLogin features to administrators, sent through the
 Toolbox broadcast email feature. Nothing in the codebase reads this directory. It is a
 record of what was sent, plus a starting point for the next email.
 
@@ -29,7 +29,7 @@ the directories sort in send order.
    - Preview text: the line inbox lists show after the subject. It is hidden in the
      email itself.
    - Summary: the small grey line above the header.
-   - Title suffix: the orange line under "SES Activity", e.g. "New features".
+   - Title suffix: the orange line under "SESLogin", e.g. "New features".
    - Main body: everything in the white cell between the header and the footer. Delete
      the screenshot, list or button if the email doesn't need them.
 3. Leave the footer alone unless the wording itself needs to change, in which case change

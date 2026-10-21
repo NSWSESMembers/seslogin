@@ -582,7 +582,7 @@ type MutationRoot {
 	scanGuestSignOut(id: ID!): Period!
 	enqueueMemberSync(locationId: ID!): Boolean!
 	"""
-	Send feedback or a help request to the seslogin team, as a ticket in
+	Send feedback or a help request to the SESLogin team, as a ticket in
 	Toolbox. Replies go to the caller's own email address, which is read from
 	their user record — never from the request — because Toolbox trusts it as
 	already verified. Fails when feedback isn't configured on this server (see

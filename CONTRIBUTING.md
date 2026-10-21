@@ -48,7 +48,7 @@ There's no formal issue requirement for small fixes, but for larger changes it's
 
 ## User guide
 
-SES Login has two user guides, published at `/guide` with no sign-in needed: the
+SESLogin has two user guides, published at `/guide` with no sign-in needed: the
 **admin guide** for unit administrators and the **kiosk guide** for members. Readers
 can search and print them. Their source is Markdown in [`web/guide/`](web/guide/)
 (`admin/` and `kiosk/`), compiled into the web build — see

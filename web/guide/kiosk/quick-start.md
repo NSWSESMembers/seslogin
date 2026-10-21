@@ -4,7 +4,7 @@ summary: Sign in when you arrive, sign out when you leave. Here's how, in under 
 order: 10
 ---
 
-Your unit uses SES Login to record the time you spend at the unit and what you
+Your unit uses SESLogin to record the time you spend at the unit and what you
 spent it on. You do that at the **kiosk**: the computer or tablet near the door
 that says "Please enter or scan your SES ID".
 

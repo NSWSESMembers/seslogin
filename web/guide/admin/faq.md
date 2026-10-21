@@ -50,7 +50,7 @@ added there. In the meantime — or if your unit isn't synced — an Admin can
 ## A member has an orange dot, or has disappeared
 
 An orange dot means the member is no longer in your unit's list in SES. They're
-removed from SES Login after about a week unless they reappear in SES. Their past
+removed from SESLogin after about a week unless they reappear in SES. Their past
 activity is kept. See [When members leave your unit](members.md#when-members-leave-your-unit).
 
 ## Can our time go into Beacon NITCs automatically?

@@ -24,7 +24,7 @@ When you're signed in, the kiosk shows your name and the time.
 ## "Unknown member ID"
 
 The kiosk doesn't recognise that number. Check you typed it correctly. If it's
-right, you may not be on SES Login's member list yet: ask your unit's
+right, you may not be on SESLogin's member list yet: ask your unit's
 administrators, who can add you.
 
 ## Signing in at another unit

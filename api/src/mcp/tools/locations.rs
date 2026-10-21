@@ -31,7 +31,7 @@ pub(super) fn catalogue() -> Vec<Value> {
         json!({
             "name": "list_locations",
             "title": "List locations",
-            "description": "List the seslogin locations (units) you can access: id, name, \
+            "description": "List the SESLogin locations (units) you can access: id, name, \
                 whether it's enabled, whether you may make changes there (`viewerCanEdit`: \
                 true for Admin, false for Read only), when NITC was enabled \
                 (`nitcEnabled`, null if never) and the last successful member sync. A \

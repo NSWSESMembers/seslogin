@@ -4,7 +4,7 @@ summary: Everything a new unit administrator needs for the first day, in five st
 order: 10
 ---
 
-SES Login records when your members sign in and out, and what they were doing.
+SESLogin records when your members sign in and out, and what they were doing.
 Members sign in at a **kiosk** — a computer or tablet at your unit — and you
 manage everything else from the **admin dashboard**.
 
@@ -13,7 +13,7 @@ report. Each step links to the full topic if you want more.
 
 ## 1. Sign in
 
-1. Open SES Login and choose **Admin**.
+1. Open SESLogin and choose **Admin**.
 2. Enter the email address your account was set up with and press **Send code**.
 3. Check your email for a six-digit code, enter it, and press **Verify code**.
 
@@ -40,7 +40,7 @@ See [Members](members.md).
 
 You need a computer or tablet with a web browser, at your unit.
 
-1. On that computer, open SES Login and choose **Kiosk**. It shows a QR code.
+1. On that computer, open SESLogin and choose **Kiosk**. It shows a QR code.
 2. Scan the QR code with your phone's camera and sign in if asked.
 3. Choose your unit, give the kiosk a name (such as "Front desk"), and press
    **Save**.
@@ -71,11 +71,11 @@ heatmap.
 
 ## Using this guide
 
-This guide is on the SES Login site at **/guide/admin**, and anyone can read it
+This guide is on the SESLogin site at **/guide/admin**, and anyone can read it
 without signing in. Get there from **Guide** on the home page, or from **User
 guide** at the right-hand end of the admin menu, which opens it in a new tab.
 
-![The SES Login home page, with the Guide button highlighted](../screenshots/home-guide-button.png "Guide, on the home page.")
+![The SESLogin home page, with the Guide button highlighted](../screenshots/home-guide-button.png "Guide, on the home page.")
 
 ![The guides home page: search, and a card each for the admin and kiosk guides](../screenshots/guide-home.png "Choose a guide, or search both.")
 

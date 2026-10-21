@@ -4,14 +4,14 @@ summary: How your unit's time can flow into Beacon as NITC records, and the unit
 order: 75
 ---
 
-SES Login can copy your members' time into **Beacon** as **NITC** (non-incident)
+SESLogin can copy your members' time into **Beacon** as **NITC** (non-incident)
 records, so time spent at training, meetings and other unit activity shows up in
 Beacon without anyone entering it twice. It works automatically once it's turned on
 for your unit.
 
 ## Turning it on for your unit
 
-NITC export is a **unit setting**. Unit settings are managed by the SES Login
+NITC export is a **unit setting**. Unit settings are managed by the SESLogin
 maintainers, not from your admin dashboard, so ask them to turn it on or change
 it — use **Help/Feedback?** at the bottom of any admin page, or email
 [support@seslogin.com](mailto:support@seslogin.com). There are two settings:
@@ -41,7 +41,7 @@ Guests, and entries with no category, are never exported.
 
 Entries are grouped into one NITC **per unit, per day, per kind of activity**.
 Every member who did that activity that day is a participant in the same NITC, with
-their own times. NITCs created by SES Login are named after the category, starting
+their own times. NITCs created by SESLogin are named after the category, starting
 with "SESLOGIN:", so they're easy to spot in Beacon.
 
 Exports happen within moments of a member signing out, or of an Admin adding or
@@ -60,12 +60,12 @@ An entry that stays orange is worth reporting to the maintainers.
 
 ## Correcting an exported entry
 
-Fix the entry in SES Login, not in Beacon. [Editing](activity.md#correcting-an-entry)
+Fix the entry in SESLogin, not in Beacon. [Editing](activity.md#correcting-an-entry)
 an exported entry updates its NITC. Changing its category or day moves it to the
 right NITC, and deleting it removes the member from the NITC. If that leaves an
-NITC with nobody in it, SES Login renames it "SESLOGIN - unused" and marks it
+NITC with nobody in it, SESLogin renames it "SESLOGIN - unused" and marks it
 completed, so it doesn't sit in your list of outstanding NITCs.
 
 > [!WARNING]
-> Changes made directly to a SES Login NITC in Beacon can be overwritten the next
+> Changes made directly to a SESLogin NITC in Beacon can be overwritten the next
 > time one of its entries changes here.

@@ -1,6 +1,6 @@
-# SES Activity
+# SESLogin
 
-SES Activity is a web app for tracking volunteer attendance with as little friction as possible. Members check in and out at a kiosk, sessions are recorded with activity categories, and reports are available for coordinators.
+SESLogin is a web app for tracking volunteer attendance with as little friction as possible. Members check in and out at a kiosk, sessions are recorded with activity categories, and reports are available for coordinators.
 
 **Features:**
 - Fast check-in/out — designed for kiosk use

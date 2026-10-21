@@ -223,7 +223,7 @@ pub(super) fn catalogue() -> Vec<Value> {
             "submit_feedback",
             "Submit feedback",
             &format!(
-                "Send feedback or a help request to the seslogin team, as a support ticket \
+                "Send feedback or a help request to the SESLogin team, as a support ticket \
                  that emails them from your own address; replies come to you by email, with the \
                  returned `reference` in the subject. This sends a real message that cannot be \
                  unsent: only call it when the user has asked for it. Not available on every \

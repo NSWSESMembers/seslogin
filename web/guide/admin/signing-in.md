@@ -4,12 +4,12 @@ summary: Email codes, passkeys, switching units and signing out.
 order: 20
 ---
 
-There are no passwords in SES Login. You sign in with a code sent to your email,
+There are no passwords in SESLogin. You sign in with a code sent to your email,
 or with a passkey saved on your phone or computer.
 
 ## Signing in with an email code
 
-1. Open SES Login and choose **Admin**.
+1. Open SESLogin and choose **Admin**.
 2. Enter your email address and press **Send code**.
 3. Enter the six-digit code from the email and press **Verify code**.
 
@@ -32,7 +32,7 @@ it can't be guessed or phished, and never leaves your device.
 
 ### Adding a passkey
 
-After you sign in with an email code, SES Login offers to add one. Press
+After you sign in with an email code, SESLogin offers to add one. Press
 **Add a passkey** and follow your device's prompts, or **Maybe later** to skip
 (you'll be asked again in a day or so).
 

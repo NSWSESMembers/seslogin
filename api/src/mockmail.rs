@@ -120,14 +120,14 @@ mod tests {
     #[tokio::test]
     async fn records_what_was_sent() {
         let m = Handler::new();
-        m.send_plain_text("a@example.com", "Your seslogin login code", "123456")
+        m.send_plain_text("a@example.com", "Your SESLogin login code", "123456")
             .await
             .unwrap();
         assert_eq!(
             m.sent(),
             vec![Email {
                 to: "a@example.com".into(),
-                subject: "Your seslogin login code".into(),
+                subject: "Your SESLogin login code".into(),
                 body: "123456".into(),
                 html: false,
             }]
@@ -136,12 +136,12 @@ mod tests {
 
     #[test]
     fn slug_is_filename_safe() {
-        let s = slug("SES Activity Summary — 2026-09-02");
+        let s = slug("SESLogin Summary — 2026-09-02");
         assert!(
             s.chars()
                 .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-'),
             "unexpected characters in {s:?}"
         );
-        assert!(s.starts_with("ses-activity-summary"), "{s:?}");
+        assert!(s.starts_with("seslogin-summary"), "{s:?}");
     }
 }

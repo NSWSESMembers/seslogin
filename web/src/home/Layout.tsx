@@ -19,9 +19,8 @@ export default function Layout() {
       <TopBar username="" />
       <Outlet />
       <footer className="bg-surface-sunken p-2.5 text-center text-xs text-ink-muted">
-        NSW SES Volunteers &mdash; SES Activity v2 &mdash;{" "}
-        <ClientVersionLabel /> &mdash;{" "}
-        <HelpLink>{(close) => <EmailHelp onClose={close} />}</HelpLink>
+        NSW SES Volunteers &mdash; SESLogin v2 &mdash; <ClientVersionLabel />{" "}
+        &mdash; <HelpLink>{(close) => <EmailHelp onClose={close} />}</HelpLink>
       </footer>
     </ErrorBoundary>
   );

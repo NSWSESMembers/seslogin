@@ -100,7 +100,7 @@ export default function OAuthAuthorize() {
           <PanelTitle>Invalid request</PanelTitle>
           <PanelMessage>
             This link is missing required parameters, or isn't an authorization
-            request seslogin recognizes. Go back to the app or tool you started
+            request SESLogin recognizes. Go back to the app or tool you started
             this from and try again.
           </PanelMessage>
         </PanelBox>
@@ -202,7 +202,7 @@ function ConsentScreen({
       <PanelBox>
         <PanelTitle>Connect {clientName}?</PanelTitle>
         <PanelIntro>
-          <strong>{clientName}</strong> wants to connect to your seslogin
+          <strong>{clientName}</strong> wants to connect to your SESLogin
           account.
         </PanelIntro>
         <PanelMessage variant="warning">
@@ -213,7 +213,7 @@ function ConsentScreen({
         </PanelMessage>
         <p className="my-4">
           This will let it act as you (<strong>{user.email}</strong>) in
-          seslogin, with all of your permissions.
+          SESLogin, with all of your permissions.
         </p>
         <div className="flex flex-row flex-wrap items-center gap-3">
           <Button
