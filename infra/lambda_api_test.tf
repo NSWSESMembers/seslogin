@@ -19,7 +19,6 @@ resource "aws_lambda_function" "test_api" {
       SES_API_BASE_URL      = var.ses_api_base_url
       MEMBER_SYNC_QUEUE_URL = aws_sqs_queue.member_sync.url
       NITC_EXPORT_QUEUE_URL = aws_sqs_queue.nitc_export.url
-      HEALTHCHECK_QUEUE_URL = aws_sqs_queue.healthcheck.url
       DB_BACKEND            = "dynamodb"
       DB_PREFIX             = var.db_prefix
       READ_ONLY             = "false"

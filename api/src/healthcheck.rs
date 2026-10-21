@@ -1,7 +1,7 @@
 //! Pings a kiosk session's configured healthcheck URL.
 //!
-//! This used to go through an SQS queue to a dedicated `healthcheck-lambda`; it is now
-//! a short, timeboxed GET made by the API itself, which saves a queue and its pollers.
+//! A short, timeboxed GET made by the API itself. It used to go through an SQS queue to
+//! a dedicated Lambda; doing it inline saves the queue and its pollers.
 //!
 //! The URL is set by any unit Admin, so it is untrusted, and the request is made from
 //! a process holding database access and secrets. Only public addresses are contacted:

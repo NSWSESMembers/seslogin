@@ -38,7 +38,7 @@ variable "aws_profile" {
   default     = "seslogin"
 }
 
-# Background workers (member sync, dispatcher, checker, nitc-export, healthcheck,
+# Background workers (member sync, dispatcher, checker, nitc-export,
 # activity-summary, location-sync) via their EventBridge schedules + SQS event
 # source mappings. Set false to pause all background processing; the 3 API
 # servers are unaffected.

@@ -202,11 +202,11 @@ Auto-deployment is split by branch, one workflow per branch under `.github/workf
 | `prod` | Production API Lambda (`seslogin-api`) + web to `new.seslogin.com` |
 | `preprod` | Preprod API Lambda (`seslogin-preprod-api`) + web to `preprod.seslogin.com` |
 | `test` | Test API Lambda (`seslogin-test-api`) + web to `test.seslogin.com` |
-| `workers` | Background/worker Lambdas: sync/dispatcher/checker/nitc-export/healthcheck/activity-summary/sync-locations |
+| `workers` | Background/worker Lambdas: sync/dispatcher/checker/nitc-export/activity-summary/sync-locations |
 
 `preprod` is a production-like clone for staging: the `seslogin-preprod-api` Lambda intentionally shares prod's database (`DB_PREFIX=seslogin_prod`), SQS queues, and secrets (JWT/SES/Turnstile), so it operates on **live production data** with mutations enabled. It only differs from prod in its function name, IAM role, and WebAuthn/CORS origin (`preprod.seslogin.com`). Like `prod`, it deploys only the API Lambda + web (not the sync/utility Lambdas).
 
-The following Lambdas are only deployed from the `workers` branch, not from `test`, `prod`, or `preprod`: sync (`seslogin-sync-members`), dispatcher (`seslogin-dispatcher`), checker (`seslogin-checker`), nitc-export (`seslogin-nitc-export`), healthcheck (`seslogin-healthcheck`), activity-summary (`seslogin-activity-summary`), and sync-locations (`seslogin-sync-locations`). `test` deploys only the API Lambda + web.
+The following Lambdas are only deployed from the `workers` branch, not from `test`, `prod`, or `preprod`: sync (`seslogin-sync-members`), dispatcher (`seslogin-dispatcher`), checker (`seslogin-checker`), nitc-export (`seslogin-nitc-export`), activity-summary (`seslogin-activity-summary`), and sync-locations (`seslogin-sync-locations`). `test` deploys only the API Lambda + web.
 
 #### Branch model and history rewriting
 
