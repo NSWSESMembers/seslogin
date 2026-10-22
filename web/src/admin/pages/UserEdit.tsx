@@ -40,6 +40,7 @@ export default function UserEdit() {
             id
             clientName
             redirectHost
+            isFirstParty
             createdAt
             lastUsedAt
           }
@@ -241,7 +242,9 @@ export default function UserEdit() {
                 className={idx % 2 === 0 ? "bg-surface-raised" : undefined}
               >
                 <Td>{grant.clientName}</Td>
-                <Td>{grant.redirectHost}</Td>
+                <Td>
+                  {grant.isFirstParty ? "SESLogin app" : grant.redirectHost}
+                </Td>
                 <Td>{formatFullDateTime(new Date(grant.createdAt * 1000))}</Td>
                 <Td>
                   {grant.lastUsedAt
