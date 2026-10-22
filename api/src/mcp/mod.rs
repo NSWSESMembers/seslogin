@@ -92,7 +92,7 @@ use serde_json::{Value, json};
 
 use crate::app::{App, HasDb, HasMail, HasQueues, HasRealtime};
 use crate::auth::{self, AuthError, AuthInfo};
-use crate::base_url::api_base_url;
+use crate::base_url::{MCP_RESOURCE_PATH, api_base_url, api_resource};
 use crate::graphql::{self, ClientIp};
 use crate::oauth;
 use crate::oauth_http::HttpReply;
@@ -408,7 +408,7 @@ where
 {
     let request_start = Instant::now();
     let api_base = api_base_url(host);
-    let resource = format!("{api_base}/mcp");
+    let resource = api_resource(host, MCP_RESOURCE_PATH);
 
     let emit = |status: u16, operation_name: &str, auth_info: Option<&AuthInfo>| {
         let (caller_type, caller_id) = auth::caller_info(auth_info);
