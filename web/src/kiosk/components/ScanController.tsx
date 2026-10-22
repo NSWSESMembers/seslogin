@@ -63,6 +63,7 @@ export default function ScanController(props: {
   const { applyOwnResult, retry: refreshLivePeriods } = useLivePeriods();
   const guestsEnabled = !!session?.config?.guests;
   const quickPickCategories = !!session?.config?.quickPickCategories;
+  const categorySearch = !!session?.config?.categorySearch;
   const confirmVisitors = !!session?.config?.confirmVisitors;
   const interfaceMode = interfaceModeFromConfig(session?.config?.interfaceMode);
   // Resolved once per config change rather than every render: the device
@@ -754,6 +755,10 @@ export default function ScanController(props: {
         screenPosition={categoriesPos}
         onSelectCategory={onSelectCategory}
         uuid={transactionUuid}
+        categorySearch={categorySearch}
+        // The on-screen keyboard would cover the tiles every time on a touch
+        // kiosk, so there the member taps the box when they want to search.
+        autoFocusSearch={!touchInput}
       />
       <ScanScreenAdjust
         screenPosition={adjustPos}
