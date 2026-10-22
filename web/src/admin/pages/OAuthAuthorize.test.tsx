@@ -113,6 +113,8 @@ describe("OAuthAuthorize", () => {
           OauthAuthorizationRequest: () => ({
             clientName: "Claude",
             redirectHost: "claude.ai",
+            isFirstParty: false,
+            isDevelopmentBuild: false,
           }),
         }),
       );
@@ -120,6 +122,7 @@ describe("OAuthAuthorize", () => {
 
     await screen.findByText("Connect Claude?");
     expect(screen.getByText("claude.ai")).toBeInTheDocument();
+    expect(screen.queryByText(/SESLogin's own app/)).not.toBeInTheDocument();
     expect(screen.getByText("admin@example.com")).toBeInTheDocument();
 
     const user = UserEvent.setup();
@@ -154,6 +157,8 @@ describe("OAuthAuthorize", () => {
           OauthAuthorizationRequest: () => ({
             clientName: "Claude",
             redirectHost: "claude.ai",
+            isFirstParty: false,
+            isDevelopmentBuild: false,
           }),
         }),
       );
@@ -171,5 +176,67 @@ describe("OAuthAuthorize", () => {
     expect(url).toContain("state=xyz");
     // No mutation was ever sent for a deny.
     expect(environment.mock.getAllOperations()).toHaveLength(0);
+  });
+
+  it("names a first-party app instead of its redirect host", async () => {
+    const environment = createMockEnvironment();
+    const screen = renderAt(
+      "/admin/oauth/authorize" +
+        "?response_type=code" +
+        "&client_id=tally" +
+        "&redirect_uri=tally%3A%2F%2Foauth%2Fcallback" +
+        "&code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM" +
+        "&code_challenge_method=S256",
+      environment,
+    );
+
+    act(() => {
+      environment.mock.resolveMostRecentOperation((op) =>
+        MockPayloadGenerator.generate(op, {
+          OauthAuthorizationRequest: () => ({
+            clientName: "Tally",
+            redirectHost: "oauth",
+            isFirstParty: true,
+            isDevelopmentBuild: false,
+          }),
+        }),
+      );
+    });
+
+    await screen.findByText("Connect Tally?");
+    expect(screen.getByText(/Tally is SESLogin's own app/)).toBeInTheDocument();
+    expect(screen.queryByText("oauth")).not.toBeInTheDocument();
+    expect(screen.queryByText(/It will redirect to/)).not.toBeInTheDocument();
+  });
+
+  it("warns about a development build and names the machine it runs from", async () => {
+    const environment = createMockEnvironment();
+    const screen = renderAt(
+      "/admin/oauth/authorize" +
+        "?response_type=code" +
+        "&client_id=tally" +
+        "&redirect_uri=exp%3A%2F%2F192.168.1.20%3A8081%2F--%2Foauth%2Fcallback" +
+        "&code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM" +
+        "&code_challenge_method=S256",
+      environment,
+    );
+
+    act(() => {
+      environment.mock.resolveMostRecentOperation((op) =>
+        MockPayloadGenerator.generate(op, {
+          OauthAuthorizationRequest: () => ({
+            clientName: "Tally",
+            redirectHost: "192.168.1.20:8081",
+            isFirstParty: true,
+            isDevelopmentBuild: true,
+          }),
+        }),
+      );
+    });
+
+    await screen.findByText("Connect Tally?");
+    expect(screen.getByText("development build")).toBeInTheDocument();
+    expect(screen.getByText("192.168.1.20:8081")).toBeInTheDocument();
+    expect(screen.queryByText(/SESLogin's own app/)).not.toBeInTheDocument();
   });
 });

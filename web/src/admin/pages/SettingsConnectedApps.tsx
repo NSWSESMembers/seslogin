@@ -25,6 +25,7 @@ export default function SettingsConnectedApps() {
             id
             clientName
             redirectHost
+            isFirstParty
             createdAt
             lastUsedAt
             refreshExpiresAt
@@ -68,10 +69,11 @@ export default function SettingsConnectedApps() {
     <div>
       <SectionHeading>Connected apps</SectionHeading>
       <p className="my-4">
-        AI tools you connect through SESLogin's MCP interface — for example
-        Claude Code or a claude.ai custom connector — appear here once you
-        approve them. Each one can act as you, with your permissions. Disconnect
-        anything you no longer use or don't recognize.
+        Apps you sign in to with SESLogin, and AI tools you connect through
+        SESLogin's MCP interface — for example Claude Code or a claude.ai custom
+        connector — appear here once you approve them. Each one can act as you,
+        with your permissions. Disconnect anything you no longer use or don't
+        recognize.
       </p>
       {grants.length === 0 && <p className="my-4">No apps connected yet.</p>}
       {grants.length > 0 && (
@@ -93,7 +95,9 @@ export default function SettingsConnectedApps() {
                 className={idx % 2 === 0 ? "bg-surface-raised" : undefined}
               >
                 <Td>{grant.clientName}</Td>
-                <Td>{grant.redirectHost}</Td>
+                <Td>
+                  {grant.isFirstParty ? "SESLogin app" : grant.redirectHost}
+                </Td>
                 <Td>{formatFullDateTime(new Date(grant.createdAt * 1000))}</Td>
                 <Td>
                   {grant.lastUsedAt
