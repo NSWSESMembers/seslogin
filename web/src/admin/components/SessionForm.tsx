@@ -71,6 +71,8 @@ interface BasicSessionModeFieldsProps {
   onGuestsChange: (next: boolean) => void;
   quickPickCategories: boolean;
   onQuickPickCategoriesChange: (next: boolean) => void;
+  categorySearch: boolean;
+  onCategorySearchChange: (next: boolean) => void;
   confirmVisitors: boolean;
   onConfirmVisitorsChange: (next: boolean) => void;
   interfaceMode: InterfaceMode;
@@ -178,6 +180,23 @@ function withQuickPickCategories(
 
 function getQuickPickCategoriesFromConfig(config: ConfigObject): boolean {
   return !!config.quickPickCategories;
+}
+
+function withCategorySearch(
+  config: ConfigObject,
+  enabled: boolean,
+): ConfigObject {
+  const next = { ...config };
+  if (enabled) {
+    next.categorySearch = true;
+  } else {
+    delete next.categorySearch;
+  }
+  return next;
+}
+
+function getCategorySearchFromConfig(config: ConfigObject): boolean {
+  return !!config.categorySearch;
 }
 
 function withConfirmVisitors(
@@ -381,6 +400,8 @@ function BasicSessionModeFields({
   onGuestsChange,
   quickPickCategories,
   onQuickPickCategoriesChange,
+  categorySearch,
+  onCategorySearchChange,
   confirmVisitors,
   onConfirmVisitorsChange,
   interfaceMode,
@@ -460,6 +481,23 @@ function BasicSessionModeFields({
               }
               title="Quick pick categories"
               description="on the sign-out screen, show quick-pick buttons for the location's and the member's own recently-used categories before the full category list, so people converge on the same categories instead of picking slightly different ones each time"
+            />
+            <OptionRow
+              input={
+                <input
+                  type="checkbox"
+                  checked={categorySearch}
+                  onChange={(e) => onCategorySearchChange(e.target.checked)}
+                  className="mt-0.5"
+                />
+              }
+              title={
+                <span className="inline-flex items-center gap-2">
+                  Category search
+                  <BetaBadge />
+                </span>
+              }
+              description="on the sign-out screen, add a search box so people can find a category by typing a few letters instead of tapping into each group"
             />
             <OptionRow
               input={
@@ -615,6 +653,7 @@ export default function SessionForm({
   const sessionMode = getSessionModeFromConfig(parsedConfig);
   const guests = getGuestsFromConfig(parsedConfig);
   const quickPickCategories = getQuickPickCategoriesFromConfig(parsedConfig);
+  const categorySearch = getCategorySearchFromConfig(parsedConfig);
   const confirmVisitors = getConfirmVisitorsFromConfig(parsedConfig);
   const interfaceMode = getInterfaceModeFromConfig(parsedConfig);
   const signedInStatusMode = getSignedInStatusModeFromConfig(parsedConfig);
@@ -639,6 +678,14 @@ export default function SessionForm({
 
   function handleQuickPickCategoriesChange(enabled: boolean) {
     const nextConfig = withQuickPickCategories(
+      parseConfigObject(configJson),
+      enabled,
+    );
+    setConfigJson(JSON.stringify(nextConfig, null, 2));
+  }
+
+  function handleCategorySearchChange(enabled: boolean) {
+    const nextConfig = withCategorySearch(
       parseConfigObject(configJson),
       enabled,
     );
@@ -693,6 +740,8 @@ export default function SessionForm({
             onGuestsChange={handleGuestsChange}
             quickPickCategories={quickPickCategories}
             onQuickPickCategoriesChange={handleQuickPickCategoriesChange}
+            categorySearch={categorySearch}
+            onCategorySearchChange={handleCategorySearchChange}
             confirmVisitors={confirmVisitors}
             onConfirmVisitorsChange={handleConfirmVisitorsChange}
             interfaceMode={interfaceMode}

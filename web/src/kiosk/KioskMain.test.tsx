@@ -1778,3 +1778,122 @@ describe("KioskMain confirm visitors", () => {
     expect(calls[0].confirmVisitor).toBe(false);
   });
 });
+
+describe("KioskMain category search", () => {
+  function signOutSpy(box: { current: Record<string, unknown> | null }) {
+    return relayEndpoint.mutation(
+      "ScanControllerSignOutMutation",
+      ({ variables }) => {
+        box.current = variables as Record<string, unknown>;
+        return HttpResponse.json({
+          data: {
+            scanSignOut: {
+              id: "period-456",
+              version: 2,
+              person: {
+                id: `person-${SIGNOUT_USER}`,
+                firstName: "Jamie",
+                lastName: "Smith",
+              },
+              startTime: (variables as { startTime: number }).startTime,
+              endTime: (variables as { endTime: number }).endTime,
+              category: { id: QUICK_PICK_CATEGORY_ID, name: "AIIMS" },
+            },
+          },
+        });
+      },
+    );
+  }
+
+  // A member signed in an hour ago (the shared fixture's start time is in
+  // milliseconds, which the confirm screen would reject).
+  function signedInAnHourAgo() {
+    return relayEndpoint.mutation("ScanControllerRegister2Mutation", () => {
+      const result = signOutUserResponse(null).data.scanRegister2;
+      return HttpResponse.json({
+        data: {
+          scanRegister2: {
+            ...result,
+            period: {
+              ...result.period,
+              startTime: Math.floor(Date.now() / 1000) - 60 * 60,
+            },
+          },
+        },
+      });
+    });
+  }
+
+  // Every scan screen stays mounted off to the side (inert) until its turn, so
+  // wait for the category screen to be the one that is showing.
+  async function categoryScreenShowing() {
+    await waitFor(() =>
+      expect(screen.getByText("Categories").closest("[inert]")).toBeNull(),
+    );
+  }
+
+  async function confirmScreenShowing() {
+    await waitFor(() =>
+      expect(screen.getByText("Confirm").closest("[inert]")).toBeNull(),
+    );
+  }
+
+  async function scanSignOut(user: UserEventInstance) {
+    await user.type(screen.getByRole("textbox"), SIGNOUT_USER + "{enter}");
+    await categoryScreenShowing();
+  }
+
+  it("has no search box unless it is switched on", async () => {
+    server.use(sessionConfigHandler({}), signedInAnHourAgo());
+    const user = await setupTest();
+    await scanSignOut(user);
+    expect(screen.queryByRole("searchbox")).not.toBeInTheDocument();
+  });
+
+  it("keeps a search while editing, submits the selected category and resets for the next member", async () => {
+    const submitted = { current: null as Record<string, unknown> | null };
+    server.use(
+      sessionConfigHandler({ categorySearch: true }),
+      signedInAnHourAgo(),
+      signOutSpy(submitted),
+    );
+    const user = await setupTest();
+    await scanSignOut(user);
+
+    expect(screen.getByRole("searchbox")).toHaveFocus();
+    await user.type(screen.getByRole("searchbox"), "aiims");
+    await user.click(screen.getByRole("button", { name: "Training, AIIMS" }));
+    await confirmScreenShowing();
+    await user.click(screen.getAllByRole("button", { name: "Edit" })[2]);
+    await categoryScreenShowing();
+    expect(screen.getByRole("searchbox")).toHaveValue("aiims");
+    await user.click(screen.getByRole("button", { name: "Training, AIIMS" }));
+    await confirmScreenShowing();
+    const submit = screen
+      .getAllByRole("button", { name: "Submit" })
+      .find((b) => b.textContent?.trim() === "Submit");
+    await user.click(submit!);
+
+    await waitFor(() => expect(submitted.current).not.toBeNull());
+    expect(submitted.current).toMatchObject({
+      id: "period-456",
+      categoryId: QUICK_PICK_CATEGORY_ID,
+    });
+    await waitFor(() => expect(screen.getByRole("textbox")).toBeEnabled());
+    await scanSignOut(user);
+    expect(screen.getByRole("searchbox")).toHaveValue("");
+    expect(
+      screen.queryByRole("list", { name: "Search results" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("does not put the cursor in the search box by itself on a touch kiosk", async () => {
+    server.use(
+      sessionConfigHandler({ categorySearch: true, interfaceMode: "touch" }),
+      signedInAnHourAgo(),
+    );
+    const user = await setupTest();
+    await scanSignOut(user);
+    expect(screen.getByRole("searchbox")).not.toHaveFocus();
+  });
+});

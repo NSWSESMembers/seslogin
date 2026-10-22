@@ -69,6 +69,12 @@ You choose these when you set a kiosk up, and can change them later with
 - **Quick pick categories**: when a member signs out, shows buttons for the
   categories your unit and that member have used recently, before the full list.
   It saves time, and keeps everyone choosing the same categories.
+- **Category search**: adds a **Search categories** box to the sign-out screen,
+  so members can type a few letters to find a category instead of tapping into
+  each group. Each result shows its group, such as Training > Storm & Water:
+  Ground. Training and Workshop - Participant come first and Workshop - Trainer,
+  Trainer and Assessor last, so people who are unsure aren't steered into the
+  instructor groups. On a touch kiosk, tapping the box brings up the keyboard.
 - **Confirm visitors**: before signing in a member from another unit, the kiosk
   shows their name and home unit and asks "Are you …?". Most mistyped SES IDs
   belong to someone at another unit, so this stops people signing in as the

@@ -5,6 +5,7 @@ import ClientVersionLabel from "../../components/ClientVersionLabel";
 import { useRef, useState } from "react";
 import CategoryScaleProbe from "../components/CategoryScaleProbe";
 import { useCategoryScale } from "../useCategoryScale";
+import { useKioskSession } from "../components/useKioskSession";
 
 export default function Scan() {
   const [cancelSignOut, setCancelSignOut] = useState<(() => void) | null>(null);
@@ -12,7 +13,8 @@ export default function Scan() {
   const [statusOpen, setStatusOpen] = useState(false);
   const hostRef = useRef<HTMLDivElement>(null);
   const probeRef = useRef<HTMLDivElement>(null);
-  const categoryScale = useCategoryScale(hostRef, probeRef);
+  const categorySearch = !!useKioskSession()?.config?.categorySearch;
+  const categoryScale = useCategoryScale(hostRef, probeRef, categorySearch);
 
   return (
     <div className="flex h-dvh flex-col">
@@ -27,7 +29,7 @@ export default function Scan() {
         style={{ "--cat-scale": categoryScale } as React.CSSProperties}
         className="relative flex-1 overflow-hidden"
       >
-        <CategoryScaleProbe ref={probeRef} />
+        <CategoryScaleProbe ref={probeRef} categorySearch={categorySearch} />
         <ScanController
           onCancelSignOutChange={(fn) => setCancelSignOut(fn ? () => fn : null)}
           onSigningOutNameChange={setSigningOutName}
