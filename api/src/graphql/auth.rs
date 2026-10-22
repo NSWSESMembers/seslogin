@@ -256,6 +256,24 @@ pub(crate) async fn check_oauth_redirect<A: App + HasDb>(
     Ok(true)
 }
 
+/// Refuse a caller acting through an OAuth grant (`slat_`, from a connected app
+/// or the MCP interface) for `what`: a mutation that would hand out a credential
+/// outliving or escaping the grant — an API token, a passkey, another OAuth
+/// grant, or a kiosk bound to a location. A grant is revocable and expires, and
+/// what it can do must stay what the user approved, so these are done only
+/// signed in to SESLogin directly.
+pub(crate) fn require_not_oauth_grant(ctx: &Context<'_>, what: &str) -> Result<()> {
+    match ctx.data_opt::<AuthInfo>() {
+        Some(AuthInfo::User {
+            grant_id: Some(_), ..
+        }) => Err(ApiError::forbidden(format!(
+            "{what} can't be done from a connected app; sign in to SESLogin directly"
+        ))
+        .into()),
+        _ => Ok(()),
+    }
+}
+
 /// Reject read-only API tokens. Called at the top of every mutation resolver.
 /// User/Session/PeriodLink callers always pass; API tokens pass only if
 /// `read_only` is false.

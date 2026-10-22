@@ -32,7 +32,7 @@ use hex;
 
 use super::auth::{
     AuthGuard, AuthRequirement, require_location_access, require_location_write_access,
-    require_period_write_access, require_writable,
+    require_not_oauth_grant, require_period_write_access, require_writable,
 };
 use super::dataloader::DatabaseLoader;
 use super::error::{ApiError, ErrorCode};
@@ -1540,6 +1540,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         key_fingerprint: String,
     ) -> Result<Session<A>> {
         require_writable(ctx)?;
+        require_not_oauth_grant(ctx, "Adding a kiosk")?;
         require_location_write_access(ctx, &location_id)?;
         self.app
             .db()
@@ -1700,6 +1701,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         expires_at: Option<i64>,
     ) -> Result<CreateApiTokenResult> {
         require_writable(ctx)?;
+        require_not_oauth_grant(ctx, "Creating an API token")?;
         let user_id = match ctx.data_opt::<AuthInfo>() {
             Some(AuthInfo::User { id, .. }) => id.clone(),
             _ => return Err(anyhow!("Super user auth required")),
@@ -1893,6 +1895,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
     #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
     async fn reactivate_session(&self, ctx: &Context<'_>, id: ID) -> Result<Session<A>> {
         require_writable(ctx)?;
+        require_not_oauth_grant(ctx, "Reactivating a kiosk")?;
         let existing = self
             .app
             .db()
@@ -2681,6 +2684,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
     async fn begin_passkey_registration(&self, ctx: &Context<'_>) -> Result<PasskeyChallenge> {
         use webauthn_rs::prelude::*;
 
+        require_not_oauth_grant(ctx, "Adding a passkey")?;
         let user_id = match ctx.data_opt::<AuthInfo>() {
             Some(AuthInfo::User { id, .. }) => id.clone(),
             _ => return Err(anyhow!("Not authenticated")),
@@ -2796,6 +2800,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
     ) -> Result<PasskeyInfo> {
         use webauthn_rs::prelude::*;
 
+        require_not_oauth_grant(ctx, "Adding a passkey")?;
         let user_id = match ctx.data_opt::<AuthInfo>() {
             Some(AuthInfo::User { id, .. }) => id.clone(),
             _ => return Err(anyhow!("Not authenticated")),
@@ -3102,6 +3107,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         state: Option<String>,
     ) -> Result<String> {
         require_writable(ctx)?;
+        require_not_oauth_grant(ctx, "Connecting an app")?;
         let user_id = match ctx.data_opt::<AuthInfo>() {
             Some(AuthInfo::User { id, .. }) => id.clone(),
             _ => return Err(anyhow!("Must provide user token")),

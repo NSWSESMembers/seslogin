@@ -47,7 +47,8 @@ pub const REDACTED: &str = "[redacted]";
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Actor {
     /// A signed-in user. `via` says how they came in when it is not an ordinary web
-    /// session: `oauth_grant:<id>` (MCP), `user_token:<id>` (opaque token) or
+    /// session: `oauth_grant:<id>` (a connected app, over MCP or GraphQL),
+    /// `user_token:<id>` (opaque token) or
     /// `oauth_client:<client_id>` (the OAuth token endpoint acting for them).
     User {
         id: String,

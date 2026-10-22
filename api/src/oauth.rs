@@ -1,13 +1,15 @@
-//! OAuth 2.1 primitives backing the MCP authorization flow: opaque access/refresh
+//! OAuth 2.1 primitives backing the authorization flow: opaque access/refresh
 //! tokens over an [`db::OAuthGrant`] row, stateless dynamic-client-registration
-//! client ids, redirect URI validation, and PKCE S256.
+//! client ids, redirect URI validation, and PKCE S256. Which clients exist is
+//! [`crate::oauth_clients`]; the HTTP endpoints are [`crate::oauth_http`].
 //!
-//! Nothing in this module is reachable over HTTP yet — no `/oauth/*` routes, no
-//! wiring into [`crate::auth::verify_token`]. `slat_`/`slrt_` tokens are
-//! deliberately *not* accepted by the GraphQL endpoint's normal auth path: a
-//! caller with only an MCP access token can't use it to drive the site API
-//! outside the (future) MCP tool set, because [`verify_access_token`] is a
-//! separate entry point that a future MCP handler calls directly.
+//! Every grant is bound to one resource, and [`verify_access_token`] accepts a
+//! token only for exactly that resource. `POST /mcp` expects `<api base>/mcp`,
+//! which dynamically registered clients get. [`crate::auth::verify_token`] (the
+//! GraphQL endpoint) expects `<api base>/graphql`, which only static clients
+//! listed for it can get. So an MCP token still can't drive the site API outside
+//! the MCP tool set, and a GraphQL grant can't be used on `/mcp`. Refresh tokens
+//! (`slrt_`) are accepted only by the token endpoint.
 //!
 //! Both token kinds carry their grant id in the clear (`slat_<grant_id>.<secret>`),
 //! so verification is a direct `GetItem` rather than a hash-lookup GSI; only the
@@ -156,13 +158,10 @@ pub fn rotate_grant(
 }
 
 /// Verify an `slat_` access token for `expected_resource` (the audience the caller
-/// is trying to reach, e.g. `<base>/mcp`) and resolve it to an [`AuthInfo::User`]
-/// with `grant_id` set.
-///
-/// Deliberately not called from [`crate::auth::verify_token`] /
-/// `verify_authorization_header` — those stay JWT/`slu_`/`slgn_` only, so an MCP
-/// token gains no access to the GraphQL endpoint. A future MCP request handler
-/// calls this directly instead.
+/// is trying to reach: `<base>/mcp` from the MCP handler, `<base>/graphql` from
+/// [`crate::auth::verify_token`]; see [`crate::base_url::api_resource`]) and
+/// resolve it to an [`AuthInfo::User`] with `grant_id` set. The match is exact, so
+/// a grant only ever works on the endpoint it was granted for.
 ///
 /// Missing grant, hash mismatch, wrong resource, or an expired access token or
 /// grant are all [`AuthError::Permanent`]; DB failures are classified like every

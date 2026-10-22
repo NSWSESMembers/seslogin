@@ -204,6 +204,7 @@ where
             .and_then(|value| value.to_str().ok()),
         &body_hash,
         &client,
+        host_header(headers),
     )
     .await
     {
