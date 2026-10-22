@@ -129,6 +129,8 @@ The `start_time` sort key across the location/person GSIs means DynamoDB returns
 | `location_id`         | S    | GSI hash key         |
 | `registration_number` | S    | GSI hash key         |
 | `ses_api_person_id`   | S    | GSI hash key         |
+| `contact_feed`        | S    | GSI hash key         |
+| `contact_key`         | S    | GSI sort key         |
 
 **GSIs:**
 
@@ -137,6 +139,7 @@ The `start_time` sort key across the location/person GSIs means DynamoDB returns
 | `location_id-index`         | `location_id`         | —        | ALL        | List all members at a location for admin views and member sync     |
 | `registration_number-index` | `registration_number` | —        | KEYS_ONLY  | Batch lookup during kiosk scan-in: registration number → person ID |
 | `ses_api_person_id-index`   | `ses_api_person_id`   | —        | KEYS_ONLY  | Member sync reconciliation: HQ person ID → local person ID         |
+| `contact_feed-contact_key-index` | `contact_feed` | `contact_key` | ALL | Contacts feed: every person, ordered by when a field the contacts API returns last changed |
 
 `KEYS_ONLY` on the scan-in and sync indexes avoids storing a full copy of each person item per index, since these lookups only need the primary key to drive a subsequent `BatchGetItem` or direct update.
 
@@ -154,6 +157,17 @@ The `start_time` sort key across the location/person GSIs means DynamoDB returns
   absence pass reads the roster through `location_id-index`, which is `ALL`-projected — a
   `KEYS_ONLY` projection there would hydrate every row with `missing_since: None` and
   silently prevent all deletions.
+- `contact_feed` (S) — always `"all"`: a constant hash key, so every person sits in one
+  ordered partition of `contact_feed-contact_key-index`. The write rate is member sync plus
+  admin edits, far below a partition's limits.
+- `contact_key` (S) — `<Unix microseconds, zero-padded to 20 digits>#<id>`, restamped by
+  every write that changes something the contacts API returns: `create_person`, and
+  `update_person`'s `Fields`, `Location`, `Email`, `Undelete` and `Delete` shapes (not
+  `SesApiPersonId` or `MissingSince`). Renaming a location restamps every live member there,
+  since their unit name changed. Sorting by it orders people by last change; the id suffix
+  keeps it unique when two writes share a microsecond. Soft-deleted rows keep their key, so
+  they double as the feed's tombstones. Rows written before the index existed have neither
+  attribute until `cli person stamp-contacts` backfills them.
 
 ---
 
