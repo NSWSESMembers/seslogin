@@ -21,6 +21,8 @@ export const ENTITY_TYPE_LABELS = {
   TASK_LIST: "Task list",
   NOTE: "Note",
   NOTE_FOLDER: "Note folder",
+  MAP_PIN: "Map pin",
+  MAP_LAYER: "Map layer",
 } as const;
 
 export type EntityTypeKey = keyof typeof ENTITY_TYPE_LABELS;

@@ -221,6 +221,19 @@ pub(crate) fn require_note_access(ctx: &Context<'_>, location_id: &str) -> Resul
     }
 }
 
+/// Check the caller may use a location's Map (its shared map pins): see them, and also
+/// add, edit and delete pins and manage its map layers.
+///
+/// The same rule as [`require_task_access`], for the same reason: the map is a shared
+/// unit tool, so **Read only** users may write it too, and only people may — kiosk
+/// sessions, API tokens and edit links are refused.
+pub(crate) fn require_map_access(ctx: &Context<'_>, location_id: &str) -> Result<()> {
+    match ctx.data_opt::<AuthInfo>() {
+        Some(AuthInfo::User { .. }) => require_location_access(ctx, location_id),
+        _ => Err(ApiError::forbidden("The map is only available to signed-in users").into()),
+    }
+}
+
 /// Whether the caller may make changes at the location — the boolean form of
 /// [`require_location_write_access`] plus [`require_writable`], for resolvers that
 /// report capability (e.g. `Location.viewerCanEdit`) rather than enforce it.

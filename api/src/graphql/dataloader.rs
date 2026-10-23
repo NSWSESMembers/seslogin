@@ -11,8 +11,8 @@ use crate::db::Handler;
 
 use super::query::{Category, Location, Person, Session, User};
 use super::{
-    ApiTokenNameId, CategoryId, LocationId, NitcEventId, NoteFolderId, PersonId, SessionId,
-    TaskListId, UserId,
+    ApiTokenNameId, CategoryId, LocationId, MapLayerId, NitcEventId, NoteFolderId, PersonId,
+    SessionId, TaskListId, UserId,
 };
 
 pub struct DatabaseLoader<A: App + HasDb + Send + Sync> {
@@ -169,6 +169,27 @@ impl<A: App + HasDb + Send + Sync + 'static> Loader<NoteFolderId> for DatabaseLo
             .app
             .db()
             .get_note_folders(&ids)
+            .await
+            .map_err(|e| Arc::new(anyhow!("DB error: {:?}", e)))?;
+        Ok(zip(keys.iter().cloned(), recs)
+            .filter_map(|(key, rec)| rec.map(|r| (key, r)))
+            .collect())
+    }
+}
+
+impl<A: App + HasDb + Send + Sync + 'static> Loader<MapLayerId> for DatabaseLoader<A> {
+    type Value = db::MapLayer;
+    type Error = Arc<anyhow::Error>;
+
+    async fn load(
+        &self,
+        keys: &[MapLayerId],
+    ) -> std::result::Result<HashMap<MapLayerId, db::MapLayer>, Arc<anyhow::Error>> {
+        let ids = keys.iter().map(|k| k.0.as_str()).collect::<Vec<&str>>();
+        let recs = self
+            .app
+            .db()
+            .get_map_layers(&ids)
             .await
             .map_err(|e| Arc::new(anyhow!("DB error: {:?}", e)))?;
         Ok(zip(keys.iter().cloned(), recs)

@@ -794,6 +794,97 @@ pub enum NoteFolderUpdateShape<'a> {
     Delete,
 }
 
+/// A pin on a location's shared map ("Map"). See SCHEMA.md's `map_pin` section.
+///
+/// Every pin belongs to its location; `layer_id` optionally puts it on one of the
+/// location's [`MapLayer`]s. `latitude` / `longitude` are WGS 84 degrees. `address` and
+/// `note` are free text, empty when absent.
+#[derive(Clone, Debug, PartialEq)]
+pub struct MapPin {
+    pub id: String,
+    pub location_id: String,
+    pub layer_id: Option<String>,
+    pub title: String,
+    pub latitude: f64,
+    pub longitude: f64,
+    pub address: String,
+    pub note: String,
+    pub created_by: Option<String>,
+    pub updated_by: Option<String>,
+    pub version: u64,
+    pub deleted: Option<u64>,
+    pub created_at: u64,
+    pub updated_at: u64,
+}
+
+impl HasID for MapPin {
+    fn id(&self) -> &str {
+        &self.id
+    }
+}
+
+/// The fields of a map pin being created. See [`MapPin`].
+#[derive(Clone, Debug, PartialEq)]
+pub struct NewMapPin<'a> {
+    pub location_id: &'a str,
+    pub layer_id: Option<&'a str>,
+    pub title: &'a str,
+    pub latitude: f64,
+    pub longitude: f64,
+    pub address: &'a str,
+    pub note: &'a str,
+    pub created_by: Option<&'a str>,
+}
+
+/// Every write to a map pin. Each fails with [`Error::NotFound`] when the pin does not
+/// exist, is deleted or — for `Fields` — is no longer at `expected_version`, so two
+/// people saving the same pin cannot silently overwrite each other. Each returns the
+/// pin as it is after the write.
+#[derive(Clone, Debug, PartialEq)]
+pub enum MapPinUpdateShape<'a> {
+    /// Replace the editable fields. An absent layer, or an empty address or note, is
+    /// removed.
+    Fields {
+        layer_id: Option<&'a str>,
+        title: &'a str,
+        latitude: f64,
+        longitude: f64,
+        address: &'a str,
+        note: &'a str,
+        by: Option<&'a str>,
+        expected_version: u64,
+    },
+    /// Soft-delete the pin.
+    Delete { by: Option<&'a str> },
+}
+
+/// A named layer a location's map pins can be put on.
+#[derive(Clone, Debug, PartialEq)]
+pub struct MapLayer {
+    pub id: String,
+    pub location_id: String,
+    pub name: String,
+    pub created_by: Option<String>,
+    pub deleted: Option<u64>,
+    pub created_at: u64,
+    pub updated_at: u64,
+}
+
+impl HasID for MapLayer {
+    fn id(&self) -> &str {
+        &self.id
+    }
+}
+
+/// Every write to a map layer. Each fails with [`Error::NotFound`] when the layer does
+/// not exist or is deleted, and returns the layer as it is after the write. Deleting a
+/// layer leaves its pins alone: they keep `layer_id` and stay on their location's map.
+#[derive(Clone, Debug, PartialEq)]
+pub enum MapLayerUpdateShape<'a> {
+    Name { name: &'a str },
+    Delete,
+}
+
 impl HasID for Period {
     fn id(&self) -> &str {
         &self.id
@@ -1086,6 +1177,8 @@ pub enum AuditEntityType {
     TaskList,
     Note,
     NoteFolder,
+    MapPin,
+    MapLayer,
 }
 
 impl AuditEntityType {
@@ -1108,6 +1201,8 @@ impl AuditEntityType {
             "task_list" => Self::TaskList,
             "note" => Self::Note,
             "note_folder" => Self::NoteFolder,
+            "map_pin" => Self::MapPin,
+            "map_layer" => Self::MapLayer,
             _ => return None,
         })
     }
@@ -1131,6 +1226,8 @@ impl AuditEntityType {
             Self::TaskList => "task_list",
             Self::Note => "note",
             Self::NoteFolder => "note_folder",
+            Self::MapPin => "map_pin",
+            Self::MapLayer => "map_layer",
         }
     }
 }
@@ -1863,6 +1960,43 @@ pub trait Handler: Sync {
         id: &str,
         change: NoteFolderUpdateShape<'_>,
     ) -> impl Future<Output = Result<NoteFolder>> + Send;
+
+    // ── Map ───────────────────────────────────────────────────────────────────
+
+    fn get_map_pins<T: AsRef<str> + Sync>(
+        &self,
+        ids: &[T],
+    ) -> impl Future<Output = Result<Vec<Option<MapPin>>>> + Send;
+    /// A location's map pins, deleted ones left out, in no particular order. Reads a
+    /// GSI, so a write may take a moment to show up.
+    fn list_map_pins(&self, location_id: &str) -> impl Future<Output = Result<Vec<MapPin>>> + Send;
+    fn create_map_pin(&self, pin: NewMapPin<'_>) -> impl Future<Output = Result<MapPin>> + Send;
+    fn update_map_pin(
+        &self,
+        id: &str,
+        change: MapPinUpdateShape<'_>,
+    ) -> impl Future<Output = Result<MapPin>> + Send;
+
+    fn get_map_layers<T: AsRef<str> + Sync>(
+        &self,
+        ids: &[T],
+    ) -> impl Future<Output = Result<Vec<Option<MapLayer>>>> + Send;
+    /// A location's map layers, deleted ones left out.
+    fn list_map_layers(
+        &self,
+        location_id: &str,
+    ) -> impl Future<Output = Result<Vec<MapLayer>>> + Send;
+    fn create_map_layer(
+        &self,
+        location_id: &str,
+        name: &str,
+        created_by: Option<&str>,
+    ) -> impl Future<Output = Result<MapLayer>> + Send;
+    fn update_map_layer(
+        &self,
+        id: &str,
+        change: MapLayerUpdateShape<'_>,
+    ) -> impl Future<Output = Result<MapLayer>> + Send;
 
     // ── Audit log ─────────────────────────────────────────────────────────────
 
