@@ -121,6 +121,24 @@ impl<A: App + HasDb + Send + Sync + 'static> User<A> {
             .collect()
     }
 
+    /// The member this user acts as when signing in or out from the mobile app.
+    async fn person_id(&self) -> Option<ID> {
+        self.rec.person_id.clone().map(ID)
+    }
+
+    /// The member this user acts as, or null if none is set or it no longer exists.
+    async fn person(&self, ctx: &Context<'_>) -> Result<Option<Person<A>>> {
+        let Some(person_id) = self.rec.person_id.clone() else {
+            return Ok(None);
+        };
+        let loader = ctx.data_unchecked::<DataLoader<DatabaseLoader<A>>>();
+        Ok(loader
+            .load_one(PersonId(ID(person_id)))
+            .await
+            .map_err(|e| anyhow!("Failed to load person via DataLoader: {}", e))?
+            .flatten())
+    }
+
     async fn locations(&self, ctx: &Context<'_>) -> Result<Vec<Location<A>>> {
         if self.rec.is_super {
             // superusers have access to all locations, so fetch full list of locations

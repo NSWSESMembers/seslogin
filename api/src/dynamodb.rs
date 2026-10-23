@@ -299,6 +299,7 @@ impl TryInto<User> for Item {
                 .unwrap_or(false),
             location_grants: self.string_set_field("location_grants")?,
             location_read_only_grants: self.string_set_field("location_read_only_grants")?,
+            person_id: self.string_field("person_id")?,
             enabled: self.i64_field("enabled")?.is_some(),
             access_time: self.i64_field("access_time")?.map(|i| i as u64),
             email_config: {
@@ -1425,6 +1426,7 @@ impl db::Handler for Handler {
             is_dev: false,
             location_grants,
             location_read_only_grants,
+            person_id: None,
             enabled: true,
             access_time: None,
             email_config: serde_json::Map::new(),
@@ -1576,6 +1578,37 @@ impl db::Handler for Handler {
                         ":updated_at",
                         AttributeValue::N(crate::clock::now_sec().to_string()),
                     )
+                    .return_consumed_capacity(ReturnConsumedCapacity::Total)
+                    .send()
+                    .await
+                    .map_err(|e| map_update_err(e, format!("User {}", id)))?;
+                record_capacity("update_user", resp.consumed_capacity(), CapKind::Write);
+            }
+            db::UserUpdateShape::Person { person_id } => {
+                let mut builder = self
+                    .client
+                    .update_item()
+                    .table_name(self.table_name("user"))
+                    .key("id", AttributeValue::S(id.to_string()))
+                    .condition_expression("attribute_exists(id)")
+                    .expression_attribute_values(
+                        ":updated_at",
+                        AttributeValue::N(crate::clock::now_sec().to_string()),
+                    );
+                // Clearing REMOVEs the attribute rather than storing Null (see the
+                // omit-over-Null note in CLAUDE.md).
+                builder = match person_id {
+                    Some(person_id) => builder
+                        .update_expression("SET person_id = :person_id, updated_at = :updated_at")
+                        .expression_attribute_values(
+                            ":person_id",
+                            AttributeValue::S(person_id.to_string()),
+                        ),
+                    None => {
+                        builder.update_expression("SET updated_at = :updated_at REMOVE person_id")
+                    }
+                };
+                let resp = builder
                     .return_consumed_capacity(ReturnConsumedCapacity::Total)
                     .send()
                     .await

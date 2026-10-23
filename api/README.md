@@ -287,6 +287,7 @@ the MCP authorization spec's discovery flow.
 | `create_user` | Create a user (email, `isSuper`, `locationGrants`, optional `readOnlyLocationGrants`). Super user only. |
 | `update_user` | Change a user's email/`isSuper`/`isDev`/`locationGrants`/`readOnlyLocationGrants`; omitted fields keep their current value. Never touches `enabled`. Super user only. |
 | `disable_user` / `enable_user` | Flip `enabled` — SESLogin has no user delete, only disable. Super user only. |
+| `set_user_member` | Set (`personId`) or clear (`null`) the member a user acts as when signing in or out from the mobile app. Any user, the caller included; several users may share a member. Super user only. |
 | `list_locations` | The locations you can access (id, name, `enabled`, `viewerCanEdit`, `nitcEnabled`, `lastSuccessfulMemberSync`): every enabled one for a super user, otherwise your Admin and Read only grants. Start here for location ids. |
 | `get_location` | One location's details (adds NITC and SES headquarters settings, created/updated). Needs a grant for it. |
 | `list_members` | A location's active members, optionally filtered by `query` (case-insensitive substring of first/last/full name or member number). Deleted members are never listed. Each carries `syncManaged` (`sesApiPersonId` set). Admin, Read only or super user. |

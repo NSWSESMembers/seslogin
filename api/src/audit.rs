@@ -311,6 +311,7 @@ fn user_fields(u: &User) -> Fields {
             "location_read_only_grants",
             string_set(&u.location_read_only_grants),
         )
+        .with("person_id", u.person_id.as_deref().and_then(text))
         .with("email_config", {
             // An empty config is the default, not something worth listing.
             (!u.email_config.is_empty())
@@ -368,6 +369,9 @@ pub fn user_update_changes(
         }
         db::UserUpdateShape::DisaggregateVirtualPeriods { value } => {
             after.set("disaggregate_virtual_periods", flag(*value));
+        }
+        db::UserUpdateShape::Person { person_id } => {
+            after.set("person_id", person_id.and_then(text));
         }
     }
     diff(&before, &after)
@@ -2268,6 +2272,7 @@ mod tests {
             enabled: true,
             location_grants: vec!["loc-b".to_string(), "loc-a".to_string()],
             location_read_only_grants: vec![],
+            person_id: None,
             access_time: Some(9),
             email_config: serde_json::Map::new(),
             disaggregate_virtual_periods: false,
@@ -2688,6 +2693,29 @@ mod tests {
             change(&changes, "location_grants").before,
             Some(json!(["loc-a", "loc-b"]))
         );
+    }
+
+    #[test]
+    fn user_member_link_is_diffed_as_person_id() {
+        let set = db::UserUpdateShape::Person {
+            person_id: Some("p1"),
+        };
+        assert!(user_shape_is_audited(&set));
+        let changes = user_update_changes(Some(&user()), &set);
+        assert_eq!(fields(&changes), vec!["person_id"]);
+        assert_eq!(change(&changes, "person_id").before, None);
+        assert_eq!(change(&changes, "person_id").after, Some(json!("p1")));
+
+        let linked = User {
+            person_id: Some("p1".to_string()),
+            ..user()
+        };
+        let changes = user_update_changes(
+            Some(&linked),
+            &db::UserUpdateShape::Person { person_id: None },
+        );
+        assert_eq!(change(&changes, "person_id").before, Some(json!("p1")));
+        assert_eq!(change(&changes, "person_id").after, None);
     }
 
     #[test]
