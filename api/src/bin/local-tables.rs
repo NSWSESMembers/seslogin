@@ -323,6 +323,17 @@ const TABLES: &[Table] = &[
         ttl: None,
     },
     Table {
+        name: "equipment_reservation",
+        hash: "id",
+        attrs: &[Attr("id", S), Attr("location_id", S), Attr("end_time", N)],
+        gsis: &[all(
+            "location_id-end_time-index",
+            "location_id",
+            Some("end_time"),
+        )],
+        ttl: None,
+    },
+    Table {
         name: "test_pagination",
         hash: "id",
         attrs: &[Attr("id", S), Attr("group_id", N), Attr("number", N)],

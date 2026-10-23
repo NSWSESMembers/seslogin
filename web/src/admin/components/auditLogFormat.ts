@@ -23,6 +23,7 @@ export const ENTITY_TYPE_LABELS = {
   NOTE_FOLDER: "Note folder",
   EQUIPMENT: "Equipment",
   EQUIPMENT_LOG_ENTRY: "Equipment log entry",
+  EQUIPMENT_RESERVATION: "Equipment reservation",
   ON_CALL_ROLE: "On-call role",
   MAP_PIN: "Map pin",
   MAP_LAYER: "Map layer",

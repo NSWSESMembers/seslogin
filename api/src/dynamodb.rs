@@ -953,6 +953,42 @@ impl TryInto<db::NoteFolder> for Item {
     }
 }
 
+impl TryInto<db::EquipmentReservation> for Item {
+    type Error = HydrationError;
+    fn try_into(self) -> Result<db::EquipmentReservation, Self::Error> {
+        Ok(db::EquipmentReservation {
+            id: self.id()?,
+            location_id: self
+                .string_field("location_id")?
+                .ok_or_else(|| anyhow!("EquipmentReservation missing location_id"))?,
+            equipment_ids: self.string_set_field("equipment_ids")?,
+            start_time: self
+                .i64_field("start_time")?
+                .ok_or_else(|| anyhow!("EquipmentReservation missing start_time"))?
+                as u64,
+            end_time: self
+                .i64_field("end_time")?
+                .ok_or_else(|| anyhow!("EquipmentReservation missing end_time"))?
+                as u64,
+            reserved_for_user_id: self.string_field("reserved_for_user_id")?,
+            reserved_for_text: self.string_field("reserved_for_text")?,
+            description: self.string_field("description")?.unwrap_or_default(),
+            created_by: self.string_field("created_by")?,
+            updated_by: self.string_field("updated_by")?,
+            version: self.i64_field("v")?.unwrap_or(1) as u64,
+            deleted: self.i64_field("deleted")?.map(|i| i as u64),
+            created_at: self
+                .i64_field("created_at")?
+                .ok_or_else(|| anyhow!("EquipmentReservation missing created_at"))?
+                as u64,
+            updated_at: self
+                .i64_field("updated_at")?
+                .ok_or_else(|| anyhow!("EquipmentReservation missing updated_at"))?
+                as u64,
+        })
+    }
+}
+
 impl TryInto<db::MapPin> for Item {
     type Error = HydrationError;
     fn try_into(self) -> Result<db::MapPin, Self::Error> {
@@ -6963,6 +6999,195 @@ impl db::Handler for Handler {
                 )
         })
         .await
+    }
+
+    async fn get_equipment_reservations<T: AsRef<str> + Sync>(
+        &self,
+        ids: &[T],
+    ) -> db::Result<Vec<Option<db::EquipmentReservation>>> {
+        self.get_records("equipment_reservation", ids).await
+    }
+
+    async fn list_equipment_reservations(
+        &self,
+        location_id: &str,
+        ending_after: u64,
+    ) -> db::Result<Vec<db::EquipmentReservation>> {
+        query_all("list_equipment_reservations", || {
+            self.client
+                .query()
+                .table_name(self.table_name("equipment_reservation"))
+                .index_name("location_id-end_time-index")
+                .key_condition_expression("location_id = :location_id AND end_time > :after")
+                .filter_expression("attribute_not_exists(deleted)")
+                .expression_attribute_values(
+                    ":location_id",
+                    AttributeValue::S(location_id.to_string()),
+                )
+                .expression_attribute_values(":after", AttributeValue::N(ending_after.to_string()))
+        })
+        .await
+    }
+
+    async fn create_equipment_reservation(
+        &self,
+        r: db::NewEquipmentReservation<'_>,
+    ) -> db::Result<db::EquipmentReservation> {
+        if self.read_only {
+            return Err(db::Error::MutationDisabled);
+        }
+        if r.equipment_ids.is_empty() {
+            return Err(Error::Infrastructure(
+                "A reservation needs at least one piece of equipment".to_string(),
+            ));
+        }
+        let id = new_id();
+        let now = crate::clock::now_sec();
+        // Optional attributes are omitted when absent rather than stored as Null.
+        let mut put = self
+            .client
+            .put_item()
+            .table_name(self.table_name("equipment_reservation"))
+            .item("id", AttributeValue::S(id.clone()))
+            .item("location_id", AttributeValue::S(r.location_id.to_string()))
+            .item(
+                "equipment_ids",
+                AttributeValue::Ss(r.equipment_ids.to_vec()),
+            )
+            .item("start_time", AttributeValue::N(r.start_time.to_string()))
+            .item("end_time", AttributeValue::N(r.end_time.to_string()))
+            .item("v", AttributeValue::N("1".to_string()))
+            .item("created_at", AttributeValue::N(now.to_string()))
+            .item("updated_at", AttributeValue::N(now.to_string()))
+            .condition_expression("attribute_not_exists(id)")
+            .return_consumed_capacity(ReturnConsumedCapacity::Total);
+        if let Some(user_id) = r.reserved_for_user_id {
+            put = put.item(
+                "reserved_for_user_id",
+                AttributeValue::S(user_id.to_string()),
+            );
+        }
+        if let Some(text) = r.reserved_for_text {
+            put = put.item("reserved_for_text", AttributeValue::S(text.to_string()));
+        }
+        if !r.description.is_empty() {
+            put = put.item("description", AttributeValue::S(r.description.to_string()));
+        }
+        if let Some(by) = r.created_by {
+            put = put.item("created_by", AttributeValue::S(by.to_string()));
+        }
+        let resp = put
+            .send()
+            .await
+            .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
+        record_capacity(
+            "create_equipment_reservation",
+            resp.consumed_capacity(),
+            CapKind::Write,
+        );
+
+        Ok(db::EquipmentReservation {
+            id,
+            location_id: r.location_id.to_string(),
+            equipment_ids: r.equipment_ids.to_vec(),
+            start_time: r.start_time,
+            end_time: r.end_time,
+            reserved_for_user_id: r.reserved_for_user_id.map(str::to_string),
+            reserved_for_text: r.reserved_for_text.map(str::to_string),
+            description: r.description.to_string(),
+            created_by: r.created_by.map(str::to_string),
+            updated_by: None,
+            version: 1,
+            deleted: None,
+            created_at: now,
+            updated_at: now,
+        })
+    }
+
+    async fn update_equipment_reservation(
+        &self,
+        id: &str,
+        change: db::EquipmentReservationUpdateShape<'_>,
+    ) -> db::Result<db::EquipmentReservation> {
+        if self.read_only {
+            return Err(db::Error::MutationDisabled);
+        }
+        let now = crate::clock::now_sec();
+        let mut update = UpdateExpr::default();
+        update.set("updated_at", AttributeValue::N(now.to_string()));
+        let live = "attribute_exists(id) AND attribute_not_exists(deleted)";
+        let (condition, expected_version) = match change {
+            db::EquipmentReservationUpdateShape::Fields {
+                equipment_ids,
+                start_time,
+                end_time,
+                reserved_for_user_id,
+                reserved_for_text,
+                description,
+                by,
+                expected_version,
+            } => {
+                if equipment_ids.is_empty() {
+                    return Err(Error::Infrastructure(
+                        "A reservation needs at least one piece of equipment".to_string(),
+                    ));
+                }
+                update.set("equipment_ids", AttributeValue::Ss(equipment_ids.to_vec()));
+                update.set("start_time", AttributeValue::N(start_time.to_string()));
+                update.set("end_time", AttributeValue::N(end_time.to_string()));
+                update.set_or_remove(
+                    "reserved_for_user_id",
+                    reserved_for_user_id.map(|u| AttributeValue::S(u.to_string())),
+                );
+                update.set_or_remove(
+                    "reserved_for_text",
+                    reserved_for_text.map(|t| AttributeValue::S(t.to_string())),
+                );
+                update.set_or_remove(
+                    "description",
+                    (!description.is_empty()).then(|| AttributeValue::S(description.to_string())),
+                );
+                update.set_or_remove("updated_by", by.map(|b| AttributeValue::S(b.to_string())));
+                (
+                    format!("{live} AND v = :expected_version"),
+                    Some(expected_version),
+                )
+            }
+            db::EquipmentReservationUpdateShape::Delete { by } => {
+                update.set("deleted", AttributeValue::N(now.to_string()));
+                update.set_or_remove("updated_by", by.map(|b| AttributeValue::S(b.to_string())));
+                (live.to_string(), None)
+            }
+        };
+
+        let mut builder = self
+            .client
+            .update_item()
+            .table_name(self.table_name("equipment_reservation"))
+            .key("id", AttributeValue::S(id.to_string()))
+            .update_expression(update.expression("ADD v :one"))
+            .set_expression_attribute_names(Some(update.names))
+            .set_expression_attribute_values(Some(update.values))
+            .expression_attribute_values(":one", AttributeValue::N("1".to_string()))
+            .condition_expression(condition)
+            .return_values(ReturnValue::AllNew)
+            .return_consumed_capacity(ReturnConsumedCapacity::Total);
+        if let Some(v) = expected_version {
+            builder = builder
+                .expression_attribute_values(":expected_version", AttributeValue::N(v.to_string()));
+        }
+        let resp = builder.send().await.map_err(|e| {
+            map_update_err(
+                e,
+                format!("Equipment reservation {id} not found, or changed"),
+            )
+        })?;
+        record_capacity(
+            "update_equipment_reservation",
+            resp.consumed_capacity(),
+            CapKind::Write,
+        );
+        Ok(hydrate_item(resp.attributes.unwrap_or_default())?)
     }
 
     async fn put_audit_entry(&self, entry: &db::AuditEntry) -> db::Result<()> {
