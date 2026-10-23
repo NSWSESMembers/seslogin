@@ -426,7 +426,7 @@ Absence writes are excluded from `max_mutations`: a location with a large but le
 | `Person` | `id`, `location_id`, `member_number`, `ses_api_person_id` | Members; synced from SES |
 | `Period` | `id`, `person_id`, `location_id`, `category_id`, `start_time`, `end_time` | Attendance events |
 | `Session` | `id`, `name`, `location_id`, `key_fingerprint`, `healthcheck_url` | Kiosk/device sessions |
-| `User` | `id`, `email`, `is_super`, `location_grants`, `location_read_only_grants` | System users; per-location Admin / Read only |
+| `User` | `id`, `email`, `is_super`, `location_grants`, `location_read_only_grants`, `person_id` | System users; per-location Admin / Read only; `person_id` is the member they act as in the mobile app, set by a super user (`setUserMember`) |
 | `Category` | `id`, `name` | Activity types for periods |
 | `Task` | `id`, `location_id`, `list_id`, `title`, `due_date`, `show_date`, `recurrence` | A location's shared to-do list (Tally); see `api/README.md`'s "Tasks" |
 | `TaskList` | `id`, `location_id`, `name` | Optional named lists of a location's tasks |

@@ -145,6 +145,15 @@ impl db::Handler for FakeDb {
                 user.disaggregate_virtual_periods = value;
                 Ok(())
             }
+            db::UserUpdateShape::Person { person_id } => {
+                let mut users = self.users.lock().unwrap();
+                let user = users
+                    .get_mut(id)
+                    .ok_or_else(|| db::Error::NotFound(id.to_string()))?;
+                user.person_id = person_id.map(str::to_string);
+                user.updated_at = seslogin::clock::now_sec();
+                Ok(())
+            }
         }
     }
 
@@ -260,6 +269,7 @@ impl db::Handler for FakeDb {
             enabled: true,
             location_grants,
             location_read_only_grants,
+            person_id: None,
             access_time: None,
             email_config: serde_json::Map::new(),
             disaggregate_virtual_periods: false,
@@ -1495,6 +1505,7 @@ pub(crate) fn seed_user(
             enabled,
             location_grants: vec![],
             location_read_only_grants: vec![],
+            person_id: None,
             access_time: None,
             email_config: serde_json::Map::new(),
             disaggregate_virtual_periods: false,

@@ -10,6 +10,7 @@ import { FieldList, FormField } from "../../components/ui/FormField";
 import TextInput from "../../components/ui/TextInput";
 import { Button } from "../../components/ui/Button";
 import LocationRolesField from "../components/LocationRolesField";
+import UserMemberField from "../components/UserMemberField";
 import {
   joinLocationRoles,
   splitLocationRoles,
@@ -36,6 +37,7 @@ export default function UserEdit() {
           enabled
           locationGrantIds
           readOnlyLocationGrantIds
+          ...UserMemberField_user
           oauthGrants {
             id
             clientName
@@ -219,6 +221,9 @@ export default function UserEdit() {
           </FormField>
         </FieldList>
       </form>
+
+      <SectionHeading>Member</SectionHeading>
+      <UserMemberField user={user} locations={locations} />
 
       <SectionHeading>Connected apps</SectionHeading>
       {user.oauthGrants.length === 0 && (

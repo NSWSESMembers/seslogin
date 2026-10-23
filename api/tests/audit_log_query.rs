@@ -86,6 +86,7 @@ fn db_user(id: &str, email: &str) -> db::User {
         enabled: true,
         location_grants: vec![],
         location_read_only_grants: vec![],
+        person_id: None,
         access_time: None,
         email_config: serde_json::Map::new(),
         disaggregate_virtual_periods: false,

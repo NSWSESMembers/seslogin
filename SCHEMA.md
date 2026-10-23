@@ -34,6 +34,7 @@ All IDs are exposed to the API layer as opaque UUID strings. Conversion happens 
 - `is_super` (Bool) — superuser flag
 - `location_grants` (SS) — string set of location UUIDs where this user is an **Admin** (read and write)
 - `location_read_only_grants` (SS) — string set of location UUIDs where this user is **Read only** (can view, cannot change; disjoint from `location_grants`). Omitted when empty, like `location_grants`
+- `person_id` (S) — the member record (`person.id`) this user acts as when signing in or out from the mobile app. Set only by a super user (`setUserMember`); several users may share one. Omitted when unset
 - `deleted` (Bool)
 - `access_time` (N) — Unix timestamp
 
