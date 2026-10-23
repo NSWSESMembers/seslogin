@@ -32,6 +32,8 @@ locals {
     aws_dynamodb_table.prod_user_token,
     aws_dynamodb_table.prod_webauthn_credential,
     aws_dynamodb_table.prod_audit_log,
+    aws_dynamodb_table.prod_task,
+    aws_dynamodb_table.prod_task_list,
   ]
 }
 
