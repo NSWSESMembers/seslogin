@@ -10,8 +10,8 @@
 #   - no point-in-time recovery (not needed for a sandbox; avoids the cost)
 #   - not included in the AWS Backup plan (see backup.tf — prod tables only)
 #
-# Wiring these into the test environment (test API DB_PREFIX + IAM) is a separate
-# step — see the note at the bottom of this file.
+# seslogin-test-api (test.seslogin.com) runs against these tables — see the note
+# at the bottom of this file. Local dev (`.env`) uses them too.
 
 resource "aws_dynamodb_table" "test_user" {
   name         = "${var.db_prefix_test}_user"
@@ -489,8 +489,7 @@ resource "aws_dynamodb_table" "test_audit_log" {
 }
 
 # ── Test API access to the test tables ────────────────────────────────────────
-# The test API role's dynamodb-access policy in dynamodb.tf is scoped to
-# ${var.db_prefix}* (prod). To run the test environment against these tables,
-# point seslogin-test-api's DB_PREFIX at var.db_prefix_test and broaden that
-# policy to also cover ${var.db_prefix_test}*. Left as a deliberate separate step
-# so creating these tables doesn't change what test.seslogin.com reads today.
+# seslogin-test-api's DB_PREFIX is var.db_prefix_test, and its dynamodb-access
+# policy in dynamodb.tf is scoped to ${var.db_prefix_test}* only, so the test
+# environment cannot reach the prod tables. It still shares prod's SQS queues,
+# whose consumers (the workers Lambdas) read the prod tables.
