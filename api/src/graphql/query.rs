@@ -32,6 +32,7 @@ use crate::ses_api;
 use super::audit_log::{self, AuditEntityType, AuditEntryConnection};
 use super::auth::{AuthGuard, AuthRequirement, can_write_location, require_location_access};
 use super::dataloader::DatabaseLoader;
+use super::equipment::{self, Equipment};
 use super::map::{self, MapLayer, MapPin};
 use super::notes::{self, Note, NoteFolder};
 use super::on_call::{self, OnCallRole};
@@ -2505,6 +2506,17 @@ impl<A: App + HasDb + Send + Sync> Location<A> {
         notes::location_note_folders(ctx, &self.rec.id).await
     }
 
+    /// The location's equipment register, by name. `search` keeps equipment whose name
+    /// or description contains it, ignoring case. Users only (Admin or Read only); see
+    /// `graphql::equipment`.
+    async fn equipment(
+        &self,
+        ctx: &Context<'_>,
+        search: Option<String>,
+    ) -> Result<Vec<Equipment<A>>> {
+        equipment::location_equipment(ctx, &self.rec.id, search).await
+    }
+
     /// The pins on the location's shared map, by title. `layerId` narrows to one of its
     /// map layers; without it every pin at the location is listed, whichever layer it is
     /// on. Users only (Admin or Read only); see `graphql::map`.
@@ -3572,6 +3584,12 @@ impl<A: App + HasDb + HasRealtime + Send + Sync + 'static> QueryRoot<A> {
     #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
     async fn note(&self, ctx: &Context<'_>, id: ID) -> Result<Option<Note<A>>> {
         notes::note(ctx, &id).await
+    }
+
+    /// One piece of equipment; null if it does not exist or was deleted.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    async fn equipment(&self, ctx: &Context<'_>, id: ID) -> Result<Option<Equipment<A>>> {
+        equipment::equipment(ctx, &id).await
     }
 
     /// One map pin; null if it does not exist or was deleted.

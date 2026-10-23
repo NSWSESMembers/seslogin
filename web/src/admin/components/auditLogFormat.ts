@@ -21,6 +21,8 @@ export const ENTITY_TYPE_LABELS = {
   TASK_LIST: "Task list",
   NOTE: "Note",
   NOTE_FOLDER: "Note folder",
+  EQUIPMENT: "Equipment",
+  EQUIPMENT_LOG_ENTRY: "Equipment log entry",
   ON_CALL_ROLE: "On-call role",
   MAP_PIN: "Map pin",
   MAP_LAYER: "Map layer",

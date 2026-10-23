@@ -481,6 +481,63 @@ A location's on-call roles ("On Call"), such as Duty Officer, and who holds each
 
 ---
 
+### `{prefix}equipment`
+
+A location's equipment register ("Equipment").
+
+| Attribute     | Type | Role                                  |
+| ------------- | ---- | ------------------------------------- |
+| `id`          | S    | Hash key (PK)                         |
+| `location_id` | S    | GSI hash key (`location_id-index`)    |
+
+**GSIs:**
+
+| GSI                 | Hash key      | Sort key | Projection | Purpose                  |
+| ------------------- | ------------- | -------- | ---------- | ------------------------ |
+| `location_id-index` | `location_id` | —        | ALL        | A location's equipment; deleted items are filtered out on read, and the API sorts and searches them in memory |
+
+**Non-obvious attributes (not in table definition):**
+
+- `equipment_type` (S) — `vehicle`, `trailer`, `vessel`, `radio`, `device`, `bag`, `box` or `tool`; more will be added
+- `name` (S) — one line of plain text
+- `description` (S, optional) — plain text; absent when empty
+- `status` (S) — `in_service`, `out_of_service`, `missing` or `borrowed`. Changed only together with a new `equipment_log` row, in one transaction conditional on the status it changes from
+- `status_changed_at` (N) — when the status last changed, or the equipment was added
+- `last_checked_at` (N, optional) — when someone last logged a check
+- `v` (N) — version, bumped by every edit (not by log entries); edits are conditional on it
+- `created_by` / `updated_by` (S) — user IDs
+- `deleted` (N) — Unix seconds when soft-deleted; absent otherwise. The log is kept
+- `created_at` / `updated_at` (N)
+
+---
+
+### `{prefix}equipment_log`
+
+Each piece of equipment's log of status changes and checks. Append-only.
+
+| Attribute      | Type | Role                                  |
+| -------------- | ---- | ------------------------------------- |
+| `id`           | S    | Hash key (PK)                         |
+| `equipment_id` | S    | GSI hash key (`equipment_id-index`)   |
+
+**GSIs:**
+
+| GSI                  | Hash key       | Sort key | Projection | Purpose                  |
+| -------------------- | -------------- | -------- | ---------- | ------------------------ |
+| `equipment_id-index` | `equipment_id` | —        | ALL        | A piece of equipment's log; the API sorts it newest first |
+
+**Non-obvious attributes (not in table definition):**
+
+- `location_id` (S) — the equipment's location
+- `kind` (S) — `status_change` or `check`
+- `from_status` (S, optional) — the status before a change; absent for checks and for the row written when the equipment was added
+- `status` (S) — the status after a change, or the status it was checked in
+- `comment` (S, optional) — why, as the user wrote it; required for a status change after the first, absent when empty
+- `created_by` (S) — user ID
+- `created_at` (N) — Unix seconds; `created_us` (N) — Unix microseconds, which orders rows written in the same second
+
+---
+
 ### `{prefix}audit_log`
 
 An append-only record of business database writes, shown in the admin UI. Entries are kept forever (no TTL). One item is written **per affected location** for each audited event, so a write touching two locations produces two items sharing an `event_id`.
@@ -510,7 +567,7 @@ Access patterns: per-location newest-first (`Query` on `location_id-sk-index`) a
 - `ts` (N) — Unix seconds when the event happened
 - `event_id` (S) — shared by every item written for the same event
 - `action` (S) — `create`, `update`, `delete` or `restore`
-- `entity_type` (S) — `user`, `person`, `period`, `session`, `api_token`, `location`, `category`, `nitc_group`, `nitc_tag`, `user_token`, `oauth_grant`, `webauthn_credential`, `task`, `task_list`, `note`, `note_folder`, `map_pin`, `map_layer` or `on_call_role`
+- `entity_type` (S) — `user`, `person`, `period`, `session`, `api_token`, `location`, `category`, `nitc_group`, `nitc_tag`, `user_token`, `oauth_grant`, `webauthn_credential`, `task`, `task_list`, `note`, `note_folder`, `map_pin`, `map_layer`, `on_call_role`, `equipment` or `equipment_log_entry`
 - `entity_id` (S) — ID of the entity changed
 - `entity_label` (S) — human-readable name of the entity at the time; omitted when unknown
 - `actor_kind` (S) — `user`, `session` (kiosk), `api_token`, `period_link`, `system` (a job or the CLI), `unauthenticated` or `unknown`

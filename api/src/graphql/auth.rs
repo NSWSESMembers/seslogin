@@ -247,6 +247,19 @@ pub(crate) fn require_on_call_access(ctx: &Context<'_>, location_id: &str) -> Re
     }
 }
 
+/// Check the caller may use a location's Equipment register: read it, and also add,
+/// edit and delete equipment and log status changes and checks.
+///
+/// The same rule as [`require_task_access`], for the same reason: equipment is a shared
+/// unit tool, so **Read only** users may write it too, and only people may — kiosk
+/// sessions, API tokens and edit links are refused.
+pub(crate) fn require_equipment_access(ctx: &Context<'_>, location_id: &str) -> Result<()> {
+    match ctx.data_opt::<AuthInfo>() {
+        Some(AuthInfo::User { .. }) => require_location_access(ctx, location_id),
+        _ => Err(ApiError::forbidden("Equipment is only available to signed-in users").into()),
+    }
+}
+
 /// Whether the caller may make changes at the location — the boolean form of
 /// [`require_location_write_access`] plus [`require_writable`], for resolvers that
 /// report capability (e.g. `Location.viewerCanEdit`) rather than enforce it.
