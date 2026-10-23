@@ -34,6 +34,7 @@ use super::auth::{AuthGuard, AuthRequirement, can_write_location, require_locati
 use super::dataloader::DatabaseLoader;
 use super::map::{self, MapLayer, MapPin};
 use super::notes::{self, Note, NoteFolder};
+use super::on_call::{self, OnCallRole};
 use super::self_sign_in::{self, SelfSignInStatus};
 use super::tasks::{self, Task, TaskList, TaskView};
 use super::{CategoryId, LocationId, NitcEventId, PersonId, SessionId, UserId};
@@ -2516,6 +2517,12 @@ impl<A: App + HasDb + Send + Sync> Location<A> {
         map::location_map_layers(ctx, &self.rec.id).await
     }
 
+    /// The location's on-call roles (Duty Officer, …) and who holds each now, by name.
+    /// Users only (Admin or Read only); see `graphql::on_call`.
+    async fn on_call_roles(&self, ctx: &Context<'_>) -> Result<Vec<OnCallRole<A>>> {
+        on_call::location_on_call_roles(ctx, &self.rec.id).await
+    }
+
     async fn sessions(&self, ctx: &Context<'_>) -> Result<Vec<Session<A>>> {
         require_location_access(ctx, &self.rec.id)?;
         let app = ctx.data_unchecked::<Arc<A>>();
@@ -3571,6 +3578,12 @@ impl<A: App + HasDb + HasRealtime + Send + Sync + 'static> QueryRoot<A> {
     #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
     async fn map_pin(&self, ctx: &Context<'_>, id: ID) -> Result<Option<MapPin<A>>> {
         map::map_pin(ctx, &id).await
+    }
+
+    /// One on-call role; null if it does not exist or was deleted.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    async fn on_call_role(&self, ctx: &Context<'_>, id: ID) -> Result<Option<OnCallRole<A>>> {
+        on_call::on_call_role(ctx, &id).await
     }
 
     #[graphql(guard = "AuthGuard::new(AuthRequirement::Authenticated)")]

@@ -316,6 +316,7 @@ const TRANSIENT_TABLES: &[&str] = &[
     "task_list",
     "note",
     "note_folder",
+    "on_call_role",
     "map_pin",
     "map_layer",
 ];

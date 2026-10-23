@@ -673,6 +673,32 @@ resource "aws_dynamodb_table" "test_map_layer" {
   }
 }
 
+# On Call: a location's on-call roles and who holds each now. Listed per location;
+# deleted ones are filtered out on read.
+resource "aws_dynamodb_table" "test_on_call_role" {
+  name         = "${var.db_prefix_test}_on_call_role"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "id"
+
+  attribute {
+    name = "id"
+    type = "S"
+  }
+  attribute {
+    name = "location_id"
+    type = "S"
+  }
+
+  global_secondary_index {
+    name = "location_id-index"
+    key_schema {
+      attribute_name = "location_id"
+      key_type       = "HASH"
+    }
+    projection_type = "ALL"
+  }
+}
+
 # ── Test API access to the test tables ────────────────────────────────────────
 # seslogin-test-api's DB_PREFIX is var.db_prefix_test, and its dynamodb-access
 # policy in dynamodb.tf is scoped to ${var.db_prefix_test}* only, so the test
