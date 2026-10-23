@@ -44,14 +44,18 @@ only) — re-capture any that show a screen the PR changed.
 > **Full local setup guide: [DEVELOPMENT.md](DEVELOPMENT.md)** — AWS access, secrets,
 > toolchain, and troubleshooting.
 
-> ⚠️ **Databases: local dev is on the dev tables; every deployed environment is on prod.**
+> ⚠️ **Databases: local dev and `test` are on the dev tables; every other deployed environment is on prod.**
 > `.env` sets `DB_PREFIX=seslogin_test`, so `make dev` and locally-run scripts hit the
 > `seslogin_test_*` tables — a manually refreshed, **out-of-date partial snapshot** of
 > production. Expect missing or stale records; that's the snapshot, not a bug.
+> `seslogin-test-api` (test.seslogin.com) uses the same tables (`var.db_prefix_test`), so
+> local dev and the test deployment see each other's writes.
 >
-> All *deployed* environments use `seslogin_prod`: prod, preprod, `seslogin-test-api`, and
-> all sync/utility Lambdas (`var.db_prefix` defaults to `seslogin_prod`). Anything you push
-> to a deployment branch runs against **live production member data** with mutations enabled.
+> Every other deployed environment uses `seslogin_prod`: prod, preprod, and all
+> sync/utility Lambdas (`var.db_prefix` defaults to `seslogin_prod`). Anything you push
+> to `prod`, `preprod` or `workers` runs against **live production member data** with
+> mutations enabled. The test API still enqueues onto prod's SQS queues, which the
+> workers consume against the prod tables.
 >
 > Local dev can also be pointed at prod by setting `DB_PREFIX=seslogin_prod`. If you do:
 > prefer read-only work, use dry-runs, avoid destructive mutations, and double-check
@@ -213,7 +217,7 @@ The following Lambdas are only deployed from the `workers` branch, not from `tes
 
 `test`, `workers`, `preprod`, and `prod` are **deployment branches** — each one pushes to its respective environment. They are not protected against history rewrites: expect force-pushes / rewritten history on all of them, and especially on `test`, which is frequently rewritten as experimental work is pushed to it.
 
-> ⚠️ **Shared production database.** All these environments are usually configured to point at the same production database (see the `preprod` note above; `test` typically does too). A deploy to *any* of these branches — including experimental pushes to `test` — runs against **live production data** with mutations enabled. Take care accordingly.
+> ⚠️ **Shared production database.** `prod`, `preprod` and `workers` all point at the same production database (see the `preprod` note above). A deploy to any of them runs against **live production data** with mutations enabled. Take care accordingly. `test` is the exception: it runs against the `seslogin_test_*` snapshot tables, which still hold real member data.
 
 `main` is the stable integration branch and is **not** force-pushed. It may be ahead of or behind the deployment branches at any given time. Always fork PR branches from `main` (never from a deployment branch) so your work sits on top of stable, non-rewritten history.
 
