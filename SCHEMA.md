@@ -538,6 +538,36 @@ Each piece of equipment's log of status changes and checks. Append-only.
 
 ---
 
+### `{prefix}equipment_reservation`
+
+Bookings of a location's equipment for a time range ("Reservations"). Overlaps are allowed; the API reports them.
+
+| Attribute     | Type | Role                                                |
+| ------------- | ---- | --------------------------------------------------- |
+| `id`          | S    | Hash key (PK)                                       |
+| `location_id` | S    | GSI hash key (`location_id-end_time-index`)         |
+| `end_time`    | N    | GSI sort key (`location_id-end_time-index`)         |
+
+**GSIs:**
+
+| GSI                          | Hash key      | Sort key   | Projection | Purpose                  |
+| ---------------------------- | ------------- | ---------- | ---------- | ------------------------ |
+| `location_id-end_time-index` | `location_id` | `end_time` | ALL        | A location's reservations ending after a given time, so past ones are never read; deleted ones are filtered out on read, and the API sorts them and finds overlaps in memory |
+
+**Non-obvious attributes (not in table definition):**
+
+- `equipment_ids` (SS) — the equipment reserved, at least one; may name equipment deleted since
+- `start_time` (N) — Unix seconds; `end_time` is after it, by at most 366 days
+- `reserved_for_user_id` (S, optional) — the user it is for; absent when `reserved_for_text` is set
+- `reserved_for_text` (S, optional) — one line naming who or what it is for instead of a user
+- `description` (S, optional) — plain text; absent when empty
+- `v` (N) — version, bumped by every write; edits are conditional on it
+- `created_by` / `updated_by` (S) — user IDs
+- `deleted` (N) — Unix seconds when soft-deleted (cancelled); absent otherwise
+- `created_at` / `updated_at` (N)
+
+---
+
 ### `{prefix}audit_log`
 
 An append-only record of business database writes, shown in the admin UI. Entries are kept forever (no TTL). One item is written **per affected location** for each audited event, so a write touching two locations produces two items sharing an `event_id`.
@@ -567,7 +597,7 @@ Access patterns: per-location newest-first (`Query` on `location_id-sk-index`) a
 - `ts` (N) — Unix seconds when the event happened
 - `event_id` (S) — shared by every item written for the same event
 - `action` (S) — `create`, `update`, `delete` or `restore`
-- `entity_type` (S) — `user`, `person`, `period`, `session`, `api_token`, `location`, `category`, `nitc_group`, `nitc_tag`, `user_token`, `oauth_grant`, `webauthn_credential`, `task`, `task_list`, `note`, `note_folder`, `map_pin`, `map_layer`, `on_call_role`, `equipment` or `equipment_log_entry`
+- `entity_type` (S) — `user`, `person`, `period`, `session`, `api_token`, `location`, `category`, `nitc_group`, `nitc_tag`, `user_token`, `oauth_grant`, `webauthn_credential`, `task`, `task_list`, `note`, `note_folder`, `map_pin`, `map_layer`, `on_call_role`, `equipment`, `equipment_log_entry` or `equipment_reservation`
 - `entity_id` (S) — ID of the entity changed
 - `entity_label` (S) — human-readable name of the entity at the time; omitted when unknown
 - `actor_kind` (S) — `user`, `session` (kiosk), `api_token`, `period_link`, `system` (a job or the CLI), `unauthenticated` or `unknown`

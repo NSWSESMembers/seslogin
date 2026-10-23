@@ -36,6 +36,7 @@ use super::equipment::{self, Equipment};
 use super::map::{self, MapLayer, MapPin};
 use super::notes::{self, Note, NoteFolder};
 use super::on_call::{self, OnCallRole};
+use super::reservations::{self, EquipmentReservation};
 use super::self_sign_in::{self, SelfSignInStatus};
 use super::tasks::{self, Task, TaskList, TaskView};
 use super::{CategoryId, LocationId, NitcEventId, PersonId, SessionId, UserId};
@@ -2517,6 +2518,41 @@ impl<A: App + HasDb + Send + Sync> Location<A> {
         equipment::location_equipment(ctx, &self.rec.id, search).await
     }
 
+    /// The location's equipment reservations that end after `endingAfter` (Unix
+    /// seconds, default now) — those still to come or under way — by start time.
+    /// `equipmentId` narrows to reservations of one piece of equipment. Users only
+    /// (Admin or Read only); see `graphql::reservations`.
+    async fn equipment_reservations(
+        &self,
+        ctx: &Context<'_>,
+        ending_after: Option<i64>,
+        equipment_id: Option<ID>,
+    ) -> Result<Vec<EquipmentReservation<A>>> {
+        reservations::location_reservations(ctx, &self.rec.id, ending_after, equipment_id).await
+    }
+
+    /// The location's reservations a reservation of `equipmentIds` from `startTime` to
+    /// `endTime` would overlap, by start time, leaving out `excludeId` (the one being
+    /// edited). Overlaps are allowed; this is so a client can warn before saving.
+    async fn equipment_reservation_conflicts(
+        &self,
+        ctx: &Context<'_>,
+        equipment_ids: Vec<ID>,
+        start_time: i64,
+        end_time: i64,
+        exclude_id: Option<ID>,
+    ) -> Result<Vec<EquipmentReservation<A>>> {
+        reservations::location_reservation_conflicts(
+            ctx,
+            &self.rec.id,
+            equipment_ids,
+            start_time,
+            end_time,
+            exclude_id,
+        )
+        .await
+    }
+
     /// The pins on the location's shared map, by title. `layerId` narrows to one of its
     /// map layers; without it every pin at the location is listed, whichever layer it is
     /// on. Users only (Admin or Read only); see `graphql::map`.
@@ -3590,6 +3626,16 @@ impl<A: App + HasDb + HasRealtime + Send + Sync + 'static> QueryRoot<A> {
     #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
     async fn equipment(&self, ctx: &Context<'_>, id: ID) -> Result<Option<Equipment<A>>> {
         equipment::equipment(ctx, &id).await
+    }
+
+    /// One equipment reservation; null if it does not exist or was deleted.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    async fn equipment_reservation(
+        &self,
+        ctx: &Context<'_>,
+        id: ID,
+    ) -> Result<Option<EquipmentReservation<A>>> {
+        reservations::reservation(ctx, &id).await
     }
 
     /// One map pin; null if it does not exist or was deleted.

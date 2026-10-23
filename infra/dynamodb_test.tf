@@ -750,6 +750,41 @@ resource "aws_dynamodb_table" "test_equipment_log" {
   }
 }
 
+# Equipment reservations: bookings of a location's equipment for a time range. Listed
+# per location by end time, so upcoming ones are read without touching past ones;
+# deleted ones are filtered out on read.
+resource "aws_dynamodb_table" "test_equipment_reservation" {
+  name         = "${var.db_prefix_test}_equipment_reservation"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "id"
+
+  attribute {
+    name = "id"
+    type = "S"
+  }
+  attribute {
+    name = "location_id"
+    type = "S"
+  }
+  attribute {
+    name = "end_time"
+    type = "N"
+  }
+
+  global_secondary_index {
+    name = "location_id-end_time-index"
+    key_schema {
+      attribute_name = "location_id"
+      key_type       = "HASH"
+    }
+    key_schema {
+      attribute_name = "end_time"
+      key_type       = "RANGE"
+    }
+    projection_type = "ALL"
+  }
+}
+
 # ── Test API access to the test tables ────────────────────────────────────────
 # seslogin-test-api's DB_PREFIX is var.db_prefix_test, and its dynamodb-access
 # policy in dynamodb.tf is scoped to ${var.db_prefix_test}* only, so the test

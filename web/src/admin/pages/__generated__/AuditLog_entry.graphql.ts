@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<a0fc07c3e649bb8e9bef12b865169935>>
+ * @generated SignedSource<<0f8f406c5c7305f39fe1316b2b6e94f0>>
  * @lightSyntaxTransform
  */
 
@@ -10,7 +10,7 @@
 import { ReaderInlineDataFragment } from 'relay-runtime';
 export type AuditAction = "CREATE" | "DELETE" | "RESTORE" | "UPDATE" | "%future added value";
 export type AuditActorKind = "API_TOKEN" | "PERIOD_LINK" | "SESSION" | "SYSTEM" | "UNAUTHENTICATED" | "UNKNOWN" | "USER" | "%future added value";
-export type AuditEntityType = "API_TOKEN" | "CATEGORY" | "EQUIPMENT" | "EQUIPMENT_LOG_ENTRY" | "LOCATION" | "MAP_LAYER" | "MAP_PIN" | "NITC_GROUP" | "NITC_TAG" | "NOTE" | "NOTE_FOLDER" | "OAUTH_GRANT" | "ON_CALL_ROLE" | "PERIOD" | "PERSON" | "SESSION" | "TASK" | "TASK_LIST" | "USER" | "USER_TOKEN" | "WEBAUTHN_CREDENTIAL" | "%future added value";
+export type AuditEntityType = "API_TOKEN" | "CATEGORY" | "EQUIPMENT" | "EQUIPMENT_LOG_ENTRY" | "EQUIPMENT_RESERVATION" | "LOCATION" | "MAP_LAYER" | "MAP_PIN" | "NITC_GROUP" | "NITC_TAG" | "NOTE" | "NOTE_FOLDER" | "OAUTH_GRANT" | "ON_CALL_ROLE" | "PERIOD" | "PERSON" | "SESSION" | "TASK" | "TASK_LIST" | "USER" | "USER_TOKEN" | "WEBAUTHN_CREDENTIAL" | "%future added value";
 import { FragmentRefs, Result } from "relay-runtime";
 export type AuditLog_entry$data = {
   readonly action: AuditAction;

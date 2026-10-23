@@ -36,6 +36,7 @@ pub mod period_link;
 pub mod queue;
 pub mod realtime;
 pub mod request_metrics;
+pub mod reservations;
 pub mod server;
 pub mod ses_api;
 pub mod sesmail;

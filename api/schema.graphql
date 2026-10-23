@@ -117,6 +117,7 @@ enum AuditEntityType {
 	NOTE_FOLDER
 	EQUIPMENT
 	EQUIPMENT_LOG_ENTRY
+	EQUIPMENT_RESERVATION
 	ON_CALL_ROLE
 	MAP_PIN
 	MAP_LAYER
@@ -381,6 +382,71 @@ enum EquipmentLogKind {
 	CHECK
 }
 
+type EquipmentReservation {
+	id: ID!
+	"""
+	Unix seconds.
+	"""
+	startTime: Int!
+	"""
+	Unix seconds; always after `startTime`.
+	"""
+	endTime: Int!
+	"""
+	Every piece of equipment reserved, deleted ones included.
+	"""
+	equipmentIds: [ID!]!
+	"""
+	The equipment reserved, by name. Equipment deleted since is left out, so this
+	can be empty.
+	"""
+	equipment: [Equipment!]!
+	"""
+	Who it is for, to show: `reservedForText` when set, otherwise the name of the
+	member the user's account is linked to, or their email.
+	"""
+	reservedFor: String!
+	"""
+	The user it is for; null when it is for someone named in `reservedForText`.
+	"""
+	reservedForUserId: ID
+	"""
+	Free text naming who it is for: someone else, an organisation, or something
+	like "Detailing / clean". Null when it is for a user.
+	"""
+	reservedForText: String
+	"""
+	Whether it is for the user asking.
+	"""
+	reservedForViewer: Boolean!
+	"""
+	Plain text; empty when there is none.
+	"""
+	description: String!
+	"""
+	The location's other reservations that overlap this one in time and share a
+	piece of equipment with it, by start time. Allowed, but worth a warning. Costs a
+	query per reservation, so a client listing many should compare them itself.
+	"""
+	conflicts: [EquipmentReservation!]!
+	locationId: ID!
+	location: Location!
+	"""
+	Bumped by every change; pass it back to `updateEquipmentReservation`.
+	"""
+	version: Int!
+	createdAt: Int!
+	"""
+	Email of the user who made the reservation.
+	"""
+	createdBy: String
+	updatedAt: Int!
+	"""
+	Email of the user who last changed it.
+	"""
+	updatedBy: String
+}
+
 enum EquipmentStatus {
 	IN_SERVICE
 	OUT_OF_SERVICE
@@ -510,6 +576,19 @@ type Location {
 	`graphql::equipment`.
 	"""
 	equipment(search: String): [Equipment!]!
+	"""
+	The location's equipment reservations that end after `endingAfter` (Unix
+	seconds, default now) — those still to come or under way — by start time.
+	`equipmentId` narrows to reservations of one piece of equipment. Users only
+	(Admin or Read only); see `graphql::reservations`.
+	"""
+	equipmentReservations(endingAfter: Int, equipmentId: ID): [EquipmentReservation!]!
+	"""
+	The location's reservations a reservation of `equipmentIds` from `startTime` to
+	`endTime` would overlap, by start time, leaving out `excludeId` (the one being
+	edited). Overlaps are allowed; this is so a client can warn before saving.
+	"""
+	equipmentReservationConflicts(equipmentIds: [ID!]!, startTime: Int!, endTime: Int!, excludeId: ID): [EquipmentReservation!]!
 	"""
 	The pins on the location's shared map, by title. `layerId` narrows to one of its
 	map layers; without it every pin at the location is listed, whichever layer it is
@@ -813,6 +892,24 @@ type MutationRoot {
 	status is unchanged.
 	"""
 	checkEquipment(id: ID!, comment: String): Equipment!
+	"""
+	Reserve one or more pieces of a location's equipment from `startTime` to
+	`endTime` (Unix seconds; the end must be in the future). It is for the caller
+	unless `reservedFor` names someone or something else. Overlapping another
+	reservation is allowed: read `conflicts` on the result to warn about it. Any user
+	with access to the location may, Read only included.
+	"""
+	createEquipmentReservation(locationId: ID!, equipmentIds: [ID!]!, startTime: Int!, endTime: Int!, reservedFor: String, description: String): EquipmentReservation!
+	"""
+	Change a reservation; omitted arguments are left as they are. `reservedFor`
+	null or blank makes it for the caller. A changed time range must end in the
+	future. Fails with `CONFLICT` if it is no longer at `expectedVersion`.
+	"""
+	updateEquipmentReservation(id: ID!, expectedVersion: Int!, equipmentIds: [ID!], startTime: Int, endTime: Int, reservedFor: String, description: String): EquipmentReservation!
+	"""
+	Cancel (delete) a reservation. Returns its ID.
+	"""
+	deleteEquipmentReservation(id: ID!): ID!
 	"""
 	Add a pin to a location's shared map. Any user with access to the location may,
 	Read only included.
@@ -1432,6 +1529,10 @@ type QueryRoot {
 	One piece of equipment; null if it does not exist or was deleted.
 	"""
 	equipment(id: ID!): Equipment
+	"""
+	One equipment reservation; null if it does not exist or was deleted.
+	"""
+	equipmentReservation(id: ID!): EquipmentReservation
 	"""
 	One map pin; null if it does not exist or was deleted.
 	"""
