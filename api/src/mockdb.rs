@@ -295,10 +295,12 @@ impl db::Handler for Handler {
         _is_virtual: bool,
         _nitc_group_id: Option<&str>,
         _nitc_participant_type: Option<&str>,
+        _display: &db::CategoryDisplay,
     ) -> db::Result<Category> {
         Self::unsupported()
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn update_category(
         &self,
         _id: &str,
@@ -307,6 +309,7 @@ impl db::Handler for Handler {
         _is_virtual: bool,
         _nitc_group_id: Option<&str>,
         _nitc_participant_type: Option<&str>,
+        _display: &db::CategoryDisplay,
     ) -> db::Result<()> {
         Self::unsupported()
     }

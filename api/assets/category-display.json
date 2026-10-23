@@ -1,0 +1,1070 @@
+[
+  {
+    "id": "0hXmBudbE3O5",
+    "groupName": "Workshop - Participant",
+    "shortName": "Flood Rescue: In Water",
+    "icon": "flood_rescue_in_water"
+  },
+  {
+    "id": "0iTKaUHjMxi2",
+    "groupName": "Training",
+    "shortName": "Large Animal Rescue",
+    "icon": "large_animal_rescue"
+  },
+  {
+    "id": "1RwtdwX3JGc6",
+    "groupName": "Assessor",
+    "shortName": "Chain Saw",
+    "icon": "chain_saw"
+  },
+  {
+    "id": "1VRot6gzgW7c",
+    "groupName": "Trainer",
+    "shortName": "Critical Incident Support",
+    "icon": "critical_incident_support"
+  },
+  {
+    "id": "21SBuA68LrOo",
+    "groupName": "Workshop - Participant",
+    "shortName": "Industrial & Domestic Rescue",
+    "icon": "industrial_domestic_rescue"
+  },
+  {
+    "id": "2K3cfNuoTBYB",
+    "groupName": "Trainer",
+    "shortName": "Chain Saw",
+    "icon": "chain_saw"
+  },
+  {
+    "id": "2TgPkvR7rc7s",
+    "groupName": "Workshop - Trainer",
+    "shortName": "Traffic Safety",
+    "icon": "traffic_safety"
+  },
+  {
+    "id": "2hPheSGKMo0A",
+    "groupName": "Trainer",
+    "shortName": "Operate Comms. Equip.",
+    "icon": "operate_comms_equip"
+  },
+  {
+    "id": "3Qnl53IQTywx",
+    "groupName": "Accredited Rescue Role",
+    "shortName": "Swift Water Rescue",
+    "icon": "swift_water_rescue"
+  },
+  {
+    "id": "3YGnFoZX0WaH",
+    "groupName": "Workshop - Trainer",
+    "shortName": "Beacon",
+    "icon": "beacon"
+  },
+  {
+    "id": "3hhECO26czRF",
+    "groupName": "Support Roles",
+    "shortName": "Search",
+    "icon": "search"
+  },
+  {
+    "id": "4g7eGWgLgIZq",
+    "groupName": "Workshop - Participant",
+    "shortName": "First Aid",
+    "icon": "first_aid"
+  },
+  {
+    "id": "538VdyE6WRbU",
+    "groupName": "Other",
+    "shortName": "Assessment Supervision",
+    "icon": "assessment_supervision"
+  },
+  {
+    "id": "5HfFvjuoxb7v",
+    "groupName": "Other",
+    "shortName": "Attend SHQ",
+    "icon": "attend_hq"
+  },
+  {
+    "id": "5deKL3XPdfgN",
+    "groupName": "Assessor",
+    "shortName": "Flood Rescue: On Water",
+    "icon": "flood_boat"
+  },
+  {
+    "id": "5iKzI7fMcnCl",
+    "groupName": "Assessor",
+    "shortName": "Traffic Safety",
+    "icon": "traffic_safety"
+  },
+  {
+    "id": "62ps1a9wv19I",
+    "groupName": "Training",
+    "shortName": "Map & Navigation",
+    "icon": "map_navigation"
+  },
+  {
+    "id": "6QFlxZROgoQl",
+    "groupName": "Assessor",
+    "shortName": "Map & Navigation",
+    "icon": "map_navigation"
+  },
+  {
+    "id": "6uFM5NP8o1x8",
+    "groupName": "Other",
+    "shortName": "Unit Meeting/Muster",
+    "icon": "meeting"
+  },
+  {
+    "id": "7H2Dou6jMtrs",
+    "groupName": "Trainer",
+    "shortName": "Traffic Safety",
+    "icon": "traffic_safety"
+  },
+  {
+    "id": "7H8xiXLBw7MQ",
+    "groupName": "Support Roles",
+    "shortName": "Assist Ambulance",
+    "icon": "assist_ambulance"
+  },
+  {
+    "id": "7gmFiRLfnB9k",
+    "groupName": "Trainer",
+    "shortName": "First Aid",
+    "icon": "first_aid"
+  },
+  {
+    "id": "851qu7WSFxxI",
+    "groupName": "Workshop - Trainer",
+    "shortName": "VR",
+    "icon": "vr"
+  },
+  {
+    "id": "8kJBD0LHgqFr",
+    "groupName": "Assessor",
+    "shortName": "RCR",
+    "icon": "rcr"
+  },
+  {
+    "id": "9D5082BTEu6I",
+    "groupName": "Workshop - Trainer",
+    "shortName": "Drive Operational Vehicles",
+    "icon": "dov"
+  },
+  {
+    "id": "9GMIshTceGQT",
+    "groupName": "Support Roles",
+    "shortName": "Assist RFS",
+    "icon": "assist_rfs"
+  },
+  {
+    "id": "9QAT5P6XUtNm",
+    "groupName": "Workshop - Participant",
+    "shortName": "Field Core Skills",
+    "icon": "field_core_skills"
+  },
+  {
+    "id": "9aa2PtkuBFvn",
+    "groupName": "Workshop - Participant",
+    "shortName": "Land Search",
+    "icon": "land_search"
+  },
+  {
+    "id": "A7moBvkbsfm2",
+    "groupName": "Other",
+    "shortName": "Attend Other Unit (not OOAA)",
+    "icon": "attend_other_unit_not_ooaa"
+  },
+  {
+    "id": "AKinZhtlbvL1",
+    "groupName": "Trainer",
+    "shortName": "Flood Rescue: Land Based",
+    "icon": "flood_rescue_land"
+  },
+  {
+    "id": "B2nP2FfkxfIg",
+    "groupName": "Trainer",
+    "shortName": "USAR",
+    "icon": "usar"
+  },
+  {
+    "id": "BsNMfg0H1ehM",
+    "groupName": "Workshop - Participant",
+    "shortName": "AIIMS",
+    "icon": "aiims"
+  },
+  {
+    "id": "Bsp6gvf5OMpL",
+    "groupName": "Assessor",
+    "shortName": "VR",
+    "icon": "vr"
+  },
+  {
+    "id": "CUgFJ4ptVKXH",
+    "groupName": "Workshop - Participant",
+    "shortName": "Large Animal Rescue",
+    "icon": "large_animal_rescue"
+  },
+  {
+    "id": "CUyTMZhXshDS",
+    "groupName": "Support Roles",
+    "shortName": "USAR",
+    "icon": "usar"
+  },
+  {
+    "id": "CcrrFs5F3Wiu",
+    "groupName": "Community Ed. & Media",
+    "shortName": "Media",
+    "icon": "media"
+  },
+  {
+    "id": "CsaTqfcTq2Bg",
+    "groupName": "Combat Roles",
+    "shortName": "Flood Boat Rescue",
+    "icon": "flood_boat"
+  },
+  {
+    "id": "CyQwwbwOqSVs",
+    "groupName": "Support Roles",
+    "shortName": "Earthquake",
+    "icon": "earthquake"
+  },
+  {
+    "id": "DQR24Sl5Zs25",
+    "groupName": "Workshop - Trainer",
+    "shortName": "Flood Rescue: On Water",
+    "icon": "flood_boat"
+  },
+  {
+    "id": "DZWgLGSX8MqH",
+    "groupName": "Workshop - Trainer",
+    "shortName": "Industrial & Domestic Rescue",
+    "icon": "industrial_domestic_rescue"
+  },
+  {
+    "id": "EXhm0fqWJCiF",
+    "groupName": "Trainer",
+    "shortName": "Fit for Role",
+    "icon": "fit_for_role"
+  },
+  {
+    "id": "EnXtbYiMUD3g",
+    "groupName": "Trainer",
+    "shortName": "Flood Rescue: In Water",
+    "icon": "flood_rescue_in_water"
+  },
+  {
+    "id": "EncbZIFXI7E4",
+    "groupName": "Combat Roles",
+    "shortName": "Flood Rescue (SWR)",
+    "icon": "flood_rescue_swr"
+  },
+  {
+    "id": "F7qbkbbWPQF7",
+    "groupName": "Workshop - Trainer",
+    "shortName": "RCR",
+    "icon": "rcr"
+  },
+  {
+    "id": "FTxxoiet5j42",
+    "groupName": "Training",
+    "shortName": "Operate Comms. Equip.",
+    "icon": "operate_comms_equip"
+  },
+  {
+    "id": "Fu6jyPNi47VY",
+    "groupName": "Workshop - Participant",
+    "shortName": "Chain Saw",
+    "icon": "chain_saw"
+  },
+  {
+    "id": "FzHtdFLZy3Nl",
+    "groupName": "Assessor",
+    "shortName": "AIIMS",
+    "icon": "aiims"
+  },
+  {
+    "id": "HLdLk5jkxtns",
+    "groupName": "Training",
+    "shortName": "RCR",
+    "icon": "rcr"
+  },
+  {
+    "id": "HuvLjJxpFfdQ",
+    "groupName": "Workshop - Participant",
+    "shortName": "VR",
+    "icon": "vr"
+  },
+  {
+    "id": "ICKlc0A7MjB8",
+    "groupName": "Trainer",
+    "shortName": "Land Search",
+    "icon": "land_search"
+  },
+  {
+    "id": "INAO3KzDT9vA",
+    "groupName": "Combat Roles",
+    "shortName": "Coastal Erosion",
+    "icon": "coastal_erosion"
+  },
+  {
+    "id": "IZHsBlJsip7y",
+    "groupName": "Training",
+    "shortName": "Traffic Safety",
+    "icon": "traffic_safety"
+  },
+  {
+    "id": "Iki2svFjFU48",
+    "groupName": "Assessor",
+    "shortName": "Fit for Role",
+    "icon": "fit_for_role"
+  },
+  {
+    "id": "IqGj5X3nt3UX",
+    "groupName": "Workshop - Trainer",
+    "shortName": "HCV: Operational",
+    "icon": "hcv_operational"
+  },
+  {
+    "id": "JYHENWPl1cKB",
+    "groupName": "Workshop - Participant",
+    "shortName": "Storm & Water: Heights",
+    "icon": "storm_water_heights"
+  },
+  {
+    "id": "JezbhsjjyGnn",
+    "groupName": "Workshop - Participant",
+    "shortName": "Beacon",
+    "icon": "beacon"
+  },
+  {
+    "id": "JxJaXiWKdJOs",
+    "groupName": "Training",
+    "shortName": "Job Ready",
+    "icon": "job_ready"
+  },
+  {
+    "id": "KWU2BCxSXms0",
+    "groupName": "Assessor",
+    "shortName": "Land Search",
+    "icon": "land_search"
+  },
+  {
+    "id": "KXtlOo98bObA",
+    "groupName": "Community Ed. & Media",
+    "shortName": "Tsunami",
+    "icon": "tsunami"
+  },
+  {
+    "id": "KfSya4BaVcN5",
+    "groupName": "Other",
+    "shortName": "Other",
+    "icon": "other_dots"
+  },
+  {
+    "id": "KoF18gOkiFM3",
+    "groupName": "Assessor",
+    "shortName": "Flood Rescue: In Water",
+    "icon": "flood_rescue_in_water"
+  },
+  {
+    "id": "Kq2XrSXS31RA",
+    "groupName": "Other",
+    "shortName": "Attend Other",
+    "icon": "attend_other"
+  },
+  {
+    "id": "LEnc4hCVnidW",
+    "groupName": "Training",
+    "shortName": "Beacon",
+    "icon": "beacon"
+  },
+  {
+    "id": "LooCgpp67kFc",
+    "groupName": "Trainer",
+    "shortName": "Other",
+    "icon": "other_dots"
+  },
+  {
+    "id": "LxphpIZFAXnF",
+    "groupName": "Workshop - Trainer",
+    "shortName": "Field Core Skills",
+    "icon": "field_core_skills"
+  },
+  {
+    "id": "MBaJJzYArrxi",
+    "groupName": "Other",
+    "shortName": "Maintenance - Building/Land",
+    "icon": "maintenance_building_land"
+  },
+  {
+    "id": "MLe9eJfdpdu8",
+    "groupName": "Workshop - Participant",
+    "shortName": "RCR",
+    "icon": "rcr"
+  },
+  {
+    "id": "MLj55OZs9zZQ",
+    "groupName": "Assessor",
+    "shortName": "Large Animal Rescue",
+    "icon": "large_animal_rescue"
+  },
+  {
+    "id": "Mhs2RTTkKN2E",
+    "groupName": "Workshop - Participant",
+    "shortName": "PIARO",
+    "icon": "piaro"
+  },
+  {
+    "id": "MiJ9l7SqCDr4",
+    "groupName": "Trainer",
+    "shortName": "VR",
+    "icon": "vr"
+  },
+  {
+    "id": "NEh5XLQptyUU",
+    "groupName": "Assessor",
+    "shortName": "Job Ready",
+    "icon": "job_ready"
+  },
+  {
+    "id": "NThvjTmtJidl",
+    "groupName": "Workshop - Participant",
+    "shortName": "HCV: Logistics",
+    "icon": "hcv_logistics"
+  },
+  {
+    "id": "Na5anfu2SjxY",
+    "groupName": "Training",
+    "shortName": "Flood Rescue: Land Based",
+    "icon": "flood_rescue_land"
+  },
+  {
+    "id": "NcjHY3oJ3O7R",
+    "groupName": "Assessor",
+    "shortName": "Industrial & Domestic Rescue",
+    "icon": "industrial_domestic_rescue"
+  },
+  {
+    "id": "Nk5azjGAsk0R",
+    "groupName": "Trainer",
+    "shortName": "Job Ready",
+    "icon": "job_ready"
+  },
+  {
+    "id": "NruR2qQJBBmP",
+    "groupName": "Training",
+    "shortName": "Industrial & Domestic Rescue",
+    "icon": "industrial_domestic_rescue"
+  },
+  {
+    "id": "OB9oatj3InVH",
+    "groupName": "Training",
+    "shortName": "PIARO",
+    "icon": "piaro"
+  },
+  {
+    "id": "Oc8kSgyTtWaW",
+    "groupName": "Accredited Rescue Role",
+    "shortName": "VR",
+    "icon": "vr"
+  },
+  {
+    "id": "PpugLj0p7EGr",
+    "groupName": "Assessor",
+    "shortName": "Drive Operational Vehicles",
+    "icon": "dov"
+  },
+  {
+    "id": "Ppuzi8VftNLX",
+    "groupName": "Community Ed. & Media",
+    "shortName": "SES Role",
+    "icon": "star"
+  },
+  {
+    "id": "Q2QydIou53oo",
+    "groupName": "Workshop - Trainer",
+    "shortName": "Storm & Water: Heights",
+    "icon": "storm_water_heights"
+  },
+  {
+    "id": "RSyHEeWqjimc",
+    "groupName": "Other",
+    "shortName": "LEMC/Interagency meetings",
+    "icon": "meeting"
+  },
+  {
+    "id": "RX2bfpU6ppvV",
+    "groupName": "Training",
+    "shortName": "AIIMS",
+    "icon": "aiims"
+  },
+  {
+    "id": "SOiIjTV9Jmow",
+    "groupName": "Trainer",
+    "shortName": "RCR",
+    "icon": "rcr"
+  },
+  {
+    "id": "SYalliqM4bVy",
+    "groupName": "Workshop - Trainer",
+    "shortName": "Large Animal Rescue",
+    "icon": "large_animal_rescue"
+  },
+  {
+    "id": "Sam5VHGJHiK9",
+    "groupName": "Training",
+    "shortName": "Flood Rescue: In Water",
+    "icon": "flood_rescue_in_water"
+  },
+  {
+    "id": "ShqXWGVX0v5X",
+    "groupName": "Training",
+    "shortName": "Critical Incident Support",
+    "icon": "critical_incident_support"
+  },
+  {
+    "id": "Sptu5z1uHT3j",
+    "groupName": "Assessor",
+    "shortName": "HCV: Logistics",
+    "icon": "hcv_logistics"
+  },
+  {
+    "id": "TD0Jx573gvu4",
+    "groupName": "Workshop - Trainer",
+    "shortName": "Job Ready",
+    "icon": "job_ready"
+  },
+  {
+    "id": "TDK8NAUXx2e5",
+    "groupName": "Assessor",
+    "shortName": "Storm & Water: Ground",
+    "icon": "storm_water_ground"
+  },
+  {
+    "id": "TiruXst14mbp",
+    "groupName": "Assessor",
+    "shortName": "USAR",
+    "icon": "usar"
+  },
+  {
+    "id": "U0MLm7gDswuw",
+    "groupName": "Workshop - Participant",
+    "shortName": "Traffic Safety",
+    "icon": "traffic_safety"
+  },
+  {
+    "id": "U0gcnQnyiswr",
+    "groupName": "Workshop - Participant",
+    "shortName": "Drive Operational Vehicles",
+    "icon": "dov"
+  },
+  {
+    "id": "UOEIfufGm0CW",
+    "groupName": "Assessor",
+    "shortName": "PIARO",
+    "icon": "piaro"
+  },
+  {
+    "id": "V3cOiC45Oist",
+    "groupName": "Trainer",
+    "shortName": "Beacon",
+    "icon": "beacon"
+  },
+  {
+    "id": "V4dyh0T2vjfd",
+    "groupName": "Training",
+    "shortName": "Fit for Role",
+    "icon": "fit_for_role"
+  },
+  {
+    "id": "WlyrCxgloooJ",
+    "groupName": "Workshop - Trainer",
+    "shortName": "USAR",
+    "icon": "usar"
+  },
+  {
+    "id": "XFpiD4vS7fNi",
+    "groupName": "Support Roles",
+    "shortName": "Land Search",
+    "icon": "land_search"
+  },
+  {
+    "id": "XIHxrXjIYrng",
+    "groupName": "Workshop - Participant",
+    "shortName": "Map & Navigation",
+    "icon": "map_navigation"
+  },
+  {
+    "id": "XPzg5TODlRd6",
+    "groupName": "Trainer",
+    "shortName": "Drive Operational Vehicles",
+    "icon": "dov"
+  },
+  {
+    "id": "Xu7e3YQO2L91",
+    "groupName": "Combat Roles",
+    "shortName": "Storm",
+    "icon": "storm"
+  },
+  {
+    "id": "Y5U7nkss3YAR",
+    "groupName": "Assessor",
+    "shortName": "Operate Comms. Equip.",
+    "icon": "operate_comms_equip"
+  },
+  {
+    "id": "YNAcvH3HtjdU",
+    "groupName": "Training",
+    "shortName": "USAR",
+    "icon": "usar"
+  },
+  {
+    "id": "YcW1zHz3dD79",
+    "groupName": "Assessor",
+    "shortName": "Remote Search",
+    "icon": "land_search"
+  },
+  {
+    "id": "YjgiQmgP7IAx",
+    "groupName": "Assessor",
+    "shortName": "Critical Incident Support",
+    "icon": "critical_incident_support"
+  },
+  {
+    "id": "ZLRHFadlZ56G",
+    "groupName": "Workshop - Trainer",
+    "shortName": "Map & Navigation",
+    "icon": "map_navigation"
+  },
+  {
+    "id": "Zge0zDSL33hg",
+    "groupName": "Workshop - Participant",
+    "shortName": "USAR",
+    "icon": "usar"
+  },
+  {
+    "id": "a4nhHUkrXFEH",
+    "groupName": "Training",
+    "shortName": "Storm & Water: Ground",
+    "icon": "storm_water_ground"
+  },
+  {
+    "id": "aMNwgsYk8hwA",
+    "groupName": "Training",
+    "shortName": "Flood Rescue: On Water",
+    "icon": "flood_boat"
+  },
+  {
+    "id": "aW7d1yFParRV",
+    "groupName": "Training",
+    "shortName": "Chain Saw",
+    "icon": "chain_saw"
+  },
+  {
+    "id": "baSX02PJul3U",
+    "groupName": "Trainer",
+    "shortName": "Large Animal Rescue",
+    "icon": "large_animal_rescue"
+  },
+  {
+    "id": "bi3X5omY9NS5",
+    "groupName": "Accredited Rescue Role",
+    "shortName": "Animal",
+    "icon": "animal"
+  },
+  {
+    "id": "cQ8raY24VoPt",
+    "groupName": "Training",
+    "shortName": "Storm & Water: Heights",
+    "icon": "storm_water_heights"
+  },
+  {
+    "id": "cf9AnZsuMLxg",
+    "groupName": "Accredited Rescue Role",
+    "shortName": "RCR",
+    "icon": "rcr"
+  },
+  {
+    "id": "cgHuCKzitD03",
+    "groupName": "Other",
+    "shortName": "Attend Other Unit OOAA",
+    "icon": "attend_other_unit_ooaa"
+  },
+  {
+    "id": "d51eXzmfIuXm",
+    "groupName": "Workshop - Trainer",
+    "shortName": "Flood Rescue: Land Based",
+    "icon": "flood_rescue_land"
+  },
+  {
+    "id": "dCiJLtDOzm9n",
+    "groupName": "Assessor",
+    "shortName": "Storm & Water: Heights",
+    "icon": "storm_water_heights"
+  },
+  {
+    "id": "dEfSFXJ3JZ8x",
+    "groupName": "Workshop - Trainer",
+    "shortName": "First Aid",
+    "icon": "first_aid"
+  },
+  {
+    "id": "dZI5ChtSALlV",
+    "groupName": "Trainer",
+    "shortName": "HCV: Operational",
+    "icon": "hcv_operational"
+  },
+  {
+    "id": "diTqk82vnZxc",
+    "groupName": "Trainer",
+    "shortName": "Storm & Water: Ground",
+    "icon": "storm_water_ground"
+  },
+  {
+    "id": "efo7JlKhA1XE",
+    "groupName": "Combat Roles",
+    "shortName": "Flood Ops. (Non Rescue)",
+    "icon": "flood_ops_non_rescue"
+  },
+  {
+    "id": "frU0zHKQm84n",
+    "groupName": "Trainer",
+    "shortName": "AIIMS",
+    "icon": "aiims"
+  },
+  {
+    "id": "hFQ3A4o2qFPq",
+    "groupName": "Workshop - Trainer",
+    "shortName": "Operate Comms. Equip.",
+    "icon": "operate_comms_equip"
+  },
+  {
+    "id": "hMmClDnyg0dv",
+    "groupName": "Community Ed. & Media",
+    "shortName": "Other",
+    "icon": "other_dots"
+  },
+  {
+    "id": "hj9KzuwFbM13",
+    "groupName": "Assessor",
+    "shortName": "Flood Rescue: Land Based",
+    "icon": "flood_rescue_land"
+  },
+  {
+    "id": "i8tDOYEFstSy",
+    "groupName": "Workshop - Trainer",
+    "shortName": "Storm & Water: Ground",
+    "icon": "storm_water_ground"
+  },
+  {
+    "id": "iP1cxp6Oygoc",
+    "groupName": "Other",
+    "shortName": "Administration",
+    "icon": "administration"
+  },
+  {
+    "id": "ifc9uKYAb0ZS",
+    "groupName": "Other",
+    "shortName": "Attend Exercise - SES",
+    "icon": "star"
+  },
+  {
+    "id": "jpFAvdc0oWhp",
+    "groupName": "Workshop - Trainer",
+    "shortName": "Land Search",
+    "icon": "land_search"
+  },
+  {
+    "id": "k1ZvM6M1Y793",
+    "groupName": "Trainer",
+    "shortName": "Field Core Skills",
+    "icon": "field_core_skills"
+  },
+  {
+    "id": "k3x1DxFKkyud",
+    "groupName": "Workshop - Participant",
+    "shortName": "Job Ready",
+    "icon": "job_ready"
+  },
+  {
+    "id": "kFn9u1x04Mfp",
+    "groupName": "Trainer",
+    "shortName": "Industrial & Domestic Rescue",
+    "icon": "industrial_domestic_rescue"
+  },
+  {
+    "id": "kRVkibutOxMf",
+    "groupName": "Accredited Rescue Role",
+    "shortName": "General",
+    "icon": "star"
+  },
+  {
+    "id": "lD2ApJFJNgbd",
+    "groupName": "Assessor",
+    "shortName": "HCV: Operational",
+    "icon": "hcv_operational"
+  },
+  {
+    "id": "lO7YmMpXj3Xu",
+    "groupName": "Assessor",
+    "shortName": "Field Core Skills",
+    "icon": "field_core_skills"
+  },
+  {
+    "id": "lOVAJyWz53jK",
+    "groupName": "Workshop - Participant",
+    "shortName": "Storm & Water: Ground",
+    "icon": "storm_water_ground"
+  },
+  {
+    "id": "lWQYWv8QkZ2P",
+    "groupName": "Combat Roles",
+    "shortName": "Operations",
+    "icon": "operations"
+  },
+  {
+    "id": "lrBgqf7hQxK4",
+    "groupName": "Workshop - Participant",
+    "shortName": "Flood Rescue: Land Based",
+    "icon": "flood_rescue_land"
+  },
+  {
+    "id": "lwMe5QZSCF7B",
+    "groupName": "Other",
+    "shortName": "Duty Officer",
+    "icon": "duty_officer"
+  },
+  {
+    "id": "ly9uPGjoundF",
+    "groupName": "Other",
+    "shortName": "Maintenance - Equipment",
+    "icon": "maintenance_equipment"
+  },
+  {
+    "id": "m61kz8bUD3Rp",
+    "groupName": "Community Ed. & Media",
+    "shortName": "Public Relations",
+    "icon": "public_relations"
+  },
+  {
+    "id": "mLS5y13rviWd",
+    "groupName": "Trainer",
+    "shortName": "HCV: Logistics",
+    "icon": "hcv_logistics"
+  },
+  {
+    "id": "mbkLfxuoDyzT",
+    "groupName": "Training",
+    "shortName": "First Aid",
+    "icon": "first_aid"
+  },
+  {
+    "id": "mjz48eIkDO3X",
+    "groupName": "Workshop - Trainer",
+    "shortName": "PIARO",
+    "icon": "piaro"
+  },
+  {
+    "id": "mvpBB7QcroPB",
+    "groupName": "Support Roles",
+    "shortName": "Assist Police",
+    "icon": "assist_police"
+  },
+  {
+    "id": "nzB9BL6H2i4J",
+    "groupName": "Workshop - Participant",
+    "shortName": "Other",
+    "icon": "other_dots"
+  },
+  {
+    "id": "o3tOhfsOgFmY",
+    "groupName": "Accredited Rescue Role",
+    "shortName": "Flood Boat",
+    "icon": "flood_boat"
+  },
+  {
+    "id": "oG2K4hfdXDWQ",
+    "groupName": "Workshop - Trainer",
+    "shortName": "Flood Rescue: In Water",
+    "icon": "flood_rescue_in_water"
+  },
+  {
+    "id": "obMaRo09LtmW",
+    "groupName": "Assessor",
+    "shortName": "First Aid",
+    "icon": "first_aid"
+  },
+  {
+    "id": "odLkV3XCPOu0",
+    "groupName": "Workshop - Trainer",
+    "shortName": "AIIMS",
+    "icon": "aiims"
+  },
+  {
+    "id": "oqYjg2M9LKEl",
+    "groupName": "Trainer",
+    "shortName": "Storm & Water: Heights",
+    "icon": "storm_water_heights"
+  },
+  {
+    "id": "p0vRqFeoQ5uP",
+    "groupName": "Workshop - Trainer",
+    "shortName": "Other",
+    "icon": "other_dots"
+  },
+  {
+    "id": "piYtp3ePWdPO",
+    "groupName": "Workshop - Trainer",
+    "shortName": "Critical Incident Support",
+    "icon": "critical_incident_support"
+  },
+  {
+    "id": "qgs9Xs1hSTDL",
+    "groupName": "Trainer",
+    "shortName": "PIARO",
+    "icon": "piaro"
+  },
+  {
+    "id": "rGYuRYgXQzRV",
+    "groupName": "Community Ed. & Media",
+    "shortName": "Road Crash Rescue",
+    "icon": "rcr"
+  },
+  {
+    "id": "rLhaRTEmL8ZD",
+    "groupName": "Other",
+    "shortName": "Attend RHQ",
+    "icon": "attend_hq"
+  },
+  {
+    "id": "rjrngI122qrh",
+    "groupName": "Support Roles",
+    "shortName": "Search - Evidence",
+    "icon": "search_evidence"
+  },
+  {
+    "id": "rohwW8dkppNz",
+    "groupName": "Training",
+    "shortName": "Other",
+    "icon": "other_dots"
+  },
+  {
+    "id": "sM3Qi8VtInuL",
+    "groupName": "Assessor",
+    "shortName": "Beacon",
+    "icon": "beacon"
+  },
+  {
+    "id": "tbOiiUjRMoPt",
+    "groupName": "Other",
+    "shortName": "Attend Workshop",
+    "icon": "attend_workshop"
+  },
+  {
+    "id": "ttkcxzz4zoSb",
+    "groupName": "Training",
+    "shortName": "VR",
+    "icon": "vr"
+  },
+  {
+    "id": "u6kQTDAj4BbU",
+    "groupName": "Training",
+    "shortName": "Field Core Skills",
+    "icon": "field_core_skills"
+  },
+  {
+    "id": "uF7wJiQz5zH9",
+    "groupName": "Workshop - Participant",
+    "shortName": "HCV: Operational",
+    "icon": "hcv_operational"
+  },
+  {
+    "id": "uG7rv8C5n5Uj",
+    "groupName": "Workshop - Participant",
+    "shortName": "Operate Comms. Equip.",
+    "icon": "operate_comms_equip"
+  },
+  {
+    "id": "vfVK5zphDjom",
+    "groupName": "Workshop - Participant",
+    "shortName": "Critical Incident Support",
+    "icon": "critical_incident_support"
+  },
+  {
+    "id": "w4qQnuEEmudR",
+    "groupName": "Workshop - Trainer",
+    "shortName": "HCV: Logistics",
+    "icon": "hcv_logistics"
+  },
+  {
+    "id": "xIJbGAJvzkUF",
+    "groupName": "Workshop - Trainer",
+    "shortName": "Chain Saw",
+    "icon": "chain_saw"
+  },
+  {
+    "id": "xaEjOvTUdZ5a",
+    "groupName": "Other",
+    "shortName": "Attend Exercise - Non SES",
+    "icon": "attend_exercise_non_ses"
+  },
+  {
+    "id": "xfqtWeU35pxp",
+    "groupName": "Trainer",
+    "shortName": "Map & Navigation",
+    "icon": "map_navigation"
+  },
+  {
+    "id": "xjJxcDFUQtRM",
+    "groupName": "Combat Roles",
+    "shortName": "Tsunami",
+    "icon": "tsunami"
+  },
+  {
+    "id": "y16O40k72vyn",
+    "groupName": "Workshop - Participant",
+    "shortName": "Flood Rescue: On Water",
+    "icon": "flood_boat"
+  },
+  {
+    "id": "y9NOZQK71qKn",
+    "groupName": "Training",
+    "shortName": "HCV: Logistics",
+    "icon": "hcv_logistics"
+  },
+  {
+    "id": "yvw0CgIIwxcv",
+    "groupName": "Training",
+    "shortName": "Land Search",
+    "icon": "land_search"
+  },
+  {
+    "id": "z4HrmoDyzpfh",
+    "groupName": "Trainer",
+    "shortName": "Flood Rescue: On Water",
+    "icon": "flood_boat"
+  },
+  {
+    "id": "zBlDlNOZ82zS",
+    "groupName": "Training",
+    "shortName": "Drive Operational Vehicles",
+    "icon": "dov"
+  },
+  {
+    "id": "zQRd0ST1pHnp",
+    "groupName": "Support Roles",
+    "shortName": "First Responder",
+    "icon": "first_responder"
+  },
+  {
+    "id": "zR3BbJ5qzVkD",
+    "groupName": "Training",
+    "shortName": "HCV: Operational",
+    "icon": "hcv_operational"
+  },
+  {
+    "id": "zn9RlBpyS1Ln",
+    "groupName": "Other",
+    "shortName": "Driver Reviver",
+    "icon": "driver_reviver"
+  }
+]

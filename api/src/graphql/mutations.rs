@@ -38,6 +38,7 @@ use super::dataloader::DatabaseLoader;
 use super::error::{ApiError, ErrorCode};
 use super::notes::{self, Note, NoteFolder};
 use super::query::{QuickPick, build_quick_pick};
+use super::self_sign_in::{open_home_period, require_linked_person};
 use super::tasks::{self, Task, TaskList, TaskRecurrenceInput};
 use super::{
     ApiToken, Category, Location, NitcGroup, PasskeyInfo, Period, Person, PersonId, Session, User,
@@ -46,6 +47,10 @@ use super::{
 /// Longest entry a member-facing edit link may set. The admin form only *warns*
 /// past 24h, but an admin can be trusted to mean it; a link holder correcting
 /// their own attendance cannot plausibly need longer, so this is a hard stop.
+/// How far past the server's clock a self sign-out's end time may be: a little slack
+/// for a phone whose clock runs ahead, no more.
+const SELF_SIGN_OUT_FUTURE_SLACK_SECS: i64 = 60;
+
 const LINK_EDIT_MAX_DURATION_S: i64 = 24 * 60 * 60;
 
 /// Bound the span an edit link may set. Callers check `start_time < end_time`
@@ -1304,6 +1309,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
                     // Admin edit, not a kiosk sign-out: leave the session reference untouched.
                     signed_out_session_id: None,
                     comment,
+                    expected_version: None,
                 },
             )
             .await?;
@@ -2361,9 +2367,18 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         is_virtual: bool,
         nitc_group_id: Option<String>,
         nitc_participant_type: Option<String>,
+        #[graphql(desc = "Kiosk group the category appears under, e.g. \"Training\".")]
+        group_name: Option<String>,
+        #[graphql(desc = "Short name the kiosk shows, e.g. \"AIIMS\".")] short_name: Option<String>,
+        #[graphql(desc = "Kiosk icon name, e.g. \"aiims\".")] icon: Option<String>,
     ) -> Result<Category<A>> {
         let nitc_group_id = nitc_group_id.as_deref().filter(|s| !s.is_empty());
         let nitc_participant_type = nitc_participant_type.as_deref().filter(|s| !s.is_empty());
+        let display = db::CategoryDisplay {
+            group_name: group_name.filter(|s| !s.is_empty()),
+            short_name: short_name.filter(|s| !s.is_empty()),
+            icon: icon.filter(|s| !s.is_empty()),
+        };
         let item = self
             .app
             .db()
@@ -2373,6 +2388,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
                 is_virtual,
                 nitc_group_id,
                 nitc_participant_type,
+                &display,
             )
             .await?;
         Ok(Category::new(item))
@@ -2387,9 +2403,37 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         is_virtual: bool,
         nitc_group_id: Option<String>,
         nitc_participant_type: Option<String>,
+        #[graphql(
+            desc = "Kiosk group name. Omit to leave unchanged, null (or empty) to clear, or a string to set."
+        )]
+        group_name: MaybeUndefined<String>,
+        #[graphql(
+            desc = "Short display name. Omit to leave unchanged, null (or empty) to clear, or a string to set."
+        )]
+        short_name: MaybeUndefined<String>,
+        #[graphql(
+            desc = "Icon name. Omit to leave unchanged, null (or empty) to clear, or a string to set."
+        )]
+        icon: MaybeUndefined<String>,
     ) -> Result<Category<A>> {
         let nitc_group_id = nitc_group_id.as_deref().filter(|s| !s.is_empty());
         let nitc_participant_type = nitc_participant_type.as_deref().filter(|s| !s.is_empty());
+        // The display fields are three-state, so an omitted one keeps what is stored.
+        // The storage layer replaces all three, hence the read-back.
+        let current = self
+            .app
+            .db()
+            .get_categories(&[&id])
+            .await?
+            .into_iter()
+            .next()
+            .flatten()
+            .ok_or_else(|| anyhow!("Category with ID {:?} missing", id))?;
+        let display = db::CategoryDisplay {
+            group_name: merge_display(group_name, current.group_name),
+            short_name: merge_display(short_name, current.short_name),
+            icon: merge_display(icon, current.icon),
+        };
         self.app
             .db()
             .update_category(
@@ -2399,6 +2443,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
                 is_virtual,
                 nitc_group_id,
                 nitc_participant_type,
+                &display,
             )
             .await?;
 
@@ -2661,6 +2706,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
                     signed_out_session_id: Some(&session_id),
                     // Kiosk sign-out: leave any existing comment untouched.
                     comment: None,
+                    expected_version: None,
                 },
             )
             .await?;
@@ -2673,6 +2719,129 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         // rec is the pre-update record (only local field copies were changed above), so
         // rec.nitc_event_id is still the event the period was assigned to before this sign-out.
         self.enqueue_nitc_export(&rec.id, rec.nitc_event_id.as_deref())
+            .await?;
+        self.publish_period_closed(ctx, &rec.location_id, &rec, false)
+            .await;
+        Ok(Period::new(rec))
+    }
+
+    /// Sign the signed-in user's linked member in at their home unit, as typing their
+    /// member number at a kiosk there would, for the Tally app. Idempotent: if the
+    /// member is already signed in at home, that period is returned unchanged, so a
+    /// double tap never opens two. A period open at another unit is ignored. Users
+    /// only, and no location grant is needed (the member link is the authority).
+    async fn self_sign_in(&self, ctx: &Context<'_>) -> Result<Period<A>> {
+        require_writable(ctx)?;
+        let person = require_linked_person(ctx, self.app.as_ref()).await?;
+        if let Some(open) = open_home_period(self.app.db(), &person).await? {
+            return Ok(Period::new(open));
+        }
+        let rec = self
+            .app
+            .db()
+            .start_period_for_person_location(&person.id, &person.location_id, None, None)
+            .await?;
+        self.publish_period_opened(ctx, &person.location_id, &rec)
+            .await;
+        Ok(Period::new(rec))
+    }
+
+    /// Sign the linked member out of one of their own open home-unit periods, as
+    /// `scanSignOut` does at a kiosk. `expectedVersion` is the period's `version` as
+    /// the app last saw it; if it, or the sign-in, has changed since (e.g. a kiosk
+    /// signed them out first) the write is refused with `CONFLICT` and nothing changes.
+    /// The end cannot be more than a minute in the future, and the category must exist
+    /// and be enabled. Times are Unix seconds.
+    async fn self_sign_out(
+        &self,
+        ctx: &Context<'_>,
+        id: ID,
+        expected_version: i32,
+        start_time: i64,
+        end_time: i64,
+        category_id: ID,
+    ) -> Result<Period<A>> {
+        require_writable(ctx)?;
+        let person = require_linked_person(ctx, self.app.as_ref()).await?;
+
+        // Surfaced to the member in the app, so the messages are written to be read.
+        let mut rec = self
+            .app
+            .db()
+            .get_periods(&[&id])
+            .await?
+            .into_iter()
+            .next()
+            .flatten()
+            .filter(|p| p.deleted.is_none())
+            .ok_or_else(|| ApiError::new(ErrorCode::NotFound, "That sign-in no longer exists"))?;
+        if rec.guest_name.is_some() || rec.person_id.is_none() {
+            return Err(ApiError::bad_request("Not a member sign-in").into());
+        }
+        if rec.person_id.as_deref() != Some(person.id.as_str()) {
+            return Err(ApiError::forbidden("You can only sign yourself out").into());
+        }
+        if rec.end_time.is_some() {
+            return Err(ApiError::new(ErrorCode::Conflict, "Already signed out").into());
+        }
+        let stale = || {
+            ApiError::new(
+                ErrorCode::Conflict,
+                "This sign-in was changed elsewhere; refresh and try again",
+            )
+        };
+        if u64::try_from(expected_version).ok() != Some(rec.version) {
+            return Err(stale().into());
+        }
+        if start_time < 0 || start_time >= end_time {
+            return Err(ApiError::bad_request("Start time must be before end time").into());
+        }
+        if end_time
+            > (crate::clock::now_sec() as i64).saturating_add(SELF_SIGN_OUT_FUTURE_SLACK_SECS)
+        {
+            return Err(ApiError::bad_request("End time can't be in the future").into());
+        }
+        self.app
+            .db()
+            .get_categories(&[&category_id])
+            .await?
+            .into_iter()
+            .next()
+            .flatten()
+            .filter(|c| c.enabled)
+            .ok_or_else(|| ApiError::bad_request("That activity isn't available"))?;
+
+        let new_version = self
+            .app
+            .db()
+            .update_period(
+                &rec.id,
+                db::PeriodUpdateShape::TimeCategory {
+                    start_time,
+                    end_time,
+                    category_id: &category_id,
+                    // Not a kiosk, so there is no session to record.
+                    signed_out_session_id: None,
+                    comment: None,
+                    // Lose cleanly to a kiosk sign-out or an admin edit that raced us.
+                    expected_version: Some(rec.version),
+                },
+            )
+            .await
+            .map_err(|e| match e {
+                db::Error::Conflict(_) => anyhow::Error::from(stale()),
+                db::Error::NotFound(_) => {
+                    ApiError::new(ErrorCode::NotFound, "That sign-in no longer exists").into()
+                }
+                e => e.into(),
+            })?;
+        let old_nitc_event_id = rec.nitc_event_id.clone();
+        rec.start_time = start_time as u64;
+        rec.end_time = Some(end_time as u64);
+        rec.category_id = Some(category_id.to_string());
+        rec.version = new_version;
+
+        self.enqueue_nitc_export(&rec.id, old_nitc_event_id.as_deref())
             .await?;
         self.publish_period_closed(ctx, &rec.location_id, &rec, false)
             .await;
@@ -3623,5 +3792,35 @@ mod tests {
         fn omits_the_activity_line_when_uncategorised() {
             assert!(!body("Sam", None).contains("Activity:"));
         }
+    }
+}
+
+/// Apply a three-state argument to a stored optional value: omitted keeps it, null or
+/// an empty string clears it, anything else replaces it.
+fn merge_display(arg: MaybeUndefined<String>, current: Option<String>) -> Option<String> {
+    match arg {
+        MaybeUndefined::Undefined => current,
+        MaybeUndefined::Null => None,
+        MaybeUndefined::Value(v) => Some(v).filter(|s| !s.is_empty()),
+    }
+}
+
+#[cfg(test)]
+mod category_display_tests {
+    use super::*;
+
+    #[test]
+    fn merge_display_is_three_state() {
+        let cur = || Some("old".to_string());
+        assert_eq!(merge_display(MaybeUndefined::Undefined, cur()), cur());
+        assert_eq!(merge_display(MaybeUndefined::Null, cur()), None);
+        assert_eq!(
+            merge_display(MaybeUndefined::Value(String::new()), cur()),
+            None
+        );
+        assert_eq!(
+            merge_display(MaybeUndefined::Value("new".into()), cur()),
+            Some("new".to_string())
+        );
     }
 }
