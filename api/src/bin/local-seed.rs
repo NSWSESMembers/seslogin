@@ -312,6 +312,8 @@ const TRANSIENT_TABLES: &[&str] = &[
     "ephemeral_state",
     "webauthn_credential",
     "audit_log",
+    "task",
+    "task_list",
 ];
 
 async fn clear() -> Result<()> {

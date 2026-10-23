@@ -245,6 +245,28 @@ const TABLES: &[Table] = &[
         ttl: None,
     },
     Table {
+        name: "task",
+        hash: "id",
+        attrs: &[
+            Attr("id", S),
+            Attr("open_location_id", S),
+            Attr("show_date", S),
+        ],
+        gsis: &[all(
+            "open_location_id-show_date-index",
+            "open_location_id",
+            Some("show_date"),
+        )],
+        ttl: None,
+    },
+    Table {
+        name: "task_list",
+        hash: "id",
+        attrs: &[Attr("id", S), Attr("location_id", S)],
+        gsis: &[all("location_id-index", "location_id", None)],
+        ttl: None,
+    },
+    Table {
         name: "test_pagination",
         hash: "id",
         attrs: &[Attr("id", S), Attr("group_id", N), Attr("number", N)],

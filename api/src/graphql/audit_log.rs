@@ -67,6 +67,8 @@ pub enum AuditEntityType {
     #[graphql(name = "OAUTH_GRANT")]
     OAuthGrant,
     WebauthnCredential,
+    Task,
+    TaskList,
 }
 
 impl From<db::AuditEntityType> for AuditEntityType {
@@ -84,6 +86,8 @@ impl From<db::AuditEntityType> for AuditEntityType {
             db::AuditEntityType::UserToken => Self::UserToken,
             db::AuditEntityType::OAuthGrant => Self::OAuthGrant,
             db::AuditEntityType::WebauthnCredential => Self::WebauthnCredential,
+            db::AuditEntityType::Task => Self::Task,
+            db::AuditEntityType::TaskList => Self::TaskList,
         }
     }
 }
@@ -103,6 +107,8 @@ impl From<AuditEntityType> for db::AuditEntityType {
             AuditEntityType::UserToken => Self::UserToken,
             AuditEntityType::OAuthGrant => Self::OAuthGrant,
             AuditEntityType::WebauthnCredential => Self::WebauthnCredential,
+            AuditEntityType::Task => Self::Task,
+            AuditEntityType::TaskList => Self::TaskList,
         }
     }
 }

@@ -286,6 +286,59 @@ No GSIs. The only access pattern is `GetItem` by `id` (called from `get_nitc_gro
 
 ---
 
+### `{prefix}task`
+
+A location's shared to-do list ("Tasks"). Dates are **Sydney-local calendar days** stored as `YYYY-MM-DD`, which sort lexically in date order.
+
+| Attribute          | Type | Role                                                                                            |
+| ------------------ | ---- | ----------------------------------------------------------------------------------------------- |
+| `id`               | S    | Hash key (PK)                                                                                   |
+| `open_location_id` | S    | GSI hash key (`open_location_id-show_date-index`) — a copy of `location_id` while the task is open, otherwise absent |
+| `show_date`        | S    | GSI sort key — the day the task starts showing                                                  |
+
+**GSIs:**
+
+| GSI                                | Hash key           | Sort key    | Projection | Purpose                                                                   |
+| ---------------------------------- | ------------------ | ----------- | ---------- | ------------------------------------------------------------------------- |
+| `open_location_id-show_date-index` | `open_location_id` | `show_date` | ALL        | A location's open tasks: due now (`show_date <= today`) or scheduled (`> today`) |
+
+The index is **sparse**: completing a non-recurring task, or deleting any task, REMOVEs `open_location_id`, so the row leaves it. Completed and deleted tasks stay in the base table, reachable by `id` only. A recurring task is never completed for good — completing it moves `due_date` and `show_date` forward and it stays open.
+
+**Non-obvious attributes (not in table definition):**
+
+- `location_id` (S) — the task's location, kept after it stops being open
+- `list_id` (S) — optional `task_list` the task is on; it may name a deleted list
+- `title` (S), `description` (S, optional)
+- `due_date` (S, optional) — the day the task was scheduled for. `show_date` is this, or the creation day when there is none
+- `recurrence_every` (N), `recurrence_unit` (S: `days` or `weeks`) — both present or both absent
+- `v` (N) — version, bumped by every write; edits and completions are conditional on it, so two people completing the same task cannot both succeed
+- `completed_at` (N), `completed_by` (S) — a non-recurring task's completion
+- `last_completed_at` (N), `last_completed_by` (S) — a recurring task's latest completion
+- `created_by` / `updated_by` (S) — user IDs
+- `deleted` (N) — Unix seconds when soft-deleted; absent otherwise
+- `created_at` / `updated_at` (N)
+
+---
+
+### `{prefix}task_list`
+
+Optional named lists a location's tasks can be grouped on.
+
+| Attribute     | Type | Role                                  |
+| ------------- | ---- | ------------------------------------- |
+| `id`          | S    | Hash key (PK)                         |
+| `location_id` | S    | GSI hash key (`location_id-index`)    |
+
+**GSIs:**
+
+| GSI                 | Hash key      | Sort key | Projection | Purpose                  |
+| ------------------- | ------------- | -------- | ---------- | ------------------------ |
+| `location_id-index` | `location_id` | —        | ALL        | A location's lists; deleted ones are filtered out on read |
+
+**Non-obvious attributes (not in table definition):** `name` (S), `created_by` (S), `deleted` (N, soft delete — the list's tasks are left alone), `created_at` / `updated_at` (N).
+
+---
+
 ### `{prefix}audit_log`
 
 An append-only record of business database writes, shown in the admin UI. Entries are kept forever (no TTL). One item is written **per affected location** for each audited event, so a write touching two locations produces two items sharing an `event_id`.
@@ -315,7 +368,7 @@ Access patterns: per-location newest-first (`Query` on `location_id-sk-index`) a
 - `ts` (N) — Unix seconds when the event happened
 - `event_id` (S) — shared by every item written for the same event
 - `action` (S) — `create`, `update`, `delete` or `restore`
-- `entity_type` (S) — `user`, `person`, `period`, `session`, `api_token`, `location`, `category`, `nitc_group`, `nitc_tag`, `user_token`, `oauth_grant` or `webauthn_credential`
+- `entity_type` (S) — `user`, `person`, `period`, `session`, `api_token`, `location`, `category`, `nitc_group`, `nitc_tag`, `user_token`, `oauth_grant`, `webauthn_credential`, `task` or `task_list`
 - `entity_id` (S) — ID of the entity changed
 - `entity_label` (S) — human-readable name of the entity at the time; omitted when unknown
 - `actor_kind` (S) — `user`, `session` (kiosk), `api_token`, `period_link`, `system` (a job or the CLI), `unauthenticated` or `unknown`
