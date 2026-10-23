@@ -234,6 +234,19 @@ pub(crate) fn require_map_access(ctx: &Context<'_>, location_id: &str) -> Result
     }
 }
 
+/// Check the caller may use a location's On Call roles: see who holds them, and also
+/// create, edit and delete roles and change who is in them.
+///
+/// The same rule as [`require_task_access`], for the same reason: on-call roles are a
+/// shared unit tool, so **Read only** users may change them too, and only people may —
+/// kiosk sessions, API tokens and edit links are refused.
+pub(crate) fn require_on_call_access(ctx: &Context<'_>, location_id: &str) -> Result<()> {
+    match ctx.data_opt::<AuthInfo>() {
+        Some(AuthInfo::User { .. }) => require_location_access(ctx, location_id),
+        _ => Err(ApiError::forbidden("On Call is only available to signed-in users").into()),
+    }
+}
+
 /// Whether the caller may make changes at the location — the boolean form of
 /// [`require_location_write_access`] plus [`require_writable`], for resolvers that
 /// report capability (e.g. `Location.viewerCanEdit`) rather than enforce it.

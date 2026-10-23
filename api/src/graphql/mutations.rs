@@ -38,6 +38,7 @@ use super::dataloader::DatabaseLoader;
 use super::error::{ApiError, ErrorCode};
 use super::map::{self, MapLayer, MapPin};
 use super::notes::{self, Note, NoteFolder};
+use super::on_call::{self, OnCallRole};
 use super::query::{QuickPick, build_quick_pick};
 use super::self_sign_in::{open_home_period, require_linked_person};
 use super::tasks::{self, Task, TaskList, TaskRecurrenceInput};
@@ -2189,6 +2190,73 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
     #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
     async fn delete_map_layer(&self, ctx: &Context<'_>, id: ID) -> Result<ID> {
         map::delete_map_layer(ctx, self.app.as_ref(), &id).await
+    }
+
+    /// Add an on-call role (e.g. Duty Officer) to a location, optionally with the people
+    /// in it. Anyone in it needs a primary. Any user with access to the location may,
+    /// Read only included.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    async fn create_on_call_role(
+        &self,
+        ctx: &Context<'_>,
+        location_id: ID,
+        name: String,
+        description: Option<String>,
+        phone: Option<String>,
+        primary_person_id: Option<ID>,
+        secondary_person_ids: Option<Vec<ID>>,
+    ) -> Result<OnCallRole<A>> {
+        on_call::create_on_call_role(
+            ctx,
+            self.app.as_ref(),
+            on_call::CreateOnCallRoleArgs {
+                location_id,
+                name,
+                description,
+                phone,
+                primary_person_id,
+                secondary_person_ids,
+            },
+        )
+        .await
+    }
+
+    /// Change an on-call role, or who is in it. Omitted arguments are left as they are;
+    /// `phone: null` removes the number and `primaryPersonId: null` (with
+    /// `secondaryPersonIds: []`) empties the role. Fails with `CONFLICT` if the role is
+    /// no longer at `expectedVersion`.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    async fn update_on_call_role(
+        &self,
+        ctx: &Context<'_>,
+        id: ID,
+        expected_version: i32,
+        name: Option<String>,
+        description: Option<String>,
+        phone: MaybeUndefined<String>,
+        primary_person_id: MaybeUndefined<ID>,
+        secondary_person_ids: Option<Vec<ID>>,
+    ) -> Result<OnCallRole<A>> {
+        on_call::update_on_call_role(
+            ctx,
+            self.app.as_ref(),
+            on_call::UpdateOnCallRoleArgs {
+                id,
+                expected_version,
+                name,
+                description,
+                phone,
+                primary_person_id,
+                secondary_person_ids,
+            },
+        )
+        .await
+    }
+
+    /// Delete an on-call role. Returns its ID.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    async fn delete_on_call_role(&self, ctx: &Context<'_>, id: ID) -> Result<ID> {
+        on_call::delete_on_call_role(ctx, self.app.as_ref(), &id).await
     }
 
     #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
