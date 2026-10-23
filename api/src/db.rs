@@ -41,6 +41,10 @@ pub enum Error {
     /// type conversion error ie convert string ID to integer
     #[error("Data type conversion error: {0}")]
     TypeConversion(String),
+    /// returned when a conditional write finds the row changed since the caller read it
+    /// (a stale expected version, or a period already ended)
+    #[error("Conflict: {0}")]
+    Conflict(String),
     #[error("Mutation disabled")]
     MutationDisabled,
 }
@@ -825,6 +829,11 @@ pub enum PeriodUpdateShape<'a> {
         /// existing comment untouched, `Some(None)` clears it, and
         /// `Some(Some(_))` sets it.
         comment: Option<Option<&'a str>>,
+        /// When `Some`, the write only lands if the period is still at this version
+        /// and still open; otherwise it fails with [`Error::Conflict`] and changes
+        /// nothing. `None` (the admin edit pages, the kiosk) only requires the row to
+        /// exist.
+        expected_version: Option<u64>,
     },
     /// Admin edit of a guest period: name, times, and comment only. A guest
     /// period has no person and no category, so those are never touched here.
@@ -869,8 +878,34 @@ pub struct Category {
     pub is_virtual: bool,
     pub nitc_participant_type: Option<String>,
     pub nitc_group_id: Option<String>,
+    /// The kiosk group the category sits under ("Training"). Display metadata
+    /// duplicated from the kiosk's hard-coded tree for the mobile app.
+    pub group_name: Option<String>,
+    /// The short name the kiosk shows ("AIIMS").
+    pub short_name: Option<String>,
+    /// The kiosk icon's file stem ("aiims").
+    pub icon: Option<String>,
     pub created_at: u64,
     pub updated_at: u64,
+}
+
+impl Category {
+    pub fn display(&self) -> CategoryDisplay {
+        CategoryDisplay {
+            group_name: self.group_name.clone(),
+            short_name: self.short_name.clone(),
+            icon: self.icon.clone(),
+        }
+    }
+}
+
+/// A category's optional display metadata. Writes replace all three: `None` removes
+/// the attribute.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct CategoryDisplay {
+    pub group_name: Option<String>,
+    pub short_name: Option<String>,
+    pub icon: Option<String>,
 }
 
 impl HasID for Category {
@@ -1439,7 +1474,9 @@ pub trait Handler: Sync {
         is_virtual: bool,
         nitc_group_id: Option<&str>,
         nitc_participant_type: Option<&str>,
+        display: &CategoryDisplay,
     ) -> impl Future<Output = Result<Category>> + Send;
+    #[allow(clippy::too_many_arguments)]
     fn update_category(
         &self,
         id: &str,
@@ -1448,6 +1485,7 @@ pub trait Handler: Sync {
         is_virtual: bool,
         nitc_group_id: Option<&str>,
         nitc_participant_type: Option<&str>,
+        display: &CategoryDisplay,
     ) -> impl Future<Output = Result<()>> + Send;
 
     // ── NITC export ──────────────────────────────────────────────────────────

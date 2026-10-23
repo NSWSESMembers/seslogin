@@ -33,6 +33,7 @@ use super::audit_log::{self, AuditEntityType, AuditEntryConnection};
 use super::auth::{AuthGuard, AuthRequirement, can_write_location, require_location_access};
 use super::dataloader::DatabaseLoader;
 use super::notes::{self, Note, NoteFolder};
+use super::self_sign_in::{self, SelfSignInStatus};
 use super::tasks::{self, Task, TaskList, TaskView};
 use super::{CategoryId, LocationId, NitcEventId, PersonId, SessionId, UserId};
 
@@ -426,6 +427,18 @@ impl<A: App + HasDb + Send + Sync + 'static> Category<A> {
     }
     async fn nitc_participant_type(&self) -> Option<&String> {
         self.rec.nitc_participant_type.as_ref()
+    }
+    /// The kiosk group the category appears under, e.g. "Training".
+    async fn group_name(&self) -> Option<&String> {
+        self.rec.group_name.as_ref()
+    }
+    /// The short name the kiosk shows, e.g. "AIIMS".
+    async fn short_name(&self) -> Option<&String> {
+        self.rec.short_name.as_ref()
+    }
+    /// The kiosk icon's name, e.g. "aiims". Only the name: no image is served.
+    async fn icon(&self) -> Option<&String> {
+        self.rec.icon.as_ref()
     }
     async fn nitc_group(&self, ctx: &Context<'_>) -> Result<Option<NitcGroup<A>>> {
         let Some(ref gid) = self.rec.nitc_group_id else {
@@ -3518,6 +3531,15 @@ impl<A: App + HasDb + HasRealtime + Send + Sync + 'static> QueryRoot<A> {
             .filter(|p| p.deleted.is_none())
             .ok_or_else(|| anyhow!("Invalid or expired token"))
             .map(Period::new)
+    }
+
+    /// The signed-in user's own sign-in state at their linked member's home unit,
+    /// for the Tally app; null when no (live) member is linked to the account. Users
+    /// only: a kiosk, API token or edit link is refused. No location grant is
+    /// needed — the link is the authority (see `graphql::self_sign_in`).
+    async fn self_sign_in_status(&self, ctx: &Context<'_>) -> Result<Option<SelfSignInStatus<A>>> {
+        let app = ctx.data_unchecked::<Arc<A>>();
+        self_sign_in::status(ctx, app.as_ref()).await
     }
 
     /// One task, open or completed; null if it does not exist or was deleted.

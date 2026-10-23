@@ -295,7 +295,7 @@ the MCP authorization spec's discovery flow.
 | `find_member_by_number` | As `get_member`, looked up by member number. "Not found" and "no grant" give the same error. |
 | `create_member` / `update_member` / `delete_member` | Manage members. `update_member` changes only the fields passed. Admin (or super user) only; Read only is refused. Members owned by member sync (`syncManaged`) can be changed but the next sync may undo it, and the admin site doesn't offer it. |
 | `sync_members` | Queue a member sync for a location. Admin (or super user) only. |
-| `list_categories` / `get_category` | The activity categories a period is filed under (name, `enabled`, `isVirtual`, NITC group). Disabled ones are left out of the list unless `includeDisabled`. Global, so any signed-in user. |
+| `list_categories` / `get_category` | The activity categories a period is filed under (name, `enabled`, `isVirtual`, NITC group, kiosk `groupName` / `shortName` / `icon`). Disabled ones are left out of the list unless `includeDisabled`. Global, so any signed-in user. |
 | `list_periods` | A location's activity periods, newest first, with member name/number (or `guestName`), category, comment and sign-in/out kiosk names. `onlyActive` is who is signed in now (the Current page); `start` and `end` (together) select by when a period started; `categoryIds`, `first` and `after` filter and page. This also covers the Reports page's export. Admin, Read only or super user. |
 | `list_member_periods` | One member's periods, same shape and paging, optionally by `categoryIds`. Needs a grant for the member's location. |
 | `get_period` | One period. Needs a grant for its location. |
@@ -310,7 +310,7 @@ the MCP authorization spec's discovery flow.
 | `get_kiosk` | One kiosk, same shape. Needs a grant for its location. |
 | `update_kiosk` | Change `name`, `config` (a JSON object that replaces the whole config) or `healthcheckUrl`; only passed fields change, `healthcheckUrl: null` clears it, leaving it out keeps it. Admin (or super user) only. |
 | `delete_kiosk` | Delete a kiosk (the device must be set up again by QR code). Also how to remove a replaced leftover. Admin (or super user) only. |
-| `create_category` / `update_category` | Add or change an activity category (`name`, `isVirtual`, `enabled`, NITC group and participant type). `update_category` changes only the fields passed; `nitcGroupId` and `nitcParticipantType` can be cleared with `null`. Super user only. |
+| `create_category` / `update_category` | Add or change an activity category (`name`, `isVirtual`, `enabled`, NITC group and participant type, kiosk display `groupName` / `shortName` / `icon`). `update_category` changes only the fields passed; `nitcGroupId`, `nitcParticipantType`, `groupName`, `shortName` and `icon` can be cleared with `null`. Super user only. |
 | `list_nitc_groups` / `get_nitc_group` | The NITC groups (SES non-incident type and tags) with the `categories` that export as each. Super user only. |
 | `create_nitc_group` / `update_nitc_group` / `delete_nitc_group` | Manage NITC groups. `update_nitc_group` changes only the fields passed (`nitcTagIds` replaces the whole list). Deleting does not check categories still using the group. Super user only. |
 | `list_ses_nonincident_tags` / `list_ses_reference_data` | The valid values for those forms: SES tag ids, `nonincidentTypes` (a group's `nitcType`) and `participantTypes` (a category's `nitcParticipantType`; fetched from SES, so can fail when SES is unreachable). Super user only. |
@@ -517,11 +517,61 @@ mutation {
 }
 ```
 
+## Self sign-in (Tally)
+
+A member signs themselves in and out from the Tally app, exactly as they would by typing
+their member number at a kiosk at their home unit (`src/graphql/self_sign_in.rs`; the two
+mutations are in `mutations.rs`).
+
+- **Who:** only a *user* (including an OAuth-grant user, which is how Tally arrives). Kiosk
+  sessions, API tokens and edit links get `FORBIDDEN`. No location grant is needed: the
+  `person_id` a super user set with `setUserMember` is the whole authority, read fresh from
+  the user's record on every call. The member must exist and not be deleted. The MCP
+  interface deliberately has no tool for this.
+- **Home unit only:** only periods at the member's own `location_id` count, as the kiosk
+  scopes by location. A period open at another unit (say, via that unit's kiosk) is ignored,
+  and `selfSignIn` may open a home period alongside it.
+- `Query.selfSignInStatus` returns `{ person, location, openPeriod, quickPick }`, or null
+  when the caller has no linked member. `quickPick` is the kiosk's sign-out shortcuts
+  (`build_quick_pick`), computed only when selected, and null if building them fails.
+- `SelfSignInStatus.whosHere` is the kiosk's "Who's here" list for the member's home unit:
+  `[{ id, name, guest, startTime, isMe }]` for every open, non-deleted period there (members
+  and guests), oldest first (ties by id), capped at 500. `name` is "First Last", the guest's
+  name ("Guest" if blank) or "Unknown member" for a missing or deleted member; `isMe` marks
+  the caller's own period. It is deliberately narrow (no guest reason, member number or
+  other period fields), needs no location grant, and is computed only when selected. The
+  location is always the linked member's `location_id`, never caller-supplied.
+- `selfSignIn` returns the newest open home period unchanged if there is one (a double tap
+  never opens two), otherwise opens one with no kiosk session and publishes the realtime
+  event. Without a linked member it fails `BAD_REQUEST`.
+- `selfSignOut(id, expectedVersion, startTime, endTime, categoryId)` takes Unix seconds and
+  refuses (messages are written for the member to read): `NOT_FOUND` if the period is
+  missing or deleted; `BAD_REQUEST` for a guest period; `FORBIDDEN` if it is not the linked
+  member's; `CONFLICT` if it is already signed out or `version != expectedVersion`;
+  `BAD_REQUEST` unless `startTime < endTime`, the end is at most 60 seconds ahead of the
+  server clock, and the category exists and is enabled. It leaves the comment alone, records
+  no sign-out session, then enqueues the NITC export and publishes the realtime close, as
+  `scanSignOut` does.
+- **Race safety:** the write is `db::PeriodUpdateShape::TimeCategory` with
+  `expected_version: Some(..)`, conditional on `v = :expected AND attribute_not_exists(end_time)`.
+  A kiosk or admin that gets in between makes it fail with `db::Error::Conflict`, surfaced as
+  `CONFLICT`, so an app sign-out never silently overwrites another. Every other caller passes
+  `None`, which only requires the row to exist.
+- Writes are audited with the user as the actor, like any other period write. Periods made
+  this way have no `signedInSession` / `signedOutSession`, which the admin pages already
+  render as plain times (and blank cells in report exports), like admin-created periods.
+
+```graphql
+query { selfSignInStatus { person { firstName } openPeriod { id version startTime }
+  whosHere { id name guest startTime isMe } } }
+mutation { selfSignIn { id version } }
+```
+
 ## Audit log
 
 Every business write (people, periods, kiosk sessions, users, locations, categories, API tokens, passkeys, OAuth grants, …) is recorded in the `{DB_PREFIX}_audit_log` DynamoDB table: who did it, which location(s) it touched, and which fields changed from what to what. The table is defined in `infra/dynamodb*.tf` and documented in `SCHEMA.md`; it must exist (`terraform apply`) for entries to land. It is read through GraphQL (below); there is no UI for it yet.
 
-It is implemented by `audit::AuditingHandler`, a `db::Handler` wrapper that the servers, sync jobs and CLI wrap their DynamoDB handler in (`poem`, `poem-local`, the API Lambda, `member_sync::run`, `location_sync::run`, `cli`, `load-nitc-tags`). The actor comes from the `AUDIT_CONTEXT` task-local each entry point sets: `user` (with `actor_via` `oauth_grant:<id>` / `user_token:<id>` / `oauth_client:<id>` when not a plain web login), `session` (kiosk), `api_token`, `period_link`, `system` (`actor_id` is the job: `member-sync`, `location-sync`, `cli`, `load-nitc-tags`, `oauth-refresh-reuse`), `unauthenticated`, or `unknown` when a write was made with no context set (a bug; it logs a warning).
+It is implemented by `audit::AuditingHandler`, a `db::Handler` wrapper that the servers, sync jobs and CLI wrap their DynamoDB handler in (`poem`, `poem-local`, the API Lambda, `member_sync::run`, `location_sync::run`, `cli`, `load-nitc-tags`, `load-category-display`). The actor comes from the `AUDIT_CONTEXT` task-local each entry point sets: `user` (with `actor_via` `oauth_grant:<id>` / `user_token:<id>` / `oauth_client:<id>` when not a plain web login), `session` (kiosk), `api_token`, `period_link`, `system` (`actor_id` is the job: `member-sync`, `location-sync`, `cli`, `load-nitc-tags`, `load-category-display`, `oauth-refresh-reuse`), `unauthenticated`, or `unknown` when a write was made with no context set (a bug; it logs a warning).
 
 Auditing is **best-effort**: if recording an entry fails it is logged at `error!` (with the entity type and id) and the write still succeeds. Dry runs and read-only servers record nothing, because the write they would describe is refused. Updates that change nothing record nothing.
 
@@ -542,6 +592,30 @@ To inspect entries locally after `make dev-local` / `make local-e2e`, scan the t
 
 ```bash
 aws dynamodb scan --table-name seslogin_local_audit_log --endpoint-url http://localhost:8100 --region ap-southeast-2
+```
+
+## Category display metadata
+
+A category row can carry the kiosk's presentation of it: `group_name` (the kiosk
+group, e.g. "Training"), `short_name` ("AIIMS") and `icon` (the icon name,
+"aiims"), exposed as `Category.groupName` / `shortName` / `icon`. It is a
+deliberate copy of the hard-coded tree in `web/src/lib/categories.ts`, which the
+kiosk still reads; the copy exists for the mobile app. The copy lives in
+`api/assets/category-display.json` (one entry per subcategory), and a web test
+(`categories.display.test.ts`) fails when it drifts from the kiosk tree.
+
+`updateCategory`'s `groupName`, `shortName` and `icon` are three-state: omitted
+keeps the stored value (the admin edit form does not send them), `null` or an empty
+string clears it, a string sets it. `createCategory` takes them as optional.
+
+`load-category-display` backfills the file into the database. It is a dry run
+unless `--apply`, only touches categories whose three fields differ, skips ids with
+no live category, and leaves categories not in the file alone (audited as
+`system: load-category-display`). It is not deployed as a Lambda.
+
+```bash
+cd api && RUST_LOG=info cargo run --bin load-category-display --          # plan
+cd api && RUST_LOG=info cargo run --bin load-category-display -- --apply  # write
 ```
 
 ## Client self-reporting (`X-Client-Info`)
