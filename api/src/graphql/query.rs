@@ -32,6 +32,7 @@ use crate::ses_api;
 use super::audit_log::{self, AuditEntityType, AuditEntryConnection};
 use super::auth::{AuthGuard, AuthRequirement, can_write_location, require_location_access};
 use super::dataloader::DatabaseLoader;
+use super::notes::{self, Note, NoteFolder};
 use super::tasks::{self, Task, TaskList, TaskView};
 use super::{CategoryId, LocationId, NitcEventId, PersonId, SessionId, UserId};
 
@@ -2470,6 +2471,25 @@ impl<A: App + HasDb + Send + Sync> Location<A> {
         tasks::location_task_lists(ctx, &self.rec.id).await
     }
 
+    /// The location's notes (its shared notebook), most recently changed first.
+    /// `folderId` narrows to one of its note folders; without it every note at the
+    /// location is listed, whichever folder it is in. `search` keeps notes whose title
+    /// contains it, ignoring case. Users only (Admin or Read only); see
+    /// `graphql::notes`.
+    async fn notes(
+        &self,
+        ctx: &Context<'_>,
+        folder_id: Option<ID>,
+        search: Option<String>,
+    ) -> Result<Vec<Note<A>>> {
+        notes::location_notes(ctx, &self.rec.id, folder_id, search).await
+    }
+
+    /// The location's note folders, by name.
+    async fn note_folders(&self, ctx: &Context<'_>) -> Result<Vec<NoteFolder<A>>> {
+        notes::location_note_folders(ctx, &self.rec.id).await
+    }
+
     async fn sessions(&self, ctx: &Context<'_>) -> Result<Vec<Session<A>>> {
         require_location_access(ctx, &self.rec.id)?;
         let app = ctx.data_unchecked::<Arc<A>>();
@@ -3504,6 +3524,12 @@ impl<A: App + HasDb + HasRealtime + Send + Sync + 'static> QueryRoot<A> {
     #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
     async fn task(&self, ctx: &Context<'_>, id: ID) -> Result<Option<Task<A>>> {
         tasks::task(ctx, &id).await
+    }
+
+    /// One note; null if it does not exist or was deleted.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    async fn note(&self, ctx: &Context<'_>, id: ID) -> Result<Option<Note<A>>> {
+        notes::note(ctx, &id).await
     }
 
     #[graphql(guard = "AuthGuard::new(AuthRequirement::Authenticated)")]

@@ -314,6 +314,8 @@ const TRANSIENT_TABLES: &[&str] = &[
     "audit_log",
     "task",
     "task_list",
+    "note",
+    "note_folder",
 ];
 
 async fn clear() -> Result<()> {

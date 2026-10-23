@@ -19,6 +19,8 @@ export const ENTITY_TYPE_LABELS = {
   WEBAUTHN_CREDENTIAL: "Passkey",
   TASK: "Task",
   TASK_LIST: "Task list",
+  NOTE: "Note",
+  NOTE_FOLDER: "Note folder",
 } as const;
 
 export type EntityTypeKey = keyof typeof ENTITY_TYPE_LABELS;

@@ -69,6 +69,8 @@ pub enum AuditEntityType {
     WebauthnCredential,
     Task,
     TaskList,
+    Note,
+    NoteFolder,
 }
 
 impl From<db::AuditEntityType> for AuditEntityType {
@@ -88,6 +90,8 @@ impl From<db::AuditEntityType> for AuditEntityType {
             db::AuditEntityType::WebauthnCredential => Self::WebauthnCredential,
             db::AuditEntityType::Task => Self::Task,
             db::AuditEntityType::TaskList => Self::TaskList,
+            db::AuditEntityType::Note => Self::Note,
+            db::AuditEntityType::NoteFolder => Self::NoteFolder,
         }
     }
 }
@@ -109,6 +113,8 @@ impl From<AuditEntityType> for db::AuditEntityType {
             AuditEntityType::WebauthnCredential => Self::WebauthnCredential,
             AuditEntityType::Task => Self::Task,
             AuditEntityType::TaskList => Self::TaskList,
+            AuditEntityType::Note => Self::Note,
+            AuditEntityType::NoteFolder => Self::NoteFolder,
         }
     }
 }
