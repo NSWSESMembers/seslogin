@@ -288,6 +288,20 @@ const TABLES: &[Table] = &[
         ttl: None,
     },
     Table {
+        name: "map_pin",
+        hash: "id",
+        attrs: &[Attr("id", S), Attr("location_id", S)],
+        gsis: &[all("location_id-index", "location_id", None)],
+        ttl: None,
+    },
+    Table {
+        name: "map_layer",
+        hash: "id",
+        attrs: &[Attr("id", S), Attr("location_id", S)],
+        gsis: &[all("location_id-index", "location_id", None)],
+        ttl: None,
+    },
+    Table {
         name: "test_pagination",
         hash: "id",
         attrs: &[Attr("id", S), Attr("group_id", N), Attr("number", N)],

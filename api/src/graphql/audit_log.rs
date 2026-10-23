@@ -71,6 +71,8 @@ pub enum AuditEntityType {
     TaskList,
     Note,
     NoteFolder,
+    MapPin,
+    MapLayer,
 }
 
 impl From<db::AuditEntityType> for AuditEntityType {
@@ -92,6 +94,8 @@ impl From<db::AuditEntityType> for AuditEntityType {
             db::AuditEntityType::TaskList => Self::TaskList,
             db::AuditEntityType::Note => Self::Note,
             db::AuditEntityType::NoteFolder => Self::NoteFolder,
+            db::AuditEntityType::MapPin => Self::MapPin,
+            db::AuditEntityType::MapLayer => Self::MapLayer,
         }
     }
 }
@@ -115,6 +119,8 @@ impl From<AuditEntityType> for db::AuditEntityType {
             AuditEntityType::TaskList => Self::TaskList,
             AuditEntityType::Note => Self::Note,
             AuditEntityType::NoteFolder => Self::NoteFolder,
+            AuditEntityType::MapPin => Self::MapPin,
+            AuditEntityType::MapLayer => Self::MapLayer,
         }
     }
 }

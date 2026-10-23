@@ -21,6 +21,7 @@ pub mod dataloader;
 pub mod error;
 #[cfg(debug_assertions)]
 pub mod error_injection;
+pub mod map;
 pub mod mutations;
 pub mod notes;
 pub mod pagination;
@@ -88,6 +89,9 @@ pub struct TaskListId(pub String);
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct NoteFolderId(pub String);
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct MapLayerId(pub String);
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct SessionId(pub ID);

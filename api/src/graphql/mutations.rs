@@ -36,6 +36,7 @@ use super::auth::{
 };
 use super::dataloader::DatabaseLoader;
 use super::error::{ApiError, ErrorCode};
+use super::map::{self, MapLayer, MapPin};
 use super::notes::{self, Note, NoteFolder};
 use super::query::{QuickPick, build_quick_pick};
 use super::self_sign_in::{open_home_period, require_linked_person};
@@ -2093,6 +2094,101 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
     #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
     async fn delete_note_folder(&self, ctx: &Context<'_>, id: ID) -> Result<ID> {
         notes::delete_note_folder(ctx, self.app.as_ref(), &id).await
+    }
+
+    /// Add a pin to a location's shared map. Any user with access to the location may,
+    /// Read only included.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    async fn create_map_pin(
+        &self,
+        ctx: &Context<'_>,
+        location_id: ID,
+        title: String,
+        latitude: f64,
+        longitude: f64,
+        address: Option<String>,
+        note: Option<String>,
+        layer_id: Option<ID>,
+    ) -> Result<MapPin<A>> {
+        map::create_map_pin(
+            ctx,
+            self.app.as_ref(),
+            map::CreateMapPinArgs {
+                location_id,
+                title,
+                latitude,
+                longitude,
+                address,
+                note,
+                layer_id,
+            },
+        )
+        .await
+    }
+
+    /// Change a map pin. Omitted arguments are left as they are; `layerId: null` takes
+    /// it off its layer. Fails with `CONFLICT` if the pin is no longer at
+    /// `expectedVersion`.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    async fn update_map_pin(
+        &self,
+        ctx: &Context<'_>,
+        id: ID,
+        expected_version: i32,
+        title: Option<String>,
+        latitude: Option<f64>,
+        longitude: Option<f64>,
+        address: Option<String>,
+        note: Option<String>,
+        layer_id: MaybeUndefined<ID>,
+    ) -> Result<MapPin<A>> {
+        map::update_map_pin(
+            ctx,
+            self.app.as_ref(),
+            map::UpdateMapPinArgs {
+                id,
+                expected_version,
+                title,
+                latitude,
+                longitude,
+                address,
+                note,
+                layer_id,
+            },
+        )
+        .await
+    }
+
+    /// Delete a map pin. Returns its ID.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    async fn delete_map_pin(&self, ctx: &Context<'_>, id: ID) -> Result<ID> {
+        map::delete_map_pin(ctx, self.app.as_ref(), &id).await
+    }
+
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    async fn create_map_layer(
+        &self,
+        ctx: &Context<'_>,
+        location_id: ID,
+        name: String,
+    ) -> Result<MapLayer<A>> {
+        map::create_map_layer(ctx, self.app.as_ref(), &location_id, &name).await
+    }
+
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    async fn rename_map_layer(
+        &self,
+        ctx: &Context<'_>,
+        id: ID,
+        name: String,
+    ) -> Result<MapLayer<A>> {
+        map::rename_map_layer(ctx, self.app.as_ref(), &id, &name).await
+    }
+
+    /// Delete a map layer. Its pins stay on the location's map. Returns its ID.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    async fn delete_map_layer(&self, ctx: &Context<'_>, id: ID) -> Result<ID> {
+        map::delete_map_layer(ctx, self.app.as_ref(), &id).await
     }
 
     #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]

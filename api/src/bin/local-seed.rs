@@ -316,6 +316,8 @@ const TRANSIENT_TABLES: &[&str] = &[
     "task_list",
     "note",
     "note_folder",
+    "map_pin",
+    "map_layer",
 ];
 
 async fn clear() -> Result<()> {
