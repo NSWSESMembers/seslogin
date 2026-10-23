@@ -169,6 +169,14 @@ resource "aws_dynamodb_table" "test_person" {
     name = "ses_api_person_id"
     type = "S"
   }
+  attribute {
+    name = "contact_feed"
+    type = "S"
+  }
+  attribute {
+    name = "contact_key"
+    type = "S"
+  }
 
   global_secondary_index {
     name = "location_id-index"
@@ -193,6 +201,20 @@ resource "aws_dynamodb_table" "test_person" {
       key_type       = "HASH"
     }
     projection_type = "KEYS_ONLY"
+  }
+  # The contacts feed: every person in one partition, ordered by when a field the
+  # contacts API returns last changed. See SCHEMA.md.
+  global_secondary_index {
+    name = "contact_feed-contact_key-index"
+    key_schema {
+      attribute_name = "contact_feed"
+      key_type       = "HASH"
+    }
+    key_schema {
+      attribute_name = "contact_key"
+      key_type       = "RANGE"
+    }
+    projection_type = "ALL"
   }
 }
 

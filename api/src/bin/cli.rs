@@ -231,6 +231,11 @@ enum PersonCmd {
         #[arg(long)]
         csv: bool,
     },
+    /// Give every person (deleted ones too) a fresh `contact_key`, so the contacts
+    /// feed index holds every row. A one-off backfill for rows written before the
+    /// feed existed; safe to re-run, though each run puts every row back at the head
+    /// of the feed. Writes unless the global `--dry-run` is given.
+    StampContacts,
 }
 
 #[derive(Subcommand, Debug)]
@@ -1319,6 +1324,14 @@ async fn run_cli() -> Result<()> {
         .await;
     }
 
+    // And for backfilling the contacts feed.
+    if let Object::Person {
+        cmd: PersonCmd::StampContacts,
+    } = &cli.object
+    {
+        return run_person_stamp_contacts(&db_prefix, cli.dry_run).await;
+    }
+
     // And for retiring dead sessions.
     if let Object::Session {
         cmd: SessionCmd::RetireStale { grace_days },
@@ -1570,6 +1583,39 @@ fn run_jwt(jwt_secret: Option<String>, expire_s: Option<u64>, cmd: &JwtCmd) -> R
 
     println!("{token}");
 
+    Ok(())
+}
+
+/// Stamp a fresh `contact_key` on every person row. Opens its own handler with
+/// `read_only = dry_run`, so a dry run only counts the rows it would stamp.
+async fn run_person_stamp_contacts(db_prefix: &str, dry_run: bool) -> Result<()> {
+    let db = AuditingHandler::new(dynamodb::Handler::new(db_prefix, dry_run).await);
+    let mut cursor: Option<ScanCursor> = None;
+    let mut stamped = 0usize;
+    let mut unreadable = 0usize;
+    loop {
+        let page = db.scan_persons(cursor.clone(), 500).await?;
+        for row in page.rows {
+            match row {
+                Ok(person) => {
+                    if !dry_run {
+                        db.stamp_person_contact(&person.id).await?;
+                    }
+                    stamped += 1;
+                }
+                Err(e) => {
+                    eprintln!("skipping unreadable person row: {e}");
+                    unreadable += 1;
+                }
+            }
+        }
+        match page.next {
+            Some(next) => cursor = Some(next),
+            None => break,
+        }
+    }
+    let verb = if dry_run { "would stamp" } else { "stamped" };
+    println!("{verb} {stamped} people, skipped {unreadable} unreadable rows");
     Ok(())
 }
 
@@ -2432,6 +2478,10 @@ async fn run(db: &impl Handler, object: Object) -> Result<()> {
                     csv,
                 )
                 .await?;
+            }
+            // Handled in `main` before the shared read-only DB is opened.
+            PersonCmd::StampContacts => {
+                unreachable!("stamp-contacts is handled before the read-only DB is opened")
             }
         },
 
