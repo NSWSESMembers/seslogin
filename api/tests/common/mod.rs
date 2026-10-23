@@ -51,6 +51,8 @@ pub(crate) struct FakeDb {
     pub(crate) contact_stamps: Mutex<HashMap<String, u64>>,
     pub(crate) notes: Mutex<HashMap<String, db::Note>>,
     pub(crate) note_folders: Mutex<HashMap<String, db::NoteFolder>>,
+    pub(crate) equipment: Mutex<HashMap<String, db::Equipment>>,
+    pub(crate) equipment_log: Mutex<HashMap<String, db::EquipmentLogEntry>>,
     pub(crate) on_call_roles: Mutex<HashMap<String, db::OnCallRole>>,
     pub(crate) map_pins: Mutex<HashMap<String, db::MapPin>>,
     pub(crate) map_layers: Mutex<HashMap<String, db::MapLayer>>,
@@ -1627,6 +1629,169 @@ impl db::Handler for FakeDb {
         }
         f.updated_at = now;
         Ok(f.clone())
+    }
+    async fn get_equipment<T: AsRef<str> + Sync>(
+        &self,
+        ids: &[T],
+    ) -> db::Result<Vec<Option<db::Equipment>>> {
+        let equipment = self.equipment.lock().unwrap();
+        Ok(ids
+            .iter()
+            .map(|id| equipment.get(id.as_ref()).cloned())
+            .collect())
+    }
+    async fn list_equipment(&self, location_id: &str) -> db::Result<Vec<db::Equipment>> {
+        Ok(self
+            .equipment
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|e| e.location_id == location_id && e.deleted.is_none())
+            .cloned()
+            .collect())
+    }
+    async fn create_equipment(
+        &self,
+        equipment: db::NewEquipment<'_>,
+    ) -> db::Result<(db::Equipment, db::EquipmentLogEntry)> {
+        let now = seslogin::clock::now_sec();
+        let row = db::Equipment {
+            id: db::new_id(),
+            location_id: equipment.location_id.to_string(),
+            equipment_type: equipment.equipment_type.to_string(),
+            name: equipment.name.to_string(),
+            description: equipment.description.to_string(),
+            status: equipment.status.to_string(),
+            status_changed_at: now,
+            last_checked_at: None,
+            created_by: equipment.created_by.map(str::to_string),
+            updated_by: None,
+            version: 1,
+            deleted: None,
+            created_at: now,
+            updated_at: now,
+        };
+        let entry = db::EquipmentLogEntry {
+            id: db::new_id(),
+            equipment_id: row.id.clone(),
+            location_id: row.location_id.clone(),
+            kind: db::EquipmentLogKind::StatusChange,
+            from_status: None,
+            status: row.status.clone(),
+            comment: equipment.comment.to_string(),
+            created_by: row.created_by.clone(),
+            created_at: now,
+            created_us: seslogin::clock::now_us(),
+        };
+        self.equipment
+            .lock()
+            .unwrap()
+            .insert(row.id.clone(), row.clone());
+        self.equipment_log
+            .lock()
+            .unwrap()
+            .insert(entry.id.clone(), entry.clone());
+        Ok((row, entry))
+    }
+    async fn update_equipment(
+        &self,
+        id: &str,
+        change: db::EquipmentUpdateShape<'_>,
+    ) -> db::Result<db::Equipment> {
+        let now = seslogin::clock::now_sec();
+        let mut equipment = self.equipment.lock().unwrap();
+        let not_found = || db::Error::NotFound(format!("Equipment {id} not found, or changed"));
+        // The same conditions as the DynamoDB `ConditionExpression`s.
+        let e = equipment
+            .get_mut(id)
+            .filter(|e| e.deleted.is_none())
+            .ok_or_else(not_found)?;
+        match change {
+            db::EquipmentUpdateShape::Fields {
+                equipment_type,
+                name,
+                description,
+                by,
+                expected_version,
+            } => {
+                if e.version != expected_version {
+                    return Err(not_found());
+                }
+                e.equipment_type = equipment_type.to_string();
+                e.name = name.to_string();
+                e.description = description.to_string();
+                e.updated_by = by.map(str::to_string);
+            }
+            db::EquipmentUpdateShape::Delete { by } => {
+                e.deleted = Some(now);
+                e.updated_by = by.map(str::to_string);
+            }
+        }
+        e.version += 1;
+        e.updated_at = now;
+        Ok(e.clone())
+    }
+    async fn add_equipment_log_entry(
+        &self,
+        entry: db::NewEquipmentLogEntry<'_>,
+    ) -> db::Result<(db::Equipment, db::EquipmentLogEntry)> {
+        let now = seslogin::clock::now_sec();
+        let mut equipment = self.equipment.lock().unwrap();
+        let (expected, kind, from_status, status) = match entry.change {
+            db::EquipmentLogChange::Status { from, to } => {
+                (from, db::EquipmentLogKind::StatusChange, Some(from), to)
+            }
+            db::EquipmentLogChange::Check { status } => {
+                (status, db::EquipmentLogKind::Check, None, status)
+            }
+        };
+        // The same condition as the DynamoDB transaction's.
+        let e = equipment
+            .get_mut(entry.equipment_id)
+            .filter(|e| e.deleted.is_none() && e.status == expected)
+            .ok_or_else(|| {
+                db::Error::NotFound(format!(
+                    "Equipment {} not found, or changed",
+                    entry.equipment_id
+                ))
+            })?;
+        match kind {
+            db::EquipmentLogKind::StatusChange => {
+                e.status = status.to_string();
+                e.status_changed_at = now;
+            }
+            db::EquipmentLogKind::Check => e.last_checked_at = Some(now),
+        }
+        let row = db::EquipmentLogEntry {
+            id: db::new_id(),
+            equipment_id: entry.equipment_id.to_string(),
+            location_id: entry.location_id.to_string(),
+            kind,
+            from_status: from_status.map(str::to_string),
+            status: status.to_string(),
+            comment: entry.comment.to_string(),
+            created_by: entry.by.map(str::to_string),
+            created_at: now,
+            created_us: seslogin::clock::now_us(),
+        };
+        self.equipment_log
+            .lock()
+            .unwrap()
+            .insert(row.id.clone(), row.clone());
+        Ok((e.clone(), row))
+    }
+    async fn list_equipment_log(
+        &self,
+        equipment_id: &str,
+    ) -> db::Result<Vec<db::EquipmentLogEntry>> {
+        Ok(self
+            .equipment_log
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|l| l.equipment_id == equipment_id)
+            .cloned()
+            .collect())
     }
     async fn get_map_pins<T: AsRef<str> + Sync>(
         &self,

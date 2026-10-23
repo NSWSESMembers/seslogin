@@ -10,6 +10,7 @@ pub mod contacts;
 pub mod db;
 pub mod dynamodb;
 pub mod environment;
+pub mod equipment;
 pub mod expire;
 pub mod graphql;
 pub mod healthcheck;

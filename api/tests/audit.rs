@@ -578,6 +578,100 @@ async fn note_folder_writes_are_recorded_against_their_location() {
 }
 
 #[tokio::test]
+async fn equipment_writes_and_log_entries_are_recorded_against_their_location() {
+    let app = app();
+    let (equipment, _) = app
+        .db
+        .create_equipment(db::NewEquipment {
+            location_id: "loc-a",
+            equipment_type: "vehicle",
+            name: "Truck 1",
+            description: "",
+            status: "in_service",
+            comment: "",
+            created_by: Some("caller"),
+        })
+        .await
+        .unwrap();
+    app.db
+        .update_equipment(
+            &equipment.id,
+            db::EquipmentUpdateShape::Fields {
+                equipment_type: "vehicle",
+                name: "Truck 1",
+                description: "Isuzu",
+                by: Some("caller"),
+                expected_version: equipment.version,
+            },
+        )
+        .await
+        .unwrap();
+    let (_, entry) = app
+        .db
+        .add_equipment_log_entry(db::NewEquipmentLogEntry {
+            equipment_id: &equipment.id,
+            location_id: "loc-a",
+            change: db::EquipmentLogChange::Status {
+                from: "in_service",
+                to: "out_of_service",
+            },
+            comment: "Flat tyre",
+            by: Some("caller"),
+        })
+        .await
+        .unwrap();
+    // A change from a status it is no longer in records nothing.
+    app.db
+        .add_equipment_log_entry(db::NewEquipmentLogEntry {
+            equipment_id: &equipment.id,
+            location_id: "loc-a",
+            change: db::EquipmentLogChange::Status {
+                from: "in_service",
+                to: "missing",
+            },
+            comment: "Stale",
+            by: Some("caller"),
+        })
+        .await
+        .unwrap_err();
+    app.db
+        .update_equipment(
+            &equipment.id,
+            db::EquipmentUpdateShape::Delete { by: Some("caller") },
+        )
+        .await
+        .unwrap();
+
+    let entries = app.db.inner().audit_entries();
+    assert_eq!(entries.len(), 4);
+    for entry in &entries {
+        assert_eq!(entry.entity_label.as_deref(), Some("Truck 1"));
+        assert_eq!(entry.location_ids, vec!["loc-a".to_string()]);
+    }
+    assert_eq!(entries[0].entity_type, AuditEntityType::Equipment);
+    assert_eq!(entries[0].action, AuditAction::Create);
+    assert_eq!(
+        changed_fields(&entries[0]),
+        vec!["equipment_type", "name", "status"]
+    );
+    assert_eq!(entries[1].action, AuditAction::Update);
+    assert_eq!(changed_fields(&entries[1]), vec!["description"]);
+    assert_eq!(entries[2].entity_type, AuditEntityType::EquipmentLogEntry);
+    assert_eq!(entries[2].entity_id, entry.id);
+    assert_eq!(entries[2].action, AuditAction::Create);
+    assert_eq!(
+        changed_fields(&entries[2]),
+        vec!["equipment_id", "kind", "from_status", "status", "comment"]
+    );
+    assert_eq!(entries[3].entity_type, AuditEntityType::Equipment);
+    assert_eq!(entries[3].action, AuditAction::Delete);
+    assert_eq!(
+        changed_fields(&entries[3]),
+        vec!["equipment_type", "name", "description"]
+    );
+}
+
+#[tokio::test]
 async fn map_pin_writes_are_recorded_against_their_location() {
     let app = app();
     let pin = app
