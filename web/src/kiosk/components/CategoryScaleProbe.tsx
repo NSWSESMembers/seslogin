@@ -1,6 +1,10 @@
 import type { Ref } from "react";
 import { categories } from "../../lib/categories";
-import { CategoriesHeader, CategoryButton } from "./ScanScreenCategories";
+import {
+  CategoriesHeader,
+  CategoryButton,
+  CategorySearchBar,
+} from "./ScanScreenCategories";
 
 /**
  * Invisible, inert copy of a category screen's header and one button at scale
@@ -9,11 +13,15 @@ import { CategoriesHeader, CategoryButton } from "./ScanScreenCategories";
  * inside the same side padding as a scan screen (`px-2.5`) so the grid width it
  * reports is the width the real buttons get. Its labels are placeholder text so
  * nothing here duplicates a real screen's text for queries by text.
+ *
+ * With category search on it also draws the (empty) search box.
  */
 export default function CategoryScaleProbe({
   ref,
+  categorySearch = false,
 }: {
   ref: Ref<HTMLDivElement>;
+  categorySearch?: boolean;
 }) {
   const leaf = categories[0].subcategories[0];
   return (
@@ -25,6 +33,9 @@ export default function CategoryScaleProbe({
       className="pointer-events-none invisible absolute inset-x-0 top-0 px-2.5 text-center"
     >
       <CategoriesHeader groupName="Probe" backLabel="Probe" />
+      {categorySearch && (
+        <CategorySearchBar query="" onQueryChange={() => {}} />
+      )}
       <ul className="pl-0" data-probe="grid">
         <CategoryButton
           id={leaf.id}

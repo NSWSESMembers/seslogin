@@ -249,7 +249,12 @@ impl<
         );
 
         let auth_header = header("Authorization");
-        match auth::verify_authorization_header(&*self.app, auth_header, body_hash, &client).await {
+        // Behind CloudFront `Host` isn't forwarded and `API_BASE_URL` decides the
+        // expected OAuth resource instead; see `base_url::api_base_url`.
+        let host = header("host");
+        match auth::verify_authorization_header(&*self.app, auth_header, body_hash, &client, host)
+            .await
+        {
             Some(res) => res.map(Some),
             None => Ok(None),
         }

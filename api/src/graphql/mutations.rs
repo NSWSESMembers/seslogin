@@ -32,11 +32,12 @@ use hex;
 
 use super::auth::{
     AuthGuard, AuthRequirement, require_location_access, require_location_write_access,
-    require_period_write_access, require_writable,
+    require_not_oauth_grant, require_period_write_access, require_writable,
 };
 use super::dataloader::DatabaseLoader;
 use super::error::{ApiError, ErrorCode};
 use super::query::{QuickPick, build_quick_pick};
+use super::tasks::{self, Task, TaskList, TaskRecurrenceInput};
 use super::{
     ApiToken, Category, Location, NitcGroup, PasskeyInfo, Period, Person, PersonId, Session, User,
 };
@@ -923,6 +924,50 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         ))
     }
 
+    /// Set the member a user acts as when signing in or out from the mobile app, or
+    /// clear it with a null `personId`. Any user may be given any member, the super
+    /// user themselves included, and several users may share one member.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::SuperUser)")]
+    async fn set_user_member(
+        &self,
+        user_id: ID,
+        #[graphql(desc = "The member to act as; null clears the link.")] person_id: Option<ID>,
+    ) -> Result<User<A>> {
+        self.app
+            .db()
+            .get_users(&[&user_id])
+            .await?
+            .into_iter()
+            .next()
+            .flatten()
+            .ok_or_else(|| anyhow!("User {:?} not found", user_id))?;
+        if let Some(person_id) = &person_id {
+            self.app
+                .db()
+                .get_persons(&[person_id])
+                .await?
+                .into_iter()
+                .next()
+                .flatten()
+                .filter(|p| p.deleted.is_none())
+                .ok_or_else(|| anyhow!("Member {:?} not found", person_id))?;
+        }
+        self.app
+            .db()
+            .update_user(
+                &user_id,
+                db::UserUpdateShape::Person {
+                    person_id: person_id.as_ref().map(|id| id.as_str()),
+                },
+            )
+            .await?;
+
+        let rec = self.app.db().get_users(&[&user_id]).await?;
+        Ok(User::new(rec.into_iter().next().flatten().ok_or_else(
+            || anyhow!("User with ID {:?} missing", user_id),
+        )?))
+    }
+
     #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
     async fn create_person(
         &self,
@@ -1540,6 +1585,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         key_fingerprint: String,
     ) -> Result<Session<A>> {
         require_writable(ctx)?;
+        require_not_oauth_grant(ctx, "Adding a kiosk")?;
         require_location_write_access(ctx, &location_id)?;
         self.app
             .db()
@@ -1700,6 +1746,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         expires_at: Option<i64>,
     ) -> Result<CreateApiTokenResult> {
         require_writable(ctx)?;
+        require_not_oauth_grant(ctx, "Creating an API token")?;
         let user_id = match ctx.data_opt::<AuthInfo>() {
             Some(AuthInfo::User { id, .. }) => id.clone(),
             _ => return Err(anyhow!("Super user auth required")),
@@ -1853,6 +1900,111 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         )?))
     }
 
+    /// Add a task to a location's shared to-do list. Any user with access to the
+    /// location may, Read only included. `dueDate` (`YYYY-MM-DD`, Sydney) hides the
+    /// task until that day; a recurring task with no date is due today.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    async fn create_task(
+        &self,
+        ctx: &Context<'_>,
+        location_id: ID,
+        title: String,
+        description: Option<String>,
+        list_id: Option<ID>,
+        due_date: Option<String>,
+        recurrence: Option<TaskRecurrenceInput>,
+    ) -> Result<Task<A>> {
+        tasks::create_task(
+            ctx,
+            self.app.as_ref(),
+            tasks::CreateTaskArgs {
+                location_id,
+                title,
+                description,
+                list_id,
+                due_date,
+                recurrence,
+            },
+        )
+        .await
+    }
+
+    /// Change an open task. Omitted arguments are left as they are; `null` clears
+    /// `description`, `listId`, `dueDate` or `recurrence`. Fails with `CONFLICT` if
+    /// the task is no longer at `expectedVersion`.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    async fn update_task(
+        &self,
+        ctx: &Context<'_>,
+        id: ID,
+        expected_version: i32,
+        title: Option<String>,
+        description: MaybeUndefined<String>,
+        list_id: MaybeUndefined<ID>,
+        due_date: MaybeUndefined<String>,
+        recurrence: MaybeUndefined<TaskRecurrenceInput>,
+    ) -> Result<Task<A>> {
+        tasks::update_task(
+            ctx,
+            self.app.as_ref(),
+            tasks::UpdateTaskArgs {
+                id,
+                expected_version,
+                title,
+                description,
+                list_id,
+                due_date,
+                recurrence,
+            },
+        )
+        .await
+    }
+
+    /// Complete a task. A recurring task stays open, due again its interval after
+    /// today; any other task is done. Fails with `CONFLICT` if someone else completed
+    /// or changed it since `expectedVersion` was read.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    async fn complete_task(
+        &self,
+        ctx: &Context<'_>,
+        id: ID,
+        expected_version: i32,
+    ) -> Result<Task<A>> {
+        tasks::complete_task(ctx, self.app.as_ref(), &id, expected_version).await
+    }
+
+    /// Delete a task. Returns its ID.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    async fn delete_task(&self, ctx: &Context<'_>, id: ID) -> Result<ID> {
+        tasks::delete_task(ctx, self.app.as_ref(), &id).await
+    }
+
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    async fn create_task_list(
+        &self,
+        ctx: &Context<'_>,
+        location_id: ID,
+        name: String,
+    ) -> Result<TaskList<A>> {
+        tasks::create_task_list(ctx, self.app.as_ref(), &location_id, &name).await
+    }
+
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    async fn rename_task_list(
+        &self,
+        ctx: &Context<'_>,
+        id: ID,
+        name: String,
+    ) -> Result<TaskList<A>> {
+        tasks::rename_task_list(ctx, self.app.as_ref(), &id, &name).await
+    }
+
+    /// Delete a task list. Its tasks stay on the location. Returns its ID.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    async fn delete_task_list(&self, ctx: &Context<'_>, id: ID) -> Result<ID> {
+        tasks::delete_task_list(ctx, self.app.as_ref(), &id).await
+    }
+
     #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
     async fn delete_session(&self, ctx: &Context<'_>, id: ID) -> Result<bool> {
         require_writable(ctx)?;
@@ -1893,6 +2045,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
     #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
     async fn reactivate_session(&self, ctx: &Context<'_>, id: ID) -> Result<Session<A>> {
         require_writable(ctx)?;
+        require_not_oauth_grant(ctx, "Reactivating a kiosk")?;
         let existing = self
             .app
             .db()
@@ -2681,6 +2834,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
     async fn begin_passkey_registration(&self, ctx: &Context<'_>) -> Result<PasskeyChallenge> {
         use webauthn_rs::prelude::*;
 
+        require_not_oauth_grant(ctx, "Adding a passkey")?;
         let user_id = match ctx.data_opt::<AuthInfo>() {
             Some(AuthInfo::User { id, .. }) => id.clone(),
             _ => return Err(anyhow!("Not authenticated")),
@@ -2796,6 +2950,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
     ) -> Result<PasskeyInfo> {
         use webauthn_rs::prelude::*;
 
+        require_not_oauth_grant(ctx, "Adding a passkey")?;
         let user_id = match ctx.data_opt::<AuthInfo>() {
             Some(AuthInfo::User { id, .. }) => id.clone(),
             _ => return Err(anyhow!("Not authenticated")),
@@ -3102,20 +3257,22 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         state: Option<String>,
     ) -> Result<String> {
         require_writable(ctx)?;
+        require_not_oauth_grant(ctx, "Connecting an app")?;
         let user_id = match ctx.data_opt::<AuthInfo>() {
             Some(AuthInfo::User { id, .. }) => id.clone(),
             _ => return Err(anyhow!("Must provide user token")),
         };
 
-        let registration =
-            oauth::decode_client_id(&self.app.jwt().oauth_client_id_key(), &client_id)
+        let client =
+            crate::oauth_clients::resolve_client(&self.app.jwt().oauth_client_id_key(), &client_id)
                 .ok_or_else(|| anyhow!("Unknown or invalid client"))?;
-        if !registration
-            .redirect_uris
-            .iter()
-            .any(|u| u == &redirect_uri)
+        super::auth::check_oauth_redirect(ctx, &*self.app, &client, &redirect_uri).await?;
+        // Path only: there's no reliable API base URL here. The token endpoint
+        // checks the full URL; this just refuses early, before a code is minted.
+        if let Some(resource) = &resource
+            && !client.allows_resource_path(resource)
         {
-            return Err(anyhow!("redirect_uri is not registered for this client"));
+            return Err(anyhow!("resource is not available to this client"));
         }
         if code_challenge_method != "S256" {
             return Err(anyhow!("code_challenge_method must be S256"));
@@ -3142,7 +3299,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         let payload = crate::oauth_http::AuthCodePayload {
             user_id,
             client_id: client_id.clone(),
-            client_name: registration.client_name,
+            client_name: client.client_name,
             redirect_uri: redirect_uri.clone(),
             code_challenge,
             scope,

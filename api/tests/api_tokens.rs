@@ -19,7 +19,7 @@ fn sha256_hex(s: &str) -> String {
 }
 
 async fn verify(app: &FakeApp, token: &str) -> Result<AuthInfo, AuthError> {
-    auth::verify_token(app, token, &ClientReport::default()).await
+    auth::verify_token(app, token, &ClientReport::default(), None).await
 }
 
 async fn store(app: &FakeApp, id: &str, token_hash: &str) {

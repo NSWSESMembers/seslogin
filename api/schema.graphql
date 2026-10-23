@@ -50,8 +50,9 @@ type AuditActor {
 	"""
 	id: String
 	"""
-	How a user acted when not through an ordinary web login: `oauth_grant:<id>` (an AI
-	client over MCP), `user_token:<id>` or `oauth_client:<id>`. Super users only;
+	How a user acted when not through an ordinary web login: `oauth_grant:<id>` (a
+	connected app: an AI client over MCP, or one of SESLogin's own apps over
+	GraphQL), `user_token:<id>` or `oauth_client:<id>`. Super users only;
 	null for everyone else.
 	"""
 	via: String
@@ -110,6 +111,8 @@ enum AuditEntityType {
 	USER_TOKEN
 	OAUTH_GRANT
 	WEBAUTHN_CREDENTIAL
+	TASK
+	TASK_LIST
 }
 
 type AuditEntry {
@@ -359,6 +362,17 @@ type Location {
 	other day-bucketed resolver.
 	"""
 	periodSummaryByDayByMember(startTime: Int!, endTime: Int!, categories: [ID!]): [DayMemberPeriodSummary!]!
+	"""
+	The location's open tasks (its shared to-do list): by default those due now,
+	overdue first. `listId` narrows to one of its task lists; without it every
+	task at the location is listed, whichever list it is on. Users only (Admin
+	or Read only); see `graphql::tasks`.
+	"""
+	tasks(view: TaskView! = DUE, listId: ID): [Task!]!
+	"""
+	The location's task lists, by name.
+	"""
+	taskLists: [TaskList!]!
 	sessions: [Session!]!
 	dashboardSummary(asOf: Int): LocationDashboardSummary!
 }
@@ -465,6 +479,17 @@ type MutationRoot {
 		"""
 		readOnlyLocationGrants: [String!]
 	): User!
+	"""
+	Set the member a user acts as when signing in or out from the mobile app, or
+	clear it with a null `personId`. Any user may be given any member, the super
+	user themselves included, and several users may share one member.
+	"""
+	setUserMember(		userId: ID!,
+		"""
+		The member to act as; null clears the link.
+		"""
+		personId: ID
+	): User!
 	createPerson(locationId: ID!, firstName: String!, lastName: String!, memberNumber: String!): Person!
 	updatePerson(id: ID!, firstName: String!, lastName: String!, memberNumber: String!): Person!
 	deletePerson(id: ID!): Boolean!
@@ -508,6 +533,34 @@ type MutationRoot {
 	updateApiToken(id: ID!, name: String!, locationGrants: [String!]!, readOnly: Boolean!, expiresAt: Int): ApiToken!
 	revokeApiToken(id: ID!): Boolean!
 	updateSession(id: ID!, name: String!, config: String, healthcheckUrl: String): Session!
+	"""
+	Add a task to a location's shared to-do list. Any user with access to the
+	location may, Read only included. `dueDate` (`YYYY-MM-DD`, Sydney) hides the
+	task until that day; a recurring task with no date is due today.
+	"""
+	createTask(locationId: ID!, title: String!, description: String, listId: ID, dueDate: String, recurrence: TaskRecurrenceInput): Task!
+	"""
+	Change an open task. Omitted arguments are left as they are; `null` clears
+	`description`, `listId`, `dueDate` or `recurrence`. Fails with `CONFLICT` if
+	the task is no longer at `expectedVersion`.
+	"""
+	updateTask(id: ID!, expectedVersion: Int!, title: String, description: String, listId: ID, dueDate: String, recurrence: TaskRecurrenceInput): Task!
+	"""
+	Complete a task. A recurring task stays open, due again its interval after
+	today; any other task is done. Fails with `CONFLICT` if someone else completed
+	or changed it since `expectedVersion` was read.
+	"""
+	completeTask(id: ID!, expectedVersion: Int!): Task!
+	"""
+	Delete a task. Returns its ID.
+	"""
+	deleteTask(id: ID!): ID!
+	createTaskList(locationId: ID!, name: String!): TaskList!
+	renameTaskList(id: ID!, name: String!): TaskList!
+	"""
+	Delete a task list. Its tasks stay on the location. Returns its ID.
+	"""
+	deleteTaskList(id: ID!): ID!
 	deleteSession(id: ID!): Boolean!
 	"""
 	Bring back a QR-enrolled kiosk that expired after two weeks offline, without
@@ -653,13 +706,29 @@ type NitcGroup {
 
 """
 What the OAuth consent screen needs to show before a user approves or denies
-an authorization request: the client's self-claimed name, and — the one
-value that actually matters, since DCR is unauthenticated — the host it will
-redirect back to.
+an authorization request: the client's name, and — the one value that
+actually matters for a dynamically registered client, whose name is
+self-claimed — the host it will redirect back to.
 """
 type OauthAuthorizationRequest {
 	clientName: String!
+	"""
+	Host of the redirect URI. Meaningless for a first-party app's custom
+	scheme (`tally://oauth/callback` gives `oauth`), so show
+	`isFirstParty` instead when it's true.
+	"""
 	redirectHost: String!
+	"""
+	One of SESLogin's own apps (`oauth_clients::STATIC_CLIENTS`), whose name
+	and redirect are fixed in code, rather than a self-registered client.
+	"""
+	isFirstParty: Boolean!
+	"""
+	A development build of a first-party app, redirecting to the Expo server
+	on a developer's machine (`redirectHost`, with its port). Only a developer
+	account gets this far; anyone else is refused.
+	"""
+	isDevelopmentBuild: Boolean!
 }
 
 type OauthGrant {
@@ -668,9 +737,15 @@ type OauthGrant {
 	"""
 	Host the client's tokens redirect back to. Shown instead of the
 	(unauthenticated, self-claimed) client name alone, same as on the
-	consent screen.
+	consent screen. Meaningless when `isFirstParty`, so show that instead.
 	"""
 	redirectHost: String!
+	"""
+	Granted to one of SESLogin's own apps (`oauth_clients::STATIC_CLIENTS`)
+	at one of its registered redirects. False for a self-registered client,
+	and for a development build's grant, which shows its address instead.
+	"""
+	isFirstParty: Boolean!
 	scope: String!
 	createdAt: Int!
 	lastUsedAt: Int
@@ -917,6 +992,10 @@ type QueryRoot {
 	about the one period their link was issued for.
 	"""
 	linkedPeriod: Period!
+	"""
+	One task, open or completed; null if it does not exist or was deleted.
+	"""
+	task(id: ID!): Task
 	session(
 		"""
 		ID for the session to look up
@@ -1216,6 +1295,111 @@ type SubmittedFeedback {
 	reference: String!
 }
 
+type Task {
+	id: ID!
+	"""
+	One line.
+	"""
+	title: String!
+	description: String
+	locationId: ID!
+	location: Location!
+	"""
+	The list the task is on, if any. Null too when that list has been deleted:
+	the task then just belongs to its location.
+	"""
+	list: TaskList
+	"""
+	The day the task is due (`YYYY-MM-DD`, Sydney), if it has one. A recurring
+	task always does.
+	"""
+	dueDate: String
+	"""
+	The day the task starts showing in the Due view: its due date, or the day it
+	was created.
+	"""
+	showDate: String!
+	"""
+	The first day the task counts as overdue: the day after it is due, or a full
+	week after for a task that repeats in weeks. Null when it has no due date.
+	"""
+	overdueFrom: String
+	"""
+	Whether the task is open and overdue today (Sydney).
+	"""
+	overdue: Boolean!
+	recurrence: TaskRecurrence
+	"""
+	False once a non-recurring task is completed, or any task deleted. A
+	recurring task stays open.
+	"""
+	open: Boolean!
+	"""
+	Bumped by every change; pass it back to `updateTask` / `completeTask`.
+	"""
+	version: Int!
+	createdAt: Int!
+	"""
+	Email of the user who created the task.
+	"""
+	createdBy: String
+	updatedAt: Int!
+	"""
+	When a non-recurring task was completed.
+	"""
+	completedAt: Int
+	completedBy: String
+	"""
+	When a recurring task was last completed.
+	"""
+	lastCompletedAt: Int
+	lastCompletedBy: String
+}
+
+type TaskList {
+	id: ID!
+	name: String!
+	locationId: ID!
+	location: Location!
+	createdAt: Int!
+}
+
+"""
+Once completed, a recurring task is due again `every` days or weeks later,
+counted from the day it was completed.
+"""
+type TaskRecurrence {
+	every: Int!
+	unit: TaskRecurrenceUnit!
+}
+
+input TaskRecurrenceInput {
+	"""
+	1 to 365.
+	"""
+	every: Int!
+	unit: TaskRecurrenceUnit!
+}
+
+enum TaskRecurrenceUnit {
+	DAYS
+	WEEKS
+}
+
+"""
+Which of a location's open tasks to list.
+"""
+enum TaskView {
+	"""
+	Showing today or earlier: what needs doing now, overdue first.
+	"""
+	DUE
+	"""
+	Showing only from a later day, soonest first.
+	"""
+	SCHEDULED
+}
+
 type User {
 	id: ID!
 	email: String!
@@ -1235,6 +1419,14 @@ type User {
 	Locations where the user is Read only (can view but not change).
 	"""
 	readOnlyLocationGrantIds: [ID!]!
+	"""
+	The member this user acts as when signing in or out from the mobile app.
+	"""
+	personId: ID
+	"""
+	The member this user acts as, or null if none is set or it no longer exists.
+	"""
+	person: Person
 	locations: [Location!]!
 	passkeys: [PasskeyInfo!]!
 	"""

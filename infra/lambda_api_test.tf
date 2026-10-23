@@ -20,7 +20,7 @@ resource "aws_lambda_function" "test_api" {
       MEMBER_SYNC_QUEUE_URL = aws_sqs_queue.member_sync.url
       NITC_EXPORT_QUEUE_URL = aws_sqs_queue.nitc_export.url
       DB_BACKEND            = "dynamodb"
-      DB_PREFIX             = var.db_prefix
+      DB_PREFIX             = var.db_prefix_test
       READ_ONLY             = "false"
       TURNSTILE_SECRET_KEY  = var.turnstile_secret_key_test
       ABLY_API_KEY          = var.ably_api_key

@@ -32,6 +32,7 @@ use crate::ses_api;
 use super::audit_log::{self, AuditEntityType, AuditEntryConnection};
 use super::auth::{AuthGuard, AuthRequirement, can_write_location, require_location_access};
 use super::dataloader::DatabaseLoader;
+use super::tasks::{self, Task, TaskList, TaskView};
 use super::{CategoryId, LocationId, NitcEventId, PersonId, SessionId, UserId};
 
 #[derive(Debug, PartialEq)]
@@ -119,6 +120,24 @@ impl<A: App + HasDb + Send + Sync + 'static> User<A> {
             .iter()
             .map(|id| ID(id.clone()))
             .collect()
+    }
+
+    /// The member this user acts as when signing in or out from the mobile app.
+    async fn person_id(&self) -> Option<ID> {
+        self.rec.person_id.clone().map(ID)
+    }
+
+    /// The member this user acts as, or null if none is set or it no longer exists.
+    async fn person(&self, ctx: &Context<'_>) -> Result<Option<Person<A>>> {
+        let Some(person_id) = self.rec.person_id.clone() else {
+            return Ok(None);
+        };
+        let loader = ctx.data_unchecked::<DataLoader<DatabaseLoader<A>>>();
+        Ok(loader
+            .load_one(PersonId(ID(person_id)))
+            .await
+            .map_err(|e| anyhow!("Failed to load person via DataLoader: {}", e))?
+            .flatten())
     }
 
     async fn locations(&self, ctx: &Context<'_>) -> Result<Vec<Location<A>>> {
@@ -292,13 +311,23 @@ pub struct Environment {
 }
 
 /// What the OAuth consent screen needs to show before a user approves or denies
-/// an authorization request: the client's self-claimed name, and — the one
-/// value that actually matters, since DCR is unauthenticated — the host it will
-/// redirect back to.
+/// an authorization request: the client's name, and — the one value that
+/// actually matters for a dynamically registered client, whose name is
+/// self-claimed — the host it will redirect back to.
 #[derive(SimpleObject, Clone, Debug)]
 pub struct OAuthAuthorizationRequest {
     pub client_name: String,
+    /// Host of the redirect URI. Meaningless for a first-party app's custom
+    /// scheme (`tally://oauth/callback` gives `oauth`), so show
+    /// `isFirstParty` instead when it's true.
     pub redirect_host: String,
+    /// One of SESLogin's own apps (`oauth_clients::STATIC_CLIENTS`), whose name
+    /// and redirect are fixed in code, rather than a self-registered client.
+    pub is_first_party: bool,
+    /// A development build of a first-party app, redirecting to the Expo server
+    /// on a developer's machine (`redirectHost`, with its port). Only a developer
+    /// account gets this far; anyone else is refused.
+    pub is_development_build: bool,
 }
 
 #[derive(SimpleObject, Clone, Debug)]
@@ -2423,6 +2452,24 @@ impl<A: App + HasDb + Send + Sync> Location<A> {
         Ok(rows)
     }
 
+    /// The location's open tasks (its shared to-do list): by default those due now,
+    /// overdue first. `listId` narrows to one of its task lists; without it every
+    /// task at the location is listed, whichever list it is on. Users only (Admin
+    /// or Read only); see `graphql::tasks`.
+    async fn tasks(
+        &self,
+        ctx: &Context<'_>,
+        #[graphql(default)] view: TaskView,
+        list_id: Option<ID>,
+    ) -> Result<Vec<Task<A>>> {
+        tasks::location_tasks(ctx, &self.rec.id, view, list_id).await
+    }
+
+    /// The location's task lists, by name.
+    async fn task_lists(&self, ctx: &Context<'_>) -> Result<Vec<TaskList<A>>> {
+        tasks::location_task_lists(ctx, &self.rec.id).await
+    }
+
     async fn sessions(&self, ctx: &Context<'_>) -> Result<Vec<Session<A>>> {
         require_location_access(ctx, &self.rec.id)?;
         let app = ctx.data_unchecked::<Arc<A>>();
@@ -2992,12 +3039,19 @@ impl OAuthGrant {
     }
     /// Host the client's tokens redirect back to. Shown instead of the
     /// (unauthenticated, self-claimed) client name alone, same as on the
-    /// consent screen.
+    /// consent screen. Meaningless when `isFirstParty`, so show that instead.
     async fn redirect_host(&self) -> String {
         url::Url::parse(&self.rec.redirect_uri)
             .ok()
             .and_then(|u| u.host_str().map(str::to_string))
             .unwrap_or_else(|| self.rec.redirect_uri.clone())
+    }
+    /// Granted to one of SESLogin's own apps (`oauth_clients::STATIC_CLIENTS`)
+    /// at one of its registered redirects. False for a self-registered client,
+    /// and for a development build's grant, which shows its address instead.
+    async fn is_first_party(&self) -> bool {
+        crate::oauth_clients::static_client(&self.rec.client_id)
+            .is_some_and(|c| c.redirect_uris.contains(&self.rec.redirect_uri.as_str()))
     }
     async fn scope(&self) -> &str {
         &self.rec.scope
@@ -3446,6 +3500,12 @@ impl<A: App + HasDb + HasRealtime + Send + Sync + 'static> QueryRoot<A> {
             .map(Period::new)
     }
 
+    /// One task, open or completed; null if it does not exist or was deleted.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    async fn task(&self, ctx: &Context<'_>, id: ID) -> Result<Option<Task<A>>> {
+        tasks::task(ctx, &id).await
+    }
+
     #[graphql(guard = "AuthGuard::new(AuthRequirement::Authenticated)")]
     async fn session(
         &self,
@@ -3794,22 +3854,25 @@ impl<A: App + HasDb + HasRealtime + Send + Sync + 'static> QueryRoot<A> {
         redirect_uri: String,
     ) -> Result<OAuthAuthorizationRequest> {
         let app = ctx.data_unchecked::<Arc<A>>();
-        let registration =
-            crate::oauth::decode_client_id(&app.jwt().oauth_client_id_key(), &client_id)
+        let client =
+            crate::oauth_clients::resolve_client(&app.jwt().oauth_client_id_key(), &client_id)
                 .ok_or_else(|| anyhow!("Unknown or invalid client"))?;
-        if !registration
-            .redirect_uris
-            .iter()
-            .any(|u| u == &redirect_uri)
-        {
-            return Err(anyhow!("redirect_uri is not registered for this client"));
-        }
-        let redirect_host = url::Url::parse(&redirect_uri)
-            .ok()
-            .and_then(|u| u.host_str().map(str::to_string))
+        let is_development_build =
+            super::auth::check_oauth_redirect(ctx, &**app, &client, &redirect_uri).await?;
+        let url = url::Url::parse(&redirect_uri)
+            .map_err(|_| anyhow!("redirect_uri is not a valid URL"))?;
+        let host = url
+            .host_str()
             .ok_or_else(|| anyhow!("redirect_uri has no host"))?;
+        // A development build is identified by the machine serving it, port and all.
+        let redirect_host = match url.port() {
+            Some(port) if is_development_build => format!("{host}:{port}"),
+            _ => host.to_string(),
+        };
         Ok(OAuthAuthorizationRequest {
-            client_name: registration.client_name,
+            is_first_party: client.is_first_party(),
+            is_development_build,
+            client_name: client.client_name,
             redirect_host,
         })
     }

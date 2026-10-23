@@ -211,6 +211,31 @@ async fn a_token_minted_for_a_different_resource_is_rejected() {
 }
 
 #[tokio::test]
+async fn a_graphql_bound_token_is_rejected() {
+    use seslogin::db::Handler as _;
+    let (app, schema) = setup();
+    seed_user(&app, "user-1", true);
+    let (grant, token, _refresh) = oauth::mint_grant(
+        "user-1",
+        "tally",
+        "Tally",
+        "tally://oauth/callback",
+        "https://api.seslogin.com/graphql",
+        oauth::DEFAULT_SCOPE,
+        seslogin::clock::now_sec(),
+    );
+    app.db.create_oauth_grant(&grant).await.unwrap();
+    let reply = post(
+        &app,
+        &schema,
+        Some(&format!("Bearer {token}")),
+        rpc("ping", json!({})),
+    )
+    .await;
+    assert_eq!(reply.status, 401);
+}
+
+#[tokio::test]
 async fn a_disabled_users_token_is_rejected() {
     let (app, schema) = setup();
     seed_user(&app, "user-1", false); // disabled
@@ -355,6 +380,7 @@ async fn tools_list_lists_every_tool() {
         "update_user",
         "disable_user",
         "enable_user",
+        "set_user_member",
         "get_location",
         "list_members",
         "get_member",
@@ -598,6 +624,47 @@ async fn super_user_can_list_create_and_update_users() {
     .await;
     assert_eq!(reply.json["result"]["isError"], false, "{:?}", reply.json);
     assert!(app.db.users.lock().unwrap().get(&new_id).unwrap().enabled);
+
+    // set_user_member links a member, and null clears it.
+    seed_person(&app, "p-1", "loc-1", "Alice", "Anderson", "10000001", None);
+    let reply = post(
+        &app,
+        &schema,
+        Some(&format!("Bearer {token}")),
+        tool_call(
+            "set_user_member",
+            json!({ "userId": new_id, "personId": "p-1" }),
+        ),
+    )
+    .await;
+    assert_eq!(reply.json["result"]["isError"], false, "{:?}", reply.json);
+    assert_eq!(
+        reply.json["result"]["structuredContent"]["user"]["personId"],
+        "p-1"
+    );
+    let reply = post(
+        &app,
+        &schema,
+        Some(&format!("Bearer {token}")),
+        tool_call("set_user_member", json!({ "userId": new_id })),
+    )
+    .await;
+    assert_eq!(reply.json["result"]["isError"], true, "{:?}", reply.json);
+    let reply = post(
+        &app,
+        &schema,
+        Some(&format!("Bearer {token}")),
+        tool_call(
+            "set_user_member",
+            json!({ "userId": new_id, "personId": null }),
+        ),
+    )
+    .await;
+    assert_eq!(reply.json["result"]["isError"], false, "{:?}", reply.json);
+    assert_eq!(
+        app.db.users.lock().unwrap().get(&new_id).unwrap().person_id,
+        None
+    );
 }
 
 #[tokio::test]

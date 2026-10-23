@@ -67,6 +67,8 @@ pub enum AuditEntityType {
     #[graphql(name = "OAUTH_GRANT")]
     OAuthGrant,
     WebauthnCredential,
+    Task,
+    TaskList,
 }
 
 impl From<db::AuditEntityType> for AuditEntityType {
@@ -84,6 +86,8 @@ impl From<db::AuditEntityType> for AuditEntityType {
             db::AuditEntityType::UserToken => Self::UserToken,
             db::AuditEntityType::OAuthGrant => Self::OAuthGrant,
             db::AuditEntityType::WebauthnCredential => Self::WebauthnCredential,
+            db::AuditEntityType::Task => Self::Task,
+            db::AuditEntityType::TaskList => Self::TaskList,
         }
     }
 }
@@ -103,6 +107,8 @@ impl From<AuditEntityType> for db::AuditEntityType {
             AuditEntityType::UserToken => Self::UserToken,
             AuditEntityType::OAuthGrant => Self::OAuthGrant,
             AuditEntityType::WebauthnCredential => Self::WebauthnCredential,
+            AuditEntityType::Task => Self::Task,
+            AuditEntityType::TaskList => Self::TaskList,
         }
     }
 }
@@ -205,8 +211,9 @@ impl<A: App + HasDb + Send + Sync + 'static> AuditActor<A> {
         self.id.as_deref()
     }
 
-    /// How a user acted when not through an ordinary web login: `oauth_grant:<id>` (an AI
-    /// client over MCP), `user_token:<id>` or `oauth_client:<id>`. Super users only;
+    /// How a user acted when not through an ordinary web login: `oauth_grant:<id>` (a
+    /// connected app: an AI client over MCP, or one of SESLogin's own apps over
+    /// GraphQL), `user_token:<id>` or `oauth_client:<id>`. Super users only;
     /// null for everyone else.
     async fn via(&self, ctx: &Context<'_>) -> Option<&str> {
         if viewer_is_super(ctx) {

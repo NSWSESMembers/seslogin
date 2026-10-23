@@ -4,8 +4,10 @@ use async_graphql::ErrorExtensions;
 use async_graphql::Guard;
 
 use super::error::ApiError;
+use crate::app::{App, HasDb};
 use crate::auth::AuthInfo;
 use crate::db;
+use crate::db::Handler as _;
 
 /// Build a guard-check failure carrying `extensions.code = "UNAUTHENTICATED"`.
 /// Guard failures bypass the resolver entirely — there is no `anyhow::Result` for
@@ -191,6 +193,21 @@ pub(crate) fn require_location_write_access(ctx: &Context<'_>, location_id: &str
     }
 }
 
+/// Check the caller may use a location's Tasks (its shared to-do list): read them,
+/// and also create, edit, complete and delete them and manage its task lists.
+///
+/// Unlike every other location-scoped write this deliberately lets **Read only**
+/// users write: tasks are a shared unit tool, not admin data. Only people do — a
+/// super user or a user holding either role at the location. Kiosk sessions, API
+/// tokens and edit links are refused. Members are expected to sign in with their own
+/// accounts later; this is the one place to change when they do.
+pub(crate) fn require_task_access(ctx: &Context<'_>, location_id: &str) -> Result<()> {
+    match ctx.data_opt::<AuthInfo>() {
+        Some(AuthInfo::User { .. }) => require_location_access(ctx, location_id),
+        _ => Err(ApiError::forbidden("Tasks are only available to signed-in users").into()),
+    }
+}
+
 /// Whether the caller may make changes at the location — the boolean form of
 /// [`require_location_write_access`] plus [`require_writable`], for resolvers that
 /// report capability (e.g. `Location.viewerCanEdit`) rather than enforce it.
@@ -213,6 +230,62 @@ pub(crate) fn require_period_write_access(ctx: &Context<'_>, period: &db::Period
             }
         }
         _ => require_location_write_access(ctx, &period.location_id),
+    }
+}
+
+/// Check `redirect_uri` against `client` at the OAuth consent step
+/// (`oauthAuthorizationRequest`, `approveOauthAuthorization`). Returns whether it
+/// is an Expo Go development redirect, which only a developer account (`is_dev`)
+/// may approve; see [`crate::oauth_clients::is_dev_expo_redirect`].
+pub(crate) async fn check_oauth_redirect<A: App + HasDb>(
+    ctx: &Context<'_>,
+    app: &A,
+    client: &crate::oauth_clients::Client,
+    redirect_uri: &str,
+) -> Result<bool> {
+    if client.allows_redirect_uri(redirect_uri) {
+        return Ok(false);
+    }
+    if !client.allows_dev_redirect_uri(redirect_uri) {
+        return Err(anyhow::anyhow!(
+            "redirect_uri is not registered for this client"
+        ));
+    }
+    let Some(AuthInfo::User { id, .. }) = ctx.data_opt::<AuthInfo>() else {
+        return Err(anyhow::anyhow!("Must provide user token"));
+    };
+    let is_dev = app
+        .db()
+        .get_users(&[id])
+        .await?
+        .into_iter()
+        .next()
+        .flatten()
+        .is_some_and(|u| u.is_dev);
+    if !is_dev {
+        return Err(ApiError::forbidden(
+            "redirect_uri is a development build's; only a developer account can approve it",
+        )
+        .into());
+    }
+    Ok(true)
+}
+
+/// Refuse a caller acting through an OAuth grant (`slat_`, from a connected app
+/// or the MCP interface) for `what`: a mutation that would hand out a credential
+/// outliving or escaping the grant — an API token, a passkey, another OAuth
+/// grant, or a kiosk bound to a location. A grant is revocable and expires, and
+/// what it can do must stay what the user approved, so these are done only
+/// signed in to SESLogin directly.
+pub(crate) fn require_not_oauth_grant(ctx: &Context<'_>, what: &str) -> Result<()> {
+    match ctx.data_opt::<AuthInfo>() {
+        Some(AuthInfo::User {
+            grant_id: Some(_), ..
+        }) => Err(ApiError::forbidden(format!(
+            "{what} can't be done from a connected app; sign in to SESLogin directly"
+        ))
+        .into()),
+        _ => Ok(()),
     }
 }
 

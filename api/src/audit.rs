@@ -47,7 +47,8 @@ pub const REDACTED: &str = "[redacted]";
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Actor {
     /// A signed-in user. `via` says how they came in when it is not an ordinary web
-    /// session: `oauth_grant:<id>` (MCP), `user_token:<id>` (opaque token) or
+    /// session: `oauth_grant:<id>` (a connected app, over MCP or GraphQL),
+    /// `user_token:<id>` (opaque token) or
     /// `oauth_client:<client_id>` (the OAuth token endpoint acting for them).
     User {
         id: String,
@@ -310,6 +311,7 @@ fn user_fields(u: &User) -> Fields {
             "location_read_only_grants",
             string_set(&u.location_read_only_grants),
         )
+        .with("person_id", u.person_id.as_deref().and_then(text))
         .with("email_config", {
             // An empty config is the default, not something worth listing.
             (!u.email_config.is_empty())
@@ -367,6 +369,9 @@ pub fn user_update_changes(
         }
         db::UserUpdateShape::DisaggregateVirtualPeriods { value } => {
             after.set("disaggregate_virtual_periods", flag(*value));
+        }
+        db::UserUpdateShape::Person { person_id } => {
+            after.set("person_id", person_id.and_then(text));
         }
     }
     diff(&before, &after)
@@ -864,6 +869,63 @@ fn nitc_tag_fields(t: &db::NitcTag) -> Fields {
     Fields::default()
         .with("name", text(&t.name))
         .with("primary_activity_name", text(&t.primary_activity_name))
+}
+
+// ── Tasks ────────────────────────────────────────────────────────────────────
+
+fn date(v: Option<chrono::NaiveDate>) -> Option<Value> {
+    v.map(|d| Value::String(d.format("%Y-%m-%d").to_string()))
+}
+
+/// Everything about a task a person decides. `version`, `open` and the timestamps are
+/// bookkeeping, and the completion fields say only what the entry's actor already does.
+fn task_fields(t: &db::Task) -> Fields {
+    Fields::default()
+        .with("title", text(&t.title))
+        .with("description", opt_text(t.description.as_deref()))
+        .with("list_id", opt_text(t.list_id.as_deref()))
+        .with("due_date", date(t.due_date))
+        .with("show_date", date(Some(t.show_date)))
+        .with(
+            "recurrence",
+            t.recurrence
+                .map(|r| json!({ "every": r.every, "unit": r.unit.as_str() })),
+        )
+        .with("completed_at", opt_num(t.completed_at))
+        .with("last_completed_at", opt_num(t.last_completed_at))
+}
+
+pub fn task_create_changes(t: &db::Task) -> Vec<AuditFieldChange> {
+    creation(&task_fields(t))
+}
+
+/// The diff of one task write, from the task as it was (if it could be read) to how
+/// the write left it.
+pub fn task_update_changes(before: Option<&db::Task>, after: &db::Task) -> Vec<AuditFieldChange> {
+    let before = before.map(task_fields).unwrap_or_default();
+    let after = if after.deleted.is_some() {
+        Fields::default()
+    } else {
+        task_fields(after)
+    };
+    diff(&before, &after)
+}
+
+fn task_list_fields(l: &db::TaskList) -> Fields {
+    Fields::default().with("name", text(&l.name))
+}
+
+pub fn task_list_update_changes(
+    before: Option<&db::TaskList>,
+    after: &db::TaskList,
+) -> Vec<AuditFieldChange> {
+    let before = before.map(task_list_fields).unwrap_or_default();
+    let after = if after.deleted.is_some() {
+        Fields::default()
+    } else {
+        task_list_fields(after)
+    };
+    diff(&before, &after)
 }
 
 // ── Credentials and grants ───────────────────────────────────────────────────
@@ -1751,6 +1813,86 @@ impl<D: db::Handler> db::Handler for AuditingHandler<D> {
         Ok(())
     }
 
+    async fn create_task(&self, task: db::NewTask<'_>) -> db::Result<db::Task> {
+        let task = self.inner.create_task(task).await?;
+        self.record_create(
+            AuditEntityType::Task,
+            &task.id,
+            Some(task.title.clone()),
+            vec![task.location_id.clone()],
+            task_create_changes(&task),
+        )
+        .await;
+        Ok(task)
+    }
+
+    async fn update_task(&self, id: &str, change: db::TaskUpdateShape<'_>) -> db::Result<db::Task> {
+        let action = match change {
+            db::TaskUpdateShape::Delete { .. } => AuditAction::Delete,
+            _ => AuditAction::Update,
+        };
+        let before = self.before("task", id, first(self.inner.get_tasks(&[id]).await));
+        let after = self.inner.update_task(id, change).await?;
+        self.record(Recorded {
+            entity_type: AuditEntityType::Task,
+            entity_id: id,
+            action,
+            label: Some(after.title.clone()),
+            location_ids: vec![after.location_id.clone()],
+            changes: task_update_changes(before.as_ref(), &after),
+        })
+        .await;
+        Ok(after)
+    }
+
+    async fn create_task_list(
+        &self,
+        location_id: &str,
+        name: &str,
+        created_by: Option<&str>,
+    ) -> db::Result<db::TaskList> {
+        let list = self
+            .inner
+            .create_task_list(location_id, name, created_by)
+            .await?;
+        self.record_create(
+            AuditEntityType::TaskList,
+            &list.id,
+            Some(list.name.clone()),
+            vec![list.location_id.clone()],
+            creation(&task_list_fields(&list)),
+        )
+        .await;
+        Ok(list)
+    }
+
+    async fn update_task_list(
+        &self,
+        id: &str,
+        change: db::TaskListUpdateShape<'_>,
+    ) -> db::Result<db::TaskList> {
+        let action = match change {
+            db::TaskListUpdateShape::Delete => AuditAction::Delete,
+            db::TaskListUpdateShape::Name { .. } => AuditAction::Update,
+        };
+        let before = self.before(
+            "task list",
+            id,
+            first(self.inner.get_task_lists(&[id]).await),
+        );
+        let after = self.inner.update_task_list(id, change).await?;
+        self.record(Recorded {
+            entity_type: AuditEntityType::TaskList,
+            entity_id: id,
+            action,
+            label: Some(after.name.clone()),
+            location_ids: vec![after.location_id.clone()],
+            changes: task_list_update_changes(before.as_ref(), &after),
+        })
+        .await;
+        Ok(after)
+    }
+
     // ── Deliberately not audited ─────────────────────────────────────────────
     //
     // Bookkeeping that is not a business change, or that is high-volume plumbing:
@@ -2002,6 +2144,28 @@ impl<D: db::Handler> db::Handler for AuditingHandler<D> {
 
     async fn list_nitc_groups(&self) -> db::Result<Vec<db::NitcGroup>> {
         self.inner.list_nitc_groups().await
+    }
+
+    async fn get_tasks<T: AsRef<str> + Sync>(
+        &self,
+        ids: &[T],
+    ) -> db::Result<Vec<Option<db::Task>>> {
+        self.inner.get_tasks(ids).await
+    }
+
+    async fn list_tasks(&self, query: db::ListTasksQuery) -> db::Result<Vec<db::Task>> {
+        self.inner.list_tasks(query).await
+    }
+
+    async fn get_task_lists<T: AsRef<str> + Sync>(
+        &self,
+        ids: &[T],
+    ) -> db::Result<Vec<Option<db::TaskList>>> {
+        self.inner.get_task_lists(ids).await
+    }
+
+    async fn list_task_lists(&self, location_id: &str) -> db::Result<Vec<db::TaskList>> {
+        self.inner.list_task_lists(location_id).await
     }
 
     async fn bump_period_version(&self, period_id: &str) -> db::Result<u64> {
@@ -2267,6 +2431,7 @@ mod tests {
             enabled: true,
             location_grants: vec!["loc-b".to_string(), "loc-a".to_string()],
             location_read_only_grants: vec![],
+            person_id: None,
             access_time: Some(9),
             email_config: serde_json::Map::new(),
             disaggregate_virtual_periods: false,
@@ -2690,6 +2855,29 @@ mod tests {
     }
 
     #[test]
+    fn user_member_link_is_diffed_as_person_id() {
+        let set = db::UserUpdateShape::Person {
+            person_id: Some("p1"),
+        };
+        assert!(user_shape_is_audited(&set));
+        let changes = user_update_changes(Some(&user()), &set);
+        assert_eq!(fields(&changes), vec!["person_id"]);
+        assert_eq!(change(&changes, "person_id").before, None);
+        assert_eq!(change(&changes, "person_id").after, Some(json!("p1")));
+
+        let linked = User {
+            person_id: Some("p1".to_string()),
+            ..user()
+        };
+        let changes = user_update_changes(
+            Some(&linked),
+            &db::UserUpdateShape::Person { person_id: None },
+        );
+        assert_eq!(change(&changes, "person_id").before, Some(json!("p1")));
+        assert_eq!(change(&changes, "person_id").after, None);
+    }
+
+    #[test]
     fn user_access_time_is_not_audited_but_the_other_shapes_are() {
         assert!(!user_shape_is_audited(&db::UserUpdateShape::AccessTime));
         assert!(user_shape_is_audited(&db::UserUpdateShape::EmailConfig {
@@ -3094,9 +3282,12 @@ mod tests {
             (AuditEntityType::UserToken, "user_token"),
             (AuditEntityType::OAuthGrant, "oauth_grant"),
             (AuditEntityType::WebauthnCredential, "webauthn_credential"),
+            (AuditEntityType::Task, "task"),
+            (AuditEntityType::TaskList, "task_list"),
         ];
         for (entity, name) in entity_types {
             assert_eq!(entity.as_str(), name);
+            assert_eq!(AuditEntityType::parse(name), Some(entity));
         }
     }
 }

@@ -112,11 +112,10 @@ Two details worth knowing:
 ## OAuth authorization server
 
 `poem`/`poem-local` also serve a small OAuth 2.1 + PKCE authorization server —
-the plumbing an AI client (Claude Code, a claude.ai connector, …) uses to get a
-token that acts as a specific user, with exactly their permissions. It's laid
-out per the MCP authorization spec, though nothing here is MCP-specific yet
-(see `oauth.rs`'s module docs and CLAUDE.md's plan for how a future MCP
-endpoint and other credential types slot into the same tables/tokens):
+the plumbing an AI client (Claude Code, a claude.ai connector, …) or one of
+SESLogin's own apps uses to get a token that acts as a specific user, with
+exactly their permissions. It's laid out per the MCP authorization spec (see
+`oauth.rs`'s module docs):
 
 - `GET /.well-known/oauth-authorization-server` — RFC 8414 metadata.
 - `POST /oauth/register` — RFC 7591 dynamic client registration. Public
@@ -127,6 +126,72 @@ endpoint and other credential types slot into the same tables/tokens):
   the `authorization_code` grant (PKCE S256 required) and `refresh_token`
   rotation (OAuth 2.1 reuse detection: presenting an already-rotated refresh
   token revokes the whole grant).
+
+**Clients.** There are two kinds (`oauth_clients.rs`), and which resource a
+grant is bound to depends on which:
+
+- **Dynamic** clients come from `POST /oauth/register`. Anyone can mint one,
+  so their name is unverified and they are **MCP-only**: the token endpoint
+  grants them `<API base>/mcp` and refuses any other `resource`
+  (`invalid_target`).
+- **Static** clients are SESLogin's own apps, listed in
+  `oauth_clients::STATIC_CLIENTS`. Today that is Tally (`client_id` `tally`,
+  public/PKCE, redirect `tally://oauth/callback`, resource `/graphql`). Each
+  gets only the resource paths listed for it, appended to the API base; with
+  no `resource` it gets the first. Redirect URIs are matched exactly and are
+  not run through `validate_redirect_uri`, which is the only reason a custom
+  scheme like `tally://` works — dynamic registration still requires
+  `https://` or loopback `http://`. Static ids contain no `.`, so they can
+  never collide with a dynamic id (`<payload>.<sig>`).
+
+  **Expo Go development redirects.** A static client may also list
+  `dev_expo_redirect_paths` (Tally: `/--/oauth/callback`), so a developer can
+  sign in from Expo Go with `exp://<their LAN IP>:<port>/--/oauth/callback`,
+  including against prod. Because whoever runs the Expo server at that address
+  receives the code, it is fenced in (`oauth_clients::is_dev_expo_redirect`):
+  only a user with `isDev` (set by a super user on the user's edit page) can
+  see or approve one, so a phishing link with an `exp://` redirect fails for
+  everyone else; the host must be loopback, RFC 1918 or link-local IPv4 (no
+  public hosts, no `*.exp.direct` tunnels); the port, path and absence of a
+  query/fragment are checked; and dynamic clients never get one. The consent
+  page warns that it is a development build and names `ip:port`
+  (`isDevelopmentBuild`), and Connected apps shows the IP rather than
+  "SESLogin app".
+
+  **Adding a static client** is a PR editing `STATIC_CLIENTS`: a new id with
+  no `.`, the app's name, its exact redirect URIs, and its resource paths
+  (`base_url::GRAPHQL_RESOURCE_PATH` and/or `MCP_RESOURCE_PATH`). The unit
+  test over the list checks the shape. A static client listed for `/graphql`
+  gets the whole site API as the user, so only list first-party apps there.
+  A custom scheme can be claimed by any app on the device; PKCE stops a stolen
+  code being redeemed, but not an impostor app starting its own flow, which is
+  why the consent page still tells the user to approve only a sign-in they
+  started.
+
+`oauthAuthorizationRequest.isFirstParty` and `OAuthGrant.isFirstParty` say
+whether the client is static; the consent page and Connected apps name such
+an app as SESLogin's own instead of showing its custom scheme's meaningless
+redirect "host".
+
+**Using a token.** A grant works only on the endpoint its `resource` names,
+matched exactly by `oauth::verify_access_token`: `POST /mcp` expects
+`<API base>/mcp`, and the GraphQL endpoint (`auth::verify_token`) expects
+`<API base>/graphql`. Both derive that from `base_url::api_resource`, so
+behind CloudFront `API_BASE_URL` decides it and elsewhere the `Host` header
+does. Locally GraphQL is served at `http://localhost:8000/`, but the resource
+is still `http://localhost:8000/graphql`: it's an identifier, not a route.
+`slrt_` refresh tokens are accepted only by `/oauth/token`.
+
+**Credentials a grant can't mint.** A caller authenticated with an `slat_`
+token (`AuthInfo::User { grant_id: Some(_), .. }`) is refused, by
+`graphql::auth::require_not_oauth_grant`, anything that would hand out a
+credential outliving or escaping the grant: `createApiToken`,
+`beginPasskeyRegistration`/`finishPasskeyRegistration`,
+`approveOauthAuthorization`, and `enrollSession`/`reactivateSession` (which
+bind a kiosk key to a location). Revoking, deleting and renaming stay allowed:
+they are within the user's own permissions. This applies to MCP and GraphQL
+grants alike. Writes through either are audited with
+`actor_via = oauth_grant:<id>`.
 
 The consent screen a user approves/denies from is a web page
 (`/admin/oauth/authorize`), backed by the `oauthAuthorizationRequest` query and
@@ -148,7 +213,7 @@ the browser at, via the shared `base_url::web_base_url()` helper.
 
 Once a user has approved a client, `User.oauthGrants` (guarded the same way as
 `user(id)` — the user themselves, or a super user) lists their authorized
-grants: client name, redirect host, scope, created/last-used timestamps, and
+grants: client name, redirect host, `isFirstParty`, scope, created/last-used timestamps, and
 `refreshExpiresAt` (when the grant goes dead if never used again). Token
 hashes and the client id are never exposed. Expired grants are filtered out
 client-side, since DynamoDB's TTL deletion lags real expiry.
@@ -204,8 +269,10 @@ Preprod and prod share a database and secrets, so an MCP client connected to
 either acts on **live production users** with the connecting user's permissions.
 
 **Auth:** only an OAuth `slat_` access token audience-bound to `<API
-base>/mcp` is accepted (an `slu_` user token or a JWT is rejected here, same
-as an `slat_` token is rejected on the GraphQL endpoint — see `oauth.rs`). A
+base>/mcp` is accepted — which only dynamically registered clients can get. An
+`slu_` user token, a JWT, or an `slat_` token bound to `/graphql` (a static
+client's) is rejected here, just as an `/mcp`-bound token is rejected on the
+GraphQL endpoint; see "Using a token" above. A
 missing or invalid token gets a `401` carrying `WWW-Authenticate: Bearer
 resource_metadata="<API base>/.well-known/oauth-protected-resource/mcp"`, per
 the MCP authorization spec's discovery flow.
@@ -220,6 +287,7 @@ the MCP authorization spec's discovery flow.
 | `create_user` | Create a user (email, `isSuper`, `locationGrants`, optional `readOnlyLocationGrants`). Super user only. |
 | `update_user` | Change a user's email/`isSuper`/`isDev`/`locationGrants`/`readOnlyLocationGrants`; omitted fields keep their current value. Never touches `enabled`. Super user only. |
 | `disable_user` / `enable_user` | Flip `enabled` — SESLogin has no user delete, only disable. Super user only. |
+| `set_user_member` | Set (`personId`) or clear (`null`) the member a user acts as when signing in or out from the mobile app. Any user, the caller included; several users may share a member. Super user only. |
 | `list_locations` | The locations you can access (id, name, `enabled`, `viewerCanEdit`, `nitcEnabled`, `lastSuccessfulMemberSync`): every enabled one for a super user, otherwise your Admin and Read only grants. Start here for location ids. |
 | `get_location` | One location's details (adds NITC and SES headquarters settings, created/updated). Needs a grant for it. |
 | `list_members` | A location's active members, optionally filtered by `query` (case-insensitive substring of first/last/full name or member number). Deleted members are never listed. Each carries `syncManaged` (`sesApiPersonId` set). Admin, Read only or super user. |
@@ -322,6 +390,38 @@ Inspector run against a *deployed* server will fail the discovery/registration
 requests to CORS — production intentionally doesn't allow arbitrary
 browser-origin JS to hit its OAuth endpoints; use `claude mcp add` or a
 claude.ai connector there instead.
+
+## Tasks
+
+A location's shared to-do list, used by the Tally app (`src/graphql/tasks.rs`, rules in
+`src/tasks.rs`, storage in SCHEMA.md's `task` and `task_list` sections).
+
+- **Who:** any *user* with Admin **or** Read only access to the location, and super users,
+  may read, create, edit, complete and delete tasks and manage task lists
+  (`graphql::auth::require_task_access`). This is the one location-scoped write a Read only
+  user may make: tasks are a shared unit tool, not admin data. Kiosk sessions, API tokens and
+  edit links are refused.
+- **Reading:** `Location.tasks(view: DUE | SCHEDULED, listId)` lists open tasks. `DUE` (the
+  default) is everything showing today or earlier, overdue first; `SCHEDULED` is everything
+  showing from a later day. Without `listId` every task at the location is listed, whatever
+  list it is on. `Location.taskLists` and `Query.task(id)` complete the reads.
+- **Dates** are Sydney-local days, `YYYY-MM-DD` in and out. A task shows from its `dueDate`,
+  or from the day it was created when it has none. It is `overdue` from the day after its due
+  date; a task that repeats in **weeks** gets a full week of showing first.
+- **Recurring tasks** (`recurrence: { every, unit: DAYS | WEEKS }`) always have a due date
+  (today if none was given). Completing one moves it to `every` days/weeks after the day it
+  was completed, and it stays open; completing any other task closes it.
+- **Concurrency:** `updateTask` and `completeTask` take `expectedVersion`; if the task was
+  changed or completed since (say, two people tapping Complete at once), the second gets a
+  `CONFLICT` error rather than skipping an occurrence.
+- Deleting a list leaves its tasks on the location (`Task.list` becomes null).
+
+```graphql
+mutation {
+  createTask(locationId: "TestAUnit001", title: "Wash the truck",
+             recurrence: { every: 1, unit: WEEKS }) { id version dueDate }
+}
+```
 
 ## Audit log
 

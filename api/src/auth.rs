@@ -566,11 +566,24 @@ async fn verify_token_with_period_link<A: App + HasDb>(
     }
 }
 
+/// Verify a bearer token presented to the GraphQL endpoint. `host` is the
+/// request's `Host` header, used (as everywhere, via
+/// [`crate::base_url::api_resource`]) only when `API_BASE_URL` isn't set, to
+/// work out the resource an OAuth access token must be bound to:
+/// `<api base>/graphql`. A token granted for `/mcp` is refused here, as a
+/// `/graphql` one is by `POST /mcp`. Refresh tokens (`slrt_`) are never
+/// accepted: they fall through to the JWT verifier and fail as malformed.
 pub async fn verify_token<A: App + HasDb + HasQueues>(
     app: &A,
     token: &str,
     client: &ClientReport,
+    host: Option<&str>,
 ) -> Result<AuthInfo, AuthError> {
+    if token.starts_with(crate::oauth::ACCESS_TOKEN_PREFIX) {
+        let resource = crate::base_url::api_resource(host, crate::base_url::GRAPHQL_RESOURCE_PATH);
+        return crate::oauth::verify_access_token(app, token, &resource).await;
+    }
+
     if token.starts_with(API_TOKEN_PREFIX) {
         return verify_token_with_api_token(app, token).await;
     }
@@ -590,16 +603,18 @@ pub async fn verify_token<A: App + HasDb + HasQueues>(
 /// `Bearer <token>` → opaque/JWT tokens; `SLKey <fp>.<ts>.<sig>` → signed kiosk key
 /// (binds `body_hash_hex`). Returns `None` when there is no recognized header, so the
 /// request proceeds unauthenticated (the guards then reject anything that requires auth).
-/// Shared by the poem server and the Lambda handler.
+/// Shared by the poem server and the Lambda handler. `host` is the request's `Host`
+/// header; see [`verify_token`].
 pub async fn verify_authorization_header<A: App + HasDb + HasQueues>(
     app: &A,
     auth_header: Option<&str>,
     body_hash_hex: &str,
     client: &ClientReport,
+    host: Option<&str>,
 ) -> Option<Result<AuthInfo, AuthError>> {
     let auth_header = auth_header?;
     if let Some(token) = auth_header.strip_prefix("Bearer ") {
-        Some(verify_token(app, token, client).await)
+        Some(verify_token(app, token, client, host).await)
     } else if let Some(rest) = auth_header.strip_prefix(crate::session_key::SESSION_KEY_SCHEME) {
         Some(verify_signed_key(app, rest, body_hash_hex, client).await)
     } else {
@@ -634,21 +649,29 @@ mod verify_token_tests {
         )
     }
 
-    /// `verify_token` must keep rejecting `slat_`/`slrt_` OAuth tokens: they carry no
-    /// prefix it recognizes, so they fall through to the JWT verifier and fail as a
-    /// malformed JWT — never reaching (and, with mockdb, never able to reach) the DB.
-    /// `oauth::verify_access_token` is the only accepted entry point for them.
+    /// A malformed `slat_` token is refused before any DB lookup (mockdb would fail
+    /// one as `Transient`). Accepting a well-formed one, and refusing one bound to
+    /// `/mcp`, needs a working DB: see `tests/oauth_graphql.rs`.
     #[tokio::test]
-    async fn rejects_oauth_access_token() {
+    async fn rejects_a_malformed_oauth_access_token() {
         let app = app();
-        let result = verify_token(&app, "slat_abc123.somesecret", &ClientReport::default()).await;
+        let result = verify_token(&app, "slat_nosecret", &ClientReport::default(), None).await;
         assert!(matches!(result, Err(AuthError::Permanent(_))));
     }
 
+    /// Refresh tokens are only ever spent at `/oauth/token`: `verify_token` has no
+    /// branch for them, so they fall through to the JWT verifier and fail as a
+    /// malformed JWT, never reaching the DB.
     #[tokio::test]
     async fn rejects_oauth_refresh_token() {
         let app = app();
-        let result = verify_token(&app, "slrt_abc123.somesecret", &ClientReport::default()).await;
+        let result = verify_token(
+            &app,
+            "slrt_abc123.somesecret",
+            &ClientReport::default(),
+            None,
+        )
+        .await;
         assert!(matches!(result, Err(AuthError::Permanent(_))));
     }
 }

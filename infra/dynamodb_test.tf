@@ -10,8 +10,8 @@
 #   - no point-in-time recovery (not needed for a sandbox; avoids the cost)
 #   - not included in the AWS Backup plan (see backup.tf — prod tables only)
 #
-# Wiring these into the test environment (test API DB_PREFIX + IAM) is a separate
-# step — see the note at the bottom of this file.
+# seslogin-test-api (test.seslogin.com) runs against these tables — see the note
+# at the bottom of this file. Local dev (`.env`) uses them too.
 
 resource "aws_dynamodb_table" "test_user" {
   name         = "${var.db_prefix_test}_user"
@@ -488,9 +488,69 @@ resource "aws_dynamodb_table" "test_audit_log" {
   }
 }
 
+# Tasks: a location's shared to-do list. `open_location_id` is a sparse copy of
+# `location_id` held only while the task is still to be done, so the index lists
+# exactly a location's open tasks, by the (Sydney-local, YYYY-MM-DD) day each
+# starts showing.
+resource "aws_dynamodb_table" "test_task" {
+  name         = "${var.db_prefix_test}_task"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "id"
+
+  attribute {
+    name = "id"
+    type = "S"
+  }
+  attribute {
+    name = "open_location_id"
+    type = "S"
+  }
+  attribute {
+    name = "show_date"
+    type = "S"
+  }
+
+  global_secondary_index {
+    name = "open_location_id-show_date-index"
+    key_schema {
+      attribute_name = "open_location_id"
+      key_type       = "HASH"
+    }
+    key_schema {
+      attribute_name = "show_date"
+      key_type       = "RANGE"
+    }
+    projection_type = "ALL"
+  }
+}
+
+# Optional named lists a location's tasks can be grouped on.
+resource "aws_dynamodb_table" "test_task_list" {
+  name         = "${var.db_prefix_test}_task_list"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "id"
+
+  attribute {
+    name = "id"
+    type = "S"
+  }
+  attribute {
+    name = "location_id"
+    type = "S"
+  }
+
+  global_secondary_index {
+    name = "location_id-index"
+    key_schema {
+      attribute_name = "location_id"
+      key_type       = "HASH"
+    }
+    projection_type = "ALL"
+  }
+}
+
 # ── Test API access to the test tables ────────────────────────────────────────
-# The test API role's dynamodb-access policy in dynamodb.tf is scoped to
-# ${var.db_prefix}* (prod). To run the test environment against these tables,
-# point seslogin-test-api's DB_PREFIX at var.db_prefix_test and broaden that
-# policy to also cover ${var.db_prefix_test}*. Left as a deliberate separate step
-# so creating these tables doesn't change what test.seslogin.com reads today.
+# seslogin-test-api's DB_PREFIX is var.db_prefix_test, and its dynamodb-access
+# policy in dynamodb.tf is scoped to ${var.db_prefix_test}* only, so the test
+# environment cannot reach the prod tables. It still shares prod's SQS queues,
+# whose consumers (the workers Lambdas) read the prod tables.
