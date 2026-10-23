@@ -29,6 +29,8 @@ pub struct Key {
 /// Domain-separation label for the client-id HMAC, so it can never collide with a JWT
 /// signed by the same secret even if both ever used the same algorithm.
 const OAUTH_CLIENT_ID_LABEL: &[u8] = b"seslogin-oauth-client-id-v1";
+/// Domain-separation label for the contacts sync cursor HMAC.
+const CONTACTS_CURSOR_LABEL: &[u8] = b"seslogin-contacts-cursor-v1";
 
 // TEMPORARY: Remove after 2026-06-01 — handles legacy JWTs where exp was serialized as a string
 fn deserialize_exp_opt<'de, D>(deserializer: D) -> Result<Option<u64>, D::Error>
@@ -102,10 +104,20 @@ impl Key {
     /// `JWT_SECRET` via a domain-separated HMAC so it can't be reused to forge a JWT
     /// (or vice versa) even though both start from the same secret.
     pub fn oauth_client_id_key(&self) -> [u8; 32] {
+        self.derived_key(OAUTH_CLIENT_ID_LABEL)
+    }
+
+    /// A key for HMAC-signing contacts sync cursors (`crate::contacts`), derived the
+    /// same way under its own label.
+    pub fn contacts_cursor_key(&self) -> [u8; 32] {
+        self.derived_key(CONTACTS_CURSOR_LABEL)
+    }
+
+    fn derived_key(&self, label: &[u8]) -> [u8; 32] {
         use hmac::{Hmac, Mac};
         let mut mac = <Hmac<sha2::Sha256> as Mac>::new_from_slice(&self.secret)
             .expect("HMAC accepts a key of any length");
-        mac.update(OAUTH_CLIENT_ID_LABEL);
+        mac.update(label);
         mac.finalize().into_bytes().into()
     }
 

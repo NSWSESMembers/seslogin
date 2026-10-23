@@ -6,6 +6,7 @@ pub mod auth;
 pub mod base_url;
 pub mod client_info;
 pub mod clock;
+pub mod contacts;
 pub mod db;
 pub mod dynamodb;
 pub mod environment;

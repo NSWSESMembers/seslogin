@@ -1918,6 +1918,23 @@ impl<D: db::Handler> db::Handler for AuditingHandler<D> {
         self.inner.put_audit_entry(entry).await
     }
 
+    // Reads: nothing to audit.
+    async fn list_contact_changes(
+        &self,
+        after: Option<&str>,
+        before: &str,
+        include_deleted: bool,
+        limit: usize,
+    ) -> db::Result<db::ContactPage> {
+        self.inner
+            .list_contact_changes(after, before, include_deleted, limit)
+            .await
+    }
+
+    async fn count_contacts(&self, before: &str) -> db::Result<u64> {
+        self.inner.count_contacts(before).await
+    }
+
     // A read: nothing to audit.
     async fn list_audit_entries(
         &self,
