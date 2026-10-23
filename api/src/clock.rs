@@ -16,3 +16,12 @@ pub fn now_ms() -> i64 {
         .unwrap()
         .as_millis() as i64
 }
+
+/// Current Unix time in microseconds (UTC). Used where seconds are too coarse to order
+/// writes, e.g. the contact feed's `contact_key`.
+pub fn now_us() -> u64 {
+    SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap()
+        .as_micros() as u64
+}

@@ -287,6 +287,7 @@ the MCP authorization spec's discovery flow.
 | `create_user` | Create a user (email, `isSuper`, `locationGrants`, optional `readOnlyLocationGrants`). Super user only. |
 | `update_user` | Change a user's email/`isSuper`/`isDev`/`locationGrants`/`readOnlyLocationGrants`; omitted fields keep their current value. Never touches `enabled`. Super user only. |
 | `disable_user` / `enable_user` | Flip `enabled` — SESLogin has no user delete, only disable. Super user only. |
+| `set_user_member` | Set (`personId`) or clear (`null`) the member a user acts as when signing in or out from the mobile app. Any user, the caller included; several users may share a member. Super user only. |
 | `list_locations` | The locations you can access (id, name, `enabled`, `viewerCanEdit`, `nitcEnabled`, `lastSuccessfulMemberSync`): every enabled one for a super user, otherwise your Admin and Read only grants. Start here for location ids. |
 | `get_location` | One location's details (adds NITC and SES headquarters settings, created/updated). Needs a grant for it. |
 | `list_members` | A location's active members, optionally filtered by `query` (case-insensitive substring of first/last/full name or member number). Deleted members are never listed. Each carries `syncManaged` (`sesApiPersonId` set). Admin, Read only or super user. |
@@ -389,6 +390,100 @@ Inspector run against a *deployed* server will fail the discovery/registration
 requests to CORS — production intentionally doesn't allow arbitrary
 browser-origin JS to hit its OAuth endpoints; use `claude mcp add` or a
 claude.ai connector there instead.
+
+## Tasks
+
+A location's shared to-do list, used by the Tally app (`src/graphql/tasks.rs`, rules in
+`src/tasks.rs`, storage in SCHEMA.md's `task` and `task_list` sections).
+
+- **Who:** any *user* with Admin **or** Read only access to the location, and super users,
+  may read, create, edit, complete and delete tasks and manage task lists
+  (`graphql::auth::require_task_access`). This is the one location-scoped write a Read only
+  user may make: tasks are a shared unit tool, not admin data. Kiosk sessions, API tokens and
+  edit links are refused.
+- **Reading:** `Location.tasks(view: DUE | SCHEDULED, listId)` lists open tasks. `DUE` (the
+  default) is everything showing today or earlier, overdue first; `SCHEDULED` is everything
+  showing from a later day. Without `listId` every task at the location is listed, whatever
+  list it is on. `Location.taskLists` and `Query.task(id)` complete the reads.
+- **Dates** are Sydney-local days, `YYYY-MM-DD` in and out. A task shows from its `dueDate`,
+  or from the day it was created when it has none. It is `overdue` from the day after its due
+  date; a task that repeats in **weeks** gets a full week of showing first.
+- **Recurring tasks** (`recurrence: { every, unit: DAYS | WEEKS }`) always have a due date
+  (today if none was given). Completing one moves it to `every` days/weeks after the day it
+  was completed, and it stays open; completing any other task closes it.
+- **Concurrency:** `updateTask` and `completeTask` take `expectedVersion`; if the task was
+  changed or completed since (say, two people tapping Complete at once), the second gets a
+  `CONFLICT` error rather than skipping an occurrence.
+- Deleting a list leaves its tasks on the location (`Task.list` becomes null).
+
+```graphql
+mutation {
+  createTask(locationId: "TestAUnit001", title: "Wash the truck",
+             recurrence: { every: 1, unit: WEEKS }) { id version dueDate }
+}
+```
+
+## Contacts sync API
+
+`GET /api/v1/contacts/sync?cursor=<opaque>&limit=<n>` serves the member directory as a
+cursor-based change feed, for the Tally app's offline contact list
+(`src/contacts.rs`). Every member, statewide, with only these fields:
+
+```json
+{
+  "contacts": [
+    { "id": "…", "firstName": "Ann", "lastName": "Smith", "memberNumber": "40064936",
+      "locationId": "…", "unit": "Alpha Unit", "email": "…", "updatedAt": 1783655893 },
+    { "id": "…", "deleted": true }
+  ],
+  "nextCursor": "…",
+  "hasMore": false,
+  "total": 12034
+}
+```
+
+- **No cursor** is a full sync: every live member, page by page, with `total` on the
+  first page. Tombstones are left out; the client drops anything it didn't receive.
+- **With a cursor** it returns what changed since: upserts, plus `{id, deleted: true}`
+  for members soft-deleted since. A member marked missing by member sync stays listed
+  until they're actually deleted.
+- `nextCursor` is always present, including on the last page. `limit` defaults to 1000
+  and is clamped to 1–2000.
+- `410 {"error":"cursor_expired"}` means the cursor is unusable (malformed, tampered
+  with, an old format, or from another database); the client starts a full sync.
+  Tombstones are never purged, so a cursor never goes stale on its own.
+- `401` means no token, a bad one, a disabled user, or a credential that isn't a user's.
+  Callers can be any enabled user via `slu_` or a `/graphql`-bound OAuth token (Tally's
+  grant). Kiosks, API tokens, edit links and MCP grants all get 401. It is never 403,
+  which CloudFront would rewrite to the web app's `index.html`.
+- Responses are gzip-compressed when the request sends `Accept-Encoding: gzip`.
+
+**How the order works.** Each person row carries a `contact_key`
+(`<unix µs, 20 digits>#<id>`), restamped by every write that changes a returned field
+and by a rename of their location. A sparse GSI orders everyone by it (see SCHEMA.md),
+and the cursor is the last key sent, HMAC-signed with a key derived from `JWT_SECRET`.
+A read never serves keys from the last 30 seconds: a write takes its key from the clock
+moments before it lands, so without that margin a client could move past a key that
+had not been written yet. A change is therefore delivered on the first sync at least
+30 seconds after it.
+
+A full sync's first request (the one without a cursor) is logged at `info`
+(`contacts: full sync page`, with the user id and row count); requests with a cursor
+aren't.
+
+**New environments** need the GSI (`terraform apply`) and a one-off backfill, so
+existing rows are in it:
+
+```bash
+make local-cli ARGS="--dry-run person stamp-contacts"   # or `cargo run --bin cli -- …` against a real table
+```
+
+**Locally**, after `make dev-local`:
+
+```bash
+curl -s --compressed -H 'Authorization: Bearer slu_TokenReadOnly.localdev-readonly' \
+  'http://localhost:8000/api/v1/contacts/sync?limit=2'
+```
 
 ## Audit log
 

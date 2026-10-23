@@ -169,6 +169,14 @@ resource "aws_dynamodb_table" "test_person" {
     name = "ses_api_person_id"
     type = "S"
   }
+  attribute {
+    name = "contact_feed"
+    type = "S"
+  }
+  attribute {
+    name = "contact_key"
+    type = "S"
+  }
 
   global_secondary_index {
     name = "location_id-index"
@@ -193,6 +201,20 @@ resource "aws_dynamodb_table" "test_person" {
       key_type       = "HASH"
     }
     projection_type = "KEYS_ONLY"
+  }
+  # The contacts feed: every person in one partition, ordered by when a field the
+  # contacts API returns last changed. See SCHEMA.md.
+  global_secondary_index {
+    name = "contact_feed-contact_key-index"
+    key_schema {
+      attribute_name = "contact_feed"
+      key_type       = "HASH"
+    }
+    key_schema {
+      attribute_name = "contact_key"
+      key_type       = "RANGE"
+    }
+    projection_type = "ALL"
   }
 }
 
@@ -483,6 +505,67 @@ resource "aws_dynamodb_table" "test_audit_log" {
     key_schema {
       attribute_name = "sk"
       key_type       = "RANGE"
+    }
+    projection_type = "ALL"
+  }
+}
+
+# Tasks: a location's shared to-do list. `open_location_id` is a sparse copy of
+# `location_id` held only while the task is still to be done, so the index lists
+# exactly a location's open tasks, by the (Sydney-local, YYYY-MM-DD) day each
+# starts showing.
+resource "aws_dynamodb_table" "test_task" {
+  name         = "${var.db_prefix_test}_task"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "id"
+
+  attribute {
+    name = "id"
+    type = "S"
+  }
+  attribute {
+    name = "open_location_id"
+    type = "S"
+  }
+  attribute {
+    name = "show_date"
+    type = "S"
+  }
+
+  global_secondary_index {
+    name = "open_location_id-show_date-index"
+    key_schema {
+      attribute_name = "open_location_id"
+      key_type       = "HASH"
+    }
+    key_schema {
+      attribute_name = "show_date"
+      key_type       = "RANGE"
+    }
+    projection_type = "ALL"
+  }
+}
+
+# Optional named lists a location's tasks can be grouped on.
+resource "aws_dynamodb_table" "test_task_list" {
+  name         = "${var.db_prefix_test}_task_list"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "id"
+
+  attribute {
+    name = "id"
+    type = "S"
+  }
+  attribute {
+    name = "location_id"
+    type = "S"
+  }
+
+  global_secondary_index {
+    name = "location_id-index"
+    key_schema {
+      attribute_name = "location_id"
+      key_type       = "HASH"
     }
     projection_type = "ALL"
   }

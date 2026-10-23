@@ -39,8 +39,9 @@ resource "aws_s3_bucket_policy" "test_web" {
 # CloudFront-Viewer-Address carries the real client IP (the Function URL's own
 # source IP is a CloudFront edge server); User-Agent would otherwise arrive as
 # "Amazon CloudFront". Authorization can't be listed in an origin request
-# policy, and needn't be: CloudFront passes it through unmodified on POST, and
-# every API call is a POST (GET only serves GraphiQL, which is unauthenticated).
+# policy, and needn't be for POST: CloudFront passes it through unmodified there,
+# and /graphql, /mcp and /oauth/* are POSTs (GET /graphql only serves GraphiQL,
+# which is unauthenticated). The GETs under /api/* get it via api_get below.
 resource "aws_cloudfront_origin_request_policy" "api" {
   name = "seslogin-api"
 
@@ -61,6 +62,35 @@ resource "aws_cloudfront_origin_request_policy" "api" {
   }
   query_strings_config {
     query_string_behavior = "none"
+  }
+}
+
+# GET /api/* needs Authorization and its query string at the origin. Unlike on
+# POST, CloudFront strips Authorization from a GET unless it is in the cache key,
+# and forwards only the query strings in the cache key or the origin request
+# policy, so the managed CachingDisabled policy loses both. Putting them in the
+# key forwards them. Responses are `no-store`, so nothing is actually cached;
+# max_ttl is 1 only because CloudFront refuses cache key settings when it is 0.
+resource "aws_cloudfront_cache_policy" "api_get" {
+  name        = "seslogin-api-get"
+  min_ttl     = 0
+  default_ttl = 0
+  max_ttl     = 1
+
+  parameters_in_cache_key_and_forwarded_to_origin {
+    enable_accept_encoding_gzip = true
+    headers_config {
+      header_behavior = "whitelist"
+      headers {
+        items = ["Authorization"]
+      }
+    }
+    query_strings_config {
+      query_string_behavior = "all"
+    }
+    cookies_config {
+      cookie_behavior = "none"
+    }
   }
 }
 
@@ -165,8 +195,8 @@ resource "aws_cloudfront_distribution" "test" {
   # The MCP endpoint and its OAuth authorization server, on the same Lambda and
   # with the same settings as /graphql plus cross-origin CORS (see
   # test_oauth_mcp_cors). The 403/404 rewrite below is safe here too: these
-  # handlers return only 200/201/202/204/400/401/405/500/503. API_BASE_URL on
-  # the Lambda must name this host, since CloudFront doesn't forward Host.
+  # handlers return only 200/201/202/204/400/401/405/410/500/503. API_BASE_URL
+  # on the Lambda must name this host, since CloudFront doesn't forward Host.
   dynamic "ordered_cache_behavior" {
     for_each = ["/mcp", "/oauth/*", "/.well-known/oauth-*"]
     content {
@@ -180,6 +210,21 @@ resource "aws_cloudfront_distribution" "test" {
       origin_request_policy_id   = aws_cloudfront_origin_request_policy.api.id
       response_headers_policy_id = aws_cloudfront_response_headers_policy.test_oauth_mcp_cors.id
     }
+  }
+
+  # /api/* is the REST surface for SESLogin's own apps (the contacts sync). Its
+  # calls are GETs, so it needs aws_cloudfront_cache_policy.api_get (defined in
+  # web_test.tf) to get Authorization and the query string to the Lambda.
+  ordered_cache_behavior {
+    path_pattern               = "/api/*"
+    target_origin_id           = "test-api-lambda"
+    viewer_protocol_policy     = "https-only"
+    allowed_methods            = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
+    cached_methods             = ["GET", "HEAD"]
+    compress                   = true
+    cache_policy_id            = aws_cloudfront_cache_policy.api_get.id
+    origin_request_policy_id   = aws_cloudfront_origin_request_policy.api.id
+    response_headers_policy_id = aws_cloudfront_response_headers_policy.test_oauth_mcp_cors.id
   }
 
   # OAC returns 403 (not 404) for missing S3 keys — catch both for SPA routing

@@ -139,8 +139,8 @@ resource "aws_cloudfront_distribution" "prod" {
   # The MCP endpoint and its OAuth authorization server, on the same Lambda and
   # with the same settings as /graphql plus cross-origin CORS (see
   # prod_oauth_mcp_cors). The 403/404 rewrite below is safe here too: these
-  # handlers return only 200/201/202/204/400/401/405/500/503. API_BASE_URL on
-  # the Lambda must name this host, since CloudFront doesn't forward Host.
+  # handlers return only 200/201/202/204/400/401/405/410/500/503. API_BASE_URL
+  # on the Lambda must name this host, since CloudFront doesn't forward Host.
   dynamic "ordered_cache_behavior" {
     for_each = ["/mcp", "/oauth/*", "/.well-known/oauth-*"]
     content {
@@ -154,6 +154,21 @@ resource "aws_cloudfront_distribution" "prod" {
       origin_request_policy_id   = aws_cloudfront_origin_request_policy.api.id
       response_headers_policy_id = aws_cloudfront_response_headers_policy.prod_oauth_mcp_cors.id
     }
+  }
+
+  # /api/* is the REST surface for SESLogin's own apps (the contacts sync). Its
+  # calls are GETs, so it needs aws_cloudfront_cache_policy.api_get (defined in
+  # web_test.tf) to get Authorization and the query string to the Lambda.
+  ordered_cache_behavior {
+    path_pattern               = "/api/*"
+    target_origin_id           = "prod-api-lambda"
+    viewer_protocol_policy     = "https-only"
+    allowed_methods            = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
+    cached_methods             = ["GET", "HEAD"]
+    compress                   = true
+    cache_policy_id            = aws_cloudfront_cache_policy.api_get.id
+    origin_request_policy_id   = aws_cloudfront_origin_request_policy.api.id
+    response_headers_policy_id = aws_cloudfront_response_headers_policy.prod_oauth_mcp_cors.id
   }
 
   # OAC returns 403 (not 404) for missing S3 keys — catch both for SPA routing

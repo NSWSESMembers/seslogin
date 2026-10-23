@@ -52,6 +52,53 @@ fn parse_new_version(
         .ok_or_else(|| Error::Infrastructure("Missing version in update response".to_string()))
 }
 
+/// An `UpdateExpression` built up one attribute at a time, every attribute name aliased
+/// (`#name`) so none can collide with a DynamoDB reserved word. `set_or_remove` is the
+/// "omit, don't write Null" rule from CLAUDE.md: an absent optional is REMOVEd.
+#[derive(Default)]
+struct UpdateExpr {
+    sets: Vec<String>,
+    removes: Vec<String>,
+    names: HashMap<String, String>,
+    values: HashMap<String, AttributeValue>,
+}
+
+impl UpdateExpr {
+    fn set(&mut self, attr: &str, value: AttributeValue) {
+        self.names.insert(format!("#{attr}"), attr.to_string());
+        self.values.insert(format!(":{attr}"), value);
+        self.sets.push(format!("#{attr} = :{attr}"));
+    }
+
+    fn remove(&mut self, attr: &str) {
+        self.names.insert(format!("#{attr}"), attr.to_string());
+        self.removes.push(format!("#{attr}"));
+    }
+
+    fn set_or_remove(&mut self, attr: &str, value: Option<AttributeValue>) {
+        match value {
+            Some(v) => self.set(attr, v),
+            None => self.remove(attr),
+        }
+    }
+
+    /// The expression, with `extra` (e.g. an `ADD` clause) appended.
+    fn expression(&self, extra: &str) -> String {
+        let mut expr = String::new();
+        if !self.sets.is_empty() {
+            expr.push_str(&format!("SET {}", self.sets.join(", ")));
+        }
+        if !self.removes.is_empty() {
+            expr.push_str(&format!(" REMOVE {}", self.removes.join(", ")));
+        }
+        if !extra.is_empty() {
+            expr.push(' ');
+            expr.push_str(extra);
+        }
+        expr.trim().to_string()
+    }
+}
+
 /// Generate a new unique ID for DB entities; see [`db::new_id`].
 pub use crate::db::new_id;
 
@@ -299,6 +346,7 @@ impl TryInto<User> for Item {
                 .unwrap_or(false),
             location_grants: self.string_set_field("location_grants")?,
             location_read_only_grants: self.string_set_field("location_read_only_grants")?,
+            person_id: self.string_field("person_id")?,
             enabled: self.i64_field("enabled")?.is_some(),
             access_time: self.i64_field("access_time")?.map(|i| i as u64),
             email_config: {
@@ -688,6 +736,89 @@ impl TryInto<db::NitcGroup> for Item {
     }
 }
 
+fn date_field(item: &Item, field: &str) -> anyhow::Result<Option<chrono::NaiveDate>> {
+    item.string_field(field)?
+        .map(|s| {
+            chrono::NaiveDate::parse_from_str(&s, "%Y-%m-%d")
+                .map_err(|e| anyhow!("Invalid {field} {s:?}: {e}"))
+        })
+        .transpose()
+}
+
+fn date_value(date: chrono::NaiveDate) -> AttributeValue {
+    AttributeValue::S(date.format("%Y-%m-%d").to_string())
+}
+
+impl TryInto<db::Task> for Item {
+    type Error = HydrationError;
+    fn try_into(self) -> Result<db::Task, Self::Error> {
+        let recurrence = match (
+            self.i64_field("recurrence_every")?,
+            self.string_field("recurrence_unit")?,
+        ) {
+            (Some(every), Some(unit)) => Some(db::TaskRecurrence {
+                every: u32::try_from(every)
+                    .map_err(|_| anyhow!("Invalid recurrence_every {every}"))?,
+                unit: db::TaskRecurrenceUnit::parse(&unit)
+                    .ok_or_else(|| anyhow!("Invalid recurrence_unit {unit:?}"))?,
+            }),
+            (None, None) => None,
+            _ => return Err(anyhow!("Task has only half a recurrence").into()),
+        };
+        Ok(db::Task {
+            id: self.id()?,
+            location_id: self
+                .string_field("location_id")?
+                .ok_or_else(|| anyhow!("Task missing location_id"))?,
+            list_id: self.string_field("list_id")?,
+            title: self.string_field("title")?.unwrap_or_default(),
+            description: self.string_field("description")?,
+            due_date: date_field(&self, "due_date")?,
+            show_date: date_field(&self, "show_date")?
+                .ok_or_else(|| anyhow!("Task missing show_date"))?,
+            recurrence,
+            open: self.has_field("open_location_id"),
+            created_by: self.string_field("created_by")?,
+            updated_by: self.string_field("updated_by")?,
+            completed_at: self.i64_field("completed_at")?.map(|i| i as u64),
+            completed_by: self.string_field("completed_by")?,
+            last_completed_at: self.i64_field("last_completed_at")?.map(|i| i as u64),
+            last_completed_by: self.string_field("last_completed_by")?,
+            version: self.i64_field("v")?.unwrap_or(1) as u64,
+            deleted: self.i64_field("deleted")?.map(|i| i as u64),
+            created_at: self
+                .i64_field("created_at")?
+                .ok_or_else(|| anyhow!("Task missing created_at"))? as u64,
+            updated_at: self
+                .i64_field("updated_at")?
+                .ok_or_else(|| anyhow!("Task missing updated_at"))? as u64,
+        })
+    }
+}
+
+impl TryInto<db::TaskList> for Item {
+    type Error = HydrationError;
+    fn try_into(self) -> Result<db::TaskList, Self::Error> {
+        Ok(db::TaskList {
+            id: self.id()?,
+            location_id: self
+                .string_field("location_id")?
+                .ok_or_else(|| anyhow!("TaskList missing location_id"))?,
+            name: self.string_field("name")?.unwrap_or_default(),
+            created_by: self.string_field("created_by")?,
+            deleted: self.i64_field("deleted")?.map(|i| i as u64),
+            created_at: self
+                .i64_field("created_at")?
+                .ok_or_else(|| anyhow!("TaskList missing created_at"))?
+                as u64,
+            updated_at: self
+                .i64_field("updated_at")?
+                .ok_or_else(|| anyhow!("TaskList missing updated_at"))?
+                as u64,
+        })
+    }
+}
+
 impl TryInto<db::NitcTag> for Item {
     type Error = HydrationError;
     fn try_into(self) -> Result<db::NitcTag, Self::Error> {
@@ -906,6 +1037,31 @@ fn scan_cursor_from_key(key: Option<HashMap<String, AttributeValue>>) -> Option<
         .map(|id| db::ScanCursor {
             last_id: id.to_string(),
         })
+}
+
+/// The contact feed (`person` GSI `contact_feed-contact_key-index`): every write that
+/// changes a field the contacts API returns stamps the row with a fresh `contact_key`, so
+/// the feed can serve "everything changed since this key". `contact_feed` is a constant
+/// hash key, putting every person in one ordered index partition. See SCHEMA.md.
+const CONTACT_FEED_ATTR: &str = "contact_feed";
+const CONTACT_KEY_ATTR: &str = "contact_key";
+const CONTACT_FEED: &str = "all";
+const CONTACT_FEED_INDEX: &str = "contact_feed-contact_key-index";
+const CONTACT_STAMP_SET: &str = "contact_feed = :contact_feed, contact_key = :contact_key";
+
+/// `<microseconds, zero-padded to 20 digits>#<person id>`: sorts by change time, and the
+/// id suffix makes it unique even when two writes share a microsecond.
+fn contact_key(person_id: &str) -> String {
+    format!("{:020}#{}", crate::clock::now_us(), person_id)
+}
+
+/// Bind the values for [`CONTACT_STAMP_SET`]; the caller adds it to its `SET` clause.
+fn with_contact_stamp(
+    req: aws_sdk_dynamodb::operation::update_item::builders::UpdateItemFluentBuilder,
+    person_id: &str,
+) -> aws_sdk_dynamodb::operation::update_item::builders::UpdateItemFluentBuilder {
+    req.expression_attribute_values(":contact_feed", AttributeValue::S(CONTACT_FEED.to_string()))
+        .expression_attribute_values(":contact_key", AttributeValue::S(contact_key(person_id)))
 }
 
 /// How many times a single `BatchGetItem` chunk is sent before giving up. Four retries
@@ -1425,6 +1581,7 @@ impl db::Handler for Handler {
             is_dev: false,
             location_grants,
             location_read_only_grants,
+            person_id: None,
             enabled: true,
             access_time: None,
             email_config: serde_json::Map::new(),
@@ -1576,6 +1733,37 @@ impl db::Handler for Handler {
                         ":updated_at",
                         AttributeValue::N(crate::clock::now_sec().to_string()),
                     )
+                    .return_consumed_capacity(ReturnConsumedCapacity::Total)
+                    .send()
+                    .await
+                    .map_err(|e| map_update_err(e, format!("User {}", id)))?;
+                record_capacity("update_user", resp.consumed_capacity(), CapKind::Write);
+            }
+            db::UserUpdateShape::Person { person_id } => {
+                let mut builder = self
+                    .client
+                    .update_item()
+                    .table_name(self.table_name("user"))
+                    .key("id", AttributeValue::S(id.to_string()))
+                    .condition_expression("attribute_exists(id)")
+                    .expression_attribute_values(
+                        ":updated_at",
+                        AttributeValue::N(crate::clock::now_sec().to_string()),
+                    );
+                // Clearing REMOVEs the attribute rather than storing Null (see the
+                // omit-over-Null note in CLAUDE.md).
+                builder = match person_id {
+                    Some(person_id) => builder
+                        .update_expression("SET person_id = :person_id, updated_at = :updated_at")
+                        .expression_attribute_values(
+                            ":person_id",
+                            AttributeValue::S(person_id.to_string()),
+                        ),
+                    None => {
+                        builder.update_expression("SET updated_at = :updated_at REMOVE person_id")
+                    }
+                };
+                let resp = builder
                     .return_consumed_capacity(ReturnConsumedCapacity::Total)
                     .send()
                     .await
@@ -2217,6 +2405,11 @@ impl db::Handler for Handler {
             .item("deleted", AttributeValue::N("0".to_string()))
             .item("created_at", AttributeValue::N(now.to_string()))
             .item("updated_at", AttributeValue::N(now.to_string()))
+            .item(
+                CONTACT_FEED_ATTR,
+                AttributeValue::S(CONTACT_FEED.to_string()),
+            )
+            .item(CONTACT_KEY_ATTR, AttributeValue::S(contact_key(&id)))
             .return_consumed_capacity(ReturnConsumedCapacity::Total)
             .send()
             .await
@@ -2248,12 +2441,11 @@ impl db::Handler for Handler {
                 last_name,
                 registration_number,
             } => {
-                let resp = self.client
-                    .update_item()
+                let resp = with_contact_stamp(self.client.update_item(), id)
                     .table_name(self.table_name("person"))
                     .key("id", AttributeValue::S(id.to_string()))
                     .condition_expression("attribute_exists(id)")
-                    .update_expression("SET first_name = :first_name, last_name = :last_name, registration_number = :registration_number, updated_at = :updated_at")
+                    .update_expression(format!("SET first_name = :first_name, last_name = :last_name, registration_number = :registration_number, updated_at = :updated_at, {CONTACT_STAMP_SET}"))
                     .expression_attribute_values(":first_name", AttributeValue::S(first_name.to_string()))
                     .expression_attribute_values(":last_name", AttributeValue::S(last_name.to_string()))
                     .expression_attribute_values(":registration_number", AttributeValue::S(registration_number.to_string()))
@@ -2265,13 +2457,13 @@ impl db::Handler for Handler {
                 record_capacity("update_person", resp.consumed_capacity(), CapKind::Write);
             }
             db::PersonUpdateShape::Location { location_id } => {
-                let resp = self
-                    .client
-                    .update_item()
+                let resp = with_contact_stamp(self.client.update_item(), id)
                     .table_name(self.table_name("person"))
                     .key("id", AttributeValue::S(id.to_string()))
                     .condition_expression("attribute_exists(id)")
-                    .update_expression("SET location_id = :location_id, updated_at = :updated_at")
+                    .update_expression(format!(
+                        "SET location_id = :location_id, updated_at = :updated_at, {CONTACT_STAMP_SET}"
+                    ))
                     .expression_attribute_values(
                         ":location_id",
                         AttributeValue::S(location_id.to_string()),
@@ -2320,9 +2512,7 @@ impl db::Handler for Handler {
                 record_capacity("update_person", resp.consumed_capacity(), CapKind::Write);
             }
             db::PersonUpdateShape::Email { email } => {
-                let mut request = self
-                    .client
-                    .update_item()
+                let mut request = with_contact_stamp(self.client.update_item(), id)
                     .table_name(self.table_name("person"))
                     .key("id", AttributeValue::S(id.to_string()))
                     .condition_expression("attribute_exists(id)")
@@ -2333,10 +2523,14 @@ impl db::Handler for Handler {
 
                 request = if let Some(v) = email {
                     request
-                        .update_expression("SET email = :email, updated_at = :updated_at")
+                        .update_expression(format!(
+                            "SET email = :email, updated_at = :updated_at, {CONTACT_STAMP_SET}"
+                        ))
                         .expression_attribute_values(":email", AttributeValue::S(v.to_string()))
                 } else {
-                    request.update_expression("SET updated_at = :updated_at REMOVE email")
+                    request.update_expression(format!(
+                        "SET updated_at = :updated_at, {CONTACT_STAMP_SET} REMOVE email"
+                    ))
                 };
 
                 let resp = request
@@ -2379,15 +2573,13 @@ impl db::Handler for Handler {
                 record_capacity("update_person", resp.consumed_capacity(), CapKind::Write);
             }
             db::PersonUpdateShape::Undelete => {
-                let resp = self
-                    .client
-                    .update_item()
+                let resp = with_contact_stamp(self.client.update_item(), id)
                     .table_name(self.table_name("person"))
                     .key("id", AttributeValue::S(id.to_string()))
                     .condition_expression("attribute_exists(id)")
                     // Drop any missing marker: it only ever applies to a live row.
                     .update_expression(
-                        "SET deleted = :deleted, updated_at = :updated_at REMOVE missing_since",
+                        format!("SET deleted = :deleted, updated_at = :updated_at, {CONTACT_STAMP_SET} REMOVE missing_since"),
                     )
                     .expression_attribute_values(":deleted", AttributeValue::N("0".to_string()))
                     .expression_attribute_values(
@@ -2402,16 +2594,14 @@ impl db::Handler for Handler {
             }
             db::PersonUpdateShape::Delete => {
                 let deleted_time = crate::clock::now_sec().to_string();
-                let resp = self
-                    .client
-                    .update_item()
+                let resp = with_contact_stamp(self.client.update_item(), id)
                     .table_name(self.table_name("person"))
                     .key("id", AttributeValue::S(id.to_string()))
                     .condition_expression("attribute_exists(id)")
                     // Drop any missing marker so it can never outlive the live row —
                     // roster reads skip deleted people and could never clear it later.
                     .update_expression(
-                        "SET deleted = :deleted, updated_at = :updated_at REMOVE missing_since",
+                        format!("SET deleted = :deleted, updated_at = :updated_at, {CONTACT_STAMP_SET} REMOVE missing_since"),
                     )
                     .expression_attribute_values(
                         ":deleted",
@@ -2427,6 +2617,133 @@ impl db::Handler for Handler {
         }
 
         Ok(())
+    }
+
+    async fn stamp_person_contact(&self, id: &str) -> db::Result<()> {
+        if self.read_only {
+            return Err(db::Error::MutationDisabled);
+        }
+        let resp = with_contact_stamp(self.client.update_item(), id)
+            .table_name(self.table_name("person"))
+            .key("id", AttributeValue::S(id.to_string()))
+            .condition_expression("attribute_exists(id)")
+            .update_expression(format!("SET {CONTACT_STAMP_SET}"))
+            .return_consumed_capacity(ReturnConsumedCapacity::Total)
+            .send()
+            .await
+            .map_err(|e| map_update_err(e, format!("Person {}", id)))?;
+        record_capacity(
+            "stamp_person_contact",
+            resp.consumed_capacity(),
+            CapKind::Write,
+        );
+        Ok(())
+    }
+
+    async fn list_contact_changes(
+        &self,
+        after: Option<&str>,
+        before: &str,
+        include_deleted: bool,
+        limit: usize,
+    ) -> db::Result<db::ContactPage> {
+        // BETWEEN refuses an inverted range. A cursor can sit at or past this read's
+        // bound when this Lambda's clock is a little behind the one that issued it.
+        if after.is_some_and(|a| a >= before) {
+            return Ok(db::ContactPage {
+                changes: Vec::new(),
+                has_more: false,
+            });
+        }
+        let mut changes = Vec::new();
+        let mut exclusive_start_key = None;
+        // One extra row tells us whether there is more.
+        while changes.len() <= limit {
+            let mut query = self
+                .client
+                .query()
+                .table_name(self.table_name("person"))
+                .index_name(CONTACT_FEED_INDEX)
+                .expression_attribute_values(":feed", AttributeValue::S(CONTACT_FEED.to_string()))
+                .expression_attribute_values(":before", AttributeValue::S(before.to_string()))
+                .limit((limit + 1 - changes.len()).min(1000) as i32)
+                .set_exclusive_start_key(exclusive_start_key.take())
+                .return_consumed_capacity(ReturnConsumedCapacity::Total);
+            // A key condition takes one range comparison, so a lower bound means
+            // BETWEEN (inclusive): the row at exactly `after` is dropped below.
+            // `before` has no `#<id>` suffix, so no key ever equals it.
+            query = match after {
+                Some(after) => query
+                    .key_condition_expression(
+                        "contact_feed = :feed AND contact_key BETWEEN :after AND :before",
+                    )
+                    .expression_attribute_values(":after", AttributeValue::S(after.to_string())),
+                None => {
+                    query.key_condition_expression("contact_feed = :feed AND contact_key < :before")
+                }
+            };
+            let resp = query
+                .send()
+                .await
+                .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
+            record_capacity(
+                "list_contact_changes",
+                resp.consumed_capacity(),
+                CapKind::Read,
+            );
+
+            for raw in resp.items.unwrap_or_default() {
+                let key = raw
+                    .get(CONTACT_KEY_ATTR)
+                    .and_then(|v| v.as_s().ok())
+                    .cloned()
+                    .unwrap_or_default();
+                if Some(key.as_str()) == after {
+                    continue;
+                }
+                let person: Person = hydrate_item(raw)?;
+                if !include_deleted && person.deleted.is_some() {
+                    continue;
+                }
+                changes.push(db::ContactChange { key, person });
+            }
+            exclusive_start_key = resp.last_evaluated_key;
+            if exclusive_start_key.is_none() {
+                break;
+            }
+        }
+        let has_more = changes.len() > limit;
+        changes.truncate(limit);
+        Ok(db::ContactPage { changes, has_more })
+    }
+
+    async fn count_contacts(&self, before: &str) -> db::Result<u64> {
+        let mut count = 0u64;
+        let mut exclusive_start_key = None;
+        loop {
+            let resp = self
+                .client
+                .query()
+                .table_name(self.table_name("person"))
+                .index_name(CONTACT_FEED_INDEX)
+                .key_condition_expression("contact_feed = :feed AND contact_key < :before")
+                .filter_expression("attribute_not_exists(deleted) OR deleted = :live")
+                .expression_attribute_values(":feed", AttributeValue::S(CONTACT_FEED.to_string()))
+                .expression_attribute_values(":before", AttributeValue::S(before.to_string()))
+                .expression_attribute_values(":live", AttributeValue::N("0".to_string()))
+                .select(aws_sdk_dynamodb::types::Select::Count)
+                .set_exclusive_start_key(exclusive_start_key.take())
+                .return_consumed_capacity(ReturnConsumedCapacity::Total)
+                .send()
+                .await
+                .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
+            record_capacity("count_contacts", resp.consumed_capacity(), CapKind::Read);
+            count += resp.count as u64;
+            exclusive_start_key = resp.last_evaluated_key;
+            if exclusive_start_key.is_none() {
+                return Ok(count);
+            }
+        }
     }
 
     async fn create_period(
@@ -3531,11 +3848,31 @@ impl db::Handler for Handler {
                 ),
         };
 
+        let new_name = match change {
+            db::LocationUpdateShape::Fields { name, .. }
+            | db::LocationUpdateShape::Name { name } => Some(name),
+            db::LocationUpdateShape::LastSyncTime { .. } => None,
+        };
         let resp = req
+            .return_values(aws_sdk_dynamodb::types::ReturnValue::UpdatedOld)
             .send()
             .await
             .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
         record_capacity("update_location", resp.consumed_capacity(), CapKind::Write);
+
+        // The contacts API returns each member's unit name, so a rename is a change to
+        // every member there. `UpdatedOld` returns `name` as it was before this write.
+        let old_name = resp
+            .attributes()
+            .and_then(|a| a.get("name"))
+            .and_then(|v| v.as_s().ok());
+        if let (Some(old), Some(new)) = (old_name, new_name)
+            && old != new
+        {
+            for person in self.list_people_for_location(id, true).await? {
+                self.stamp_person_contact(&person.id).await?;
+            }
+        }
         Ok(())
     }
 
@@ -4988,6 +5325,311 @@ impl db::Handler for Handler {
         Ok(())
     }
 
+    async fn get_tasks<T: AsRef<str> + Sync>(
+        &self,
+        ids: &[T],
+    ) -> db::Result<Vec<Option<db::Task>>> {
+        self.get_records("task", ids).await
+    }
+
+    async fn list_tasks(&self, query: db::ListTasksQuery) -> db::Result<Vec<db::Task>> {
+        let db::ListTasksQuery::Open {
+            location_id,
+            show_dates,
+        } = query;
+        let (condition, date) = match show_dates {
+            db::TaskShowDates::OnOrBefore(d) => {
+                ("open_location_id = :location_id AND show_date <= :date", d)
+            }
+            db::TaskShowDates::After(d) => {
+                ("open_location_id = :location_id AND show_date > :date", d)
+            }
+        };
+        query_all("list_tasks", || {
+            self.client
+                .query()
+                .table_name(self.table_name("task"))
+                .index_name("open_location_id-show_date-index")
+                .key_condition_expression(condition)
+                .expression_attribute_values(":location_id", AttributeValue::S(location_id.clone()))
+                .expression_attribute_values(":date", date_value(date))
+        })
+        .await
+    }
+
+    async fn create_task(&self, task: db::NewTask<'_>) -> db::Result<db::Task> {
+        if self.read_only {
+            return Err(db::Error::MutationDisabled);
+        }
+        let id = new_id();
+        let now = crate::clock::now_sec();
+        // Optional attributes are omitted when absent rather than stored as Null.
+        let mut put = self
+            .client
+            .put_item()
+            .table_name(self.table_name("task"))
+            .item("id", AttributeValue::S(id.clone()))
+            .item(
+                "location_id",
+                AttributeValue::S(task.location_id.to_string()),
+            )
+            .item(
+                "open_location_id",
+                AttributeValue::S(task.location_id.to_string()),
+            )
+            .item("title", AttributeValue::S(task.title.to_string()))
+            .item("show_date", date_value(task.show_date))
+            .item("v", AttributeValue::N("1".to_string()))
+            .item("created_at", AttributeValue::N(now.to_string()))
+            .item("updated_at", AttributeValue::N(now.to_string()))
+            .condition_expression("attribute_not_exists(id)")
+            .return_consumed_capacity(ReturnConsumedCapacity::Total);
+        if let Some(list_id) = task.list_id {
+            put = put.item("list_id", AttributeValue::S(list_id.to_string()));
+        }
+        if let Some(description) = task.description {
+            put = put.item("description", AttributeValue::S(description.to_string()));
+        }
+        if let Some(due_date) = task.due_date {
+            put = put.item("due_date", date_value(due_date));
+        }
+        if let Some(r) = task.recurrence {
+            put = put
+                .item("recurrence_every", AttributeValue::N(r.every.to_string()))
+                .item(
+                    "recurrence_unit",
+                    AttributeValue::S(r.unit.as_str().to_string()),
+                );
+        }
+        if let Some(by) = task.created_by {
+            put = put.item("created_by", AttributeValue::S(by.to_string()));
+        }
+        let resp = put
+            .send()
+            .await
+            .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
+        record_capacity("create_task", resp.consumed_capacity(), CapKind::Write);
+
+        Ok(db::Task {
+            id,
+            location_id: task.location_id.to_string(),
+            list_id: task.list_id.map(str::to_string),
+            title: task.title.to_string(),
+            description: task.description.map(str::to_string),
+            due_date: task.due_date,
+            show_date: task.show_date,
+            recurrence: task.recurrence,
+            open: true,
+            created_by: task.created_by.map(str::to_string),
+            updated_by: None,
+            completed_at: None,
+            completed_by: None,
+            last_completed_at: None,
+            last_completed_by: None,
+            version: 1,
+            deleted: None,
+            created_at: now,
+            updated_at: now,
+        })
+    }
+
+    async fn update_task(&self, id: &str, change: db::TaskUpdateShape<'_>) -> db::Result<db::Task> {
+        if self.read_only {
+            return Err(db::Error::MutationDisabled);
+        }
+        let now = crate::clock::now_sec();
+        let mut update = UpdateExpr::default();
+        update.set("updated_at", AttributeValue::N(now.to_string()));
+        let mut condition = "attribute_exists(open_location_id) AND v = :expected_version";
+        let expected_version = match change {
+            db::TaskUpdateShape::Fields {
+                list_id,
+                title,
+                description,
+                due_date,
+                show_date,
+                recurrence,
+                by,
+                expected_version,
+            } => {
+                update.set("title", AttributeValue::S(title.to_string()));
+                update.set("show_date", date_value(show_date));
+                update.set_or_remove("list_id", list_id.map(|l| AttributeValue::S(l.to_string())));
+                update.set_or_remove(
+                    "description",
+                    description.map(|d| AttributeValue::S(d.to_string())),
+                );
+                update.set_or_remove("due_date", due_date.map(date_value));
+                update.set_or_remove(
+                    "recurrence_every",
+                    recurrence.map(|r| AttributeValue::N(r.every.to_string())),
+                );
+                update.set_or_remove(
+                    "recurrence_unit",
+                    recurrence.map(|r| AttributeValue::S(r.unit.as_str().to_string())),
+                );
+                update.set_or_remove("updated_by", by.map(|b| AttributeValue::S(b.to_string())));
+                Some(expected_version)
+            }
+            db::TaskUpdateShape::CompleteOccurrence {
+                next_date,
+                by,
+                expected_version,
+            } => {
+                update.set("due_date", date_value(next_date));
+                update.set("show_date", date_value(next_date));
+                update.set("last_completed_at", AttributeValue::N(now.to_string()));
+                update.set_or_remove(
+                    "last_completed_by",
+                    by.map(|b| AttributeValue::S(b.to_string())),
+                );
+                Some(expected_version)
+            }
+            db::TaskUpdateShape::Complete {
+                by,
+                expected_version,
+            } => {
+                update.set("completed_at", AttributeValue::N(now.to_string()));
+                update.set_or_remove("completed_by", by.map(|b| AttributeValue::S(b.to_string())));
+                update.remove("open_location_id");
+                Some(expected_version)
+            }
+            db::TaskUpdateShape::Delete { by } => {
+                update.set("deleted", AttributeValue::N(now.to_string()));
+                update.set_or_remove("updated_by", by.map(|b| AttributeValue::S(b.to_string())));
+                update.remove("open_location_id");
+                condition = "attribute_exists(id) AND attribute_not_exists(deleted)";
+                None
+            }
+        };
+
+        let mut builder = self
+            .client
+            .update_item()
+            .table_name(self.table_name("task"))
+            .key("id", AttributeValue::S(id.to_string()))
+            .update_expression(update.expression("ADD v :one"))
+            .set_expression_attribute_names(Some(update.names))
+            .set_expression_attribute_values(Some(update.values))
+            .expression_attribute_values(":one", AttributeValue::N("1".to_string()))
+            .condition_expression(condition)
+            .return_values(ReturnValue::AllNew)
+            .return_consumed_capacity(ReturnConsumedCapacity::Total);
+        if let Some(v) = expected_version {
+            builder = builder
+                .expression_attribute_values(":expected_version", AttributeValue::N(v.to_string()));
+        }
+        let resp = builder.send().await.map_err(|e| {
+            map_update_err(
+                e,
+                format!("Task {id} not found, no longer open, or changed"),
+            )
+        })?;
+        record_capacity("update_task", resp.consumed_capacity(), CapKind::Write);
+        Ok(hydrate_item(resp.attributes.unwrap_or_default())?)
+    }
+
+    async fn get_task_lists<T: AsRef<str> + Sync>(
+        &self,
+        ids: &[T],
+    ) -> db::Result<Vec<Option<db::TaskList>>> {
+        self.get_records("task_list", ids).await
+    }
+
+    async fn list_task_lists(&self, location_id: &str) -> db::Result<Vec<db::TaskList>> {
+        query_all("list_task_lists", || {
+            self.client
+                .query()
+                .table_name(self.table_name("task_list"))
+                .index_name("location_id-index")
+                .key_condition_expression("location_id = :location_id")
+                .filter_expression("attribute_not_exists(deleted)")
+                .expression_attribute_values(
+                    ":location_id",
+                    AttributeValue::S(location_id.to_string()),
+                )
+        })
+        .await
+    }
+
+    async fn create_task_list(
+        &self,
+        location_id: &str,
+        name: &str,
+        created_by: Option<&str>,
+    ) -> db::Result<db::TaskList> {
+        if self.read_only {
+            return Err(db::Error::MutationDisabled);
+        }
+        let id = new_id();
+        let now = crate::clock::now_sec();
+        let mut put = self
+            .client
+            .put_item()
+            .table_name(self.table_name("task_list"))
+            .item("id", AttributeValue::S(id.clone()))
+            .item("location_id", AttributeValue::S(location_id.to_string()))
+            .item("name", AttributeValue::S(name.to_string()))
+            .item("created_at", AttributeValue::N(now.to_string()))
+            .item("updated_at", AttributeValue::N(now.to_string()))
+            .condition_expression("attribute_not_exists(id)")
+            .return_consumed_capacity(ReturnConsumedCapacity::Total);
+        if let Some(by) = created_by {
+            put = put.item("created_by", AttributeValue::S(by.to_string()));
+        }
+        let resp = put
+            .send()
+            .await
+            .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
+        record_capacity("create_task_list", resp.consumed_capacity(), CapKind::Write);
+        Ok(db::TaskList {
+            id,
+            location_id: location_id.to_string(),
+            name: name.to_string(),
+            created_by: created_by.map(str::to_string),
+            deleted: None,
+            created_at: now,
+            updated_at: now,
+        })
+    }
+
+    async fn update_task_list(
+        &self,
+        id: &str,
+        change: db::TaskListUpdateShape<'_>,
+    ) -> db::Result<db::TaskList> {
+        if self.read_only {
+            return Err(db::Error::MutationDisabled);
+        }
+        let now = crate::clock::now_sec();
+        let mut update = UpdateExpr::default();
+        update.set("updated_at", AttributeValue::N(now.to_string()));
+        match change {
+            db::TaskListUpdateShape::Name { name } => {
+                update.set("name", AttributeValue::S(name.to_string()))
+            }
+            db::TaskListUpdateShape::Delete => {
+                update.set("deleted", AttributeValue::N(now.to_string()))
+            }
+        }
+        let resp = self
+            .client
+            .update_item()
+            .table_name(self.table_name("task_list"))
+            .key("id", AttributeValue::S(id.to_string()))
+            .update_expression(update.expression(""))
+            .set_expression_attribute_names(Some(update.names))
+            .set_expression_attribute_values(Some(update.values))
+            .condition_expression("attribute_exists(id) AND attribute_not_exists(deleted)")
+            .return_values(ReturnValue::AllNew)
+            .return_consumed_capacity(ReturnConsumedCapacity::Total)
+            .send()
+            .await
+            .map_err(|e| map_update_err(e, format!("Task list {id} not found")))?;
+        record_capacity("update_task_list", resp.consumed_capacity(), CapKind::Write);
+        Ok(hydrate_item(resp.attributes.unwrap_or_default())?)
+    }
+
     async fn put_audit_entry(&self, entry: &db::AuditEntry) -> db::Result<()> {
         if self.read_only {
             return Err(db::Error::MutationDisabled);
@@ -5082,8 +5724,9 @@ impl db::Handler for Handler {
 mod tests {
     use super::{
         AuditQueryPlan, Item, audit_entries_from_items, audit_items, audit_query_plan,
-        batch_get_backoff, client_info_attributes, hydrate_items, hydrate_items_lenient,
-        nitc_event_key, scan_cursor_from_key, topic_date_key, unprocessed_keys_for,
+        batch_get_backoff, client_info_attributes, contact_key, hydrate_items,
+        hydrate_items_lenient, nitc_event_key, scan_cursor_from_key, topic_date_key,
+        unprocessed_keys_for,
     };
     use crate::db;
     use crate::db::Category;
@@ -5681,5 +6324,16 @@ mod tests {
                 "{bad:?} was accepted"
             );
         }
+    }
+
+    #[test]
+    fn contact_keys_sort_by_time_then_id() {
+        let a = contact_key("b");
+        let b = contact_key("a");
+        // Fixed-width time prefix, so string order is time order.
+        assert_eq!(a.find('#'), Some(20));
+        assert!(a.ends_with("#b"));
+        assert!(a < b || a[..20] == b[..20], "{a} sorted after {b}");
+        assert!(format!("{:020}#x", 9u64) < format!("{:020}#x", 10u64));
     }
 }

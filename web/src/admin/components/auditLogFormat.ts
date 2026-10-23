@@ -17,6 +17,8 @@ export const ENTITY_TYPE_LABELS = {
   USER_TOKEN: "Login token",
   OAUTH_GRANT: "Connected app",
   WEBAUTHN_CREDENTIAL: "Passkey",
+  TASK: "Task",
+  TASK_LIST: "Task list",
 } as const;
 
 export type EntityTypeKey = keyof typeof ENTITY_TYPE_LABELS;

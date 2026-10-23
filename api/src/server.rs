@@ -371,6 +371,34 @@ where
 }
 
 #[handler]
+async fn contacts_sync<H, Q, M, R>(
+    app: Data<&Arc<MyApp<H, Q, M, R>>>,
+    req: &poem::Request,
+) -> impl IntoResponse
+where
+    H: db::Handler + Send + Sync + 'static,
+    Q: queue::Handler + Send + Sync + 'static,
+    M: mail::Handler + Send + Sync + 'static,
+    R: realtime::Handler + Send + Sync + 'static,
+{
+    let header = |name: &str| req.headers().get(name).and_then(|v| v.to_str().ok());
+    let reply = crate::contacts::sync(
+        &***app,
+        host_header(req.headers()),
+        header("Authorization"),
+        header("Accept-Encoding"),
+        req.uri().query().unwrap_or(""),
+    )
+    .await;
+    let mut builder = poem::Response::builder()
+        .status(StatusCode::from_u16(reply.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR));
+    for (name, value) in &reply.headers {
+        builder = builder.header(name.as_str(), value.as_str());
+    }
+    builder.body(reply.body)
+}
+
+#[handler]
 async fn mcp_method_not_allowed() -> impl IntoResponse {
     oauth_response(crate::mcp::method_not_allowed())
 }
@@ -434,6 +462,12 @@ where
         .at(
             "/.well-known/oauth-protected-resource",
             get(oauth_protected_resource_metadata),
+        )
+        .at(
+            crate::contacts::SYNC_PATH,
+            get(contacts_sync::<H, Q, M, R> {
+                ..Default::default()
+            }),
         )
         .at(
             "/mcp",

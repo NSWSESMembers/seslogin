@@ -137,11 +137,18 @@ const TABLES: &[Table] = &[
             Attr("location_id", S),
             Attr("registration_number", S),
             Attr("ses_api_person_id", S),
+            Attr("contact_feed", S),
+            Attr("contact_key", S),
         ],
         gsis: &[
             all("location_id-index", "location_id", None),
             keys_only("registration_number-index", "registration_number"),
             keys_only("ses_api_person_id-index", "ses_api_person_id"),
+            all(
+                "contact_feed-contact_key-index",
+                "contact_feed",
+                Some("contact_key"),
+            ),
         ],
         ttl: None,
     },
@@ -242,6 +249,28 @@ const TABLES: &[Table] = &[
             all("location_id-sk-index", "location_id", Some("sk")),
             all("scope-sk-index", "scope", Some("sk")),
         ],
+        ttl: None,
+    },
+    Table {
+        name: "task",
+        hash: "id",
+        attrs: &[
+            Attr("id", S),
+            Attr("open_location_id", S),
+            Attr("show_date", S),
+        ],
+        gsis: &[all(
+            "open_location_id-show_date-index",
+            "open_location_id",
+            Some("show_date"),
+        )],
+        ttl: None,
+    },
+    Table {
+        name: "task_list",
+        hash: "id",
+        attrs: &[Attr("id", S), Attr("location_id", S)],
+        gsis: &[all("location_id-index", "location_id", None)],
         ttl: None,
     },
     Table {

@@ -28,7 +28,9 @@
         "last_name": { "S": "Anderson" },
         "registration_number": { "S": "10000001" },
         "created_at": { "N": "1767225600" },
-        "updated_at": { "N": "1767225600" }
+        "updated_at": { "N": "1767225600" },
+        "contact_feed": { "S": "all" },
+        "contact_key": { "S": "00001767225600000000#TestAMember1" }
       },
       {
         "_comment": "Sync-owned: ses_api_person_id is set, so the admin UI hides Edit and Delete and shows the green synced bullet. Paired with Alice so both halves of that rule are on screen at once.",
@@ -39,7 +41,9 @@
         "registration_number": { "S": "10000002" },
         "ses_api_person_id": { "S": "10000002" },
         "created_at": { "N": "1767225600" },
-        "updated_at": { "N": "1767225600" }
+        "updated_at": { "N": "1767225600" },
+        "contact_feed": { "S": "all" },
+        "contact_key": { "S": "00001767225600000000#TestAMember2" }
       },
       {
         "_comment": "For testing a sign-in at Test A Unit's kiosk by someone who belongs to Test B Unit. registration_number is what a scan resolves against (get_person_id_by_registration_number); ses_api_person_id is the separate sync identity.",
@@ -50,7 +54,9 @@
         "registration_number": { "S": "20000001" },
         "ses_api_person_id": { "S": "20000001" },
         "created_at": { "N": "1767225600" },
-        "updated_at": { "N": "1767225600" }
+        "updated_at": { "N": "1767225600" },
+        "contact_feed": { "S": "all" },
+        "contact_key": { "S": "00001767225600000000#TestBMember1" }
       }
     ],
     "user": [

@@ -32,6 +32,7 @@ use crate::ses_api;
 use super::audit_log::{self, AuditEntityType, AuditEntryConnection};
 use super::auth::{AuthGuard, AuthRequirement, can_write_location, require_location_access};
 use super::dataloader::DatabaseLoader;
+use super::tasks::{self, Task, TaskList, TaskView};
 use super::{CategoryId, LocationId, NitcEventId, PersonId, SessionId, UserId};
 
 #[derive(Debug, PartialEq)]
@@ -119,6 +120,24 @@ impl<A: App + HasDb + Send + Sync + 'static> User<A> {
             .iter()
             .map(|id| ID(id.clone()))
             .collect()
+    }
+
+    /// The member this user acts as when signing in or out from the mobile app.
+    async fn person_id(&self) -> Option<ID> {
+        self.rec.person_id.clone().map(ID)
+    }
+
+    /// The member this user acts as, or null if none is set or it no longer exists.
+    async fn person(&self, ctx: &Context<'_>) -> Result<Option<Person<A>>> {
+        let Some(person_id) = self.rec.person_id.clone() else {
+            return Ok(None);
+        };
+        let loader = ctx.data_unchecked::<DataLoader<DatabaseLoader<A>>>();
+        Ok(loader
+            .load_one(PersonId(ID(person_id)))
+            .await
+            .map_err(|e| anyhow!("Failed to load person via DataLoader: {}", e))?
+            .flatten())
     }
 
     async fn locations(&self, ctx: &Context<'_>) -> Result<Vec<Location<A>>> {
@@ -2433,6 +2452,24 @@ impl<A: App + HasDb + Send + Sync> Location<A> {
         Ok(rows)
     }
 
+    /// The location's open tasks (its shared to-do list): by default those due now,
+    /// overdue first. `listId` narrows to one of its task lists; without it every
+    /// task at the location is listed, whichever list it is on. Users only (Admin
+    /// or Read only); see `graphql::tasks`.
+    async fn tasks(
+        &self,
+        ctx: &Context<'_>,
+        #[graphql(default)] view: TaskView,
+        list_id: Option<ID>,
+    ) -> Result<Vec<Task<A>>> {
+        tasks::location_tasks(ctx, &self.rec.id, view, list_id).await
+    }
+
+    /// The location's task lists, by name.
+    async fn task_lists(&self, ctx: &Context<'_>) -> Result<Vec<TaskList<A>>> {
+        tasks::location_task_lists(ctx, &self.rec.id).await
+    }
+
     async fn sessions(&self, ctx: &Context<'_>) -> Result<Vec<Session<A>>> {
         require_location_access(ctx, &self.rec.id)?;
         let app = ctx.data_unchecked::<Arc<A>>();
@@ -3461,6 +3498,12 @@ impl<A: App + HasDb + HasRealtime + Send + Sync + 'static> QueryRoot<A> {
             .filter(|p| p.deleted.is_none())
             .ok_or_else(|| anyhow!("Invalid or expired token"))
             .map(Period::new)
+    }
+
+    /// One task, open or completed; null if it does not exist or was deleted.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    async fn task(&self, ctx: &Context<'_>, id: ID) -> Result<Option<Task<A>>> {
+        tasks::task(ctx, &id).await
     }
 
     #[graphql(guard = "AuthGuard::new(AuthRequirement::Authenticated)")]

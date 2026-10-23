@@ -34,6 +34,7 @@ All IDs are exposed to the API layer as opaque UUID strings. Conversion happens 
 - `is_super` (Bool) — superuser flag
 - `location_grants` (SS) — string set of location UUIDs where this user is an **Admin** (read and write)
 - `location_read_only_grants` (SS) — string set of location UUIDs where this user is **Read only** (can view, cannot change; disjoint from `location_grants`). Omitted when empty, like `location_grants`
+- `person_id` (S) — the member record (`person.id`) this user acts as when signing in or out from the mobile app. Set only by a super user (`setUserMember`); several users may share one. Omitted when unset
 - `deleted` (Bool)
 - `access_time` (N) — Unix timestamp
 
@@ -128,6 +129,8 @@ The `start_time` sort key across the location/person GSIs means DynamoDB returns
 | `location_id`         | S    | GSI hash key         |
 | `registration_number` | S    | GSI hash key         |
 | `ses_api_person_id`   | S    | GSI hash key         |
+| `contact_feed`        | S    | GSI hash key         |
+| `contact_key`         | S    | GSI sort key         |
 
 **GSIs:**
 
@@ -136,6 +139,7 @@ The `start_time` sort key across the location/person GSIs means DynamoDB returns
 | `location_id-index`         | `location_id`         | —        | ALL        | List all members at a location for admin views and member sync     |
 | `registration_number-index` | `registration_number` | —        | KEYS_ONLY  | Batch lookup during kiosk scan-in: registration number → person ID |
 | `ses_api_person_id-index`   | `ses_api_person_id`   | —        | KEYS_ONLY  | Member sync reconciliation: HQ person ID → local person ID         |
+| `contact_feed-contact_key-index` | `contact_feed` | `contact_key` | ALL | Contacts feed: every person, ordered by when a field the contacts API returns last changed |
 
 `KEYS_ONLY` on the scan-in and sync indexes avoids storing a full copy of each person item per index, since these lookups only need the primary key to drive a subsequent `BatchGetItem` or direct update.
 
@@ -153,6 +157,17 @@ The `start_time` sort key across the location/person GSIs means DynamoDB returns
   absence pass reads the roster through `location_id-index`, which is `ALL`-projected — a
   `KEYS_ONLY` projection there would hydrate every row with `missing_since: None` and
   silently prevent all deletions.
+- `contact_feed` (S) — always `"all"`: a constant hash key, so every person sits in one
+  ordered partition of `contact_feed-contact_key-index`. The write rate is member sync plus
+  admin edits, far below a partition's limits.
+- `contact_key` (S) — `<Unix microseconds, zero-padded to 20 digits>#<id>`, restamped by
+  every write that changes something the contacts API returns: `create_person`, and
+  `update_person`'s `Fields`, `Location`, `Email`, `Undelete` and `Delete` shapes (not
+  `SesApiPersonId` or `MissingSince`). Renaming a location restamps every live member there,
+  since their unit name changed. Sorting by it orders people by last change; the id suffix
+  keeps it unique when two writes share a microsecond. Soft-deleted rows keep their key, so
+  they double as the feed's tombstones. Rows written before the index existed have neither
+  attribute until `cli person stamp-contacts` backfills them.
 
 ---
 
@@ -286,6 +301,59 @@ No GSIs. The only access pattern is `GetItem` by `id` (called from `get_nitc_gro
 
 ---
 
+### `{prefix}task`
+
+A location's shared to-do list ("Tasks"). Dates are **Sydney-local calendar days** stored as `YYYY-MM-DD`, which sort lexically in date order.
+
+| Attribute          | Type | Role                                                                                            |
+| ------------------ | ---- | ----------------------------------------------------------------------------------------------- |
+| `id`               | S    | Hash key (PK)                                                                                   |
+| `open_location_id` | S    | GSI hash key (`open_location_id-show_date-index`) — a copy of `location_id` while the task is open, otherwise absent |
+| `show_date`        | S    | GSI sort key — the day the task starts showing                                                  |
+
+**GSIs:**
+
+| GSI                                | Hash key           | Sort key    | Projection | Purpose                                                                   |
+| ---------------------------------- | ------------------ | ----------- | ---------- | ------------------------------------------------------------------------- |
+| `open_location_id-show_date-index` | `open_location_id` | `show_date` | ALL        | A location's open tasks: due now (`show_date <= today`) or scheduled (`> today`) |
+
+The index is **sparse**: completing a non-recurring task, or deleting any task, REMOVEs `open_location_id`, so the row leaves it. Completed and deleted tasks stay in the base table, reachable by `id` only. A recurring task is never completed for good — completing it moves `due_date` and `show_date` forward and it stays open.
+
+**Non-obvious attributes (not in table definition):**
+
+- `location_id` (S) — the task's location, kept after it stops being open
+- `list_id` (S) — optional `task_list` the task is on; it may name a deleted list
+- `title` (S), `description` (S, optional)
+- `due_date` (S, optional) — the day the task was scheduled for. `show_date` is this, or the creation day when there is none
+- `recurrence_every` (N), `recurrence_unit` (S: `days` or `weeks`) — both present or both absent
+- `v` (N) — version, bumped by every write; edits and completions are conditional on it, so two people completing the same task cannot both succeed
+- `completed_at` (N), `completed_by` (S) — a non-recurring task's completion
+- `last_completed_at` (N), `last_completed_by` (S) — a recurring task's latest completion
+- `created_by` / `updated_by` (S) — user IDs
+- `deleted` (N) — Unix seconds when soft-deleted; absent otherwise
+- `created_at` / `updated_at` (N)
+
+---
+
+### `{prefix}task_list`
+
+Optional named lists a location's tasks can be grouped on.
+
+| Attribute     | Type | Role                                  |
+| ------------- | ---- | ------------------------------------- |
+| `id`          | S    | Hash key (PK)                         |
+| `location_id` | S    | GSI hash key (`location_id-index`)    |
+
+**GSIs:**
+
+| GSI                 | Hash key      | Sort key | Projection | Purpose                  |
+| ------------------- | ------------- | -------- | ---------- | ------------------------ |
+| `location_id-index` | `location_id` | —        | ALL        | A location's lists; deleted ones are filtered out on read |
+
+**Non-obvious attributes (not in table definition):** `name` (S), `created_by` (S), `deleted` (N, soft delete — the list's tasks are left alone), `created_at` / `updated_at` (N).
+
+---
+
 ### `{prefix}audit_log`
 
 An append-only record of business database writes, shown in the admin UI. Entries are kept forever (no TTL). One item is written **per affected location** for each audited event, so a write touching two locations produces two items sharing an `event_id`.
@@ -315,7 +383,7 @@ Access patterns: per-location newest-first (`Query` on `location_id-sk-index`) a
 - `ts` (N) — Unix seconds when the event happened
 - `event_id` (S) — shared by every item written for the same event
 - `action` (S) — `create`, `update`, `delete` or `restore`
-- `entity_type` (S) — `user`, `person`, `period`, `session`, `api_token`, `location`, `category`, `nitc_group`, `nitc_tag`, `user_token`, `oauth_grant` or `webauthn_credential`
+- `entity_type` (S) — `user`, `person`, `period`, `session`, `api_token`, `location`, `category`, `nitc_group`, `nitc_tag`, `user_token`, `oauth_grant`, `webauthn_credential`, `task` or `task_list`
 - `entity_id` (S) — ID of the entity changed
 - `entity_label` (S) — human-readable name of the entity at the time; omitted when unknown
 - `actor_kind` (S) — `user`, `session` (kiosk), `api_token`, `period_link`, `system` (a job or the CLI), `unauthenticated` or `unknown`

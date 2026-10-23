@@ -343,3 +343,138 @@ async fn a_person_move_records_both_locations() {
     );
     assert_eq!(changed_fields(entry), vec!["location_id"]);
 }
+
+fn new_task<'a>(title: &'a str, recurrence: Option<db::TaskRecurrence>) -> db::NewTask<'a> {
+    let day = chrono::NaiveDate::from_ymd_opt(2026, 3, 2).unwrap();
+    db::NewTask {
+        location_id: "loc-a",
+        list_id: None,
+        title,
+        description: None,
+        due_date: Some(day),
+        show_date: day,
+        recurrence,
+        created_by: Some("caller"),
+    }
+}
+
+#[tokio::test]
+async fn task_writes_are_recorded_against_their_location() {
+    let app = app();
+    let task = app
+        .db
+        .create_task(new_task("Check the radios", None))
+        .await
+        .unwrap();
+    app.db
+        .update_task(
+            &task.id,
+            db::TaskUpdateShape::Complete {
+                by: Some("caller"),
+                expected_version: task.version,
+            },
+        )
+        .await
+        .unwrap();
+    let entries = app.db.inner().audit_entries();
+    assert_eq!(entries.len(), 2);
+    for entry in &entries {
+        assert_eq!(entry.entity_type, AuditEntityType::Task);
+        assert_eq!(entry.entity_id, task.id);
+        assert_eq!(entry.entity_label.as_deref(), Some("Check the radios"));
+        assert_eq!(entry.location_ids, vec!["loc-a".to_string()]);
+    }
+    assert_eq!(entries[0].action, AuditAction::Create);
+    assert_eq!(
+        changed_fields(&entries[0]),
+        vec!["title", "due_date", "show_date"]
+    );
+    assert_eq!(entries[1].action, AuditAction::Update);
+    assert_eq!(changed_fields(&entries[1]), vec!["completed_at"]);
+}
+
+#[tokio::test]
+async fn completing_a_recurring_task_records_its_new_dates() {
+    let app = app();
+    let weekly = db::TaskRecurrence {
+        every: 1,
+        unit: db::TaskRecurrenceUnit::Weeks,
+    };
+    let task = app
+        .db
+        .create_task(new_task("Wash the truck", Some(weekly)))
+        .await
+        .unwrap();
+    let next = chrono::NaiveDate::from_ymd_opt(2026, 3, 9).unwrap();
+    app.db
+        .update_task(
+            &task.id,
+            db::TaskUpdateShape::CompleteOccurrence {
+                next_date: next,
+                by: Some("caller"),
+                expected_version: task.version,
+            },
+        )
+        .await
+        .unwrap();
+    let entry = app.db.inner().audit_entries().pop().unwrap();
+    assert_eq!(entry.action, AuditAction::Update);
+    assert_eq!(
+        changed_fields(&entry),
+        vec!["due_date", "show_date", "last_completed_at"]
+    );
+}
+
+#[tokio::test]
+async fn a_task_write_that_loses_a_race_records_nothing() {
+    let app = app();
+    let task = app
+        .db
+        .create_task(new_task("Check the radios", None))
+        .await
+        .unwrap();
+    let stale = db::TaskUpdateShape::Complete {
+        by: Some("caller"),
+        expected_version: task.version + 1,
+    };
+    let err = app.db.update_task(&task.id, stale).await.unwrap_err();
+    assert!(matches!(err, db::Error::NotFound(_)), "{err:?}");
+    assert_eq!(app.db.inner().audit_entries().len(), 1);
+}
+
+#[tokio::test]
+async fn deleting_a_task_or_list_records_a_delete() {
+    let app = app();
+    let list = app
+        .db
+        .create_task_list("loc-a", "Vehicles", Some("caller"))
+        .await
+        .unwrap();
+    let task = app
+        .db
+        .create_task(new_task("Check the radios", None))
+        .await
+        .unwrap();
+    app.db
+        .update_task(&task.id, db::TaskUpdateShape::Delete { by: Some("caller") })
+        .await
+        .unwrap();
+    app.db
+        .update_task_list(&list.id, db::TaskListUpdateShape::Delete)
+        .await
+        .unwrap();
+    let entries = app.db.inner().audit_entries();
+    let task_delete = &entries[2];
+    assert_eq!(task_delete.entity_type, AuditEntityType::Task);
+    assert_eq!(task_delete.action, AuditAction::Delete);
+    assert_eq!(
+        changed_fields(task_delete),
+        vec!["title", "due_date", "show_date"]
+    );
+    let list_delete = &entries[3];
+    assert_eq!(list_delete.entity_type, AuditEntityType::TaskList);
+    assert_eq!(list_delete.action, AuditAction::Delete);
+    assert_eq!(list_delete.entity_label.as_deref(), Some("Vehicles"));
+    assert_eq!(changed_fields(list_delete), vec!["name"]);
+    assert_eq!(list_delete.location_ids, vec!["loc-a".to_string()]);
+}
