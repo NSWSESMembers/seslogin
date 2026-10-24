@@ -569,6 +569,58 @@ Bookings of a location's equipment for a time range ("Reservations"). Overlaps a
 
 ---
 
+### `{prefix}calendar`
+
+Optional named, coloured calendars a location's events can be put in ("Calendar").
+
+| Attribute     | Type | Role                                  |
+| ------------- | ---- | ------------------------------------- |
+| `id`          | S    | Hash key (PK)                         |
+| `location_id` | S    | GSI hash key (`location_id-index`)    |
+
+**GSIs:**
+
+| GSI                 | Hash key      | Sort key | Projection | Purpose                  |
+| ------------------- | ------------- | -------- | ---------- | ------------------------ |
+| `location_id-index` | `location_id` | —        | ALL        | A location's calendars; deleted ones are filtered out on read |
+
+**Non-obvious attributes (not in table definition):** `name` (S), `color` (S — `red`, `orange`, `yellow`, `green`, `teal`, `blue`, `indigo`, `purple`, `pink` or `grey`), `created_by` (S), `deleted` (N, soft delete — the calendar's events are left alone), `created_at` / `updated_at` (N).
+
+---
+
+### `{prefix}calendar_event`
+
+The events in a location's shared calendar ("Calendar"). An event is timed (instants) or all day (dates), and may repeat daily or weekly.
+
+| Attribute     | Type | Role                                                |
+| ------------- | ---- | --------------------------------------------------- |
+| `id`          | S    | Hash key (PK)                                       |
+| `location_id` | S    | GSI hash key (`location_id-last_end-index`)         |
+| `last_end`    | N    | GSI sort key (`location_id-last_end-index`)         |
+
+**GSIs:**
+
+| GSI                          | Hash key      | Sort key   | Projection | Purpose                  |
+| ---------------------------- | ------------- | ---------- | ---------- | ------------------------ |
+| `location_id-last_end-index` | `location_id` | `last_end` | ALL        | A location's events still running after a given time, so finished ones are never read; deleted ones are filtered out on read, and the API expands repeats and sorts in memory |
+
+**Non-obvious attributes (not in table definition):**
+
+- `last_end` (N) — Unix seconds, an upper bound on when the last occurrence ends (`calendar::last_end`): the end for a one-off event, the end of the `repeat_until` day plus the event's length for a repeating one, and 253402300799 (year 9999) for one repeating forever. Rewritten by every edit
+- `start_time` / `end_time` (N) — a timed event's first occurrence, Unix seconds; absent when all day
+- `start_date` / `end_date` (S, `YYYY-MM-DD`) — an all-day event's first and last date, inclusive, with no time zone; absent when timed
+- `repeat` (S, optional) — `daily` or `weekly`; absent for a one-off event
+- `repeat_until` (S, optional, `YYYY-MM-DD`) — the last date an occurrence may start on (Sydney time for a timed event); absent when it repeats forever
+- `calendar_id` (S, optional) — the `calendar` it is in; it may name a deleted calendar
+- `title` (S) — one line of plain text
+- `description` (S, optional) — plain text; absent when empty
+- `v` (N) — version, bumped by every write; edits are conditional on it
+- `created_by` / `updated_by` (S) — user IDs
+- `deleted` (N) — Unix seconds when soft-deleted; absent otherwise
+- `created_at` / `updated_at` (N)
+
+---
+
 ### `{prefix}audit_log`
 
 An append-only record of business database writes, shown in the admin UI. Entries are kept forever (no TTL). One item is written **per affected location** for each audited event, so a write touching two locations produces two items sharing an `event_id`.
@@ -598,7 +650,7 @@ Access patterns: per-location newest-first (`Query` on `location_id-sk-index`) a
 - `ts` (N) — Unix seconds when the event happened
 - `event_id` (S) — shared by every item written for the same event
 - `action` (S) — `create`, `update`, `delete` or `restore`
-- `entity_type` (S) — `user`, `person`, `period`, `session`, `api_token`, `location`, `category`, `nitc_group`, `nitc_tag`, `user_token`, `oauth_grant`, `webauthn_credential`, `task`, `task_list`, `note`, `note_folder`, `map_pin`, `map_layer`, `on_call_role`, `equipment`, `equipment_log_entry` or `equipment_reservation`
+- `entity_type` (S) — `user`, `person`, `period`, `session`, `api_token`, `location`, `category`, `nitc_group`, `nitc_tag`, `user_token`, `oauth_grant`, `webauthn_credential`, `task`, `task_list`, `note`, `note_folder`, `map_pin`, `map_layer`, `on_call_role`, `equipment`, `equipment_log_entry`, `equipment_reservation`, `calendar` or `calendar_event`
 - `entity_id` (S) — ID of the entity changed
 - `entity_label` (S) — human-readable name of the entity at the time; omitted when unknown
 - `actor_kind` (S) — `user`, `session` (kiosk), `api_token`, `period_link`, `system` (a job or the CLI), `unauthenticated` or `unknown`

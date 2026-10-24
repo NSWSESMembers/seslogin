@@ -260,6 +260,19 @@ pub(crate) fn require_equipment_access(ctx: &Context<'_>, location_id: &str) -> 
     }
 }
 
+/// Check the caller may use a location's Calendar: see its events and calendars, and
+/// also add, edit and delete events and manage its calendars.
+///
+/// The same rule as [`require_task_access`], for the same reason: the calendar is a
+/// shared unit tool, so **Read only** users may write it too, and only people may —
+/// kiosk sessions, API tokens and edit links are refused.
+pub(crate) fn require_calendar_access(ctx: &Context<'_>, location_id: &str) -> Result<()> {
+    match ctx.data_opt::<AuthInfo>() {
+        Some(AuthInfo::User { .. }) => require_location_access(ctx, location_id),
+        _ => Err(ApiError::forbidden("The calendar is only available to signed-in users").into()),
+    }
+}
+
 /// Whether the caller may make changes at the location — the boolean form of
 /// [`require_location_write_access`] plus [`require_writable`], for resolvers that
 /// report capability (e.g. `Location.viewerCanEdit`) rather than enforce it.

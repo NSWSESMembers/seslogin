@@ -4,6 +4,7 @@ pub mod app;
 pub mod audit;
 pub mod auth;
 pub mod base_url;
+pub mod calendar;
 pub mod client_info;
 pub mod clock;
 pub mod contacts;

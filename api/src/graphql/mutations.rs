@@ -34,6 +34,7 @@ use super::auth::{
     AuthGuard, AuthRequirement, require_location_access, require_location_write_access,
     require_not_oauth_grant, require_period_write_access, require_writable,
 };
+use super::calendar::{self, Calendar, CalendarColor, CalendarEvent, EventRepeat};
 use super::dataloader::DatabaseLoader;
 use super::equipment::{self, Equipment, EquipmentStatus, EquipmentType};
 use super::error::{ApiError, ErrorCode};
@@ -2351,6 +2352,125 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
     #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
     async fn delete_map_layer(&self, ctx: &Context<'_>, id: ID) -> Result<ID> {
         map::delete_map_layer(ctx, self.app.as_ref(), &id).await
+    }
+
+    /// Add an event to a location's calendar, optionally in one of its calendars.
+    /// Timed events take `startTime` and `endTime` (Unix seconds); all-day ones take
+    /// `startDate` and optionally `endDate` (`YYYY-MM-DD`, inclusive; default one day).
+    /// `repeat` makes it repeat daily or weekly, through `repeatUntil` or forever. Any
+    /// user with access to the location may, Read only included.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    async fn create_calendar_event(
+        &self,
+        ctx: &Context<'_>,
+        location_id: ID,
+        calendar_id: Option<ID>,
+        title: String,
+        description: Option<String>,
+        all_day: bool,
+        start_time: Option<i64>,
+        end_time: Option<i64>,
+        start_date: Option<String>,
+        end_date: Option<String>,
+        repeat: Option<EventRepeat>,
+        repeat_until: Option<String>,
+    ) -> Result<CalendarEvent<A>> {
+        calendar::create_event(
+            ctx,
+            self.app.as_ref(),
+            calendar::CreateEventArgs {
+                location_id,
+                calendar_id,
+                title,
+                description,
+                all_day,
+                start_time,
+                end_time,
+                start_date,
+                end_date,
+                repeat,
+                repeat_until,
+            },
+        )
+        .await
+    }
+
+    /// Change an event, every occurrence of it. Omitted arguments are left as they are:
+    /// `calendarId: null` takes it out of its calendar, `repeat: null` stops it
+    /// repeating and `repeatUntil: null` makes it repeat forever. Giving a new start
+    /// without an end keeps its length; changing `allDay` needs the new start. Fails
+    /// with `CONFLICT` if it is no longer at `expectedVersion`.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    async fn update_calendar_event(
+        &self,
+        ctx: &Context<'_>,
+        id: ID,
+        expected_version: i32,
+        calendar_id: MaybeUndefined<ID>,
+        title: Option<String>,
+        description: Option<String>,
+        all_day: Option<bool>,
+        start_time: Option<i64>,
+        end_time: Option<i64>,
+        start_date: Option<String>,
+        end_date: Option<String>,
+        repeat: MaybeUndefined<EventRepeat>,
+        repeat_until: MaybeUndefined<String>,
+    ) -> Result<CalendarEvent<A>> {
+        calendar::update_event(
+            ctx,
+            self.app.as_ref(),
+            calendar::UpdateEventArgs {
+                id,
+                expected_version,
+                calendar_id,
+                title,
+                description,
+                all_day,
+                start_time,
+                end_time,
+                start_date,
+                end_date,
+                repeat,
+                repeat_until,
+            },
+        )
+        .await
+    }
+
+    /// Delete an event, every occurrence of it. Returns its ID.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    async fn delete_calendar_event(&self, ctx: &Context<'_>, id: ID) -> Result<ID> {
+        calendar::delete_event(ctx, self.app.as_ref(), &id).await
+    }
+
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    async fn create_calendar(
+        &self,
+        ctx: &Context<'_>,
+        location_id: ID,
+        name: String,
+        color: CalendarColor,
+    ) -> Result<Calendar<A>> {
+        calendar::create_calendar(ctx, self.app.as_ref(), &location_id, &name, color).await
+    }
+
+    /// Rename a calendar or change its colour; omitted arguments are left as they are.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    async fn update_calendar(
+        &self,
+        ctx: &Context<'_>,
+        id: ID,
+        name: Option<String>,
+        color: Option<CalendarColor>,
+    ) -> Result<Calendar<A>> {
+        calendar::update_calendar(ctx, self.app.as_ref(), &id, name.as_deref(), color).await
+    }
+
+    /// Delete a calendar. Its events stay, in no calendar. Returns its ID.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    async fn delete_calendar(&self, ctx: &Context<'_>, id: ID) -> Result<ID> {
+        calendar::delete_calendar(ctx, self.app.as_ref(), &id).await
     }
 
     /// Add an on-call role (e.g. Duty Officer) to a location, optionally with the people

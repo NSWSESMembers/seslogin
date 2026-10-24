@@ -11,8 +11,8 @@ use crate::db::Handler;
 
 use super::query::{Category, Location, Person, Session, User};
 use super::{
-    ApiTokenNameId, CategoryId, LocationId, MapLayerId, NitcEventId, NoteFolderId, PersonId,
-    SessionId, TaskListId, UserId,
+    ApiTokenNameId, CalendarId, CategoryId, LocationId, MapLayerId, NitcEventId, NoteFolderId,
+    PersonId, SessionId, TaskListId, UserId,
 };
 
 pub struct DatabaseLoader<A: App + HasDb + Send + Sync> {
@@ -169,6 +169,27 @@ impl<A: App + HasDb + Send + Sync + 'static> Loader<NoteFolderId> for DatabaseLo
             .app
             .db()
             .get_note_folders(&ids)
+            .await
+            .map_err(|e| Arc::new(anyhow!("DB error: {:?}", e)))?;
+        Ok(zip(keys.iter().cloned(), recs)
+            .filter_map(|(key, rec)| rec.map(|r| (key, r)))
+            .collect())
+    }
+}
+
+impl<A: App + HasDb + Send + Sync + 'static> Loader<CalendarId> for DatabaseLoader<A> {
+    type Value = db::Calendar;
+    type Error = Arc<anyhow::Error>;
+
+    async fn load(
+        &self,
+        keys: &[CalendarId],
+    ) -> std::result::Result<HashMap<CalendarId, db::Calendar>, Arc<anyhow::Error>> {
+        let ids = keys.iter().map(|k| k.0.as_str()).collect::<Vec<&str>>();
+        let recs = self
+            .app
+            .db()
+            .get_calendars(&ids)
             .await
             .map_err(|e| Arc::new(anyhow!("DB error: {:?}", e)))?;
         Ok(zip(keys.iter().cloned(), recs)
