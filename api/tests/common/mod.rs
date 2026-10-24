@@ -1918,6 +1918,7 @@ impl db::Handler for FakeDb {
             id: db::new_id(),
             location_id: pin.location_id.to_string(),
             layer_id: pin.layer_id.map(str::to_string),
+            pin_type: pin.pin_type.map(str::to_string),
             title: pin.title.to_string(),
             latitude: pin.latitude,
             longitude: pin.longitude,
@@ -1952,6 +1953,7 @@ impl db::Handler for FakeDb {
         match change {
             db::MapPinUpdateShape::Fields {
                 layer_id,
+                pin_type,
                 title,
                 latitude,
                 longitude,
@@ -1964,6 +1966,7 @@ impl db::Handler for FakeDb {
                     return Err(not_found());
                 }
                 p.layer_id = layer_id.map(str::to_string);
+                p.pin_type = pin_type.map(str::to_string);
                 p.title = title.to_string();
                 p.latitude = latitude;
                 p.longitude = longitude;

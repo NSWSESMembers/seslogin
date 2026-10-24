@@ -755,6 +755,7 @@ async fn map_pin_writes_are_recorded_against_their_location() {
         .create_map_pin(db::NewMapPin {
             location_id: "loc-a",
             layer_id: None,
+            pin_type: None,
             title: "Staging area",
             latitude: -33.5,
             longitude: 151.25,
@@ -769,6 +770,7 @@ async fn map_pin_writes_are_recorded_against_their_location() {
             &pin.id,
             db::MapPinUpdateShape::Fields {
                 layer_id: None,
+                pin_type: Some("entry"),
                 title: "Staging area",
                 latitude: -33.6,
                 longitude: 151.25,
@@ -786,6 +788,7 @@ async fn map_pin_writes_are_recorded_against_their_location() {
             &pin.id,
             db::MapPinUpdateShape::Fields {
                 layer_id: None,
+                pin_type: None,
                 title: "Stale",
                 latitude: 0.0,
                 longitude: 0.0,
@@ -818,11 +821,14 @@ async fn map_pin_writes_are_recorded_against_their_location() {
         vec!["title", "latitude", "longitude"]
     );
     assert_eq!(entries[1].action, AuditAction::Update);
-    assert_eq!(changed_fields(&entries[1]), vec!["latitude", "address"]);
+    assert_eq!(
+        changed_fields(&entries[1]),
+        vec!["latitude", "address", "pin_type"]
+    );
     assert_eq!(entries[2].action, AuditAction::Delete);
     assert_eq!(
         changed_fields(&entries[2]),
-        vec!["title", "latitude", "longitude", "address"]
+        vec!["title", "latitude", "longitude", "address", "pin_type"]
     );
 }
 

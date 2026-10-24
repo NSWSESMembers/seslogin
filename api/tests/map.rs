@@ -101,7 +101,7 @@ fn assert_code(response: &async_graphql::Response, code: &str) {
     );
 }
 
-const PIN_FIELDS: &str = "id title latitude longitude address note locationId version layer { id name } createdBy updatedBy createdAt updatedAt";
+const PIN_FIELDS: &str = "id type title latitude longitude address note locationId version layer { id name } createdBy updatedBy createdAt updatedAt";
 
 /// Add a pin at loc-a as an admin; `extra` is any further arguments.
 async fn create(app: &Arc<TestApp>, title: &str, extra: &str) -> serde_json::Value {
@@ -364,9 +364,12 @@ async fn update_map_pin_changes_only_what_it_is_given() {
     let pin = create(
         &app,
         "Tree",
-        &format!(r#", address: "Main Rd", note: "Blocking one lane", layerId: "{layer}""#),
+        &format!(
+            r#", address: "Main Rd", note: "Blocking one lane", layerId: "{layer}", type: HAZARD"#
+        ),
     )
     .await;
+    assert_eq!(pin["type"], "HAZARD");
     let id = pin["id"].as_str().unwrap();
     let response = run(
         &app,
@@ -384,21 +387,23 @@ async fn update_map_pin_changes_only_what_it_is_given() {
     assert_eq!(updated["address"], "Main Rd");
     assert_eq!(updated["note"], "Blocking one lane");
     assert_eq!(updated["layer"]["name"], "Hazards");
+    assert_eq!(updated["type"], "HAZARD");
     assert_eq!(updated["updatedBy"], "caller@example.com");
 
-    // null takes it off its layer; blank address and note clear them; one coordinate
-    // moves alone.
+    // null takes it off its layer and makes it a plain pin; blank address and note clear
+    // them; one coordinate moves alone.
     let response = run(
         &app,
         read_only(),
         &format!(
-            r#"mutation {{ updateMapPin(id: "{id}", expectedVersion: {}, layerId: null, address: "  ", note: " \n ", latitude: -33.9) {{ {PIN_FIELDS} }} }}"#,
+            r#"mutation {{ updateMapPin(id: "{id}", expectedVersion: {}, layerId: null, type: null, address: "  ", note: " \n ", latitude: -33.9) {{ {PIN_FIELDS} }} }}"#,
             updated["version"],
         ),
     )
     .await;
     let cleared = json(&response)["updateMapPin"].clone();
     assert!(cleared["layer"].is_null());
+    assert!(cleared["type"].is_null());
     assert_eq!(cleared["address"], "");
     assert_eq!(cleared["note"], "");
     assert_eq!(cleared["latitude"], -33.9);
@@ -495,4 +500,44 @@ async fn a_deleted_pin_is_gone() {
     )
     .await;
     assert_code(&update, "NOT_FOUND");
+}
+
+#[tokio::test]
+async fn a_pin_type_is_optional_and_unknown_ones_read_as_none() {
+    use seslogin::app::HasDb;
+    use seslogin::db::{Handler, NewMapPin};
+
+    let app = app();
+    let plain = create(&app, "Shed", "").await;
+    assert!(plain["type"].is_null());
+    for t in ["ACCESS", "ENTRY", "FLOOD", "HAZARD"] {
+        let pin = create(&app, t, &format!(", type: {t}")).await;
+        assert_eq!(pin["type"], t);
+    }
+
+    // A type written by a newer server is not an error, just no type.
+    let rec = app
+        .db()
+        .create_map_pin(NewMapPin {
+            location_id: "loc-a",
+            layer_id: None,
+            pin_type: Some("volcano"),
+            title: "Mountain",
+            latitude: 0.0,
+            longitude: 0.0,
+            address: "",
+            note: "",
+            created_by: None,
+        })
+        .await
+        .unwrap();
+    let response = run(
+        &app,
+        read_only(),
+        &format!(r#"{{ mapPin(id: "{}") {{ title type }} }}"#, rec.id),
+    )
+    .await;
+    let pin = json(&response)["mapPin"].clone();
+    assert_eq!(pin["title"], "Mountain");
+    assert!(pin["type"].is_null());
 }

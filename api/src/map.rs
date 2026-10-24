@@ -4,11 +4,42 @@
 //! A pin has a position (WGS 84 latitude and longitude, in degrees), a title that is one
 //! trimmed line, and an optional address and note. The address is free text, not
 //! geocoded: it is just what a person typed. The note is plain text kept as written.
+//! A pin can also have a type, which the app shows as an icon; a pin without one is a
+//! plain pin.
 
 pub const MAX_TITLE_CHARS: usize = 200;
 pub const MAX_ADDRESS_CHARS: usize = 500;
 pub const MAX_NOTE_CHARS: usize = 20_000;
 pub const MAX_LAYER_NAME_CHARS: usize = 100;
+
+/// What a pin marks. Stored as [`MapPinType::as_str`]; more are expected, so readers
+/// should tolerate a value they don't know.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum MapPinType {
+    /// A lock, gate or key: how to get in once there.
+    Access,
+    /// Where to enter a site, or the way in.
+    Entry,
+    Flood,
+    Hazard,
+}
+
+impl MapPinType {
+    pub const ALL: [Self; 4] = [Self::Access, Self::Entry, Self::Flood, Self::Hazard];
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Access => "access",
+            Self::Entry => "entry",
+            Self::Flood => "flood",
+            Self::Hazard => "hazard",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|t| t.as_str() == s)
+    }
+}
 
 pub fn validate_title(title: &str) -> Result<String, String> {
     let title = title.trim();
@@ -88,6 +119,14 @@ mod tests {
         assert!(validate_title("Two\nlines").is_err());
         assert!(validate_title(&"x".repeat(MAX_TITLE_CHARS)).is_ok());
         assert!(validate_title(&"x".repeat(MAX_TITLE_CHARS + 1)).is_err());
+    }
+
+    #[test]
+    fn pin_types_round_trip() {
+        for t in MapPinType::ALL {
+            assert_eq!(MapPinType::parse(t.as_str()), Some(t));
+        }
+        assert_eq!(MapPinType::parse("volcano"), None);
     }
 
     #[test]

@@ -658,6 +658,11 @@ type MapPin {
 	"""
 	title: String!
 	"""
+	What the pin marks; null for a plain pin, and for a type this server no longer
+	knows.
+	"""
+	type: MapPinType
+	"""
 	WGS 84 latitude, in degrees.
 	"""
 	latitude: Float!
@@ -694,6 +699,23 @@ type MapPin {
 	Email of the user who last changed the pin.
 	"""
 	updatedBy: String
+}
+
+"""
+What a pin marks, shown in the app as an icon. More types are expected, so clients
+should cope with a value they don't know.
+"""
+enum MapPinType {
+	"""
+	A lock, gate or key: how to get in once there.
+	"""
+	ACCESS
+	"""
+	Where to enter a site, or the way in.
+	"""
+	ENTRY
+	FLOOD
+	HAZARD
 }
 
 type MemberCategoryPeriodSummary {
@@ -911,16 +933,16 @@ type MutationRoot {
 	"""
 	deleteEquipmentReservation(id: ID!): ID!
 	"""
-	Add a pin to a location's shared map. Any user with access to the location may,
-	Read only included.
+	Add a pin to a location's shared map, optionally of a `type` (a plain pin
+	without). Any user with access to the location may, Read only included.
 	"""
-	createMapPin(locationId: ID!, title: String!, latitude: Float!, longitude: Float!, address: String, note: String, layerId: ID): MapPin!
+	createMapPin(locationId: ID!, title: String!, latitude: Float!, longitude: Float!, address: String, note: String, layerId: ID, type: MapPinType): MapPin!
 	"""
 	Change a map pin. Omitted arguments are left as they are; `layerId: null` takes
-	it off its layer. Fails with `CONFLICT` if the pin is no longer at
+	it off its layer and `type: null` makes it a plain pin. Fails with `CONFLICT` if the pin is no longer at
 	`expectedVersion`.
 	"""
-	updateMapPin(id: ID!, expectedVersion: Int!, title: String, latitude: Float, longitude: Float, address: String, note: String, layerId: ID): MapPin!
+	updateMapPin(id: ID!, expectedVersion: Int!, title: String, latitude: Float, longitude: Float, address: String, note: String, layerId: ID, type: MapPinType): MapPin!
 	"""
 	Delete a map pin. Returns its ID.
 	"""

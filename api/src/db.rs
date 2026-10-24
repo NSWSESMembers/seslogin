@@ -996,12 +996,14 @@ pub enum EquipmentReservationUpdateShape<'a> {
 ///
 /// Every pin belongs to its location; `layer_id` optionally puts it on one of the
 /// location's [`MapLayer`]s. `latitude` / `longitude` are WGS 84 degrees. `address` and
-/// `note` are free text, empty when absent.
+/// `note` are free text, empty when absent. `pin_type` is a
+/// [`MapPinType::as_str`](crate::map::MapPinType::as_str), absent for a plain pin.
 #[derive(Clone, Debug, PartialEq)]
 pub struct MapPin {
     pub id: String,
     pub location_id: String,
     pub layer_id: Option<String>,
+    pub pin_type: Option<String>,
     pub title: String,
     pub latitude: f64,
     pub longitude: f64,
@@ -1026,6 +1028,7 @@ impl HasID for MapPin {
 pub struct NewMapPin<'a> {
     pub location_id: &'a str,
     pub layer_id: Option<&'a str>,
+    pub pin_type: Option<&'a str>,
     pub title: &'a str,
     pub latitude: f64,
     pub longitude: f64,
@@ -1040,10 +1043,11 @@ pub struct NewMapPin<'a> {
 /// pin as it is after the write.
 #[derive(Clone, Debug, PartialEq)]
 pub enum MapPinUpdateShape<'a> {
-    /// Replace the editable fields. An absent layer, or an empty address or note, is
-    /// removed.
+    /// Replace the editable fields. An absent layer or type, or an empty address or
+    /// note, is removed.
     Fields {
         layer_id: Option<&'a str>,
+        pin_type: Option<&'a str>,
         title: &'a str,
         latitude: f64,
         longitude: f64,
