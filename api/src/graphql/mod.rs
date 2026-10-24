@@ -27,6 +27,7 @@ pub mod location_share;
 pub mod map;
 pub mod mutations;
 pub mod notes;
+pub mod notifications;
 pub mod on_call;
 pub mod pagination;
 pub mod query;

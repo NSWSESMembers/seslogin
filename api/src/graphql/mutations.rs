@@ -41,6 +41,7 @@ use super::error::{ApiError, ErrorCode};
 use super::location_share::{self, LocationShare, LocationSharePositionInput};
 use super::map::{self, MapLayer, MapPin, MapPinType};
 use super::notes::{self, Note, NoteFolder};
+use super::notifications::{self, MarkNotificationsReadPayload};
 use super::on_call::{self, OnCallRole};
 use super::query::{QuickPick, build_quick_pick};
 use super::reservations::{self, EquipmentReservation};
@@ -2516,6 +2517,27 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
     #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
     async fn stop_location_share(&self, ctx: &Context<'_>) -> Result<bool> {
         location_share::stop_location_share(ctx, self.app.as_ref()).await
+    }
+
+    /// Mark some of your notifications read (at most 200 IDs). One that is already read,
+    /// or is not yours, is ignored. Returns how many you still have unread.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    async fn mark_notifications_read(
+        &self,
+        ctx: &Context<'_>,
+        ids: Vec<ID>,
+    ) -> Result<MarkNotificationsReadPayload> {
+        notifications::mark_notifications_read(ctx, self.app.as_ref(), ids).await
+    }
+
+    /// Mark all your notifications read. Returns how many you still have unread (usually
+    /// none).
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    async fn mark_all_notifications_read(
+        &self,
+        ctx: &Context<'_>,
+    ) -> Result<MarkNotificationsReadPayload> {
+        notifications::mark_all_notifications_read(ctx, self.app.as_ref()).await
     }
 
     /// Add an on-call role (e.g. Duty Officer) to a location, optionally with the people

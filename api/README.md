@@ -829,6 +829,59 @@ mutation {
 }
 ```
 
+## Notifications
+
+Each user's in-app notification inbox, read by the Tally app (`src/graphql/notifications.rs`,
+producers' API in `src/notifications.rs`, storage in SCHEMA.md's `notification` section).
+
+- **Model:** denormalised and fanned out on write. An event that notifies several users stores
+  a full copy per recipient (they share a `notification_id`), so the inbox is one query with no
+  join. A notification has a `source` (the producing app, e.g. `reservations`), a `kind`
+  (`reservation.for_you`), a `title`, an optional `body`, an optional `locationId` and an
+  optional `targetType`/`targetId` for what tapping it opens. The table is keyed by recipient
+  user and a time-ordered `sk`, with a sparse `unread-index` for counting and listing unread.
+  Rows are removed by the TTL 90 days after creation, read or not.
+- **Producing one:** call `notifications::notify(app, NewNotification, Audience)` *after* the
+  business write has succeeded. `NewNotification::new(source, kind, title)` takes `.location()`,
+  `.body()` and `.target(type, id)`. An `Audience` is `Users(ids)`, `Person(person_id)` (every
+  user linked to that member through `User.person_id`) or `Location { location_id,
+  include_read_only }` (users holding an Admin grant there, plus Read only grants if asked;
+  super users are not implied). Only enabled users are notified, the acting user (the current
+  audit-context actor, if it is a user) is left out, and nobody is notified twice. `Person` and
+  `Location` read every user, there being no index from either to its users, which is fine at
+  the current number of users.
+- **Best-effort:** like the audit log, `notify` returns `()`: a failure is logged at `error!`
+  and swallowed, because the thing it announces has already happened. The notification methods
+  of `db::Handler` pass through `AuditingHandler` unaudited: the business write is audited where
+  it is made, and read state is a personal marker.
+- **API:** `Query.myNotifications(first, after, unreadOnly)` is a Relay connection, newest
+  first, 50 by default and 200 at most, whose cursor and node `id` are the row's `sk`. Each
+  node has `source`, `kind`, `title`, `body`, `locationId`, `targetType`, `targetId`,
+  `createdAt`, `readAt` and `read`. `Query.myUnreadNotificationCount` is capped at 100 (show
+  "99+" above 99). `markNotificationsRead(ids)` (at most 200) and `markAllNotificationsRead`
+  return `{ unreadCount }`. Marking is idempotent: an ID that is already read, or that is not
+  the caller's or does not exist, is ignored.
+- **Who:** any enabled *user*, including a connected app acting for one (Tally); kiosk
+  sessions, API tokens and edit links are refused. Everything is the caller's own, because the
+  table is keyed by their user ID.
+- **Access lost:** a notification with a `locationId` the caller no longer has either role at
+  (and is not a super user for) is left out of `myNotifications`, so stored text does not
+  reach someone who lost access. `myUnreadNotificationCount` reads an index without the rows
+  and so can still count such a notification, and the count can lag a write by a moment.
+- **Tables:** only the test table (`seslogin_test_notification`) exists so far, so a deployed
+  API on the prod tables fails these calls, and nothing else (a failed `notify` is only
+  logged).
+
+```graphql
+{
+  myNotifications(first: 20, unreadOnly: true) {
+    edges { cursor node { id title body targetType targetId createdAt } }
+    pageInfo { hasNextPage endCursor }
+  }
+  myUnreadNotificationCount
+}
+```
+
 ## Audit log
 
 Every business write (people, periods, kiosk sessions, users, locations, categories, API tokens, passkeys, OAuth grants, …) is recorded in the `{DB_PREFIX}_audit_log` DynamoDB table: who did it, which location(s) it touched, and which fields changed from what to what. The table is defined in `infra/dynamodb*.tf` and documented in `SCHEMA.md`; it must exist (`terraform apply`) for entries to land. It is read through GraphQL (below); there is no UI for it yet.

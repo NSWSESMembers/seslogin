@@ -980,6 +980,17 @@ enum MapPinType {
 	HAZARD
 }
 
+"""
+The result of marking notifications read.
+"""
+type MarkNotificationsReadPayload {
+	"""
+	How many notifications are still unread, counting no further than 100 (show
+	"99+" above 99). Read from an index that can lag a moment behind the write.
+	"""
+	unreadCount: Int!
+}
+
 type MemberCategoryPeriodSummary {
 	personId: ID!
 	person: Person!
@@ -1262,6 +1273,16 @@ type MutationRoot {
 	"""
 	stopLocationShare: Boolean!
 	"""
+	Mark some of your notifications read (at most 200 IDs). One that is already read,
+	or is not yours, is ignored. Returns how many you still have unread.
+	"""
+	markNotificationsRead(ids: [ID!]!): MarkNotificationsReadPayload!
+	"""
+	Mark all your notifications read. Returns how many you still have unread (usually
+	none).
+	"""
+	markAllNotificationsRead: MarkNotificationsReadPayload!
+	"""
 	Add an on-call role (e.g. Duty Officer) to a location, optionally with the people
 	in it. Anyone in it needs a primary. Any user with access to the location may,
 	Read only included.
@@ -1503,6 +1524,73 @@ type NoteFolder {
 	locationId: ID!
 	location: Location!
 	createdAt: Int!
+}
+
+"""
+One entry in the caller's notification inbox.
+"""
+type Notification {
+	"""
+	Unique per notification for the caller; also its paging cursor.
+	"""
+	id: ID!
+	"""
+	The app that produced it, e.g. `reservations`.
+	"""
+	source: String!
+	"""
+	What happened, e.g. `reservation.for_you`.
+	"""
+	kind: String!
+	title: String!
+	body: String
+	"""
+	The location it is about, if any.
+	"""
+	locationId: ID
+	"""
+	What to open when it is tapped, e.g. `reservation`, with `targetId`.
+	"""
+	targetType: String
+	targetId: ID
+	"""
+	Unix seconds.
+	"""
+	createdAt: Int!
+	"""
+	Unix seconds when it was marked read; null while unread.
+	"""
+	readAt: Int
+	read: Boolean!
+}
+
+type NotificationConnection {
+	"""
+	Information to aid in pagination.
+	"""
+	pageInfo: PageInfo!
+	"""
+	A list of edges.
+	"""
+	edges: [NotificationEdge!]!
+	"""
+	A list of nodes.
+	"""
+	nodes: [Notification!]!
+}
+
+"""
+An edge in a connection.
+"""
+type NotificationEdge {
+	"""
+	The item at the end of the edge
+	"""
+	node: Notification!
+	"""
+	A cursor for use in pagination
+	"""
+	cursor: String!
 }
 
 """
@@ -1876,6 +1964,17 @@ type QueryRoot {
 	latest position); null otherwise.
 	"""
 	myLocationShare: LocationShare
+	"""
+	The caller's in-app notifications, newest first. `unreadOnly` lists just the ones
+	not yet read. At most 200 per page, 50 by default; a notification about a location
+	the caller can no longer access is left out.
+	"""
+	myNotifications(first: Int, after: String, unreadOnly: Boolean): NotificationConnection!
+	"""
+	How many notifications the caller has unread, counting no further than 100 (show
+	"99+" above 99).
+	"""
+	myUnreadNotificationCount: Int!
 	"""
 	One on-call role; null if it does not exist or was deleted.
 	"""
