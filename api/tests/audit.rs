@@ -1058,3 +1058,49 @@ async fn calendar_writes_are_recorded_against_their_location() {
     assert_eq!(changed_fields(&entries[1]), vec!["color"]);
     assert_eq!(changed_fields(&entries[2]), vec!["name", "color"]);
 }
+
+#[tokio::test]
+async fn location_shares_record_starting_and_stopping_but_not_positions() {
+    let app = app();
+    let position = db::SharedPosition {
+        latitude: -33.7,
+        longitude: 151.1,
+        accuracy: Some(5.0),
+        altitude: None,
+        altitude_accuracy: None,
+        heading: None,
+        speed: None,
+        recorded_at: 100,
+    };
+    let share = db::LocationShare {
+        user_id: "caller".to_string(),
+        location_id: "loc-a".to_string(),
+        position,
+        interval_secs: 60,
+        started_at: 100,
+        ends_at: u64::MAX,
+        updated_at: 100,
+        expires_at: 520,
+    };
+    app.db.put_location_share(&share).await.unwrap();
+    app.db
+        .update_location_share_position("caller", &position, 160, 580)
+        .await
+        .unwrap();
+    app.db.delete_location_share("caller").await.unwrap();
+    // Nothing left to stop, so nothing to record.
+    app.db.delete_location_share("caller").await.unwrap();
+    let entries = app.db.inner().audit_entries();
+    assert_eq!(entries.len(), 2);
+    for entry in &entries {
+        assert_eq!(entry.entity_type, AuditEntityType::LocationShare);
+        assert_eq!(entry.entity_id, "caller");
+        assert_eq!(entry.location_ids, vec!["loc-a".to_string()]);
+        assert_eq!(
+            changed_fields(entry),
+            vec!["started_at", "ends_at", "interval_secs"]
+        );
+    }
+    assert_eq!(entries[0].action, AuditAction::Create);
+    assert_eq!(entries[1].action, AuditAction::Delete);
+}

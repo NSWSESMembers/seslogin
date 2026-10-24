@@ -34,6 +34,7 @@ use super::auth::{AuthGuard, AuthRequirement, can_write_location, require_locati
 use super::calendar::{self, Calendar, CalendarEvent, CalendarEventOccurrence};
 use super::dataloader::DatabaseLoader;
 use super::equipment::{self, Equipment};
+use super::location_share::{self, LocationShare};
 use super::map::{self, MapLayer, MapPin};
 use super::notes::{self, Note, NoteFolder};
 use super::on_call::{self, OnCallRole};
@@ -2587,6 +2588,14 @@ impl<A: App + HasDb + Send + Sync> Location<A> {
         calendar::location_calendar_events(ctx, &self.rec.id, from, to).await
     }
 
+    /// Everyone sharing their position with the location ("Locate"), most recently
+    /// updated first. A share shows until 7 minutes after its latest position, so
+    /// this includes shares that have just ended (`active: false`). Users only (Admin
+    /// or Read only); see `graphql::location_share`.
+    async fn location_shares(&self, ctx: &Context<'_>) -> Result<Vec<LocationShare<A>>> {
+        location_share::location_shares(ctx, &self.rec.id).await
+    }
+
     /// The location's on-call roles (Duty Officer, …) and who holds each now, by name.
     /// Users only (Admin or Read only); see `graphql::on_call`.
     async fn on_call_roles(&self, ctx: &Context<'_>) -> Result<Vec<OnCallRole<A>>> {
@@ -3670,6 +3679,13 @@ impl<A: App + HasDb + HasRealtime + Send + Sync + 'static> QueryRoot<A> {
     #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
     async fn calendar_event(&self, ctx: &Context<'_>, id: ID) -> Result<Option<CalendarEvent<A>>> {
         calendar::calendar_event(ctx, &id).await
+    }
+
+    /// The caller's own location share while it still shows (until 7 minutes after its
+    /// latest position); null otherwise.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    async fn my_location_share(&self, ctx: &Context<'_>) -> Result<Option<LocationShare<A>>> {
+        location_share::my_location_share(ctx).await
     }
 
     /// One on-call role; null if it does not exist or was deleted.

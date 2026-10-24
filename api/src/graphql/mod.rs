@@ -23,6 +23,7 @@ pub mod equipment;
 pub mod error;
 #[cfg(debug_assertions)]
 pub mod error_injection;
+pub mod location_share;
 pub mod map;
 pub mod mutations;
 pub mod notes;

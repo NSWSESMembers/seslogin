@@ -29,6 +29,7 @@ export const ENTITY_TYPE_LABELS = {
   MAP_LAYER: "Map layer",
   CALENDAR: "Calendar",
   CALENDAR_EVENT: "Calendar event",
+  LOCATION_SHARE: "Location share",
 } as const;
 
 export type EntityTypeKey = keyof typeof ENTITY_TYPE_LABELS;
