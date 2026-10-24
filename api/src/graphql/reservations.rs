@@ -426,6 +426,9 @@ pub(super) async fn create_reservation<A: App + HasDb + Send + Sync + 'static>(
             created_by: caller_id(ctx),
         })
         .await?;
+    if let Some(user_id) = rules::newly_reserved_for(None, user_id, caller_id(ctx)) {
+        rules::notify_reserved_for(app, &rec, user_id).await;
+    }
     Ok(EquipmentReservation::new(rec))
 }
 
@@ -477,6 +480,7 @@ pub(super) async fn update_reservation<A: App + HasDb + Send + Sync + 'static>(
         Some(d) => rules::validate_description(d).map_err(bad_request)?,
         None => rec.description.clone(),
     };
+    let previous_user = rec.reserved_for_user_id.clone();
     let rec = app
         .db()
         .update_equipment_reservation(
@@ -497,6 +501,11 @@ pub(super) async fn update_reservation<A: App + HasDb + Send + Sync + 'static>(
             db::Error::NotFound(_) => conflict(),
             e => e.into(),
         })?;
+    if let Some(user_id) =
+        rules::newly_reserved_for(previous_user.as_deref(), user_id, caller_id(ctx))
+    {
+        rules::notify_reserved_for(app, &rec, user_id).await;
+    }
     Ok(EquipmentReservation::new(rec))
 }
 

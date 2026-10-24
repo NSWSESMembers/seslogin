@@ -22,6 +22,7 @@ use super::{LocationId, PersonId, UserId};
 use crate::app::{App, HasDb};
 use crate::auth::AuthInfo;
 use crate::db::{self, Handler};
+use crate::notifications::{Audience, NewNotification, notify};
 use crate::on_call;
 
 pub struct OnCallRole<A: App + HasDb + 'static> {
@@ -253,6 +254,49 @@ fn conflict() -> anyhow::Error {
     .into()
 }
 
+/// Tell the people newly put in `rec` (the role as saved) that they are: the primary if
+/// they were not already, and each secondary who was not already a secondary. Someone
+/// moved between primary and secondary is told of the new position. `previous_primary`
+/// and `previous_secondaries` are the role before the change (empty for a new role).
+async fn notify_assigned(
+    app: &(impl HasDb + Sync),
+    rec: &db::OnCallRole,
+    previous_primary: Option<&str>,
+    previous_secondaries: &[String],
+) {
+    let send = |person_id: String, title: String| {
+        notify(
+            app,
+            NewNotification::new("oncall", "oncall.assigned", &title)
+                .location(&rec.location_id)
+                .target("on_call_role", &rec.id),
+            Audience::Person(person_id),
+        )
+    };
+    if let Some(primary) = rec
+        .primary_person_id
+        .as_deref()
+        .filter(|p| Some(*p) != previous_primary)
+    {
+        send(
+            primary.to_string(),
+            format!("You're now primary for {}", rec.name),
+        )
+        .await;
+    }
+    for person_id in rec
+        .secondary_person_ids
+        .iter()
+        .filter(|p| !previous_secondaries.contains(p))
+    {
+        send(
+            person_id.clone(),
+            format!("You're now a secondary for {}", rec.name),
+        )
+        .await;
+    }
+}
+
 pub(super) struct CreateOnCallRoleArgs {
     pub location_id: ID,
     pub name: String,
@@ -298,6 +342,7 @@ pub(super) async fn create_on_call_role<A: App + HasDb + Send + Sync + 'static>(
             created_by: caller_id(ctx),
         })
         .await?;
+    notify_assigned(app, &rec, None, &[]).await;
     Ok(OnCallRole::new(rec))
 }
 
@@ -366,6 +411,10 @@ pub(super) async fn update_on_call_role<A: App + HasDb + Send + Sync + 'static>(
         Some(crate::clock::now_sec())
     };
 
+    let previous = (
+        rec.primary_person_id.clone(),
+        rec.secondary_person_ids.clone(),
+    );
     let rec = app
         .db()
         .update_on_call_role(
@@ -386,6 +435,7 @@ pub(super) async fn update_on_call_role<A: App + HasDb + Send + Sync + 'static>(
             db::Error::NotFound(_) => conflict(),
             e => e.into(),
         })?;
+    notify_assigned(app, &rec, previous.0.as_deref(), &previous.1).await;
     Ok(OnCallRole::new(rec))
 }
 
