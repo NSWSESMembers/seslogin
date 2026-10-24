@@ -501,7 +501,7 @@ A location's equipment register ("Equipment").
 - `equipment_type` (S) — `vehicle`, `trailer`, `vessel`, `radio`, `device`, `bag`, `box` or `tool`; more will be added
 - `name` (S) — one line of plain text
 - `description` (S, optional) — plain text; absent when empty
-- `status` (S) — `in_service`, `out_of_service`, `missing` or `borrowed`. Changed only together with a new `equipment_log` row, in one transaction conditional on the status it changes from
+- `status` (S) — `in_service`, `has_issue` (usable, but something needs fixing), `out_of_service`, `missing` or `borrowed`. Changed only together with a new `equipment_log` row, in one transaction conditional on the status it changes from
 - `status_changed_at` (N) — when the status last changed, or the equipment was added
 - `last_checked_at` (N, optional) — when someone last logged a check
 - `v` (N) — version, bumped by every edit (not by log entries); edits are conditional on it
