@@ -324,6 +324,7 @@ const TRANSIENT_TABLES: &[&str] = &[
     "map_layer",
     "calendar",
     "calendar_event",
+    "location_share",
 ];
 
 async fn clear() -> Result<()> {

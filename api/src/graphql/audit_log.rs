@@ -79,6 +79,7 @@ pub enum AuditEntityType {
     MapLayer,
     Calendar,
     CalendarEvent,
+    LocationShare,
 }
 
 impl From<db::AuditEntityType> for AuditEntityType {
@@ -108,6 +109,7 @@ impl From<db::AuditEntityType> for AuditEntityType {
             db::AuditEntityType::MapLayer => Self::MapLayer,
             db::AuditEntityType::Calendar => Self::Calendar,
             db::AuditEntityType::CalendarEvent => Self::CalendarEvent,
+            db::AuditEntityType::LocationShare => Self::LocationShare,
         }
     }
 }
@@ -139,6 +141,7 @@ impl From<AuditEntityType> for db::AuditEntityType {
             AuditEntityType::MapLayer => Self::MapLayer,
             AuditEntityType::Calendar => Self::Calendar,
             AuditEntityType::CalendarEvent => Self::CalendarEvent,
+            AuditEntityType::LocationShare => Self::LocationShare,
         }
     }
 }

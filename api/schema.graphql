@@ -123,6 +123,7 @@ enum AuditEntityType {
 	MAP_LAYER
 	CALENDAR
 	CALENDAR_EVENT
+	LOCATION_SHARE
 }
 
 type AuditEntry {
@@ -749,6 +750,13 @@ type Location {
 	"""
 	calendarEvents(from: Int!, to: Int!): [CalendarEventOccurrence!]!
 	"""
+	Everyone sharing their position with the location ("Locate"), most recently
+	updated first. A share shows until 7 minutes after its latest position, so
+	this includes shares that have just ended (`active: false`). Users only (Admin
+	or Read only); see `graphql::location_share`.
+	"""
+	locationShares: [LocationShare!]!
+	"""
 	The location's on-call roles (Duty Officer, …) and who holds each now, by name.
 	Users only (Admin or Read only); see `graphql::on_call`.
 	"""
@@ -790,6 +798,111 @@ type LocationRecentCategory {
 	most-recent first.
 	"""
 	recentPeople: [Person!]!
+}
+
+type LocationShare {
+	"""
+	The sharing user's ID: a user has at most one share.
+	"""
+	id: ID!
+	"""
+	Who is sharing: their member's name, or their email if their account isn't
+	linked to a member.
+	"""
+	name: String!
+	"""
+	The member the sharing user's account is linked to; null if it isn't.
+	"""
+	person: Person
+	"""
+	Whether the caller is the one sharing.
+	"""
+	isMine: Boolean!
+	locationId: ID!
+	"""
+	The location it is shared with.
+	"""
+	location: Location!
+	"""
+	WGS 84 degrees.
+	"""
+	latitude: Float!
+	longitude: Float!
+	"""
+	Radius of uncertainty of the position, in metres; null if the phone didn't say.
+	"""
+	accuracy: Float
+	"""
+	Metres above the WGS 84 ellipsoid.
+	"""
+	altitude: Float
+	altitudeAccuracy: Float
+	"""
+	Direction of travel, degrees clockwise from north; null when unknown.
+	"""
+	heading: Float
+	"""
+	Metres per second; null when unknown.
+	"""
+	speed: Float
+	"""
+	When the phone took the fix (Unix seconds).
+	"""
+	recordedAt: Int!
+	"""
+	When the latest position arrived (Unix seconds).
+	"""
+	updatedAt: Int!
+	"""
+	How often the phone reports in, in seconds (60 to 300).
+	"""
+	intervalSeconds: Int!
+	startedAt: Int!
+	"""
+	When sharing stops (Unix seconds); later positions are refused.
+	"""
+	endsAt: Int!
+	"""
+	When the share stops showing: 7 minutes after the latest position.
+	"""
+	visibleUntil: Int!
+	"""
+	Whether it is still being shared, i.e. `endsAt` has not passed. An ended share
+	still shows until `visibleUntil`.
+	"""
+	active: Boolean!
+}
+
+"""
+Where the phone is, as it reports it. Leave out what it doesn't know.
+"""
+input LocationSharePositionInput {
+	"""
+	WGS 84 degrees.
+	"""
+	latitude: Float!
+	longitude: Float!
+	"""
+	Radius of uncertainty, in metres.
+	"""
+	accuracy: Float
+	"""
+	Metres above the WGS 84 ellipsoid.
+	"""
+	altitude: Float
+	altitudeAccuracy: Float
+	"""
+	Direction of travel, degrees clockwise from north; negative for unknown.
+	"""
+	heading: Float
+	"""
+	Metres per second; negative for unknown.
+	"""
+	speed: Float
+	"""
+	When the phone took the fix (Unix seconds); now when omitted.
+	"""
+	recordedAt: Int
 }
 
 type MapLayer {
@@ -1131,6 +1244,23 @@ type MutationRoot {
 	Delete a calendar. Its events stay, in no calendar. Returns its ID.
 	"""
 	deleteCalendar(id: ID!): ID!
+	"""
+	Share your position with a location's members for `durationMinutes` (5, 15, 30
+	or 60), saying how often you will send it (`intervalSeconds`, 60 to 300).
+	Replaces any share you already have. Any user with access to the location may,
+	Read only included.
+	"""
+	startLocationShare(locationId: ID!, durationMinutes: Int!, intervalSeconds: Int!, position: LocationSharePositionInput!): LocationShare!
+	"""
+	Send your latest position for your share. Fails with `NOT_FOUND` once it has
+	ended or been stopped: stop sending then.
+	"""
+	updateLocationShare(position: LocationSharePositionInput!): LocationShare!
+	"""
+	Stop sharing your position; it stops showing straight away. False if you
+	weren't sharing.
+	"""
+	stopLocationShare: Boolean!
 	"""
 	Add an on-call role (e.g. Duty Officer) to a location, optionally with the people
 	in it. Anyone in it needs a primary. Any user with access to the location may,
@@ -1741,6 +1871,11 @@ type QueryRoot {
 	One calendar event; null if it does not exist or was deleted.
 	"""
 	calendarEvent(id: ID!): CalendarEvent
+	"""
+	The caller's own location share while it still shows (until 7 minutes after its
+	latest position); null otherwise.
+	"""
+	myLocationShare: LocationShare
 	"""
 	One on-call role; null if it does not exist or was deleted.
 	"""
