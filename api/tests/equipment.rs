@@ -534,3 +534,15 @@ async fn deleted_equipment_is_gone() {
         assert_code(&run(&app, read_only(), &query).await, "NOT_FOUND");
     }
 }
+
+#[tokio::test]
+async fn equipment_can_be_usable_with_an_issue() {
+    let app = app();
+    let item = create(&app, "Truck 2", "").await;
+    let id = item["id"].as_str().unwrap();
+    let response = change_status(&app, id, "HAS_ISSUE", "Left indicator out").await;
+    let changed = json(&response)["changeEquipmentStatus"].clone();
+    assert_eq!(changed["status"], "HAS_ISSUE");
+    assert_eq!(changed["log"][0]["previousStatus"], "IN_SERVICE");
+    assert_eq!(changed["log"][0]["status"], "HAS_ISSUE");
+}

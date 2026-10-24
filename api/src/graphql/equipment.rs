@@ -69,6 +69,8 @@ impl From<EquipmentType> for Type {
 #[derive(Enum, Copy, Clone, Debug, Eq, PartialEq)]
 pub enum EquipmentStatus {
     InService,
+    /// Can still be used, but has an issue that needs fixing.
+    HasIssue,
     OutOfService,
     Missing,
     Borrowed,
@@ -78,6 +80,7 @@ impl From<Status> for EquipmentStatus {
     fn from(s: Status) -> Self {
         match s {
             Status::InService => Self::InService,
+            Status::HasIssue => Self::HasIssue,
             Status::OutOfService => Self::OutOfService,
             Status::Missing => Self::Missing,
             Status::Borrowed => Self::Borrowed,
@@ -89,6 +92,7 @@ impl From<EquipmentStatus> for Status {
     fn from(s: EquipmentStatus) -> Self {
         match s {
             EquipmentStatus::InService => Self::InService,
+            EquipmentStatus::HasIssue => Self::HasIssue,
             EquipmentStatus::OutOfService => Self::OutOfService,
             EquipmentStatus::Missing => Self::Missing,
             EquipmentStatus::Borrowed => Self::Borrowed,

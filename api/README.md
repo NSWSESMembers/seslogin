@@ -582,7 +582,8 @@ A location's equipment register, used by the Tally app (`src/graphql/equipment.r
 - **Fields:** `type` is `VEHICLE`, `TRAILER`, `VESSEL`, `RADIO`, `DEVICE`, `BAG`, `BOX` or `TOOL`
   (more will come, so clients should cope with one they don't know). `name` is one trimmed
   line (max 200 characters); `description` is trimmed plain text (max 5,000). `status` is
-  `IN_SERVICE`, `OUT_OF_SERVICE`, `MISSING` or `BORROWED`.
+  `IN_SERVICE`, `HAS_ISSUE` (still usable, but something needs fixing), `OUT_OF_SERVICE`,
+  `MISSING` or `BORROWED`.
 - **The log:** the status is never edited directly. `changeEquipmentStatus(id, status,
   comment)` changes it and logs the change with a comment saying why (required, max 1,000);
   `checkEquipment(id, comment)` logs that the caller checked it, comment optional, and leaves
