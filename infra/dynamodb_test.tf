@@ -877,6 +877,48 @@ resource "aws_dynamodb_table" "test_location_share" {
   }
 }
 
+# Notifications: each user's in-app inbox, one full copy of a notification per
+# recipient (user_id, newest first by sk). unread-index is sparse: rows carry
+# unread_user_id only while unread, so counting and listing unread is a small
+# query. Rows are removed by the TTL 90 days after they were created.
+resource "aws_dynamodb_table" "test_notification" {
+  name         = "${var.db_prefix_test}_notification"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "user_id"
+  range_key    = "sk"
+
+  attribute {
+    name = "user_id"
+    type = "S"
+  }
+  attribute {
+    name = "sk"
+    type = "S"
+  }
+  attribute {
+    name = "unread_user_id"
+    type = "S"
+  }
+
+  global_secondary_index {
+    name = "unread-index"
+    key_schema {
+      attribute_name = "unread_user_id"
+      key_type       = "HASH"
+    }
+    key_schema {
+      attribute_name = "sk"
+      key_type       = "RANGE"
+    }
+    projection_type = "KEYS_ONLY"
+  }
+
+  ttl {
+    attribute_name = "expires_at"
+    enabled        = true
+  }
+}
+
 # ── Test API access to the test tables ────────────────────────────────────────
 # seslogin-test-api's DB_PREFIX is var.db_prefix_test, and its dynamodb-access
 # policy in dynamodb.tf is scoped to ${var.db_prefix_test}* only, so the test

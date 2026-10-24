@@ -49,6 +49,8 @@ struct Table {
     /// Suffix after `${DB_PREFIX}_`.
     name: &'static str,
     hash: &'static str,
+    /// The table's range key, if it has one.
+    range: Option<&'static str>,
     /// Every attribute used as a table or index key, with its type.
     attrs: &'static [Attr],
     gsis: &'static [Gsi],
@@ -76,10 +78,20 @@ const fn keys_only(name: &'static str, hash: &'static str) -> Gsi {
     }
 }
 
+const fn keys_only_ranged(name: &'static str, hash: &'static str, range: &'static str) -> Gsi {
+    Gsi {
+        name,
+        hash,
+        range: Some(range),
+        keys_only: true,
+    }
+}
+
 const TABLES: &[Table] = &[
     Table {
         name: "user",
         hash: "id",
+        range: None,
         attrs: &[Attr("id", S), Attr("email", S)],
         gsis: &[keys_only("email-index", "email")],
         ttl: None,
@@ -87,6 +99,7 @@ const TABLES: &[Table] = &[
     Table {
         name: "category",
         hash: "id",
+        range: None,
         attrs: &[Attr("id", S), Attr("nitc_group_id", S)],
         gsis: &[all("nitc_group_id-index", "nitc_group_id", None)],
         ttl: None,
@@ -94,6 +107,7 @@ const TABLES: &[Table] = &[
     Table {
         name: "location",
         hash: "id",
+        range: None,
         attrs: &[Attr("id", S)],
         gsis: &[],
         ttl: None,
@@ -101,6 +115,7 @@ const TABLES: &[Table] = &[
     Table {
         name: "period",
         hash: "id",
+        range: None,
         attrs: &[
             Attr("id", S),
             Attr("person_id", S),
@@ -132,6 +147,7 @@ const TABLES: &[Table] = &[
     Table {
         name: "person",
         hash: "id",
+        range: None,
         attrs: &[
             Attr("id", S),
             Attr("location_id", S),
@@ -155,6 +171,7 @@ const TABLES: &[Table] = &[
     Table {
         name: "session",
         hash: "id",
+        range: None,
         attrs: &[
             Attr("id", S),
             Attr("code", S),
@@ -172,6 +189,7 @@ const TABLES: &[Table] = &[
     Table {
         name: "api_token",
         hash: "id",
+        range: None,
         attrs: &[Attr("id", S), Attr("active", N)],
         gsis: &[all("active-index", "active", None)],
         ttl: None,
@@ -179,6 +197,7 @@ const TABLES: &[Table] = &[
     Table {
         name: "nitc_group",
         hash: "id",
+        range: None,
         attrs: &[Attr("id", S)],
         gsis: &[],
         ttl: None,
@@ -186,6 +205,7 @@ const TABLES: &[Table] = &[
     Table {
         name: "nitc_tag",
         hash: "id",
+        range: None,
         attrs: &[Attr("id", S)],
         gsis: &[],
         ttl: None,
@@ -193,6 +213,7 @@ const TABLES: &[Table] = &[
     Table {
         name: "nitc_event",
         hash: "id",
+        range: None,
         attrs: &[Attr("id", S), Attr("location_id", S), Attr("topic_date", S)],
         gsis: &[all(
             "location_id-topic_date-index",
@@ -204,6 +225,7 @@ const TABLES: &[Table] = &[
     Table {
         name: "login_code",
         hash: "email",
+        range: None,
         attrs: &[Attr("email", S)],
         gsis: &[],
         ttl: Some("expires_at"),
@@ -211,6 +233,7 @@ const TABLES: &[Table] = &[
     Table {
         name: "user_token",
         hash: "id",
+        range: None,
         attrs: &[Attr("id", S)],
         gsis: &[],
         ttl: Some("expires_at"),
@@ -218,6 +241,7 @@ const TABLES: &[Table] = &[
     Table {
         name: "webauthn_credential",
         hash: "id",
+        range: None,
         attrs: &[Attr("id", S), Attr("user_id", S)],
         gsis: &[all("user_id-index", "user_id", None)],
         ttl: None,
@@ -225,6 +249,7 @@ const TABLES: &[Table] = &[
     Table {
         name: "ephemeral_state",
         hash: "id",
+        range: None,
         attrs: &[Attr("id", S)],
         gsis: &[],
         ttl: Some("expires_at"),
@@ -232,6 +257,7 @@ const TABLES: &[Table] = &[
     Table {
         name: "oauth_grant",
         hash: "id",
+        range: None,
         attrs: &[Attr("id", S), Attr("user_id", S)],
         gsis: &[all("user_id-index", "user_id", None)],
         ttl: Some("expires_at"),
@@ -239,6 +265,7 @@ const TABLES: &[Table] = &[
     Table {
         name: "audit_log",
         hash: "id",
+        range: None,
         attrs: &[
             Attr("id", S),
             Attr("location_id", S),
@@ -254,6 +281,7 @@ const TABLES: &[Table] = &[
     Table {
         name: "task",
         hash: "id",
+        range: None,
         attrs: &[
             Attr("id", S),
             Attr("open_location_id", S),
@@ -269,6 +297,7 @@ const TABLES: &[Table] = &[
     Table {
         name: "task_list",
         hash: "id",
+        range: None,
         attrs: &[Attr("id", S), Attr("location_id", S)],
         gsis: &[all("location_id-index", "location_id", None)],
         ttl: None,
@@ -276,6 +305,7 @@ const TABLES: &[Table] = &[
     Table {
         name: "note",
         hash: "id",
+        range: None,
         attrs: &[Attr("id", S), Attr("location_id", S)],
         gsis: &[all("location_id-index", "location_id", None)],
         ttl: None,
@@ -283,6 +313,7 @@ const TABLES: &[Table] = &[
     Table {
         name: "note_folder",
         hash: "id",
+        range: None,
         attrs: &[Attr("id", S), Attr("location_id", S)],
         gsis: &[all("location_id-index", "location_id", None)],
         ttl: None,
@@ -290,6 +321,7 @@ const TABLES: &[Table] = &[
     Table {
         name: "map_pin",
         hash: "id",
+        range: None,
         attrs: &[Attr("id", S), Attr("location_id", S)],
         gsis: &[all("location_id-index", "location_id", None)],
         ttl: None,
@@ -297,6 +329,7 @@ const TABLES: &[Table] = &[
     Table {
         name: "map_layer",
         hash: "id",
+        range: None,
         attrs: &[Attr("id", S), Attr("location_id", S)],
         gsis: &[all("location_id-index", "location_id", None)],
         ttl: None,
@@ -304,6 +337,7 @@ const TABLES: &[Table] = &[
     Table {
         name: "calendar",
         hash: "id",
+        range: None,
         attrs: &[Attr("id", S), Attr("location_id", S)],
         gsis: &[all("location_id-index", "location_id", None)],
         ttl: None,
@@ -311,6 +345,7 @@ const TABLES: &[Table] = &[
     Table {
         name: "calendar_event",
         hash: "id",
+        range: None,
         attrs: &[Attr("id", S), Attr("location_id", S), Attr("last_end", N)],
         gsis: &[all(
             "location_id-last_end-index",
@@ -322,13 +357,23 @@ const TABLES: &[Table] = &[
     Table {
         name: "location_share",
         hash: "id",
+        range: None,
         attrs: &[Attr("id", S), Attr("location_id", S)],
         gsis: &[all("location_id-index", "location_id", None)],
         ttl: Some("expires_at"),
     },
     Table {
+        name: "notification",
+        hash: "user_id",
+        range: Some("sk"),
+        attrs: &[Attr("user_id", S), Attr("sk", S), Attr("unread_user_id", S)],
+        gsis: &[keys_only_ranged("unread-index", "unread_user_id", "sk")],
+        ttl: Some("expires_at"),
+    },
+    Table {
         name: "on_call_role",
         hash: "id",
+        range: None,
         attrs: &[Attr("id", S), Attr("location_id", S)],
         gsis: &[all("location_id-index", "location_id", None)],
         ttl: None,
@@ -336,6 +381,7 @@ const TABLES: &[Table] = &[
     Table {
         name: "equipment",
         hash: "id",
+        range: None,
         attrs: &[Attr("id", S), Attr("location_id", S)],
         gsis: &[all("location_id-index", "location_id", None)],
         ttl: None,
@@ -343,6 +389,7 @@ const TABLES: &[Table] = &[
     Table {
         name: "equipment_log",
         hash: "id",
+        range: None,
         attrs: &[Attr("id", S), Attr("equipment_id", S)],
         gsis: &[all("equipment_id-index", "equipment_id", None)],
         ttl: None,
@@ -350,6 +397,7 @@ const TABLES: &[Table] = &[
     Table {
         name: "equipment_reservation",
         hash: "id",
+        range: None,
         attrs: &[Attr("id", S), Attr("location_id", S), Attr("end_time", N)],
         gsis: &[all(
             "location_id-end_time-index",
@@ -361,6 +409,7 @@ const TABLES: &[Table] = &[
     Table {
         name: "test_pagination",
         hash: "id",
+        range: None,
         attrs: &[Attr("id", S), Attr("group_id", N), Attr("number", N)],
         gsis: &[all("group_id-number-index", "group_id", Some("number"))],
         ttl: None,
@@ -391,6 +440,14 @@ async fn create(client: &Client, prefix: &str, table: &Table) -> Result<()> {
                 .key_type(KeyType::Hash)
                 .build()?,
         );
+    if let Some(range) = table.range {
+        req = req.key_schema(
+            KeySchemaElement::builder()
+                .attribute_name(range)
+                .key_type(KeyType::Range)
+                .build()?,
+        );
+    }
     for Attr(name, kind) in table.attrs {
         req = req.attribute_definitions(
             AttributeDefinition::builder()

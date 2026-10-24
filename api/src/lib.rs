@@ -30,6 +30,7 @@ pub mod mockrealtime;
 pub mod nitc_export;
 pub mod nonce;
 pub mod notes;
+pub mod notifications;
 pub mod oauth;
 pub mod oauth_clients;
 pub mod oauth_http;

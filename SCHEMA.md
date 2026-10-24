@@ -650,6 +650,39 @@ Users sharing their phone's position with a location's members ("Locate"), for a
 
 ---
 
+### `{prefix}notification`
+
+Each user's in-app notification inbox (Tally), fanned out on write: an event notifying several users is stored as one full copy per recipient, so the inbox is a single query with no join. Titles and bodies are small and written once, so a copy costs the same single write unit as a reference would. Rows are removed by the TTL 90 days after they were created, read or not.
+
+| Attribute        | Type | Role                                                                    |
+| ---------------- | ---- | ----------------------------------------------------------------------- |
+| `user_id`        | S    | Hash key (PK) — the recipient, a user (not a member)                    |
+| `sk`             | S    | Range key — `<created_at in ms, zero-padded to 13 digits>#<notification_id>`, so newest first is a descending query; also the API's notification ID and paging cursor |
+| `unread_user_id` | S    | GSI hash key (`unread-index`) — equal to `user_id`, present **only while unread** |
+
+**GSIs:**
+
+| GSI            | Hash key         | Sort key | Projection | Purpose                  |
+| -------------- | ---------------- | -------- | ---------- | ------------------------ |
+| `unread-index` | `unread_user_id` | `sk`     | KEYS_ONLY  | Sparse: counts and lists a user's unread notifications; the rows are then fetched by key. Marking read removes the attribute, so the row leaves the index |
+
+**TTL:** `expires_at`.
+
+**Non-obvious attributes (not in table definition):**
+
+- `notification_id` (S) — shared by every recipient's copy of one event
+- `source` (S) — the producing app, e.g. `reservations`
+- `kind` (S) — what happened, e.g. `reservation.for_you`
+- `location_id` (S, optional) — the location it is about; the API hides the notification from a reader who no longer has access to it
+- `actor_user_id` (S, optional) — the user whose action caused it, when a user did
+- `title` (S); `body` (S, optional)
+- `target_type` / `target_id` (S, optional) — what tapping it should open
+- `created_at` (N) — Unix seconds
+- `read_at` (N, optional) — Unix seconds; absent while unread
+- `expires_at` (N) — `created_at` + 90 days
+
+---
+
 ### `{prefix}audit_log`
 
 An append-only record of business database writes, shown in the admin UI. Entries are kept forever (no TTL). One item is written **per affected location** for each audited event, so a write touching two locations produces two items sharing an `event_id`.
