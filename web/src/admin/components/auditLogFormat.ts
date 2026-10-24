@@ -27,6 +27,8 @@ export const ENTITY_TYPE_LABELS = {
   ON_CALL_ROLE: "On-call role",
   MAP_PIN: "Map pin",
   MAP_LAYER: "Map layer",
+  CALENDAR: "Calendar",
+  CALENDAR_EVENT: "Calendar event",
 } as const;
 
 export type EntityTypeKey = keyof typeof ENTITY_TYPE_LABELS;

@@ -322,6 +322,8 @@ const TRANSIENT_TABLES: &[&str] = &[
     "on_call_role",
     "map_pin",
     "map_layer",
+    "calendar",
+    "calendar_event",
 ];
 
 async fn clear() -> Result<()> {

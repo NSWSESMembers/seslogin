@@ -920,3 +920,135 @@ async fn on_call_role_writes_are_recorded_against_their_location() {
     );
     assert_eq!(entries[2].action, AuditAction::Delete);
 }
+
+#[tokio::test]
+async fn calendar_event_writes_are_recorded_against_their_location() {
+    use seslogin::calendar::{Recurrence, Repeat, Timing};
+    let app = app();
+    let event = app
+        .db
+        .create_calendar_event(db::NewCalendarEvent {
+            location_id: "loc-a",
+            calendar_id: None,
+            title: "Training",
+            description: "",
+            timing: Timing::Timed {
+                start: 2_000_000_000,
+                end: 2_000_003_600,
+            },
+            recurrence: None,
+            created_by: Some("caller"),
+        })
+        .await
+        .unwrap();
+    // Made weekly and all day: the times go and the dates and repeat arrive.
+    let day = chrono::NaiveDate::from_ymd_opt(2033, 5, 18).unwrap();
+    app.db
+        .update_calendar_event(
+            &event.id,
+            db::CalendarEventUpdateShape::Fields {
+                calendar_id: None,
+                title: "Training",
+                description: "",
+                timing: Timing::AllDay {
+                    start: day,
+                    end: day,
+                },
+                recurrence: Some(Recurrence {
+                    repeat: Repeat::Weekly,
+                    until: None,
+                }),
+                by: Some("caller"),
+                expected_version: event.version,
+            },
+        )
+        .await
+        .unwrap();
+    // A save that lost a race records nothing.
+    app.db
+        .update_calendar_event(
+            &event.id,
+            db::CalendarEventUpdateShape::Fields {
+                calendar_id: None,
+                title: "Stale",
+                description: "",
+                timing: event.timing,
+                recurrence: None,
+                by: Some("caller"),
+                expected_version: event.version,
+            },
+        )
+        .await
+        .unwrap_err();
+    app.db
+        .update_calendar_event(
+            &event.id,
+            db::CalendarEventUpdateShape::Delete { by: Some("caller") },
+        )
+        .await
+        .unwrap();
+    let entries = app.db.inner().audit_entries();
+    assert_eq!(entries.len(), 3);
+    for entry in &entries {
+        assert_eq!(entry.entity_type, AuditEntityType::CalendarEvent);
+        assert_eq!(entry.entity_id, event.id);
+        assert_eq!(entry.entity_label.as_deref(), Some("Training"));
+        assert_eq!(entry.location_ids, vec!["loc-a".to_string()]);
+    }
+    assert_eq!(entries[0].action, AuditAction::Create);
+    assert_eq!(
+        changed_fields(&entries[0]),
+        vec!["title", "start_time", "end_time"]
+    );
+    assert_eq!(entries[1].action, AuditAction::Update);
+    assert_eq!(
+        changed_fields(&entries[1]),
+        vec!["start_time", "end_time", "start_date", "end_date", "repeat"]
+    );
+    assert_eq!(entries[2].action, AuditAction::Delete);
+    assert_eq!(
+        changed_fields(&entries[2]),
+        vec!["title", "start_date", "end_date", "repeat"]
+    );
+}
+
+#[tokio::test]
+async fn calendar_writes_are_recorded_against_their_location() {
+    let app = app();
+    let calendar = app
+        .db
+        .create_calendar("loc-a", "Training", "blue", Some("caller"))
+        .await
+        .unwrap();
+    app.db
+        .update_calendar(
+            &calendar.id,
+            db::CalendarUpdateShape::Fields {
+                name: "Training",
+                color: "green",
+            },
+        )
+        .await
+        .unwrap();
+    app.db
+        .update_calendar(&calendar.id, db::CalendarUpdateShape::Delete)
+        .await
+        .unwrap();
+    let entries = app.db.inner().audit_entries();
+    let actions: Vec<_> = entries.iter().map(|e| e.action).collect();
+    assert_eq!(
+        actions,
+        vec![
+            AuditAction::Create,
+            AuditAction::Update,
+            AuditAction::Delete
+        ]
+    );
+    for entry in &entries {
+        assert_eq!(entry.entity_type, AuditEntityType::Calendar);
+        assert_eq!(entry.location_ids, vec!["loc-a".to_string()]);
+    }
+    assert_eq!(changed_fields(&entries[0]), vec!["name", "color"]);
+    assert_eq!(changed_fields(&entries[1]), vec!["color"]);
+    assert_eq!(changed_fields(&entries[2]), vec!["name", "color"]);
+}

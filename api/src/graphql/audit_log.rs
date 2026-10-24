@@ -77,6 +77,8 @@ pub enum AuditEntityType {
     OnCallRole,
     MapPin,
     MapLayer,
+    Calendar,
+    CalendarEvent,
 }
 
 impl From<db::AuditEntityType> for AuditEntityType {
@@ -104,6 +106,8 @@ impl From<db::AuditEntityType> for AuditEntityType {
             db::AuditEntityType::EquipmentReservation => Self::EquipmentReservation,
             db::AuditEntityType::MapPin => Self::MapPin,
             db::AuditEntityType::MapLayer => Self::MapLayer,
+            db::AuditEntityType::Calendar => Self::Calendar,
+            db::AuditEntityType::CalendarEvent => Self::CalendarEvent,
         }
     }
 }
@@ -133,6 +137,8 @@ impl From<AuditEntityType> for db::AuditEntityType {
             AuditEntityType::EquipmentReservation => Self::EquipmentReservation,
             AuditEntityType::MapPin => Self::MapPin,
             AuditEntityType::MapLayer => Self::MapLayer,
+            AuditEntityType::Calendar => Self::Calendar,
+            AuditEntityType::CalendarEvent => Self::CalendarEvent,
         }
     }
 }

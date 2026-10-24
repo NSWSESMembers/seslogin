@@ -1083,6 +1083,100 @@ pub enum MapLayerUpdateShape<'a> {
     Delete,
 }
 
+/// A named, coloured calendar a location's events can be put in ("Calendar"). See
+/// SCHEMA.md's `calendar` section.
+///
+/// `color` holds a [`crate::calendar::CalendarColor::as_str`] value.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Calendar {
+    pub id: String,
+    pub location_id: String,
+    pub name: String,
+    pub color: String,
+    pub created_by: Option<String>,
+    pub deleted: Option<u64>,
+    pub created_at: u64,
+    pub updated_at: u64,
+}
+
+impl HasID for Calendar {
+    fn id(&self) -> &str {
+        &self.id
+    }
+}
+
+/// Every write to a calendar. Each fails with [`Error::NotFound`] when the calendar does
+/// not exist or is deleted, and returns it as it is after the write. Deleting a calendar
+/// leaves its events alone: they keep `calendar_id` and show as in no calendar.
+#[derive(Clone, Debug, PartialEq)]
+pub enum CalendarUpdateShape<'a> {
+    Fields { name: &'a str, color: &'a str },
+    Delete,
+}
+
+/// An event in a location's shared calendar ("Calendar"). See SCHEMA.md's
+/// `calendar_event` section and [`crate::calendar`] for the rules.
+///
+/// `calendar_id` optionally puts it in one of the location's [`Calendar`]s. `last_end`
+/// is [`crate::calendar::last_end`] of its timing and recurrence, stored for the index
+/// that finds the events reaching a window.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CalendarEvent {
+    pub id: String,
+    pub location_id: String,
+    pub calendar_id: Option<String>,
+    pub title: String,
+    pub description: String,
+    pub timing: crate::calendar::Timing,
+    pub recurrence: Option<crate::calendar::Recurrence>,
+    pub last_end: u64,
+    pub created_by: Option<String>,
+    pub updated_by: Option<String>,
+    /// Bumped by every [`CalendarEventUpdateShape`] write.
+    pub version: u64,
+    pub deleted: Option<u64>,
+    pub created_at: u64,
+    pub updated_at: u64,
+}
+
+impl HasID for CalendarEvent {
+    fn id(&self) -> &str {
+        &self.id
+    }
+}
+
+/// The fields of an event being created. See [`CalendarEvent`].
+#[derive(Clone, Debug, PartialEq)]
+pub struct NewCalendarEvent<'a> {
+    pub location_id: &'a str,
+    pub calendar_id: Option<&'a str>,
+    pub title: &'a str,
+    pub description: &'a str,
+    pub timing: crate::calendar::Timing,
+    pub recurrence: Option<crate::calendar::Recurrence>,
+    pub created_by: Option<&'a str>,
+}
+
+/// Every write to an event. Each fails with [`Error::NotFound`] when it does not exist,
+/// is deleted or — for `Fields` — is no longer at `expected_version`. Each returns the
+/// event as it is after the write.
+#[derive(Clone, Debug, PartialEq)]
+pub enum CalendarEventUpdateShape<'a> {
+    /// Replace the editable fields. An absent calendar or recurrence, or an empty
+    /// description, is removed.
+    Fields {
+        calendar_id: Option<&'a str>,
+        title: &'a str,
+        description: &'a str,
+        timing: crate::calendar::Timing,
+        recurrence: Option<crate::calendar::Recurrence>,
+        by: Option<&'a str>,
+        expected_version: u64,
+    },
+    /// Soft-delete the event.
+    Delete { by: Option<&'a str> },
+}
+
 /// An on-call role at a location ("On Call"), such as Duty Officer, and who holds it
 /// now. See SCHEMA.md's `on_call_role` section.
 ///
@@ -1447,6 +1541,8 @@ pub enum AuditEntityType {
     OnCallRole,
     MapPin,
     MapLayer,
+    Calendar,
+    CalendarEvent,
 }
 
 impl AuditEntityType {
@@ -1475,6 +1571,8 @@ impl AuditEntityType {
             "equipment_reservation" => Self::EquipmentReservation,
             "map_pin" => Self::MapPin,
             "map_layer" => Self::MapLayer,
+            "calendar" => Self::Calendar,
+            "calendar_event" => Self::CalendarEvent,
             _ => return None,
         })
     }
@@ -1504,6 +1602,8 @@ impl AuditEntityType {
             Self::EquipmentReservation => "equipment_reservation",
             Self::MapPin => "map_pin",
             Self::MapLayer => "map_layer",
+            Self::Calendar => "calendar",
+            Self::CalendarEvent => "calendar_event",
         }
     }
 }
@@ -2336,6 +2436,53 @@ pub trait Handler: Sync {
         id: &str,
         change: MapLayerUpdateShape<'_>,
     ) -> impl Future<Output = Result<MapLayer>> + Send;
+
+    // ── Calendar ──────────────────────────────────────────────────────────────
+
+    fn get_calendars<T: AsRef<str> + Sync>(
+        &self,
+        ids: &[T],
+    ) -> impl Future<Output = Result<Vec<Option<Calendar>>>> + Send;
+    /// A location's calendars, deleted ones left out.
+    fn list_calendars(
+        &self,
+        location_id: &str,
+    ) -> impl Future<Output = Result<Vec<Calendar>>> + Send;
+    fn create_calendar(
+        &self,
+        location_id: &str,
+        name: &str,
+        color: &str,
+        created_by: Option<&str>,
+    ) -> impl Future<Output = Result<Calendar>> + Send;
+    fn update_calendar(
+        &self,
+        id: &str,
+        change: CalendarUpdateShape<'_>,
+    ) -> impl Future<Output = Result<Calendar>> + Send;
+
+    fn get_calendar_events<T: AsRef<str> + Sync>(
+        &self,
+        ids: &[T],
+    ) -> impl Future<Output = Result<Vec<Option<CalendarEvent>>>> + Send;
+    /// A location's events whose last occurrence ends after `ending_after` (Unix
+    /// seconds), deleted ones left out, in no particular order. Reads a GSI keyed on
+    /// `last_end`, so finished events cost nothing, and a write may take a moment to
+    /// show up.
+    fn list_calendar_events(
+        &self,
+        location_id: &str,
+        ending_after: u64,
+    ) -> impl Future<Output = Result<Vec<CalendarEvent>>> + Send;
+    fn create_calendar_event(
+        &self,
+        event: NewCalendarEvent<'_>,
+    ) -> impl Future<Output = Result<CalendarEvent>> + Send;
+    fn update_calendar_event(
+        &self,
+        id: &str,
+        change: CalendarEventUpdateShape<'_>,
+    ) -> impl Future<Output = Result<CalendarEvent>> + Send;
 
     // ── On Call ───────────────────────────────────────────────────────────────
 
