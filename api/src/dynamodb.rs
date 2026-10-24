@@ -998,6 +998,7 @@ impl TryInto<db::MapPin> for Item {
                 .string_field("location_id")?
                 .ok_or_else(|| anyhow!("MapPin missing location_id"))?,
             layer_id: self.string_field("layer_id")?,
+            pin_type: self.string_field("pin_type")?,
             title: self.string_field("title")?.unwrap_or_default(),
             latitude: self
                 .f64_field("latitude")?
@@ -6304,6 +6305,9 @@ impl db::Handler for Handler {
         if let Some(layer_id) = pin.layer_id {
             put = put.item("layer_id", AttributeValue::S(layer_id.to_string()));
         }
+        if let Some(pin_type) = pin.pin_type {
+            put = put.item("pin_type", AttributeValue::S(pin_type.to_string()));
+        }
         if !pin.address.is_empty() {
             put = put.item("address", AttributeValue::S(pin.address.to_string()));
         }
@@ -6323,6 +6327,7 @@ impl db::Handler for Handler {
             id,
             location_id: pin.location_id.to_string(),
             layer_id: pin.layer_id.map(str::to_string),
+            pin_type: pin.pin_type.map(str::to_string),
             title: pin.title.to_string(),
             latitude: pin.latitude,
             longitude: pin.longitude,
@@ -6352,6 +6357,7 @@ impl db::Handler for Handler {
         let (condition, expected_version) = match change {
             db::MapPinUpdateShape::Fields {
                 layer_id,
+                pin_type,
                 title,
                 latitude,
                 longitude,
@@ -6366,6 +6372,10 @@ impl db::Handler for Handler {
                 update.set_or_remove(
                     "layer_id",
                     layer_id.map(|l| AttributeValue::S(l.to_string())),
+                );
+                update.set_or_remove(
+                    "pin_type",
+                    pin_type.map(|t| AttributeValue::S(t.to_string())),
                 );
                 update.set_or_remove(
                     "address",

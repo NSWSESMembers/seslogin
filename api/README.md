@@ -670,9 +670,11 @@ A location's shared map of pins, used by the Tally app (`src/graphql/map.rs`, ru
 - **Fields:** `latitude` / `longitude` are WGS 84 degrees (within ±90 / ±180). `title` is one
   trimmed line (max 200 characters). `address` is free text, trimmed, not geocoded (max 500).
   `note` is plain text, kept exactly as written (max 20,000; only-whitespace counts as empty).
-  An absent address or note reads as `""`.
+  An absent address or note reads as `""`. `type` (`ACCESS`, `ENTRY`, `FLOOD` or `HAZARD`)
+  says what the pin marks, which the app shows as an icon; null for a plain pin, and for a
+  stored type this server doesn't know, so clients should cope with types being added.
 - **Writes:** `createMapPin`, `updateMapPin` (omitted arguments unchanged, `layerId: null`
-  takes the pin off its layer), `deleteMapPin`, `createMapLayer`, `renameMapLayer`,
+  takes the pin off its layer, `type: null` makes it a plain pin), `deleteMapPin`, `createMapLayer`, `renameMapLayer`,
   `deleteMapLayer`. Deleting a layer leaves its pins on the location's map (`MapPin.layer`
   becomes null).
 - **Concurrency:** `updateMapPin` takes `expectedVersion`; if someone else saved the pin since
@@ -683,7 +685,7 @@ A location's shared map of pins, used by the Tally app (`src/graphql/map.rs`, ru
 ```graphql
 mutation {
   createMapPin(locationId: "TestAUnit001", title: "Staging area",
-               latitude: -33.8688, longitude: 151.2093,
+               latitude: -33.8688, longitude: 151.2093, type: ACCESS,
                address: "1 Example St", note: "Gate code at the shed") { id version }
 }
 ```
