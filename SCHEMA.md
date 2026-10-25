@@ -338,9 +338,9 @@ The index is **sparse**: completing a non-recurring task, or deleting any task, 
 - `due_date` (S, optional) — the day the task was scheduled for. `show_date` is this, or the creation day when there is none
 - `recurrence_every` (N), `recurrence_unit` (S: `days` or `weeks`) — both present or both absent
 - `v` (N) — version, bumped by every write; edits and completions are conditional on it, so two people completing the same task cannot both succeed
-- `completed_at` (N), `completed_by` (S) — a non-recurring task's completion
-- `last_completed_at` (N), `last_completed_by` (S) — a recurring task's latest completion
-- `created_by` / `updated_by` (S) — user IDs
+- `completed_at` (N), `completed_by` (S) — a non-recurring task's completion, and the person ID of the member who completed it
+- `last_completed_at` (N), `last_completed_by` (S) — a recurring task's latest completion, and who by (person ID)
+- `created_by` / `updated_by` (S) — person IDs of the members who made and last changed it
 - `deleted` (N) — Unix seconds when soft-deleted; absent otherwise
 - `created_at` / `updated_at` (N)
 
@@ -386,7 +386,7 @@ A location's shared notebook ("Notes").
 - `title` (S) — one line of plain text
 - `content` (S, optional) — plain text; absent when empty
 - `v` (N) — version, bumped by every write; saves are conditional on it, so two people editing the same note cannot silently overwrite each other
-- `created_by` / `updated_by` (S) — user IDs
+- `created_by` / `updated_by` (S) — person IDs of the members who made and last changed it
 - `deleted` (N) — Unix seconds when soft-deleted; absent otherwise
 - `created_at` / `updated_at` (N)
 
@@ -435,7 +435,7 @@ The pins on a location's shared map ("Map").
 - `address` (S, optional) — free text, not geocoded; absent when empty
 - `note` (S, optional) — plain text; absent when empty
 - `v` (N) — version, bumped by every write; saves are conditional on it, so two people editing the same pin cannot silently overwrite each other
-- `created_by` / `updated_by` (S) — user IDs
+- `created_by` / `updated_by` (S) — person IDs of the members who made and last changed it
 - `deleted` (N) — Unix seconds when soft-deleted; absent otherwise
 - `created_at` / `updated_at` (N)
 
@@ -484,7 +484,7 @@ A location's on-call roles ("On Call"), such as Duty Officer, and who holds each
 - `secondary_person_ids` (SS, optional) — everyone else in the role; absent when there is nobody else, and never present without a primary. People may be from any location, and may since have been deleted (the API leaves them out)
 - `members_changed_at` (N, optional) — Unix seconds when the people in the role last changed; absent while it is empty
 - `v` (N) — version, bumped by every write; saves are conditional on it
-- `created_by` / `updated_by` (S) — user IDs
+- `created_by` / `updated_by` (S) — person IDs of the members who made and last changed it
 - `deleted` (N) — Unix seconds when soft-deleted; absent otherwise
 - `created_at` / `updated_at` (N)
 
@@ -514,7 +514,7 @@ A location's equipment register ("Equipment").
 - `status_changed_at` (N) — when the status last changed, or the equipment was added
 - `last_checked_at` (N, optional) — when someone last logged a check
 - `v` (N) — version, bumped by every edit (not by log entries); edits are conditional on it
-- `created_by` / `updated_by` (S) — user IDs
+- `created_by` / `updated_by` (S) — person IDs of the members who made and last changed it
 - `deleted` (N) — Unix seconds when soft-deleted; absent otherwise. The log is kept
 - `created_at` / `updated_at` (N)
 
@@ -541,8 +541,8 @@ Each piece of equipment's log of status changes and checks. Append-only.
 - `kind` (S) — `status_change` or `check`
 - `from_status` (S, optional) — the status before a change; absent for checks and for the row written when the equipment was added
 - `status` (S) — the status after a change, or the status it was checked in
-- `comment` (S, optional) — why, as the user wrote it; required for a status change after the first, absent when empty
-- `created_by` (S) — user ID
+- `comment` (S, optional) — why, as the member wrote it; required for a status change after the first, absent when empty
+- `created_by` (S) — person ID of the member who made the entry
 - `created_at` (N) — Unix seconds; `created_us` (N) — Unix microseconds, which orders rows written in the same second
 
 ---
@@ -567,11 +567,11 @@ Bookings of a location's equipment for a time range ("Reservations"). Overlaps a
 
 - `equipment_ids` (SS) — the equipment reserved, at least one; may name equipment deleted since
 - `start_time` (N) — Unix seconds; `end_time` is after it, by at most 366 days
-- `reserved_for_user_id` (S, optional) — the user it is for; absent when `reserved_for_text` is set
-- `reserved_for_text` (S, optional) — one line naming who or what it is for instead of a user
+- `reserved_for_person_id` (S, optional) — person ID of the member it is for; absent when `reserved_for_text` is set
+- `reserved_for_text` (S, optional) — one line naming who or what it is for instead of a member
 - `description` (S, optional) — plain text; absent when empty
 - `v` (N) — version, bumped by every write; edits are conditional on it
-- `created_by` / `updated_by` (S) — user IDs
+- `created_by` / `updated_by` (S) — person IDs of the members who made and last changed it
 - `deleted` (N) — Unix seconds when soft-deleted (cancelled); absent otherwise
 - `created_at` / `updated_at` (N)
 
@@ -623,7 +623,7 @@ The events in a location's shared calendar ("Calendar"). An event is timed (inst
 - `title` (S) — one line of plain text
 - `description` (S, optional) — plain text; absent when empty
 - `v` (N) — version, bumped by every write; edits are conditional on it
-- `created_by` / `updated_by` (S) — user IDs
+- `created_by` / `updated_by` (S) — person IDs of the members who made and last changed it
 - `deleted` (N) — Unix seconds when soft-deleted; absent otherwise
 - `created_at` / `updated_at` (N)
 
@@ -631,11 +631,11 @@ The events in a location's shared calendar ("Calendar"). An event is timed (inst
 
 ### `{prefix}location_share`
 
-Users sharing their phone's position with a location's members ("Locate"), for a fixed time. One row per user: starting another share replaces it, and stopping deletes it. Only the latest position is kept; there is no history.
+Members sharing their phone's position with a location's members ("Locate"), for a fixed time. One row per member: starting another share replaces it, and stopping deletes it. Only the latest position is kept; there is no history.
 
 | Attribute     | Type | Role                                  |
 | ------------- | ---- | ------------------------------------- |
-| `id`          | S    | Hash key (PK) — the sharing user's ID |
+| `id`          | S    | Hash key (PK) — the sharing member's person ID |
 | `location_id` | S    | GSI hash key (`location_id-index`)    |
 
 **GSIs:**
@@ -660,19 +660,19 @@ Users sharing their phone's position with a location's members ("Locate"), for a
 
 ### `{prefix}notification`
 
-Each user's in-app notification inbox (Tally), fanned out on write: an event notifying several users is stored as one full copy per recipient, so the inbox is a single query with no join. Titles and bodies are small and written once, so a copy costs the same single write unit as a reference would. Rows are removed by the TTL 90 days after they were created, read or not.
+Each member's in-app notification inbox (Tally), fanned out on write: an event notifying several members is stored as one full copy per recipient, so the inbox is a single query with no join. Titles and bodies are small and written once, so a copy costs the same single write unit as a reference would. Rows are removed by the TTL 90 days after they were created, read or not.
 
 | Attribute        | Type | Role                                                                    |
 | ---------------- | ---- | ----------------------------------------------------------------------- |
-| `user_id`        | S    | Hash key (PK) — the recipient, a user (not a member)                    |
+| `person_id`        | S    | Hash key (PK) — the recipient member's person ID                      |
 | `sk`             | S    | Range key — `<created_at in ms, zero-padded to 13 digits>#<notification_id>`, so newest first is a descending query; also the API's notification ID and paging cursor |
-| `unread_user_id` | S    | GSI hash key (`unread-index`) — equal to `user_id`, present **only while unread** |
+| `unread_person_id` | S    | GSI hash key (`unread-index`) — equal to `person_id`, present **only while unread** |
 
 **GSIs:**
 
 | GSI            | Hash key         | Sort key | Projection | Purpose                  |
 | -------------- | ---------------- | -------- | ---------- | ------------------------ |
-| `unread-index` | `unread_user_id` | `sk`     | KEYS_ONLY  | Sparse: counts and lists a user's unread notifications; the rows are then fetched by key. Marking read removes the attribute, so the row leaves the index |
+| `unread-index` | `unread_person_id` | `sk`     | KEYS_ONLY  | Sparse: counts and lists a member's unread notifications; the rows are then fetched by key. Marking read removes the attribute, so the row leaves the index |
 
 **TTL:** `expires_at`.
 
@@ -682,7 +682,7 @@ Each user's in-app notification inbox (Tally), fanned out on write: an event not
 - `source` (S) — the producing app, e.g. `reservations`
 - `kind` (S) — what happened, e.g. `reservation.for_you`
 - `location_id` (S, optional) — the location it is about; the API hides the notification from a reader who no longer has access to it
-- `actor_user_id` (S, optional) — the user whose action caused it, when a user did
+- `actor_person_id` (S, optional) — the member whose action caused it, when a member did
 - `title` (S); `body` (S, optional)
 - `target_type` / `target_id` (S, optional) — what tapping it should open
 - `created_at` (N) — Unix seconds

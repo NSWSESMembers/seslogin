@@ -1,6 +1,7 @@
-//! In-app notifications: `notifications::notify` (audiences, the acting user, best-effort
-//! delivery) and the caller's inbox through GraphQL (newest-first paging, unread count,
-//! marking read, isolation between users, access lost since, who may use it).
+//! In-app notifications: `notifications::notify` (members, the acting member,
+//! best-effort delivery) and the caller's inbox through GraphQL (newest-first paging,
+//! unread count, marking read, isolation between members, access lost since, who may
+//! use it).
 //!
 //! Uses the shared `FakeDb` (`tests/common/mod.rs`) and runs real GraphQL documents
 //! through `graphql::build_schema`, like `location_share.rs`.
@@ -12,7 +13,7 @@ use std::sync::atomic::Ordering;
 
 use async_graphql::{Request, Value};
 
-use common::{FakeDb, fake_app, seed_user};
+use common::{FakeDb, fake_app, seed_person};
 use seslogin::app::MyApp;
 use seslogin::audit;
 use seslogin::auth::AuthInfo;
@@ -38,37 +39,33 @@ fn webauthn() -> Arc<webauthn_rs::prelude::Webauthn> {
     )
 }
 
-fn user(id: &str, admin: &[&str], read_only: &[&str]) -> AuthInfo {
-    AuthInfo::User {
-        id: id.to_string(),
+/// A member signed in to Tally, at home at `home`.
+fn member(person_id: &str, home: &str) -> AuthInfo {
+    AuthInfo::Member {
+        person_id: person_id.to_string(),
+        location_id: home.to_string(),
+        user_id: None,
         is_super: false,
-        location_grants: admin.iter().map(|s| s.to_string()).collect(),
-        location_read_only_grants: read_only.iter().map(|s| s.to_string()).collect(),
-        token_id: None,
-        grant_id: None,
+        user_location_ids: vec![],
+        grant_id: "grant".to_string(),
     }
 }
 
-/// Admin at loc-a.
+/// At home at loc-a.
 fn alice() -> AuthInfo {
-    user("alice", &["loc-a"], &[])
+    member("alice", "loc-a")
 }
 
-/// Read only at loc-a.
+/// At home at loc-a.
 fn bob() -> AuthInfo {
-    user("bob", &[], &["loc-a"])
+    member("bob", "loc-a")
 }
 
 fn app() -> Arc<TestApp> {
     let app = fake_app();
-    for id in ["alice", "bob", "carol"] {
-        seed_user(&app, id, true);
-    }
-    let mut users = app.db.users.lock().unwrap();
-    users.get_mut("alice").unwrap().location_grants = vec!["loc-a".to_string()];
-    users.get_mut("bob").unwrap().location_read_only_grants = vec!["loc-a".to_string()];
-    users.get_mut("carol").unwrap().person_id = Some("member".to_string());
-    drop(users);
+    seed_person(&app, "alice", "loc-a", "Alice", "Anderson", "1001", None);
+    seed_person(&app, "bob", "loc-a", "Bob", "Brown", "1002", None);
+    seed_person(&app, "carol", "loc-b", "Carol", "Clark", "1003", None);
     Arc::new(app)
 }
 
@@ -108,17 +105,17 @@ fn sk(n: u64) -> String {
     db::notification_sk(1_900_000_000_000 + n * 1000, &format!("n{n}"))
 }
 
-/// Store a notification for `user_id` as if created `n` seconds after a fixed point,
-/// unexpired.
-fn put(app: &Arc<TestApp>, user_id: &str, n: u64, location: Option<&str>) -> String {
+/// Store a notification for member `person_id` as if created `n` seconds after a fixed
+/// point, unexpired.
+fn put(app: &Arc<TestApp>, person_id: &str, n: u64, location: Option<&str>) -> String {
     let record = NotificationRecord {
-        user_id: user_id.to_string(),
+        person_id: person_id.to_string(),
         sk: sk(n),
         notification_id: format!("n{n}"),
         source: "reservations".to_string(),
         kind: "reservation.for_you".to_string(),
         location_id: location.map(str::to_string),
-        actor_user_id: None,
+        actor_person_id: None,
         title: format!("Title {n}"),
         body: None,
         target_type: None,
@@ -131,14 +128,14 @@ fn put(app: &Arc<TestApp>, user_id: &str, n: u64, location: Option<&str>) -> Str
     record.sk
 }
 
-fn stored(app: &Arc<TestApp>, user_id: &str) -> Vec<NotificationRecord> {
+fn stored(app: &Arc<TestApp>, person_id: &str) -> Vec<NotificationRecord> {
     let mut rows: Vec<_> = app
         .db
         .notifications
         .lock()
         .unwrap()
         .iter()
-        .filter(|n| n.user_id == user_id)
+        .filter(|n| n.person_id == person_id)
         .cloned()
         .collect();
     rows.sort_by(|a, b| a.sk.cmp(&b.sk));
@@ -183,7 +180,7 @@ async fn notify_gives_each_recipient_a_full_copy() {
     notify(
         app.as_ref(),
         announcement(),
-        Audience::Users(vec!["alice".to_string(), "bob".to_string()]),
+        Audience::Members(vec!["alice".to_string(), "bob".to_string()]),
     )
     .await;
 
@@ -209,59 +206,19 @@ async fn notify_gives_each_recipient_a_full_copy() {
 }
 
 #[tokio::test]
-async fn notify_audiences_pick_the_right_users() {
-    let app = app();
-    notify(
-        app.as_ref(),
-        announcement(),
-        Audience::Person("member".to_string()),
-    )
-    .await;
-    assert_eq!(stored(&app, "carol").len(), 1);
-    assert!(stored(&app, "alice").is_empty());
-
-    let location = |include_read_only| Audience::Location {
-        location_id: "loc-a".to_string(),
-        include_read_only,
-    };
-    notify(app.as_ref(), announcement(), location(false)).await;
-    assert_eq!(stored(&app, "alice").len(), 1);
-    assert!(stored(&app, "bob").is_empty());
-    notify(app.as_ref(), announcement(), location(true)).await;
-    assert_eq!(stored(&app, "alice").len(), 2);
-    assert_eq!(stored(&app, "bob").len(), 1);
-}
-
-#[tokio::test]
-async fn super_users_are_not_in_a_location_audience() {
+async fn deleted_and_unknown_members_and_repeats_are_skipped() {
     let app = app();
     app.db
-        .users
+        .persons
         .lock()
         .unwrap()
-        .get_mut("carol")
+        .get_mut("bob")
         .unwrap()
-        .is_super = true;
+        .deleted = Some(1);
     notify(
         app.as_ref(),
         announcement(),
-        Audience::Location {
-            location_id: "loc-a".to_string(),
-            include_read_only: true,
-        },
-    )
-    .await;
-    assert!(stored(&app, "carol").is_empty());
-}
-
-#[tokio::test]
-async fn disabled_and_unknown_users_and_repeats_are_skipped() {
-    let app = app();
-    app.db.users.lock().unwrap().get_mut("bob").unwrap().enabled = false;
-    notify(
-        app.as_ref(),
-        announcement(),
-        Audience::Users(
+        Audience::Members(
             ["alice", "alice", "bob", "nobody"]
                 .map(str::to_string)
                 .to_vec(),
@@ -273,7 +230,7 @@ async fn disabled_and_unknown_users_and_repeats_are_skipped() {
 }
 
 #[tokio::test]
-async fn the_acting_user_is_not_notified_of_their_own_action() {
+async fn the_acting_member_is_not_notified_of_their_own_action() {
     let app = app();
     let acting = alice();
     audit::scope_for_request(
@@ -282,31 +239,28 @@ async fn the_acting_user_is_not_notified_of_their_own_action() {
         notify(
             app.as_ref(),
             announcement(),
-            Audience::Location {
-                location_id: "loc-a".to_string(),
-                include_read_only: true,
-            },
+            Audience::Members(vec!["alice".to_string(), "bob".to_string()]),
         ),
     )
     .await;
     assert!(stored(&app, "alice").is_empty());
     let for_bob = stored(&app, "bob");
     assert_eq!(for_bob.len(), 1);
-    assert_eq!(for_bob[0].actor_user_id.as_deref(), Some("alice"));
+    assert_eq!(for_bob[0].actor_person_id.as_deref(), Some("alice"));
 
-    // A job or a kiosk is not a user, so nobody is left out.
+    // A job or a kiosk is not a member, so nobody is left out.
     audit::scope(
         audit::AuditContext::system("sync"),
         notify(
             app.as_ref(),
             announcement(),
-            Audience::Users(vec!["alice".to_string()]),
+            Audience::Members(vec!["alice".to_string()]),
         ),
     )
     .await;
     let for_alice = stored(&app, "alice");
     assert_eq!(for_alice.len(), 1);
-    assert_eq!(for_alice[0].actor_user_id, None);
+    assert_eq!(for_alice[0].actor_person_id, None);
 }
 
 #[tokio::test]
@@ -319,7 +273,7 @@ async fn a_failed_notification_is_swallowed() {
     notify(
         app.as_ref(),
         announcement(),
-        Audience::Users(vec!["alice".to_string()]),
+        Audience::Members(vec!["alice".to_string()]),
     )
     .await;
     assert!(app.db.notifications.lock().unwrap().is_empty());
@@ -507,23 +461,22 @@ async fn a_notification_about_a_location_the_caller_lost_is_hidden() {
     put(&app, "alice", 2, Some("loc-gone"));
     put(&app, "alice", 3, None);
     assert_eq!(titles(&app, alice(), "").await, ["Title 3", "Title 1"]);
-    // Read only counts as access.
     assert_eq!(titles(&app, bob(), "").await, Vec::<String>::new());
     put(&app, "bob", 4, Some("loc-a"));
     assert_eq!(titles(&app, bob(), "").await, ["Title 4"]);
-    // No grants at all, so only the notification about nowhere shows...
-    let lapsed = user("alice", &[], &[]);
+    // Moved to another unit, so only the notification about nowhere shows...
+    let lapsed = member("alice", "loc-b");
     assert_eq!(titles(&app, lapsed.clone(), "").await, ["Title 3"]);
     // ...though the count, which never reads the rows, still includes the others.
     assert_eq!(unread(&app, lapsed).await, 3);
-    // A super user sees everything.
-    let boss = AuthInfo::User {
-        id: "alice".to_string(),
+    // A member whose user is a super user sees everything.
+    let boss = AuthInfo::Member {
+        person_id: "alice".to_string(),
+        location_id: "loc-b".to_string(),
+        user_id: Some("alice-user".to_string()),
         is_super: true,
-        location_grants: vec![],
-        location_read_only_grants: vec![],
-        token_id: None,
-        grant_id: None,
+        user_location_ids: vec![],
+        grant_id: "grant".to_string(),
     };
     assert_eq!(titles(&app, boss, "").await.len(), 3);
 }
@@ -560,7 +513,7 @@ async fn expired_notifications_are_not_listed() {
 }
 
 #[tokio::test]
-async fn only_users_have_an_inbox() {
+async fn only_members_have_an_inbox() {
     let app = app();
     put(&app, "alice", 1, None);
     let kiosk = AuthInfo::Session {
@@ -575,7 +528,16 @@ async fn only_users_have_an_inbox() {
     let link = AuthInfo::PeriodLink {
         period_id: "p".to_string(),
     };
-    for auth in [kiosk, token, link] {
+    // A user on their own, even through a connected app, is not a Tally member.
+    let connected = AuthInfo::User {
+        id: "alice".to_string(),
+        is_super: true,
+        location_grants: vec![],
+        location_read_only_grants: vec![],
+        token_id: None,
+        grant_id: Some("grant".to_string()),
+    };
+    for auth in [kiosk, token, link, connected] {
         for doc in [
             "{ myNotifications { edges { cursor } } }",
             "{ myUnreadNotificationCount }",
@@ -587,15 +549,5 @@ async fn only_users_have_an_inbox() {
         }
     }
     assert_eq!(stored(&app, "alice")[0].read_at, None);
-
-    // A connected app acting for a user is a user.
-    let connected = AuthInfo::User {
-        id: "alice".to_string(),
-        is_super: false,
-        location_grants: vec![],
-        location_read_only_grants: vec![],
-        token_id: None,
-        grant_id: Some("grant".to_string()),
-    };
-    assert_eq!(unread(&app, connected).await, 1);
+    assert_eq!(unread(&app, alice()).await, 1);
 }

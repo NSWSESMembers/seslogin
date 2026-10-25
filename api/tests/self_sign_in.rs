@@ -1,8 +1,8 @@
-//! `selfSignInStatus`, `selfSignIn` and `selfSignOut`: a signed-in user signs their
-//! linked member in and out at the member's home unit, as a kiosk there would.
+//! `selfSignInStatus`, `selfSignIn` and `selfSignOut`: a member signed in to Tally signs
+//! themselves in and out at their home unit, as a kiosk there would.
 //!
-//! Authority is the `person_id` link, not a location grant, so the callers below hold
-//! no grants at all. Uses the shared `FakeDb` (`tests/common/mod.rs`) and runs real
+//! Authority is being the member, not a location grant, so the callers below hold no
+//! units beyond their home. Uses the shared `FakeDb` (`tests/common/mod.rs`) and runs real
 //! GraphQL documents through `graphql::build_schema`.
 
 mod common;
@@ -37,16 +37,32 @@ fn webauthn() -> Arc<webauthn_rs::prelude::Webauthn> {
     )
 }
 
-/// A user with no location grants at all, optionally through an OAuth grant (the
-/// way Tally arrives).
+/// The caller signed in as `id` through Tally: the member each test user is linked to
+/// (`gone-user`'s has since been deleted). `nobody` has no member, so is a user on
+/// their own, as no Tally sign-in can produce.
 fn user(id: &str) -> AuthInfo {
-    AuthInfo::User {
-        id: id.to_string(),
+    let person_id = match id {
+        "alice-user" => "p-alice",
+        "bob-user" => "p-bob",
+        "gone-user" => "p-gone",
+        _ => {
+            return AuthInfo::User {
+                id: id.to_string(),
+                is_super: false,
+                location_grants: vec![],
+                location_read_only_grants: vec![],
+                token_id: None,
+                grant_id: Some("grant-1".to_string()),
+            };
+        }
+    };
+    AuthInfo::Member {
+        person_id: person_id.to_string(),
+        location_id: "loc-a".to_string(),
+        user_id: Some(id.to_string()),
         is_super: false,
-        location_grants: vec![],
-        location_read_only_grants: vec![],
-        token_id: None,
-        grant_id: Some("grant-1".to_string()),
+        user_location_ids: vec![],
+        grant_id: "grant-1".to_string(),
     }
 }
 
@@ -153,7 +169,7 @@ fn stored(app: &TestApp, id: &str) -> db::Period {
 // ---- who may call ----
 
 #[tokio::test]
-async fn only_users_may_call_and_others_are_forbidden() {
+async fn only_members_may_call_and_others_are_forbidden() {
     let app = app();
     seed_period(&app, period("open", "p-alice", "loc-a", None));
     let callers = [
@@ -169,6 +185,8 @@ async fn only_users_may_call_and_others_are_forbidden() {
         AuthInfo::PeriodLink {
             period_id: "open".into(),
         },
+        // A user on their own, even one through an OAuth grant.
+        user("nobody"),
     ];
     let end = now_sec();
     let out = sign_out("open", 3, end - 600, end, "cat-ok");
@@ -183,24 +201,7 @@ async fn only_users_may_call_and_others_are_forbidden() {
 }
 
 #[tokio::test]
-async fn user_without_a_linked_member() {
-    let app = app();
-    let data = json(&run(&app, user("nobody"), STATUS).await);
-    assert_eq!(data["selfSignInStatus"], serde_json::Value::Null);
-
-    for q in [SIGN_IN.to_string(), sign_out("x", 1, 1, 2, "cat-ok")] {
-        let response = run(&app, user("nobody"), &q).await;
-        assert_eq!(code_of(&response).as_deref(), Some("BAD_REQUEST"));
-        assert_eq!(
-            response.errors[0].message,
-            "No member is linked to your account"
-        );
-    }
-    assert_eq!(period_count(&app), 0);
-}
-
-#[tokio::test]
-async fn deleted_member_counts_as_unlinked() {
+async fn a_deleted_member_has_no_status_and_cannot_sign_in() {
     let app = app();
     let data = json(&run(&app, user("gone-user"), STATUS).await);
     assert_eq!(data["selfSignInStatus"], serde_json::Value::Null);
@@ -360,14 +361,13 @@ async fn whos_here_unknown_member_fallback() {
 }
 
 #[tokio::test]
-async fn whos_here_unreachable_without_a_linked_member() {
+async fn whos_here_unreachable_without_a_live_member() {
     let app = app();
     seed_period(&app, period("open", "p-alice", "loc-a", None));
-    for id in ["nobody", "gone-user"] {
-        let data = json(&run(&app, user(id), WHOS_HERE).await);
-        assert_eq!(data["selfSignInStatus"], serde_json::Value::Null);
-    }
+    let data = json(&run(&app, user("gone-user"), WHOS_HERE).await);
+    assert_eq!(data["selfSignInStatus"], serde_json::Value::Null);
     for auth in [
+        user("nobody"),
         AuthInfo::Session {
             id: "kiosk-1".into(),
             location: "loc-a".into(),

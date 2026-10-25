@@ -5,7 +5,7 @@
 //! resolvers.
 //!
 //! Access is [`require_note_access`] on the note's (or folder's) location throughout:
-//! any user with Admin or Read only access, and super users.
+//! any member who can use the unit in Tally. Authors are recorded by person ID.
 
 use anyhow::{Result, anyhow};
 use async_graphql::dataloader::DataLoader;
@@ -16,9 +16,8 @@ use super::auth::require_note_access;
 use super::dataloader::DatabaseLoader;
 use super::error::{ApiError, ErrorCode};
 use super::query::Location;
-use super::{LocationId, NoteFolderId, UserId};
+use super::{LocationId, NoteFolderId};
 use crate::app::{App, HasDb};
-use crate::auth::AuthInfo;
 use crate::db::{self, Handler};
 use crate::notes;
 
@@ -34,20 +33,6 @@ impl<A: App + HasDb + Send + Sync + 'static> Note<A> {
             rec,
         }
     }
-}
-
-async fn user_email<A: App + HasDb + Send + Sync + 'static>(
-    ctx: &Context<'_>,
-    id: Option<&str>,
-) -> Result<Option<String>> {
-    let Some(id) = id else { return Ok(None) };
-    let loader = ctx.data_unchecked::<DataLoader<DatabaseLoader<A>>>();
-    Ok(loader
-        .load_one(UserId(ID(id.to_string())))
-        .await
-        .map_err(|e| anyhow!("Failed to load user via DataLoader: {}", e))?
-        .flatten()
-        .map(|u| u.rec.email))
 }
 
 async fn load_location<A: App + HasDb + Send + Sync + 'static>(
@@ -111,18 +96,18 @@ impl<A: App + HasDb + Send + Sync + 'static> Note<A> {
         self.rec.created_at as i64
     }
 
-    /// Email of the user who created the note.
+    /// Name of the member who created the note.
     async fn created_by(&self, ctx: &Context<'_>) -> Result<Option<String>> {
-        user_email::<A>(ctx, self.rec.created_by.as_deref()).await
+        super::tally::member_name::<A>(ctx, self.rec.created_by.as_deref()).await
     }
 
     async fn updated_at(&self) -> i64 {
         self.rec.updated_at as i64
     }
 
-    /// Email of the user who last changed the note.
+    /// Name of the member who last changed the note.
     async fn updated_by(&self, ctx: &Context<'_>) -> Result<Option<String>> {
-        user_email::<A>(ctx, self.rec.updated_by.as_deref()).await
+        super::tally::member_name::<A>(ctx, self.rec.updated_by.as_deref()).await
     }
 }
 
@@ -223,10 +208,7 @@ fn bad_request(message: String) -> anyhow::Error {
 }
 
 fn caller_id<'a>(ctx: &'a Context<'_>) -> Option<&'a str> {
-    match ctx.data_opt::<AuthInfo>() {
-        Some(AuthInfo::User { id, .. }) => Some(id.as_str()),
-        _ => None,
-    }
+    super::tally::member_id(ctx)
 }
 
 /// A live note the caller may change.

@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 use async_graphql::{Request, Value};
 
-use common::{FakeDb, fake_app, seed_location, seed_user};
+use common::{FakeDb, fake_app, seed_location, seed_person, seed_user};
 use seslogin::app::MyApp;
 use seslogin::auth::AuthInfo;
 use seslogin::graphql;
@@ -34,13 +34,17 @@ fn webauthn() -> Arc<webauthn_rs::prelude::Webauthn> {
 }
 
 fn user(admin: &[&str], read_only: &[&str]) -> AuthInfo {
-    AuthInfo::User {
-        id: "caller".to_string(),
+    AuthInfo::Member {
+        person_id: "caller".to_string(),
+        location_id: "loc-home".to_string(),
+        user_id: Some("caller".to_string()),
         is_super: false,
-        location_grants: admin.iter().map(|s| s.to_string()).collect(),
-        location_read_only_grants: read_only.iter().map(|s| s.to_string()).collect(),
-        token_id: None,
-        grant_id: None,
+        user_location_ids: {
+            let mut ids: Vec<String> = admin.iter().map(|s| s.to_string()).collect();
+            ids.extend::<Vec<String>>(read_only.iter().map(|s| s.to_string()).collect());
+            ids
+        },
+        grant_id: "grant".to_string(),
     }
 }
 
@@ -53,13 +57,13 @@ fn read_only() -> AuthInfo {
 }
 
 fn super_user() -> AuthInfo {
-    AuthInfo::User {
-        id: "super".to_string(),
+    AuthInfo::Member {
+        person_id: "super".to_string(),
+        location_id: "loc-home".to_string(),
+        user_id: Some("super".to_string()),
         is_super: true,
-        location_grants: vec![],
-        location_read_only_grants: vec![],
-        token_id: None,
-        grant_id: None,
+        user_location_ids: vec![],
+        grant_id: "grant".to_string(),
     }
 }
 
@@ -68,6 +72,9 @@ fn app() -> Arc<TestApp> {
     seed_location(&app, "loc-a", "Unit A");
     seed_location(&app, "loc-b", "Unit B");
     seed_user(&app, "caller", true);
+    seed_person(
+        &app, "caller", "loc-home", "Casey", "Caller", "99999999", None,
+    );
     Arc::new(app)
 }
 
@@ -136,10 +143,10 @@ async fn titles(app: &Arc<TestApp>, args: &str) -> Vec<String> {
     let response = run(
         app,
         read_only(),
-        &format!(r#"{{ location(id: "loc-a") {{ notes{args} {{ title }} }} }}"#),
+        &format!(r#"{{ tallyLocation(id: "loc-a") {{ notes{args} {{ title }} }} }}"#),
     )
     .await;
-    json(&response)["location"]["notes"]
+    json(&response)["tallyLocation"]["notes"]
         .as_array()
         .unwrap()
         .iter()
@@ -190,7 +197,7 @@ async fn admin_read_only_and_super_users_can_write_notes() {
     }
     // The creator is reported by email, and a note without content has empty content.
     let note = create(&app, "Shed codes", "").await;
-    assert_eq!(note["createdBy"], "caller@example.com");
+    assert_eq!(note["createdBy"], "Casey Caller");
     assert_eq!(note["content"], "");
 }
 
@@ -222,7 +229,7 @@ async fn kiosks_api_tokens_and_other_units_cannot_use_notes() {
         let read = run(
             &app,
             auth.clone(),
-            r#"{ location(id: "loc-a") { notes { id } noteFolders { id } } }"#,
+            r#"{ tallyLocation(id: "loc-a") { notes { id } noteFolders { id } } }"#,
         )
         .await;
         assert!(code_of(&read).is_some(), "{who} read notes");
@@ -291,11 +298,11 @@ async fn every_note_shows_under_the_location_and_folders_narrow_it() {
     let response = run(
         &app,
         read_only(),
-        r#"{ location(id: "loc-a") { noteFolders { name } } }"#,
+        r#"{ tallyLocation(id: "loc-a") { noteFolders { name } } }"#,
     )
     .await;
     assert_eq!(
-        json(&response)["location"]["noteFolders"],
+        json(&response)["tallyLocation"]["noteFolders"],
         serde_json::json!([{ "name": "admin" }, { "name": "Shed" }, { "name": "Vehicles" }])
     );
 
@@ -320,10 +327,13 @@ async fn every_note_shows_under_the_location_and_folders_narrow_it() {
     let response = run(
         &app,
         read_only(),
-        r#"{ location(id: "loc-a") { notes { title folder { name } } } }"#,
+        r#"{ tallyLocation(id: "loc-a") { notes { title folder { name } } } }"#,
     )
     .await;
-    for note in json(&response)["location"]["notes"].as_array().unwrap() {
+    for note in json(&response)["tallyLocation"]["notes"]
+        .as_array()
+        .unwrap()
+    {
         match note["title"].as_str().unwrap() {
             "Padlock" => assert_eq!(note["folder"]["name"], "Shed 2"),
             _ => assert!(note["folder"].is_null(), "{note}"),
@@ -410,7 +420,7 @@ async fn update_note_changes_only_what_it_is_given() {
     assert_eq!(updated["title"], "Truck 1");
     assert_eq!(updated["content"], "Tyres 40psi");
     assert_eq!(updated["folder"]["name"], "Vehicles");
-    assert_eq!(updated["updatedBy"], "caller@example.com");
+    assert_eq!(updated["updatedBy"], "Casey Caller");
 
     // null takes it out of its folder; whitespace-only content clears it.
     let response = run(

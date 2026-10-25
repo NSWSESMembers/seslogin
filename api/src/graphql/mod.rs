@@ -33,6 +33,7 @@ pub mod pagination;
 pub mod query;
 pub mod reservations;
 pub mod self_sign_in;
+pub mod tally;
 pub mod tally_sign_in;
 pub mod tasks;
 pub mod unit_directory;

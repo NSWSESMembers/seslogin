@@ -13,7 +13,7 @@ use async_graphql::{Request, Value};
 use chrono::{NaiveDate, TimeZone};
 use chrono_tz::Australia::Sydney;
 
-use common::{FakeDb, fake_app, seed_location, seed_user};
+use common::{FakeDb, fake_app, seed_location, seed_person, seed_user};
 use seslogin::app::MyApp;
 use seslogin::auth::AuthInfo;
 use seslogin::graphql;
@@ -37,13 +37,17 @@ fn webauthn() -> Arc<webauthn_rs::prelude::Webauthn> {
 }
 
 fn user(admin: &[&str], read_only: &[&str]) -> AuthInfo {
-    AuthInfo::User {
-        id: "caller".to_string(),
+    AuthInfo::Member {
+        person_id: "caller".to_string(),
+        location_id: "loc-home".to_string(),
+        user_id: Some("caller".to_string()),
         is_super: false,
-        location_grants: admin.iter().map(|s| s.to_string()).collect(),
-        location_read_only_grants: read_only.iter().map(|s| s.to_string()).collect(),
-        token_id: None,
-        grant_id: None,
+        user_location_ids: {
+            let mut ids: Vec<String> = admin.iter().map(|s| s.to_string()).collect();
+            ids.extend::<Vec<String>>(read_only.iter().map(|s| s.to_string()).collect());
+            ids
+        },
+        grant_id: "grant".to_string(),
     }
 }
 
@@ -56,13 +60,13 @@ fn read_only() -> AuthInfo {
 }
 
 fn super_user() -> AuthInfo {
-    AuthInfo::User {
-        id: "super".to_string(),
+    AuthInfo::Member {
+        person_id: "super".to_string(),
+        location_id: "loc-home".to_string(),
+        user_id: Some("super".to_string()),
         is_super: true,
-        location_grants: vec![],
-        location_read_only_grants: vec![],
-        token_id: None,
-        grant_id: None,
+        user_location_ids: vec![],
+        grant_id: "grant".to_string(),
     }
 }
 
@@ -71,6 +75,9 @@ fn app() -> Arc<TestApp> {
     seed_location(&app, "loc-a", "Unit A");
     seed_location(&app, "loc-b", "Unit B");
     seed_user(&app, "caller", true);
+    seed_person(
+        &app, "caller", "loc-home", "Casey", "Caller", "99999999", None,
+    );
     Arc::new(app)
 }
 
@@ -172,11 +179,11 @@ async fn occurrences(app: &Arc<TestApp>, from: i64, to: i64) -> Vec<(String, Str
         app,
         read_only(),
         &format!(
-            r#"{{ location(id: "loc-a") {{ calendarEvents(from: {from}, to: {to}) {{ startTime endTime startDate endDate event {{ title }} }} }} }}"#
+            r#"{{ tallyLocation(id: "loc-a") {{ calendarEvents(from: {from}, to: {to}) {{ startTime endTime startDate endDate event {{ title }} }} }} }}"#
         ),
     )
     .await;
-    json(&response)["location"]["calendarEvents"]
+    json(&response)["tallyLocation"]["calendarEvents"]
         .as_array()
         .unwrap()
         .iter()
@@ -238,7 +245,7 @@ async fn admin_read_only_and_super_users_can_write_events() {
         json(&response);
     }
     let event = create_timed(&app, "Shed tidy", start, "").await;
-    assert_eq!(event["createdBy"], "caller@example.com");
+    assert_eq!(event["createdBy"], "Casey Caller");
     assert_eq!(event["description"], "");
 }
 
@@ -270,7 +277,7 @@ async fn kiosks_api_tokens_and_other_units_cannot_use_the_calendar() {
         let read = run(
             &app,
             auth.clone(),
-            r#"{ location(id: "loc-a") { calendars { id } calendarEvents(from: 0, to: 100) { startTime } } }"#,
+            r#"{ tallyLocation(id: "loc-a") { calendars { id } calendarEvents(from: 0, to: 100) { startTime } } }"#,
         )
         .await;
         assert!(code_of(&read).is_some(), "{who} read events");
@@ -322,11 +329,11 @@ async fn calendars_have_colours_and_deleting_one_keeps_its_events() {
     let response = run(
         &app,
         read_only(),
-        r#"{ location(id: "loc-a") { calendars { name color } } }"#,
+        r#"{ tallyLocation(id: "loc-a") { calendars { name color } } }"#,
     )
     .await;
     assert_eq!(
-        json(&response)["location"]["calendars"],
+        json(&response)["tallyLocation"]["calendars"],
         serde_json::json!([
             { "name": "admin", "color": "GREY" },
             { "name": "Training", "color": "BLUE" }
@@ -500,13 +507,13 @@ async fn a_window_lists_every_occurrence_in_it_by_start() {
         &app,
         read_only(),
         &format!(
-            r#"{{ location(id: "loc-a") {{ calendarEvents(from: {}, to: {}) {{ startTime endTime startDate endDate event {{ title startTime }} }} }} }}"#,
+            r#"{{ tallyLocation(id: "loc-a") {{ calendarEvents(from: {}, to: {}) {{ startTime endTime startDate endDate event {{ title startTime }} }} }} }}"#,
             sydney(2026, 10, 15, 0, 0),
             sydney(2026, 10, 16, 0, 0)
         ),
     )
     .await;
-    let day = json(&response)["location"]["calendarEvents"].clone();
+    let day = json(&response)["tallyLocation"]["calendarEvents"].clone();
     let training = day
         .as_array()
         .unwrap()
@@ -554,7 +561,7 @@ async fn update_calendar_event_changes_only_what_it_is_given() {
     assert_eq!(updated["repeat"], "WEEKLY");
     assert_eq!(updated["repeatUntil"], "2030-06-30");
     assert_eq!(updated["calendarId"], calendar.as_str());
-    assert_eq!(updated["updatedBy"], "caller@example.com");
+    assert_eq!(updated["updatedBy"], "Casey Caller");
 
     // A new start alone keeps the length.
     let later = start + 30 * 60;
@@ -646,7 +653,7 @@ async fn bad_input_is_a_bad_request() {
         let response = run(
             &app,
             admin(),
-            &format!(r#"{{ location(id: "loc-a") {{ calendarEvents(from: {from}, to: {to}) {{ startTime }} }} }}"#),
+            &format!(r#"{{ tallyLocation(id: "loc-a") {{ calendarEvents(from: {from}, to: {to}) {{ startTime }} }} }}"#),
         )
         .await;
         assert_code(&response, "BAD_REQUEST");

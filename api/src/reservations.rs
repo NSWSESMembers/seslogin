@@ -40,8 +40,8 @@ pub fn validate_equipment_ids<T: AsRef<str>>(ids: &[T]) -> Result<Vec<String>, S
     Ok(out)
 }
 
-/// Who, if anyone, a reservation's save should tell it is for them: `new` (the user it
-/// is now for) when that is a different user from `previous` and is not `actor`. A
+/// Who, if anyone, a reservation's save should tell it is for them: `new` (the member it
+/// is now for) when that is a different member from `previous` and is not `actor`. A
 /// reservation you make for yourself, or an edit that leaves who it is for alone, tells
 /// nobody.
 pub fn newly_reserved_for<'a>(
@@ -52,12 +52,13 @@ pub fn newly_reserved_for<'a>(
     new.filter(|u| previous != Some(*u) && actor != Some(*u))
 }
 
-/// Tell `user_id` a reservation of `rec`'s equipment was made for them. Best-effort, like
-/// every notification: equipment names that can't be read fall back to a generic word.
+/// Tell member `person_id` a reservation of `rec`'s equipment was made for them.
+/// Best-effort, like every notification: equipment names that can't be read fall back
+/// to a generic word.
 pub async fn notify_reserved_for(
     app: &(impl HasDb + Sync),
     rec: &db::EquipmentReservation,
-    user_id: &str,
+    person_id: &str,
 ) {
     let mut names: Vec<String> = match app.db().get_equipment(&rec.equipment_ids).await {
         Ok(rows) => rows.into_iter().flatten().map(|e| e.name).collect(),
@@ -80,7 +81,7 @@ pub async fn notify_reserved_for(
         .location(&rec.location_id)
         .body(&body)
         .target("reservation", &rec.id),
-        Audience::Users(vec![user_id.to_string()]),
+        Audience::Members(vec![person_id.to_string()]),
     )
     .await;
 }

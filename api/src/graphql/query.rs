@@ -31,17 +31,18 @@ use crate::ses_api;
 
 use super::audit_log::{self, AuditEntityType, AuditEntryConnection};
 use super::auth::{AuthGuard, AuthRequirement, can_write_location, require_location_access};
-use super::calendar::{self, Calendar, CalendarEvent, CalendarEventOccurrence};
+use super::calendar::{self, CalendarEvent};
 use super::dataloader::DatabaseLoader;
 use super::equipment::{self, Equipment};
 use super::location_share::{self, LocationShare};
-use super::map::{self, MapLayer, MapPin};
-use super::notes::{self, Note, NoteFolder};
+use super::map::{self, MapPin};
+use super::notes::{self, Note};
 use super::notifications::{self, NotificationConnection};
 use super::on_call::{self, OnCallRole};
 use super::reservations::{self, EquipmentReservation};
 use super::self_sign_in::{self, SelfSignInStatus};
-use super::tasks::{self, Task, TaskList, TaskView};
+use super::tally;
+use super::tasks::{self, Task};
 use super::unit_directory::{self, DirectoryUnit};
 use super::wifi::{self, WifiNetworks};
 use super::{CategoryId, LocationId, NitcEventId, PersonId, SessionId, UserId};
@@ -1848,7 +1849,7 @@ fn decode_period_cursor(cursor: &str) -> Result<db::PeriodCursor> {
 #[derive(Debug, PartialEq)]
 pub struct Location<A: App + HasDb + 'static> {
     _marker: std::marker::PhantomData<A>,
-    rec: db::Location,
+    pub(super) rec: db::Location,
 }
 
 impl<A: App + HasDb + Send + Sync> Location<A> {
@@ -2473,136 +2474,6 @@ impl<A: App + HasDb + Send + Sync> Location<A> {
             .collect();
 
         Ok(rows)
-    }
-
-    /// The location's open tasks (its shared to-do list): by default those due now,
-    /// overdue first. `listId` narrows to one of its task lists; without it every
-    /// task at the location is listed, whichever list it is on. Users only (Admin
-    /// or Read only); see `graphql::tasks`.
-    async fn tasks(
-        &self,
-        ctx: &Context<'_>,
-        #[graphql(default)] view: TaskView,
-        list_id: Option<ID>,
-    ) -> Result<Vec<Task<A>>> {
-        tasks::location_tasks(ctx, &self.rec.id, view, list_id).await
-    }
-
-    /// The location's task lists, by name.
-    async fn task_lists(&self, ctx: &Context<'_>) -> Result<Vec<TaskList<A>>> {
-        tasks::location_task_lists(ctx, &self.rec.id).await
-    }
-
-    /// The location's notes (its shared notebook), most recently changed first.
-    /// `folderId` narrows to one of its note folders; without it every note at the
-    /// location is listed, whichever folder it is in. `search` keeps notes whose title
-    /// contains it, ignoring case. Users only (Admin or Read only); see
-    /// `graphql::notes`.
-    async fn notes(
-        &self,
-        ctx: &Context<'_>,
-        folder_id: Option<ID>,
-        search: Option<String>,
-    ) -> Result<Vec<Note<A>>> {
-        notes::location_notes(ctx, &self.rec.id, folder_id, search).await
-    }
-
-    /// The location's note folders, by name.
-    async fn note_folders(&self, ctx: &Context<'_>) -> Result<Vec<NoteFolder<A>>> {
-        notes::location_note_folders(ctx, &self.rec.id).await
-    }
-
-    /// The location's equipment register, by name. `search` keeps equipment whose name
-    /// or description contains it, ignoring case. Users only (Admin or Read only); see
-    /// `graphql::equipment`.
-    async fn equipment(
-        &self,
-        ctx: &Context<'_>,
-        search: Option<String>,
-    ) -> Result<Vec<Equipment<A>>> {
-        equipment::location_equipment(ctx, &self.rec.id, search).await
-    }
-
-    /// The location's equipment reservations that end after `endingAfter` (Unix
-    /// seconds, default now) — those still to come or under way — by start time.
-    /// `equipmentId` narrows to reservations of one piece of equipment. Users only
-    /// (Admin or Read only); see `graphql::reservations`.
-    async fn equipment_reservations(
-        &self,
-        ctx: &Context<'_>,
-        ending_after: Option<i64>,
-        equipment_id: Option<ID>,
-    ) -> Result<Vec<EquipmentReservation<A>>> {
-        reservations::location_reservations(ctx, &self.rec.id, ending_after, equipment_id).await
-    }
-
-    /// The location's reservations a reservation of `equipmentIds` from `startTime` to
-    /// `endTime` would overlap, by start time, leaving out `excludeId` (the one being
-    /// edited). Overlaps are allowed; this is so a client can warn before saving.
-    async fn equipment_reservation_conflicts(
-        &self,
-        ctx: &Context<'_>,
-        equipment_ids: Vec<ID>,
-        start_time: i64,
-        end_time: i64,
-        exclude_id: Option<ID>,
-    ) -> Result<Vec<EquipmentReservation<A>>> {
-        reservations::location_reservation_conflicts(
-            ctx,
-            &self.rec.id,
-            equipment_ids,
-            start_time,
-            end_time,
-            exclude_id,
-        )
-        .await
-    }
-
-    /// The pins on the location's shared map, by title. `layerId` narrows to one of its
-    /// map layers; without it every pin at the location is listed, whichever layer it is
-    /// on. Users only (Admin or Read only); see `graphql::map`.
-    async fn map_pins(&self, ctx: &Context<'_>, layer_id: Option<ID>) -> Result<Vec<MapPin<A>>> {
-        map::location_map_pins(ctx, &self.rec.id, layer_id).await
-    }
-
-    /// The location's map layers, by name.
-    async fn map_layers(&self, ctx: &Context<'_>) -> Result<Vec<MapLayer<A>>> {
-        map::location_map_layers(ctx, &self.rec.id).await
-    }
-
-    /// The location's calendars, by name. Users only (Admin or Read only); see
-    /// `graphql::calendar`.
-    async fn calendars(&self, ctx: &Context<'_>) -> Result<Vec<Calendar<A>>> {
-        calendar::location_calendars(ctx, &self.rec.id).await
-    }
-
-    /// Every occurrence of the location's events that overlaps `from`–`to` (Unix
-    /// seconds, at most 400 days apart), repeats expanded, by start; at most 5,000.
-    /// All-day occurrences are included when one of their dates overlaps the window in
-    /// any time zone, so a client should check them against its own days. Events in
-    /// every calendar, and in none, are listed: a client picking calendars filters on
-    /// `event.calendarId`. Users only (Admin or Read only).
-    async fn calendar_events(
-        &self,
-        ctx: &Context<'_>,
-        from: i64,
-        to: i64,
-    ) -> Result<Vec<CalendarEventOccurrence<A>>> {
-        calendar::location_calendar_events(ctx, &self.rec.id, from, to).await
-    }
-
-    /// Everyone sharing their position with the location ("Locate"), most recently
-    /// updated first. A share shows until 7 minutes after its latest position, so
-    /// this includes shares that have just ended (`active: false`). Users only (Admin
-    /// or Read only); see `graphql::location_share`.
-    async fn location_shares(&self, ctx: &Context<'_>) -> Result<Vec<LocationShare<A>>> {
-        location_share::location_shares(ctx, &self.rec.id).await
-    }
-
-    /// The location's on-call roles (Duty Officer, …) and who holds each now, by name.
-    /// Users only (Admin or Read only); see `graphql::on_call`.
-    async fn on_call_roles(&self, ctx: &Context<'_>) -> Result<Vec<OnCallRole<A>>> {
-        on_call::location_on_call_roles(ctx, &self.rec.id).await
     }
 
     async fn sessions(&self, ctx: &Context<'_>) -> Result<Vec<Session<A>>> {
@@ -3637,35 +3508,47 @@ impl<A: App + HasDb + HasRealtime + Send + Sync + 'static> QueryRoot<A> {
             .map(Period::new)
     }
 
-    /// The signed-in user's own sign-in state at their linked member's home unit,
-    /// for the Tally app; null when no (live) member is linked to the account. Users
-    /// only: a kiosk, API token or edit link is refused. No location grant is
-    /// needed — the link is the authority (see `graphql::self_sign_in`).
+    /// The member signed in to Tally, and the units they can use there. Tally members
+    /// only; see `graphql::tally`.
+    async fn tally_viewer(&self, ctx: &Context<'_>) -> Result<tally::TallyViewer<A>> {
+        tally::viewer(ctx).await
+    }
+
+    /// One unit's shared Tally tools — tasks, notes, map, calendar, equipment, on call
+    /// and who is sharing their position. Tally members only, at a unit they can use.
+    async fn tally_location(&self, ctx: &Context<'_>, id: ID) -> Result<tally::TallyLocation<A>> {
+        tally::location(ctx, &id).await
+    }
+
+    /// The signed-in member's own sign-in state at their home unit, for the Tally app;
+    /// null when the member has since been deleted. Tally members only. No location
+    /// grant is needed — being the member is the authority (see
+    /// `graphql::self_sign_in`).
     async fn self_sign_in_status(&self, ctx: &Context<'_>) -> Result<Option<SelfSignInStatus<A>>> {
         let app = ctx.data_unchecked::<Arc<A>>();
         self_sign_in::status(ctx, app.as_ref()).await
     }
 
     /// One task, open or completed; null if it does not exist or was deleted.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn task(&self, ctx: &Context<'_>, id: ID) -> Result<Option<Task<A>>> {
         tasks::task(ctx, &id).await
     }
 
     /// One note; null if it does not exist or was deleted.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn note(&self, ctx: &Context<'_>, id: ID) -> Result<Option<Note<A>>> {
         notes::note(ctx, &id).await
     }
 
     /// One piece of equipment; null if it does not exist or was deleted.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn equipment(&self, ctx: &Context<'_>, id: ID) -> Result<Option<Equipment<A>>> {
         equipment::equipment(ctx, &id).await
     }
 
     /// One equipment reservation; null if it does not exist or was deleted.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn equipment_reservation(
         &self,
         ctx: &Context<'_>,
@@ -3675,20 +3558,20 @@ impl<A: App + HasDb + HasRealtime + Send + Sync + 'static> QueryRoot<A> {
     }
 
     /// One map pin; null if it does not exist or was deleted.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn map_pin(&self, ctx: &Context<'_>, id: ID) -> Result<Option<MapPin<A>>> {
         map::map_pin(ctx, &id).await
     }
 
     /// One calendar event; null if it does not exist or was deleted.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn calendar_event(&self, ctx: &Context<'_>, id: ID) -> Result<Option<CalendarEvent<A>>> {
         calendar::calendar_event(ctx, &id).await
     }
 
     /// The caller's own location share while it still shows (until 7 minutes after its
     /// latest position); null otherwise.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn my_location_share(&self, ctx: &Context<'_>) -> Result<Option<LocationShare<A>>> {
         location_share::my_location_share(ctx).await
     }
@@ -3696,7 +3579,7 @@ impl<A: App + HasDb + HasRealtime + Send + Sync + 'static> QueryRoot<A> {
     /// The caller's in-app notifications, newest first. `unreadOnly` lists just the ones
     /// not yet read. At most 200 per page, 50 by default; a notification about a location
     /// the caller can no longer access is left out.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn my_notifications(
         &self,
         ctx: &Context<'_>,
@@ -3709,30 +3592,31 @@ impl<A: App + HasDb + HasRealtime + Send + Sync + 'static> QueryRoot<A> {
 
     /// How many notifications the caller has unread, counting no further than 100 (show
     /// "99+" above 99).
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn my_unread_notification_count(&self, ctx: &Context<'_>) -> Result<i32> {
         notifications::my_unread_notification_count::<A>(ctx).await
     }
 
-    /// The WiFi networks, with their passwords, for signed-in users (Tally's WiFi app).
-    /// Never for kiosks or API tokens. `networks` is null when `knownVersion` is
+    /// The WiFi networks, with their passwords, for members signed in to Tally (its
+    /// WiFi app). Never for users on their own, kiosks or API tokens. `networks` is null when `knownVersion` is
     /// already current.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn wifi_networks(&self, known_version: Option<String>) -> Result<WifiNetworks> {
         wifi::wifi_networks(known_version.as_deref())
     }
 
     /// Every enabled unit, by name, with its address, map position, code, parent
-    /// headquarters and contact details, for Tally's Units tool. Any user may read it.
+    /// headquarters and contact details, for Tally's Units tool. Any member signed in
+    /// to Tally may read it.
     /// For now only `id` and `name` are real: the rest are placeholders
     /// (`placeholder: true`) until the real details are stored.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn unit_directory(&self, ctx: &Context<'_>) -> Result<Vec<DirectoryUnit>> {
         unit_directory::unit_directory::<A>(ctx).await
     }
 
     /// One on-call role; null if it does not exist or was deleted.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn on_call_role(&self, ctx: &Context<'_>, id: ID) -> Result<Option<OnCallRole<A>>> {
         on_call::on_call_role(ctx, &id).await
     }
@@ -3965,7 +3849,7 @@ impl<A: App + HasDb + HasRealtime + Send + Sync + 'static> QueryRoot<A> {
     // about the period, the member, or their unit. Ordered `PeriodLink` first only
     // so an unauthenticated caller gets the clearer "Must be authenticated".
     #[graphql(
-        guard = "AuthGuard::new(AuthRequirement::PeriodLink).or(AuthGuard::new(AuthRequirement::Authenticated))"
+        guard = "AuthGuard::new(AuthRequirement::PeriodLink).or(AuthGuard::new(AuthRequirement::Authenticated)).or(AuthGuard::new(AuthRequirement::Member))"
     )]
     async fn categories(&self, ctx: &Context<'_>) -> Result<Vec<Category<A>>> {
         let app = ctx.data_unchecked::<Arc<A>>();

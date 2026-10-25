@@ -682,7 +682,7 @@ async fn equipment_reservation_writes_are_recorded_against_their_location() {
             equipment_ids: &ids,
             start_time: 2_000_000_000,
             end_time: 2_000_003_600,
-            reserved_for_user_id: Some("caller"),
+            reserved_for_person_id: Some("caller"),
             reserved_for_text: None,
             description: "",
             created_by: Some("caller"),
@@ -696,7 +696,7 @@ async fn equipment_reservation_writes_are_recorded_against_their_location() {
                 equipment_ids: &ids,
                 start_time: 2_000_000_000,
                 end_time: 2_000_007_200,
-                reserved_for_user_id: None,
+                reserved_for_person_id: None,
                 reserved_for_text: Some("Detailing / clean"),
                 description: "",
                 by: Some("caller"),
@@ -734,12 +734,12 @@ async fn equipment_reservation_writes_are_recorded_against_their_location() {
             "equipment_ids",
             "start_time",
             "end_time",
-            "reserved_for_user_id"
+            "reserved_for_person_id"
         ]
     );
     assert_eq!(
         changed_fields(&entries[1]),
-        vec!["end_time", "reserved_for_user_id", "reserved_for_text"]
+        vec!["end_time", "reserved_for_person_id", "reserved_for_text"]
     );
     assert_eq!(
         entries[2].entity_label.as_deref(),
@@ -1073,7 +1073,7 @@ async fn location_shares_record_starting_and_stopping_but_not_positions() {
         recorded_at: 100,
     };
     let share = db::LocationShare {
-        user_id: "caller".to_string(),
+        person_id: "caller".to_string(),
         location_id: "loc-a".to_string(),
         position,
         interval_secs: 60,
@@ -1109,13 +1109,13 @@ async fn location_shares_record_starting_and_stopping_but_not_positions() {
 async fn notifications_are_stored_and_read_without_auditing() {
     let app = app();
     let record = db::NotificationRecord {
-        user_id: "caller".to_string(),
+        person_id: "caller".to_string(),
         sk: db::notification_sk(1_700_000_000_000, "n1"),
         notification_id: "n1".to_string(),
         source: "reservations".to_string(),
         kind: "reservation.for_you".to_string(),
         location_id: Some("loc-a".to_string()),
-        actor_user_id: None,
+        actor_person_id: None,
         title: "Truck booked".to_string(),
         body: None,
         target_type: None,

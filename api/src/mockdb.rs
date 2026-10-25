@@ -993,7 +993,7 @@ impl db::Handler for Handler {
 
     async fn list_notifications(
         &self,
-        _user_id: &str,
+        _person_id: &str,
         _after_sk: Option<&str>,
         _limit: usize,
         _unread_only: bool,
@@ -1001,13 +1001,13 @@ impl db::Handler for Handler {
         Self::unsupported()
     }
 
-    async fn count_unread_notifications(&self, _user_id: &str, _cap: usize) -> db::Result<usize> {
+    async fn count_unread_notifications(&self, _person_id: &str, _cap: usize) -> db::Result<usize> {
         Self::unsupported()
     }
 
     async fn mark_notifications_read(
         &self,
-        _user_id: &str,
+        _person_id: &str,
         _sks: &[String],
         _read_at: u64,
     ) -> db::Result<()> {

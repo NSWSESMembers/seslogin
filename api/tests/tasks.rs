@@ -12,7 +12,7 @@ use std::sync::Arc;
 use async_graphql::{Request, Value};
 use chrono::{Days, NaiveDate};
 
-use common::{FakeDb, fake_app, seed_location, seed_user};
+use common::{FakeDb, fake_app, seed_location, seed_person, seed_user};
 use seslogin::app::MyApp;
 use seslogin::auth::AuthInfo;
 use seslogin::graphql;
@@ -37,13 +37,17 @@ fn webauthn() -> Arc<webauthn_rs::prelude::Webauthn> {
 }
 
 fn user(admin: &[&str], read_only: &[&str]) -> AuthInfo {
-    AuthInfo::User {
-        id: "caller".to_string(),
+    AuthInfo::Member {
+        person_id: "caller".to_string(),
+        location_id: "loc-home".to_string(),
+        user_id: Some("caller".to_string()),
         is_super: false,
-        location_grants: admin.iter().map(|s| s.to_string()).collect(),
-        location_read_only_grants: read_only.iter().map(|s| s.to_string()).collect(),
-        token_id: None,
-        grant_id: None,
+        user_location_ids: {
+            let mut ids: Vec<String> = admin.iter().map(|s| s.to_string()).collect();
+            ids.extend::<Vec<String>>(read_only.iter().map(|s| s.to_string()).collect());
+            ids
+        },
+        grant_id: "grant".to_string(),
     }
 }
 
@@ -56,13 +60,13 @@ fn read_only() -> AuthInfo {
 }
 
 fn super_user() -> AuthInfo {
-    AuthInfo::User {
-        id: "super".to_string(),
+    AuthInfo::Member {
+        person_id: "super".to_string(),
+        location_id: "loc-home".to_string(),
+        user_id: Some("super".to_string()),
         is_super: true,
-        location_grants: vec![],
-        location_read_only_grants: vec![],
-        token_id: None,
-        grant_id: None,
+        user_location_ids: vec![],
+        grant_id: "grant".to_string(),
     }
 }
 
@@ -71,6 +75,9 @@ fn app() -> Arc<TestApp> {
     seed_location(&app, "loc-a", "Unit A");
     seed_location(&app, "loc-b", "Unit B");
     seed_user(&app, "caller", true);
+    seed_person(
+        &app, "caller", "loc-home", "Casey", "Caller", "99999999", None,
+    );
     Arc::new(app)
 }
 
@@ -136,10 +143,10 @@ async fn titles(app: &Arc<TestApp>, view: &str, list: Option<&str>) -> Vec<Strin
     let response = run(
         app,
         read_only(),
-        &format!(r#"{{ location(id: "loc-a") {{ tasks(view: {view}{list}) {{ title }} }} }}"#),
+        &format!(r#"{{ tallyLocation(id: "loc-a") {{ tasks(view: {view}{list}) {{ title }} }} }}"#),
     )
     .await;
-    json(&response)["location"]["tasks"]
+    json(&response)["tallyLocation"]["tasks"]
         .as_array()
         .unwrap()
         .iter()
@@ -182,7 +189,7 @@ async fn admin_read_only_and_super_users_can_create_and_complete_tasks() {
     }
     // The creator is reported by email.
     let task = create(&app, "Mop floors", "").await;
-    assert_eq!(task["createdBy"], "caller@example.com");
+    assert_eq!(task["createdBy"], "Casey Caller");
 }
 
 #[tokio::test]
@@ -212,7 +219,7 @@ async fn kiosks_api_tokens_and_other_units_cannot_use_tasks() {
         let read = run(
             &app,
             auth.clone(),
-            r#"{ location(id: "loc-a") { tasks { id } } }"#,
+            r#"{ tallyLocation(id: "loc-a") { tasks { id } } }"#,
         )
         .await;
         assert!(code_of(&read).is_some(), "{who} read tasks");
@@ -378,10 +385,13 @@ async fn tasks_can_be_put_on_lists_and_filtered_by_them() {
     let lists = run(
         &app,
         read_only(),
-        r#"{ location(id: "loc-a") { taskLists { name } } }"#,
+        r#"{ tallyLocation(id: "loc-a") { taskLists { name } } }"#,
     )
     .await;
-    assert_eq!(json(&lists)["location"]["taskLists"][0]["name"], "Vehicles");
+    assert_eq!(
+        json(&lists)["tallyLocation"]["taskLists"][0]["name"],
+        "Vehicles"
+    );
 
     // Deleting the list leaves its task on the location.
     let deleted = run(

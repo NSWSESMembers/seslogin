@@ -937,7 +937,7 @@ pub struct NewEquipmentLogEntry<'a> {
 /// ("Reservations"). See SCHEMA.md's `equipment_reservation` section and
 /// [`crate::reservations`] for the rules.
 ///
-/// It is for `reserved_for_user_id` (the user who made it, unless changed) or, when
+/// It is for `reserved_for_person_id` (the user who made it, unless changed) or, when
 /// `reserved_for_text` is set, for whoever that names. Overlapping reservations are
 /// allowed; the API reports them as a warning.
 #[derive(Clone, Debug, PartialEq)]
@@ -948,7 +948,7 @@ pub struct EquipmentReservation {
     pub equipment_ids: Vec<String>,
     pub start_time: u64,
     pub end_time: u64,
-    pub reserved_for_user_id: Option<String>,
+    pub reserved_for_person_id: Option<String>,
     pub reserved_for_text: Option<String>,
     pub description: String,
     pub created_by: Option<String>,
@@ -972,7 +972,7 @@ pub struct NewEquipmentReservation<'a> {
     pub equipment_ids: &'a [String],
     pub start_time: u64,
     pub end_time: u64,
-    pub reserved_for_user_id: Option<&'a str>,
+    pub reserved_for_person_id: Option<&'a str>,
     pub reserved_for_text: Option<&'a str>,
     pub description: &'a str,
     pub created_by: Option<&'a str>,
@@ -989,7 +989,7 @@ pub enum EquipmentReservationUpdateShape<'a> {
         equipment_ids: &'a [String],
         start_time: u64,
         end_time: u64,
-        reserved_for_user_id: Option<&'a str>,
+        reserved_for_person_id: Option<&'a str>,
         reserved_for_text: Option<&'a str>,
         description: &'a str,
         by: Option<&'a str>,
@@ -1522,8 +1522,8 @@ pub struct SharedPosition {
 /// See SCHEMA.md's `location_share` section.
 #[derive(Clone, Debug, PartialEq)]
 pub struct LocationShare {
-    /// The sharing user's ID; also the table's key.
-    pub user_id: String,
+    /// The sharing member's person ID; also the table's key (`id`).
+    pub person_id: String,
     pub location_id: String,
     pub position: SharedPosition,
     /// How often the device said it would report in, in seconds.
@@ -1539,7 +1539,7 @@ pub struct LocationShare {
 
 impl HasID for LocationShare {
     fn id(&self) -> &str {
-        &self.user_id
+        &self.person_id
     }
 }
 
@@ -1550,8 +1550,8 @@ impl HasID for LocationShare {
 /// single query. See SCHEMA.md's `notification` section.
 #[derive(Clone, Debug, PartialEq)]
 pub struct NotificationRecord {
-    /// The recipient: a user, not a member. The table's hash key.
-    pub user_id: String,
+    /// The recipient: a member, by person ID. The table's hash key.
+    pub person_id: String,
     /// See [`notification_sk`]. The table's range key, and the paging cursor.
     pub sk: String,
     /// Shared by every recipient's copy of one event.
@@ -1561,8 +1561,8 @@ pub struct NotificationRecord {
     /// What happened, e.g. `reservation.for_you`.
     pub kind: String,
     pub location_id: Option<String>,
-    /// The user whose action caused it, if a user did.
-    pub actor_user_id: Option<String>,
+    /// The member whose action caused it, if a member did.
+    pub actor_person_id: Option<String>,
     pub title: String,
     pub body: Option<String>,
     /// What tapping the notification should open, e.g. `reservation` and its ID.
@@ -2639,7 +2639,7 @@ pub trait Handler: Sync {
     /// Shares by user ID, whether or not they have ended or lapsed.
     fn get_location_shares<T: AsRef<str> + Sync>(
         &self,
-        user_ids: &[T],
+        person_ids: &[T],
     ) -> impl Future<Output = Result<Vec<Option<LocationShare>>>> + Send;
     /// A location's shares, in no particular order. Includes any that have lapsed but
     /// not yet been removed by the TTL, so callers check `expires_at`. Reads a GSI, so a
@@ -2655,7 +2655,7 @@ pub trait Handler: Sync {
     /// after the write.
     fn update_location_share_position(
         &self,
-        user_id: &str,
+        person_id: &str,
         position: &SharedPosition,
         updated_at: u64,
         expires_at: u64,
@@ -2663,7 +2663,7 @@ pub trait Handler: Sync {
     /// Remove the user's share; returns it, or None if they had none.
     fn delete_location_share(
         &self,
-        user_id: &str,
+        person_id: &str,
     ) -> impl Future<Output = Result<Option<LocationShare>>> + Send;
 
     // ── Notifications ─────────────────────────────────────────────────────────
@@ -2680,7 +2680,7 @@ pub trait Handler: Sync {
     /// may not show yet. Includes any past `expires_at` the TTL hasn't removed.
     fn list_notifications(
         &self,
-        user_id: &str,
+        person_id: &str,
         after_sk: Option<&str>,
         limit: usize,
         unread_only: bool,
@@ -2689,14 +2689,14 @@ pub trait Handler: Sync {
     /// Reads a GSI, so it can lag a write by a moment.
     fn count_unread_notifications(
         &self,
-        user_id: &str,
+        person_id: &str,
         cap: usize,
     ) -> impl Future<Output = Result<usize>> + Send;
     /// Mark the user's notifications with these `sk`s read at `read_at`. One that is
     /// already read, or no longer exists, is left alone and is not an error.
     fn mark_notifications_read(
         &self,
-        user_id: &str,
+        person_id: &str,
         sks: &[String],
         read_at: u64,
     ) -> impl Future<Output = Result<()>> + Send;

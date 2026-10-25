@@ -5,7 +5,7 @@
 //! through thin resolvers.
 //!
 //! Access is [`require_map_access`] on the pin's (or layer's) location throughout: any
-//! user with Admin or Read only access, and super users.
+//! member who can use the unit in Tally. Authors are recorded by person ID.
 
 use anyhow::{Result, anyhow};
 use async_graphql::dataloader::DataLoader;
@@ -16,9 +16,8 @@ use super::auth::require_map_access;
 use super::dataloader::DatabaseLoader;
 use super::error::{ApiError, ErrorCode};
 use super::query::Location;
-use super::{LocationId, MapLayerId, UserId};
+use super::{LocationId, MapLayerId};
 use crate::app::{App, HasDb};
-use crate::auth::AuthInfo;
 use crate::db::{self, Handler};
 use crate::map::{self, MapPinType as Type};
 
@@ -68,20 +67,6 @@ impl<A: App + HasDb + Send + Sync + 'static> MapPin<A> {
             rec,
         }
     }
-}
-
-async fn user_email<A: App + HasDb + Send + Sync + 'static>(
-    ctx: &Context<'_>,
-    id: Option<&str>,
-) -> Result<Option<String>> {
-    let Some(id) = id else { return Ok(None) };
-    let loader = ctx.data_unchecked::<DataLoader<DatabaseLoader<A>>>();
-    Ok(loader
-        .load_one(UserId(ID(id.to_string())))
-        .await
-        .map_err(|e| anyhow!("Failed to load user via DataLoader: {}", e))?
-        .flatten()
-        .map(|u| u.rec.email))
 }
 
 async fn load_location<A: App + HasDb + Send + Sync + 'static>(
@@ -171,18 +156,18 @@ impl<A: App + HasDb + Send + Sync + 'static> MapPin<A> {
         self.rec.created_at as i64
     }
 
-    /// Email of the user who added the pin.
+    /// Name of the member who added the pin.
     async fn created_by(&self, ctx: &Context<'_>) -> Result<Option<String>> {
-        user_email::<A>(ctx, self.rec.created_by.as_deref()).await
+        super::tally::member_name::<A>(ctx, self.rec.created_by.as_deref()).await
     }
 
     async fn updated_at(&self) -> i64 {
         self.rec.updated_at as i64
     }
 
-    /// Email of the user who last changed the pin.
+    /// Name of the member who last changed the pin.
     async fn updated_by(&self, ctx: &Context<'_>) -> Result<Option<String>> {
-        user_email::<A>(ctx, self.rec.updated_by.as_deref()).await
+        super::tally::member_name::<A>(ctx, self.rec.updated_by.as_deref()).await
     }
 }
 
@@ -279,10 +264,7 @@ fn bad_request(message: String) -> anyhow::Error {
 }
 
 fn caller_id<'a>(ctx: &'a Context<'_>) -> Option<&'a str> {
-    match ctx.data_opt::<AuthInfo>() {
-        Some(AuthInfo::User { id, .. }) => Some(id.as_str()),
-        _ => None,
-    }
+    super::tally::member_id(ctx)
 }
 
 /// A live pin the caller may change.
