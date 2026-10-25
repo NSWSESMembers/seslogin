@@ -409,6 +409,56 @@ type DayMemberPeriodSummary {
 }
 
 """
+A labelled email address, such as "Unit Commander".
+"""
+type DirectoryEmailAddress {
+	label: String!
+	address: String!
+}
+
+"""
+A labelled phone number, such as "Unit HQ".
+"""
+type DirectoryPhoneNumber {
+	label: String!
+	"""
+	As it should be shown, e.g. `(02) 5550 1234`.
+	"""
+	number: String!
+}
+
+"""
+One unit in the directory.
+"""
+type DirectoryUnit {
+	"""
+	The location's ID.
+	"""
+	id: ID!
+	name: String!
+	"""
+	Three capital letters, e.g. `HOR`.
+	"""
+	code: String!
+	"""
+	One line, e.g. `12 Example Street, Hornsby NSW 2077`.
+	"""
+	address: String!
+	latitude: Float!
+	longitude: Float!
+	"""
+	The name of the headquarters the unit reports to.
+	"""
+	parentHeadquarters: String!
+	phoneNumbers: [DirectoryPhoneNumber!]!
+	emailAddresses: [DirectoryEmailAddress!]!
+	"""
+	True while everything but `id` and `name` is invented. Show it as sample data.
+	"""
+	placeholder: Boolean!
+}
+
+"""
 Build and deployment information about the API server.
 """
 type Environment {
@@ -1981,6 +2031,13 @@ type QueryRoot {
 	already current.
 	"""
 	wifiNetworks(knownVersion: String): WifiNetworks!
+	"""
+	Every enabled unit, by name, with its address, map position, code, parent
+	headquarters and contact details, for Tally's Units tool. Any user may read it.
+	For now only `id` and `name` are real: the rest are placeholders
+	(`placeholder: true`) until the real details are stored.
+	"""
+	unitDirectory: [DirectoryUnit!]!
 	"""
 	One on-call role; null if it does not exist or was deleted.
 	"""

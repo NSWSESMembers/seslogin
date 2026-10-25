@@ -926,6 +926,29 @@ The WiFi networks Tally's WiFi app shows signed-in users, with their passwords
 { wifiNetworks(knownVersion: "3f2a9c0d1b7e4a65") { version networks { title ssid password security hidden } } }
 ```
 
+## Unit directory
+
+Every enabled location, statewide, with the details someone looking a unit up wants, for the
+Tally app's Units tool (`src/graphql/unit_directory.rs`): `Query.unitDirectory`, by name.
+
+- **Who:** any *user*, like the contacts sync. It is statewide reference data, so it needs no
+  role at any location. Kiosk sessions, API tokens and edit links are refused.
+- **Fields:** `id`, `name`, `code` (three capital letters), `address` (one line), `latitude` /
+  `longitude`, `parentHeadquarters`, `phoneNumbers` and `emailAddresses` (each a list of
+  `{ label, number }` / `{ label, address }`), and `placeholder`.
+- **Placeholders:** only `id` and `name` are real so far. The rest are invented from the
+  location's id and name until the real details are stored, and every unit has
+  `placeholder: true` so clients can mark them as sample data. They are the same on every
+  read. Phone numbers are in ACMA's ranges for fiction (`(02) 5550 xxxx`, `(02) 7010 xxxx`),
+  email addresses are at `example.com`, positions are spread over inland NSW and the
+  headquarters is the zone that position falls in. The one real number is the flood and
+  storm line, 132 500, which is the same for every unit.
+
+```graphql
+{ unitDirectory { id name code address latitude longitude parentHeadquarters
+                  phoneNumbers { label number } emailAddresses { label address } placeholder } }
+```
+
 ## Audit log
 
 Every business write (people, periods, kiosk sessions, users, locations, categories, API tokens, passkeys, OAuth grants, …) is recorded in the `{DB_PREFIX}_audit_log` DynamoDB table: who did it, which location(s) it touched, and which fields changed from what to what. The table is defined in `infra/dynamodb*.tf` and documented in `SCHEMA.md`; it must exist (`terraform apply`) for entries to land. It is read through GraphQL (below); there is no UI for it yet.

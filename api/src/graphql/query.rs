@@ -42,6 +42,7 @@ use super::on_call::{self, OnCallRole};
 use super::reservations::{self, EquipmentReservation};
 use super::self_sign_in::{self, SelfSignInStatus};
 use super::tasks::{self, Task, TaskList, TaskView};
+use super::unit_directory::{self, DirectoryUnit};
 use super::wifi::{self, WifiNetworks};
 use super::{CategoryId, LocationId, NitcEventId, PersonId, SessionId, UserId};
 
@@ -3717,6 +3718,15 @@ impl<A: App + HasDb + HasRealtime + Send + Sync + 'static> QueryRoot<A> {
     #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
     async fn wifi_networks(&self, known_version: Option<String>) -> Result<WifiNetworks> {
         wifi::wifi_networks(known_version.as_deref())
+    }
+
+    /// Every enabled unit, by name, with its address, map position, code, parent
+    /// headquarters and contact details, for Tally's Units tool. Any user may read it.
+    /// For now only `id` and `name` are real: the rest are placeholders
+    /// (`placeholder: true`) until the real details are stored.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    async fn unit_directory(&self, ctx: &Context<'_>) -> Result<Vec<DirectoryUnit>> {
+        unit_directory::unit_directory::<A>(ctx).await
     }
 
     /// One on-call role; null if it does not exist or was deleted.
