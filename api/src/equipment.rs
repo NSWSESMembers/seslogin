@@ -86,6 +86,23 @@ impl EquipmentStatus {
     pub fn parse(s: &str) -> Option<Self> {
         Self::ALL.into_iter().find(|t| t.as_str() == s)
     }
+
+    /// Whether moving into this status should tell the unit's users: something is
+    /// wrong with the equipment.
+    pub fn needs_attention(self) -> bool {
+        matches!(self, Self::HasIssue | Self::OutOfService | Self::Missing)
+    }
+
+    /// The notification title for equipment called `name` in this status, or `None`
+    /// when [`Self::needs_attention`] is false.
+    pub fn attention_title(self, name: &str) -> Option<String> {
+        match self {
+            Self::HasIssue => Some(format!("{name} has an issue")),
+            Self::OutOfService => Some(format!("{name} is out of service")),
+            Self::Missing => Some(format!("{name} is missing")),
+            Self::InService | Self::Borrowed => None,
+        }
+    }
 }
 
 pub fn validate_name(name: &str) -> Result<String, String> {
@@ -140,6 +157,26 @@ pub fn matches(name: &str, description: &str, query: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn only_trouble_statuses_need_attention() {
+        for status in EquipmentStatus::ALL {
+            let wanted = matches!(
+                status,
+                EquipmentStatus::HasIssue
+                    | EquipmentStatus::OutOfService
+                    | EquipmentStatus::Missing
+            );
+            assert_eq!(status.needs_attention(), wanted);
+            assert_eq!(status.attention_title("Truck").is_some(), wanted);
+        }
+        assert_eq!(
+            EquipmentStatus::OutOfService
+                .attention_title("Truck")
+                .unwrap(),
+            "Truck is out of service"
+        );
+    }
+
     use super::*;
 
     #[test]

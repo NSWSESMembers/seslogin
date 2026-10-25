@@ -1,4 +1,5 @@
-//! The rules behind equipment reservations ("Reservations"), kept free of I/O. See
+//! The rules behind equipment reservations ("Reservations"), kept free of I/O apart from
+//! [`notify_reserved_for`]. See
 //! SCHEMA.md's `equipment_reservation` section for storage and
 //! `graphql::reservations` for the API.
 //!
@@ -7,6 +8,10 @@
 //! organisation, "detailing/clean"). Reservations may overlap: an overlap is reported
 //! as a warning, never refused, because the people at the unit sort it out between
 //! themselves.
+
+use crate::app::HasDb;
+use crate::db::{self, Handler};
+use crate::notifications::{Audience, NewNotification, notify};
 
 pub const MAX_EQUIPMENT: usize = 20;
 pub const MAX_RESERVED_FOR_CHARS: usize = 200;
@@ -33,6 +38,77 @@ pub fn validate_equipment_ids<T: AsRef<str>>(ids: &[T]) -> Result<Vec<String>, S
         ));
     }
     Ok(out)
+}
+
+/// Who, if anyone, a reservation's save should tell it is for them: `new` (the user it
+/// is now for) when that is a different user from `previous` and is not `actor`. A
+/// reservation you make for yourself, or an edit that leaves who it is for alone, tells
+/// nobody.
+pub fn newly_reserved_for<'a>(
+    previous: Option<&str>,
+    new: Option<&'a str>,
+    actor: Option<&str>,
+) -> Option<&'a str> {
+    new.filter(|u| previous != Some(*u) && actor != Some(*u))
+}
+
+/// Tell `user_id` a reservation of `rec`'s equipment was made for them. Best-effort, like
+/// every notification: equipment names that can't be read fall back to a generic word.
+pub async fn notify_reserved_for(
+    app: &(impl HasDb + Sync),
+    rec: &db::EquipmentReservation,
+    user_id: &str,
+) {
+    let mut names: Vec<String> = match app.db().get_equipment(&rec.equipment_ids).await {
+        Ok(rows) => rows.into_iter().flatten().map(|e| e.name).collect(),
+        Err(_) => Vec::new(),
+    };
+    names.sort();
+    let what = if names.is_empty() {
+        "Equipment".to_string()
+    } else {
+        names.join(", ")
+    };
+    let body = format!("{what} · {}", describe_times(rec.start_time, rec.end_time));
+    notify(
+        app,
+        NewNotification::new(
+            "reservations",
+            "reservation.for_you",
+            "Equipment reserved for you",
+        )
+        .location(&rec.location_id)
+        .body(&body)
+        .target("reservation", &rec.id),
+        Audience::Users(vec![user_id.to_string()]),
+    )
+    .await;
+}
+
+/// A reservation's range for people to read, in Sydney time: `Sat 24 Oct 09:00–11:00`
+/// when it ends the same day it starts, otherwise `Sat 24 Oct 09:00 – Sun 25 Oct 10:00`.
+pub fn describe_times(start: u64, end: u64) -> String {
+    use chrono::TimeZone;
+    let local = |t: u64| {
+        chrono_tz::Australia::Sydney
+            .timestamp_opt(t as i64, 0)
+            .single()
+            .unwrap_or_else(|| chrono_tz::Australia::Sydney.timestamp_opt(0, 0).unwrap())
+    };
+    let (start, end) = (local(start), local(end));
+    if start.date_naive() == end.date_naive() {
+        format!(
+            "{}–{}",
+            start.format("%a %-d %b %H:%M"),
+            end.format("%H:%M")
+        )
+    } else {
+        format!(
+            "{} – {}",
+            start.format("%a %-d %b %H:%M"),
+            end.format("%a %-d %b %H:%M")
+        )
+    }
 }
 
 /// A reservation's time range, in Unix seconds. The end must be after the start and at
@@ -109,6 +185,29 @@ pub fn clashes<A: AsRef<str>, B: AsRef<str>>(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn only_a_new_user_other_than_the_actor_is_told() {
+        assert_eq!(newly_reserved_for(None, Some("a"), Some("b")), Some("a"));
+        assert_eq!(newly_reserved_for(Some("c"), Some("a"), None), Some("a"));
+        assert_eq!(newly_reserved_for(Some("a"), Some("a"), Some("b")), None);
+        assert_eq!(newly_reserved_for(None, Some("a"), Some("a")), None);
+        assert_eq!(newly_reserved_for(Some("a"), None, Some("b")), None);
+    }
+
+    #[test]
+    fn times_are_described_in_sydney_time() {
+        // 2026-10-24 22:00Z is 09:00 AEDT on Sunday the 25th (daylight saving began 4 Oct).
+        let start = 1_792_879_200;
+        assert_eq!(
+            describe_times(start, start + 2 * 3600),
+            "Sun 25 Oct 09:00–11:00"
+        );
+        assert_eq!(
+            describe_times(start, start + 26 * 3600),
+            "Sun 25 Oct 09:00 – Mon 26 Oct 11:00"
+        );
+    }
+
     use super::*;
 
     #[test]
