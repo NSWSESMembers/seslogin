@@ -710,6 +710,58 @@ runs will fail with a `ValidationException` that doesn't obviously point at the 
 
 ---
 
+## 10. Dev bar
+
+Under the Vite dev server (`make dev-local`, `make dev`), every page has a faint **</> Dev** tab bottom left. It opens
+shortcuts for things the app's own UI can't reach without a detour (a log, a CLI command, waiting for a schedule):
+
+| Row | Control | Does |
+| --- | --- | --- |
+| (header) | `</> dev <rev>` | Environment and API git rev; **PROD DB** in red if the API is on prod tables |
+| Admin | Super / Unit Admin / Read Only | Restores the seeded tokens (Log out deletes one), signs in as that user (see [Logging in](#logging-in)) and opens `/admin`, skipping the passkey prompt; the active one is ringed green |
+| Admin | Passkey Prompt | Shows the passkey enrolment prompt now (on `/admin`) |
+| Admin | GraphiQL | Copies your token as GraphiQL headers and opens it (when signed in) |
+| Kiosk | Default | Installs the seeded kiosk key, as `local/examples/kiosk-scan.mjs` does, and opens `/kiosk/default` (TestAKiosk02) |
+| Kiosk | Alice 13h | `cli period create-signin --hours-ago 13 --dry-run false` for Alice; scan `10000001` for the forgot-to-sign-out screen |
+| Kiosk | Needs Reactivation | `cli session edit TestAKiosk02 --require-reactivation --dry-run false`; admin Kiosks then offers Reactivate. Seed: Synthetic undoes it |
+| Data | Seed: Synthetic / Clear | `make local-seed` / `make local-clear` |
+| Data | DB Browser | `dynamodb-admin` on :8101 (Docker only) |
+| Mail | Code | Code from the newest login or Tally sign-in email; click to copy |
+| Mail | Last Email | The newest message the mock mailer "sent" |
+| Mail | Edit Link | Signs Alice in 1h ago and opens her `/period#…` edit link (`cli period-link issue`), as the Remind email does |
+| Mail | Summary Preview | `activity-summary` dry run; opens the first email. Needs a user subscribed to daily summaries and activity yesterday |
+| Mail | Changes Preview | `change-digest --date <today>` dry run; opens the first email. Needs a user subscribed to daily membership changes and a member changed today |
+| Badges | Award Nightly | `badge-nightly --apply`: the nightly awards now, not at the scheduled time |
+| Badges | Digest Preview | `badge-digest` dry run; opens the first email. Needs a badge awarded this week at a unit whose digest a user subscribed to |
+| Badges | Clear | `cli person clear-badges`, so badges can be earned and celebrated again |
+| Server | Latency | Cycles 0 / 500ms / 2s / 5s extra delay on every GraphQL response (`--response-lag-ms`, no restart) |
+| Server | Fail box / Errors Off | Fails fields given in [`SESLOGIN_FORCE_FIELD_ERRORS`](api/README.md#injecting-resolver-errors) syntax, no restart; the hint shows what is failing |
+| Browser | Theme | Cycles Auto / Light / Dark (`data-theme` on `<html>`), per browser. Not on `/kiosk`, whose theme is set in admin |
+| Browser | Reset | Clears this origin's storage and kiosk keys |
+
+Output opens beside the bar, scrolls within its height and has **Copy** and ×; it is ringed red on an error. Destructive
+(red) controls confirm there first. Esc cancels a confirmation, else closes the bar. The bar stays open across loads,
+and is hidden when printing and in automated browsers (`navigator.webdriver`), so guide screenshots never capture it.
+
+Controls that change data call `/dev/*` on the API ([api/src/local_dev.rs](api/src/local_dev.rs)). Only `poem-local`
+mounts it, only on `seslogin_local` at a local DynamoDB endpoint, and only for requests from this machine and a local
+page (else 403). Most routes run the existing `local-seed`, `cli` or job binary via `cargo run`, so the first click after
+a code change waits for a compile. Without `/dev` (eg `make dev`) those controls grey out, as do the seeded sign-ins and
+kiosk, whose tokens and key exist only in the local seed.
+
+It never ships:
+- [web/src/App.tsx](web/src/App.tsx) mounts [web/src/dev/DevBar.tsx](web/src/dev/DevBar.tsx) only under
+  `import.meta.env.DEV`, a constant `false` in `vite build`.
+- `npm run build` fails if the bar, a seeded token or the kiosk key reaches `web/dist`.
+- `api/src/local_dev.rs` tests pin the `/dev` guards and check neither `poem` nor the Lambda references the module.
+- `api/tests/seed_fixtures.rs` fails if a token or `Test…` id in the bar stops matching the fixtures.
+
+Adding a control: only for something without a normal path in the app; anything a user can do or configure stays out.
+Browser-only: an entry in `GROUPS`. Touches data: a route in `local_dev::dev_routes` running the existing binary, plus
+the entry. Give a destructive one a `danger` warning.
+
+---
+
 ## Where to go next
 
 - [README.md](README.md) — project overview, branches, deployments

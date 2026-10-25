@@ -52,6 +52,15 @@ function idbPut(db: IDBDatabase, key: string, value: unknown): Promise<void> {
   });
 }
 
+function idbClear(db: IDBDatabase): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, "readwrite");
+    tx.objectStore(STORE_NAME).clear();
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
 function bufToHex(buf: ArrayBuffer): string {
   return Array.from(new Uint8Array(buf))
     .map((b) => b.toString(16).padStart(2, "0"))
@@ -106,6 +115,19 @@ export async function getOrCreateKioskKey(
   );
   await idbPut(db, profile, keyPair);
   return keyInfoFromKeyPair(keyPair);
+}
+
+/** Store a given keypair as the profile's kiosk key, replacing any existing one. */
+export async function storeKioskKey(
+  profile: string,
+  keyPair: CryptoKeyPair,
+): Promise<void> {
+  await idbPut(await openDb(), profile, keyPair);
+}
+
+/** Delete every profile's kiosk key. */
+export async function clearKioskKeys(): Promise<void> {
+  await idbClear(await openDb());
 }
 
 /**
