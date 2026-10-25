@@ -585,31 +585,36 @@ mutation {
 ## Self sign-in (Tally)
 
 A member signs themselves in and out from the Tally app, exactly as they would by typing
-their member number at a kiosk at their home unit (`src/graphql/self_sign_in.rs`; the two
-mutations are in `mutations.rs`).
+their member number at a kiosk at their home unit, or at another unit they can use in Tally
+(`src/graphql/self_sign_in.rs`; the two mutations are in `mutations.rs`).
 
 - **Who:** only a member signed in to Tally. Users on their own, kiosk sessions, API tokens
   and edit links get `FORBIDDEN`. No location grant is needed: being the member is the whole
   authority, read fresh on every call, and the member must still exist and not be deleted.
   The MCP interface deliberately has no tool for this.
-- **Home unit only:** only periods at the member's own `location_id` count, as the kiosk
-  scopes by location. A period open at another unit (say, via that unit's kiosk) is ignored,
-  and `selfSignIn` may open a home period alongside it.
-- `Query.selfSignInStatus` returns `{ person, location, openPeriod, quickPick }`, or null
-  when the caller has no linked member. `quickPick` is the kiosk's sign-out shortcuts
+- **Which unit:** `selfSignInStatus` and `selfSignIn` take an optional `locationId`. Without
+  it (or with the member's own `location_id`) they act at the home unit. Any other unit must
+  be one the member can use in Tally — a unit the user signed in alongside them holds either
+  role at, or any unit for a super user (`require_member_location`, as for Tasks) — else
+  `FORBIDDEN`; one that doesn't exist is `NOT_FOUND`. This is the app's version of a member
+  signing in at another unit's kiosk.
+- **One unit at a time:** only periods at the chosen unit count, as the kiosk scopes by
+  location. A period open at another unit (say, via that unit's kiosk) is ignored, and
+  `selfSignIn` may open a period alongside it.
+- `Query.selfSignInStatus(locationId)` returns `{ person, location, openPeriod, quickPick }`,
+  or null when the caller has no linked member. `quickPick` is the kiosk's sign-out shortcuts
   (`build_quick_pick`), computed only when selected, and null if building them fails.
-- `SelfSignInStatus.whosHere` is the kiosk's "Who's here" list for the member's home unit:
-  `[{ id, name, guest, startTime, isMe }]` for every open, non-deleted period there (members
-  and guests), oldest first (ties by id), capped at 500. `name` is "First Last", the guest's
+- `SelfSignInStatus.location` is the unit the status is for. `whosHere` is the kiosk's
+  "Who's here" list for that unit: `[{ id, name, guest, startTime, isMe }]` for every open,
+  non-deleted period there (members and guests), oldest first (ties by id), capped at 500. `name` is "First Last", the guest's
   name ("Guest" if blank) or "Unknown member" for a missing or deleted member; `isMe` marks
   the caller's own period. It is deliberately narrow (no guest reason, member number or
-  other period fields), needs no location grant, and is computed only when selected. The
-  location is always the linked member's `location_id`, never caller-supplied.
-- `selfSignIn` returns the newest open home period unchanged if there is one (a double tap
-  never opens two), otherwise opens one with no kiosk session and publishes the realtime
-  event. Without a linked member it fails `BAD_REQUEST`.
-- `selfSignOut(id, expectedVersion, startTime, endTime, categoryId)` takes Unix seconds and
-  refuses (messages are written for the member to read): `NOT_FOUND` if the period is
+  other period fields), needs no location grant at home, and is computed only when selected.
+- `selfSignIn(locationId)` returns the newest open period at that unit unchanged if there is
+  one (a double tap never opens two), otherwise opens one with no kiosk session and publishes
+  the realtime event. Without a linked member it fails `BAD_REQUEST`.
+- `selfSignOut(id, expectedVersion, startTime, endTime, categoryId)` closes one of the
+  member's own periods at whichever unit. It takes Unix seconds and refuses (messages are written for the member to read): `NOT_FOUND` if the period is
   missing or deleted; `BAD_REQUEST` for a guest period; `FORBIDDEN` if it is not the linked
   member's; `CONFLICT` if it is already signed out or `version != expectedVersion`;
   `BAD_REQUEST` unless `startTime < endTime`, the end is at most 60 seconds ahead of the
@@ -629,6 +634,8 @@ mutations are in `mutations.rs`).
 query { selfSignInStatus { person { firstName } openPeriod { id version startTime }
   whosHere { id name guest startTime isMe } } }
 mutation { selfSignIn { id version } }
+# At another unit the member can use:
+mutation { selfSignIn(locationId: "TestBUnit001") { id version } }
 ```
 
 ## Equipment

@@ -45,7 +45,7 @@ use super::notifications::{self, MarkNotificationsReadPayload};
 use super::on_call::{self, OnCallRole};
 use super::query::{QuickPick, build_quick_pick};
 use super::reservations::{self, EquipmentReservation};
-use super::self_sign_in::{open_home_period, require_linked_person};
+use super::self_sign_in::{open_period_at, require_linked_person, sign_in_location_id};
 use super::tasks::{self, Task, TaskList, TaskRecurrenceInput};
 use super::{
     ApiToken, Category, Location, NitcGroup, PasskeyInfo, Period, Person, PersonId, Session, User,
@@ -3261,28 +3261,41 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         Ok(Period::new(rec))
     }
 
-    /// Sign the member signed in to Tally in at their home unit, as typing their member
-    /// number at a kiosk there would. Idempotent: if the member is already signed in at
-    /// home, that period is returned unchanged, so a double tap never opens two. A
-    /// period open at another unit is ignored. Tally members only, and no location
-    /// grant is needed (being the member is the authority).
-    async fn self_sign_in(&self, ctx: &Context<'_>) -> Result<Period<A>> {
+    /// Sign the member signed in to Tally in at a unit, as typing their member number at
+    /// a kiosk there would: their home unit, or `locationId` when given, which must be a
+    /// unit they can use in Tally (`FORBIDDEN` otherwise). Idempotent: if the member is
+    /// already signed in at that unit, that period is returned unchanged, so a double tap
+    /// never opens two. A period open at another unit is ignored. Tally members only,
+    /// and no location grant is needed at home (being the member is the authority).
+    async fn self_sign_in(&self, ctx: &Context<'_>, location_id: Option<ID>) -> Result<Period<A>> {
         require_writable(ctx)?;
         let person = require_linked_person(ctx, self.app.as_ref()).await?;
-        if let Some(open) = open_home_period(self.app.db(), &person).await? {
+        let location_id =
+            sign_in_location_id(ctx, &person, location_id.as_ref().map(|id| id.as_str()))?;
+        if let Some(open) = open_period_at(self.app.db(), &person, &location_id).await? {
             return Ok(Period::new(open));
+        }
+        if location_id != person.location_id {
+            // The home unit always exists; a chosen one may have gone.
+            self.app
+                .db()
+                .get_locations(&[&location_id])
+                .await?
+                .into_iter()
+                .next()
+                .flatten()
+                .ok_or_else(|| ApiError::not_found("Location", &location_id))?;
         }
         let rec = self
             .app
             .db()
-            .start_period_for_person_location(&person.id, &person.location_id, None, None)
+            .start_period_for_person_location(&person.id, &location_id, None, None)
             .await?;
-        self.publish_period_opened(ctx, &person.location_id, &rec)
-            .await;
+        self.publish_period_opened(ctx, &location_id, &rec).await;
         Ok(Period::new(rec))
     }
 
-    /// Sign the member out of one of their own open home-unit periods, as
+    /// Sign the member out of one of their own open periods, at whichever unit, as
     /// `scanSignOut` does at a kiosk. `expectedVersion` is the period's `version` as
     /// the app last saw it; if it, or the sign-in, has changed since (e.g. a kiosk
     /// signed them out first) the write is refused with `CONFLICT` and nothing changes.
