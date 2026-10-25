@@ -1618,6 +1618,11 @@ const CONTACT_FEED: &str = "all";
 const CONTACT_FEED_INDEX: &str = "contact_feed-contact_key-index";
 const CONTACT_STAMP_SET: &str = "contact_feed = :contact_feed, contact_key = :contact_key";
 
+/// A person's [`db::email_key`], backing the sparse `person` GSI `email_key-index` that
+/// Tally sign-in looks members up by. Written alongside `email` and removed with it.
+const EMAIL_KEY_ATTR: &str = "email_key";
+const EMAIL_KEY_INDEX: &str = "email_key-index";
+
 /// `<microseconds, zero-padded to 20 digits>#<person id>`: sorts by change time, and the
 /// id suffix makes it unique even when two writes share a microsecond.
 fn contact_key(person_id: &str) -> String {
@@ -2400,6 +2405,38 @@ impl db::Handler for Handler {
             .collect::<HydrationResult<Vec<String>>>()?)
     }
 
+    async fn get_person_ids_by_email(&self, email: &str) -> db::Result<Vec<String>> {
+        let mut ids = Vec::new();
+        let mut start_key = None;
+        loop {
+            let resp = self
+                .client
+                .query()
+                .table_name(self.table_name("person"))
+                .index_name(EMAIL_KEY_INDEX)
+                .key_condition_expression("#k = :k")
+                .expression_attribute_names("#k", EMAIL_KEY_ATTR)
+                .expression_attribute_values(":k", AttributeValue::S(db::email_key(email)))
+                .set_exclusive_start_key(start_key)
+                .return_consumed_capacity(ReturnConsumedCapacity::Total)
+                .send()
+                .await
+                .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
+            record_capacity(
+                "get_person_ids_by_email",
+                resp.consumed_capacity(),
+                CapKind::Read,
+            );
+            start_key = resp.last_evaluated_key;
+            for item in resp.items.unwrap_or_default() {
+                ids.push(Item(item).id()?);
+            }
+            if start_key.is_none() {
+                return Ok(ids);
+            }
+        }
+    }
+
     async fn get_person_id_by_ses_api_person_id(
         &self,
         ses_api_person_id: &str,
@@ -3111,12 +3148,16 @@ impl db::Handler for Handler {
                 request = if let Some(v) = email {
                     request
                         .update_expression(format!(
-                            "SET email = :email, updated_at = :updated_at, {CONTACT_STAMP_SET}"
+                            "SET email = :email, {EMAIL_KEY_ATTR} = :email_key, updated_at = :updated_at, {CONTACT_STAMP_SET}"
                         ))
                         .expression_attribute_values(":email", AttributeValue::S(v.to_string()))
+                        .expression_attribute_values(
+                            ":email_key",
+                            AttributeValue::S(db::email_key(v)),
+                        )
                 } else {
                     request.update_expression(format!(
-                        "SET updated_at = :updated_at, {CONTACT_STAMP_SET} REMOVE email"
+                        "SET updated_at = :updated_at, {CONTACT_STAMP_SET} REMOVE email, {EMAIL_KEY_ATTR}"
                     ))
                 };
 
@@ -3203,6 +3244,31 @@ impl db::Handler for Handler {
             }
         }
 
+        Ok(())
+    }
+
+    async fn stamp_person_email_key(&self, id: &str, email: &str) -> db::Result<()> {
+        if self.read_only {
+            return Err(db::Error::MutationDisabled);
+        }
+        let resp = self
+            .client
+            .update_item()
+            .table_name(self.table_name("person"))
+            .key("id", AttributeValue::S(id.to_string()))
+            .condition_expression("email = :email")
+            .update_expression(format!("SET {EMAIL_KEY_ATTR} = :email_key"))
+            .expression_attribute_values(":email", AttributeValue::S(email.to_string()))
+            .expression_attribute_values(":email_key", AttributeValue::S(db::email_key(email)))
+            .return_consumed_capacity(ReturnConsumedCapacity::Total)
+            .send()
+            .await
+            .map_err(|e| map_update_err(e, format!("Person {}", id)))?;
+        record_capacity(
+            "stamp_person_email_key",
+            resp.consumed_capacity(),
+            CapKind::Write,
+        );
         Ok(())
     }
 

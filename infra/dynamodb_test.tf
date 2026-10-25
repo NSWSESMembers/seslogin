@@ -177,6 +177,10 @@ resource "aws_dynamodb_table" "test_person" {
     name = "contact_key"
     type = "S"
   }
+  attribute {
+    name = "email_key"
+    type = "S"
+  }
 
   global_secondary_index {
     name = "location_id-index"
@@ -215,6 +219,15 @@ resource "aws_dynamodb_table" "test_person" {
       key_type       = "RANGE"
     }
     projection_type = "ALL"
+  }
+  # Tally sign-in: email -> member. Sparse: only people with an email. See SCHEMA.md.
+  global_secondary_index {
+    name = "email_key-index"
+    key_schema {
+      attribute_name = "email_key"
+      key_type       = "HASH"
+    }
+    projection_type = "KEYS_ONLY"
   }
 }
 

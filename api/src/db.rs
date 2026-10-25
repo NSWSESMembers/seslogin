@@ -18,6 +18,13 @@ const NANOID_ALPHABET: [char; 62] = [
 ///
 /// Lives here rather than in `dynamodb.rs` so code that is independent of the AWS
 /// implementation (the audit wrapper) can mint IDs too; `dynamodb::new_id` re-exports it.
+/// How a person's email is compared when looking them up by it: trimmed and
+/// lowercased, since SES and the person typing it may not agree on case. Stored as the
+/// person's `email_key`, which backs the `email_key-index`.
+pub fn email_key(email: &str) -> String {
+    email.trim().to_lowercase()
+}
+
 pub fn new_id() -> String {
     // https://alex7kom.github.io/nano-nanoid-cc/?alphabet=0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz&size=12&speed=1000&speedUnit=hour
     nanoid!(12, &NANOID_ALPHABET)
@@ -1846,6 +1853,13 @@ pub trait Handler: Sync {
         &self,
         ses_api_person_id: &str,
     ) -> impl Future<Output = Result<Vec<String>>> + Send;
+    /// Returns the IDs of every person whose email matches, compared by [`email_key`].
+    /// Several people may share an address (a family's, say), and soft-deleted people
+    /// are included: the caller decides what either means.
+    fn get_person_ids_by_email(
+        &self,
+        email: &str,
+    ) -> impl Future<Output = Result<Vec<String>>> + Send;
     fn get_sessions<T: AsRef<str> + Sync>(
         &self,
         ids: &[T],
@@ -1932,6 +1946,16 @@ pub trait Handler: Sync {
     /// (`create_person`, and `update_person` other than `SesApiPersonId` and
     /// `MissingSince`) stamp the key themselves.
     fn stamp_person_contact(&self, id: &str) -> impl Future<Output = Result<()>> + Send;
+
+    /// Write the person's `email_key` (see [`email_key`]) from `email`, provided their
+    /// email is still exactly `email`; [`Error::NotFound`] otherwise. Changes nothing
+    /// else. `update_person`'s `Email` shape writes the key itself; this backfills rows
+    /// written before the key existed.
+    fn stamp_person_email_key(
+        &self,
+        id: &str,
+        email: &str,
+    ) -> impl Future<Output = Result<()>> + Send;
 
     /// Up to `limit` people from the contacts feed with `after < contact_key < before`,
     /// in key order. `after: None` starts from the beginning. Soft-deleted people are
@@ -2691,7 +2715,16 @@ pub trait Handler: Sync {
 
 #[cfg(test)]
 mod tests {
-    use super::{Session, audit_sk, parse_audit_cursor};
+    use super::{Session, audit_sk, email_key, parse_audit_cursor};
+
+    #[test]
+    fn an_email_key_ignores_case_and_surrounding_space() {
+        assert_eq!(
+            email_key("  Alice.Anderson@Example.COM "),
+            "alice.anderson@example.com"
+        );
+        assert_eq!(email_key("bob@example.com"), "bob@example.com");
+    }
 
     #[test]
     fn an_audit_sk_is_a_valid_cursor_that_carries_its_id() {

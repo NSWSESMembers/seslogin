@@ -2693,6 +2693,11 @@ impl<D: db::Handler> db::Handler for AuditingHandler<D> {
         self.inner.stamp_person_contact(id).await
     }
 
+    // Not audited: the key is derived from the email, which is audited when it is set.
+    async fn stamp_person_email_key(&self, id: &str, email: &str) -> db::Result<()> {
+        self.inner.stamp_person_email_key(id, email).await
+    }
+
     async fn update_location_share_position(
         &self,
         user_id: &str,
@@ -2813,6 +2818,10 @@ impl<D: db::Handler> db::Handler for AuditingHandler<D> {
         self.inner
             .get_person_id_by_ses_api_person_id(ses_api_person_id)
             .await
+    }
+
+    async fn get_person_ids_by_email(&self, email: &str) -> db::Result<Vec<String>> {
+        self.inner.get_person_ids_by_email(email).await
     }
 
     async fn get_sessions<T: AsRef<str> + Sync>(
