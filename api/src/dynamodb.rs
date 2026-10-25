@@ -7990,8 +7990,11 @@ impl db::Handler for Handler {
                     })
                     .collect();
                 let mut found: Vec<db::NotificationRecord> = Vec::new();
-                for item in self.batch_get_items("notification", keys).await? {
-                    found.push(hydrate_item(item)?);
+                // A page can be up to 200 rows; BatchGetItem takes at most 100 keys.
+                for chunk in keys.chunks(100) {
+                    for item in self.batch_get_items("notification", chunk.to_vec()).await? {
+                        found.push(hydrate_item(item)?);
+                    }
                 }
                 // BatchGetItem returns rows in no particular order.
                 found.sort_by(|a, b| b.sk.cmp(&a.sk));
