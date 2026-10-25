@@ -627,6 +627,30 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         Ok(fingerprint)
     }
 
+    /// Email a Tally sign-in code, if that email can sign in to Tally (see
+    /// `tally_sign_in`). Always returns true to avoid email enumeration. Requires a
+    /// valid Cloudflare Turnstile token.
+    async fn request_tally_sign_in_code(
+        &self,
+        ctx: &Context<'_>,
+        email: String,
+        turnstile_token: String,
+    ) -> bool {
+        super::tally_sign_in::request_code(ctx, &*self.app, &email, &turnstile_token).await
+    }
+
+    /// Redeem a Tally sign-in code and authorize the app that opened the sign-in page,
+    /// returning the URL (its redirect, with `code` and `state`) to send the browser
+    /// to. Fails the same way for any wrong, expired or used-up code.
+    async fn complete_tally_sign_in(
+        &self,
+        email: String,
+        code: String,
+        request: crate::tally_sign_in::AuthorizationRequest,
+    ) -> Result<String> {
+        super::tally_sign_in::complete(&*self.app, &email, &code, request).await
+    }
+
     /// Request an email login code. Always returns true to avoid email enumeration.
     /// Requires a valid Cloudflare Turnstile token.
     async fn request_auth_code(
@@ -4031,6 +4055,9 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         let client =
             crate::oauth_clients::resolve_client(&self.app.jwt().oauth_client_id_key(), &client_id)
                 .ok_or_else(|| anyhow!("Unknown or invalid client"))?;
+        if client.member_sign_in {
+            return Err(super::tally_sign_in::member_sign_in_client(&client));
+        }
         super::auth::check_oauth_redirect(ctx, &*self.app, &client, &redirect_uri).await?;
         // Path only: there's no reliable API base URL here. The token endpoint
         // checks the full URL; this just refuses early, before a code is minted.

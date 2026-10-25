@@ -147,6 +147,20 @@ fn synthetic_references_resolve() {
 }
 
 #[test]
+fn person_emails_carry_their_email_key() {
+    // Tally sign-in finds members through `email_key-index`, which only `update_person`
+    // writes; a fixture row is written raw, so it must carry the key itself.
+    for person in rows(&synthetic(), "person") {
+        assert_eq!(
+            s(person, "email_key"),
+            s(person, "email").map(|e| seslogin::db::email_key(&e)),
+            "person {}",
+            id(person)
+        );
+    }
+}
+
+#[test]
 fn sessions_carry_no_setup_code() {
     for session in rows(&synthetic(), "session") {
         // Setup codes can no longer be redeemed, so a seeded one would only mislead.

@@ -1081,6 +1081,18 @@ type MutationRoot {
 	"""
 	submitEnrollmentKey(publicKey: String!): String!
 	"""
+	Email a Tally sign-in code, if that email can sign in to Tally (see
+	`tally_sign_in`). Always returns true to avoid email enumeration. Requires a
+	valid Cloudflare Turnstile token.
+	"""
+	requestTallySignInCode(email: String!, turnstileToken: String!): Boolean!
+	"""
+	Redeem a Tally sign-in code and authorize the app that opened the sign-in page,
+	returning the URL (its redirect, with `code` and `state`) to send the browser
+	to. Fails the same way for any wrong, expired or used-up code.
+	"""
+	completeTallySignIn(email: String!, code: String!, request: TallyAuthorizationInput!): String!
+	"""
 	Request an email login code. Always returns true to avoid email enumeration.
 	Requires a valid Cloudflare Turnstile token.
 	"""
@@ -2136,6 +2148,11 @@ type QueryRoot {
 	ses_nonincident_tags: [SesNonIncidentTag!]!
 	ses_participant_types: [String!]!
 	"""
+	Check the link the Tally sign-in page was opened with: a member sign-in client
+	and one of its redirects. Needs no sign-in.
+	"""
+	tallySignInRequest(clientId: String!, redirectUri: String!): TallySignInRequest!
+	"""
 	Look up an OAuth client + redirect URI before showing the consent
 	screen. Deliberately returns nothing about the client beyond its
 	(self-claimed, DCR is unauthenticated) name and the redirect host — the
@@ -2373,6 +2390,32 @@ type SubmittedFeedback {
 	user will see in their inbox, so it doubles as their reference.
 	"""
 	reference: String!
+}
+
+"""
+The OAuth authorization request the sign-in page was opened with, as the app sent
+it (camel-cased in GraphQL).
+"""
+input TallyAuthorizationInput {
+	clientId: String!
+	redirectUri: String!
+	codeChallenge: String!
+	codeChallengeMethod: String!
+	scope: String
+	resource: String
+	state: String
+}
+
+"""
+What the sign-in page shows about the app that opened it.
+"""
+type TallySignInRequest {
+	clientName: String!
+	"""
+	A development build, redirecting to the Expo server on a developer's machine.
+	Only a developer account can finish signing in to one.
+	"""
+	isDevelopmentBuild: Boolean!
 }
 
 type Task {
