@@ -26,6 +26,7 @@ resource "aws_lambda_function" "test_api" {
       ABLY_API_KEY          = var.ably_api_key
       TOOLBOX_GRAPHQL_URL   = var.toolbox_graphql_url
       TOOLBOX_API_TOKEN     = var.toolbox_api_token
+      WIFI_NETWORKS         = var.wifi_networks
       WEBAUTHN_RP_ID        = "seslogin.com"
       WEBAUTHN_RP_ORIGIN    = "https://test.seslogin.com"
       # Member-facing period edit links stay on the test frontend so the edit page

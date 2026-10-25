@@ -92,6 +92,13 @@ variable "toolbox_api_token" {
   default     = ""
 }
 
+variable "wifi_networks" {
+  description = "The WiFi networks Tally shows signed-in users (`Query.wifiNetworks`), as a JSON array: `[{\"title\": \"Shed\", \"ssid\": \"SES-Shed\", \"password\": \"...\"}]`, with optional `security` (`WPA`, `WEP` or `nopass`) and `hidden`. Holds passwords, so it is only ever set in the git-ignored terraform.tfvars, never committed. Shared by prod, preprod and the test API. Counts toward each Lambda's 4 KB environment limit. Empty means no networks."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
 variable "db_prefix" {
   description = "DynamoDB table name prefix for the production environment (e.g. seslogin_prod_)"
   type        = string
