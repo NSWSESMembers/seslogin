@@ -51,6 +51,7 @@ pub mod telemetry;
 pub mod text_table;
 pub mod toolbox;
 pub mod turnstile;
+pub mod wifi;
 
 /// Load local `.env`/`.env.secret` for CLI / dev binaries. The Lambda binaries
 /// don't call this. AWS profile defaulting is handled natively by
