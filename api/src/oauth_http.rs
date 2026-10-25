@@ -18,7 +18,7 @@ use serde::{Deserialize, Serialize};
 use tracing::warn;
 
 use crate::app::{App, HasDb};
-use crate::auth::{AuthError, fetch_update_user_auth_info, hash_token};
+use crate::auth::{AuthError, hash_token};
 use crate::base_url::{api_base_url, web_base_url};
 use crate::clock::now_sec;
 use crate::db;
@@ -296,7 +296,13 @@ pub fn oauth_code_state_id(code_hash: &str) -> String {
 /// `authorization_code` grant below.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AuthCodePayload {
-    pub user_id: String,
+    /// The user who approved it, or who signed in alongside the member on a Tally
+    /// sign-in code. Absent only on a Tally sign-in code for a member with no user.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub user_id: Option<String>,
+    /// Set only by Tally sign-in: the member the grant acts for.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub person_id: Option<String>,
     pub client_id: String,
     pub client_name: String,
     pub redirect_uri: String,
@@ -446,8 +452,18 @@ async fn token_authorization_code<A: App + HasDb>(
         .clone()
         .unwrap_or_else(|| DEFAULT_SCOPE.to_string());
 
+    let subject = match (&payload.person_id, &payload.user_id) {
+        (Some(person_id), user_id) => oauth::GrantSubject::Member {
+            person_id: person_id.clone(),
+            user_id: user_id.clone(),
+        },
+        (None, Some(user_id)) => oauth::GrantSubject::User(user_id.clone()),
+        (None, None) => {
+            return error_reply(400, "invalid_grant", "Malformed authorization code");
+        }
+    };
     let (grant, access_token, refresh_token) = oauth::mint_grant(
-        &payload.user_id,
+        &subject,
         &payload.client_id,
         &payload.client_name,
         &payload.redirect_uri,
@@ -455,15 +471,21 @@ async fn token_authorization_code<A: App + HasDb>(
         &scope,
         now_sec(),
     );
-    // The user authorized this client at the consent screen; the grant is theirs.
+    // The user authorized this client at the consent screen, or the member signed in
+    // to Tally; the grant is theirs.
+    let via = Some(format!("oauth_client:{}", grant.client_id));
+    let actor = match &subject {
+        oauth::GrantSubject::User(id) => crate::audit::Actor::User {
+            id: id.clone(),
+            via,
+        },
+        oauth::GrantSubject::Member { person_id, .. } => crate::audit::Actor::Member {
+            person_id: person_id.clone(),
+            via,
+        },
+    };
     let created = crate::audit::scope(
-        crate::audit::AuditContext::new(
-            crate::audit::Actor::User {
-                id: grant.user_id.clone(),
-                via: Some(format!("oauth_client:{}", grant.client_id)),
-            },
-            None,
-        ),
+        crate::audit::AuditContext::new(actor, None),
         app.db().create_oauth_grant(&grant),
     )
     .await;
@@ -529,7 +551,7 @@ async fn token_refresh<A: App + HasDb>(app: &A, params: &HashMap<String, String>
         return error_reply(400, "invalid_target", "resource does not match this grant");
     }
 
-    match fetch_update_user_auth_info(app, grant.user_id.clone()).await {
+    match oauth::grant_auth_info(app, &grant).await {
         Ok(_) => {}
         Err(AuthError::Permanent(_)) => {
             return error_reply(400, "invalid_grant", "User account is no longer available");

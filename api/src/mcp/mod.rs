@@ -430,6 +430,14 @@ where
     };
 
     let auth_info = match oauth::verify_access_token(&**app, token, &resource).await {
+        // A Tally member's grant is never for `/mcp`, so this can't happen; refuse it
+        // rather than hand a member to tools written for users.
+        Ok(AuthInfo::Member { .. }) => {
+            tracing::info!("mcp: auth rejected: a member grant");
+            let reply = unauthorized(&api_base, true);
+            emit(reply.status, "mcp:auth", None);
+            return reply;
+        }
         Ok(info) => info,
         Err(AuthError::Permanent(msg)) => {
             tracing::info!("mcp: auth rejected: {msg}");

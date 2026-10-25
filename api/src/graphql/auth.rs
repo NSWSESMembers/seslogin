@@ -58,6 +58,8 @@ impl Guard for AuthGuard {
                     Some(AuthInfo::ApiToken { .. }) => true,
                     Some(AuthInfo::User { .. }) => false,
                     Some(AuthInfo::PeriodLink { .. }) => false,
+                    // A Tally member: only Tally's own checks admit one.
+                    Some(AuthInfo::Member { .. }) => false,
                     None => false,
                 } {
                     Ok(())
@@ -72,6 +74,8 @@ impl Guard for AuthGuard {
                     Some(AuthInfo::ApiToken { .. }) => true,
                     // Not a general principal — see the variant docs.
                     Some(AuthInfo::PeriodLink { .. }) => false,
+                    // A Tally member: only Tally's own checks admit one.
+                    Some(AuthInfo::Member { .. }) => false,
                     None => false,
                 } {
                     Ok(())
@@ -85,6 +89,8 @@ impl Guard for AuthGuard {
                     Some(AuthInfo::ApiToken { .. }) => false,
                     Some(AuthInfo::Session { .. }) => false,
                     Some(AuthInfo::PeriodLink { .. }) => false,
+                    // A Tally member: only Tally's own checks admit one.
+                    Some(AuthInfo::Member { .. }) => false,
                     None => false,
                 } {
                     Ok(())
@@ -98,6 +104,8 @@ impl Guard for AuthGuard {
                     Some(AuthInfo::ApiToken { .. }) => true,
                     Some(AuthInfo::Session { .. }) => false,
                     Some(AuthInfo::PeriodLink { .. }) => false,
+                    // A Tally member: only Tally's own checks admit one.
+                    Some(AuthInfo::Member { .. }) => false,
                     None => false,
                 } {
                     Ok(())
@@ -111,6 +119,8 @@ impl Guard for AuthGuard {
                     Some(AuthInfo::Session { .. }) => false,
                     Some(AuthInfo::ApiToken { .. }) => false,
                     Some(AuthInfo::PeriodLink { .. }) => false,
+                    // A Tally member: only Tally's own checks admit one.
+                    Some(AuthInfo::Member { .. }) => false,
                     None => false,
                 } {
                     Ok(())
@@ -124,6 +134,8 @@ impl Guard for AuthGuard {
                     Some(AuthInfo::User { .. }) => false,
                     Some(AuthInfo::Session { .. }) => false,
                     Some(AuthInfo::ApiToken { .. }) => false,
+                    // A Tally member: only Tally's own checks admit one.
+                    Some(AuthInfo::Member { .. }) => false,
                     None => false,
                 } {
                     Ok(())

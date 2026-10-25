@@ -274,7 +274,7 @@ async fn only_signed_in_users_may_call_it() {
 
 async fn grant_token(app: &App, resource: &str) -> String {
     let (grant, access_token, _refresh) = oauth::mint_grant(
-        "user-1",
+        &oauth::GrantSubject::User("user-1".to_string()),
         "tally",
         "Tally",
         "tally://oauth/callback",

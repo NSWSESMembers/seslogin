@@ -59,6 +59,25 @@ pub enum AuthInfo {
         location_grants: Vec<String>,
         read_only: bool,
     },
+    /// A member signed in to Tally: an OAuth access token (`slat_`) whose grant names a
+    /// member. Only Tally's resolvers accept it — every admin, kiosk and MCP check
+    /// matches the other variants and so refuses it, whatever user rides along.
+    ///
+    /// When the email they signed in with is also a user's, that user rides along in
+    /// `user_id`, and their units (`is_super`, `user_location_ids`) add to the member's
+    /// home unit in Tally. See [`crate::oauth`] for how a grant resolves to this.
+    Member {
+        person_id: String,
+        /// The member's home unit (`Person.location_id`).
+        location_id: String,
+        /// The user signed in alongside the member, if any.
+        user_id: Option<String>,
+        /// That user is a super user, so has every unit.
+        is_super: bool,
+        /// That user's units, either role. Empty when there is no user.
+        user_location_ids: Vec<String>,
+        grant_id: String,
+    },
     /// A single-period edit link (`slp_`), sent to a member by SMS/email so they can
     /// correct one of their own time entries. Deliberately carries no location grants
     /// and no user identity: it authorises exactly one period and nothing else, so
@@ -135,6 +154,7 @@ pub enum CallerType {
     Session,
     ApiToken,
     PeriodLink,
+    Member,
     #[default]
     Unauthenticated,
 }
@@ -146,6 +166,7 @@ impl CallerType {
             Self::Session => "session",
             Self::ApiToken => "api_token",
             Self::PeriodLink => "period_link",
+            Self::Member => "member",
             Self::Unauthenticated => "unauthenticated",
         }
     }
@@ -166,6 +187,7 @@ pub fn caller_info(auth: Option<&AuthInfo>) -> (CallerType, String) {
         Some(AuthInfo::ApiToken { id, .. }) => (CallerType::ApiToken, id.clone()),
         // The token itself is never logged; the period it grants is the useful id.
         Some(AuthInfo::PeriodLink { period_id }) => (CallerType::PeriodLink, period_id.clone()),
+        Some(AuthInfo::Member { person_id, .. }) => (CallerType::Member, person_id.clone()),
     }
 }
 
