@@ -66,6 +66,10 @@ impl db::Handler for Handler {
         Self::unsupported()
     }
 
+    async fn get_person_ids_by_email(&self, _email: &str) -> db::Result<Vec<String>> {
+        Self::unsupported()
+    }
+
     async fn get_sessions<T: AsRef<str> + Sync>(
         &self,
         _ids: &[T],
@@ -164,6 +168,10 @@ impl db::Handler for Handler {
     }
 
     async fn stamp_person_contact(&self, _id: &str) -> db::Result<()> {
+        Self::unsupported()
+    }
+
+    async fn stamp_person_email_key(&self, _id: &str, _email: &str) -> db::Result<()> {
         Self::unsupported()
     }
 

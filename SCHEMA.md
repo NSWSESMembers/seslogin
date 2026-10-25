@@ -134,6 +134,7 @@ The `start_time` sort key across the location/person GSIs means DynamoDB returns
 | `ses_api_person_id`   | S    | GSI hash key         |
 | `contact_feed`        | S    | GSI hash key         |
 | `contact_key`         | S    | GSI sort key         |
+| `email_key`           | S    | GSI hash key         |
 
 **GSIs:**
 
@@ -143,6 +144,7 @@ The `start_time` sort key across the location/person GSIs means DynamoDB returns
 | `registration_number-index` | `registration_number` | —        | KEYS_ONLY  | Batch lookup during kiosk scan-in: registration number → person ID |
 | `ses_api_person_id-index`   | `ses_api_person_id`   | —        | KEYS_ONLY  | Member sync reconciliation: HQ person ID → local person ID         |
 | `contact_feed-contact_key-index` | `contact_feed` | `contact_key` | ALL | Contacts feed: every person, ordered by when a field the contacts API returns last changed |
+| `email_key-index`           | `email_key`           | —        | KEYS_ONLY  | Tally sign-in: email → the member(s) it belongs to (sparse)        |
 
 `KEYS_ONLY` on the scan-in and sync indexes avoids storing a full copy of each person item per index, since these lookups only need the primary key to drive a subsequent `BatchGetItem` or direct update.
 
@@ -171,6 +173,12 @@ The `start_time` sort key across the location/person GSIs means DynamoDB returns
   keeps it unique when two writes share a microsecond. Soft-deleted rows keep their key, so
   they double as the feed's tombstones. Rows written before the index existed have neither
   attribute until `cli person stamp-contacts` backfills them.
+- `email_key` (S) — `email` trimmed and lowercased (`db::email_key`), present exactly when
+  `email` is. Written and removed with `email` by `update_person`'s `Email` shape. Several
+  people may share one, and soft-deleted rows keep theirs, so a lookup returns every match
+  and the caller filters. Rows whose email was set before the index existed have no key
+  until `cli person stamp-email-keys` backfills them. Only the `seslogin_test` table has
+  this index so far; it is only used by Tally sign-in.
 
 ---
 

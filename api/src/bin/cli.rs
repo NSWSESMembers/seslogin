@@ -236,6 +236,10 @@ enum PersonCmd {
     /// feed existed; safe to re-run, though each run puts every row back at the head
     /// of the feed. Writes unless the global `--dry-run` is given.
     StampContacts,
+    /// Write `email_key` on every person with an email who lacks it, so Tally sign-in
+    /// can find them by email. A one-off backfill for emails set before the key
+    /// existed; safe to re-run. Writes unless the global `--dry-run` is given.
+    StampEmailKeys,
 }
 
 #[derive(Subcommand, Debug)]
@@ -1338,6 +1342,13 @@ async fn run_cli() -> Result<()> {
         return run_person_stamp_contacts(&db_prefix, cli.dry_run).await;
     }
 
+    if let Object::Person {
+        cmd: PersonCmd::StampEmailKeys,
+    } = &cli.object
+    {
+        return run_person_stamp_email_keys(&db_prefix, cli.dry_run).await;
+    }
+
     // And for retiring dead sessions.
     if let Object::Session {
         cmd: SessionCmd::RetireStale { grace_days },
@@ -1622,6 +1633,52 @@ async fn run_person_stamp_contacts(db_prefix: &str, dry_run: bool) -> Result<()>
     }
     let verb = if dry_run { "would stamp" } else { "stamped" };
     println!("{verb} {stamped} people, skipped {unreadable} unreadable rows");
+    Ok(())
+}
+
+/// Write `email_key` on every person whose email is set. Opens its own handler with
+/// `read_only = dry_run`, so a dry run only counts the rows it would stamp. Rows are
+/// stamped whether or not they already carry a key: the scan does not return it, and
+/// rewriting the same derived value is harmless.
+async fn run_person_stamp_email_keys(db_prefix: &str, dry_run: bool) -> Result<()> {
+    let db = AuditingHandler::new(dynamodb::Handler::new(db_prefix, dry_run).await);
+    let mut cursor: Option<ScanCursor> = None;
+    let mut stamped = 0usize;
+    let mut no_email = 0usize;
+    let mut unreadable = 0usize;
+    loop {
+        let page = db.scan_persons(cursor.clone(), 500).await?;
+        for row in page.rows {
+            match row {
+                Ok(person) => match &person.email {
+                    Some(email) => {
+                        if !dry_run {
+                            match db.stamp_person_email_key(&person.id, email).await {
+                                // Their email changed since the scan read it; that write
+                                // stamped the key itself.
+                                Err(seslogin::db::Error::NotFound(_)) => continue,
+                                other => other?,
+                            }
+                        }
+                        stamped += 1;
+                    }
+                    None => no_email += 1,
+                },
+                Err(e) => {
+                    eprintln!("skipping unreadable person row: {e}");
+                    unreadable += 1;
+                }
+            }
+        }
+        match page.next {
+            Some(next) => cursor = Some(next),
+            None => break,
+        }
+    }
+    let verb = if dry_run { "would stamp" } else { "stamped" };
+    println!(
+        "{verb} {stamped} people, {no_email} have no email, skipped {unreadable} unreadable rows"
+    );
     Ok(())
 }
 
@@ -2497,6 +2554,9 @@ async fn run(db: &impl Handler, object: Object) -> Result<()> {
             // Handled in `main` before the shared read-only DB is opened.
             PersonCmd::StampContacts => {
                 unreachable!("stamp-contacts is handled before the read-only DB is opened")
+            }
+            PersonCmd::StampEmailKeys => {
+                unreachable!("stamp-email-keys is handled before the read-only DB is opened")
             }
         },
 

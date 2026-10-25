@@ -155,6 +155,7 @@ const TABLES: &[Table] = &[
             Attr("ses_api_person_id", S),
             Attr("contact_feed", S),
             Attr("contact_key", S),
+            Attr("email_key", S),
         ],
         gsis: &[
             all("location_id-index", "location_id", None),
@@ -165,6 +166,7 @@ const TABLES: &[Table] = &[
                 "contact_feed",
                 Some("contact_key"),
             ),
+            keys_only("email_key-index", "email_key"),
         ],
         ttl: None,
     },
