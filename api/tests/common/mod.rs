@@ -43,6 +43,8 @@ pub(crate) struct FakeDb {
     /// Makes `put_audit_entry` fail, like the audit table not existing yet.
     pub(crate) fail_audit_writes: AtomicBool,
     pub(crate) user_tokens: Mutex<HashMap<String, db::UserToken>>,
+    /// Login codes, by email (the `login_code` table's key).
+    pub(crate) login_codes: Mutex<HashMap<String, db::LoginCode>>,
     pub(crate) webauthn_credentials: Mutex<HashMap<String, db::WebauthnCredential>>,
     pub(crate) tasks: Mutex<HashMap<String, db::Task>>,
     pub(crate) task_lists: Mutex<HashMap<String, db::TaskList>>,
@@ -281,8 +283,15 @@ impl db::Handler for FakeDb {
     // the MCP tool tests (`tests/mcp.rs`), which run real `users`/`createUser`/
     // `updateUser`/`locations` GraphQL documents the same way the OAuth grant
     // tests run theirs.
-    async fn get_user_id_by_email(&self, _email: &str) -> db::Result<Vec<String>> {
-        unsupported()
+    async fn get_user_id_by_email(&self, email: &str) -> db::Result<Vec<String>> {
+        Ok(self
+            .users
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|u| u.email == email)
+            .map(|u| u.id.clone())
+            .collect())
     }
     async fn list_users(&self) -> db::Result<Vec<User>> {
         Ok(self.users.lock().unwrap().values().cloned().collect())
@@ -1202,21 +1211,35 @@ impl db::Handler for FakeDb {
     }
     async fn put_login_code(
         &self,
-        _email: &str,
-        _code_hash: &str,
-        _expires_at: u64,
-        _last_sent_at: u64,
+        email: &str,
+        code_hash: &str,
+        expires_at: u64,
+        last_sent_at: u64,
     ) -> db::Result<()> {
-        unsupported()
+        self.login_codes.lock().unwrap().insert(
+            email.to_string(),
+            db::LoginCode {
+                email: email.to_string(),
+                code_hash: code_hash.to_string(),
+                expires_at,
+                attempts: 0,
+                last_sent_at,
+            },
+        );
+        Ok(())
     }
-    async fn get_login_code(&self, _email: &str) -> db::Result<Option<db::LoginCode>> {
-        unsupported()
+    async fn get_login_code(&self, email: &str) -> db::Result<Option<db::LoginCode>> {
+        Ok(self.login_codes.lock().unwrap().get(email).cloned())
     }
-    async fn delete_login_code(&self, _email: &str) -> db::Result<()> {
-        unsupported()
+    async fn delete_login_code(&self, email: &str) -> db::Result<()> {
+        self.login_codes.lock().unwrap().remove(email);
+        Ok(())
     }
-    async fn increment_login_code_attempts(&self, _email: &str) -> db::Result<()> {
-        unsupported()
+    async fn increment_login_code_attempts(&self, email: &str) -> db::Result<()> {
+        if let Some(code) = self.login_codes.lock().unwrap().get_mut(email) {
+            code.attempts += 1;
+        }
+        Ok(())
     }
     async fn create_user_token(
         &self,

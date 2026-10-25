@@ -31,6 +31,10 @@ const CategoryButtonDemo = lazyWithReload(
   "demo",
   () => import("./demo/CategoryButtonDemo"),
 );
+const TallySignIn = lazyWithReload(
+  "tally",
+  () => import("./tally/TallySignIn"),
+);
 const PeriodEdit = lazyWithReload(
   "period",
   () => import("./period/PeriodEdit"),
@@ -61,6 +65,10 @@ export default function Router() {
 
             {/* User guides - public, static pages compiled from web/guide/ */}
             <Route path="/guide/*" element={<GuideApp />} />
+
+            {/* Tally sign-in - no SESLogin sign-in; the OAuth authorization page
+                for member sign-in clients (see api/src/tally_sign_in.rs). */}
+            <Route path="/tally/sign-in" element={<TallySignIn />} />
 
             {/* Admin routes - auth required at /admin/* */}
             <Route path="/admin/*" element={<AdminApp />} />

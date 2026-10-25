@@ -452,6 +452,14 @@ async fn token_authorization_code<A: App + HasDb>(
         .clone()
         .unwrap_or_else(|| DEFAULT_SCOPE.to_string());
 
+    // A member sign-in client's grants always name a member, and no other client's do.
+    if client.member_sign_in != payload.person_id.is_some() {
+        return error_reply(
+            400,
+            "invalid_grant",
+            "Authorization code does not match this client",
+        );
+    }
     let subject = match (&payload.person_id, &payload.user_id) {
         (Some(person_id), user_id) => oauth::GrantSubject::Member {
             person_id: person_id.clone(),

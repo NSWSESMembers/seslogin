@@ -11,7 +11,7 @@
 
 mod common;
 
-use common::{FakeDb, fake_app, seed_user};
+use common::{FakeDb, fake_app, seed_person, seed_user};
 
 use seslogin::app::MyApp;
 use seslogin::mockmail;
@@ -326,18 +326,37 @@ const TALLY_REDIRECT_URI: &str = "tally://oauth/callback";
 
 /// Seed a code for `client_id`/`redirect_uri` asking for `resource` at the
 /// authorization request, exchange it at `api.seslogin.com`, and return the reply.
+/// Tally's code names member `person-1` (with `user-1` alongside), as Tally sign-in's
+/// does; any other client's names `user-1` alone, as the consent screen's does.
 async fn exchange(
     app: &MyApp<FakeDb, mockqueue::Handler, mockmail::Handler, mockrealtime::Handler>,
     client_id: &str,
     redirect_uri: &str,
     resource: Option<&str>,
 ) -> oauth_http::HttpReply {
+    exchange_as(
+        app,
+        client_id,
+        redirect_uri,
+        resource,
+        (client_id == "tally").then_some("person-1"),
+    )
+    .await
+}
+
+async fn exchange_as(
+    app: &MyApp<FakeDb, mockqueue::Handler, mockmail::Handler, mockrealtime::Handler>,
+    client_id: &str,
+    redirect_uri: &str,
+    resource: Option<&str>,
+    person_id: Option<&str>,
+) -> oauth_http::HttpReply {
     let (verifier, challenge) = pkce_pair();
     let code = seed_code(
         app,
         AuthCodePayload {
             user_id: Some("user-1".to_string()),
-            person_id: None,
+            person_id: person_id.map(str::to_string),
             client_id: client_id.to_string(),
             client_name: "Test Client".to_string(),
             redirect_uri: redirect_uri.to_string(),
@@ -354,6 +373,32 @@ async fn exchange(
     oauth_http::token(app, Some("api.seslogin.com"), body.as_bytes()).await
 }
 
+/// `fake_app` with `user-1` and member `person-1`.
+fn app_with_member() -> MyApp<FakeDb, mockqueue::Handler, mockmail::Handler, mockrealtime::Handler>
+{
+    let app = fake_app();
+    seed_user(&app, "user-1", true);
+    seed_person(
+        &app, "person-1", "loc-a", "Alice", "Anderson", "10000001", None,
+    );
+    app
+}
+
+#[tokio::test]
+async fn only_a_member_sign_in_clients_codes_may_name_a_member() {
+    let app = app_with_member();
+    // Tally without a member: a consent-screen code, which Tally never gets.
+    let reply = exchange_as(&app, "tally", TALLY_REDIRECT_URI, None, None).await;
+    assert_eq!(reply.status, 400, "body: {}", reply.body);
+    assert_eq!(body_of(&reply)["error"], "invalid_grant");
+    // Any other client with a member.
+    let client_id = registration_client_id(&app, REDIRECT_URI);
+    let reply = exchange_as(&app, &client_id, REDIRECT_URI, None, Some("person-1")).await;
+    assert_eq!(reply.status, 400, "body: {}", reply.body);
+    assert_eq!(body_of(&reply)["error"], "invalid_grant");
+    assert!(app.db.oauth_grants.lock().unwrap().is_empty());
+}
+
 fn only_grant_resource(
     app: &MyApp<FakeDb, mockqueue::Handler, mockmail::Handler, mockrealtime::Handler>,
 ) -> String {
@@ -364,8 +409,7 @@ fn only_grant_resource(
 
 #[tokio::test]
 async fn static_client_defaults_to_its_own_resource() {
-    let app = fake_app();
-    seed_user(&app, "user-1", true);
+    let app = app_with_member();
     let reply = exchange(&app, "tally", TALLY_REDIRECT_URI, None).await;
     assert_eq!(reply.status, 200, "body: {}", reply.body);
     assert_eq!(
@@ -376,8 +420,7 @@ async fn static_client_defaults_to_its_own_resource() {
 
 #[tokio::test]
 async fn static_client_gets_an_explicitly_requested_allowed_resource() {
-    let app = fake_app();
-    seed_user(&app, "user-1", true);
+    let app = app_with_member();
     let reply = exchange(
         &app,
         "tally",
@@ -398,8 +441,7 @@ async fn static_client_cannot_get_a_resource_not_listed_for_it() {
         "https://api.seslogin.com/mcp",
         "https://elsewhere.example/graphql",
     ] {
-        let app = fake_app();
-        seed_user(&app, "user-1", true);
+        let app = app_with_member();
         let reply = exchange(&app, "tally", TALLY_REDIRECT_URI, Some(resource)).await;
         assert_eq!(reply.status, 400, "{resource}: {}", reply.body);
         assert_eq!(body_of(&reply)["error"], "invalid_target");
@@ -437,8 +479,7 @@ async fn dynamic_client_cannot_get_anything_but_mcp() {
 
 #[tokio::test]
 async fn refresh_cannot_change_the_grants_resource() {
-    let app = fake_app();
-    seed_user(&app, "user-1", true);
+    let app = app_with_member();
     let reply = exchange(&app, "tally", TALLY_REDIRECT_URI, None).await;
     assert_eq!(reply.status, 200, "body: {}", reply.body);
     let refresh_token = body_of(&reply)["refresh_token"]
