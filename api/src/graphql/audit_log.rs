@@ -23,7 +23,7 @@ use super::dataloader::DatabaseLoader;
 use super::error::ApiError;
 use super::pagination::{build_connection, pagination_args};
 use super::query::Location;
-use super::{ApiTokenNameId, LocationId, SessionId, UserId};
+use super::{ApiTokenNameId, LocationId, PersonId, SessionId, UserId};
 use crate::app::{App, HasDb};
 use crate::auth::AuthInfo;
 use crate::db::{self, Handler};
@@ -151,6 +151,8 @@ impl From<AuditEntityType> for db::AuditEntityType {
 pub enum AuditActorKind {
     /// A signed-in user (web, MCP or a user token).
     User,
+    /// A member signed in to Tally.
+    Member,
     /// A kiosk device.
     Session,
     ApiToken,
@@ -170,6 +172,7 @@ impl AuditActorKind {
     fn from_stored(kind: &str) -> Self {
         match kind {
             "user" => Self::User,
+            "member" => Self::Member,
             "session" => Self::Session,
             "api_token" => Self::ApiToken,
             "period_link" => Self::PeriodLink,
@@ -237,7 +240,7 @@ impl<A: App + HasDb + Send + Sync + 'static> AuditActor<A> {
         self.kind
     }
 
-    /// The actor's ID: a user, kiosk session or API token ID, the period ID of an edit
+    /// The actor's ID: a user, member, kiosk session or API token ID, the period ID of an edit
     /// link, or the job name for `SYSTEM` (`member-sync`, `cli`, …). Null when none was
     /// recorded.
     async fn id(&self) -> Option<&str> {
@@ -256,7 +259,8 @@ impl<A: App + HasDb + Send + Sync + 'static> AuditActor<A> {
         }
     }
 
-    /// A name for the actor, looked up now rather than recorded: a user's email, a kiosk's
+    /// A name for the actor, looked up now rather than recorded: a user's email, a member's
+    /// name, a kiosk's
     /// name, an API token's name, the job name for `SYSTEM`, "Period edit link" for an
     /// edit link. Null when there is nothing to show or the record no longer exists.
     async fn label(&self, ctx: &Context<'_>) -> Result<Option<String>> {
@@ -274,6 +278,17 @@ impl<A: App + HasDb + Send + Sync + 'static> AuditActor<A> {
                 .map_err(|e| anyhow!("Failed to load user via DataLoader: {}", e))?
                 .flatten()
                 .map(|u| u.rec.email),
+            AuditActorKind::Member => loader
+                .load_one(PersonId(ID(id)))
+                .await
+                .map_err(|e| anyhow!("Failed to load person via DataLoader: {}", e))?
+                .flatten()
+                .map(|p| {
+                    format!("{} {}", p.rec.first_name.trim(), p.rec.last_name.trim())
+                        .trim()
+                        .to_string()
+                })
+                .filter(|name| !name.is_empty()),
             AuditActorKind::Session => loader
                 .load_one(SessionId(ID(id)))
                 .await

@@ -53,7 +53,7 @@ const RESOURCE: &str = "https://api.seslogin.com/mcp";
 async fn access_token_for(app: &App, user_id: &str) -> String {
     use seslogin::db::Handler as _;
     let (grant, access_token, _refresh) = oauth::mint_grant(
-        user_id,
+        &oauth::GrantSubject::User(user_id.to_string()),
         "test-client-id",
         "Test Client",
         "https://claude.ai/callback",
@@ -70,7 +70,7 @@ async fn access_token_for(app: &App, user_id: &str) -> String {
 async fn access_token_for_other_resource(app: &App, user_id: &str) -> String {
     use seslogin::db::Handler as _;
     let (grant, access_token, _refresh) = oauth::mint_grant(
-        user_id,
+        &oauth::GrantSubject::User(user_id.to_string()),
         "test-client-id",
         "Test Client",
         "https://claude.ai/callback",
@@ -216,7 +216,7 @@ async fn a_graphql_bound_token_is_rejected() {
     let (app, schema) = setup();
     seed_user(&app, "user-1", true);
     let (grant, token, _refresh) = oauth::mint_grant(
-        "user-1",
+        &oauth::GrantSubject::User("user-1".to_string()),
         "tally",
         "Tally",
         "tally://oauth/callback",

@@ -657,9 +657,8 @@ impl TryInto<OAuthGrant> for Item {
     fn try_into(self) -> Result<OAuthGrant, Self::Error> {
         Ok(OAuthGrant {
             id: self.id()?,
-            user_id: self
-                .string_field("user_id")?
-                .ok_or_else(|| anyhow!("OAuthGrant missing user_id"))?,
+            user_id: self.string_field("user_id")?,
+            person_id: self.string_field("person_id")?,
             client_id: self
                 .string_field("client_id")?
                 .ok_or_else(|| anyhow!("OAuthGrant missing client_id"))?,
@@ -5594,7 +5593,6 @@ impl db::Handler for Handler {
             .put_item()
             .table_name(self.table_name("oauth_grant"))
             .item("id", AttributeValue::S(grant.id.clone()))
-            .item("user_id", AttributeValue::S(grant.user_id.clone()))
             .item("client_id", AttributeValue::S(grant.client_id.clone()))
             .item("client_name", AttributeValue::S(grant.client_name.clone()))
             .item(
@@ -5627,7 +5625,14 @@ impl db::Handler for Handler {
                 "created_at",
                 AttributeValue::N(grant.created_at.to_string()),
             );
-        // Optional attribute: omit rather than write Null (see CLAUDE.md).
+        // Optional attributes: omit rather than write Null (see CLAUDE.md). `user_id`
+        // backs the sparse `user_id-index`.
+        if let Some(user_id) = &grant.user_id {
+            req = req.item("user_id", AttributeValue::S(user_id.clone()));
+        }
+        if let Some(person_id) = &grant.person_id {
+            req = req.item("person_id", AttributeValue::S(person_id.clone()));
+        }
         if let Some(last_used_at) = grant.last_used_at {
             req = req.item("last_used_at", AttributeValue::N(last_used_at.to_string()));
         }

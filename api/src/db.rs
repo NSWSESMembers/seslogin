@@ -1406,7 +1406,13 @@ pub enum UserTokenUpdateShape {
 #[derive(Clone, Debug, PartialEq)]
 pub struct OAuthGrant {
     pub id: String,
-    pub user_id: String,
+    /// The user the grant acts for. Always set on a grant approved at the consent
+    /// screen; on a Tally sign-in grant (`person_id` set) only when the email they
+    /// signed in with is also a user's.
+    pub user_id: Option<String>,
+    /// Set only on a Tally sign-in grant: the member it acts for. Such a grant resolves
+    /// to [`crate::auth::AuthInfo::Member`] rather than a user.
+    pub person_id: Option<String>,
     pub client_id: String,
     pub client_name: String,
     pub redirect_uri: String,

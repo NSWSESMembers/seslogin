@@ -63,6 +63,8 @@ export function actorText(actor: {
   switch (actor.kind) {
     case "USER":
       return "Unknown user";
+    case "MEMBER":
+      return "Unknown member";
     case "SESSION":
       return "Kiosk";
     case "API_TOKEN":
@@ -82,6 +84,8 @@ export function actorText(actor: {
 // alone would not say (a kiosk called "Front desk", an API token).
 export function actorKindHint(kind: string): string | null {
   switch (kind) {
+    case "MEMBER":
+      return "Member, in Tally";
     case "SESSION":
       return "Kiosk";
     case "API_TOKEN":
