@@ -36,6 +36,8 @@ pub(crate) enum AuthRequirement {
     /// serving period-specific data must additionally check the id matches — see
     /// [`require_period_write_access`].
     PeriodLink,
+    /// A member signed in to Tally ([`AuthInfo::Member`]), and nobody else.
+    Member,
 }
 
 pub(crate) struct AuthGuard {
@@ -128,6 +130,13 @@ impl Guard for AuthGuard {
                     Err(unauthenticated("Must provide super user token"))
                 }
             }
+            AuthRequirement::Member => {
+                if matches!(auth, Some(AuthInfo::Member { .. })) {
+                    Ok(())
+                } else {
+                    Err(unauthenticated("Only available in Tally"))
+                }
+            }
             AuthRequirement::PeriodLink => {
                 if match auth {
                     Some(AuthInfo::PeriodLink { .. }) => true,
@@ -205,99 +214,82 @@ pub(crate) fn require_location_write_access(ctx: &Context<'_>, location_id: &str
     }
 }
 
+/// Check the caller is a member signed in to Tally who may use `location_id`'s shared
+/// Tally tools: their home unit, any unit the user signed in alongside them holds
+/// either role at, or every unit when that user is a super user. Everyone else —
+/// users on their own, kiosks, API tokens and edit links — is refused with `refusal`:
+/// Tally is for members.
+///
+/// Every shared tool lets any member with the unit read **and** write it: they are a
+/// unit's own tools, not admin data.
+pub(crate) fn require_member_location(
+    ctx: &Context<'_>,
+    location_id: &str,
+    refusal: &str,
+) -> Result<()> {
+    match ctx.data_opt::<AuthInfo>() {
+        Some(AuthInfo::Member {
+            location_id: home,
+            is_super,
+            user_location_ids,
+            ..
+        }) => {
+            if *is_super
+                || home == location_id
+                || user_location_ids.iter().any(|l| l == location_id)
+            {
+                Ok(())
+            } else {
+                Err(ApiError::forbidden("Not authorized for this location").into())
+            }
+        }
+        _ => Err(ApiError::forbidden(refusal).into()),
+    }
+}
+
 /// Check the caller may use a location's Tasks (its shared to-do list): read them,
-/// and also create, edit, complete and delete them and manage its task lists.
-///
-/// Unlike every other location-scoped write this deliberately lets **Read only**
-/// users write: tasks are a shared unit tool, not admin data. Only people do — a
-/// super user or a user holding either role at the location. Kiosk sessions, API
-/// tokens and edit links are refused. Members are expected to sign in with their own
-/// accounts later; this is the one place to change when they do.
+/// and also create, edit, complete and delete them and manage its task lists. See
+/// [`require_member_location`].
 pub(crate) fn require_task_access(ctx: &Context<'_>, location_id: &str) -> Result<()> {
-    match ctx.data_opt::<AuthInfo>() {
-        Some(AuthInfo::User { .. }) => require_location_access(ctx, location_id),
-        _ => Err(ApiError::forbidden("Tasks are only available to signed-in users").into()),
-    }
+    require_member_location(ctx, location_id, "Tasks are only available in Tally")
 }
 
-/// Check the caller may use a location's Notes (its shared notebook): read them, and
-/// also create, edit and delete notes and manage its note folders.
-///
-/// The same rule as [`require_task_access`], for the same reason: notes are a shared
-/// unit tool, so **Read only** users may write them too, and only people may — kiosk
-/// sessions, API tokens and edit links are refused.
+/// Check the caller may use a location's Notes (its shared notebook). See
+/// [`require_member_location`].
 pub(crate) fn require_note_access(ctx: &Context<'_>, location_id: &str) -> Result<()> {
-    match ctx.data_opt::<AuthInfo>() {
-        Some(AuthInfo::User { .. }) => require_location_access(ctx, location_id),
-        _ => Err(ApiError::forbidden("Notes are only available to signed-in users").into()),
-    }
+    require_member_location(ctx, location_id, "Notes are only available in Tally")
 }
 
-/// Check the caller may use a location's Map (its shared map pins): see them, and also
-/// add, edit and delete pins and manage its map layers.
-///
-/// The same rule as [`require_task_access`], for the same reason: the map is a shared
-/// unit tool, so **Read only** users may write it too, and only people may — kiosk
-/// sessions, API tokens and edit links are refused.
+/// Check the caller may use a location's Map (its shared map pins and layers). See
+/// [`require_member_location`].
 pub(crate) fn require_map_access(ctx: &Context<'_>, location_id: &str) -> Result<()> {
-    match ctx.data_opt::<AuthInfo>() {
-        Some(AuthInfo::User { .. }) => require_location_access(ctx, location_id),
-        _ => Err(ApiError::forbidden("The map is only available to signed-in users").into()),
-    }
+    require_member_location(ctx, location_id, "The map is only available in Tally")
 }
 
-/// Check the caller may use a location's On Call roles: see who holds them, and also
-/// create, edit and delete roles and change who is in them.
-///
-/// The same rule as [`require_task_access`], for the same reason: on-call roles are a
-/// shared unit tool, so **Read only** users may change them too, and only people may —
-/// kiosk sessions, API tokens and edit links are refused.
+/// Check the caller may use a location's On Call roles. See [`require_member_location`].
 pub(crate) fn require_on_call_access(ctx: &Context<'_>, location_id: &str) -> Result<()> {
-    match ctx.data_opt::<AuthInfo>() {
-        Some(AuthInfo::User { .. }) => require_location_access(ctx, location_id),
-        _ => Err(ApiError::forbidden("On Call is only available to signed-in users").into()),
-    }
+    require_member_location(ctx, location_id, "On Call is only available in Tally")
 }
 
-/// Check the caller may use a location's Equipment register: read it, and also add,
-/// edit and delete equipment and log status changes and checks.
-///
-/// The same rule as [`require_task_access`], for the same reason: equipment is a shared
-/// unit tool, so **Read only** users may write it too, and only people may — kiosk
-/// sessions, API tokens and edit links are refused.
+/// Check the caller may use a location's Equipment register, log and reservations. See
+/// [`require_member_location`].
 pub(crate) fn require_equipment_access(ctx: &Context<'_>, location_id: &str) -> Result<()> {
-    match ctx.data_opt::<AuthInfo>() {
-        Some(AuthInfo::User { .. }) => require_location_access(ctx, location_id),
-        _ => Err(ApiError::forbidden("Equipment is only available to signed-in users").into()),
-    }
+    require_member_location(ctx, location_id, "Equipment is only available in Tally")
 }
 
-/// Check the caller may use a location's Calendar: see its events and calendars, and
-/// also add, edit and delete events and manage its calendars.
-///
-/// The same rule as [`require_task_access`], for the same reason: the calendar is a
-/// shared unit tool, so **Read only** users may write it too, and only people may —
-/// kiosk sessions, API tokens and edit links are refused.
+/// Check the caller may use a location's Calendar. See [`require_member_location`].
 pub(crate) fn require_calendar_access(ctx: &Context<'_>, location_id: &str) -> Result<()> {
-    match ctx.data_opt::<AuthInfo>() {
-        Some(AuthInfo::User { .. }) => require_location_access(ctx, location_id),
-        _ => Err(ApiError::forbidden("The calendar is only available to signed-in users").into()),
-    }
+    require_member_location(ctx, location_id, "The calendar is only available in Tally")
 }
 
 /// Check the caller may use location sharing ("Locate") at a location: share their own
-/// position with it, and see who is sharing there.
-///
-/// The same rule as [`require_task_access`]: any user with either role, **Read only**
-/// included, and super users. Kiosk sessions, API tokens and edit links are refused, as
-/// a share is always a person's own.
+/// position with it, and see who is sharing there. See [`require_member_location`].
 pub(crate) fn require_location_share_access(ctx: &Context<'_>, location_id: &str) -> Result<()> {
-    match ctx.data_opt::<AuthInfo>() {
-        Some(AuthInfo::User { .. }) => require_location_access(ctx, location_id),
-        _ => {
-            Err(ApiError::forbidden("Location sharing is only available to signed-in users").into())
-        }
-    }
+    require_member_location(
+        ctx,
+        location_id,
+        "Location sharing is only available in Tally",
+    )
 }
 
 /// Whether the caller may make changes at the location — the boolean form of

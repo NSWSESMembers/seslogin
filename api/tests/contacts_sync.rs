@@ -14,7 +14,7 @@ use hmac::{Hmac, Mac};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
-use common::{fake_app, seed_location, seed_user};
+use common::{fake_app, seed_location, seed_person, seed_user};
 use seslogin::app::{App as _, MyApp};
 use seslogin::auth;
 use seslogin::contacts;
@@ -44,13 +44,15 @@ async fn user_token(app: &App, user_id: &str) -> String {
     token
 }
 
-/// An app with one user and one location; returns the user's bearer header.
+/// An app with one location and one member signed in to Tally (seeded directly, so
+/// not in the contacts feed); returns their bearer header.
 async fn setup() -> (App, String) {
     let app = fake_app();
     seed_user(&app, "user-1", true);
     seed_location(&app, "loc-a", "Alpha Unit");
-    let token = user_token(&app, "user-1").await;
-    (app, format!("Bearer {token}"))
+    seed_person(&app, "caller", "loc-a", "Casey", "Caller", "99999999", None);
+    let token = grant_token(&app, &format!("https://{HOST}/graphql")).await;
+    (app, token)
 }
 
 async fn add_person(app: &App, first: &str, number: &str) -> String {
@@ -240,7 +242,7 @@ async fn unusable_cursors_are_gone() {
 }
 
 #[tokio::test]
-async fn only_signed_in_users_may_call_it() {
+async fn only_members_signed_in_to_tally_may_call_it() {
     let (app, _) = setup().await;
 
     let (status, _) = get(&app, None, "").await;
@@ -248,9 +250,9 @@ async fn only_signed_in_users_may_call_it() {
     let (status, _) = get(&app, Some("Bearer slu_Nope.nope"), "").await;
     assert_eq!(status, 401);
 
-    seed_user(&app, "user-off", false);
-    let disabled = user_token(&app, "user-off").await;
-    let (status, _) = get(&app, Some(&format!("Bearer {disabled}")), "").await;
+    // A user on their own, even an enabled one, is not a member.
+    let user = user_token(&app, "user-1").await;
+    let (status, _) = get(&app, Some(&format!("Bearer {user}")), "").await;
     assert_eq!(status, 401);
 
     let (secret, hash) = auth::generate_api_token_secret("ApiRow000001");
@@ -272,9 +274,14 @@ async fn only_signed_in_users_may_call_it() {
     assert_eq!(body["error"], "unauthorized");
 }
 
+/// A Tally sign-in grant for member `caller` (with `user-1` alongside), bound to
+/// `resource`.
 async fn grant_token(app: &App, resource: &str) -> String {
     let (grant, access_token, _refresh) = oauth::mint_grant(
-        &oauth::GrantSubject::User("user-1".to_string()),
+        &oauth::GrantSubject::Member {
+            person_id: "caller".to_string(),
+            user_id: Some("user-1".to_string()),
+        },
         "tally",
         "Tally",
         "tally://oauth/callback",

@@ -437,20 +437,42 @@ requests to CORS — production intentionally doesn't allow arbitrary
 browser-origin JS to hit its OAuth endpoints; use `claude mcp add` or a
 claude.ai connector there instead.
 
+## Tally (members)
+
+Tally is for **members**, not users: every Tally field below admits only an
+`AuthInfo::Member`, which only Tally sign-in issues (see "Tally sign-in"). A
+member can use their home unit, plus every unit the user signed in alongside
+them holds either role at (every unit for a super user); `require_member_location`
+in `graphql/auth.rs` is the one check. Any such member may read **and** write a
+unit's shared tools — they are the unit's own, not admin data. Users on their
+own (even super users), kiosks, API tokens and edit links are refused.
+
+The apps start from two queries (`graphql/tally.rs`):
+
+- `tallyViewer` — the member (`member`, `name`, `homeLocationId`), the email of
+  the user signed in alongside if any (`userEmail`), and every unit they can use
+  (`locations`, by name).
+- `tallyLocation(id)` — one unit's tools: `tasks`, `taskLists`, `notes`,
+  `noteFolders`, `equipment`, `equipmentReservations`,
+  `equipmentReservationConflicts`, `mapPins`, `mapLayers`, `calendars`,
+  `calendarEvents`, `locationShares` and `onCallRoles`. The core `Location` type
+  carries none of them.
+
+Everything a member writes records their **person ID** — `created_by`,
+`updated_by`, `completed_by`, `reserved_for_person_id`, the location share's key
+and the notification inbox's key — and `createdBy`/`updatedBy`/`reservedFor` and
+the like show the member's name. Audited writes record `actor_kind: member`.
+
 ## Tasks
 
 A location's shared to-do list, used by the Tally app (`src/graphql/tasks.rs`, rules in
 `src/tasks.rs`, storage in SCHEMA.md's `task` and `task_list` sections).
 
-- **Who:** any *user* with Admin **or** Read only access to the location, and super users,
-  may read, create, edit, complete and delete tasks and manage task lists
-  (`graphql::auth::require_task_access`). This is the one location-scoped write a Read only
-  user may make: tasks are a shared unit tool, not admin data. Kiosk sessions, API tokens and
-  edit links are refused.
-- **Reading:** `Location.tasks(view: DUE | SCHEDULED, listId)` lists open tasks. `DUE` (the
+- **Who:** any member signed in to Tally who can use the unit — see "Tally (members)" above. Users on their own, kiosk sessions, API tokens and edit links are refused.
+- **Reading:** `TallyLocation.tasks(view: DUE | SCHEDULED, listId)` lists open tasks. `DUE` (the
   default) is everything showing today or earlier, overdue first; `SCHEDULED` is everything
   showing from a later day. Without `listId` every task at the location is listed, whatever
-  list it is on. `Location.taskLists` and `Query.task(id)` complete the reads.
+  list it is on. `TallyLocation.taskLists` and `Query.task(id)` complete the reads.
 - **Dates** are Sydney-local days, `YYYY-MM-DD` in and out. A task shows from its `dueDate`,
   or from the day it was created when it has none. It is `overdue` from the day after its due
   date; a task that repeats in **weeks** gets a full week of showing first.
@@ -498,9 +520,9 @@ cursor-based change feed, for the Tally app's offline contact list
 - `410 {"error":"cursor_expired"}` means the cursor is unusable (malformed, tampered
   with, an old format, or from another database); the client starts a full sync.
   Tombstones are never purged, so a cursor never goes stale on its own.
-- `401` means no token, a bad one, a disabled user, or a credential that isn't a user's.
-  Callers can be any enabled user via `slu_` or a `/graphql`-bound OAuth token (Tally's
-  grant). Kiosks, API tokens, edit links and MCP grants all get 401. It is never 403,
+- `401` means no token, a bad one, or a credential that isn't a Tally member's. Callers
+  are members signed in to Tally (their `/graphql`-bound Tally sign-in grant). Users on their
+  own, kiosks, API tokens, edit links and MCP grants all get 401. It is never 403,
   which CloudFront would rewrite to the web app's `index.html`.
 - Responses are gzip-compressed when the request sends `Accept-Encoding: gzip`.
 
@@ -514,7 +536,7 @@ had not been written yet. A change is therefore delivered on the first sync at l
 30 seconds after it.
 
 A full sync's first request (the one without a cursor) is logged at `info`
-(`contacts: full sync page`, with the user id and row count); requests with a cursor
+(`contacts: full sync page`, with the member's person id and row count); requests with a cursor
 aren't.
 
 **New environments** need the GSI (`terraform apply`) and a one-off backfill, so
@@ -536,13 +558,10 @@ curl -s --compressed -H 'Authorization: Bearer slu_TokenReadOnly.localdev-readon
 A location's shared notebook, used by the Tally app (`src/graphql/notes.rs`, rules in
 `src/notes.rs`, storage in SCHEMA.md's `note` and `note_folder` sections).
 
-- **Who:** the same as Tasks — any *user* with Admin **or** Read only access to the location,
-  and super users, may read, create, edit and delete notes and manage note folders
-  (`graphql::auth::require_note_access`). Kiosk sessions, API tokens and edit links are
-  refused.
-- **Reading:** `Location.notes(folderId, search)` lists the location's notes, most recently
+- **Who:** any member signed in to Tally who can use the unit — see "Tally (members)" above. Users on their own, kiosk sessions, API tokens and edit links are refused.
+- **Reading:** `TallyLocation.notes(folderId, search)` lists the location's notes, most recently
   changed first. Without `folderId` every note at the location is listed, whatever folder it
-  is in. `search` keeps notes whose title contains it, ignoring case. `Location.noteFolders`
+  is in. `search` keeps notes whose title contains it, ignoring case. `TallyLocation.noteFolders`
   (by name) and `Query.note(id)` complete the reads.
 - **Fields:** `title` is one trimmed line (max 200 characters). `content` is plain text, kept
   exactly as written (max 20,000 characters; only-whitespace counts as empty). It is expected
@@ -569,11 +588,10 @@ A member signs themselves in and out from the Tally app, exactly as they would b
 their member number at a kiosk at their home unit (`src/graphql/self_sign_in.rs`; the two
 mutations are in `mutations.rs`).
 
-- **Who:** only a *user* (including an OAuth-grant user, which is how Tally arrives). Kiosk
-  sessions, API tokens and edit links get `FORBIDDEN`. No location grant is needed: the
-  `person_id` a super user set with `setUserMember` is the whole authority, read fresh from
-  the user's record on every call. The member must exist and not be deleted. The MCP
-  interface deliberately has no tool for this.
+- **Who:** only a member signed in to Tally. Users on their own, kiosk sessions, API tokens
+  and edit links get `FORBIDDEN`. No location grant is needed: being the member is the whole
+  authority, read fresh on every call, and the member must still exist and not be deleted.
+  The MCP interface deliberately has no tool for this.
 - **Home unit only:** only periods at the member's own `location_id` count, as the kiosk
   scopes by location. A period open at another unit (say, via that unit's kiosk) is ignored,
   and `selfSignIn` may open a home period alongside it.
@@ -603,7 +621,7 @@ mutations are in `mutations.rs`).
   A kiosk or admin that gets in between makes it fail with `db::Error::Conflict`, surfaced as
   `CONFLICT`, so an app sign-out never silently overwrites another. Every other caller passes
   `None`, which only requires the row to exist.
-- Writes are audited with the user as the actor, like any other period write. Periods made
+- Writes are audited with the member as the actor, like any other period write. Periods made
   this way have no `signedInSession` / `signedOutSession`, which the admin pages already
   render as plain times (and blank cells in report exports), like admin-created periods.
 
@@ -618,11 +636,8 @@ mutation { selfSignIn { id version } }
 A location's equipment register, used by the Tally app (`src/graphql/equipment.rs`, rules in
 `src/equipment.rs`, storage in SCHEMA.md's `equipment` and `equipment_log` sections).
 
-- **Who:** the same as Tasks and Notes — any *user* with Admin **or** Read only access to the
-  location, and super users, may read, add, edit and delete equipment and log status changes
-  and checks (`graphql::auth::require_equipment_access`). Kiosk sessions, API tokens and edit
-  links are refused.
-- **Reading:** `Location.equipment(search)` lists the location's equipment by name, as one flat
+- **Who:** any member signed in to Tally who can use the unit — see "Tally (members)" above. Users on their own, kiosk sessions, API tokens and edit links are refused.
+- **Reading:** `TallyLocation.equipment(search)` lists the location's equipment by name, as one flat
   list. `search` keeps items whose name or description contains it, ignoring case.
   `Query.equipment(id)` reads one; `Equipment.log` is its log, newest first.
 - **Fields:** `type` is `VEHICLE`, `TRAILER`, `VESSEL`, `RADIO`, `DEVICE`, `BAG`, `BOX` or `TOOL`
@@ -658,10 +673,8 @@ Bookings of one or more pieces of a location's equipment (usually a vehicle) for
 range, used by the Tally app (`src/graphql/reservations.rs`, rules in `src/reservations.rs`,
 storage in SCHEMA.md's `equipment_reservation` section).
 
-- **Who:** the same as Equipment (`require_equipment_access`): any *user* with Admin **or**
-  Read only access to the location, and super users, may read, make, change and cancel
-  reservations, anyone's. Kiosk sessions, API tokens and edit links are refused.
-- **Reading:** `Location.equipmentReservations(endingAfter, equipmentId)` lists the
+- **Who:** any member signed in to Tally who can use the unit — see "Tally (members)" above. Users on their own, kiosk sessions, API tokens and edit links are refused.
+- **Reading:** `TallyLocation.equipmentReservations(endingAfter, equipmentId)` lists the
   reservations that end after `endingAfter` (Unix seconds, default now) — upcoming and under
   way — by start time; `equipmentId` narrows to one piece of equipment. The index is keyed on
   the end time, so past reservations cost nothing to skip. `Query.equipmentReservation(id)`
@@ -672,14 +685,14 @@ storage in SCHEMA.md's `equipment_reservation` section).
   is set, though it may already have started); `description`, trimmed plain text (max 5,000).
 - **Who it is for:** the caller, unless `reservedFor` names someone or something else —
   another person, an organisation, "Detailing / clean" — as one trimmed line (max 200; blank
-  means the caller). Read back as `reservedFor` (the text, or the user's linked member's name,
-  else their email), `reservedForUserId` / `reservedForText` (exactly one is set) and
+  means the caller). Read back as `reservedFor` (the text, or the member's name),
+  `reservedForMemberId` / `reservedForText` (exactly one is set) and
   `reservedForViewer` (whether it is the caller's).
 - **Overlaps are allowed, and reported.** `EquipmentReservation.conflicts` lists the
   location's other reservations that overlap it in time and share a piece of equipment with
   it (times are half-open, so back-to-back reservations don't clash). It costs a query per
   reservation, so a client listing many should compare them itself.
-  `Location.equipmentReservationConflicts(equipmentIds, startTime, endTime, excludeId)` asks
+  `TallyLocation.equipmentReservationConflicts(equipmentIds, startTime, endTime, excludeId)` asks
   the same question about a reservation not yet saved, so a client can warn before saving;
   `excludeId` leaves out the one being edited.
 - **Writes:** `createEquipmentReservation(locationId, equipmentIds, startTime, endTime,
@@ -707,11 +720,8 @@ mutation {
 A location's shared calendar of events, used by the Tally app (`src/graphql/calendar.rs`,
 rules in `src/calendar.rs`, storage in SCHEMA.md's `calendar` and `calendar_event` sections).
 
-- **Who:** the same as Tasks and the Map — any *user* with Admin **or** Read only access to the
-  location, and super users, may see, add, edit and delete events and manage its calendars
-  (`graphql::auth::require_calendar_access`). Kiosk sessions, API tokens and edit links are
-  refused.
-- **Calendars:** `Location.calendars` (by name), `createCalendar(locationId, name, color)`,
+- **Who:** any member signed in to Tally who can use the unit — see "Tally (members)" above. Users on their own, kiosk sessions, API tokens and edit links are refused.
+- **Calendars:** `TallyLocation.calendars` (by name), `createCalendar(locationId, name, color)`,
   `updateCalendar(id, name, color)` (omitted arguments unchanged) and `deleteCalendar`. A colour
   is one of ten `CalendarColor`s (`RED`, `ORANGE`, `YELLOW`, `GREEN`, `TEAL`, `BLUE`, `INDIGO`,
   `PURPLE`, `PINK`, `GREY`); clients decide how each looks. An event is in one calendar or none.
@@ -727,7 +737,7 @@ rules in `src/calendar.rs`, storage in SCHEMA.md's `calendar` and `calendar_even
   later). An occurrence is at most one repeat long (a day for daily, a week for weekly), so an
   event never overlaps its own next occurrence. Editing changes every occurrence: there are no
   per-occurrence exceptions.
-- **Reading:** `Location.calendarEvents(from, to)` (Unix seconds, `to` after `from`, at most 400
+- **Reading:** `TallyLocation.calendarEvents(from, to)` (Unix seconds, `to` after `from`, at most 400
   days) lists every occurrence that overlaps the window, repeats expanded, by start, at most
   5,000. Each `CalendarEventOccurrence` has its own `startTime` / `endTime` (timed) or
   `startDate` / `endDate` (all day) and the `event`. All-day occurrences are included when one of
@@ -744,7 +754,7 @@ rules in `src/calendar.rs`, storage in SCHEMA.md's `calendar` and `calendar_even
 - **Tables:** only the test tables (`seslogin_test_calendar`, `seslogin_test_calendar_event`)
   exist so far, so a deployed API on the prod tables fails Calendar calls, and nothing else.
 - **Equipment reservations** are not calendar events: Tally shows them in its calendar as a
-  virtual "Reservations" calendar, read from `Location.equipmentReservations`.
+  virtual "Reservations" calendar, read from `TallyLocation.equipmentReservations`.
 
 ```graphql
 mutation {
@@ -753,7 +763,7 @@ mutation {
                       repeat: WEEKLY, repeatUntil: "2027-06-30") { id version }
 }
 {
-  location(id: "TestAUnit001") {
+  tallyLocation(id: "TestAUnit001") {
     calendarEvents(from: 1793000000, to: 1795600000) {
       startTime endTime startDate endDate
       event { id title allDay calendarId calendar { name color } }
@@ -767,13 +777,10 @@ mutation {
 A location's shared map of pins, used by the Tally app (`src/graphql/map.rs`, rules in
 `src/map.rs`, storage in SCHEMA.md's `map_pin` and `map_layer` sections).
 
-- **Who:** the same as Tasks and Notes — any *user* with Admin **or** Read only access to the
-  location, and super users, may see, add, edit and delete pins and manage map layers
-  (`graphql::auth::require_map_access`). Kiosk sessions, API tokens and edit links are
-  refused.
-- **Reading:** `Location.mapPins(layerId)` lists the location's pins by title. Without
+- **Who:** any member signed in to Tally who can use the unit — see "Tally (members)" above. Users on their own, kiosk sessions, API tokens and edit links are refused.
+- **Reading:** `TallyLocation.mapPins(layerId)` lists the location's pins by title. Without
   `layerId` every pin at the location is listed, whatever layer it is on.
-  `Location.mapLayers` (by name) and `Query.mapPin(id)` complete the reads.
+  `TallyLocation.mapLayers` (by name) and `Query.mapPin(id)` complete the reads.
 - **Fields:** `latitude` / `longitude` are WGS 84 degrees (within ±90 / ±180). `title` is one
   trimmed line (max 200 characters). `address` is free text, trimmed, not geocoded (max 500).
   `note` is plain text, kept exactly as written (max 20,000; only-whitespace counts as empty).
@@ -804,11 +811,8 @@ now, used by the Tally app (`src/graphql/on_call.rs`, rules in `src/on_call.rs`,
 SCHEMA.md's `on_call_role` section). Scheduling (who holds a role in a given week) will come
 later; for now a role just has the people in it now.
 
-- **Who:** the same as Tasks and Notes — any *user* with Admin **or** Read only access to the
-  location, and super users, may see, create, edit and delete roles and change who is in them
-  (`graphql::auth::require_on_call_access`). Kiosk sessions, API tokens and edit links are
-  refused.
-- **Reading:** `Location.onCallRoles` lists the location's roles by name; `Query.onCallRole(id)`
+- **Who:** any member signed in to Tally who can use the unit — see "Tally (members)" above. Users on their own, kiosk sessions, API tokens and edit links are refused.
+- **Reading:** `TallyLocation.onCallRoles` lists the location's roles by name; `Query.onCallRole(id)`
   reads one. Each has `primary` (who is on call, or null) and `secondaries` (anyone else in it,
   by name), both `Person`s, and `membersChangedAt`, when the people last changed.
 - **Fields:** `name` is one trimmed line (max 100 characters). `description` is plain text kept
@@ -842,11 +846,7 @@ Members sharing their phone's position with a location's members, for the Tally 
 tool and Unit Map (`src/graphql/location_share.rs`, rules in `src/location_share.rs`, storage
 in SCHEMA.md's `location_share` section).
 
-- **Who:** the same as Tasks and the Map — any *user* with Admin **or** Read only access to the
-  location, and super users, may share with it and see who is sharing there
-  (`graphql::auth::require_location_share_access`). Kiosk sessions, API tokens and edit links
-  are refused. A share is always the caller's own: there is one per user, and only they can
-  update or stop it.
+- **Who:** any member signed in to Tally who can use the unit — see "Tally (members)" above. Users on their own, kiosk sessions, API tokens and edit links are refused. A share is always the caller's own: one per member, keyed by their person ID, and only they can change or stop it.
 - **Sharing:** `startLocationShare(locationId, durationMinutes, intervalSeconds, position)`
   shares for 5, 15, 30 or 60 minutes, with the phone promising a position every
   `intervalSeconds` (60 to 300). It replaces any share the caller already has, at any
@@ -857,11 +857,11 @@ in SCHEMA.md's `location_share` section).
   100 km), `altitude`, `altitudeAccuracy`, `heading` and `speed`. Negative heading and speed
   mean unknown, as phones report them, and are dropped. `recordedAt` (the fix time, Unix
   seconds) defaults to now and is never later than now. Only the latest position is kept.
-- **Showing:** `Location.locationShares` lists every share still showing, most recently
+- **Showing:** `TallyLocation.locationShares` lists every share still showing, most recently
   updated first; `Query.myLocationShare` is the caller's own. A share shows until
   `visibleUntil`, 7 minutes after its latest position, even once it has ended (`active` is
   then false), so a phone that loses signal fades out rather than vanishing at once. Each
-  carries `name` (the linked member's name, else the user's email), `person`, `isMine`,
+  carries `name` (the member's name), `person`, `isMine`,
   `intervalSeconds`, `startedAt`, `endsAt`, `updatedAt` and `recordedAt`.
 - **Audit:** starting and stopping are audited against the location (start, end and
   interval, never the position); position updates are not.
@@ -877,25 +877,21 @@ mutation {
 
 ## Notifications
 
-Each user's in-app notification inbox, read by the Tally app (`src/graphql/notifications.rs`,
+Each member's in-app notification inbox, read by the Tally app (`src/graphql/notifications.rs`,
 producers' API in `src/notifications.rs`, storage in SCHEMA.md's `notification` section).
 
-- **Model:** denormalised and fanned out on write. An event that notifies several users stores
+- **Model:** denormalised and fanned out on write. An event that notifies several members stores
   a full copy per recipient (they share a `notification_id`), so the inbox is one query with no
   join. A notification has a `source` (the producing app, e.g. `reservations`), a `kind`
   (`reservation.for_you`), a `title`, an optional `body`, an optional `locationId` and an
   optional `targetType`/`targetId` for what tapping it opens. The table is keyed by recipient
-  user and a time-ordered `sk`, with a sparse `unread-index` for counting and listing unread.
+  member (person ID) and a time-ordered `sk`, with a sparse `unread-index` for counting and listing unread.
   Rows are removed by the TTL 90 days after creation, read or not.
 - **Producing one:** call `notifications::notify(app, NewNotification, Audience)` *after* the
   business write has succeeded. `NewNotification::new(source, kind, title)` takes `.location()`,
-  `.body()` and `.target(type, id)`. An `Audience` is `Users(ids)`, `Person(person_id)` (every
-  user linked to that member through `User.person_id`) or `Location { location_id,
-  include_read_only }` (users holding an Admin grant there, plus Read only grants if asked;
-  super users are not implied). Only enabled users are notified, the acting user (the current
-  audit-context actor, if it is a user) is left out, and nobody is notified twice. `Person` and
-  `Location` read every user, there being no index from either to its users, which is fine at
-  the current number of users.
+  `.body()` and `.target(type, id)`. An `Audience` is `Members(person_ids)`. Only live (not
+  deleted) members are notified, the acting member (the current audit-context actor, if it is
+  a member) is left out, and nobody is notified twice.
 - **Producers:** each fires after its write succeeds, in the GraphQL resolver (so the MCP
   tools, which run the same documents, are covered; no other path makes these writes), always
   with `locationId` set. Tally maps `source`/`kind`/`targetType` to icons and screens, so the
@@ -903,13 +899,16 @@ producers' API in `src/notifications.rs`, storage in SCHEMA.md's `notification` 
 
   | source | kind | targetType | When | Audience | Title / body |
   |---|---|---|---|---|---|
-  | `reservations` | `reservation.for_you` | `reservation` | `createEquipmentReservation`, or `updateEquipmentReservation`, leaves `reserved_for_user_id` a user who is not the actor and was not the previous one | that user | "Equipment reserved for you" / "<equipment names, sorted> · <Sun 25 Oct 09:00–11:00, Sydney time>" ("Equipment" if the names can't be read) |
-  | `oncall` | `oncall.assigned` | `on_call_role` | `createOnCallRole`, or `updateOnCallRole`, makes a person the primary when they were not, or adds them to the secondaries when they were not already there (moving primary to secondary counts; removals and reorderings do not) | `Person(id)`, once per newly assigned member | "You're now primary for <role>" / "You're now a secondary for <role>" |
-  | `equipment` | `equipment.status` | `equipment` | `changeEquipmentStatus` moves equipment into HAS_ISSUE, OUT_OF_SERVICE or MISSING (it always changes from another status, so going from one of these to another notifies; going to IN_SERVICE or BORROWED does not), or `createEquipment` registers it in one of those statuses. Checks, edits and deletes do not | `Location { include_read_only: true }` | "<name> has an issue" / "is out of service" / "is missing"; body is the comment, if any |
+  | `reservations` | `reservation.for_you` | `reservation` | `createEquipmentReservation`, or `updateEquipmentReservation`, leaves `reserved_for_person_id` a member who is not the actor and was not the previous one | that member | "Equipment reserved for you" / "<equipment names, sorted> · <Sun 25 Oct 09:00–11:00, Sydney time>" ("Equipment" if the names can't be read) |
+  | `oncall` | `oncall.assigned` | `on_call_role` | `createOnCallRole`, or `updateOnCallRole`, makes a person the primary when they were not, or adds them to the secondaries when they were not already there (moving primary to secondary counts; removals and reorderings do not) | that member, once per newly assigned member | "You're now primary for <role>" / "You're now a secondary for <role>" |
 
-  The acting user is never told (so a reservation you make for yourself, or an on-call role you
+  Equipment going into HAS_ISSUE, OUT_OF_SERVICE or MISSING used to tell the unit's users; it
+  notifies nobody for now, while who among a unit's members should hear is rethought
+  (`EquipmentStatus::attention_title` still holds the titles).
+
+  The acting member is never told (so a reservation you make for yourself, or an on-call role you
   put yourself in, sends nothing). Today `reservation.for_you` cannot fire through the API: a
-  reservation is for the caller or for free text, never another user, so the user it is for is
+  reservation is for the caller or for free text, never another member, so the member it is for is
   always the actor. The producer is in place (`reservations::notify_reserved_for`) for when
   reserving for someone else is added.
 - **Best-effort:** like the audit log, `notify` returns `()`: a failure is logged at `error!`
@@ -923,11 +922,11 @@ producers' API in `src/notifications.rs`, storage in SCHEMA.md's `notification` 
   "99+" above 99). `markNotificationsRead(ids)` (at most 200) and `markAllNotificationsRead`
   return `{ unreadCount }`. Marking is idempotent: an ID that is already read, or that is not
   the caller's or does not exist, is ignored.
-- **Who:** any enabled *user*, including a connected app acting for one (Tally); kiosk
-  sessions, API tokens and edit links are refused. Everything is the caller's own, because the
-  table is keyed by their user ID.
-- **Access lost:** a notification with a `locationId` the caller no longer has either role at
-  (and is not a super user for) is left out of `myNotifications`, so stored text does not
+- **Who:** any member signed in to Tally; users on their own, kiosk sessions, API tokens and
+  edit links are refused. Everything is the caller's own, because the table is keyed by their
+  person ID.
+- **Access lost:** a notification with a `locationId` the member can no longer use in Tally
+  is left out of `myNotifications`, so stored text does not
   reach someone who lost access. `myUnreadNotificationCount` reads an index without the rows
   and so can still count such a notification, and the count can lag a write by a moment.
 - **Tables:** only the test table (`seslogin_test_notification`) exists so far, so a deployed
@@ -946,7 +945,7 @@ producers' API in `src/notifications.rs`, storage in SCHEMA.md's `notification` 
 
 ## WiFi networks
 
-The WiFi networks Tally's WiFi app shows signed-in users, with their passwords
+The WiFi networks Tally's WiFi app shows signed-in members, with their passwords
 (`src/wifi.rs`, `src/graphql/wifi.rs`).
 
 - **Never committed or stored:** they come from the `WIFI_NETWORKS` environment variable, a
@@ -965,8 +964,8 @@ The WiFi networks Tally's WiFi app shows signed-in users, with their passwords
   `{ title, ssid, password, security (WPA | WEP | NONE), hidden }`. `version` is a hash of
   the list, so it changes whenever any network does without anyone bumping it. When
   `knownVersion` is already current, `networks` is null and the passwords are not sent again.
-- **Who:** any enabled *user*, including a connected app acting for one (Tally); kiosk
-  sessions, API tokens and edit links are refused.
+- **Who:** any member signed in to Tally; users on their own, kiosk sessions, API tokens and
+  edit links are refused.
 
 ```graphql
 { wifiNetworks(knownVersion: "3f2a9c0d1b7e4a65") { version networks { title ssid password security hidden } } }
@@ -977,8 +976,9 @@ The WiFi networks Tally's WiFi app shows signed-in users, with their passwords
 Every enabled location, statewide, with the details someone looking a unit up wants, for the
 Tally app's Units tool (`src/graphql/unit_directory.rs`): `Query.unitDirectory`, by name.
 
-- **Who:** any *user*, like the contacts sync. It is statewide reference data, so it needs no
-  role at any location. Kiosk sessions, API tokens and edit links are refused.
+- **Who:** any member signed in to Tally, like the contacts sync. It is statewide reference
+  data, so it needs no role at any location. Users on their own, kiosk sessions, API tokens
+  and edit links are refused.
 - **Fields:** `id`, `name`, `code` (three capital letters), `address` (one line), `latitude` /
   `longitude`, `parentHeadquarters`, `phoneNumbers` and `emailAddresses` (each a list of
   `{ label, number }` / `{ label, address }`), and `placeholder`.
@@ -999,7 +999,7 @@ Tally app's Units tool (`src/graphql/unit_directory.rs`): `Query.unitDirectory`,
 
 Every business write (people, periods, kiosk sessions, users, locations, categories, API tokens, passkeys, OAuth grants, …) is recorded in the `{DB_PREFIX}_audit_log` DynamoDB table: who did it, which location(s) it touched, and which fields changed from what to what. The table is defined in `infra/dynamodb*.tf` and documented in `SCHEMA.md`; it must exist (`terraform apply`) for entries to land. It is read through GraphQL (below); there is no UI for it yet.
 
-It is implemented by `audit::AuditingHandler`, a `db::Handler` wrapper that the servers, sync jobs and CLI wrap their DynamoDB handler in (`poem`, `poem-local`, the API Lambda, `member_sync::run`, `location_sync::run`, `cli`, `load-nitc-tags`, `load-category-display`). The actor comes from the `AUDIT_CONTEXT` task-local each entry point sets: `user` (with `actor_via` `oauth_grant:<id>` / `user_token:<id>` / `oauth_client:<id>` when not a plain web login), `session` (kiosk), `api_token`, `period_link`, `system` (`actor_id` is the job: `member-sync`, `location-sync`, `cli`, `load-nitc-tags`, `load-category-display`, `oauth-refresh-reuse`), `unauthenticated`, or `unknown` when a write was made with no context set (a bug; it logs a warning).
+It is implemented by `audit::AuditingHandler`, a `db::Handler` wrapper that the servers, sync jobs and CLI wrap their DynamoDB handler in (`poem`, `poem-local`, the API Lambda, `member_sync::run`, `location_sync::run`, `cli`, `load-nitc-tags`, `load-category-display`). The actor comes from the `AUDIT_CONTEXT` task-local each entry point sets: `user` (with `actor_via` `oauth_grant:<id>` / `user_token:<id>` / `oauth_client:<id>` when not a plain web login), `member` (a member signed in to Tally, by person ID, `actor_via` `oauth_grant:<id>` or `oauth_client:<id>`), `session` (kiosk), `api_token`, `period_link`, `system` (`actor_id` is the job: `member-sync`, `location-sync`, `cli`, `load-nitc-tags`, `load-category-display`, `oauth-refresh-reuse`), `unauthenticated`, or `unknown` when a write was made with no context set (a bug; it logs a warning).
 
 Auditing is **best-effort**: if recording an entry fails it is logged at `error!` (with the entity type and id) and the write still succeeds. Dry runs and read-only servers record nothing, because the write they would describe is refused. Updates that change nothing record nothing.
 

@@ -308,12 +308,12 @@ type CalendarEvent {
 	version: Int!
 	createdAt: Int!
 	"""
-	Email of the user who added the event.
+	Name of the member who added the event.
 	"""
 	createdBy: String
 	updatedAt: Int!
 	"""
-	Email of the user who last changed the event.
+	Name of the member who last changed the event.
 	"""
 	updatedBy: String
 }
@@ -510,12 +510,12 @@ type Equipment {
 	version: Int!
 	createdAt: Int!
 	"""
-	Email of the user who added it.
+	Name of the member who added it.
 	"""
 	createdBy: String
 	updatedAt: Int!
 	"""
-	Email of the user who last edited it.
+	Name of the member who last edited it.
 	"""
 	updatedBy: String
 }
@@ -539,7 +539,7 @@ type EquipmentLogEntry {
 	comment: String!
 	createdAt: Int!
 	"""
-	Email of the user who made the entry.
+	Name of the member who made the entry.
 	"""
 	createdBy: String
 }
@@ -575,21 +575,20 @@ type EquipmentReservation {
 	"""
 	equipment: [Equipment!]!
 	"""
-	Who it is for, to show: `reservedForText` when set, otherwise the name of the
-	member the user's account is linked to, or their email.
+	Who it is for, to show: `reservedForText` when set, otherwise the member's name.
 	"""
 	reservedFor: String!
 	"""
-	The user it is for; null when it is for someone named in `reservedForText`.
+	The member it is for; null when it is for someone named in `reservedForText`.
 	"""
-	reservedForUserId: ID
+	reservedForMemberId: ID
 	"""
 	Free text naming who it is for: someone else, an organisation, or something
-	like "Detailing / clean". Null when it is for a user.
+	like "Detailing / clean". Null when it is for a member.
 	"""
 	reservedForText: String
 	"""
-	Whether it is for the user asking.
+	Whether it is for the member asking.
 	"""
 	reservedForViewer: Boolean!
 	"""
@@ -610,12 +609,12 @@ type EquipmentReservation {
 	version: Int!
 	createdAt: Int!
 	"""
-	Email of the user who made the reservation.
+	Name of the member who made the reservation.
 	"""
 	createdBy: String
 	updatedAt: Int!
 	"""
-	Email of the user who last changed it.
+	Name of the member who last changed it.
 	"""
 	updatedBy: String
 }
@@ -738,84 +737,6 @@ type Location {
 	other day-bucketed resolver.
 	"""
 	periodSummaryByDayByMember(startTime: Int!, endTime: Int!, categories: [ID!]): [DayMemberPeriodSummary!]!
-	"""
-	The location's open tasks (its shared to-do list): by default those due now,
-	overdue first. `listId` narrows to one of its task lists; without it every
-	task at the location is listed, whichever list it is on. Users only (Admin
-	or Read only); see `graphql::tasks`.
-	"""
-	tasks(view: TaskView! = DUE, listId: ID): [Task!]!
-	"""
-	The location's task lists, by name.
-	"""
-	taskLists: [TaskList!]!
-	"""
-	The location's notes (its shared notebook), most recently changed first.
-	`folderId` narrows to one of its note folders; without it every note at the
-	location is listed, whichever folder it is in. `search` keeps notes whose title
-	contains it, ignoring case. Users only (Admin or Read only); see
-	`graphql::notes`.
-	"""
-	notes(folderId: ID, search: String): [Note!]!
-	"""
-	The location's note folders, by name.
-	"""
-	noteFolders: [NoteFolder!]!
-	"""
-	The location's equipment register, by name. `search` keeps equipment whose name
-	or description contains it, ignoring case. Users only (Admin or Read only); see
-	`graphql::equipment`.
-	"""
-	equipment(search: String): [Equipment!]!
-	"""
-	The location's equipment reservations that end after `endingAfter` (Unix
-	seconds, default now) — those still to come or under way — by start time.
-	`equipmentId` narrows to reservations of one piece of equipment. Users only
-	(Admin or Read only); see `graphql::reservations`.
-	"""
-	equipmentReservations(endingAfter: Int, equipmentId: ID): [EquipmentReservation!]!
-	"""
-	The location's reservations a reservation of `equipmentIds` from `startTime` to
-	`endTime` would overlap, by start time, leaving out `excludeId` (the one being
-	edited). Overlaps are allowed; this is so a client can warn before saving.
-	"""
-	equipmentReservationConflicts(equipmentIds: [ID!]!, startTime: Int!, endTime: Int!, excludeId: ID): [EquipmentReservation!]!
-	"""
-	The pins on the location's shared map, by title. `layerId` narrows to one of its
-	map layers; without it every pin at the location is listed, whichever layer it is
-	on. Users only (Admin or Read only); see `graphql::map`.
-	"""
-	mapPins(layerId: ID): [MapPin!]!
-	"""
-	The location's map layers, by name.
-	"""
-	mapLayers: [MapLayer!]!
-	"""
-	The location's calendars, by name. Users only (Admin or Read only); see
-	`graphql::calendar`.
-	"""
-	calendars: [Calendar!]!
-	"""
-	Every occurrence of the location's events that overlaps `from`–`to` (Unix
-	seconds, at most 400 days apart), repeats expanded, by start; at most 5,000.
-	All-day occurrences are included when one of their dates overlaps the window in
-	any time zone, so a client should check them against its own days. Events in
-	every calendar, and in none, are listed: a client picking calendars filters on
-	`event.calendarId`. Users only (Admin or Read only).
-	"""
-	calendarEvents(from: Int!, to: Int!): [CalendarEventOccurrence!]!
-	"""
-	Everyone sharing their position with the location ("Locate"), most recently
-	updated first. A share shows until 7 minutes after its latest position, so
-	this includes shares that have just ended (`active: false`). Users only (Admin
-	or Read only); see `graphql::location_share`.
-	"""
-	locationShares: [LocationShare!]!
-	"""
-	The location's on-call roles (Duty Officer, …) and who holds each now, by name.
-	Users only (Admin or Read only); see `graphql::on_call`.
-	"""
-	onCallRoles: [OnCallRole!]!
 	sessions: [Session!]!
 	dashboardSummary(asOf: Int): LocationDashboardSummary!
 }
@@ -857,16 +778,15 @@ type LocationRecentCategory {
 
 type LocationShare {
 	"""
-	The sharing user's ID: a user has at most one share.
+	The sharing member's person ID: a member has at most one share.
 	"""
 	id: ID!
 	"""
-	Who is sharing: their member's name, or their email if their account isn't
-	linked to a member.
+	Who is sharing: the member's name.
 	"""
 	name: String!
 	"""
-	The member the sharing user's account is linked to; null if it isn't.
+	The sharing member; null if they have since been deleted.
 	"""
 	person: Person
 	"""
@@ -1008,12 +928,12 @@ type MapPin {
 	version: Int!
 	createdAt: Int!
 	"""
-	Email of the user who added the pin.
+	Name of the member who added the pin.
 	"""
 	createdBy: String
 	updatedAt: Int!
 	"""
-	Email of the user who last changed the pin.
+	Name of the member who last changed the pin.
 	"""
 	updatedBy: String
 }
@@ -1180,8 +1100,8 @@ type MutationRoot {
 	revokeApiToken(id: ID!): Boolean!
 	updateSession(id: ID!, name: String!, config: String, healthcheckUrl: String): Session!
 	"""
-	Add a task to a location's shared to-do list. Any user with access to the
-	location may, Read only included. `dueDate` (`YYYY-MM-DD`, Sydney) hides the
+	Add a task to a location's shared to-do list. Any member who can use the
+	unit in Tally may. `dueDate` (`YYYY-MM-DD`, Sydney) hides the
 	task until that day; a recurring task with no date is due today.
 	"""
 	createTask(locationId: ID!, title: String!, description: String, listId: ID, dueDate: String, recurrence: TaskRecurrenceInput): Task!
@@ -1208,8 +1128,8 @@ type MutationRoot {
 	"""
 	deleteTaskList(id: ID!): ID!
 	"""
-	Add a note to a location's shared notebook. Any user with access to the
-	location may, Read only included.
+	Add a note to a location's shared notebook. Any member who can use the
+	unit in Tally may.
 	"""
 	createNote(locationId: ID!, title: String!, content: String, folderId: ID): Note!
 	"""
@@ -1230,8 +1150,8 @@ type MutationRoot {
 	deleteNoteFolder(id: ID!): ID!
 	"""
 	Add a piece of equipment to a location's register, logged in `status` (in
-	service unless given) with an optional `comment`. Any user with access to the
-	location may, Read only included.
+	service unless given) with an optional `comment`. Any member who can use the
+	unit in Tally may.
 	"""
 	createEquipment(locationId: ID!, type: EquipmentType!, name: String!, description: String, status: EquipmentStatus! = IN_SERVICE, comment: String): Equipment!
 	"""
@@ -1258,8 +1178,8 @@ type MutationRoot {
 	Reserve one or more pieces of a location's equipment from `startTime` to
 	`endTime` (Unix seconds; the end must be in the future). It is for the caller
 	unless `reservedFor` names someone or something else. Overlapping another
-	reservation is allowed: read `conflicts` on the result to warn about it. Any user
-	with access to the location may, Read only included.
+	reservation is allowed: read `conflicts` on the result to warn about it. Any member
+	who can use the unit in Tally may.
 	"""
 	createEquipmentReservation(locationId: ID!, equipmentIds: [ID!]!, startTime: Int!, endTime: Int!, reservedFor: String, description: String): EquipmentReservation!
 	"""
@@ -1274,7 +1194,7 @@ type MutationRoot {
 	deleteEquipmentReservation(id: ID!): ID!
 	"""
 	Add a pin to a location's shared map, optionally of a `type` (a plain pin
-	without). Any user with access to the location may, Read only included.
+	without). Any member who can use the unit in Tally may.
 	"""
 	createMapPin(locationId: ID!, title: String!, latitude: Float!, longitude: Float!, address: String, note: String, layerId: ID, type: MapPinType): MapPin!
 	"""
@@ -1298,7 +1218,7 @@ type MutationRoot {
 	Timed events take `startTime` and `endTime` (Unix seconds); all-day ones take
 	`startDate` and optionally `endDate` (`YYYY-MM-DD`, inclusive; default one day).
 	`repeat` makes it repeat daily or weekly, through `repeatUntil` or forever. Any
-	user with access to the location may, Read only included.
+	member who can use the unit in Tally may.
 	"""
 	createCalendarEvent(locationId: ID!, calendarId: ID, title: String!, description: String, allDay: Boolean!, startTime: Int, endTime: Int, startDate: String, endDate: String, repeat: EventRepeat, repeatUntil: String): CalendarEvent!
 	"""
@@ -1325,8 +1245,8 @@ type MutationRoot {
 	"""
 	Share your position with a location's members for `durationMinutes` (5, 15, 30
 	or 60), saying how often you will send it (`intervalSeconds`, 60 to 300).
-	Replaces any share you already have. Any user with access to the location may,
-	Read only included.
+	Replaces any share you already have. Any member who can use the unit in
+	Tally may.
 	"""
 	startLocationShare(locationId: ID!, durationMinutes: Int!, intervalSeconds: Int!, position: LocationSharePositionInput!): LocationShare!
 	"""
@@ -1351,8 +1271,8 @@ type MutationRoot {
 	markAllNotificationsRead: MarkNotificationsReadPayload!
 	"""
 	Add an on-call role (e.g. Duty Officer) to a location, optionally with the people
-	in it. Anyone in it needs a primary. Any user with access to the location may,
-	Read only included.
+	in it. Anyone in it needs a primary. Any member who can use the unit in
+	Tally may.
 	"""
 	createOnCallRole(locationId: ID!, name: String!, description: String, phone: String, primaryPersonId: ID, secondaryPersonIds: [ID!]): OnCallRole!
 	"""
@@ -1455,15 +1375,15 @@ type MutationRoot {
 	): RegisterResult!
 	scanSignOut(id: ID!, startTime: Int!, endTime: Int!, categoryId: ID!): Period!
 	"""
-	Sign the signed-in user's linked member in at their home unit, as typing their
-	member number at a kiosk there would, for the Tally app. Idempotent: if the
-	member is already signed in at home, that period is returned unchanged, so a
-	double tap never opens two. A period open at another unit is ignored. Users
-	only, and no location grant is needed (the member link is the authority).
+	Sign the member signed in to Tally in at their home unit, as typing their member
+	number at a kiosk there would. Idempotent: if the member is already signed in at
+	home, that period is returned unchanged, so a double tap never opens two. A
+	period open at another unit is ignored. Tally members only, and no location
+	grant is needed (being the member is the authority).
 	"""
 	selfSignIn: Period!
 	"""
-	Sign the linked member out of one of their own open home-unit periods, as
+	Sign the member out of one of their own open home-unit periods, as
 	`scanSignOut` does at a kiosk. `expectedVersion` is the period's `version` as
 	the app last saw it; if it, or the sign-in, has changed since (e.g. a kiosk
 	signed them out first) the write is refused with `CONFLICT` and nothing changes.
@@ -1575,12 +1495,12 @@ type Note {
 	version: Int!
 	createdAt: Int!
 	"""
-	Email of the user who created the note.
+	Name of the member who created the note.
 	"""
 	createdBy: String
 	updatedAt: Int!
 	"""
-	Email of the user who last changed the note.
+	Name of the member who last changed the note.
 	"""
 	updatedBy: String
 }
@@ -1751,12 +1671,12 @@ type OnCallRole {
 	version: Int!
 	createdAt: Int!
 	"""
-	Email of the user who created the role.
+	Name of the member who created the role.
 	"""
 	createdBy: String
 	updatedAt: Int!
 	"""
-	Email of the user who last changed the role.
+	Name of the member who last changed the role.
 	"""
 	updatedBy: String
 }
@@ -1996,10 +1916,20 @@ type QueryRoot {
 	"""
 	linkedPeriod: Period!
 	"""
-	The signed-in user's own sign-in state at their linked member's home unit,
-	for the Tally app; null when no (live) member is linked to the account. Users
-	only: a kiosk, API token or edit link is refused. No location grant is
-	needed — the link is the authority (see `graphql::self_sign_in`).
+	The member signed in to Tally, and the units they can use there. Tally members
+	only; see `graphql::tally`.
+	"""
+	tallyViewer: TallyViewer!
+	"""
+	One unit's shared Tally tools — tasks, notes, map, calendar, equipment, on call
+	and who is sharing their position. Tally members only, at a unit they can use.
+	"""
+	tallyLocation(id: ID!): TallyLocation!
+	"""
+	The signed-in member's own sign-in state at their home unit, for the Tally app;
+	null when the member has since been deleted. Tally members only. No location
+	grant is needed — being the member is the authority (see
+	`graphql::self_sign_in`).
 	"""
 	selfSignInStatus: SelfSignInStatus
 	"""
@@ -2043,14 +1973,15 @@ type QueryRoot {
 	"""
 	myUnreadNotificationCount: Int!
 	"""
-	The WiFi networks, with their passwords, for signed-in users (Tally's WiFi app).
-	Never for kiosks or API tokens. `networks` is null when `knownVersion` is
+	The WiFi networks, with their passwords, for members signed in to Tally (its
+	WiFi app). Never for users on their own, kiosks or API tokens. `networks` is null when `knownVersion` is
 	already current.
 	"""
 	wifiNetworks(knownVersion: String): WifiNetworks!
 	"""
 	Every enabled unit, by name, with its address, map position, code, parent
-	headquarters and contact details, for Tally's Units tool. Any user may read it.
+	headquarters and contact details, for Tally's Units tool. Any member signed in
+	to Tally may read it.
 	For now only `id` and `name` are real: the rest are placeholders
 	(`placeholder: true`) until the real details are stored.
 	"""
@@ -2213,11 +2144,11 @@ enum RegisterState {
 }
 
 """
-A signed-in user's own sign-in state at their linked member's home unit.
+A member's own sign-in state at their home unit.
 """
 type SelfSignInStatus {
 	"""
-	The linked member.
+	The member.
 	"""
 	person: Person!
 	"""
@@ -2406,6 +2337,85 @@ input TallyAuthorizationInput {
 	state: String
 }
 
+type TallyLocation {
+	id: ID!
+	name: String!
+	"""
+	The unit's open tasks (its shared to-do list): by default those due now,
+	overdue first. `listId` narrows to one of its task lists; without it every
+	task at the unit is listed, whichever list it is on. See `graphql::tasks`.
+	"""
+	tasks(view: TaskView! = DUE, listId: ID): [Task!]!
+	"""
+	The unit's task lists, by name.
+	"""
+	taskLists: [TaskList!]!
+	"""
+	The unit's notes (its shared notebook), most recently changed first.
+	`folderId` narrows to one of its note folders; without it every note at the
+	unit is listed, whichever folder it is in. `search` keeps notes whose title
+	contains it, ignoring case. See `graphql::notes`.
+	"""
+	notes(folderId: ID, search: String): [Note!]!
+	"""
+	The unit's note folders, by name.
+	"""
+	noteFolders: [NoteFolder!]!
+	"""
+	The unit's equipment register, by name. `search` keeps equipment whose name or
+	description contains it, ignoring case. See `graphql::equipment`.
+	"""
+	equipment(search: String): [Equipment!]!
+	"""
+	The unit's equipment reservations that end after `endingAfter` (Unix seconds,
+	default now) — those still to come or under way — by start time.
+	`equipmentId` narrows to reservations of one piece of equipment. See
+	`graphql::reservations`.
+	"""
+	equipmentReservations(endingAfter: Int, equipmentId: ID): [EquipmentReservation!]!
+	"""
+	The unit's reservations a reservation of `equipmentIds` from `startTime` to
+	`endTime` would overlap, by start time, leaving out `excludeId` (the one being
+	edited). Overlaps are allowed; this is so a client can warn before saving.
+	"""
+	equipmentReservationConflicts(equipmentIds: [ID!]!, startTime: Int!, endTime: Int!, excludeId: ID): [EquipmentReservation!]!
+	"""
+	The pins on the unit's shared map, by title. `layerId` narrows to one of its map
+	layers; without it every pin at the unit is listed, whichever layer it is on.
+	See `graphql::map`.
+	"""
+	mapPins(layerId: ID): [MapPin!]!
+	"""
+	The unit's map layers, by name.
+	"""
+	mapLayers: [MapLayer!]!
+	"""
+	The unit's calendars, by name. See `graphql::calendar`.
+	"""
+	calendars: [Calendar!]!
+	"""
+	Every occurrence of the unit's events that overlaps `from`–`to` (Unix seconds,
+	at most 400 days apart), repeats expanded, by start; at most 5,000. All-day
+	occurrences are included when one of their dates overlaps the window in any
+	time zone, so a client should check them against its own days. Events in every
+	calendar, and in none, are listed: a client picking calendars filters on
+	`event.calendarId`.
+	"""
+	calendarEvents(from: Int!, to: Int!): [CalendarEventOccurrence!]!
+	"""
+	Everyone sharing their position with the unit ("Locate"), most recently updated
+	first. A share shows until 7 minutes after its latest position, so this
+	includes shares that have just ended (`active: false`). See
+	`graphql::location_share`.
+	"""
+	locationShares: [LocationShare!]!
+	"""
+	The unit's on-call roles (Duty Officer, …) and who holds each now, by name. See
+	`graphql::on_call`.
+	"""
+	onCallRoles: [OnCallRole!]!
+}
+
 """
 What the sign-in page shows about the app that opened it.
 """
@@ -2416,6 +2426,32 @@ type TallySignInRequest {
 	Only a developer account can finish signing in to one.
 	"""
 	isDevelopmentBuild: Boolean!
+}
+
+type TallyViewer {
+	"""
+	The member.
+	"""
+	member: Person!
+	"""
+	"First Last".
+	"""
+	name: String!
+	"""
+	The member's home unit.
+	"""
+	homeLocationId: ID!
+	"""
+	The email of the SESLogin user signed in alongside the member, when their email
+	matched one; null otherwise.
+	"""
+	userEmail: String
+	"""
+	Every unit the member can use in Tally, by name: their home unit, plus the units
+	the user signed in alongside them holds either role at (every enabled unit for a
+	super user). Disabled units are left out, except a member's own home unit.
+	"""
+	locations: [TallyLocation!]!
 }
 
 type Task {
@@ -2463,7 +2499,7 @@ type Task {
 	version: Int!
 	createdAt: Int!
 	"""
-	Email of the user who created the task.
+	Name of the member who created the task.
 	"""
 	createdBy: String
 	updatedAt: Int!
@@ -2580,7 +2616,7 @@ type WhosHereEntry {
 	"""
 	startTime: Int!
 	"""
-	This is the caller's linked member's own period.
+	This is the calling member's own period.
 	"""
 	isMe: Boolean!
 }

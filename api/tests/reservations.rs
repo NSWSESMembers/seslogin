@@ -36,13 +36,17 @@ fn webauthn() -> Arc<webauthn_rs::prelude::Webauthn> {
 }
 
 fn user_as(id: &str, admin: &[&str], read_only: &[&str]) -> AuthInfo {
-    AuthInfo::User {
-        id: id.to_string(),
+    AuthInfo::Member {
+        person_id: id.to_string(),
+        location_id: "loc-home".to_string(),
+        user_id: Some(id.to_string()),
         is_super: false,
-        location_grants: admin.iter().map(|s| s.to_string()).collect(),
-        location_read_only_grants: read_only.iter().map(|s| s.to_string()).collect(),
-        token_id: None,
-        grant_id: None,
+        user_location_ids: {
+            let mut ids: Vec<String> = admin.iter().map(|s| s.to_string()).collect();
+            ids.extend::<Vec<String>>(read_only.iter().map(|s| s.to_string()).collect());
+            ids
+        },
+        grant_id: "grant".to_string(),
     }
 }
 
@@ -59,13 +63,13 @@ fn read_only() -> AuthInfo {
 }
 
 fn super_user() -> AuthInfo {
-    AuthInfo::User {
-        id: "super".to_string(),
+    AuthInfo::Member {
+        person_id: "super".to_string(),
+        location_id: "loc-home".to_string(),
+        user_id: Some("super".to_string()),
         is_super: true,
-        location_grants: vec![],
-        location_read_only_grants: vec![],
-        token_id: None,
-        grant_id: None,
+        user_location_ids: vec![],
+        grant_id: "grant".to_string(),
     }
 }
 
@@ -81,7 +85,13 @@ fn app() -> Arc<TestApp> {
     seed_location(&app, "loc-a", "Unit A");
     seed_location(&app, "loc-b", "Unit B");
     seed_user(&app, "caller", true);
+    seed_person(
+        &app, "caller", "loc-home", "Casey", "Caller", "99999999", None,
+    );
     seed_user(&app, "other", true);
+    seed_person(
+        &app, "other", "loc-home", "Olive", "Other", "99999998", None,
+    );
     Arc::new(app)
 }
 
@@ -115,7 +125,7 @@ fn assert_code(response: &async_graphql::Response, code: &str) {
     );
 }
 
-const FIELDS: &str = "id startTime endTime equipmentIds equipment { name } reservedFor reservedForUserId reservedForText reservedForViewer description version createdBy updatedBy conflicts { id }";
+const FIELDS: &str = "id startTime endTime equipmentIds equipment { name } reservedFor reservedForMemberId reservedForText reservedForViewer description version createdBy updatedBy conflicts { id }";
 
 /// Add a vehicle at `location`, returning its id.
 async fn equipment(app: &Arc<TestApp>, location: &str, name: &str) -> String {
@@ -185,10 +195,10 @@ async fn upcoming(app: &Arc<TestApp>, args: &str) -> Vec<String> {
     let response = run(
         app,
         read_only(),
-        &format!(r#"{{ location(id: "loc-a") {{ equipmentReservations{args} {{ id }} }} }}"#),
+        &format!(r#"{{ tallyLocation(id: "loc-a") {{ equipmentReservations{args} {{ id }} }} }}"#),
     )
     .await;
-    ids_of(&json(&response)["location"]["equipmentReservations"])
+    ids_of(&json(&response)["tallyLocation"]["equipmentReservations"])
 }
 
 #[tokio::test]
@@ -250,9 +260,9 @@ async fn kiosks_api_tokens_and_other_units_cannot_use_reservations() {
     ];
     for (who, auth) in outsiders {
         for query in [
-            r#"{ location(id: "loc-a") { equipmentReservations { id } } }"#.to_string(),
+            r#"{ tallyLocation(id: "loc-a") { equipmentReservations { id } } }"#.to_string(),
             format!(
-                r#"{{ location(id: "loc-a") {{ equipmentReservationConflicts(equipmentIds: ["{truck}"], startTime: {}, endTime: {}) {{ id }} }} }}"#,
+                r#"{{ tallyLocation(id: "loc-a") {{ equipmentReservationConflicts(equipmentIds: ["{truck}"], startTime: {}, endTime: {}) {{ id }} }} }}"#,
                 at(0),
                 at(5)
             ),
@@ -286,7 +296,7 @@ async fn a_reservation_is_for_the_caller_unless_someone_else_is_named() {
     let app = app();
     let truck = equipment(&app, "loc-a", "Truck 1").await;
 
-    // For the caller, shown by email while their account has no linked member.
+    // For the calling member, by name.
     let mine = reserve(
         &app,
         &[&truck],
@@ -295,40 +305,17 @@ async fn a_reservation_is_for_the_caller_unless_someone_else_is_named() {
         r#", description: " Towing the boat ""#,
     )
     .await;
-    assert_eq!(mine["reservedFor"], "caller@example.com");
-    assert_eq!(mine["reservedForUserId"], "caller");
+    assert_eq!(mine["reservedFor"], "Casey Caller");
+    assert_eq!(mine["reservedForMemberId"], "caller");
     assert_eq!(mine["reservedForText"], serde_json::Value::Null);
     assert_eq!(mine["reservedForViewer"], true);
     assert_eq!(mine["description"], "Towing the boat");
-    assert_eq!(mine["createdBy"], "caller@example.com");
+    assert_eq!(mine["createdBy"], "Casey Caller");
     assert_eq!(mine["equipment"][0]["name"], "Truck 1");
 
     // A blank name counts as none.
     let blank = reserve(&app, &[&truck], 3, 4, r#", reservedFor: "  ""#).await;
-    assert_eq!(blank["reservedForUserId"], "caller");
-
-    // Once linked to a member, by the member's name.
-    seed_person(&app, "p1", "loc-a", "Alice", "Anderson", "10000001", None);
-    app.db
-        .users
-        .lock()
-        .unwrap()
-        .get_mut("caller")
-        .unwrap()
-        .person_id = Some("p1".to_string());
-    let response = run(
-        &app,
-        read_only(),
-        &format!(
-            r#"{{ equipmentReservation(id: "{}") {{ reservedFor }} }}"#,
-            mine["id"].as_str().unwrap()
-        ),
-    )
-    .await;
-    assert_eq!(
-        json(&response)["equipmentReservation"]["reservedFor"],
-        "Alice Anderson"
-    );
+    assert_eq!(blank["reservedForMemberId"], "caller");
 
     // Someone else's view of it.
     let response = run(
@@ -356,9 +343,9 @@ async fn a_reservation_is_for_the_caller_unless_someone_else_is_named() {
     .await;
     assert_eq!(clean["reservedFor"], "Detailing / clean");
     assert_eq!(clean["reservedForText"], "Detailing / clean");
-    assert_eq!(clean["reservedForUserId"], serde_json::Value::Null);
+    assert_eq!(clean["reservedForMemberId"], serde_json::Value::Null);
     assert_eq!(clean["reservedForViewer"], false);
-    assert_eq!(clean["createdBy"], "caller@example.com");
+    assert_eq!(clean["createdBy"], "Casey Caller");
 }
 
 #[tokio::test]
@@ -398,14 +385,14 @@ async fn overlapping_reservations_are_allowed_and_reported() {
     // Checking before saving, and leaving out the one being edited.
     let check = |exclude: &str| {
         format!(
-            r#"{{ location(id: "loc-a") {{ equipmentReservationConflicts(equipmentIds: ["{trailer}", "{boat}"], startTime: {}, endTime: {}{exclude}) {{ id }} }} }}"#,
+            r#"{{ tallyLocation(id: "loc-a") {{ equipmentReservationConflicts(equipmentIds: ["{trailer}", "{boat}"], startTime: {}, endTime: {}{exclude}) {{ id }} }} }}"#,
             at(1),
             at(7)
         )
     };
     let response = run(&app, read_only(), &check("")).await;
     assert_eq!(
-        ids_of(&json(&response)["location"]["equipmentReservationConflicts"]),
+        ids_of(&json(&response)["tallyLocation"]["equipmentReservationConflicts"]),
         // By start time.
         vec![
             third["id"].as_str().unwrap().to_string(),
@@ -420,7 +407,7 @@ async fn overlapping_reservations_are_allowed_and_reported() {
     )
     .await;
     assert_eq!(
-        ids_of(&json(&response)["location"]["equipmentReservationConflicts"]),
+        ids_of(&json(&response)["tallyLocation"]["equipmentReservationConflicts"]),
         vec![third["id"].as_str().unwrap().to_string(), first_id]
     );
 
@@ -472,10 +459,10 @@ async fn upcoming_reservations_are_listed_by_start_time() {
     let response = run(
         &app,
         user(&["loc-b"], &[]),
-        r#"{ location(id: "loc-b") { equipmentReservations { id } } }"#,
+        r#"{ tallyLocation(id: "loc-b") { equipmentReservations { id } } }"#,
     )
     .await;
-    assert!(ids_of(&json(&response)["location"]["equipmentReservations"]).is_empty());
+    assert!(ids_of(&json(&response)["tallyLocation"]["equipmentReservations"]).is_empty());
 }
 
 #[tokio::test]
@@ -582,7 +569,7 @@ async fn updates_change_only_what_is_given_and_need_the_current_version() {
     assert_eq!(updated["equipment"][0]["name"], "Boat");
     assert_eq!(updated["equipment"][1]["name"], "Truck 1");
     assert_eq!(updated["version"], 2);
-    assert_eq!(updated["updatedBy"], "other@example.com");
+    assert_eq!(updated["updatedBy"], "Olive Other");
 
     // A stale version is refused.
     let response = run(
@@ -600,12 +587,12 @@ async fn updates_change_only_what_is_given_and_need_the_current_version() {
         &app,
         read_only(),
         &format!(
-            r#"mutation {{ updateEquipmentReservation(id: "{id}", expectedVersion: 2, reservedFor: null) {{ reservedForUserId reservedForText }} }}"#
+            r#"mutation {{ updateEquipmentReservation(id: "{id}", expectedVersion: 2, reservedFor: null) {{ reservedForMemberId reservedForText }} }}"#
         ),
     )
     .await;
     let updated = json(&response)["updateEquipmentReservation"].clone();
-    assert_eq!(updated["reservedForUserId"], "caller");
+    assert_eq!(updated["reservedForMemberId"], "caller");
     assert_eq!(updated["reservedForText"], serde_json::Value::Null);
 
     // Equipment deleted since stays on the reservation through an unrelated edit, but

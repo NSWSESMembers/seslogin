@@ -1,4 +1,4 @@
-//! `Query.wifiNetworks`: the WiFi networks Tally shows its signed-in users. See
+//! `Query.wifiNetworks`: the WiFi networks Tally shows its signed-in members. See
 //! `crate::wifi` for where they come from.
 
 use anyhow::{Result, anyhow};

@@ -1,10 +1,10 @@
-//! The WiFi networks Tally shows its signed-in users: name, SSID and password.
+//! The WiFi networks Tally shows its signed-in members: name, SSID and password.
 //!
 //! They hold passwords, so they are never committed or stored in the database: they
 //! come from the `WIFI_NETWORKS` environment variable, a JSON array set from the
 //! git-ignored `infra/terraform.tfvars` (`var.wifi_networks`) in deployed environments
 //! and from `.env.secret` locally. Unset or blank means no networks. Only
-//! `Query.wifiNetworks` reads it, and only for user callers.
+//! `Query.wifiNetworks` reads it, and only for members signed in to Tally.
 //!
 //! Each list has a [`version`], a hash of its content, so a client that already has the
 //! current list is told so instead of being sent the passwords again, and nobody has to

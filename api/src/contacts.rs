@@ -16,10 +16,9 @@
 //! `410 cursor_expired` only means the cursor is unusable: malformed, tampered with,
 //! from another version of the format, or from another database.
 //!
-//! Open to any enabled user (Admin or Read only anywhere, or super) — the directory is
-//! statewide, so every caller sees the same feed. Kiosks, API tokens and edit links are
-//! refused with 401; an OAuth token must be bound to `/graphql` (Tally's), so an MCP
-//! grant can't read it. No reply is a 403 or 404, which CloudFront would replace with
+//! Open to any member signed in to Tally — the directory is statewide, so every caller
+//! sees the same feed. Users on their own, kiosks, API tokens and edit links are refused
+//! with 401; only a Tally sign-in grant is a member, so an MCP grant can't read it. No reply is a 403 or 404, which CloudFront would replace with
 //! the web app's index.html. Framework-agnostic like `oauth_http.rs`: both `server.rs` and the Lambda
 //! handler wrap [`sync`].
 
@@ -117,11 +116,11 @@ pub async fn sync<A: App + HasDb + HasQueues>(
     let Some(token) = authorization.and_then(|h| h.strip_prefix("Bearer ")) else {
         return unauthorized();
     };
-    let user_id = match auth::verify_token(app, token, &ClientReport::default(), host).await {
-        Ok(AuthInfo::User { id, .. }) => id,
+    let person_id = match auth::verify_token(app, token, &ClientReport::default(), host).await {
+        Ok(AuthInfo::Member { person_id, .. }) => person_id,
         // 401, not the 403 the Tally brief suggests: CloudFront rewrites every 403
         // on the site's distribution to the SPA's index.html (see web_*.tf). Tally
-        // only ever presents its own user tokens, so it never sees this.
+        // only ever presents its own members' tokens, so it never sees this.
         Ok(_) => return unauthorized(),
         Err(AuthError::Permanent(msg)) => {
             info!("contacts: auth rejected: {msg}");
@@ -231,7 +230,7 @@ pub async fn sync<A: App + HasDb + HasQueues>(
 
     if full_sync {
         info!(
-            user_id,
+            person_id,
             count = contacts.len(),
             has_more = page.has_more,
             "contacts: full sync page"

@@ -6,8 +6,9 @@
 //! and `mutations.rs` call through thin resolvers.
 //!
 //! Access is [`require_equipment_access`] on the reservation's location throughout:
-//! reservations are part of the Equipment tool, so any user with Admin or Read only
-//! access, and super users.
+//! reservations are part of the Equipment tool, so any member who can use the unit
+//! in Tally. A reservation is for a member (by person ID) or for whoever free text
+//! names.
 //!
 //! Overlapping reservations of the same equipment are allowed. They are reported, by
 //! `EquipmentReservation.conflicts` and `Location.equipmentReservationConflicts`, so a
@@ -18,14 +19,13 @@ use async_graphql::dataloader::DataLoader;
 use async_graphql::{Context, ID, MaybeUndefined, Object};
 use std::sync::Arc;
 
+use super::LocationId;
 use super::auth::require_equipment_access;
 use super::dataloader::DatabaseLoader;
 use super::equipment::Equipment;
 use super::error::{ApiError, ErrorCode};
 use super::query::Location;
-use super::{LocationId, PersonId, UserId};
 use crate::app::{App, HasDb};
-use crate::auth::AuthInfo;
 use crate::db::{self, Handler};
 use crate::reservations as rules;
 
@@ -41,55 +41,6 @@ impl<A: App + HasDb + Send + Sync + 'static> EquipmentReservation<A> {
             rec,
         }
     }
-}
-
-async fn load_user<A: App + HasDb + Send + Sync + 'static>(
-    ctx: &Context<'_>,
-    id: &str,
-) -> Result<Option<db::User>> {
-    let loader = ctx.data_unchecked::<DataLoader<DatabaseLoader<A>>>();
-    Ok(loader
-        .load_one(UserId(ID(id.to_string())))
-        .await
-        .map_err(|e| anyhow!("Failed to load user via DataLoader: {}", e))?
-        .flatten()
-        .map(|u| u.rec))
-}
-
-async fn user_email<A: App + HasDb + Send + Sync + 'static>(
-    ctx: &Context<'_>,
-    id: Option<&str>,
-) -> Result<Option<String>> {
-    let Some(id) = id else { return Ok(None) };
-    Ok(load_user::<A>(ctx, id).await?.map(|u| u.email))
-}
-
-/// How a user is named on a reservation: the member their account is linked to, else
-/// their email.
-async fn user_display_name<A: App + HasDb + Send + Sync + 'static>(
-    ctx: &Context<'_>,
-    id: &str,
-) -> Result<Option<String>> {
-    let Some(user) = load_user::<A>(ctx, id).await? else {
-        return Ok(None);
-    };
-    if let Some(person_id) = &user.person_id {
-        let loader = ctx.data_unchecked::<DataLoader<DatabaseLoader<A>>>();
-        let person = loader
-            .load_one(PersonId(ID(person_id.clone())))
-            .await
-            .map_err(|e| anyhow!("Failed to load person via DataLoader: {}", e))?
-            .flatten()
-            .filter(|p| p.rec.deleted.is_none());
-        if let Some(p) = person {
-            let name = format!("{} {}", p.rec.first_name.trim(), p.rec.last_name.trim());
-            let name = name.trim();
-            if !name.is_empty() {
-                return Ok(Some(name.to_string()));
-            }
-        }
-    }
-    Ok(Some(user.email))
 }
 
 #[Object]
@@ -129,34 +80,32 @@ impl<A: App + HasDb + Send + Sync + 'static> EquipmentReservation<A> {
         Ok(rows.into_iter().map(Equipment::new).collect())
     }
 
-    /// Who it is for, to show: `reservedForText` when set, otherwise the name of the
-    /// member the user's account is linked to, or their email.
+    /// Who it is for, to show: `reservedForText` when set, otherwise the member's name.
     async fn reserved_for(&self, ctx: &Context<'_>) -> Result<String> {
         if let Some(text) = &self.rec.reserved_for_text {
             return Ok(text.clone());
         }
-        let Some(user_id) = &self.rec.reserved_for_user_id else {
-            return Ok("Unknown".to_string());
-        };
-        Ok(user_display_name::<A>(ctx, user_id)
-            .await?
-            .unwrap_or_else(|| "Unknown user".to_string()))
+        Ok(
+            super::tally::member_name::<A>(ctx, self.rec.reserved_for_person_id.as_deref())
+                .await?
+                .unwrap_or_else(|| "Unknown member".to_string()),
+        )
     }
 
-    /// The user it is for; null when it is for someone named in `reservedForText`.
-    async fn reserved_for_user_id(&self) -> Option<ID> {
-        self.rec.reserved_for_user_id.clone().map(ID)
+    /// The member it is for; null when it is for someone named in `reservedForText`.
+    async fn reserved_for_member_id(&self) -> Option<ID> {
+        self.rec.reserved_for_person_id.clone().map(ID)
     }
 
     /// Free text naming who it is for: someone else, an organisation, or something
-    /// like "Detailing / clean". Null when it is for a user.
+    /// like "Detailing / clean". Null when it is for a member.
     async fn reserved_for_text(&self) -> Option<&str> {
         self.rec.reserved_for_text.as_deref()
     }
 
-    /// Whether it is for the user asking.
+    /// Whether it is for the member asking.
     async fn reserved_for_viewer(&self, ctx: &Context<'_>) -> bool {
-        caller_id(ctx).is_some_and(|me| self.rec.reserved_for_user_id.as_deref() == Some(me))
+        caller_id(ctx).is_some_and(|me| self.rec.reserved_for_person_id.as_deref() == Some(me))
     }
 
     /// Plain text; empty when there is none.
@@ -206,18 +155,18 @@ impl<A: App + HasDb + Send + Sync + 'static> EquipmentReservation<A> {
         self.rec.created_at as i64
     }
 
-    /// Email of the user who made the reservation.
+    /// Name of the member who made the reservation.
     async fn created_by(&self, ctx: &Context<'_>) -> Result<Option<String>> {
-        user_email::<A>(ctx, self.rec.created_by.as_deref()).await
+        super::tally::member_name::<A>(ctx, self.rec.created_by.as_deref()).await
     }
 
     async fn updated_at(&self) -> i64 {
         self.rec.updated_at as i64
     }
 
-    /// Email of the user who last changed it.
+    /// Name of the member who last changed it.
     async fn updated_by(&self, ctx: &Context<'_>) -> Result<Option<String>> {
-        user_email::<A>(ctx, self.rec.updated_by.as_deref()).await
+        super::tally::member_name::<A>(ctx, self.rec.updated_by.as_deref()).await
     }
 }
 
@@ -326,10 +275,7 @@ fn bad_request(message: String) -> anyhow::Error {
 }
 
 fn caller_id<'a>(ctx: &'a Context<'_>) -> Option<&'a str> {
-    match ctx.data_opt::<AuthInfo>() {
-        Some(AuthInfo::User { id, .. }) => Some(id.as_str()),
-        _ => None,
-    }
+    super::tally::member_id(ctx)
 }
 
 /// A live reservation the caller may change.
@@ -409,7 +355,7 @@ pub(super) async fn create_reservation<A: App + HasDb + Send + Sync + 'static>(
         Some(crate::clock::now_sec()),
     )
     .map_err(bad_request)?;
-    let (user_id, text) = reserved_for(ctx, args.reserved_for.as_deref())?;
+    let (person_id, text) = reserved_for(ctx, args.reserved_for.as_deref())?;
     let description = rules::validate_description(args.description.as_deref().unwrap_or(""))
         .map_err(bad_request)?;
     check_equipment(app.db(), &args.location_id, &equipment_ids, &[]).await?;
@@ -420,14 +366,14 @@ pub(super) async fn create_reservation<A: App + HasDb + Send + Sync + 'static>(
             equipment_ids: &equipment_ids,
             start_time,
             end_time,
-            reserved_for_user_id: user_id,
+            reserved_for_person_id: person_id,
             reserved_for_text: text.as_deref(),
             description: &description,
             created_by: caller_id(ctx),
         })
         .await?;
-    if let Some(user_id) = rules::newly_reserved_for(None, user_id, caller_id(ctx)) {
-        rules::notify_reserved_for(app, &rec, user_id).await;
+    if let Some(person_id) = rules::newly_reserved_for(None, person_id, caller_id(ctx)) {
+        rules::notify_reserved_for(app, &rec, person_id).await;
     }
     Ok(EquipmentReservation::new(rec))
 }
@@ -468,9 +414,9 @@ pub(super) async fn update_reservation<A: App + HasDb + Send + Sync + 'static>(
     let (start_time, end_time) =
         rules::validate_times(start, end, times_changed.then(crate::clock::now_sec))
             .map_err(bad_request)?;
-    let (user_id, text) = match &args.reserved_for {
+    let (person_id, text) = match &args.reserved_for {
         MaybeUndefined::Undefined => (
-            rec.reserved_for_user_id.as_deref(),
+            rec.reserved_for_person_id.as_deref(),
             rec.reserved_for_text.clone(),
         ),
         MaybeUndefined::Null => (caller_id(ctx), None),
@@ -480,7 +426,7 @@ pub(super) async fn update_reservation<A: App + HasDb + Send + Sync + 'static>(
         Some(d) => rules::validate_description(d).map_err(bad_request)?,
         None => rec.description.clone(),
     };
-    let previous_user = rec.reserved_for_user_id.clone();
+    let previous = rec.reserved_for_person_id.clone();
     let rec = app
         .db()
         .update_equipment_reservation(
@@ -489,7 +435,7 @@ pub(super) async fn update_reservation<A: App + HasDb + Send + Sync + 'static>(
                 equipment_ids: &equipment_ids,
                 start_time,
                 end_time,
-                reserved_for_user_id: user_id,
+                reserved_for_person_id: person_id,
                 reserved_for_text: text.as_deref(),
                 description: &description,
                 by: caller_id(ctx),
@@ -501,10 +447,10 @@ pub(super) async fn update_reservation<A: App + HasDb + Send + Sync + 'static>(
             db::Error::NotFound(_) => conflict(),
             e => e.into(),
         })?;
-    if let Some(user_id) =
-        rules::newly_reserved_for(previous_user.as_deref(), user_id, caller_id(ctx))
+    if let Some(person_id) =
+        rules::newly_reserved_for(previous.as_deref(), person_id, caller_id(ctx))
     {
-        rules::notify_reserved_for(app, &rec, user_id).await;
+        rules::notify_reserved_for(app, &rec, person_id).await;
     }
     Ok(EquipmentReservation::new(rec))
 }

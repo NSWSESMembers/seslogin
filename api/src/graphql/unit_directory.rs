@@ -10,8 +10,9 @@
 //! ACMA reserves for fiction and email addresses are at `example.com`. The one real
 //! number is the NSW SES flood and storm line, which is the same for every unit.
 //!
-//! Open to any *user*, like the contacts sync: the directory is statewide reference
-//! data, not one unit's business. Kiosk sessions, API tokens and edit links are refused.
+//! Open to any member signed in to Tally, like the contacts sync: the directory is
+//! statewide reference data, not one unit's business. Users on their own, kiosk
+//! sessions, API tokens and edit links are refused.
 
 use anyhow::Result;
 use async_graphql::{Context, ID, SimpleObject};

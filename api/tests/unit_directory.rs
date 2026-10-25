@@ -1,5 +1,6 @@
 //! The unit directory (`Query.unitDirectory`): every enabled location, statewide, for
-//! any user, with placeholder details; kiosks and API tokens refused.
+//! any member signed in to Tally, with placeholder details; users on their own, kiosks
+//! and API tokens refused.
 //!
 //! Uses the shared `FakeDb` (`tests/common/mod.rs`) and runs real GraphQL documents
 //! through `graphql::build_schema`, like `on_call.rs`.
@@ -39,13 +40,13 @@ fn webauthn() -> Arc<webauthn_rs::prelude::Webauthn> {
 
 /// A user with no grants anywhere: the directory is statewide, so that's enough.
 fn nobody_in_particular() -> AuthInfo {
-    AuthInfo::User {
-        id: "user".to_string(),
+    AuthInfo::Member {
+        person_id: "user".to_string(),
+        location_id: "loc-home".to_string(),
+        user_id: Some("user".to_string()),
         is_super: false,
-        location_grants: vec![],
-        location_read_only_grants: vec![],
-        token_id: None,
-        grant_id: None,
+        user_location_ids: vec![],
+        grant_id: "grant".to_string(),
     }
 }
 
@@ -74,7 +75,7 @@ async fn run(app: &Arc<TestApp>, auth: AuthInfo) -> async_graphql::Response {
 }
 
 #[tokio::test]
-async fn any_user_sees_every_enabled_unit_by_name() {
+async fn any_member_sees_every_enabled_unit_by_name() {
     let app = app();
     let response = run(&app, nobody_in_particular()).await;
     assert!(response.errors.is_empty(), "{:?}", response.errors);
@@ -108,9 +109,20 @@ async fn any_user_sees_every_enabled_unit_by_name() {
 }
 
 #[tokio::test]
-async fn kiosks_and_api_tokens_are_refused() {
+async fn users_kiosks_and_api_tokens_are_refused() {
     let app = app();
     for (who, auth) in [
+        (
+            "user on their own",
+            AuthInfo::User {
+                id: "u".to_string(),
+                is_super: true,
+                location_grants: vec![],
+                location_read_only_grants: vec![],
+                token_id: None,
+                grant_id: None,
+            },
+        ),
         (
             "kiosk",
             AuthInfo::Session {

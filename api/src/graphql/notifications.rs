@@ -4,22 +4,21 @@
 //! bodies of `Query.myNotifications` / `myUnreadNotificationCount` and the mark-read
 //! mutations, which `query.rs` and `mutations.rs` call through thin resolvers.
 //!
-//! Every field is the caller's own: the table is keyed by the caller's user ID, so no
-//! one can read or mark anyone else's. Only users may — any enabled user, including a
-//! connected app acting for one — and kiosk sessions, API tokens and edit links are
-//! refused. The one extra check is at read time: a notification about a location the
-//! caller can no longer access is left out, so stored text never reaches someone who
-//! lost access after it was sent.
+//! Every field is the caller's own: the table is keyed by the caller's person ID, so no
+//! one can read or mark anyone else's. Only members signed in to Tally may; users on
+//! their own, kiosk sessions, API tokens and edit links are refused. The one extra check
+//! is at read time: a notification about a unit the member can no longer use is left
+//! out, so stored text never reaches someone who lost access after it was sent.
 
 use anyhow::Result;
 use async_graphql::connection::{Connection, EmptyFields};
 use async_graphql::{Context, ID, SimpleObject};
 use std::sync::Arc;
 
+use super::auth::require_member_location;
 use super::error::ApiError;
 use super::pagination::{build_connection, pagination_args};
 use crate::app::{App, HasDb};
-use crate::auth::AuthInfo;
 use crate::db::{self, Handler};
 use crate::notifications::MAX_UNREAD_COUNT;
 
@@ -84,32 +83,15 @@ pub struct MarkNotificationsReadPayload {
 
 pub(super) type NotificationConnection = Connection<String, Notification, EmptyFields, EmptyFields>;
 
-/// The calling user's ID; anyone but a user is refused.
-fn require_user<'a>(ctx: &'a Context<'_>) -> Result<&'a str> {
-    match ctx.data_opt::<AuthInfo>() {
-        Some(AuthInfo::User { id, .. }) => Ok(id.as_str()),
-        _ => Err(ApiError::forbidden("Notifications are only available to signed-in users").into()),
-    }
+/// The calling member's person ID; anyone but a member signed in to Tally is refused.
+fn require_member<'a>(ctx: &'a Context<'_>) -> Result<&'a str> {
+    super::tally::require_member(ctx)
 }
 
 /// Whether the caller may still see a notification about `location_id`: it has none, or
-/// the caller is a super user or holds either role there.
+/// they can still use that unit in Tally.
 fn can_see(ctx: &Context<'_>, location_id: Option<&str>) -> bool {
-    let Some(location_id) = location_id else {
-        return true;
-    };
-    match ctx.data_opt::<AuthInfo>() {
-        Some(AuthInfo::User { is_super: true, .. }) => true,
-        Some(AuthInfo::User {
-            location_grants,
-            location_read_only_grants,
-            ..
-        }) => location_grants
-            .iter()
-            .chain(location_read_only_grants)
-            .any(|g| g == location_id),
-        _ => false,
-    }
+    location_id.is_none_or(|l| require_member_location(ctx, l, "").is_ok())
 }
 
 /// `Query.myNotifications`: the caller's notifications, newest first.
@@ -119,7 +101,7 @@ pub(super) async fn my_notifications<A: App + HasDb + Send + Sync + 'static>(
     after: Option<String>,
     unread_only: Option<bool>,
 ) -> Result<NotificationConnection> {
-    let user_id = require_user(ctx)?;
+    let person_id = require_member(ctx)?;
     let (page_size, _) = pagination_args(first, None, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE)
         .map_err(|e| ApiError::bad_request(e.to_string()))?;
     let unread_only = unread_only.unwrap_or(false);
@@ -137,7 +119,7 @@ pub(super) async fn my_notifications<A: App + HasDb + Send + Sync + 'static>(
     for _ in 0..MAX_PAGE_FETCHES {
         let batch = app
             .db()
-            .list_notifications(user_id, cursor.as_deref(), want - rows.len(), unread_only)
+            .list_notifications(person_id, cursor.as_deref(), want - rows.len(), unread_only)
             .await?;
         let asked = want - rows.len();
         let exhausted = batch.len() < asked;
@@ -168,15 +150,15 @@ pub(super) async fn my_notifications<A: App + HasDb + Send + Sync + 'static>(
 pub(super) async fn my_unread_notification_count<A: App + HasDb + Send + Sync + 'static>(
     ctx: &Context<'_>,
 ) -> Result<i32> {
-    let user_id = require_user(ctx)?;
+    let person_id = require_member(ctx)?;
     let app = ctx.data_unchecked::<Arc<A>>();
-    unread_count(app.as_ref(), user_id).await
+    unread_count(app.as_ref(), person_id).await
 }
 
-async fn unread_count<A: HasDb + Sync>(app: &A, user_id: &str) -> Result<i32> {
+async fn unread_count<A: HasDb + Sync>(app: &A, person_id: &str) -> Result<i32> {
     let count = app
         .db()
-        .count_unread_notifications(user_id, MAX_UNREAD_COUNT)
+        .count_unread_notifications(person_id, MAX_UNREAD_COUNT)
         .await?;
     Ok(i32::try_from(count).unwrap_or(i32::MAX))
 }
@@ -188,7 +170,7 @@ pub(super) async fn mark_notifications_read<A: App + HasDb + Send + Sync + 'stat
     app: &A,
     ids: Vec<ID>,
 ) -> Result<MarkNotificationsReadPayload> {
-    let user_id = require_user(ctx)?;
+    let person_id = require_member(ctx)?;
     if ids.len() > MAX_MARK_IDS {
         return Err(ApiError::bad_request(format!(
             "At most {MAX_MARK_IDS} notifications can be marked read at once"
@@ -197,10 +179,10 @@ pub(super) async fn mark_notifications_read<A: App + HasDb + Send + Sync + 'stat
     }
     let sks: Vec<String> = ids.into_iter().map(|id| id.0).collect();
     app.db()
-        .mark_notifications_read(user_id, &sks, crate::clock::now_sec())
+        .mark_notifications_read(person_id, &sks, crate::clock::now_sec())
         .await?;
     Ok(MarkNotificationsReadPayload {
-        unread_count: unread_count(app, user_id).await?,
+        unread_count: unread_count(app, person_id).await?,
     })
 }
 
@@ -209,7 +191,7 @@ pub(super) async fn mark_all_notifications_read<A: App + HasDb + Send + Sync + '
     ctx: &Context<'_>,
     app: &A,
 ) -> Result<MarkNotificationsReadPayload> {
-    let user_id = require_user(ctx)?;
+    let person_id = require_member(ctx)?;
     let now = crate::clock::now_sec();
     // Page through the unread index by cursor rather than starting over each time, so
     // an index that is slow to drop a row just marked cannot make this loop.
@@ -217,19 +199,21 @@ pub(super) async fn mark_all_notifications_read<A: App + HasDb + Send + Sync + '
     loop {
         let page = app
             .db()
-            .list_notifications(user_id, cursor.as_deref(), MARK_ALL_BATCH, true)
+            .list_notifications(person_id, cursor.as_deref(), MARK_ALL_BATCH, true)
             .await?;
         let Some(last) = page.last() else {
             break;
         };
         cursor = Some(last.sk.clone());
         let sks: Vec<String> = page.iter().map(|r| r.sk.clone()).collect();
-        app.db().mark_notifications_read(user_id, &sks, now).await?;
+        app.db()
+            .mark_notifications_read(person_id, &sks, now)
+            .await?;
         if page.len() < MARK_ALL_BATCH {
             break;
         }
     }
     Ok(MarkNotificationsReadPayload {
-        unread_count: unread_count(app, user_id).await?,
+        unread_count: unread_count(app, person_id).await?,
     })
 }

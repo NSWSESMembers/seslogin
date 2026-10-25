@@ -1,23 +1,23 @@
-//! In-app notifications: a per-user inbox that other features write to when something
-//! happens that a user should hear about. Storage is described in SCHEMA.md's
-//! `notification` section and the read API is `graphql::notifications`.
+//! In-app notifications: a per-member inbox in Tally that other features write to when
+//! something happens that a member should hear about. Storage is described in
+//! SCHEMA.md's `notification` section and the read API is `graphql::notifications`.
 //!
 //! A producer calls [`notify`] *after* its own business write has succeeded, naming
-//! who should hear about it with an [`Audience`]. `notify` resolves that to users and
+//! who should hear about it with an [`Audience`]. `notify` resolves that to members and
 //! writes each of them a full copy of the notification (so reading an inbox is a single
 //! query). Like auditing it is best-effort: a failure is logged and swallowed, since the
 //! thing being announced has already happened and must not be reported as failed.
 //!
-//! Three rules apply to every audience: only enabled users are notified, the user
-//! acting (the current audit-context actor, when it is a user) is never notified of
-//! their own action, and nobody is notified twice.
+//! Three rules apply to every audience: only live (not deleted) members are notified,
+//! the member acting (the current audit-context actor, when it is a member) is never
+//! notified of their own action, and nobody is notified twice.
 
 use std::collections::HashSet;
 
 use tracing::error;
 
 use crate::app::HasDb;
-use crate::db::{self, Handler, NotificationRecord, User};
+use crate::db::{self, Handler, NotificationRecord, Person};
 
 /// How long a notification is kept, whether read or not: 90 days.
 pub const TTL_SECS: u64 = 90 * 24 * 60 * 60;
@@ -27,17 +27,8 @@ pub const MAX_UNREAD_COUNT: usize = 100;
 /// Who a notification is for.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Audience {
-    /// These users, by ID.
-    Users(Vec<String>),
-    /// The users linked to this member (`User.person_id`), by person ID. Usually one.
-    Person(String),
-    /// The users with access to a location: those holding an Admin grant there, plus
-    /// those with a Read only grant when `include_read_only`. Super users are not
-    /// included unless they hold a grant.
-    Location {
-        location_id: String,
-        include_read_only: bool,
-    },
+    /// These members, by person ID.
+    Members(Vec<String>),
 }
 
 /// What happened, as an inbox entry. The same content goes to every recipient.
@@ -104,21 +95,16 @@ async fn try_notify<A: HasDb + Sync>(
     n: &NewNotification,
     audience: &Audience,
 ) -> db::Result<()> {
-    let users = match audience {
-        Audience::Users(ids) => app
-            .db()
-            .get_users(ids)
-            .await?
-            .into_iter()
-            .flatten()
-            .collect(),
-        // There is no index from a person or a location to its users, so these read
-        // every user. That is a few hundred rows at most, which is fine for a call per
-        // business event; give them an index if that stops being true.
-        Audience::Person(_) | Audience::Location { .. } => app.db().list_users().await?,
-    };
-    let actor = crate::audit::current_user_id();
-    let recipients = recipients(&users, audience, actor.as_deref());
+    let Audience::Members(ids) = audience;
+    let people: Vec<Person> = app
+        .db()
+        .get_persons(ids)
+        .await?
+        .into_iter()
+        .flatten()
+        .collect();
+    let actor = crate::audit::current_member_id();
+    let recipients = recipients(&people, actor.as_deref());
     if recipients.is_empty() {
         return Ok(());
     }
@@ -129,14 +115,14 @@ async fn try_notify<A: HasDb + Sync>(
     let sk = db::notification_sk(created_ms, &notification_id);
     let records = recipients
         .into_iter()
-        .map(|user_id| NotificationRecord {
-            user_id,
+        .map(|person_id| NotificationRecord {
+            person_id,
             sk: sk.clone(),
             notification_id: notification_id.clone(),
             source: n.source.clone(),
             kind: n.kind.clone(),
             location_id: n.location_id.clone(),
-            actor_user_id: actor.clone(),
+            actor_person_id: actor.clone(),
             title: n.title.clone(),
             body: n.body.clone(),
             target_type: n.target_type.clone(),
@@ -149,26 +135,15 @@ async fn try_notify<A: HasDb + Sync>(
     app.db().put_notifications(records).await
 }
 
-/// The IDs of the users in `users` that `audience` selects, each once: enabled users
-/// only, and never `actor`.
-fn recipients(users: &[User], audience: &Audience, actor: Option<&str>) -> Vec<String> {
-    let selected = |u: &User| match audience {
-        Audience::Users(ids) => ids.contains(&u.id),
-        Audience::Person(person_id) => u.person_id.as_deref() == Some(person_id),
-        Audience::Location {
-            location_id,
-            include_read_only,
-        } => {
-            u.location_grants.contains(location_id)
-                || (*include_read_only && u.location_read_only_grants.contains(location_id))
-        }
-    };
+/// The person IDs of `people` to notify, each once: live members only, and never
+/// `actor`.
+fn recipients(people: &[Person], actor: Option<&str>) -> Vec<String> {
     let mut seen = HashSet::new();
-    users
+    people
         .iter()
-        .filter(|u| u.enabled && Some(u.id.as_str()) != actor && selected(u))
-        .filter(|u| seen.insert(u.id.clone()))
-        .map(|u| u.id.clone())
+        .filter(|p| p.deleted.is_none() && Some(p.id.as_str()) != actor)
+        .filter(|p| seen.insert(p.id.clone()))
+        .map(|p| p.id.clone())
         .collect()
 }
 
@@ -176,80 +151,35 @@ fn recipients(users: &[User], audience: &Audience, actor: Option<&str>) -> Vec<S
 mod tests {
     use super::*;
 
-    fn user(id: &str, enabled: bool, admin: &[&str], read_only: &[&str]) -> User {
-        User {
+    fn person(id: &str, deleted: bool) -> Person {
+        Person {
             id: id.to_string(),
-            email: format!("{id}@example.com"),
-            is_super: false,
-            is_dev: false,
-            enabled,
-            location_grants: admin.iter().map(|s| s.to_string()).collect(),
-            location_read_only_grants: read_only.iter().map(|s| s.to_string()).collect(),
-            person_id: None,
-            access_time: None,
-            email_config: serde_json::Map::new(),
-            disaggregate_virtual_periods: false,
-            created_at: 0,
-            updated_at: 0,
-        }
-    }
-
-    fn location(include_read_only: bool) -> Audience {
-        Audience::Location {
             location_id: "loc".to_string(),
-            include_read_only,
+            first_name: "A".to_string(),
+            last_name: "B".to_string(),
+            registration_number: None,
+            ses_api_person_id: None,
+            email: None,
+            deleted: deleted.then_some(1),
+            missing_since: None,
+            created_at: None,
+            updated_at: None,
         }
     }
 
     #[test]
-    fn location_audience_is_admins_and_optionally_read_only() {
-        let users = [
-            user("admin", true, &["loc"], &[]),
-            user("viewer", true, &[], &["loc"]),
-            user("elsewhere", true, &["other"], &[]),
+    fn deleted_members_and_the_actor_are_skipped() {
+        let people = [
+            person("a", false),
+            person("gone", true),
+            person("me", false),
         ];
-        assert_eq!(recipients(&users, &location(false), None), ["admin"]);
-        assert_eq!(
-            recipients(&users, &location(true), None),
-            ["admin", "viewer"]
-        );
+        assert_eq!(recipients(&people, Some("me")), ["a"]);
     }
 
     #[test]
-    fn super_users_are_not_implied_by_a_location() {
-        let mut boss = user("boss", true, &[], &[]);
-        boss.is_super = true;
-        assert!(recipients(&[boss], &location(true), None).is_empty());
-    }
-
-    #[test]
-    fn disabled_users_and_the_actor_are_skipped() {
-        let users = [
-            user("a", true, &["loc"], &[]),
-            user("gone", false, &["loc"], &[]),
-            user("me", true, &["loc"], &[]),
-        ];
-        assert_eq!(recipients(&users, &location(true), Some("me")), ["a"]);
-    }
-
-    #[test]
-    fn person_audience_is_every_user_linked_to_the_member() {
-        let mut one = user("one", true, &[], &[]);
-        let mut two = user("two", true, &[], &[]);
-        let mut other = user("other", true, &[], &[]);
-        one.person_id = Some("p".to_string());
-        two.person_id = Some("p".to_string());
-        other.person_id = Some("q".to_string());
-        assert_eq!(
-            recipients(&[one, two, other], &Audience::Person("p".to_string()), None),
-            ["one", "two"]
-        );
-    }
-
-    #[test]
-    fn named_users_are_deduplicated() {
-        let users = [user("a", true, &[], &[])];
-        let audience = Audience::Users(vec!["a".to_string(), "a".to_string(), "b".to_string()]);
-        assert_eq!(recipients(&users, &audience, None), ["a"]);
+    fn members_are_deduplicated() {
+        let people = [person("a", false), person("a", false)];
+        assert_eq!(recipients(&people, None), ["a"]);
     }
 }

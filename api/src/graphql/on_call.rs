@@ -4,8 +4,8 @@
 //! type and the bodies of the `Location.onCallRoles` / `Query.onCallRole` fields and the
 //! on-call mutations, which `query.rs` and `mutations.rs` call through thin resolvers.
 //!
-//! Access is [`require_on_call_access`] on the role's location throughout: any user with
-//! Admin or Read only access, and super users. The people in a role may be members of
+//! Access is [`require_on_call_access`] on the role's location throughout: any member
+//! who can use the unit in Tally. The people in a role may be members of
 //! any location, so a neighbouring unit's member can cover a duty.
 
 use anyhow::{Result, anyhow};
@@ -18,9 +18,8 @@ use super::auth::require_on_call_access;
 use super::dataloader::DatabaseLoader;
 use super::error::{ApiError, ErrorCode};
 use super::query::{Location, Person};
-use super::{LocationId, PersonId, UserId};
+use super::{LocationId, PersonId};
 use crate::app::{App, HasDb};
-use crate::auth::AuthInfo;
 use crate::db::{self, Handler};
 use crate::notifications::{Audience, NewNotification, notify};
 use crate::on_call;
@@ -37,20 +36,6 @@ impl<A: App + HasDb + Send + Sync + 'static> OnCallRole<A> {
             rec,
         }
     }
-}
-
-async fn user_email<A: App + HasDb + Send + Sync + 'static>(
-    ctx: &Context<'_>,
-    id: Option<&str>,
-) -> Result<Option<String>> {
-    let Some(id) = id else { return Ok(None) };
-    let loader = ctx.data_unchecked::<DataLoader<DatabaseLoader<A>>>();
-    Ok(loader
-        .load_one(UserId(ID(id.to_string())))
-        .await
-        .map_err(|e| anyhow!("Failed to load user via DataLoader: {}", e))?
-        .flatten()
-        .map(|u| u.rec.email))
 }
 
 /// The people with these IDs who still exist, in the order given.
@@ -147,18 +132,18 @@ impl<A: App + HasDb + Send + Sync + 'static> OnCallRole<A> {
         self.rec.created_at as i64
     }
 
-    /// Email of the user who created the role.
+    /// Name of the member who created the role.
     async fn created_by(&self, ctx: &Context<'_>) -> Result<Option<String>> {
-        user_email::<A>(ctx, self.rec.created_by.as_deref()).await
+        super::tally::member_name::<A>(ctx, self.rec.created_by.as_deref()).await
     }
 
     async fn updated_at(&self) -> i64 {
         self.rec.updated_at as i64
     }
 
-    /// Email of the user who last changed the role.
+    /// Name of the member who last changed the role.
     async fn updated_by(&self, ctx: &Context<'_>) -> Result<Option<String>> {
-        user_email::<A>(ctx, self.rec.updated_by.as_deref()).await
+        super::tally::member_name::<A>(ctx, self.rec.updated_by.as_deref()).await
     }
 }
 
@@ -200,10 +185,7 @@ fn bad_request(message: String) -> anyhow::Error {
 }
 
 fn caller_id<'a>(ctx: &'a Context<'_>) -> Option<&'a str> {
-    match ctx.data_opt::<AuthInfo>() {
-        Some(AuthInfo::User { id, .. }) => Some(id.as_str()),
-        _ => None,
-    }
+    super::tally::member_id(ctx)
 }
 
 /// A live role the caller may change.
@@ -270,7 +252,7 @@ async fn notify_assigned(
             NewNotification::new("oncall", "oncall.assigned", &title)
                 .location(&rec.location_id)
                 .target("on_call_role", &rec.id),
-            Audience::Person(person_id),
+            Audience::Members(vec![person_id]),
         )
     };
     if let Some(primary) = rec
