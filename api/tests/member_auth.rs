@@ -398,7 +398,7 @@ fn data(response: &async_graphql::Response) -> serde_json::Value {
 }
 
 const VIEWER: &str =
-    "{ tallyViewer { name homeLocationId userEmail member { id } locations { id name } } }";
+    "{ tallyViewer { name homeLocationId userEmail isSuper member { id } locations { id name } } }";
 
 #[tokio::test]
 async fn the_viewer_is_the_member_with_their_home_unit_and_their_users_units() {
@@ -412,6 +412,7 @@ async fn the_viewer_is_the_member_with_their_home_unit_and_their_users_units() {
             "name": "Alice Anderson",
             "homeLocationId": "loc-a",
             "userEmail": "u1@example.com",
+            "isSuper": false,
             "member": { "id": "alice" },
             "locations": [
                 { "id": "loc-a", "name": "Unit A" },
@@ -422,6 +423,7 @@ async fn the_viewer_is_the_member_with_their_home_unit_and_their_users_units() {
 
     // A super user's member sees every unit.
     let viewer = data(&run(&app, member_at("loc-a", &[], true), VIEWER).await);
+    assert_eq!(viewer["tallyViewer"]["isSuper"], true);
     assert_eq!(
         viewer["tallyViewer"]["locations"].as_array().unwrap().len(),
         3

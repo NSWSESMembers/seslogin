@@ -101,6 +101,12 @@ impl<A: App + HasDb + Send + Sync + 'static> TallyViewer<A> {
         self.user_email.as_deref()
     }
 
+    /// Whether the user signed in alongside the member is a super user, and so can use
+    /// every unit. False when no user signed in alongside them.
+    async fn is_super(&self) -> bool {
+        self.is_super
+    }
+
     /// Every unit the member can use in Tally, by name: their home unit, plus the units
     /// the user signed in alongside them holds either role at (every enabled unit for a
     /// super user). Disabled units are left out, except a member's own home unit.
