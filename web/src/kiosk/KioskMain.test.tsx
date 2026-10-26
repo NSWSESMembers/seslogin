@@ -700,6 +700,69 @@ describe("KioskMain forgot-to-sign-out interstitial", () => {
     ).not.toBeInTheDocument();
   });
 
+  // Only a kiosk with badges switched on asks for awards; every other kiosk
+  // sends the `scanSignOut` it always has.
+  it.each([
+    {
+      name: "a kiosk without badges",
+      config: {},
+      mutation: "ScanControllerSignOutMutation",
+    },
+    {
+      name: "a badges kiosk",
+      config: { gamification: true },
+      mutation: "ScanControllerSignOutWithBadgesMutation",
+    },
+  ])("$name signs out with $mutation", async ({ config, mutation }) => {
+    const sent: string[] = [];
+    const period = (variables: Record<string, unknown>) => ({
+      id: "period-456",
+      version: 2,
+      person: {
+        id: `person-${SIGNOUT_USER}`,
+        firstName: "Jamie",
+        lastName: "Smith",
+      },
+      startTime: variables.startTime,
+      endTime: variables.endTime,
+      category: { id: "RX2bfpU6ppvV", name: "AIIMS" },
+    });
+    server.use(
+      sessionConfigHandler(config),
+      longSignOutHandler(),
+      relayEndpoint.mutation(
+        "ScanControllerSignOutMutation",
+        ({ variables }) => {
+          sent.push("ScanControllerSignOutMutation");
+          return HttpResponse.json({
+            data: { scanSignOut: period(variables) },
+          });
+        },
+      ),
+      relayEndpoint.mutation(
+        "ScanControllerSignOutWithBadgesMutation",
+        ({ variables }) => {
+          sent.push("ScanControllerSignOutWithBadgesMutation");
+          return HttpResponse.json({
+            data: {
+              scanSignOutWithBadges: {
+                period: period(variables),
+                awardedBadges: [],
+              },
+            },
+          });
+        },
+      ),
+    );
+    const user = await setupTest();
+    await user.type(screen.getByRole("textbox"), SIGNOUT_USER + "{enter}");
+    // "Yeah" makes it a one-hour period, so Submit sends it straight away.
+    await user.click(await screen.findByRole("button", { name: /Yeah/i }));
+    await pickAiimsCategory(user);
+    await clickConfirmSubmit(user);
+    await waitFor(() => expect(sent).toEqual([mutation]));
+  });
+
   // Captures the signOut mutation vars so a test can inspect the times it sends.
   function captureSignOut(): { current: Record<string, number> | undefined } {
     const box: { current: Record<string, number> | undefined } = {

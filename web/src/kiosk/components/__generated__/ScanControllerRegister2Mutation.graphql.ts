@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<e45c2fd7b0a02aed39cf8b30c7b99e09>>
+ * @generated SignedSource<<3008e4a12d96e27eda17929507607989>>
  * @lightSyntaxTransform
  */
 
@@ -16,6 +16,12 @@ export type ScanControllerRegister2Mutation$variables = {
 };
 export type ScanControllerRegister2Mutation$data = {
   readonly scanRegister2: {
+    readonly awardedBadges: ReadonlyArray<{
+      readonly description: string;
+      readonly id: string;
+      readonly name: string;
+      readonly tier: string;
+    }>;
     readonly period: {
       readonly endTime: number | null | undefined;
       readonly id: string;
@@ -102,31 +108,58 @@ v5 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
-  "name": "firstName",
+  "name": "id",
   "storageKey": null
 },
 v6 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
-  "name": "lastName",
+  "name": "name",
   "storageKey": null
 },
 v7 = {
   "alias": null,
   "args": null,
-  "kind": "ScalarField",
-  "name": "name",
+  "concreteType": "BadgeAward",
+  "kind": "LinkedField",
+  "name": "awardedBadges",
+  "plural": true,
+  "selections": [
+    (v5/*:: as any*/),
+    (v6/*:: as any*/),
+    {
+      "alias": null,
+      "args": null,
+      "kind": "ScalarField",
+      "name": "description",
+      "storageKey": null
+    },
+    {
+      "alias": null,
+      "args": null,
+      "kind": "ScalarField",
+      "name": "tier",
+      "storageKey": null
+    }
+  ],
   "storageKey": null
 },
 v8 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
-  "name": "id",
+  "name": "firstName",
   "storageKey": null
 },
 v9 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
+  "name": "lastName",
+  "storageKey": null
+},
+v10 = {
   "alias": null,
   "args": null,
   "concreteType": "Period",
@@ -134,7 +167,7 @@ v9 = {
   "name": "period",
   "plural": false,
   "selections": [
-    (v8/*:: as any*/),
+    (v5/*:: as any*/),
     {
       "alias": null,
       "args": null,
@@ -164,16 +197,16 @@ v9 = {
       "name": "person",
       "plural": false,
       "selections": [
-        (v8/*:: as any*/),
         (v5/*:: as any*/),
-        (v6/*:: as any*/)
+        (v8/*:: as any*/),
+        (v9/*:: as any*/)
       ],
       "storageKey": null
     }
   ],
   "storageKey": null
 },
-v10 = {
+v11 = {
   "alias": null,
   "args": null,
   "concreteType": "Category",
@@ -181,11 +214,11 @@ v10 = {
   "name": "category",
   "plural": false,
   "selections": [
-    (v8/*:: as any*/)
+    (v5/*:: as any*/)
   ],
   "storageKey": null
 },
-v11 = {
+v12 = {
   "alias": null,
   "args": null,
   "concreteType": "QuickPick",
@@ -201,7 +234,7 @@ v11 = {
       "name": "locationCategories",
       "plural": true,
       "selections": [
-        (v10/*:: as any*/),
+        (v11/*:: as any*/),
         {
           "alias": null,
           "args": null,
@@ -210,8 +243,8 @@ v11 = {
           "name": "recentPeople",
           "plural": true,
           "selections": [
-            (v8/*:: as any*/),
-            (v5/*:: as any*/)
+            (v5/*:: as any*/),
+            (v8/*:: as any*/)
           ],
           "storageKey": null
         }
@@ -226,7 +259,7 @@ v11 = {
       "name": "personCategories",
       "plural": true,
       "selections": [
-        (v10/*:: as any*/)
+        (v11/*:: as any*/)
       ],
       "storageKey": null
     }
@@ -253,6 +286,7 @@ return {
         "plural": false,
         "selections": [
           (v4/*:: as any*/),
+          (v7/*:: as any*/),
           {
             "alias": null,
             "args": null,
@@ -261,8 +295,8 @@ return {
             "name": "person",
             "plural": false,
             "selections": [
-              (v5/*:: as any*/),
-              (v6/*:: as any*/),
+              (v8/*:: as any*/),
+              (v9/*:: as any*/),
               {
                 "alias": null,
                 "args": null,
@@ -271,15 +305,15 @@ return {
                 "name": "location",
                 "plural": false,
                 "selections": [
-                  (v7/*:: as any*/)
+                  (v6/*:: as any*/)
                 ],
                 "storageKey": null
               }
             ],
             "storageKey": null
           },
-          (v9/*:: as any*/),
-          (v11/*:: as any*/)
+          (v10/*:: as any*/),
+          (v12/*:: as any*/)
         ],
         "storageKey": null
       }
@@ -306,6 +340,7 @@ return {
         "plural": false,
         "selections": [
           (v4/*:: as any*/),
+          (v7/*:: as any*/),
           {
             "alias": null,
             "args": null,
@@ -314,8 +349,8 @@ return {
             "name": "person",
             "plural": false,
             "selections": [
-              (v5/*:: as any*/),
-              (v6/*:: as any*/),
+              (v8/*:: as any*/),
+              (v9/*:: as any*/),
               {
                 "alias": null,
                 "args": null,
@@ -324,33 +359,33 @@ return {
                 "name": "location",
                 "plural": false,
                 "selections": [
-                  (v7/*:: as any*/),
-                  (v8/*:: as any*/)
+                  (v6/*:: as any*/),
+                  (v5/*:: as any*/)
                 ],
                 "storageKey": null
               },
-              (v8/*:: as any*/)
+              (v5/*:: as any*/)
             ],
             "storageKey": null
           },
-          (v9/*:: as any*/),
-          (v11/*:: as any*/)
+          (v10/*:: as any*/),
+          (v12/*:: as any*/)
         ],
         "storageKey": null
       }
     ]
   },
   "params": {
-    "cacheID": "10431639a2267dc495d99d687feaf1e5",
+    "cacheID": "4cfe7810bd1fd650ad0d22fd6a46e712",
     "id": null,
     "metadata": {},
     "name": "ScanControllerRegister2Mutation",
     "operationKind": "mutation",
-    "text": "mutation ScanControllerRegister2Mutation(\n  $memberNumber: String!\n  $quickPick: Boolean!\n  $confirmVisitor: Boolean!\n) {\n  scanRegister2(memberNumber: $memberNumber, quickPick: $quickPick, confirmVisitor: $confirmVisitor) {\n    state\n    person {\n      firstName\n      lastName\n      location {\n        name\n        id\n      }\n      id\n    }\n    period {\n      id\n      version\n      startTime\n      endTime\n      person {\n        id\n        firstName\n        lastName\n      }\n    }\n    quickPick {\n      locationCategories {\n        category {\n          id\n        }\n        recentPeople {\n          id\n          firstName\n        }\n      }\n      personCategories {\n        category {\n          id\n        }\n      }\n    }\n  }\n}\n"
+    "text": "mutation ScanControllerRegister2Mutation(\n  $memberNumber: String!\n  $quickPick: Boolean!\n  $confirmVisitor: Boolean!\n) {\n  scanRegister2(memberNumber: $memberNumber, quickPick: $quickPick, confirmVisitor: $confirmVisitor) {\n    state\n    awardedBadges {\n      id\n      name\n      description\n      tier\n    }\n    person {\n      firstName\n      lastName\n      location {\n        name\n        id\n      }\n      id\n    }\n    period {\n      id\n      version\n      startTime\n      endTime\n      person {\n        id\n        firstName\n        lastName\n      }\n    }\n    quickPick {\n      locationCategories {\n        category {\n          id\n        }\n        recentPeople {\n          id\n          firstName\n        }\n      }\n      personCategories {\n        category {\n          id\n        }\n      }\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "dfc9752ad5102c47a6d7ef2f23c181af";
+(node as any).hash = "55e43f5ea2ee7d3bd8d71f09160da637";
 
 export default node;
