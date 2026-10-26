@@ -40,6 +40,9 @@ function editableFocused(): boolean {
 export function useCategoryScale(
   hostRef: RefObject<HTMLElement | null>,
   probeRef: RefObject<HTMLElement | null>,
+  /** Whether the category search box is on: it sits above the buttons, so the
+   * probe draws it too and the fit has to be worked out again when it changes. */
+  categorySearch = false,
 ): number {
   const [scale, setScale] = useState(1);
 
@@ -71,6 +74,16 @@ export function useCategoryScale(
       const cell = li.getBoundingClientRect();
       const headerRect = header.getBoundingClientRect();
       const headerMarginTop = parseFloat(getComputedStyle(header).marginTop);
+      // The search box (and, inside a role, its role / all switch) sits between
+      // the header and the buttons, so it takes room from them too.
+      const search = probe.querySelector('[data-probe="search"]');
+      const searchMarginTop = search
+        ? parseFloat(getComputedStyle(search).marginTop)
+        : 0;
+      const searchHeight = search
+        ? search.getBoundingClientRect().height +
+          (Number.isNaN(searchMarginTop) ? 0 : searchMarginTop)
+        : 0;
       setScale(
         fitCategoryScale({
           width: grid.getBoundingClientRect().width,
@@ -84,7 +97,8 @@ export function useCategoryScale(
           },
           headerHeight:
             headerRect.height +
-            (Number.isNaN(headerMarginTop) ? 0 : headerMarginTop),
+            (Number.isNaN(headerMarginTop) ? 0 : headerMarginTop) +
+            searchHeight,
         }),
       );
     }
@@ -94,7 +108,7 @@ export function useCategoryScale(
     const observer = new ResizeObserver(measureAndFit);
     observer.observe(host);
     return () => observer.disconnect();
-  }, [hostRef, probeRef]);
+  }, [hostRef, probeRef, categorySearch]);
 
   return scale;
 }

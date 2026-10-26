@@ -138,3 +138,39 @@ describe("SessionForm Confirm visitors", () => {
     expect(config).toEqual({});
   });
 });
+
+describe("SessionForm Category search", () => {
+  it.each([
+    { name: "off to start with, left alone", initial: undefined, click: false },
+    { name: "on to start with, left alone", initial: true, click: false },
+    { name: "turned on", initial: undefined, click: true },
+    { name: "turned off", initial: true, click: true },
+  ])(
+    "saves category search $name and preserves other settings",
+    async ({ initial, click }) => {
+      const checked = !!initial !== click;
+      const onSubmit = vi.fn();
+      render(
+        <SessionForm
+          initialName="Kiosk"
+          initialConfig={JSON.stringify({
+            guests: true,
+            categorySearch: initial,
+          })}
+          initialHealthcheckUrl=""
+          isMutationInFlight={false}
+          onSubmit={onSubmit}
+        />,
+      );
+      const box = screen.getByRole("checkbox", { name: /Category search/ });
+      expect(box).toHaveProperty("checked", !!initial);
+      const user = UserEvent.setup();
+      if (click) await user.click(box);
+      await user.click(screen.getByRole("button", { name: "Save" }));
+      const data = onSubmit.mock.calls[0][0] as FormData;
+      expect(JSON.parse(data.get("config") as string)).toEqual(
+        checked ? { guests: true, categorySearch: true } : { guests: true },
+      );
+    },
+  );
+});

@@ -504,6 +504,22 @@ export const SHOTS = [
         ],
       });
 
+      // Category search is one of the options ticked above.
+      const search = screen().getByRole("searchbox", {
+        name: "Search categories",
+      });
+      await search.fill("stor");
+      await kiosk.waitForTimeout(300);
+      await snap(kiosk, "kiosk-category-search", {
+        highlight: [{ locator: search, where: "right" }],
+        frame: [
+          screen().getByText("Categories", { exact: true }),
+          search,
+          ...(await screen().getByRole("button").all()).slice(0, 6),
+        ],
+      });
+      await screen().getByRole("button", { name: "Clear search" }).click();
+
       await screen()
         .getByRole("button", { name: "Training", exact: true })
         .click();
