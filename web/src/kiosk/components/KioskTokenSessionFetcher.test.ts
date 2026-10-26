@@ -12,7 +12,6 @@ import startKioskTokenSessionFetcher, {
 } from "./KioskTokenSessionFetcher";
 
 const response = {
-  refresh_token: null,
   session: {
     id: "s1",
     name: "Front desk",
@@ -53,7 +52,6 @@ afterEach(() => {
 function start(pushLive = false) {
   return startKioskTokenSessionFetcher({
     environment: {} as IEnvironment,
-    setToken: vi.fn(),
     setSession: vi.fn(),
     pushLive,
   });
