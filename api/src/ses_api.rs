@@ -994,9 +994,13 @@ const SEARCH_MAX_SKIP: usize = 100_000;
 /// State Headquarters matches its staff positions on `Location` instead (see
 /// [`STATE_HEADQUARTERS`]). Zones must not use `Location`: a zone's covers every volunteer of
 /// every unit in it.
+///
+/// The SES API abbreviates "Search and Rescue" ("Bush S&R Unit", "Alpine S&R Unit") but the
+/// directory spells it out ("Bush Search and Rescue Unit"), so the abbreviation is expanded.
 fn directory_search_expr(location_name: &str) -> String {
     let phrase = location_name
         .trim()
+        .replace("S&R", "Search and Rescue")
         .replace('\\', "\\\\")
         .replace('"', "\\\"");
     if location_name
@@ -1256,6 +1260,18 @@ mod tests {
         assert_eq!(
             directory_search_expr("State Headquarters"),
             r#"Assignments/Location:"State Headquarters" AND Assignments/Type:Position"#
+        );
+    }
+
+    #[test]
+    fn directory_search_spells_out_search_and_rescue() {
+        assert_eq!(
+            directory_search_expr("Bush S&R Unit"),
+            r#"Assignments/EntityName:"Bush Search and Rescue Unit""#
+        );
+        assert_eq!(
+            directory_search_expr("Alpine S&R Unit"),
+            r#"Assignments/EntityName:"Alpine Search and Rescue Unit""#
         );
     }
 
