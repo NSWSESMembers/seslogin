@@ -61,7 +61,7 @@ function EnvironmentWarning({
 }) {
   const [open, setOpen] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
-  const explanation = `You are viewing the "${expectedEnv}" admin site. The prod and preprod builds both read and write the production database.`;
+  const explanation = `You are viewing the "${expectedEnv}" admin site. The prod, preprod and qa builds all read and write the production database.`;
 
   return (
     <>

@@ -73,14 +73,14 @@ variable "turnstile_secret_key_test" {
 }
 
 variable "ably_api_key" {
-  description = "Ably API key (`keyName:keySecret`) for publishing kiosk realtime updates and signing kiosk subscribe tokens. Shared by prod, preprod and the test API. Channels are namespaced by `DB_PREFIX`, so prod and preprod share the prod channel space (`kiosk:seslogin_prod:*`) and the test API, on the test tables, has its own (`kiosk:seslogin_test:*`). The key's own capability must include publish and subscribe on both `kiosk:*` (per-location period channels) and `kiosk-enroll:*` (per-key enrollment channels) — a token can only narrow a key's capability, never widen it, so a channel the key doesn't cover is refused with Ably error 40160. Optionally scope a non-prod key to its own prefix, e.g. `kiosk:seslogin_test:*` and `kiosk-enroll:seslogin_test:*`. Empty disables realtime (kiosks fall back to polling) rather than failing startup, so this is safe to leave unset before the key exists."
+  description = "Ably API key (`keyName:keySecret`) for publishing kiosk realtime updates and signing kiosk subscribe tokens. Shared by prod, preprod, qa and the test API. Channels are namespaced by `DB_PREFIX`, so prod, preprod and qa share the prod channel space (`kiosk:seslogin_prod:*`) and the test API, on the test tables, has its own (`kiosk:seslogin_test:*`). The key's own capability must include publish and subscribe on both `kiosk:*` (per-location period channels) and `kiosk-enroll:*` (per-key enrollment channels) — a token can only narrow a key's capability, never widen it, so a channel the key doesn't cover is refused with Ably error 40160. Optionally scope a non-prod key to its own prefix, e.g. `kiosk:seslogin_test:*` and `kiosk-enroll:seslogin_test:*`. Empty disables realtime (kiosks fall back to polling) rather than failing startup, so this is safe to leave unset before the key exists."
   type        = string
   sensitive   = true
   default     = ""
 }
 
 variable "toolbox_graphql_url" {
-  description = "Toolbox's GraphQL endpoint (`https://<toolbox web domain>/graphql`), where the admin help form files tickets via `submitVerifiedTicket`. Shared by prod, preprod and the test API. Empty disables the help form (the admin footer link then offers the support email instead) rather than failing startup."
+  description = "Toolbox's GraphQL endpoint (`https://<toolbox web domain>/graphql`), where the admin help form files tickets via `submitVerifiedTicket`. Shared by prod, preprod, qa and the test API. Empty disables the help form (the admin footer link then offers the support email instead) rather than failing startup."
   type        = string
   default     = ""
 }

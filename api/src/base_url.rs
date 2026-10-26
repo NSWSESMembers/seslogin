@@ -11,7 +11,7 @@ const WEB_BASE_URL_VAR: &str = "WEB_BASE_URL";
 ///
 /// Falls back to the first `WEBAUTHN_RP_ORIGIN`, which is already a valid site
 /// origin in every environment (`http://localhost:5173` locally). Every deployed
-/// environment sets `WEB_BASE_URL` explicitly (prod/preprod → `https://seslogin.com`,
+/// environment sets `WEB_BASE_URL` explicitly (prod/preprod/qa → `https://seslogin.com`,
 /// test → `https://test.seslogin.com`) rather than relying on the fallback, whose
 /// first prod entry is the `new.` alias, not the apex a member link should use.
 pub fn web_base_url() -> String {

@@ -8,7 +8,7 @@ Contributions are welcome — bug fixes, improvements, or new features. Here's h
 2. Follow [DEVELOPMENT.md](DEVELOPMENT.md) to get the project running locally — it covers AWS access, secrets, toolchain, and `make dev`.
 3. Make your changes.
 
-> **Always branch from `main`.** It's the stable branch and its history is never rewritten. The `test`, `preprod`, and `prod` branches are deployment branches that push to their respective environments and **may be force-pushed / have their history rewritten** (`test` frequently). Don't base work on them. Note also that `preprod` and `prod` share the production database, so take care when deploying. See [Branches & deployments](README.md#branches--deployments) for details.
+> **Always branch from `main`.** It's the stable branch and its history is never rewritten. The `test`, `qa`, `preprod`, and `prod` branches are deployment branches that push to their respective environments and **may be force-pushed / have their history rewritten** (`test` frequently). Don't base work on them. Note also that `qa`, `preprod` and `prod` share the production database, so take care when deploying. See [Branches & deployments](README.md#branches--deployments) for details.
 
 ## Before submitting a PR
 

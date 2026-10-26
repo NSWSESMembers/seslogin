@@ -12,6 +12,7 @@ locals {
 
   prod_alias_target    = aws_cloudfront_distribution.prod.domain_name
   preprod_alias_target = aws_cloudfront_distribution.preprod.domain_name
+  qa_alias_target      = aws_cloudfront_distribution.qa.domain_name
   test_alias_target    = aws_cloudfront_distribution.test.domain_name
 }
 
@@ -77,6 +78,28 @@ resource "aws_route53_record" "preprod_aaaa" {
   type    = "AAAA"
   alias {
     name                   = local.preprod_alias_target
+    zone_id                = local.cf_alias_zone_id
+    evaluate_target_health = false
+  }
+}
+
+resource "aws_route53_record" "qa_a" {
+  zone_id = aws_route53_zone.seslogin.zone_id
+  name    = "qa.seslogin.com"
+  type    = "A"
+  alias {
+    name                   = local.qa_alias_target
+    zone_id                = local.cf_alias_zone_id
+    evaluate_target_health = false
+  }
+}
+
+resource "aws_route53_record" "qa_aaaa" {
+  zone_id = aws_route53_zone.seslogin.zone_id
+  name    = "qa.seslogin.com"
+  type    = "AAAA"
+  alias {
+    name                   = local.qa_alias_target
     zone_id                = local.cf_alias_zone_id
     evaluate_target_health = false
   }
