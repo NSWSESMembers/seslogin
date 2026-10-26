@@ -8,19 +8,6 @@ resource "aws_iam_role_policy_attachment" "test_api_lambda_logs" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 }
 
-resource "aws_iam_role_policy" "test_api_lambda_sqs_send" {
-  name = "sqs-send"
-  role = aws_iam_role.test_api_lambda.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Effect = "Allow"
-      Action = ["sqs:SendMessage"]
-      Resource = [
-        aws_sqs_queue.member_sync.arn,
-        aws_sqs_queue.nitc_export.arn,
-      ]
-    }]
-  })
-}
+# No SQS access: the test API runs on the test tables and has no queues
+# configured (see lambda_api_test.tf), so it can't hand prod's workers an ID
+# from the wrong database.

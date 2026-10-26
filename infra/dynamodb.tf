@@ -673,14 +673,15 @@ resource "aws_iam_role_policy" "test_api_lambda_dynamodb" {
   name = "dynamodb-access"
   role = aws_iam_role.test_api_lambda.id
 
+  # The test tables only: test.seslogin.com must not be able to reach prod data.
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
       Effect = "Allow"
       Action = local.dynamodb_actions
       Resource = [
-        "arn:aws:dynamodb:${local.region}:${local.account_id}:table/${var.db_prefix}*",
-        "arn:aws:dynamodb:${local.region}:${local.account_id}:table/${var.db_prefix}*/index/*",
+        "arn:aws:dynamodb:${local.region}:${local.account_id}:table/${var.db_prefix_test}*",
+        "arn:aws:dynamodb:${local.region}:${local.account_id}:table/${var.db_prefix_test}*/index/*",
       ]
     }]
   })

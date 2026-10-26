@@ -63,7 +63,7 @@ See [DEVELOPMENT.md](DEVELOPMENT.md) for local setup, [SCHEMA.md](SCHEMA.md) for
 
 `test`, `preprod`, and `prod` are deployment branches: pushing to one deploys to its environment. They **may have their history rewritten / force-pushed** — `test` especially, as experimental work lands there often.
 
-> ⚠️ All three environments are usually configured to use the **same production database**, so a push to any of them (including `test`) can affect live data. Take care.
+> ⚠️ `preprod` and `prod` share the **production database**, so a push to either affects live data. Take care. `test` runs against the separate test tables.
 
 `main` is the stable branch and is never force-pushed. It may be ahead of or behind the deployment branches. **Fork PR branches from `main`.**
 

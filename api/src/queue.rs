@@ -21,6 +21,11 @@ pub enum Error {
     /// `enqueueMemberSync` treats this as best-effort and logs it.
     #[error("Queue error: {0}")]
     Infrastructure(String),
+    /// This server has no queue configured for the work (see
+    /// [`crate::sqs::Queues::from_env`]): the test environment, whose database the
+    /// workers never read, enqueues nothing.
+    #[error("{0} is not available on this environment")]
+    Disabled(&'static str),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

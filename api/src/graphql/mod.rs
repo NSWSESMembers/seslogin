@@ -189,7 +189,7 @@ pub fn build_schema<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + 
 
     // Dev-only resolver error injection. Compiled out of release builds entirely, so
     // it cannot be switched on in any deployed environment — every Lambda is a release
-    // build, and `test`/`preprod` share the production database.
+    // build, and `preprod` shares the production database.
     #[cfg(debug_assertions)]
     if let Some(injector) = error_injection::ForceFieldErrors::from_env() {
         builder = builder.extension(injector);

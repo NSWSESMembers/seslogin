@@ -14,20 +14,21 @@ resource "aws_lambda_function" "test_api" {
 
   environment {
     variables = {
-      JWT_SECRET            = var.jwt_secret_test
-      SES_API_KEY           = var.ses_api_key_test
-      SES_API_BASE_URL      = var.ses_api_base_url
-      MEMBER_SYNC_QUEUE_URL = aws_sqs_queue.member_sync.url
-      NITC_EXPORT_QUEUE_URL = aws_sqs_queue.nitc_export.url
-      DB_BACKEND            = "dynamodb"
-      DB_PREFIX             = var.db_prefix
-      READ_ONLY             = "false"
-      TURNSTILE_SECRET_KEY  = var.turnstile_secret_key_test
-      ABLY_API_KEY          = var.ably_api_key
-      TOOLBOX_GRAPHQL_URL   = var.toolbox_graphql_url
-      TOOLBOX_API_TOKEN     = var.toolbox_api_token
-      WEBAUTHN_RP_ID        = "seslogin.com"
-      WEBAUTHN_RP_ORIGIN    = "https://test.seslogin.com"
+      JWT_SECRET       = var.jwt_secret_test
+      SES_API_KEY      = var.ses_api_key_test
+      SES_API_BASE_URL = var.ses_api_base_url
+      # No MEMBER_SYNC_QUEUE_URL / NITC_EXPORT_QUEUE_URL: both are disabled on
+      # test. Their workers read the prod tables and must never be handed an ID
+      # from the test tables (a NITC export could reach Beacon).
+      DB_BACKEND           = "dynamodb"
+      DB_PREFIX            = var.db_prefix_test
+      READ_ONLY            = "false"
+      TURNSTILE_SECRET_KEY = var.turnstile_secret_key_test
+      ABLY_API_KEY         = var.ably_api_key
+      TOOLBOX_GRAPHQL_URL  = var.toolbox_graphql_url
+      TOOLBOX_API_TOKEN    = var.toolbox_api_token
+      WEBAUTHN_RP_ID       = "seslogin.com"
+      WEBAUTHN_RP_ORIGIN   = "https://test.seslogin.com"
       # Member-facing period edit links stay on the test frontend so the edit page
       # can be exercised there. Matches the WEBAUTHN_RP_ORIGIN fallback; set explicitly.
       WEB_BASE_URL = "https://test.seslogin.com"

@@ -2754,8 +2754,8 @@ pub struct SessionClientInfo {
 #[Object]
 impl SessionClientInfo {
     /// Build channel the client was deployed from: `prod`, `preprod`, `test` or `dev`.
-    /// Worth watching: `test` and `preprod` builds run against the production database,
-    /// so a kiosk reporting either is on live data from a non-production front-end.
+    /// Worth watching: `preprod` builds run against the production database, so a kiosk
+    /// reporting it is on live data from a non-production front-end.
     async fn env(&self) -> Option<&str> {
         self.info.env.as_deref()
     }
