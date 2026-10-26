@@ -40,9 +40,9 @@ const SCAN_INPUT_CLEAR_TIMEOUT_MS = 10_000;
 const SCAN_INPUT_REFOCUS_TIMEOUT_MS = 2_000;
 
 const transactionBase =
-  "inline-block w-[800px] max-w-full rounded-md p-2.5 text-xl transition-opacity duration-1000";
+  "inline-block w-[900px] max-w-full rounded-xl p-6 text-5xl transition-opacity duration-1000";
 const loadingSpinnerBase =
-  "-mt-1.5 ml-2 inline-block size-[18px] rounded-full border-2 border-line border-t-menu align-middle opacity-0";
+  "-mt-2 ml-4 inline-block size-[36px] rounded-full border-4 border-line border-t-menu align-middle opacity-0";
 
 function TransactionList(props: { transactionState: TransactionState }) {
   const [now, setNow] = useState(() => Date.now());
