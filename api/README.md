@@ -202,6 +202,8 @@ own CORS config allowing only the site origin.
 
 Preprod and prod share a database and secrets, so an MCP client connected to
 either acts on **live production users** with the connecting user's permissions.
+Test runs against the `seslogin_test` tables, a snapshot that still holds real
+member data.
 
 **Auth:** only an OAuth `slat_` access token audience-bound to `<API
 base>/mcp` is accepted (an `slu_` user token or a JWT is rejected here, same
@@ -365,9 +367,9 @@ implied by the client's reported `clockMs`. The result is exposed as
 `Session.clientInfo` and rendered in the admin kiosk list (environment column) and the
 kiosk edit page (full panel).
 
-The most operationally useful field is `env`/`origin`: the `test` and `preprod`
-front-ends talk to the **production** database, so a kiosk running one of those builds is
-signing real members in and out — and nothing else in the admin UI would reveal it.
+The most operationally useful field is `env`/`origin`: the `preprod` front-end talks to
+the **production** database, so a kiosk running that build is signing real members in and
+out — and nothing else in the admin UI would reveal it.
 `env` comes from `VITE_ENVIRONMENT`, set per deploy workflow; a build without it reports
 `dev`.
 

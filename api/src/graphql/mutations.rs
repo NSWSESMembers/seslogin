@@ -9,6 +9,7 @@ use async_graphql::MaybeUndefined;
 use async_graphql::Object;
 use async_graphql::SimpleObject;
 use std::sync::Arc;
+use tracing::debug;
 use tracing::info;
 use tracing::warn;
 
@@ -23,6 +24,7 @@ use crate::db;
 use crate::db::Handler;
 use crate::mail::Handler as _;
 use crate::oauth;
+use crate::queue;
 use crate::queue::Handler as _;
 use crate::realtime;
 use crate::realtime::Handler as _;
@@ -325,16 +327,23 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
                     )
                 })?;
         }
-        if let Err(e) = self
+        match self
             .app
             .queues()
             .enqueue_period_nitc_export(period_id)
             .await
         {
-            warn!(
-                "Failed to enqueue NITC export for period {}: {}",
-                period_id, e
-            );
+            Ok(()) => {}
+            // Expected on every period write where the queue is switched off (test).
+            Err(e @ queue::Error::Disabled(_)) => {
+                debug!("Skipping NITC export for period {}: {}", period_id, e);
+            }
+            Err(e) => {
+                warn!(
+                    "Failed to enqueue NITC export for period {}: {}",
+                    period_id, e
+                );
+            }
         }
         Ok(())
     }

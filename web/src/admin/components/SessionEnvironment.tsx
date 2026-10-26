@@ -6,9 +6,9 @@ import { Popover } from "../../components/ui/Popover";
  * The build channel a kiosk last reported, flagged when it isn't the one this admin page
  * was served from.
  *
- * This is the column that earns its place: the `test` and `preprod` front-ends talk to
- * the *production* database, so a kiosk running one of those builds is signing real
- * members in and out from a non-production deployment. Nothing else in the kiosk list
+ * This is the column that earns its place: the `preprod` front-end talks to the
+ * *production* database, so a kiosk running that build is signing real members in and
+ * out from a non-production deployment. Nothing else in the kiosk list
  * would show that — `lastContact` and `clientVersion` both look perfectly healthy.
  *
  * A kiosk that has never reported shows "—": it's on a client build predating this, not
@@ -46,7 +46,7 @@ function EnvironmentMismatch({
   const buttonRef = useRef<HTMLButtonElement>(null);
   const explanation = `This kiosk is running the "${env}" build, but you are viewing the "${expected}" admin site.${
     origin ? ` It loaded from ${origin}.` : ""
-  } Non-production builds still read and write the production database.`;
+  } The prod and preprod builds both read and write the production database.`;
 
   return (
     <>

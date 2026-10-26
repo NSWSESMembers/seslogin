@@ -98,9 +98,8 @@ and sometimes that's the only way to reproduce a real problem.
 > work, avoid mutations, run sync commands in dry-run mode first, and double-check
 > `DB_PREFIX` before anything that writes. Set it back to `seslogin_test` when you're done.
 
-Note that the deployed `test`, `preprod`, and `prod` environments all point at the
-production database — so this local default is *safer* than any deployed environment, not
-representative of them.
+The deployed `test` environment (test.seslogin.com) uses these same tables, so you and it
+see each other's writes. `preprod` and `prod` point at the production database.
 
 There is a third option: `DB_PREFIX=seslogin_local`, a database in a container on your own
 machine, holding nothing you didn't put there. See [§9](#9-running-without-aws).
