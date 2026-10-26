@@ -188,20 +188,22 @@ admin UI does.
   the same way; see "OAuth authorization server" above for those endpoints.
 
 **`<API base>` per environment:** `https://test.seslogin.com`,
-`https://preprod.seslogin.com` and `https://seslogin.com` (prod), so the MCP URL
+`https://qa.seslogin.com`, `https://preprod.seslogin.com` and
+`https://seslogin.com` (prod), so the MCP URL
 is e.g. `https://seslogin.com/mcp`. CloudFront routes `/mcp`, `/oauth/*` and
 `/.well-known/oauth-*` to the API Lambda (as it does `/graphql`), and adds CORS
 headers for browser-based MCP clients through a response headers policy
-(`infra/web_test.tf`, `infra/web_preprod.tf`, `infra/web_prod.tf`). The handler
+(`infra/web_test.tf`, `infra/web_qa.tf`, `infra/web_preprod.tf`,
+`infra/web_prod.tf`). The handler
 answers `OPTIONS` on those paths with a bare `204`
-(`oauth_http::is_cors_preflight_path`). `API_BASE_URL` is set on all three
+(`oauth_http::is_cors_preflight_path`). `API_BASE_URL` is set on all four
 because CloudFront doesn't forward `Host`. Prod is also served at
 `new.seslogin.com`, but the advertised MCP host is the apex: use
 `https://seslogin.com/mcp`. Each Lambda's raw Function URL still works, with its
 own CORS config allowing only the site origin.
 
-Preprod and prod share a database and secrets, so an MCP client connected to
-either acts on **live production users** with the connecting user's permissions.
+QA, preprod and prod share a database and secrets, so an MCP client connected
+to any of them acts on **live production users** with the connecting user's permissions.
 Test runs against the `seslogin_test` tables, a snapshot that still holds real
 member data.
 
@@ -367,9 +369,9 @@ implied by the client's reported `clockMs`. The result is exposed as
 `Session.clientInfo` and rendered in the admin kiosk list (environment column) and the
 kiosk edit page (full panel).
 
-The most operationally useful field is `env`/`origin`: the `preprod` front-end talks to
-the **production** database, so a kiosk running that build is signing real members in and
-out — and nothing else in the admin UI would reveal it.
+The most operationally useful field is `env`/`origin`: the `preprod` and `qa` front-ends
+talk to the **production** database, so a kiosk running one of those builds is signing
+real members in and out — and nothing else in the admin UI would reveal it.
 `env` comes from `VITE_ENVIRONMENT`, set per deploy workflow; a build without it reports
 `dev`.
 

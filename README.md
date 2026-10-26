@@ -57,13 +57,16 @@ See [DEVELOPMENT.md](DEVELOPMENT.md) for local setup, [SCHEMA.md](SCHEMA.md) for
 
 | Branch | Environment |
 | --- | --- |
-| `test` | [test.seslogin.com](https://test.seslogin.com) — experimental; frequently rewritten |
-| `preprod` | [preprod.seslogin.com](https://preprod.seslogin.com) — production-like staging |
-| `prod` | [new.seslogin.com](https://new.seslogin.com) — production |
+| `prod` | [seslogin.com](https://seslogin.com) — the real production environment; most units and users are here |
+| `preprod` | [preprod.seslogin.com](https://preprod.seslogin.com) — a canary: two units run kiosks here and get releases before every other unit does on prod |
+| `qa` | [qa.seslogin.com](https://qa.seslogin.com) — testing a release against real production data before it goes to `preprod` |
+| `test` | [test.seslogin.com](https://test.seslogin.com) — a sandbox and the place to try risky releases, permanently on the test database; frequently rewritten |
 
-`test`, `preprod`, and `prod` are deployment branches: pushing to one deploys to its environment. They **may have their history rewritten / force-pushed** — `test` especially, as experimental work lands there often.
+"dev" isn't a real environment: it means any local dev server, which never runs on AWS.
 
-> ⚠️ `preprod` and `prod` share the **production database**, so a push to either affects live data. Take care. `test` runs against the separate test tables.
+`test`, `qa`, `preprod`, and `prod` are deployment branches: pushing to one deploys to its environment. They **may have their history rewritten / force-pushed** — `test` especially, as experimental work lands there often.
+
+> ⚠️ `qa`, `preprod` and `prod` share the **production database**, so a push to any of them affects live data. Take care. `test` runs against the separate test tables.
 
 `main` is the stable branch and is never force-pushed. It may be ahead of or behind the deployment branches. **Fork PR branches from `main`.**
 

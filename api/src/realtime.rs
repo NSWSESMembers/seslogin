@@ -46,7 +46,7 @@ pub const MAX_SESSION_UPDATED_BYTES: usize = 60 * 1024;
 /// The Ably channel a location's kiosks publish and subscribe to.
 ///
 /// Namespaced by database prefix, not by deployment: the environments on the
-/// `seslogin_prod` database (prod, preprod) share one channel space, while any
+/// `seslogin_prod` database (prod, preprod, qa) share one channel space, while any
 /// other prefix (`seslogin_test` for test and local dev, `seslogin_local`, …)
 /// gets its own that can never collide with — or publish into — a production
 /// kiosk's channel. This is the one place the name is built;

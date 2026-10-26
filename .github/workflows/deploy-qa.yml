@@ -1,0 +1,109 @@
+name: Deploy (qa)
+
+on:
+  push:
+    branches:
+      - qa
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: ap-southeast-2
+  DEPLOY_ROLE_ARN: arn:aws:iam::641079927221:role/seslogin-github-deploy
+
+jobs:
+  api_check:
+    uses: ./.github/workflows/_check-api.yml
+
+  web_check:
+    uses: ./.github/workflows/_check-web.yml
+
+  pagination_check:
+    uses: ./.github/workflows/_check-pagination.yml
+
+  deploy_lambdas:
+    needs: [api_check, web_check, pagination_check]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: api
+
+      - name: Install cargo-lambda
+        run: pip install cargo-lambda
+
+      - name: Build lambda
+        working-directory: ./api
+        run: cargo lambda build --release --bin lambda
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # Function exists (Terraform-managed with its execution role); update code
+      # only — no --role (avoids needing iam:PassRole).
+      - name: Deploy seslogin-qa-api
+        working-directory: ./api
+        run: cargo lambda deploy --binary-name lambda seslogin-qa-api
+
+  deploy_web:
+    needs: deploy_lambdas
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+
+      - name: Install dependencies
+        working-directory: ./web
+        run: npm install
+
+      - name: Run relay compiler
+        working-directory: ./web
+        run: npm run relay
+
+      - name: Build web app
+        working-directory: ./web
+        env:
+          VITE_API_URL: https://qa.seslogin.com/graphql
+          VITE_BEACON_URL: ${{ vars.BEACON_URL }}
+          VITE_TURNSTILE_SITE_KEY: ${{ vars.TURNSTILE_SITE_KEY }}
+          VITE_CLIENT_VERSION: ${{ github.sha }}
+          VITE_ENVIRONMENT: qa
+        run: npm run build
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Deploy to S3
+        run: aws s3 sync --follow-symlinks --delete ./web/dist s3://seslogin-qa-web-641079927221
+
+      # The distribution ID is Terraform's qa_cloudfront_distribution_id output,
+      # held in a repo variable rather than hard-coded like the older environments.
+      - name: Invalidate CloudFront
+        env:
+          DISTRIBUTION_ID: ${{ vars.QA_CLOUDFRONT_DISTRIBUTION_ID }}
+        run: |
+          if [ -z "$DISTRIBUTION_ID" ]; then
+            echo "::error::Set the QA_CLOUDFRONT_DISTRIBUTION_ID repo variable (terraform output qa_cloudfront_distribution_id)"
+            exit 1
+          fi
+          aws cloudfront create-invalidation --distribution-id "$DISTRIBUTION_ID" --paths "/*"
