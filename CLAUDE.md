@@ -51,9 +51,9 @@ only) — re-capture any that show a screen the PR changed.
 > `seslogin-test-api` (test.seslogin.com) uses the same tables (`var.db_prefix_test`), so
 > local dev and the test deployment see each other's writes.
 >
-> Every other deployed environment uses `seslogin_prod`: prod, preprod, and all
+> Every other deployed environment uses `seslogin_prod`: prod, preprod, qa, and all
 > sync/utility Lambdas (`var.db_prefix` defaults to `seslogin_prod`). Anything you push
-> to `prod`, `preprod` or `workers` runs against **live production member data** with
+> to `prod`, `preprod`, `qa` or `workers` runs against **live production member data** with
 > mutations enabled. The test API has no SQS queues (the workers read the prod tables),
 > so member sync and NITC export are off on test.
 >
@@ -200,24 +200,37 @@ to preview a write command instead.
 Deployment is automated via GitHub Actions; there is no supported manual/local deploy path.
 Push to the relevant branch below rather than running `cargo lambda deploy` by hand.
 
-Auto-deployment is split by branch, one workflow per branch under `.github/workflows/` (`deploy-prod.yml`, `deploy-preprod.yml`, `deploy-test.yml`, `deploy-workers.yml`):
+#### Environments
+
+| Environment | Database | What it's for |
+|---|---|---|
+| `prod` | `seslogin_prod` | The real production environment. Most units and users are here. |
+| `preprod` | `seslogin_prod` | A canary, not a staging site: two units run their kiosks here and get each release before every other unit does on prod. |
+| `qa` | `seslogin_prod` | Testing a release against real production data before it is pushed to `preprod`. |
+| `test` | `seslogin_test` | A sandbox, and where risky releases are tried. Permanently on the test tables, never prod. |
+| dev | whatever `DB_PREFIX` says | Not a real environment: any dev server (`make dev`, `make dev-local`), never on AWS. |
+
+`preprod` and `qa` are deployed exactly like prod and share its database (`DB_PREFIX=seslogin_prod`), SQS queues, and secrets (JWT/SES/Turnstile), so they operate on **live production data** with mutations enabled, and email real members. Each differs from prod only in its function name, IAM role, and WebAuthn/CORS origin. `test` has its own secrets and no SQS queues, so member sync and NITC export are off there (the workers that consume the queues read the prod tables).
+
+Auto-deployment is split by branch, one workflow per branch under `.github/workflows/` (`deploy-prod.yml`, `deploy-preprod.yml`, `deploy-qa.yml`, `deploy-test.yml`, `deploy-workers.yml`):
 
 | Branch | Deploys |
 |--------|---------|
-| `prod` | Production API Lambda (`seslogin-api`) + web to `new.seslogin.com` |
+| `prod` | Production API Lambda (`seslogin-api`) + web to `seslogin.com` / `new.seslogin.com` |
 | `preprod` | Preprod API Lambda (`seslogin-preprod-api`) + web to `preprod.seslogin.com` |
+| `qa` | QA API Lambda (`seslogin-qa-api`) + web to `qa.seslogin.com` |
 | `test` | Test API Lambda (`seslogin-test-api`) + web to `test.seslogin.com` |
 | `workers` | Background/worker Lambdas: sync/dispatcher/checker/nitc-export/activity-summary/sync-locations |
 
-`preprod` is a production-like clone for staging: the `seslogin-preprod-api` Lambda intentionally shares prod's database (`DB_PREFIX=seslogin_prod`), SQS queues, and secrets (JWT/SES/Turnstile), so it operates on **live production data** with mutations enabled. It only differs from prod in its function name, IAM role, and WebAuthn/CORS origin (`preprod.seslogin.com`). Like `prod`, it deploys only the API Lambda + web (not the sync/utility Lambdas).
+A release usually goes `test` (if it's risky) → `qa` → `preprod` → `prod`. The following Lambdas are only deployed from the `workers` branch, not from `test`, `qa`, `preprod` or `prod`, which each deploy only their API Lambda + web: sync (`seslogin-sync-members`), dispatcher (`seslogin-dispatcher`), checker (`seslogin-checker`), nitc-export (`seslogin-nitc-export`), activity-summary (`seslogin-activity-summary`), and sync-locations (`seslogin-sync-locations`).
 
-The following Lambdas are only deployed from the `workers` branch, not from `test`, `prod`, or `preprod`: sync (`seslogin-sync-members`), dispatcher (`seslogin-dispatcher`), checker (`seslogin-checker`), nitc-export (`seslogin-nitc-export`), activity-summary (`seslogin-activity-summary`), and sync-locations (`seslogin-sync-locations`). `test` deploys only the API Lambda + web.
+`deploy-qa.yml` invalidates the CloudFront distribution named by the `QA_CLOUDFRONT_DISTRIBUTION_ID` repo variable (Terraform output `qa_cloudfront_distribution_id`); the other workflows hard-code theirs.
 
 #### Branch model and history rewriting
 
-`test`, `workers`, `preprod`, and `prod` are **deployment branches** — each one pushes to its respective environment. They are not protected against history rewrites: expect force-pushes / rewritten history on all of them, and especially on `test`, which is frequently rewritten as experimental work is pushed to it.
+`test`, `qa`, `workers`, `preprod`, and `prod` are **deployment branches** — each one pushes to its respective environment. They are not protected against history rewrites: expect force-pushes / rewritten history on all of them, and especially on `test`, which is frequently rewritten as experimental work is pushed to it.
 
-> ⚠️ **Shared production database.** `prod`, `preprod` and `workers` all point at the same production database (see the `preprod` note above). A deploy to any of them runs against **live production data** with mutations enabled. Take care accordingly. `test` is the exception: it runs against the `seslogin_test_*` snapshot tables, which still hold real member data.
+> ⚠️ **Shared production database.** `prod`, `preprod`, `qa` and `workers` all point at the same production database. A deploy to any of them runs against **live production data** with mutations enabled. Take care accordingly. `test` is the exception: it runs against the `seslogin_test_*` snapshot tables, which still hold real member data.
 
 `main` is the stable integration branch and is **not** force-pushed. It may be ahead of or behind the deployment branches at any given time. Always fork PR branches from `main` (never from a deployment branch) so your work sits on top of stable, non-rewritten history.
 
@@ -448,6 +461,6 @@ Environment variables (loaded from `.env` and `.env.secret`; see
 - `MAIL_OVERRIDE_TO` — Redirect **all** outgoing email to this address instead of its real recipient, logging a warning each time. Set it locally before touching anything that mails a member: `seslogin_test` is a snapshot of production and carries real member addresses, so the admin "Remind" button would otherwise email a real volunteer from your laptop. Never set in a deployed environment.
 - `WEB_BASE_URL` — Public site origin used to build member-facing period edit links (`<base>/period#<token>`) and, since PR 2 of the MCP/OAuth work, the OAuth `authorization_endpoint` metadata (`<base>/admin/oauth/authorize`). Optional: falls back to the first `WEBAUTHN_RP_ORIGIN`, which is already the site origin in every environment, so no infra change is needed to deploy. Read via the shared `base_url::web_base_url()` helper (`api/src/base_url.rs`).
 - `WEBAUTHN_RP_ID` / `WEBAUTHN_RP_ORIGIN` — Passkey relying-party ID and origin. Local dev defaults to `localhost` / `http://localhost:5173`; deployed envs use `seslogin.com` / the site origin (e.g. `https://new.seslogin.com`). A passkey is bound to the RP ID it was registered under, so local-dev passkeys won't work in prod.
-- `API_BASE_URL` — Optional. Fixes the OAuth authorization server's issuer/`token_endpoint`/`registration_endpoint` URLs (`GET /.well-known/oauth-authorization-server`) and the MCP protected-resource URL instead of deriving them from the request's `Host` header. **Required behind CloudFront**, which doesn't forward `Host`: the fallback would name the Function URL's host, and clients would reject the mismatch. Set to `https://test.seslogin.com`, `https://preprod.seslogin.com` and `https://seslogin.com` (prod's apex; `new.seslogin.com` is an alias of the same distribution), each of which serves `/graphql`, `/mcp` and the OAuth endpoints through CloudFront (`infra/web_test.tf`, `infra/web_preprod.tf`, `infra/web_prod.tf`). Unset only for local runs and the raw Function URLs, where the `Host` fallback is correct.
+- `API_BASE_URL` — Optional. Fixes the OAuth authorization server's issuer/`token_endpoint`/`registration_endpoint` URLs (`GET /.well-known/oauth-authorization-server`) and the MCP protected-resource URL instead of deriving them from the request's `Host` header. **Required behind CloudFront**, which doesn't forward `Host`: the fallback would name the Function URL's host, and clients would reject the mismatch. Set to `https://test.seslogin.com`, `https://qa.seslogin.com`, `https://preprod.seslogin.com` and `https://seslogin.com` (prod's apex; `new.seslogin.com` is an alias of the same distribution), each of which serves `/graphql`, `/mcp` and the OAuth endpoints through CloudFront (`infra/web_test.tf`, `infra/web_qa.tf`, `infra/web_preprod.tf`, `infra/web_prod.tf`). Unset only for local runs and the raw Function URLs, where the `Host` fallback is correct.
 - `ABLY_API_KEY` — Ably key (`keyName:keySecret`) for publishing kiosk period open/close events. Channels are per `kiosk:<DB_PREFIX>:<location_id>`, so environments never cross-publish into each other's channels. `kioskRealtimeToken` hands a kiosk a signed, subscribe-only token scoped to exactly its own location's channel and its own session's channel, `kiosk:<DB_PREFIX>:session:<session_id>` — which carries `session.updated` (an admin edit, with the new name, config and session `version`) and `session.changed` (refetch: the session was deleted, or its key was released when the device was enrolled as another session). A kiosk waiting to be enrolled (QR flow) instead subscribes to a per-key channel `kiosk-enroll:<DB_PREFIX>:<fingerprint>` via the unauthenticated `enrollmentRealtimeToken(publicKey)` query (which requires a live pending enrollment for that key) and is pushed a content-free `enrollment.completed` by `enrollSession`/`reactivateSession`, then confirms with a signed request instead of polling. The key's capability must cover both `kiosk:*` and `kiosk-enroll:*` (see `ably_api_key` in `infra/variables.tf`), or Ably refuses the enrollment token with error 40160. Unset, empty, or malformed disables realtime rather than failing startup — kiosks fall back to polling.
 - `TOOLBOX_GRAPHQL_URL` / `TOOLBOX_API_TOKEN` — Toolbox GraphQL endpoint and `mta_` integration token for the admin help form (`api/src/toolbox.rs`). `submitFeedback` files a Toolbox ticket via `submitVerifiedTicket` with the caller's email taken from their user record — never from the request, because Toolbox trusts it as already verified. Either unset or blank disables the form (`Query.feedbackAvailable` is false) rather than failing startup. The form is at `/admin/help` and opens as a dialog from the admin footer's "Help/Feedback?" link. The public home footer's link of the same name opens an email-only dialog (`components/EmailHelp.tsx`, pointing at support@seslogin.com) — the same content the admin dialog shows when the form is disabled, with no form and no mention of one.

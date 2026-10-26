@@ -44,7 +44,7 @@ const MAX_PLAUSIBLE_SKEW_SECS: i64 = 366 * 24 * 60 * 60;
 #[derive(Debug, Default, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 struct ClientInfoPayload {
-    /// Build channel: `prod`, `preprod`, `test`, `dev`.
+    /// Build channel: `prod`, `preprod`, `qa`, `test`, `dev`.
     env: Option<String>,
     /// `window.location.origin` — the site the client was actually loaded from.
     origin: Option<String>,

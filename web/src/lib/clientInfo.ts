@@ -13,8 +13,9 @@ import {
  *
  * The point of most of these is to answer "why is *this one* kiosk behaving differently?"
  * — a question that otherwise needs someone standing in front of it. `env` and `origin`
- * answer a sharper one: the `preprod` front-end talks to the production database, so a
- * kiosk running that build is on live data and nothing else would show it.
+ * answer a sharper one: the `preprod` and `qa` front-ends talk to the production
+ * database, so a kiosk running one of those builds is on live data and nothing else
+ * would show it.
  *
  * Everything here is best-effort. Collection is wrapped so that a browser missing an API
  * costs one field, never the request — diagnostics must not be able to break a kiosk.
@@ -105,7 +106,7 @@ export function getUptimeSecs(): number | undefined {
 }
 
 /**
- * Which build channel this bundle was deployed as — `prod`, `preprod`, `test`, or `dev`
+ * Which build channel this bundle was deployed as — `prod`, `preprod`, `qa`, `test`, or `dev`
  * for anything built without `VITE_ENVIRONMENT` set (local dev, and any older build).
  * Also what the admin UI compares a kiosk's reported environment against.
  */

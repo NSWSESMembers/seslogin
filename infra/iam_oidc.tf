@@ -42,6 +42,7 @@ resource "aws_iam_role_policy" "github_lambda_deploy" {
       Resource = [
         aws_lambda_function.api.arn,
         aws_lambda_function.preprod_api.arn,
+        aws_lambda_function.qa_api.arn,
         aws_lambda_function.sync_members.arn,
         aws_lambda_function.dispatcher.arn,
         aws_lambda_function.checker.arn,
@@ -63,7 +64,7 @@ resource "aws_iam_role_policy" "github_s3_deploy" {
       {
         Effect   = "Allow"
         Action   = ["s3:ListBucket"]
-        Resource = [aws_s3_bucket.prod_web.arn, aws_s3_bucket.preprod_web.arn, aws_s3_bucket.test_web.arn]
+        Resource = [aws_s3_bucket.prod_web.arn, aws_s3_bucket.preprod_web.arn, aws_s3_bucket.qa_web.arn, aws_s3_bucket.test_web.arn]
       },
       {
         Effect = "Allow"
@@ -71,6 +72,7 @@ resource "aws_iam_role_policy" "github_s3_deploy" {
         Resource = [
           "${aws_s3_bucket.prod_web.arn}/*",
           "${aws_s3_bucket.preprod_web.arn}/*",
+          "${aws_s3_bucket.qa_web.arn}/*",
           "${aws_s3_bucket.test_web.arn}/*",
         ]
       },
@@ -86,7 +88,7 @@ resource "aws_iam_role_policy" "github_cloudfront" {
     Statement = [{
       Effect   = "Allow"
       Action   = ["cloudfront:CreateInvalidation"]
-      Resource = [aws_cloudfront_distribution.prod.arn, aws_cloudfront_distribution.preprod.arn, aws_cloudfront_distribution.test.arn]
+      Resource = [aws_cloudfront_distribution.prod.arn, aws_cloudfront_distribution.preprod.arn, aws_cloudfront_distribution.qa.arn, aws_cloudfront_distribution.test.arn]
     }]
   })
 }

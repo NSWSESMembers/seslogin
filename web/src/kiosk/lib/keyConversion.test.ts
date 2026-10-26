@@ -85,9 +85,9 @@ describe("isEligibleForKeyConversion", () => {
     }
   });
 
-  it("never applies the uptime shortcut on prod or preprod", () => {
+  it("never applies the uptime shortcut on prod, preprod or qa", () => {
     const now = Date.parse("2026-01-01T00:00:00Z");
-    for (const environment of ["prod", "preprod"]) {
+    for (const environment of ["prod", "preprod", "qa"]) {
       expect(
         isEligibleForKeyConversion("AnyKiosk", {
           now,

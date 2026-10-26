@@ -7,8 +7,9 @@ resource "aws_lambda_function" "preprod_api" {
   memory_size   = 128
   filename      = "${path.module}/placeholder.zip"
 
-  # Preprod is a clone of prod: it intentionally shares the prod database, queues,
-  # and secrets. The only differences from the prod lambda are the function name,
+  # Preprod is the canary: a couple of units' kiosks run here and get releases
+  # before everyone else on prod, so it intentionally shares the prod database,
+  # queues, and secrets. The only differences from the prod lambda are the function name,
   # IAM role, and the WebAuthn/CORS origin (preprod.seslogin.com).
   environment {
     variables = {
@@ -27,7 +28,7 @@ resource "aws_lambda_function" "preprod_api" {
       WEBAUTHN_RP_ID        = "seslogin.com"
       WEBAUTHN_RP_ORIGIN    = "https://preprod.seslogin.com"
       # Member-facing period edit links point at the canonical prod site, not the
-      # preprod staging frontend (preprod shares prod's DB and emails real members).
+      # preprod frontend (preprod shares prod's DB and emails real members).
       WEB_BASE_URL = "https://seslogin.com"
       # OAuth issuer and MCP resource URLs. Required behind CloudFront: Host isn't
       # forwarded, so the fallback would name the Function URL's host instead.

@@ -99,7 +99,7 @@ and sometimes that's the only way to reproduce a real problem.
 > `DB_PREFIX` before anything that writes. Set it back to `seslogin_test` when you're done.
 
 The deployed `test` environment (test.seslogin.com) uses these same tables, so you and it
-see each other's writes. `preprod` and `prod` point at the production database.
+see each other's writes. `qa`, `preprod` and `prod` point at the production database.
 
 There is a third option: `DB_PREFIX=seslogin_local`, a database in a container on your own
 machine, holding nothing you didn't put there. See [§9](#9-running-without-aws).

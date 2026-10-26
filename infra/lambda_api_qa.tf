@@ -1,0 +1,59 @@
+resource "aws_lambda_function" "qa_api" {
+  function_name = "seslogin-qa-api"
+  role          = aws_iam_role.qa_api_lambda.arn
+  runtime       = "provided.al2023"
+  handler       = "bootstrap"
+  timeout       = 30
+  memory_size   = 128
+  filename      = "${path.module}/placeholder.zip"
+
+  # QA tests a release against real production data before it goes to preprod,
+  # so like preprod it intentionally shares the prod database, queues, and
+  # secrets. The only differences from the prod lambda are the function name,
+  # IAM role, and the WebAuthn/CORS origin (qa.seslogin.com).
+  environment {
+    variables = {
+      JWT_SECRET            = var.jwt_secret
+      SES_API_KEY           = var.ses_api_key
+      SES_API_BASE_URL      = var.ses_api_base_url
+      MEMBER_SYNC_QUEUE_URL = aws_sqs_queue.member_sync.url
+      NITC_EXPORT_QUEUE_URL = aws_sqs_queue.nitc_export.url
+      DB_BACKEND            = "dynamodb"
+      DB_PREFIX             = var.db_prefix
+      READ_ONLY             = "false"
+      TURNSTILE_SECRET_KEY  = var.turnstile_secret_key
+      ABLY_API_KEY          = var.ably_api_key
+      TOOLBOX_GRAPHQL_URL   = var.toolbox_graphql_url
+      TOOLBOX_API_TOKEN     = var.toolbox_api_token
+      WEBAUTHN_RP_ID        = "seslogin.com"
+      WEBAUTHN_RP_ORIGIN    = "https://qa.seslogin.com"
+      # Member-facing period edit links point at the canonical prod site, not the
+      # qa frontend (qa shares prod's DB and emails real members).
+      WEB_BASE_URL = "https://seslogin.com"
+      # OAuth issuer and MCP resource URLs. Required behind CloudFront: Host isn't
+      # forwarded, so the fallback would name the Function URL's host instead.
+      API_BASE_URL = "https://qa.seslogin.com"
+    }
+  }
+
+  logging_config {
+    log_format = "JSON"
+  }
+
+  lifecycle {
+    ignore_changes = [filename, source_code_hash]
+  }
+}
+
+resource "aws_lambda_function_url" "qa_api" {
+  function_name      = aws_lambda_function.qa_api.function_name
+  authorization_type = "NONE"
+
+  cors {
+    allow_credentials = true
+    allow_headers     = ["authorization", "content-type", "x-client-version", "x-client-info"]
+    allow_methods     = ["GET", "POST"]
+    allow_origins     = ["https://qa.seslogin.com"]
+    max_age           = 600
+  }
+}

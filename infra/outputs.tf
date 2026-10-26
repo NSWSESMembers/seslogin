@@ -53,6 +53,16 @@ output "preprod_cloudfront_distribution_id" {
   value       = aws_cloudfront_distribution.preprod.id
 }
 
+output "qa_api_lambda_function_url" {
+  description = "HTTPS endpoint for the seslogin-qa-api Lambda function"
+  value       = aws_lambda_function_url.qa_api.function_url
+}
+
+output "qa_cloudfront_distribution_id" {
+  description = "CloudFront distribution ID for qa.seslogin.com (set as the QA_CLOUDFRONT_DISTRIBUTION_ID GitHub variable, which deploy-qa.yml invalidates)"
+  value       = aws_cloudfront_distribution.qa.id
+}
+
 output "test_cloudfront_distribution_id" {
   description = "CloudFront distribution ID for test.seslogin.com"
   value       = aws_cloudfront_distribution.test.id
