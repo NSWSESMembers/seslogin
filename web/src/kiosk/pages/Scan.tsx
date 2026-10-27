@@ -15,6 +15,9 @@ export default function Scan() {
   const probeRef = useRef<HTMLDivElement>(null);
   const categorySearch = !!useKioskSession()?.config?.categorySearch;
   const categoryScale = useCategoryScale(hostRef, probeRef, categorySearch);
+  const [signingOutPersonId, setSigningOutPersonId] = useState<string | null>(
+    null,
+  );
 
   return (
     <div className="flex h-dvh flex-col">
@@ -22,6 +25,7 @@ export default function Scan() {
         onCancelSignOut={cancelSignOut ?? undefined}
         signingOutName={signingOutName ?? undefined}
         onLogoClick={() => setStatusOpen(true)}
+        signingOutPersonId={signingOutPersonId ?? undefined}
       />
       <div
         ref={hostRef}
@@ -33,6 +37,7 @@ export default function Scan() {
         <ScanController
           onCancelSignOutChange={(fn) => setCancelSignOut(fn ? () => fn : null)}
           onSigningOutNameChange={setSigningOutName}
+          onSigningOutPersonIdChange={setSigningOutPersonId}
         />
       </div>
       <div className="fixed right-2.5 bottom-1.5 text-xs text-neutral-400">

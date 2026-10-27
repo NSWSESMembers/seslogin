@@ -1,5 +1,9 @@
 import { graphql, useMutation } from "react-relay";
-import type { MemberIdWithUuid, TransactionSignedOut } from "../ScanState";
+import type {
+  BadgeAward,
+  MemberIdWithUuid,
+  TransactionSignedOut,
+} from "../ScanState";
 import {
   useCallback,
   useEffect,
@@ -33,6 +37,11 @@ import type {
   ScanControllerSignOutMutation$data,
 } from "./__generated__/ScanControllerSignOutMutation.graphql";
 import type {
+  ScanControllerSignOutWithBadgesMutation,
+  ScanControllerSignOutWithBadgesMutation$data,
+} from "./__generated__/ScanControllerSignOutWithBadgesMutation.graphql";
+import { kioskBadgesEnabled } from "../lib/kioskBadges";
+import type {
   ScanControllerStartSignOutMutation,
   ScanControllerStartSignOutMutation$data,
 } from "./__generated__/ScanControllerStartSignOutMutation.graphql";
@@ -58,8 +67,10 @@ const SCAN_SCREEN_FOCUS_LEASE_ID = "scan:screen";
 export default function ScanController(props: {
   onCancelSignOutChange?: (fn: (() => void) | null) => void;
   onSigningOutNameChange?: (name: string | null) => void;
+  onSigningOutPersonIdChange?: (personId: string | null) => void;
 }) {
   const session = useKioskSession();
+  const badgesEnabled = kioskBadgesEnabled(session);
   const { applyOwnResult, retry: refreshLivePeriods } = useLivePeriods();
   const guestsEnabled = !!session?.config?.guests;
   const quickPickCategories = !!session?.config?.quickPickCategories;
@@ -165,6 +176,12 @@ export default function ScanController(props: {
           confirmVisitor: $confirmVisitor
         ) {
           state
+          awardedBadges {
+            id
+            name
+            description
+            tier
+          }
           person {
             firstName
             lastName
@@ -274,6 +291,46 @@ export default function ScanController(props: {
         }
       }
     `);
+  // The same sign-out for a kiosk that celebrates badges. Kept separate so a
+  // kiosk without badges sends exactly the `scanSignOut` it always has.
+  const [commitSignOutWithBadgesMutation, signOutWithBadgesIsInFlight] =
+    useMutation<ScanControllerSignOutWithBadgesMutation>(graphql`
+      mutation ScanControllerSignOutWithBadgesMutation(
+        $id: ID!
+        $startTime: Int!
+        $endTime: Int!
+        $categoryId: ID!
+      ) {
+        scanSignOutWithBadges(
+          id: $id
+          startTime: $startTime
+          endTime: $endTime
+          categoryId: $categoryId
+        ) {
+          awardedBadges {
+            id
+            name
+            description
+            tier
+          }
+          period {
+            id
+            version
+            person {
+              id
+              firstName
+              lastName
+            }
+            startTime
+            endTime
+            category {
+              id
+              name
+            }
+          }
+        }
+      }
+    `);
 
   // The sign-out screens take over from here, whether the sign-out was started
   // by a scan or from the signed-in list.
@@ -306,6 +363,12 @@ export default function ScanController(props: {
           }
         : undefined,
     });
+  }
+
+  function toBadges(
+    awardedBadges: ReadonlyArray<BadgeAward> | null | undefined,
+  ): BadgeAward[] {
+    return awardedBadges ? [...awardedBadges] : [];
   }
 
   // `confirmVisitor` is false for the repeat of a scan the member has just
@@ -390,6 +453,7 @@ export default function ScanController(props: {
         person,
         status: "SIGNED_IN",
         startTime,
+        awardedBadges: toBadges(res.scanRegister2.awardedBadges),
       });
       return;
     } else if (state == "SIGN_OUT_PENDING") {
@@ -616,10 +680,19 @@ export default function ScanController(props: {
     signedOutTransaction
       ? `${signedOutTransaction.person.firstName} ${signedOutTransaction.person.lastName}`
       : null;
+  const signingOutPersonId =
+    (needsCategory || needsAdjust) && signedOutTransaction
+      ? signedOutTransaction.person.id
+      : null;
   const { onSigningOutNameChange } = props;
   useEffect(() => {
     onSigningOutNameChange?.(signingOutName);
   }, [signingOutName, onSigningOutNameChange]);
+
+  const { onSigningOutPersonIdChange } = props;
+  useEffect(() => {
+    onSigningOutPersonIdChange?.(signingOutPersonId);
+  }, [signingOutPersonId, onSigningOutPersonIdChange]);
 
   function onSelectCategory(uuid: string, categoryId: string) {
     dispatchTransaction({ type: "SET_CATEGORY", uuid, categoryId });
@@ -661,9 +734,11 @@ export default function ScanController(props: {
       endTime: Math.floor(endTime.getTime() / 1000),
       categoryId: tx.categoryId!,
     };
-    const onCompleted = (data: ScanControllerSignOutMutation$data) => {
+    const onSignedOut = (
+      period: ScanControllerSignOutMutation$data["scanSignOut"],
+      awardedBadges: ReadonlyArray<BadgeAward> | null | undefined,
+    ) => {
       console.log("Adjust mutation completed");
-      const period = data.scanSignOut;
       const person = period.person!;
       applyOwnResult({
         kind: "closed",
@@ -678,8 +753,9 @@ export default function ScanController(props: {
       dispatchTransaction({
         type: "ADJUST_PERIOD",
         uuid,
-        startTime,
-        endTime,
+        startTime: new Date(period.startTime * 1000),
+        endTime: new Date(period.endTime! * 1000),
+        awardedBadges: toBadges(awardedBadges),
       });
       focusMainInputRef.current?.();
     };
@@ -709,7 +785,24 @@ export default function ScanController(props: {
           : "network issue while adjusting record for " + name,
       });
     };
-    commitSignOutMutation({ variables, onCompleted, onError });
+    if (badgesEnabled) {
+      commitSignOutWithBadgesMutation({
+        variables,
+        onCompleted: (data: ScanControllerSignOutWithBadgesMutation$data) =>
+          onSignedOut(
+            data.scanSignOutWithBadges.period,
+            data.scanSignOutWithBadges.awardedBadges,
+          ),
+        onError,
+      });
+    } else {
+      commitSignOutMutation({
+        variables,
+        onCompleted: (data: ScanControllerSignOutMutation$data) =>
+          onSignedOut(data.scanSignOut, null),
+        onError,
+      });
+    }
   }
 
   return (
@@ -767,7 +860,7 @@ export default function ScanController(props: {
         uuid={transactionUuid}
         transaction={signedOutTransaction}
         onEditCategory={onEditCategory}
-        isSubmitting={signOutIsInFlight}
+        isSubmitting={signOutIsInFlight || signOutWithBadgesIsInFlight}
       />
       {statusDialogOpen && <ScanStatusDialog onClose={closeStatusDialog} />}
       {pendingVisitor && (
