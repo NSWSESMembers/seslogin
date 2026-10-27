@@ -78,3 +78,22 @@ resource "aws_scheduler_schedule" "location_sync_nightly" {
     input    = "{}"
   }
 }
+
+resource "aws_scheduler_schedule" "badge_nightly" {
+  name       = "seslogin-badge-nightly"
+  group_name = "default"
+
+  flexible_time_window {
+    mode = "OFF"
+  }
+
+  # 01:15 Sydney time every day.
+  schedule_expression          = "cron(15 1 * * ? *)"
+  schedule_expression_timezone = "Australia/Sydney"
+
+  target {
+    arn      = aws_lambda_function.badge_nightly.arn
+    role_arn = aws_iam_role.scheduler.arn
+    input    = "{}"
+  }
+}
