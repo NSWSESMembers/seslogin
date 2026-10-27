@@ -183,6 +183,10 @@ export default function SubmenuBar({
         items={[
           { to: "/admin/settings", label: "Passkeys" },
           { to: "/admin/settings/daily-email", label: "Daily Email Summary" },
+          {
+            to: "/admin/settings/weekly-badge-digest",
+            label: "Weekly Badge Digest",
+          },
           { to: "/admin/settings/activity-display", label: "Activity Display" },
           {
             to: "/admin/settings/connected-apps",
