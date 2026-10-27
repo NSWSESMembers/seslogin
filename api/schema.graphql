@@ -204,6 +204,14 @@ type AuditFieldChange {
 	after: String
 }
 
+type BadgeAward {
+	id: String!
+	name: String!
+	description: String!
+	tier: String!
+	icon: String!
+}
+
 type BadgeTierCount {
 	tier: String!
 	count: Int!
@@ -589,6 +597,12 @@ type MutationRoot {
 		quickPick: Boolean
 	): RegisterResult!
 	scanSignOut(id: ID!, startTime: Int!, endTime: Int!, categoryId: ID!): Period!
+	"""
+	`scanSignOut` for a kiosk that celebrates badges: the same sign-out, plus the
+	badges the member has earned and not yet seen. Empty unless the kiosk, its
+	location and the member's home location all have gamification on.
+	"""
+	scanSignOutWithBadges(id: ID!, startTime: Int!, endTime: Int!, categoryId: ID!): ScanSignOutResult!
 	"""
 	Sign in a guest (non-member) at the kiosk. Creates an open period with no
 	person and no category, so it never enters per-person views or the NITC export.
@@ -1124,6 +1138,12 @@ type RegisterResult {
 	`CONFIRM_VISITOR`; otherwise read it from `period.person`.
 	"""
 	person: Person
+	"""
+	Badges to celebrate on this sign-in: everything the member has earned and not
+	yet seen. Empty unless the kiosk, its location and the member's home location
+	all have gamification on, and always empty for a sign-out pending.
+	"""
+	awardedBadges: [BadgeAward!]!
 }
 
 enum RegisterState {
@@ -1136,6 +1156,14 @@ enum RegisterState {
 	written; `person` says who the number belongs to.
 	"""
 	CONFIRM_VISITOR
+}
+
+type ScanSignOutResult {
+	period: Period!
+	"""
+	Badges to celebrate on this sign-out; see `RegisterResult.awardedBadges`.
+	"""
+	awardedBadges: [BadgeAward!]!
 }
 
 type SesHeadquarters {

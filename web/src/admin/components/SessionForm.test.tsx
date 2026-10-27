@@ -174,3 +174,52 @@ describe("SessionForm Category search", () => {
     },
   );
 });
+
+describe("SessionForm Badges", () => {
+  function renderForm(
+    initialConfig: Record<string, unknown>,
+    showGamification: boolean,
+  ) {
+    const onSubmit = vi.fn();
+    render(
+      <SessionForm
+        initialName="Kiosk"
+        initialConfig={JSON.stringify(initialConfig)}
+        initialHealthcheckUrl=""
+        isMutationInFlight={false}
+        onSubmit={onSubmit}
+        showGamification={showGamification}
+      />,
+    );
+    return onSubmit;
+  }
+
+  it("is not offered at a location without gamification", () => {
+    renderForm({}, false);
+    expect(
+      screen.queryByRole("checkbox", { name: /Badges/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("leaves a hidden key alone on save", async () => {
+    const onSubmit = renderForm({ gamification: true, guests: true }, false);
+    await UserEvent.setup().click(screen.getByRole("button", { name: "Save" }));
+    const formData = onSubmit.mock.calls[0][0] as FormData;
+    expect(JSON.parse(formData.get("config") as string)).toEqual({
+      gamification: true,
+      guests: true,
+    });
+  });
+
+  it.each([
+    { initial: {}, saved: { gamification: true } },
+    { initial: { gamification: true }, saved: {} },
+  ])("toggles from $initial to $saved", async ({ initial, saved }) => {
+    const onSubmit = renderForm(initial, true);
+    const user = UserEvent.setup();
+    await user.click(screen.getByRole("checkbox", { name: /Badges/ }));
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    const formData = onSubmit.mock.calls[0][0] as FormData;
+    expect(JSON.parse(formData.get("config") as string)).toEqual(saved);
+  });
+});

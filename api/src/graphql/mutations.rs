@@ -20,6 +20,8 @@ use crate::app::HasQueues;
 use crate::app::HasRealtime;
 use crate::auth;
 use crate::auth::AuthInfo;
+use crate::badge_store;
+use crate::badges;
 use crate::db;
 use crate::db::Handler;
 use crate::mail::Handler as _;
@@ -163,6 +165,17 @@ fn parse_session_config_json(
     }
 }
 
+/// Whether a kiosk's config opts it into badges (`"gamification": true`). The admin
+/// form only offers the option at a location with gamification on, but the location
+/// is checked separately on every scan, so a kiosk left switched on at a location
+/// that later opts out does nothing.
+fn session_gamification_enabled(config: &serde_json::Map<String, serde_json::Value>) -> bool {
+    config
+        .get("gamification")
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(false)
+}
+
 fn normalize_healthcheck_url(healthcheck_url: Option<&str>) -> Result<Option<String>> {
     let Some(healthcheck_url) = healthcheck_url.map(str::trim) else {
         return Ok(None);
@@ -211,6 +224,26 @@ struct RegisterResult<A: App + HasDb + Send + Sync + 'static> {
     /// Who the member number belongs to. Only populated when `state` is
     /// `CONFIRM_VISITOR`; otherwise read it from `period.person`.
     person: Option<Person<A>>,
+    /// Badges to celebrate on this sign-in: everything the member has earned and not
+    /// yet seen. Empty unless the kiosk, its location and the member's home location
+    /// all have gamification on, and always empty for a sign-out pending.
+    awarded_badges: Vec<BadgeAward>,
+}
+
+#[derive(SimpleObject)]
+struct BadgeAward {
+    id: String,
+    name: String,
+    description: String,
+    tier: String,
+    icon: String,
+}
+
+#[derive(SimpleObject)]
+struct ScanSignOutResult<A: App + HasDb + Send + Sync + 'static> {
+    period: Period<A>,
+    /// Badges to celebrate on this sign-out; see `RegisterResult.awardedBadges`.
+    awarded_badges: Vec<BadgeAward>,
 }
 
 #[derive(SimpleObject)]
@@ -296,6 +329,356 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
             }
         }
         Ok(())
+    }
+
+    async fn location_by_id(&self, id: &str) -> Result<Option<db::Location>> {
+        Ok(self
+            .app
+            .db()
+            .get_locations(&[id])
+            .await?
+            .into_iter()
+            .next()
+            .flatten())
+    }
+
+    /// The member a kiosk scan should credit with badges, or `None` when the scan
+    /// doesn't count: badges are only worked out when the kiosk's location, the kiosk
+    /// itself (its `gamification` config key) and the member's home location all have
+    /// gamification switched on. Checked cheapest-first, so a kiosk at a location that
+    /// is not taking part costs one location read and nothing else.
+    async fn kiosk_badge_member(
+        &self,
+        session_id: &str,
+        location: &db::Location,
+        person_id: &str,
+    ) -> Result<Option<db::Person>> {
+        if !location.gamification_enabled {
+            return Ok(None);
+        }
+        let session = self
+            .app
+            .db()
+            .get_sessions(&[session_id])
+            .await?
+            .into_iter()
+            .next()
+            .flatten();
+        if !session.is_some_and(|s| session_gamification_enabled(&s.config)) {
+            return Ok(None);
+        }
+        let Some(person) = self
+            .app
+            .db()
+            .get_persons(&[person_id])
+            .await?
+            .into_iter()
+            .next()
+            .flatten()
+        else {
+            return Ok(None);
+        };
+        if person.location_id != location.id
+            && !self
+                .location_by_id(&person.location_id)
+                .await?
+                .is_some_and(|home| home.gamification_enabled)
+        {
+            return Ok(None);
+        }
+        Ok(Some(person))
+    }
+
+    /// Credit a kiosk sign-in or sign-out to the member's badges, returning the awards
+    /// to celebrate. Best-effort: the scan itself has already been written, so a
+    /// failure here is logged and treated as "nothing earned" rather than failing a
+    /// sign-in or sign-out that did happen.
+    ///
+    /// `display` is false when the caller has no way to show the awards (an older
+    /// kiosk, or `scanSignOut`): they are still earned, but stay undisplayed so they
+    /// are celebrated on the member's next scan at a kiosk that can show them.
+    #[allow(clippy::too_many_arguments)]
+    async fn award_kiosk_badges(
+        &self,
+        session_id: &str,
+        location_id: &str,
+        person_id: &str,
+        event: badges::BadgeEvent,
+        sign_out_category_id: Option<&str>,
+        sign_out_times: Option<(u64, u64)>,
+        display: bool,
+    ) -> Vec<BadgeAward> {
+        let result = async {
+            let Some(location) = self.location_by_id(location_id).await? else {
+                return Ok(vec![]);
+            };
+            let Some(person) = self
+                .kiosk_badge_member(session_id, &location, person_id)
+                .await?
+            else {
+                return Ok(vec![]);
+            };
+            self.apply_badge_event(
+                &person,
+                &location,
+                event,
+                sign_out_category_id,
+                sign_out_times,
+                display,
+            )
+            .await
+        }
+        .await;
+        result.unwrap_or_else(|e: anyhow::Error| {
+            warn!("failed to work out badges for person {person_id}: {e:?}");
+            vec![]
+        })
+    }
+
+    /// Apply both halves of a directly-created (non-kiosk) period to badge progress:
+    /// a check-in at `start_time` followed by a sign-out at `end_time`. Kept as two
+    /// separate `apply_event` calls (rather than a bespoke "period" event) so the same
+    /// counters, streaks and easter eggs that kiosk check-in/sign-out feed into stay in
+    /// step for API-created periods too.
+    ///
+    /// Only when both the period's location and the member's home location have
+    /// gamification on; a location that is not taking part does no badge work at all,
+    /// and is backfilled when it is switched on. Any award earned this way stays
+    /// undisplayed until the member's next scan at a kiosk that celebrates badges, as
+    /// there is no kiosk screen here. Best-effort, like `award_kiosk_badges`: the period
+    /// has already been created.
+    async fn apply_badge_events_for_period(
+        &self,
+        person: &db::Person,
+        location: &db::Location,
+        start_time: u64,
+        end_time: u64,
+        category_id: &str,
+    ) {
+        let result = async {
+            if !location.gamification_enabled {
+                return Ok(());
+            }
+            if person.location_id != location.id
+                && !self
+                    .location_by_id(&person.location_id)
+                    .await?
+                    .is_some_and(|home| home.gamification_enabled)
+            {
+                return Ok(());
+            }
+
+            let visiting = person.location_id != location.id;
+            badge_store::update(self.app.db(), person, |_, state| {
+                let _ = badges::apply_event(
+                    state,
+                    &location.id,
+                    badges::BadgeEvent::CheckIn,
+                    start_time,
+                    visiting,
+                    None,
+                    None,
+                );
+                let _ = badges::apply_event(
+                    state,
+                    &location.id,
+                    badges::BadgeEvent::SignOut,
+                    end_time,
+                    visiting,
+                    Some(category_id),
+                    Some((start_time, end_time)),
+                );
+                Some(())
+            })
+            .await?;
+            Ok(())
+        }
+        .await;
+        if let Err(e) = result {
+            let e: anyhow::Error = e;
+            warn!("failed to work out badges for person {}: {e:?}", person.id);
+        }
+    }
+
+    /// Apply one kiosk event to a member's badge state and save it. With `display`, also
+    /// returns every award not yet celebrated — including ones earned silently, by the
+    /// nightly evaluator or a directly-created period — and marks them celebrated.
+    async fn apply_badge_event(
+        &self,
+        person: &db::Person,
+        location: &db::Location,
+        event: badges::BadgeEvent,
+        sign_out_category_id: Option<&str>,
+        sign_out_times: Option<(u64, u64)>,
+        display: bool,
+    ) -> Result<Vec<BadgeAward>> {
+        let now = crate::clock::now_sec();
+        let visiting = person.location_id != location.id;
+        // `None` when the member's badge state is unreadable: nothing was saved, so there
+        // is nothing to celebrate.
+        let awards_to_display = badge_store::update(self.app.db(), person, |_, state| {
+            let _ = badges::apply_event(
+                state,
+                &location.id,
+                event.clone(),
+                now,
+                visiting,
+                sign_out_category_id,
+                sign_out_times,
+            );
+            if !display {
+                return Some(vec![]);
+            }
+            let undisplayed = badges::undisplayed_awards_all_locations(state);
+            let badge_ids: Vec<String> = undisplayed
+                .iter()
+                .map(|award| award.badge.id.clone())
+                .collect();
+            badges::mark_awards_displayed_all_locations(state, &badge_ids);
+            Some(undisplayed)
+        })
+        .await?
+        .unwrap_or_default();
+
+        // A "passport" (first-signin-at-location) badge's display name is the name of the
+        // location it was earned at, which — now that awards can surface at a later,
+        // different location — is not necessarily `location` (the current scan location).
+        // Resolve each such badge's actual location by ID rather than assuming it's here.
+        let award_location_ids: Vec<&str> = awards_to_display
+            .iter()
+            .filter_map(|award| badges::first_signin_badge_location_id(&award.badge.id))
+            .collect();
+        let award_location_name_by_id: std::collections::HashMap<String, String> =
+            if award_location_ids.is_empty() {
+                std::collections::HashMap::new()
+            } else {
+                self.app
+                    .db()
+                    .get_locations(&award_location_ids)
+                    .await?
+                    .into_iter()
+                    .flatten()
+                    .map(|loc| (loc.id, loc.name))
+                    .collect()
+            };
+
+        Ok(awards_to_display
+            .into_iter()
+            .map(|award| {
+                let badge_id = award.badge.id.clone();
+                let (name, description) = if let Some(badge_location_id) =
+                    badges::first_signin_badge_location_id(&badge_id)
+                {
+                    match award_location_name_by_id.get(badge_location_id) {
+                        Some(badge_location_name) => (
+                            badge_location_name.clone(),
+                            format!("Visited {}", badge_location_name),
+                        ),
+                        None => (award.badge.name, award.badge.description),
+                    }
+                } else {
+                    (award.badge.name, award.badge.description)
+                };
+
+                BadgeAward {
+                    id: badge_id,
+                    name,
+                    description,
+                    tier: award.badge.tier,
+                    icon: award.badge.icon,
+                }
+            })
+            .collect())
+    }
+
+    /// The sign-out both kiosk sign-out mutations share: writes the end time and
+    /// category, queues the NITC export and tells the location's kiosks. Returns the
+    /// updated period.
+    async fn sign_out_at_kiosk(
+        &self,
+        ctx: &Context<'_>,
+        id: &ID,
+        start_time: i64,
+        end_time: i64,
+        category_id: &ID,
+    ) -> Result<db::Period> {
+        require_writable(ctx)?;
+        if start_time >= end_time {
+            // Surfaced verbatim on the kiosk transaction log, so keep it readable.
+            return Err(anyhow!("start time must be before end time"));
+        }
+        let session_id = match ctx.data_opt::<AuthInfo>() {
+            Some(AuthInfo::Session { id, .. }) => id.clone(),
+            _ => return Err(anyhow!("Cannot call scan_sign_out without session auth")),
+        };
+        let rec = self.app.db().get_periods(&[id]).await?;
+        let mut rec = rec
+            .into_iter()
+            .next()
+            .flatten()
+            .ok_or_else(|| anyhow!("Period with ID {:?} missing", id))?;
+        require_location_write_access(ctx, &rec.location_id)?;
+        self.app
+            .db()
+            .get_categories(&[category_id])
+            .await?
+            .into_iter()
+            .next()
+            .flatten()
+            .ok_or_else(|| anyhow!("Category {:?} not found", category_id))?;
+        let new_version = self
+            .app
+            .db()
+            .update_period(
+                &rec.id,
+                db::PeriodUpdateShape::TimeCategory {
+                    start_time,
+                    end_time,
+                    category_id,
+                    signed_out_session_id: Some(&session_id),
+                    // Kiosk sign-out: leave any existing comment untouched.
+                    comment: None,
+                },
+            )
+            .await?;
+        rec.start_time = start_time as u64;
+        rec.end_time = Some(end_time as u64);
+        rec.category_id = Some(category_id.to_string());
+        rec.signed_out_session_id = Some(session_id);
+        rec.version = new_version;
+
+        // rec is the pre-update record (only local field copies were changed above), so
+        // rec.nitc_event_id is still the event the period was assigned to before this sign-out.
+        self.enqueue_nitc_export(&rec.id, rec.nitc_event_id.as_deref())
+            .await?;
+        self.publish_period_closed(ctx, &rec.location_id, &rec, false)
+            .await;
+        Ok(rec)
+    }
+
+    /// Credit a kiosk sign-out to the member's badges (see `award_kiosk_badges`).
+    /// Guests carry no `person_id`, so there is nobody to credit.
+    async fn award_sign_out_badges(
+        &self,
+        ctx: &Context<'_>,
+        rec: &db::Period,
+        display: bool,
+    ) -> Vec<BadgeAward> {
+        let (Some(person_id), Some(AuthInfo::Session { id: session_id, .. })) =
+            (rec.person_id.as_deref(), ctx.data_opt::<AuthInfo>())
+        else {
+            return vec![];
+        };
+        self.award_kiosk_badges(
+            session_id,
+            &rec.location_id,
+            person_id,
+            badges::BadgeEvent::SignOut,
+            rec.category_id.as_deref(),
+            rec.end_time.map(|end_time| (rec.start_time, end_time)),
+            display,
+        )
+        .await
     }
 
     /// Enqueue a Phase 1 (period) NITC export for a mutated period.
@@ -399,6 +782,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
             period: Some(Period::new(period)),
             quick_pick,
             person: None,
+            awarded_badges: vec![],
         }
     }
 
@@ -1043,7 +1427,8 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
             return Err(anyhow!("start_time must be before end_time"));
         }
         require_location_write_access(ctx, &location_id)?;
-        self.app
+        let location = self
+            .app
             .db()
             .get_locations(&[&location_id])
             .await?
@@ -1051,7 +1436,8 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
             .next()
             .flatten()
             .ok_or_else(|| anyhow!("Location {:?} not found", location_id))?;
-        self.app
+        let person = self
+            .app
             .db()
             .get_persons(&[&person_id])
             .await?
@@ -1083,6 +1469,18 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
 
         // Newly created period is not yet assigned to any NITC event.
         self.enqueue_nitc_export(&rec.id, None).await?;
+
+        // A directly-created period represents a completed check-in/sign-out pair that
+        // never went through a kiosk, so feed both halves into badge progress here.
+        self.apply_badge_events_for_period(
+            &person,
+            &location,
+            start_time as u64,
+            end_time as u64,
+            &category_id,
+        )
+        .await;
+
         Ok(Period::new(rec))
     }
 
@@ -2275,6 +2673,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
                 period: None,
                 quick_pick: None,
                 person: None,
+                awarded_badges: vec![],
             });
         };
 
@@ -2318,6 +2717,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
                         period: None,
                         quick_pick: None,
                         person: Some(person),
+                        awarded_badges: vec![],
                     });
                 }
             }
@@ -2330,11 +2730,27 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
                 .await?;
             self.publish_period_opened(ctx, location_id, &rec).await;
 
+            // A kiosk that predates badges doesn't select `awardedBadges`; anything earned
+            // stays uncelebrated until it is shown somewhere that can.
+            let display = ctx.look_ahead().field("awardedBadges").exists();
+            let awarded_badges = self
+                .award_kiosk_badges(
+                    session_id,
+                    location_id,
+                    &person_id,
+                    badges::BadgeEvent::CheckIn,
+                    None,
+                    None,
+                    display,
+                )
+                .await;
+
             Ok(RegisterResult {
                 state: RegisterState::SignedIn,
                 period: Some(Period::new(rec)),
                 quick_pick: None,
                 person: None,
+                awarded_badges,
             })
         }
     }
@@ -2400,58 +2816,35 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         end_time: i64,
         category_id: ID,
     ) -> Result<Period<A>> {
-        require_writable(ctx)?;
-        if start_time >= end_time {
-            // Surfaced verbatim on the kiosk transaction log, so keep it readable.
-            return Err(anyhow!("start time must be before end time"));
-        }
-        let session_id = match ctx.data_opt::<AuthInfo>() {
-            Some(AuthInfo::Session { id, .. }) => id.clone(),
-            _ => return Err(anyhow!("Cannot call scan_sign_out without session auth")),
-        };
-        let rec = self.app.db().get_periods(&[&id]).await?;
-        let mut rec = rec
-            .into_iter()
-            .next()
-            .flatten()
-            .ok_or_else(|| anyhow!("Period with ID {:?} missing", id))?;
-        require_location_write_access(ctx, &rec.location_id)?;
-        self.app
-            .db()
-            .get_categories(&[&category_id])
-            .await?
-            .into_iter()
-            .next()
-            .flatten()
-            .ok_or_else(|| anyhow!("Category {:?} not found", category_id))?;
-        let new_version = self
-            .app
-            .db()
-            .update_period(
-                &rec.id,
-                db::PeriodUpdateShape::TimeCategory {
-                    start_time,
-                    end_time,
-                    category_id: &category_id,
-                    signed_out_session_id: Some(&session_id),
-                    // Kiosk sign-out: leave any existing comment untouched.
-                    comment: None,
-                },
-            )
+        let rec = self
+            .sign_out_at_kiosk(ctx, &id, start_time, end_time, &category_id)
             .await?;
-        rec.start_time = start_time as u64;
-        rec.end_time = Some(end_time as u64);
-        rec.category_id = Some(category_id.to_string());
-        rec.signed_out_session_id = Some(session_id);
-        rec.version = new_version;
-
-        // rec is the pre-update record (only local field copies were changed above), so
-        // rec.nitc_event_id is still the event the period was assigned to before this sign-out.
-        self.enqueue_nitc_export(&rec.id, rec.nitc_event_id.as_deref())
-            .await?;
-        self.publish_period_closed(ctx, &rec.location_id, &rec, false)
-            .await;
+        // A kiosk calling this one can't show awards, so anything earned waits for the
+        // member's next scan at a kiosk that can (one using `scanSignOutWithBadges`).
+        self.award_sign_out_badges(ctx, &rec, false).await;
         Ok(Period::new(rec))
+    }
+
+    /// `scanSignOut` for a kiosk that celebrates badges: the same sign-out, plus the
+    /// badges the member has earned and not yet seen. Empty unless the kiosk, its
+    /// location and the member's home location all have gamification on.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Session)")]
+    async fn scan_sign_out_with_badges(
+        &self,
+        ctx: &Context<'_>,
+        id: ID,
+        start_time: i64,
+        end_time: i64,
+        category_id: ID,
+    ) -> Result<ScanSignOutResult<A>> {
+        let rec = self
+            .sign_out_at_kiosk(ctx, &id, start_time, end_time, &category_id)
+            .await?;
+        let awarded_badges = self.award_sign_out_badges(ctx, &rec, true).await;
+        Ok(ScanSignOutResult {
+            period: Period::new(rec),
+            awarded_badges,
+        })
     }
 
     /// Sign in a guest (non-member) at the kiosk. Creates an open period with no
@@ -2635,7 +3028,6 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
             );
             email_config.insert(loc_id, serde_json::Value::Object(inner));
         }
-
         self.app
             .db()
             .update_user(&user_id, db::UserUpdateShape::EmailConfig { email_config })

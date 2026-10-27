@@ -27,6 +27,9 @@ function SessionsEditForm() {
           name
           config
           healthcheckUrl
+          location {
+            gamificationEnabled
+          }
           clientInfo {
             env
             origin
@@ -113,6 +116,7 @@ function SessionsEditForm() {
         initialHealthcheckUrl={session.healthcheckUrl ?? ""}
         isMutationInFlight={isMutationInFlight}
         onSubmit={handleSubmit}
+        showGamification={session.location.gamificationEnabled}
       />
 
       <h2 className="mt-8 mb-2 text-lg font-semibold">Kiosk diagnostics</h2>
