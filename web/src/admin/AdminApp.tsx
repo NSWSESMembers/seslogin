@@ -25,6 +25,7 @@ import ApiTokenEdit from "./pages/ApiTokenEdit";
 import MembersList from "./pages/MembersList";
 import MembersNew from "./pages/MembersNew";
 import MembersEdit from "./pages/MembersEdit";
+import MembersBadges from "./pages/MembersBadges";
 import SessionsList from "./pages/SessionsList";
 import SessionsEdit from "./pages/SessionsEdit";
 import ActivityList from "./pages/ActivityList";
@@ -40,6 +41,7 @@ import ActivityLastSeen from "./pages/ActivityLastSeen";
 import AuditLog from "./pages/AuditLog";
 import Reports from "./pages/Reports";
 import Help from "./pages/Help";
+import ReportsBadges from "./pages/ReportsBadges";
 import SettingsPasskeys from "./pages/SettingsPasskeys";
 import SettingsConnectedApps from "./pages/SettingsConnectedApps";
 import SettingsDailyEmail from "./pages/SettingsDailyEmail";
@@ -106,6 +108,7 @@ export default function AdminApp() {
           <Route index element={<MembersList />} />
           <Route path="new" element={<MembersNew />} />
           <Route path="activity/:memberId" element={<ActivityListMember />} />
+          <Route path="badges/:memberId" element={<MembersBadges />} />
           <Route path=":memberId" element={<MembersEdit />} />
         </Route>
         <Route path="sessions">
@@ -126,6 +129,7 @@ export default function AdminApp() {
         <Route path="audit" element={<AuditLog />} />
         <Route path="reports">
           <Route index element={<Reports />} />
+          <Route path="badges" element={<ReportsBadges />} />
         </Route>
         <Route path="help" element={<Help />} />
         <Route path="settings">
