@@ -96,14 +96,5 @@ jobs:
       - name: Deploy to S3
         run: aws s3 sync --follow-symlinks --delete ./web/dist s3://seslogin-qa-web-641079927221
 
-      # The distribution ID is Terraform's qa_cloudfront_distribution_id output,
-      # held in a repo variable rather than hard-coded like the older environments.
       - name: Invalidate CloudFront
-        env:
-          DISTRIBUTION_ID: ${{ vars.QA_CLOUDFRONT_DISTRIBUTION_ID }}
-        run: |
-          if [ -z "$DISTRIBUTION_ID" ]; then
-            echo "::error::Set the QA_CLOUDFRONT_DISTRIBUTION_ID repo variable (terraform output qa_cloudfront_distribution_id)"
-            exit 1
-          fi
-          aws cloudfront create-invalidation --distribution-id "$DISTRIBUTION_ID" --paths "/*"
+        run: aws cloudfront create-invalidation --distribution-id "E32UCWG7TSEQ6K" --paths "/*"

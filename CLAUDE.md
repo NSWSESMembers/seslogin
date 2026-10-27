@@ -222,9 +222,9 @@ Auto-deployment is split by branch, one workflow per branch under `.github/workf
 | `test` | Test API Lambda (`seslogin-test-api`) + web to `test.seslogin.com` |
 | `workers` | Background/worker Lambdas: sync/dispatcher/checker/nitc-export/activity-summary/sync-locations |
 
-A release usually goes `test` (if it's risky) → `qa` → `preprod` → `prod`. The following Lambdas are only deployed from the `workers` branch, not from `test`, `qa`, `preprod` or `prod`, which each deploy only their API Lambda + web: sync (`seslogin-sync-members`), dispatcher (`seslogin-dispatcher`), checker (`seslogin-checker`), nitc-export (`seslogin-nitc-export`), activity-summary (`seslogin-activity-summary`), and sync-locations (`seslogin-sync-locations`).
+A release usually goes `test` (if it's risky) → `qa` → `preprod` → `prod`. The following Lambdas are only deployed from the `workers` branch, not from `test`, `qa`, `preprod` or `prod`, which each deploy only their API Lambda + web: sync (`seslogin-sync-members`), dispatcher (`seslogin-dispatcher`), checker (`seslogin-checker`), nitc-export (`seslogin-nitc-export`), activity-summary (`seslogin-activity-summary`), sync-locations (`seslogin-sync-locations`), badge-nightly (`seslogin-badge-nightly`), and badge-digest (`seslogin-badge-digest`).
 
-`deploy-qa.yml` invalidates the CloudFront distribution named by the `QA_CLOUDFRONT_DISTRIBUTION_ID` repo variable (Terraform output `qa_cloudfront_distribution_id`); the other workflows hard-code theirs.
+A new Lambda deployed by a workflow must also be added to the `github_lambda_deploy` policy in `infra/iam_oidc.tf` (and applied) before that workflow first runs, or its deploy step fails with AccessDenied.
 
 #### Branch model and history rewriting
 

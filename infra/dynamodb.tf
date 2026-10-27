@@ -816,8 +816,8 @@ resource "aws_iam_role_policy" "badge_nightly_lambda_dynamodb" {
       Effect = "Allow"
       Action = local.dynamodb_actions
       Resource = [
-        "arn:aws:dynamodb:${local.region}:${local.account_id}:table/${var.db_prefix_test}*",
-        "arn:aws:dynamodb:${local.region}:${local.account_id}:table/${var.db_prefix_test}*/index/*",
+        "arn:aws:dynamodb:${local.region}:${local.account_id}:table/${var.db_prefix}*",
+        "arn:aws:dynamodb:${local.region}:${local.account_id}:table/${var.db_prefix}*/index/*",
       ]
     }]
   })
@@ -833,8 +833,8 @@ resource "aws_iam_role_policy" "badge_digest_lambda_dynamodb" {
       Effect = "Allow"
       Action = local.dynamodb_actions
       Resource = [
-        "arn:aws:dynamodb:${local.region}:${local.account_id}:table/${var.db_prefix_test}*",
-        "arn:aws:dynamodb:${local.region}:${local.account_id}:table/${var.db_prefix_test}*/index/*",
+        "arn:aws:dynamodb:${local.region}:${local.account_id}:table/${var.db_prefix}*",
+        "arn:aws:dynamodb:${local.region}:${local.account_id}:table/${var.db_prefix}*/index/*",
       ]
     }]
   })

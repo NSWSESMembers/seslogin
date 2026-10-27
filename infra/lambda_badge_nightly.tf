@@ -9,10 +9,7 @@ resource "aws_lambda_function" "badge_nightly" {
   environment {
     variables = {
       DB_BACKEND = "dynamodb"
-      # The test tables, not prod: badges run on test for a while before they
-      # touch production data. Switch to var.db_prefix (and the IAM policy in
-      # dynamodb.tf with it) to roll out.
-      DB_PREFIX = var.db_prefix_test
+      DB_PREFIX  = var.db_prefix
     }
   }
 
