@@ -209,7 +209,7 @@ async fn main() -> Result<()> {
     );
 
     println!(
-        "sync complete mode={} adopt={} absence={} processed_locations={} skipped_locations={} ses_people_seen={} adopts={} creates={} updates={} undeletes={} soft_deletes={} noops={} blocked_manual_conflicts={} total_mutations={} emails_seen={} emails_updated={} emails_unmatched={} emails_noops={} ses_deleted_flags_seen={} missing_marked={} missing_cleared={} missing_waiting={} absence_deletes_suppressed={} absence_skipped_locations={}",
+        "sync complete mode={} adopt={} absence={} processed_locations={} skipped_locations={} ses_people_seen={} adopts={} creates={} updates={} undeletes={} soft_deletes={} noops={} blocked_manual_conflicts={} total_mutations={} emails_seen={} emails_updated={} emails_unmatched={} emails_noops={} ses_deleted_flags_seen={} missing_marked={} missing_cleared={} missing_waiting={} absence_deletes_suppressed={} absence_skipped_locations={} capability_tag_updates={}",
         if cli.apply { "apply" } else { "dry-run" },
         adopt,
         absence.enabled,
@@ -234,6 +234,7 @@ async fn main() -> Result<()> {
         stats.missing_waiting,
         stats.absence_deletes_suppressed,
         stats.absence_skipped_locations,
+        stats.capability_tag_updates,
     );
 
     Ok(())

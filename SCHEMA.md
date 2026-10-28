@@ -153,6 +153,7 @@ The `start_time` sort key across the location/person GSIs means DynamoDB returns
 
 - `registration_number` (S) — the SES member registration number (zero-padded)
 - `ses_api_person_id` (S) — absent until member sync links the record
+- `capability_tags` (S) — JSON text of the member's SES API `capabilityTags` (qualifications such as Job Ready, flood rescue levels, driver), `[{"id", "name", "description"}]` sorted by id. Written only by member sync; absent when SES lists none
 - `deleted` (Bool)
 - `missing_since` (N) — unix seconds at which member sync first saw this person absent from
   their location's SES payload. Absent on a healthy record; cleared by any sync that sees

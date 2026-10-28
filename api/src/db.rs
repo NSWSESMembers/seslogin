@@ -178,6 +178,10 @@ pub struct Person {
     /// `None` for a member who has never been evaluated, and for every member of a
     /// location that has not opted into gamification.
     pub badge_state: Option<String>,
+    /// The member's SES capability tags (qualifications), exactly as stored: JSON text,
+    /// `[{"id", "name", "description"}]` sorted by id. Written only by member sync;
+    /// `None` when SES lists none.
+    pub capability_tags: Option<String>,
     pub deleted: Option<u64>,
     /// Unix seconds at which member sync first observed this person missing from their
     /// location's SES payload. Cleared by any sync that sees them again, and on
@@ -209,6 +213,10 @@ pub enum PersonUpdateShape<'a> {
     },
     Email {
         email: Option<&'a str>,
+    },
+    /// Replaces the capability tags JSON text; `None` removes it.
+    CapabilityTags {
+        capability_tags: Option<&'a str>,
     },
     /// `Some` stamps the missing marker, `None` removes it.
     MissingSince {

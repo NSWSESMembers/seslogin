@@ -632,6 +632,22 @@ fn short_date(epoch_secs: u64) -> String {
     }
 }
 
+/// The tag names from a person's stored capability tags JSON, or the raw text if it
+/// does not parse.
+fn capability_tag_names(json: Option<&str>) -> String {
+    let Some(json) = json else {
+        return "-".to_string();
+    };
+    match serde_json::from_str::<Vec<serde_json::Value>>(json) {
+        Ok(tags) => tags
+            .iter()
+            .filter_map(|t| t.get("name").and_then(|n| n.as_str()))
+            .collect::<Vec<_>>()
+            .join(", "),
+        Err(_) => json.to_string(),
+    }
+}
+
 fn opt_str(s: &Option<String>) -> String {
     s.clone().unwrap_or_else(|| "-".to_string())
 }
@@ -790,6 +806,7 @@ async fn show_persons(db: &impl Handler, persons: &[Person]) {
             ses_api_person_id,
             email,
             badge_state,
+            capability_tags,
             deleted,
             missing_since,
             created_at,
@@ -808,6 +825,10 @@ async fn show_persons(db: &impl Handler, persons: &[Person]) {
             (
                 "badges_earned",
                 badges_earned_str(id, badge_state.as_deref()),
+            ),
+            (
+                "capability_tags",
+                capability_tag_names(capability_tags.as_deref()),
             ),
             ("deleted", opt_ts(*deleted)),
             ("missing_since", opt_ts(*missing_since)),

@@ -1,7 +1,7 @@
 use crate::audit::AuditingHandler;
 use crate::db::{self, Handler as _};
 use crate::dynamodb;
-use crate::ses_api::{SesClient, SesPerson, SesSearchClient};
+use crate::ses_api::{SesCapabilityTag, SesClient, SesPerson, SesSearchClient};
 use anyhow::{Context, Result, anyhow};
 use std::collections::{HashMap, HashSet};
 use tracing::{error, info, warn};
@@ -96,6 +96,8 @@ pub struct RunStats {
     pub absence_deletes_suppressed: usize,
     /// Locations where a guard suppressed the whole absence pass.
     pub absence_skipped_locations: usize,
+    /// Capability tag writes, kept out of `max_mutations` like absence writes.
+    pub capability_tag_updates: usize,
 }
 
 impl RunStats {
@@ -126,6 +128,7 @@ enum PlannedChange {
         registration_number: String,
         first_name: String,
         last_name: String,
+        capability_tags: Option<String>,
     },
     Update {
         person_id: String,
@@ -168,6 +171,44 @@ enum PlannedChange {
         ses_api_person_id: String,
         registration_number: Option<String>,
     },
+    /// Replace a matched person's capability tags. A created person's are written as
+    /// part of [`PlannedChange::Create`].
+    SetCapabilityTags {
+        person_id: String,
+        location_id: String,
+        registration_number: String,
+        capability_tags: Option<String>,
+    },
+}
+
+/// The JSON text stored for a person's capability tags: every tag with an id, once,
+/// sorted by id, so that a reordered payload is not a change. `None` when there are none.
+fn capability_tags_json(tags: Option<&[SesCapabilityTag]>) -> Option<String> {
+    #[derive(serde::Serialize)]
+    struct Stored<'a> {
+        id: i64,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        name: Option<&'a str>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        description: Option<&'a str>,
+    }
+    fn non_blank(v: &Option<String>) -> Option<&str> {
+        v.as_deref().map(str::trim).filter(|s| !s.is_empty())
+    }
+    let mut stored: Vec<Stored<'_>> = tags
+        .unwrap_or_default()
+        .iter()
+        .filter_map(|t| {
+            Some(Stored {
+                id: t.id?,
+                name: non_blank(&t.name),
+                description: non_blank(&t.description),
+            })
+        })
+        .collect();
+    stored.sort_by_key(|t| t.id);
+    stored.dedup_by_key(|t| t.id);
+    (!stored.is_empty()).then(|| serde_json::to_string(&stored).expect("capability tags serialize"))
 }
 
 fn normalize_names(person: &SesPerson) -> Result<(String, String)> {
@@ -227,10 +268,25 @@ fn print_planned_change(change: &PlannedChange, dry_run: bool) {
             registration_number,
             first_name,
             last_name,
+            ..
         } => {
             println!(
                 "[{mode}] create person location={} sesApiPersonId={} registrationNumber={} firstName='{}' lastName='{}'",
                 location_id, ses_api_person_id, registration_number, first_name, last_name
+            );
+        }
+        PlannedChange::SetCapabilityTags {
+            person_id,
+            location_id,
+            registration_number,
+            capability_tags,
+        } => {
+            println!(
+                "[{mode}] set capability tags person id={} location={} registrationNumber={} tags={}",
+                person_id,
+                location_id,
+                registration_number,
+                capability_tags.as_deref().unwrap_or("-")
             );
         }
         PlannedChange::Update {
@@ -330,6 +386,7 @@ struct SesPersonWorkItem {
     first_name: String,
     last_name: String,
     unit_ses_id: Option<i64>,
+    capability_tags: Option<String>,
 }
 
 /// One location's SES payload, reduced to the work items the planner acts on plus the
@@ -446,6 +503,7 @@ fn parse_ses_payload(
             first_name,
             last_name,
             unit_ses_id: ses_person.headquarters_id(),
+            capability_tags: capability_tags_json(ses_person.capability_tags.as_deref()),
         };
 
         if let Some(existing_item) = ses_items_by_registration_number.get_mut(&registration_number)
@@ -527,6 +585,15 @@ fn build_plans_for_location(
                     existing_person_id
                 )
             })?;
+
+            if existing.capability_tags != item.capability_tags {
+                plans.push(PlannedChange::SetCapabilityTags {
+                    person_id: existing.id.clone(),
+                    location_id: location_id.to_string(),
+                    registration_number: item.registration_number.clone(),
+                    capability_tags: item.capability_tags.clone(),
+                });
+            }
 
             let needs_update = existing.deleted.is_some()
                 || existing.first_name != item.first_name
@@ -637,6 +704,7 @@ fn build_plans_for_location(
             registration_number: item.registration_number.clone(),
             first_name: item.first_name.clone(),
             last_name: item.last_name.clone(),
+            capability_tags: item.capability_tags.clone(),
         });
     }
 
@@ -937,6 +1005,7 @@ async fn apply_changes<H: db::Handler>(
                 registration_number,
                 first_name,
                 last_name,
+                capability_tags,
             } => {
                 let person = db
                     .create_person(location_id, first_name, last_name, registration_number)
@@ -960,6 +1029,32 @@ async fn apply_changes<H: db::Handler>(
                         person.id, ses_api_person_id
                     )
                 })?;
+                if capability_tags.is_some() {
+                    db.update_person(
+                        &person.id,
+                        db::PersonUpdateShape::CapabilityTags {
+                            capability_tags: capability_tags.as_deref(),
+                        },
+                    )
+                    .await
+                    .with_context(|| {
+                        format!("Setting capability tags for person id={}", person.id)
+                    })?;
+                }
+            }
+            PlannedChange::SetCapabilityTags {
+                person_id,
+                capability_tags,
+                ..
+            } => {
+                db.update_person(
+                    person_id,
+                    db::PersonUpdateShape::CapabilityTags {
+                        capability_tags: capability_tags.as_deref(),
+                    },
+                )
+                .await
+                .with_context(|| format!("Setting capability tags for person id={}", person_id))?;
             }
             PlannedChange::Update {
                 person_id,
@@ -1419,6 +1514,7 @@ async fn run_inner(config: SyncConfig) -> Result<RunStats> {
         let mut creates = 0usize;
         let mut updates = 0usize;
         let mut undeletes = 0usize;
+        let mut capability_tag_updates = 0usize;
 
         for change in &plans {
             match change {
@@ -1426,6 +1522,9 @@ async fn run_inner(config: SyncConfig) -> Result<RunStats> {
                 PlannedChange::Create { .. } => creates += 1,
                 PlannedChange::Update { .. } => updates += 1,
                 PlannedChange::UndeleteAndUpdate { .. } => undeletes += 1,
+                // Like absence writes, kept out of the tripwire: tags cannot damage the
+                // roster, and their first sync rewrites nearly every member of a location.
+                PlannedChange::SetCapabilityTags { .. } => capability_tag_updates += 1,
                 // Absence writes are counted by the absence pass and deliberately kept out
                 // of the max_mutations tripwire — see RunStats::total_mutations.
                 PlannedChange::MarkMissing { .. }
@@ -1453,6 +1552,7 @@ async fn run_inner(config: SyncConfig) -> Result<RunStats> {
         stats.creates += creates;
         stats.updates += updates;
         stats.undeletes += undeletes;
+        stats.capability_tag_updates += capability_tag_updates;
         stats.soft_deletes += absence_deleted;
         stats.missing_marked += absence_marked;
         stats.missing_cleared += absence_cleared;
@@ -1525,6 +1625,7 @@ mod tests {
             ses_api_person_id: ses_id.map(str::to_string),
             email: None,
             badge_state: None,
+            capability_tags: None,
             deleted: None,
             missing_since,
             created_at: None,
@@ -1543,6 +1644,7 @@ mod tests {
             headquarters: Some(SesPersonHeadquarters {
                 id: Some(HQ.parse().unwrap()),
             }),
+            capability_tags: None,
         }
     }
 
@@ -2094,6 +2196,7 @@ mod tests {
                 registration_number: "R9".to_string(),
                 first_name: "First".to_string(),
                 last_name: "Last".to_string(),
+                capability_tags: None,
             }],
             ..Default::default()
         };
@@ -2213,7 +2316,149 @@ mod tests {
             first_name: "First".to_string(),
             last_name: "Last".to_string(),
             unit_ses_id: Some(HQ.parse().unwrap()),
+            capability_tags: None,
         }
+    }
+
+    fn tag(id: i64, name: &str) -> SesCapabilityTag {
+        SesCapabilityTag {
+            id: Some(id),
+            name: Some(name.to_string()),
+            description: None,
+        }
+    }
+
+    #[test]
+    fn capability_tags_are_sorted_deduped_and_empty_is_absent() {
+        let a = capability_tags_json(Some(&[tag(613, "JR"), tag(12, "FRL2-ACC"), tag(613, "JR")]));
+        let b = capability_tags_json(Some(&[tag(12, "FRL2-ACC"), tag(613, "JR")]));
+        assert_eq!(a, b);
+        assert_eq!(
+            a.as_deref(),
+            Some(r#"[{"id":12,"name":"FRL2-ACC"},{"id":613,"name":"JR"}]"#)
+        );
+        assert_eq!(capability_tags_json(Some(&[])), None);
+        assert_eq!(capability_tags_json(None), None);
+        let no_id = SesCapabilityTag {
+            id: None,
+            name: Some("X".to_string()),
+            description: None,
+        };
+        assert_eq!(capability_tags_json(Some(&[no_id])), None);
+    }
+
+    #[test]
+    fn capability_tags_parse_from_the_payload() {
+        let people: Vec<SesPerson> = serde_json::from_str(
+            r#"[{"id": 1, "registrationNumber": "R1", "firstName": "A", "lastName": "B",
+                 "headquarters": {"id": 42},
+                 "capabilityTags": [{"id": 613, "name": "JR", "description": "Job Ready"}]},
+                {"id": 2, "registrationNumber": "R2", "firstName": "C", "lastName": "D",
+                 "headquarters": {"id": 42}, "capabilityTags": null}]"#,
+        )
+        .expect("payload parses");
+        let (parsed, _) = parse(&people);
+        let tags: HashMap<_, _> = parsed
+            .items
+            .iter()
+            .map(|i| (i.registration_number.as_str(), i.capability_tags.clone()))
+            .collect();
+        assert_eq!(
+            tags["R1"].as_deref(),
+            Some(r#"[{"id":613,"name":"JR","description":"Job Ready"}]"#)
+        );
+        assert_eq!(tags["R2"], None);
+    }
+
+    fn plan_one(existing: db::Person, item: SesPersonWorkItem) -> (Vec<PlannedChange>, RunStats) {
+        let mut people_by_id = HashMap::new();
+        people_by_id.insert(existing.id.clone(), existing.clone());
+        let mut by_ses_id = HashMap::new();
+        by_ses_id.insert(item.ses_api_person_id.clone(), existing.id.clone());
+        let mut stats = RunStats::default();
+        let plans = build_plans_for_location(
+            "loc1",
+            &[item],
+            &people_by_id,
+            &by_ses_id,
+            &HashMap::new(),
+            false,
+            &mut stats,
+        )
+        .expect("plans build");
+        (plans, stats)
+    }
+
+    #[test]
+    fn changed_tags_alone_plan_only_a_tag_write() {
+        let mut item = work_item("1", "R1");
+        item.capability_tags = Some(r#"[{"id":613,"name":"JR"}]"#.to_string());
+        let (plans, stats) = plan_one(person("p1", Some("1"), Some("R1"), None), item);
+        assert_eq!(plans.len(), 1);
+        assert!(matches!(
+            &plans[0],
+            PlannedChange::SetCapabilityTags {
+                capability_tags: Some(_),
+                ..
+            }
+        ));
+        // The roster itself is unchanged.
+        assert_eq!(stats.noops, 1);
+    }
+
+    #[test]
+    fn unchanged_tags_plan_nothing_and_dropped_tags_are_removed() {
+        let stored = r#"[{"id":613,"name":"JR"}]"#.to_string();
+        let mut existing = person("p1", Some("1"), Some("R1"), None);
+        existing.capability_tags = Some(stored.clone());
+
+        let mut item = work_item("1", "R1");
+        item.capability_tags = Some(stored);
+        let (plans, _) = plan_one(existing.clone(), item);
+        assert!(plans.is_empty());
+
+        let (plans, _) = plan_one(existing, work_item("1", "R1"));
+        assert!(matches!(
+            &plans[..],
+            [PlannedChange::SetCapabilityTags {
+                capability_tags: None,
+                ..
+            }]
+        ));
+    }
+
+    #[test]
+    fn created_person_carries_their_tags() {
+        let mut item = work_item("1", "R1");
+        item.capability_tags = Some(r#"[{"id":613,"name":"JR"}]"#.to_string());
+        let mut stats = RunStats::default();
+        let plans = build_plans_for_location(
+            "loc1",
+            &[item],
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            false,
+            &mut stats,
+        )
+        .expect("plans build");
+        assert!(matches!(
+            &plans[..],
+            [PlannedChange::Create {
+                capability_tags: Some(_),
+                ..
+            }]
+        ));
+    }
+
+    #[test]
+    fn tag_writes_stay_out_of_the_tripwire() {
+        let stats = RunStats {
+            capability_tag_updates: 10_000,
+            updates: 3,
+            ..Default::default()
+        };
+        assert_eq!(stats.total_mutations(), 3);
     }
 
     /// Rows that used to hit the removed `deleted: true` branch now flow through the

@@ -23,6 +23,16 @@ pub struct SesPerson {
     pub full_name: Option<String>,
     pub deleted: Option<bool>,
     pub headquarters: Option<SesPersonHeadquarters>,
+    /// SES qualifications (Job Ready, flood rescue levels, driver, chainsaw, ...).
+    #[serde(rename = "capabilityTags")]
+    pub capability_tags: Option<Vec<SesCapabilityTag>>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct SesCapabilityTag {
+    pub id: Option<i64>,
+    pub name: Option<String>,
+    pub description: Option<String>,
 }
 
 impl SesPerson {

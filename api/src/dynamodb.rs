@@ -386,6 +386,7 @@ impl TryInto<Person> for Item {
             // mirror every nested counter as an AttributeValue. Not parsed here, so a
             // corrupt blob cannot stop the member from loading (and signing in).
             badge_state: self.string_field("badge_state")?,
+            capability_tags: self.string_field("capability_tags")?,
             deleted: self
                 .i64_field("deleted")?
                 .map(|i| i as u64)
@@ -2349,6 +2350,7 @@ impl db::Handler for Handler {
             ses_api_person_id: None,
             email: None,
             badge_state: None,
+            capability_tags: None,
             deleted: None,
             missing_since: None,
             created_at: Some(now),
@@ -2462,6 +2464,24 @@ impl db::Handler for Handler {
                     .send()
                     .await
                     .map_err(|e| map_update_err(e, format!("Person {}", id)))?;
+                record_capacity("update_person", resp.consumed_capacity(), CapKind::Write);
+            }
+            db::PersonUpdateShape::CapabilityTags { capability_tags } => {
+                let resp = set_or_remove(
+                    self.client
+                        .update_item()
+                        .table_name(self.table_name("person"))
+                        .key("id", AttributeValue::S(id.to_string()))
+                        .condition_expression("attribute_exists(id)"),
+                    vec![(
+                        "capability_tags",
+                        capability_tags.map(|v| AttributeValue::S(v.to_string())),
+                    )],
+                )
+                .return_consumed_capacity(ReturnConsumedCapacity::Total)
+                .send()
+                .await
+                .map_err(|e| map_update_err(e, format!("Person {}", id)))?;
                 record_capacity("update_person", resp.consumed_capacity(), CapKind::Write);
             }
             db::PersonUpdateShape::MissingSince { missing_since } => {

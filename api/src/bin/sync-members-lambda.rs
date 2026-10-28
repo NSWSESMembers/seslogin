@@ -134,6 +134,7 @@ async fn handler(event: LambdaEvent<Value>) -> Result<Value, LambdaError> {
             missing_waiting = stats.missing_waiting,
             absence_deletes_suppressed = stats.absence_deletes_suppressed,
             absence_skipped_locations = stats.absence_skipped_locations,
+            capability_tag_updates = stats.capability_tag_updates,
             rru = metrics.read_units(),
             wru = metrics.write_units(),
             ddb_calls = metrics.ddb_calls(),
@@ -178,6 +179,7 @@ async fn handler(event: LambdaEvent<Value>) -> Result<Value, LambdaError> {
         "missing_waiting": stats.missing_waiting,
         "absence_deletes_suppressed": stats.absence_deletes_suppressed,
         "absence_skipped_locations": stats.absence_skipped_locations,
+        "capability_tag_updates": stats.capability_tag_updates,
     }))
 }
 

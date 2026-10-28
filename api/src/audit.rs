@@ -395,6 +395,7 @@ fn person_fields(p: &Person) -> Fields {
             opt_text(p.ses_api_person_id.as_deref()),
         )
         .with("email", opt_text(p.email.as_deref()))
+        .with("capability_tags", json_text(p.capability_tags.as_deref()))
         .with("deleted", opt_num(p.deleted))
         .with("missing_since", opt_num(p.missing_since))
 }
@@ -439,6 +440,9 @@ pub fn person_update_changes(
         }
         db::PersonUpdateShape::Email { email } => {
             after.set("email", opt_text(*email));
+        }
+        db::PersonUpdateShape::CapabilityTags { capability_tags } => {
+            after.set("capability_tags", json_text(*capability_tags));
         }
         db::PersonUpdateShape::MissingSince { missing_since } => {
             after.set("missing_since", opt_num(*missing_since));
@@ -2277,6 +2281,7 @@ mod tests {
             ses_api_person_id: None,
             email: None,
             badge_state: None,
+            capability_tags: None,
             deleted: None,
             missing_since: None,
             created_at: Some(1),
@@ -2550,6 +2555,19 @@ mod tests {
             100,
         );
         assert_eq!(fields(&changes), vec!["ses_api_person_id"]);
+
+        let (_, changes) = person_update_changes(
+            Some(&p),
+            &db::PersonUpdateShape::CapabilityTags {
+                capability_tags: Some(r#"[{"id":613,"name":"JR"}]"#),
+            },
+            100,
+        );
+        assert_eq!(fields(&changes), vec!["capability_tags"]);
+        assert_eq!(
+            change(&changes, "capability_tags").after,
+            Some(json!([{"id": 613, "name": "JR"}]))
+        );
 
         let (_, changes) = person_update_changes(
             Some(&p),

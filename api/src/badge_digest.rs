@@ -320,6 +320,7 @@ mod tests {
             ses_api_person_id: None,
             email: None,
             badge_state: Some(badge_state.to_string()),
+            capability_tags: None,
             deleted: None,
             missing_since: None,
             created_at: None,
