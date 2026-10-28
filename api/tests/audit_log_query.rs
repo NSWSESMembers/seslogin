@@ -73,6 +73,9 @@ fn location(id: &str, name: &str) -> db::Location {
         gamification_enabled: false,
         ses_api_headquarters_id: None,
         last_successful_member_sync: None,
+        ses_details: Default::default(),
+        directory_details: Default::default(),
+        accreditations: None,
         created_at: 0,
         updated_at: 0,
     }

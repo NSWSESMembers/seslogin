@@ -831,9 +831,14 @@ async fn show_locations(_db: &impl Handler, locs: &[Location]) {
             gamification_enabled,
             ses_api_headquarters_id,
             last_successful_member_sync,
+            ses_details,
+            directory_details,
+            accreditations,
             created_at,
             updated_at,
         } = l;
+        let address =
+            |a: &Option<db::LocationAddress>| a.as_ref().and_then(|a| a.formatted.clone());
         print_detail(&[
             ("id", id.clone()),
             ("name", name.clone()),
@@ -849,6 +854,26 @@ async fn show_locations(_db: &impl Handler, locs: &[Location]) {
                 "last_successful_member_sync",
                 opt_ts(*last_successful_member_sync),
             ),
+            ("code", opt_str(&ses_details.code)),
+            (
+                "lat/long",
+                match (ses_details.latitude, ses_details.longitude) {
+                    (Some(lat), Some(long)) => format!("{lat}, {long}"),
+                    _ => "-".to_string(),
+                },
+            ),
+            (
+                "ses_directory_entity_id",
+                opt_str(&directory_details.entity_id),
+            ),
+            ("address", opt_str(&address(&directory_details.address))),
+            (
+                "postal_address",
+                opt_str(&address(&directory_details.postal_address)),
+            ),
+            ("email", opt_str(&directory_details.email)),
+            ("phone", opt_str(&directory_details.phone)),
+            ("accreditations", opt_str(accreditations)),
             ("created_at", fmt_ts(*created_at)),
             ("updated_at", fmt_ts(*updated_at)),
         ]);

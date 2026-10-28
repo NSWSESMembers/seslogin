@@ -68,7 +68,7 @@ pub struct SesPersonHeadquarters {
 // ── SES intranet contact-directory search (member email lookup) ─────────────
 
 /// Response from the SES intranet contact-directory search endpoint (Azure Cognitive Search).
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize)]
 pub struct SesSearchResponse {
     #[serde(rename = "@odata.count")]
     pub count: Option<i64>,
@@ -94,20 +94,86 @@ pub struct SesContactDetail {
     pub detail: Option<String>,
 }
 
+/// A directory `Entity` document: a unit, cluster, zone, team or section, with its own
+/// code, contact details and addresses.
+#[derive(Debug, Clone, Deserialize)]
+pub struct SesDirectoryEntity {
+    #[serde(rename = "Id")]
+    pub id: Option<String>,
+    #[serde(rename = "DisplayName")]
+    pub display_name: Option<String>,
+    /// Unique among units, but not across entities: e.g. `CFS` is both Coffs Harbour City
+    /// Unit and Communications and Field Support.
+    #[serde(rename = "Code")]
+    pub code: Option<String>,
+    #[serde(rename = "ContactDetails", default)]
+    pub contact_details: Vec<SesContactDetail>,
+    #[serde(rename = "Addresses", default)]
+    pub addresses: Vec<SesAddress>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct SesAddress {
+    /// "Main address" or "Postal Address".
+    #[serde(rename = "Type")]
+    pub address_type: Option<String>,
+    /// The whole address on one line.
+    #[serde(rename = "Address")]
+    pub address: Option<String>,
+    #[serde(rename = "Line1")]
+    pub line1: Option<String>,
+    #[serde(rename = "Line2")]
+    pub line2: Option<String>,
+    #[serde(rename = "Suburb")]
+    pub suburb: Option<String>,
+    #[serde(rename = "State")]
+    pub state: Option<String>,
+    #[serde(rename = "Postcode")]
+    pub postcode: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+struct SesEntityResponse {
+    #[serde(default)]
+    value: Vec<SesDirectoryEntity>,
+}
+
+/// The first non-blank detail of the given contact type, trimmed.
+fn contact_detail<'a>(details: &'a [SesContactDetail], wanted: &str) -> Option<&'a str> {
+    details
+        .iter()
+        .filter(|c| c.detail_type.as_deref() == Some(wanted))
+        .filter_map(|c| c.detail.as_deref())
+        .map(str::trim)
+        .find(|s| !s.is_empty())
+}
+
+impl SesDirectoryEntity {
+    /// The entity's "Internet Mail" address.
+    pub fn email(&self) -> Option<&str> {
+        contact_detail(&self.contact_details, "Internet Mail")
+    }
+
+    /// The entity's "Phone", falling back to its "Mobile".
+    pub fn phone(&self) -> Option<&str> {
+        contact_detail(&self.contact_details, "Phone")
+            .or_else(|| contact_detail(&self.contact_details, "Mobile"))
+    }
+
+    /// The first address of the given type ("Main address", "Postal Address").
+    pub fn address(&self, wanted: &str) -> Option<&SesAddress> {
+        self.addresses
+            .iter()
+            .find(|a| a.address_type.as_deref() == Some(wanted))
+    }
+}
+
 impl SesSearchResult {
     /// Preferred email: "Agency Email Address" first, falling back to
     /// "Volunteers Primary E-Mail". Blank/whitespace-only values are skipped.
     pub fn email(&self) -> Option<&str> {
-        let find_by_type = |wanted: &str| {
-            self.contact_details
-                .iter()
-                .find(|c| c.detail_type.as_deref() == Some(wanted))
-                .and_then(|c| c.detail.as_deref())
-                .map(str::trim)
-                .filter(|s| !s.is_empty())
-        };
-
-        find_by_type("Agency Email Address").or_else(|| find_by_type("Volunteers Primary E-Mail"))
+        contact_detail(&self.contact_details, "Agency Email Address")
+            .or_else(|| contact_detail(&self.contact_details, "Volunteers Primary E-Mail"))
     }
 }
 
@@ -145,6 +211,19 @@ impl fmt::Display for SesHeadquarters {
 
         write!(f, "{} ({}, {})", name, code, id)
     }
+}
+
+/// One row of `GET /headquarters/{id}/accreditations`: a unit's standing for one rescue
+/// accreditation type. A unit returns a row per type it has a record for, which is not
+/// necessarily every type in the spec's enum.
+#[derive(Debug, Clone, Deserialize)]
+pub struct SesAccreditation {
+    #[serde(rename = "type")]
+    pub accreditation_type: Option<String>,
+    pub status: Option<String>,
+    #[serde(rename = "accreditationNumber")]
+    pub accreditation_number: Option<String>,
+    pub note: Option<String>,
 }
 
 // ── NITC types ────────────────────────────────────────────────────────────────
@@ -873,6 +952,15 @@ impl SesClient {
         Err(anyhow!("SES API retries exhausted for {}", path))
     }
 
+    /// A unit's rescue accreditations. Zones and State Headquarters have none.
+    pub async fn fetch_accreditations(
+        &self,
+        headquarters_id: &str,
+    ) -> Result<Vec<SesAccreditation>> {
+        self.get_json(&format!("/headquarters/{headquarters_id}/accreditations"))
+            .await
+    }
+
     pub async fn fetch_nonincident_types(&self) -> Result<Vec<String>> {
         self.get_json("/nonincidenttypes").await
     }
@@ -1077,6 +1165,30 @@ impl SesSearchClient {
         }
     }
 
+    /// Every directory entity (units, clusters, zones, sections, ...). There are about 650,
+    /// so one page holds them all; more than a page's worth is refused rather than truncated.
+    pub async fn list_entities(&self) -> Result<Vec<SesDirectoryEntity>> {
+        let top = SEARCH_PAGE_SIZE.to_string();
+        let page: SesEntityResponse = self
+            .get_search_page(
+                "entities",
+                &[
+                    ("search", "*"),
+                    ("$filter", "Type eq 'Entity'"),
+                    ("$count", "true"),
+                    ("$top", top.as_str()),
+                ],
+            )
+            .await?;
+        if page.value.len() >= SEARCH_PAGE_SIZE {
+            return Err(anyhow!(
+                "SES directory returned {} entities, a full page; paging is needed",
+                page.value.len()
+            ));
+        }
+        Ok(page.value)
+    }
+
     async fn fetch_search_page(
         &self,
         unit_name: &str,
@@ -1085,21 +1197,34 @@ impl SesSearchClient {
     ) -> Result<SesSearchResponse> {
         let skip_param = skip.to_string();
         let top_param = SEARCH_PAGE_SIZE.to_string();
+        self.get_search_page(
+            &format!("unit_name='{unit_name}' skip={skip}"),
+            &[
+                ("search", search_expr),
+                ("queryType", "full"),
+                ("searchMode", "all"),
+                ("$count", "true"),
+                ("$skip", skip_param.as_str()),
+                ("$top", top_param.as_str()),
+                ("$orderby", "search.score() desc, Type asc, DisplayName asc"),
+            ],
+        )
+        .await
+    }
 
+    /// One directory search request, retried on server errors and transport failures.
+    /// `what` names the request in errors and logs. A `204 No Content` is an empty page.
+    async fn get_search_page<T: DeserializeOwned + Default>(
+        &self,
+        what: &str,
+        query: &[(&str, &str)],
+    ) -> Result<T> {
         for attempt in 0..=self.max_retries {
             let response = self
                 .client
                 .get(&self.base_url)
                 .header("Ocp-Apim-Subscription-Key", &self.api_key)
-                .query(&[
-                    ("search", search_expr),
-                    ("queryType", "full"),
-                    ("searchMode", "all"),
-                    ("$count", "true"),
-                    ("$skip", skip_param.as_str()),
-                    ("$top", top_param.as_str()),
-                    ("$orderby", "search.score() desc, Type asc, DisplayName asc"),
-                ])
+                .query(query)
                 .send()
                 .await;
 
@@ -1108,19 +1233,14 @@ impl SesSearchClient {
                     let status = resp.status();
 
                     if status == StatusCode::NO_CONTENT {
-                        return Ok(SesSearchResponse {
-                            count: None,
-                            value: Vec::new(),
-                        });
+                        return Ok(T::default());
                     }
 
                     if status.is_success() {
-                        return resp.json::<SesSearchResponse>().await.with_context(|| {
-                            format!(
-                                "Parsing SES search response for unit_name='{}' skip={}",
-                                unit_name, skip
-                            )
-                        });
+                        return resp
+                            .json::<T>()
+                            .await
+                            .with_context(|| format!("Parsing SES search response for {what}"));
                     }
 
                     if status.is_client_error() {
@@ -1129,9 +1249,9 @@ impl SesSearchClient {
                             .await
                             .unwrap_or_else(|_| "<failed to read response body>".to_string());
                         return Err(anyhow!(
-                            "SES search API client error {} for unit_name='{}': {}",
+                            "SES search API client error {} for {}: {}",
                             status,
-                            unit_name,
+                            what,
                             body
                         ));
                     }
@@ -1139,9 +1259,9 @@ impl SesSearchClient {
                     if status.is_server_error() && attempt < self.max_retries {
                         let backoff_s = 1u64 << attempt;
                         warn!(
-                            "SES search API server error {} for unit_name='{}', retrying in {}s (attempt {}/{})",
+                            "SES search API server error {} for {}, retrying in {}s (attempt {}/{})",
                             status,
-                            unit_name,
+                            what,
                             backoff_s,
                             attempt + 1,
                             self.max_retries + 1
@@ -1151,17 +1271,17 @@ impl SesSearchClient {
                     }
 
                     return Err(anyhow!(
-                        "SES search API unexpected status {} for unit_name='{}'",
+                        "SES search API unexpected status {} for {}",
                         status,
-                        unit_name
+                        what
                     ));
                 }
                 Err(err) => {
                     if attempt < self.max_retries {
                         let backoff_s = 1u64 << attempt;
                         warn!(
-                            "SES search API request failed for unit_name='{}', retrying in {}s (attempt {}/{}): {}",
-                            unit_name,
+                            "SES search API request failed for {}, retrying in {}s (attempt {}/{}): {}",
+                            what,
                             backoff_s,
                             attempt + 1,
                             self.max_retries + 1,
@@ -1172,18 +1292,15 @@ impl SesSearchClient {
                     }
 
                     return Err(anyhow!(
-                        "SES search API request failed for unit_name='{}': {}",
-                        unit_name,
+                        "SES search API request failed for {}: {}",
+                        what,
                         err
                     ));
                 }
             }
         }
 
-        Err(anyhow!(
-            "SES search API retries exhausted for unit_name='{}'",
-            unit_name
-        ))
+        Err(anyhow!("SES search API retries exhausted for {}", what))
     }
 }
 

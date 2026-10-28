@@ -761,6 +761,47 @@ fn location_fields(l: &Location) -> Fields {
             "ses_api_headquarters_id",
             opt_text(l.ses_api_headquarters_id.as_deref()),
         )
+        .with_ses_details(&l.ses_details)
+        .with_directory_details(&l.directory_details)
+        .with("accreditations", json_text(l.accreditations.as_deref()))
+}
+
+impl Fields {
+    fn with_ses_details(mut self, d: &db::LocationSesDetails) -> Self {
+        self.set("code", opt_text(d.code.as_deref()));
+        self.set("latitude", d.latitude.map(|v| json!(v)));
+        self.set("longitude", d.longitude.map(|v| json!(v)));
+        self
+    }
+
+    fn with_directory_details(mut self, d: &db::LocationDirectoryDetails) -> Self {
+        self.set("ses_directory_entity_id", opt_text(d.entity_id.as_deref()));
+        self.set("address", d.address.as_ref().map(address));
+        self.set("postal_address", d.postal_address.as_ref().map(address));
+        self.set("email", opt_text(d.email.as_deref()));
+        self.set("phone", opt_text(d.phone.as_deref()));
+        self
+    }
+}
+
+/// An address as the one-line form the directory gives, or its parts joined when it
+/// gave none.
+fn address(a: &db::LocationAddress) -> Value {
+    let formatted = a.formatted.clone().unwrap_or_else(|| {
+        [&a.line1, &a.line2, &a.suburb, &a.state, &a.postcode]
+            .into_iter()
+            .flatten()
+            .cloned()
+            .collect::<Vec<_>>()
+            .join(" ")
+    });
+    Value::String(formatted)
+}
+
+/// Stored JSON text, parsed so the audit log shows it structured. Text that does not
+/// parse is shown as it is.
+fn json_text(v: Option<&str>) -> Option<Value> {
+    v.map(|s| serde_json::from_str(s).unwrap_or_else(|_| Value::String(s.to_string())))
 }
 
 pub fn location_create_changes(l: &Location) -> Vec<AuditFieldChange> {
@@ -800,6 +841,15 @@ pub fn location_update_changes(
         db::LocationUpdateShape::LastSyncTime { .. } => {}
         db::LocationUpdateShape::Name { name } => {
             after.set("name", text(name));
+        }
+        db::LocationUpdateShape::SesDetails { details, directory } => {
+            after = after.with_ses_details(details);
+            if let Some(directory) = directory {
+                after = after.with_directory_details(directory);
+            }
+        }
+        db::LocationUpdateShape::Accreditations { accreditations } => {
+            after.set("accreditations", json_text(*accreditations));
         }
     }
     diff(&before, &after)
@@ -2960,6 +3010,9 @@ mod tests {
             gamification_enabled: false,
             ses_api_headquarters_id: Some("77".to_string()),
             last_successful_member_sync: Some(5),
+            ses_details: Default::default(),
+            directory_details: Default::default(),
+            accreditations: None,
             created_at: 1,
             updated_at: 1,
         }
@@ -2990,6 +3043,63 @@ mod tests {
         // `last_successful_member_sync` is the heartbeat, never part of the diff.
         assert!(
             !fields(&location_create_changes(&location())).contains(&"last_successful_member_sync")
+        );
+    }
+
+    #[test]
+    fn location_ses_details_diff_only_what_changed() {
+        let details = db::LocationSesDetails {
+            code: Some("ABD".into()),
+            latitude: Some(-32.17),
+            longitude: None,
+        };
+        let directory = db::LocationDirectoryDetails {
+            entity_id: Some("70000047".into()),
+            address: Some(db::LocationAddress {
+                line1: Some("1 Example St".into()),
+                formatted: Some("1 Example St, EXAMPLETOWN NSW 2000".into()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let changes = location_update_changes(
+            Some(&location()),
+            &db::LocationUpdateShape::SesDetails {
+                details: &details,
+                directory: Some(&directory),
+            },
+        );
+        assert_eq!(
+            fields(&changes),
+            vec!["code", "latitude", "ses_directory_entity_id", "address"]
+        );
+        assert_eq!(
+            changes[3].after,
+            Some(json!("1 Example St, EXAMPLETOWN NSW 2000"))
+        );
+
+        // Without the directory, its fields are left out of the diff entirely.
+        let mut before = location();
+        before.directory_details = directory.clone();
+        let changes = location_update_changes(
+            Some(&before),
+            &db::LocationUpdateShape::SesDetails {
+                details: &details,
+                directory: None,
+            },
+        );
+        assert_eq!(fields(&changes), vec!["code", "latitude"]);
+
+        let changes = location_update_changes(
+            Some(&location()),
+            &db::LocationUpdateShape::Accreditations {
+                accreditations: Some(r#"[{"type":"GLR","status":"Not Applicable"}]"#),
+            },
+        );
+        assert_eq!(fields(&changes), vec!["accreditations"]);
+        assert_eq!(
+            changes[0].after,
+            Some(json!([{"type": "GLR", "status": "Not Applicable"}]))
         );
     }
 

@@ -79,6 +79,14 @@ No GSIs. Locations are always fetched by ID or via a full-table Scan (the table 
 - `nitc_complete_on_export` (Bool) — only written as `false`, for locations that want their exported NITCs left incomplete in SES; absent (the default) means they are marked completed
 - `enabled` (Bool)
 
+Written only by location sync (`api/src/location_sync.rs`), each omitted when SES has no value:
+
+- `code` (S), `latitude` / `longitude` (N) — from the SES API's headquarters record. 29 units have no coordinates
+- `ses_directory_entity_id` (S) — the SES intranet directory `Entity` this location resolved to, by `code` and then by name (codes are shared across entity kinds, e.g. `CFS`, `COR`, `SEZ`). Absent for State Headquarters, two units missing from the directory, and a few pseudo-units
+- `address` / `postal_address` (M) — the entity's "Main address" / "Postal Address": `line1`, `line2`, `suburb`, `state`, `postcode`, `formatted`, each present only when set
+- `email` (S) — the entity's "Internet Mail"; `phone` (S) — its "Phone", else its "Mobile"
+- `accreditations` (S) — JSON text of the unit's `GET /headquarters/{id}/accreditations` rows, `[{"type", "status", "number"?, "note"?}]` sorted by type. Every returned row is kept, "Not Applicable" included, so "not applicable" and "no record" stay distinct. Units only
+
 ---
 
 ### `{prefix}period`

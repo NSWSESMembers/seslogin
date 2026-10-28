@@ -362,6 +362,18 @@ pub enum LocationUpdateShape<'a> {
     Name {
         name: &'a str,
     },
+    /// Written only by location sync. Replaces the SES API details, and the directory
+    /// details too when `directory` is `Some`; `None` leaves the stored directory details
+    /// alone, for a run whose directory fetch failed. Absent values are removed.
+    SesDetails {
+        details: &'a LocationSesDetails,
+        directory: Option<&'a LocationDirectoryDetails>,
+    },
+    /// Written only by location sync. The JSON text of the unit's accreditation rows;
+    /// `None` (no rows) removes the attribute.
+    Accreditations {
+        accreditations: Option<&'a str>,
+    },
 }
 
 /// Where a table scan left off. Scanning the base table returns a `LastEvaluatedKey`
@@ -607,8 +619,46 @@ pub struct Location {
     pub gamification_enabled: bool,
     pub ses_api_headquarters_id: Option<String>,
     pub last_successful_member_sync: Option<u64>,
+    pub ses_details: LocationSesDetails,
+    pub directory_details: LocationDirectoryDetails,
+    /// The unit's rescue accreditations from the SES API, exactly as stored: JSON text,
+    /// `[{"type", "status", "number", "note"}]` sorted by type. `None` for a location
+    /// with no rows (every zone, and State Headquarters).
+    pub accreditations: Option<String>,
     pub created_at: u64,
     pub updated_at: u64,
+}
+
+/// What location sync copies from the SES API's headquarters record.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct LocationSesDetails {
+    pub code: Option<String>,
+    pub latitude: Option<f64>,
+    pub longitude: Option<f64>,
+}
+
+/// What location sync copies from the location's entity in the SES intranet directory.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct LocationDirectoryDetails {
+    /// The directory `Entity` id the location resolved to. Absent when its code matched
+    /// no entity, or more than one that its name could not tell apart.
+    pub entity_id: Option<String>,
+    pub address: Option<LocationAddress>,
+    pub postal_address: Option<LocationAddress>,
+    pub email: Option<String>,
+    pub phone: Option<String>,
+}
+
+/// A directory address, split into parts. Every part is optional; `formatted` is the
+/// whole address on one line.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct LocationAddress {
+    pub line1: Option<String>,
+    pub line2: Option<String>,
+    pub suburb: Option<String>,
+    pub state: Option<String>,
+    pub postcode: Option<String>,
+    pub formatted: Option<String>,
 }
 
 impl HasID for Location {

@@ -1,6 +1,6 @@
 use anyhow::{Result, anyhow};
 use clap::Parser;
-use seslogin::location_sync::{self, SyncConfig};
+use seslogin::location_sync::{self, DirectoryConfig, SyncConfig};
 use seslogin::request_metrics::{self, RequestMetrics};
 use std::sync::Arc;
 
@@ -24,6 +24,15 @@ struct Cli {
     #[arg(long)]
     ses_api_key: Option<String>,
 
+    /// SES intranet directory search URL, for location addresses and contact details.
+    /// Without it (and the key), those are left as stored.
+    #[arg(long)]
+    ses_intranet_search_api_base_url: Option<String>,
+
+    /// SES intranet directory key, sent as the Ocp-Apim-Subscription-Key header.
+    #[arg(long)]
+    ses_intranet_search_api_key: Option<String>,
+
     /// DynamoDB table prefix (e.g. "seslogin-test-").
     #[arg(long)]
     db_prefix: Option<String>,
@@ -43,6 +52,15 @@ fn parse_env_usize(key: &str) -> Option<usize> {
         .and_then(|v| v.parse::<usize>().ok())
 }
 
+/// Both halves must be set and non-blank, or the directory is skipped.
+fn directory_config(base_url: Option<String>, api_key: Option<String>) -> Option<DirectoryConfig> {
+    let non_blank = |v: Option<String>| v.filter(|s| !s.trim().is_empty());
+    Some(DirectoryConfig {
+        base_url: non_blank(base_url)?,
+        api_key: non_blank(api_key)?,
+    })
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     tracing_subscriber::fmt::init();
@@ -59,6 +77,13 @@ async fn main() -> Result<()> {
         .ses_api_key
         .or_else(|| std::env::var("SES_API_KEY").ok())
         .ok_or_else(|| anyhow!("SES_API_KEY is required (flag or env var)"))?;
+
+    let directory = directory_config(
+        cli.ses_intranet_search_api_base_url
+            .or_else(|| std::env::var("SES_INTRANET_SEARCH_API_BASE_URL").ok()),
+        cli.ses_intranet_search_api_key
+            .or_else(|| std::env::var("SES_INTRANET_SEARCH_API_KEY").ok()),
+    );
 
     let db_prefix = cli
         .db_prefix
@@ -83,6 +108,7 @@ async fn main() -> Result<()> {
                 dry_run: !cli.apply,
                 ses_api_base_url,
                 ses_api_key,
+                directory,
                 db_prefix,
                 max_retries,
                 max_updates,
@@ -97,11 +123,14 @@ async fn main() -> Result<()> {
     );
 
     println!(
-        "location sync complete mode={} ses_units_seen={} creates={} name_updates={} noops={}",
+        "location sync complete mode={} ses_units_seen={} creates={} name_updates={} details_updates={} accreditation_updates={} entities_unresolved={} noops={}",
         if cli.apply { "apply" } else { "dry-run" },
         stats.ses_units_seen,
         stats.creates,
         stats.name_updates,
+        stats.details_updates,
+        stats.accreditation_updates,
+        stats.entities_unresolved,
         stats.noops,
     );
 

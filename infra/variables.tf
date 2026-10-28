@@ -16,7 +16,7 @@ variable "ses_api_base_url" {
 }
 
 variable "ses_intranet_search_api_key" {
-  description = "Subscription key for the SES intranet contact-directory search API (used to sync member emails)"
+  description = "Subscription key for the SES intranet contact-directory search API (used to sync member emails and location contact details)"
   type        = string
   sensitive   = true
 }

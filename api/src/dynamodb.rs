@@ -10,6 +10,7 @@ use aws_sdk_dynamodb::error::{ProvideErrorMetadata, SdkError};
 use aws_sdk_dynamodb::operation::query::builders::QueryFluentBuilder;
 use aws_sdk_dynamodb::operation::scan::builders::ScanFluentBuilder;
 use aws_sdk_dynamodb::operation::update_item::UpdateItemError;
+use aws_sdk_dynamodb::operation::update_item::builders::UpdateItemFluentBuilder;
 use aws_sdk_dynamodb::types::{
     ConsumedCapacity, KeysAndAttributes, ReturnConsumedCapacity, ReturnValue,
 };
@@ -109,6 +110,39 @@ impl Item {
         } else {
             Ok(None)
         }
+    }
+
+    pub fn f64_field(&self, field: &str) -> anyhow::Result<Option<f64>> {
+        match self.0.get(field) {
+            None | Some(AttributeValue::Null(_)) => Ok(None),
+            Some(AttributeValue::N(n)) => n
+                .parse::<f64>()
+                .map(Some)
+                .map_err(|_| anyhow!("Item had unparseable number field: {}", field)),
+            Some(_) => Err(anyhow!("Item had number field of wrong type: {}", field)),
+        }
+    }
+
+    /// A map attribute of optional string parts, as a [`db::LocationAddress`].
+    pub fn address_field(&self, field: &str) -> anyhow::Result<Option<db::LocationAddress>> {
+        let map = match self.0.get(field) {
+            None | Some(AttributeValue::Null(_)) => return Ok(None),
+            Some(AttributeValue::M(map)) => map,
+            Some(_) => return Err(anyhow!("Item had map field of wrong type: {}", field)),
+        };
+        let part = |name: &str| match map.get(name) {
+            None | Some(AttributeValue::Null(_)) => Ok(None),
+            Some(AttributeValue::S(s)) => Ok(Some(s.clone())),
+            Some(_) => Err(anyhow!("Item had {}.{} of wrong type", field, name)),
+        };
+        Ok(Some(db::LocationAddress {
+            line1: part("line1")?,
+            line2: part("line2")?,
+            suburb: part("suburb")?,
+            state: part("state")?,
+            postcode: part("postcode")?,
+            formatted: part("formatted")?,
+        }))
     }
 
     pub fn bool_field(&self, field: &str) -> anyhow::Result<Option<bool>> {
@@ -273,6 +307,19 @@ impl TryInto<Location> for Item {
             last_successful_member_sync: self
                 .i64_field("last_successful_member_sync")?
                 .map(|i| i as u64),
+            ses_details: db::LocationSesDetails {
+                code: self.string_field("code")?,
+                latitude: self.f64_field("latitude")?,
+                longitude: self.f64_field("longitude")?,
+            },
+            directory_details: db::LocationDirectoryDetails {
+                entity_id: self.string_field("ses_directory_entity_id")?,
+                address: self.address_field("address")?,
+                postal_address: self.address_field("postal_address")?,
+                email: self.string_field("email")?,
+                phone: self.string_field("phone")?,
+            },
+            accreditations: self.string_field("accreditations")?,
             created_at: self
                 .i64_field("created_at")?
                 .ok_or_else(|| anyhow!("Location missing created_at"))?
@@ -748,6 +795,55 @@ fn topic_date_key(nitc_group_id: &str, date: chrono::NaiveDate) -> String {
 /// collide with the 12-char nanoid ids used elsewhere because it contains '#'.
 fn nitc_event_key(location_id: &str, nitc_group_id: &str, date: chrono::NaiveDate) -> String {
     format!("{}#{}", location_id, topic_date_key(nitc_group_id, date))
+}
+
+/// A [`db::LocationAddress`] as a map attribute, leaving out the parts it lacks.
+fn address_value(address: &db::LocationAddress) -> AttributeValue {
+    let parts = [
+        ("line1", &address.line1),
+        ("line2", &address.line2),
+        ("suburb", &address.suburb),
+        ("state", &address.state),
+        ("postcode", &address.postcode),
+        ("formatted", &address.formatted),
+    ];
+    AttributeValue::M(
+        parts
+            .into_iter()
+            .filter_map(|(k, v)| v.clone().map(|v| (k.to_string(), AttributeValue::S(v))))
+            .collect(),
+    )
+}
+
+/// Finish an `update_item` that `SET`s each attribute with a value and `REMOVE`s each one
+/// without, stamping `updated_at`. Attribute names go through placeholders, since some of
+/// them (`code`, `name`) are reserved words.
+fn set_or_remove(
+    mut req: UpdateItemFluentBuilder,
+    values: Vec<(&str, Option<AttributeValue>)>,
+) -> UpdateItemFluentBuilder {
+    let mut sets = vec!["updated_at = :updated_at".to_string()];
+    let mut removes = Vec::new();
+    for (i, (name, value)) in values.into_iter().enumerate() {
+        let placeholder = format!("#a{i}");
+        req = req.expression_attribute_names(&placeholder, name);
+        match value {
+            Some(value) => {
+                sets.push(format!("{placeholder} = :v{i}"));
+                req = req.expression_attribute_values(format!(":v{i}"), value);
+            }
+            None => removes.push(placeholder),
+        }
+    }
+    let mut expr = format!("SET {}", sets.join(", "));
+    if !removes.is_empty() {
+        expr.push_str(" REMOVE ");
+        expr.push_str(&removes.join(", "));
+    }
+    req.update_expression(expr).expression_attribute_values(
+        ":updated_at",
+        AttributeValue::N(crate::clock::now_sec().to_string()),
+    )
 }
 
 #[derive(Debug)]
@@ -3513,6 +3609,9 @@ impl db::Handler for Handler {
             gamification_enabled: false,
             ses_api_headquarters_id: ses_api_headquarters_id.map(str::to_string),
             last_successful_member_sync: None,
+            ses_details: db::LocationSesDetails::default(),
+            directory_details: db::LocationDirectoryDetails::default(),
+            accreditations: None,
             created_at: now,
             updated_at: now,
         })
@@ -3634,6 +3733,42 @@ impl db::Handler for Handler {
                     ":updated_at",
                     AttributeValue::N(crate::clock::now_sec().to_string()),
                 ),
+            db::LocationUpdateShape::SesDetails { details, directory } => {
+                let mut values = vec![
+                    ("code", details.code.clone().map(AttributeValue::S)),
+                    (
+                        "latitude",
+                        details.latitude.map(|v| AttributeValue::N(v.to_string())),
+                    ),
+                    (
+                        "longitude",
+                        details.longitude.map(|v| AttributeValue::N(v.to_string())),
+                    ),
+                ];
+                if let Some(directory) = directory {
+                    values.extend([
+                        (
+                            "ses_directory_entity_id",
+                            directory.entity_id.clone().map(AttributeValue::S),
+                        ),
+                        ("address", directory.address.as_ref().map(address_value)),
+                        (
+                            "postal_address",
+                            directory.postal_address.as_ref().map(address_value),
+                        ),
+                        ("email", directory.email.clone().map(AttributeValue::S)),
+                        ("phone", directory.phone.clone().map(AttributeValue::S)),
+                    ]);
+                }
+                set_or_remove(base, values)
+            }
+            db::LocationUpdateShape::Accreditations { accreditations } => set_or_remove(
+                base,
+                vec![(
+                    "accreditations",
+                    accreditations.map(|v| AttributeValue::S(v.to_string())),
+                )],
+            ),
         };
 
         let resp = req
