@@ -1,7 +1,7 @@
 use crate::audit::AuditingHandler;
 use crate::db::{self, Handler as _};
 use crate::dynamodb;
-use crate::ses_api::{SesCapabilityTag, SesClient, SesPerson, SesSearchClient};
+use crate::ses_api::{SesCapabilityTag, SesClient, SesPerson};
 use anyhow::{Context, Result, anyhow};
 use std::collections::{HashMap, HashSet};
 use tracing::{error, info, warn};
@@ -18,8 +18,6 @@ pub struct SyncConfig {
     pub adopt: bool,
     pub ses_api_base_url: String,
     pub ses_api_key: String,
-    pub ses_intranet_search_api_base_url: String,
-    pub ses_intranet_search_api_key: String,
     pub db_prefix: String,
     pub page_limit: usize,
     pub max_retries: usize,
@@ -82,10 +80,6 @@ pub struct RunStats {
     pub soft_deletes: usize,
     pub noops: usize,
     pub blocked_manual_conflicts: usize,
-    pub emails_seen: usize,
-    pub emails_updated: usize,
-    pub emails_unmatched: usize,
-    pub emails_noops: usize,
     /// SES rows carrying `deleted: true`. Not expected to happen; we only warn.
     pub ses_deleted_flags_seen: usize,
     pub missing_marked: usize,
@@ -949,12 +943,8 @@ fn plan_absence_changes(input: AbsenceInput<'_>) -> AbsenceOutcome {
 /// The `max_mutations` tripwire: "SES handed us garbage and we are about to rewrite the
 /// member database".
 ///
-/// Called twice per location — once for the member changes before they are applied, then
-/// again with that location's email updates folded into the running total — so the ceiling
-/// still governs the run as a whole even though the two are applied in separate phases.
-/// The consequence of the split is deliberate: a location whose member changes fit but
-/// whose emails push it over now commits the member changes and aborts before the emails,
-/// rather than abandoning both.
+/// Called once per location, before its member changes are applied, with the total
+/// already applied this run, so the ceiling governs the run as a whole.
 fn check_max_mutations(applied_so_far: usize, planned: usize, max_mutations: usize) -> Result<()> {
     if applied_so_far + planned > max_mutations {
         return Err(anyhow!(
@@ -1163,134 +1153,6 @@ async fn apply_changes<H: db::Handler>(
     Ok(())
 }
 
-#[derive(Debug)]
-struct PlannedEmailUpdate {
-    person_id: String,
-    registration_number: String,
-    current_email: Option<String>,
-    new_email: String,
-}
-
-/// Read-only: looks up member emails for a location's unit via the SES search API and diffs
-/// them against local `Person` rows by `registration_number`. Does not write anything.
-async fn plan_email_updates<H: db::Handler>(
-    db: &H,
-    search_client: &SesSearchClient,
-    location: &db::Location,
-    stats: &mut RunStats,
-) -> Result<Vec<PlannedEmailUpdate>> {
-    let results = search_client
-        .fetch_unit_members(&location.name)
-        .await
-        .with_context(|| {
-            format!(
-                "Fetching SES directory search results for location={} unit='{}'",
-                location.id, location.name
-            )
-        })?;
-
-    let mut updates = Vec::new();
-
-    for result in &results {
-        let Some(registration_number) = result
-            .id
-            .as_deref()
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-        else {
-            continue;
-        };
-
-        let Some(new_email) = result.email() else {
-            continue;
-        };
-
-        stats.emails_seen += 1;
-
-        let matches = db
-            .get_person_id_by_registration_number(registration_number)
-            .await
-            .with_context(|| {
-                format!(
-                    "Lookup local person by registration number for email sync location={}",
-                    location.id
-                )
-            })?;
-        let Some(person_id) = db::at_most_one(matches, || {
-            format!(
-                "Multiple people share registration number {} (location={})",
-                registration_number, location.id
-            )
-        })?
-        else {
-            stats.emails_unmatched += 1;
-            continue;
-        };
-
-        let existing = db
-            .get_persons(&[person_id.as_str()])
-            .await
-            .with_context(|| format!("Fetching person id={} for email sync", person_id))?
-            .into_iter()
-            .flatten()
-            .next();
-
-        let Some(existing) = existing else {
-            stats.emails_unmatched += 1;
-            continue;
-        };
-
-        if existing.email.as_deref() == Some(new_email) {
-            stats.emails_noops += 1;
-            continue;
-        }
-
-        updates.push(PlannedEmailUpdate {
-            person_id,
-            registration_number: registration_number.to_string(),
-            current_email: existing.email.clone(),
-            new_email: new_email.to_string(),
-        });
-    }
-
-    Ok(updates)
-}
-
-async fn apply_email_updates<H: db::Handler>(
-    db: &H,
-    updates: &[PlannedEmailUpdate],
-    location_id: &str,
-    dry_run: bool,
-) -> Result<()> {
-    let mode = if dry_run { "DRY-RUN" } else { "APPLY" };
-
-    for update in updates {
-        println!(
-            "[{mode}] update person email id={} location={} registrationNumber={} email={:?}=>{:?}",
-            update.person_id,
-            location_id,
-            update.registration_number,
-            update.current_email,
-            update.new_email
-        );
-
-        if dry_run {
-            continue;
-        }
-
-        db.update_person(
-            &update.person_id,
-            db::PersonUpdateShape::Email {
-                email: Some(&update.new_email),
-            },
-        )
-        .await
-        .with_context(|| format!("Updating email for person id={}", update.person_id))?;
-    }
-
-    Ok(())
-}
-
 /// Run the member sync, recording every write it makes in the audit log as the
 /// `member-sync` system actor.
 pub async fn run(config: SyncConfig) -> Result<RunStats> {
@@ -1310,12 +1172,6 @@ async fn run_inner(config: SyncConfig) -> Result<RunStats> {
         config.ses_api_base_url,
         config.ses_api_key,
         config.page_limit,
-        config.max_retries,
-    )?;
-
-    let search_client = SesSearchClient::new(
-        config.ses_intranet_search_api_base_url,
-        config.ses_intranet_search_api_key,
         config.max_retries,
     )?;
 
@@ -1559,11 +1415,7 @@ async fn run_inner(config: SyncConfig) -> Result<RunStats> {
         stats.missing_waiting += absence_waiting;
         stats.absence_deletes_suppressed += absence_deletes_suppressed;
 
-        // Stamp before the email phase. The member sync for this location has now
-        // succeeded, and a failure in the secondary email API below must not leave the
-        // location looking un-synced — that would suppress its absence deletions on the
-        // next run and light up the checker lambda's stale-location digest for a reason
-        // that has nothing to do with member sync.
+        // The member sync for this location has succeeded.
         if !config.dry_run {
             db.update_location(
                 &location.id,
@@ -1574,28 +1426,6 @@ async fn run_inner(config: SyncConfig) -> Result<RunStats> {
             .await
             .with_context(|| format!("Updating last sync time for location={}", location.id))?;
         }
-
-        // Email sync runs last because it depends on a different API with its own
-        // credential. It still errors, retries and DLQs on failure — but by then the member
-        // changes are committed, so an outage of the secondary API cannot stop every
-        // location's primary sync and bury a real single-location failure in the DLQ.
-        let email_updates = plan_email_updates(&db, &search_client, &location, &mut stats)
-            .await
-            .with_context(|| format!("Planning email sync for location={}", location.id))?;
-
-        if !config.dry_run {
-            check_max_mutations(
-                stats.total_mutations(),
-                email_updates.len(),
-                config.max_mutations,
-            )?;
-        }
-
-        apply_email_updates(&db, &email_updates, &location.id, config.dry_run)
-            .await
-            .with_context(|| format!("Applying email sync for location={}", location.id))?;
-
-        stats.emails_updated += email_updates.len();
     }
 
     Ok(stats)
@@ -1909,15 +1739,6 @@ mod tests {
     #[test]
     fn one_mutation_over_the_ceiling_aborts() {
         assert!(check_max_mutations(90, 11, 100).is_err());
-    }
-
-    /// The two phases share one ceiling: emails are checked against a running total that
-    /// already includes the member changes applied moments earlier.
-    #[test]
-    fn email_phase_counts_against_the_member_changes_already_applied() {
-        let applied_member_mutations = 95;
-        assert!(check_max_mutations(applied_member_mutations, 5, 100).is_ok());
-        assert!(check_max_mutations(applied_member_mutations, 6, 100).is_err());
     }
 
     // ── fatal guards ────────────────────────────────────────────────────────

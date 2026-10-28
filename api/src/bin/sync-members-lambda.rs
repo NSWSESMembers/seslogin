@@ -48,10 +48,6 @@ fn build_config(location_id: String) -> Result<SyncConfig> {
         std::env::var("SES_API_BASE_URL").map_err(|_| anyhow!("SES_API_BASE_URL must be set"))?;
     let ses_api_key =
         std::env::var("SES_API_KEY").map_err(|_| anyhow!("SES_API_KEY must be set"))?;
-    let ses_intranet_search_api_base_url = std::env::var("SES_INTRANET_SEARCH_API_BASE_URL")
-        .map_err(|_| anyhow!("SES_INTRANET_SEARCH_API_BASE_URL must be set"))?;
-    let ses_intranet_search_api_key = std::env::var("SES_INTRANET_SEARCH_API_KEY")
-        .map_err(|_| anyhow!("SES_INTRANET_SEARCH_API_KEY must be set"))?;
     let db_prefix = std::env::var("DB_PREFIX").map_err(|_| anyhow!("DB_PREFIX must be set"))?;
 
     Ok(SyncConfig {
@@ -59,8 +55,6 @@ fn build_config(location_id: String) -> Result<SyncConfig> {
         adopt: parse_env_bool("SES_SYNC_ADOPT", false),
         ses_api_base_url,
         ses_api_key,
-        ses_intranet_search_api_base_url,
-        ses_intranet_search_api_key,
         db_prefix,
         page_limit: parse_env_usize("SES_PAGE_LIMIT").unwrap_or(100),
         max_retries: parse_env_usize("SES_SYNC_MAX_RETRIES").unwrap_or(3),
@@ -125,9 +119,6 @@ async fn handler(event: LambdaEvent<Value>) -> Result<Value, LambdaError> {
             soft_deletes = stats.soft_deletes,
             blocked_manual_conflicts = stats.blocked_manual_conflicts,
             total_mutations = stats.total_mutations(),
-            emails_seen = stats.emails_seen,
-            emails_updated = stats.emails_updated,
-            emails_unmatched = stats.emails_unmatched,
             ses_deleted_flags_seen = stats.ses_deleted_flags_seen,
             missing_marked = stats.missing_marked,
             missing_cleared = stats.missing_cleared,
@@ -169,10 +160,6 @@ async fn handler(event: LambdaEvent<Value>) -> Result<Value, LambdaError> {
         "noops": stats.noops,
         "blocked_manual_conflicts": stats.blocked_manual_conflicts,
         "total_mutations": stats.total_mutations(),
-        "emails_seen": stats.emails_seen,
-        "emails_updated": stats.emails_updated,
-        "emails_unmatched": stats.emails_unmatched,
-        "emails_noops": stats.emails_noops,
         "ses_deleted_flags_seen": stats.ses_deleted_flags_seen,
         "missing_marked": stats.missing_marked,
         "missing_cleared": stats.missing_cleared,

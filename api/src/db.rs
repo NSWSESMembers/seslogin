@@ -218,9 +218,6 @@ pub enum PersonUpdateShape<'a> {
     SesApiPersonId {
         ses_api_person_id: Option<&'a str>,
     },
-    Email {
-        email: Option<&'a str>,
-    },
     /// Written only by directory sync: replaces all four directory fields, removing
     /// each one that is `None`.
     Directory {

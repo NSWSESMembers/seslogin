@@ -75,7 +75,7 @@ pub struct SesPersonHeadquarters {
     pub id: Option<i64>,
 }
 
-// ── SES intranet contact-directory search (member email lookup) ─────────────
+// ── SES intranet contact-directory search ───────────────────────────────────
 
 /// Response from the SES intranet contact-directory search endpoint (Azure Cognitive Search).
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -1085,52 +1085,11 @@ impl SesClient {
     }
 }
 
-/// The location whose people the directory files under `Assignments/Location` rather than
-/// `Assignments/EntityName`: a State Headquarters staff member's `EntityName` is their section
-/// ("State Operations Centre", "Casual Operators", ...), and only `Location` says
-/// "State Headquarters".
-///
-/// `Location` alone over-matches: it also covers the volunteers of every unit hosted at SHQ
-/// (Spontaneous Volunteering, Bush and Alpine Search and Rescue, Peer Support, ...) — over 2000
-/// entries, most of them either their own location here or not members at all. SHQ's members
-/// are its staff, and every one of them holds a `Position` assignment, so the search also
-/// requires `Assignments/Type:Position`.
-const STATE_HEADQUARTERS: &str = "State Headquarters";
-
 /// Rows per directory search request. The API returns at most 1000 however large `$top` is.
 const SEARCH_PAGE_SIZE: usize = 1000;
 
 /// Azure Cognitive Search refuses a `$skip` above 100000.
 const SEARCH_MAX_SKIP: usize = 100_000;
-
-/// The Lucene (`queryType=full`) search expression for a location's directory entries.
-///
-/// The name is matched as a quoted phrase. Unquoted, the field prefix binds to the first word
-/// only and the rest matches any field, so "State Headquarters" meant `EntityName:State` plus
-/// "Headquarters" anywhere, and "Southern Zone" picked up South Eastern Zone volunteers.
-///
-/// Units (and everything else) match on `EntityName`, which for a volunteer is their unit.
-/// State Headquarters matches its staff positions on `Location` instead (see
-/// [`STATE_HEADQUARTERS`]). Zones must not use `Location`: a zone's covers every volunteer of
-/// every unit in it.
-///
-/// The SES API abbreviates "Search and Rescue" ("Bush S&R Unit", "Alpine S&R Unit") but the
-/// directory spells it out ("Bush Search and Rescue Unit"), so the abbreviation is expanded.
-fn directory_search_expr(location_name: &str) -> String {
-    let phrase = location_name
-        .trim()
-        .replace("S&R", "Search and Rescue")
-        .replace('\\', "\\\\")
-        .replace('"', "\\\"");
-    if location_name
-        .trim()
-        .eq_ignore_ascii_case(STATE_HEADQUARTERS)
-    {
-        format!("Assignments/Location:\"{phrase}\" AND Assignments/Type:Position")
-    } else {
-        format!("Assignments/EntityName:\"{phrase}\"")
-    }
-}
 
 /// Client for the SES intranet contact-directory search API. This is a separate API surface
 /// from the main SES API (`SesClient`): different host/path, and authenticated with an
@@ -1155,45 +1114,6 @@ impl SesSearchClient {
             api_key,
             max_retries,
         })
-    }
-
-    /// Looks up all directory entries assigned to the given location name (e.g. "Parramatta Unit"),
-    /// filtered down to `Type == "Person"` results. See [`directory_search_expr`] for which
-    /// assignment field the name is matched against.
-    ///
-    /// Pages with `$skip`: the API returns at most [`SEARCH_PAGE_SIZE`] rows per request
-    /// whatever `$top` asks for, and State Headquarters alone has over 2000 entries.
-    pub async fn fetch_unit_members(&self, unit_name: &str) -> Result<Vec<SesSearchResult>> {
-        let search_expr = directory_search_expr(unit_name);
-        let mut people = Vec::new();
-        let mut skip = 0;
-
-        loop {
-            let page = self
-                .fetch_search_page(unit_name, &search_expr, skip)
-                .await?;
-            let rows = page.value.len();
-            skip += rows;
-            people.extend(
-                page.value
-                    .into_iter()
-                    .filter(|r| r.result_type.as_deref() == Some("Person")),
-            );
-
-            let count = page.count.map(|c| c.max(0) as usize);
-            if rows == 0 || count.is_none_or(|c| skip >= c) {
-                return Ok(people);
-            }
-            if skip >= SEARCH_MAX_SKIP {
-                warn!(
-                    "SES search for unit_name='{}' reported @odata.count={} but paging stops at $skip={}; results truncated",
-                    unit_name,
-                    count.unwrap_or_default(),
-                    skip
-                );
-                return Ok(people);
-            }
-        }
     }
 
     /// Every person in the directory (about 12,200, ~13 pages), with their assignments and
@@ -1293,29 +1213,6 @@ impl SesSearchClient {
             ));
         }
         Ok(page.value)
-    }
-
-    async fn fetch_search_page(
-        &self,
-        unit_name: &str,
-        search_expr: &str,
-        skip: usize,
-    ) -> Result<SesSearchResponse> {
-        let skip_param = skip.to_string();
-        let top_param = SEARCH_PAGE_SIZE.to_string();
-        self.get_search_page(
-            &format!("unit_name='{unit_name}' skip={skip}"),
-            &[
-                ("search", search_expr),
-                ("queryType", "full"),
-                ("searchMode", "all"),
-                ("$count", "true"),
-                ("$skip", skip_param.as_str()),
-                ("$top", top_param.as_str()),
-                ("$orderby", "search.score() desc, Type asc, DisplayName asc"),
-            ],
-        )
-        .await
     }
 
     /// One directory search request, retried on server errors and transport failures.
@@ -1470,46 +1367,6 @@ mod tests {
             ],
         };
         assert_eq!(result.email(), Some("personal@member.ses.nsw.gov.au"));
-    }
-
-    #[test]
-    fn directory_search_quotes_unit_names_on_entity_name() {
-        assert_eq!(
-            directory_search_expr("Parramatta Unit"),
-            r#"Assignments/EntityName:"Parramatta Unit""#
-        );
-        assert_eq!(
-            directory_search_expr("Southern Zone"),
-            r#"Assignments/EntityName:"Southern Zone""#
-        );
-    }
-
-    #[test]
-    fn directory_search_matches_state_headquarters_staff_on_location() {
-        assert_eq!(
-            directory_search_expr("State Headquarters"),
-            r#"Assignments/Location:"State Headquarters" AND Assignments/Type:Position"#
-        );
-    }
-
-    #[test]
-    fn directory_search_spells_out_search_and_rescue() {
-        assert_eq!(
-            directory_search_expr("Bush S&R Unit"),
-            r#"Assignments/EntityName:"Bush Search and Rescue Unit""#
-        );
-        assert_eq!(
-            directory_search_expr("Alpine S&R Unit"),
-            r#"Assignments/EntityName:"Alpine Search and Rescue Unit""#
-        );
-    }
-
-    #[test]
-    fn directory_search_escapes_phrase_metacharacters() {
-        assert_eq!(
-            directory_search_expr(r#"A "B" \ Unit"#),
-            r#"Assignments/EntityName:"A \"B\" \\ Unit""#
-        );
     }
 
     #[test]

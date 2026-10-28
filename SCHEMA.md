@@ -179,7 +179,7 @@ The `start_time` sort key across the location/person GSIs means DynamoDB returns
 
 - `registration_number` (S) — the SES member registration number (zero-padded)
 - `ses_api_person_id` (S) — absent until member sync links the record
-- `email` (S) — agency address first, else "Volunteers Primary E-Mail". Written by member sync's per-unit directory lookup and by directory sync, which never clears it
+- `email` (S) — agency address first, else "Volunteers Primary E-Mail". Written only by directory sync, which never clears it
 - `mobile` (S), `phones` (S), `preferred_name` (S) — written only by directory sync (`api/src/directory_sync.rs`). `mobile` is the first `+614…` number among Primary Telephone, Personal Mobile Phone, SMS and Work Mobile Phone. `phones` is JSON text, `[{"number", "types": [..]}]`, one entry per distinct number (faxes excluded), the mobile first. A directory record with no phones keeps the stored `mobile`/`phones`. `preferred_name` is set only when the directory has one
 - `capability_tags` (S) — JSON text of the member's SES API `capabilityTags` (qualifications such as Job Ready, flood rescue levels, driver), `[{"id", "name", "description"}]` sorted by id. Written only by member sync; absent when SES lists none
 - `deleted` (Bool)

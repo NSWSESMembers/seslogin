@@ -441,9 +441,6 @@ pub fn person_update_changes(
         db::PersonUpdateShape::SesApiPersonId { ses_api_person_id } => {
             after.set("ses_api_person_id", opt_text(*ses_api_person_id));
         }
-        db::PersonUpdateShape::Email { email } => {
-            after.set("email", opt_text(*email));
-        }
         db::PersonUpdateShape::Directory {
             email,
             mobile,
@@ -2618,8 +2615,11 @@ mod tests {
     fn person_update_with_no_before_lists_the_new_values_alone() {
         let (_, changes) = person_update_changes(
             None,
-            &db::PersonUpdateShape::Email {
+            &db::PersonUpdateShape::Directory {
                 email: Some("a@example.com"),
+                mobile: None,
+                phones: None,
+                preferred_name: None,
             },
             100,
         );
@@ -2640,8 +2640,16 @@ mod tests {
         p.ses_api_person_id = Some("ses-1".into());
         p.missing_since = Some(50);
 
-        let (_, changes) =
-            person_update_changes(Some(&p), &db::PersonUpdateShape::Email { email: None }, 100);
+        let (_, changes) = person_update_changes(
+            Some(&p),
+            &db::PersonUpdateShape::Directory {
+                email: None,
+                mobile: None,
+                phones: None,
+                preferred_name: None,
+            },
+            100,
+        );
         assert_eq!(
             change(&changes, "email").before,
             Some(json!("a@example.com"))

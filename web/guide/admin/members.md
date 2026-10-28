@@ -27,7 +27,9 @@ once a day. These members have a **green dot**:
 The top of the member list shows **Last successful member sync**. If it's more
 than an hour ago and you've just changed something in SES, an Admin can press
 **Sync now** to fetch the changes straight away rather than waiting for the
-daily update.
+daily update. **Sync now** refreshes the member list only. Members' email
+addresses, which reminders are sent to, come from the SES contact directory,
+which SESLogin reads once a day, early each morning.
 
 ## When members leave your unit
 
