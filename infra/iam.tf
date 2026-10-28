@@ -354,3 +354,29 @@ resource "aws_iam_role_policy" "scheduler_invoke_sync_locations" {
     }]
   })
 }
+
+# ── Sync directory lambda role ─────────────────────────────────────────────────
+
+resource "aws_iam_role" "sync_directory_lambda" {
+  name               = "seslogin-sync-directory-lambda-role"
+  assume_role_policy = data.aws_iam_policy_document.lambda_assume_role.json
+}
+
+resource "aws_iam_role_policy_attachment" "sync_directory_lambda_logs" {
+  role       = aws_iam_role.sync_directory_lambda.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+}
+
+resource "aws_iam_role_policy" "scheduler_invoke_sync_directory" {
+  name = "invoke-sync-directory"
+  role = aws_iam_role.scheduler.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["lambda:InvokeFunction"]
+      Resource = aws_lambda_function.sync_directory.arn
+    }]
+  })
+}

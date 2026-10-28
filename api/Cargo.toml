@@ -20,6 +20,10 @@ name = "sync-locations-lambda"
 path = "src/bin/sync-locations-lambda.rs"
 
 [[bin]]
+name = "sync-directory-lambda"
+path = "src/bin/sync-directory-lambda.rs"
+
+[[bin]]
 name = "dispatcher-lambda"
 path = "src/bin/dispatcher-lambda.rs"
 

@@ -79,6 +79,28 @@ resource "aws_scheduler_schedule" "location_sync_nightly" {
   }
 }
 
+resource "aws_scheduler_schedule" "directory_sync_nightly" {
+  name       = "seslogin-directory-sync-nightly"
+  group_name = "default"
+  state      = var.background_jobs_enabled ? "ENABLED" : "DISABLED"
+
+  flexible_time_window {
+    mode = "OFF"
+  }
+
+  # 04:00 Sydney time: after the 02:00 UTC location sync (12:00/13:00 Sydney the
+  # previous day), which maps locations to directory entities, and before the
+  # 06:00 checker.
+  schedule_expression          = "cron(0 4 * * ? *)"
+  schedule_expression_timezone = "Australia/Sydney"
+
+  target {
+    arn      = aws_lambda_function.sync_directory.arn
+    role_arn = aws_iam_role.scheduler.arn
+    input    = "{}"
+  }
+}
+
 resource "aws_scheduler_schedule" "badge_nightly" {
   name       = "seslogin-badge-nightly"
   group_name = "default"
