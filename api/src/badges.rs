@@ -102,6 +102,7 @@ enum BadgeRule {
         month: u32,
         day: u32,
     },
+    FridayThe13thSignOut,
     Manual,
 }
 
@@ -363,6 +364,36 @@ const BADGE_DEFINITIONS: &[BadgeDefinition] = &[
         rule: BadgeRule::Counter {
             metric: BadgeMetric::CheckIn,
             threshold: 500,
+        },
+    },
+    BadgeDefinition {
+        id: "checkin-century-mark",
+        name: "Century Mark",
+        description: "100 sign-ins completed.",
+        tier: "silver",
+        rule: BadgeRule::Counter {
+            metric: BadgeMetric::CheckIn,
+            threshold: 100,
+        },
+    },
+    BadgeDefinition {
+        id: "checkin-quarter-thousand",
+        name: "Quarter Thousand",
+        description: "250 sign-ins completed.",
+        tier: "silver",
+        rule: BadgeRule::Counter {
+            metric: BadgeMetric::CheckIn,
+            threshold: 250,
+        },
+    },
+    BadgeDefinition {
+        id: "checkin-thousand-club",
+        name: "Thousand Club",
+        description: "1,000 sign-ins completed.",
+        tier: "gold",
+        rule: BadgeRule::Counter {
+            metric: BadgeMetric::CheckIn,
+            threshold: 1000,
         },
     },
     BadgeDefinition {
@@ -1298,6 +1329,34 @@ const BADGE_DEFINITIONS: &[BadgeDefinition] = &[
         tier: "hidden",
         rule: BadgeRule::Manual,
     },
+    BadgeDefinition {
+        id: "easter-spooky-shift",
+        name: "Spooky Shift",
+        description: "Sign out on Halloween.",
+        tier: "hidden",
+        rule: BadgeRule::FixedDatePublicHolidaySignOut { month: 10, day: 31 },
+    },
+    BadgeDefinition {
+        id: "easter-countdown-crew",
+        name: "Countdown Crew",
+        description: "Sign out on New Year's Eve.",
+        tier: "hidden",
+        rule: BadgeRule::FixedDatePublicHolidaySignOut { month: 12, day: 31 },
+    },
+    BadgeDefinition {
+        id: "easter-leap-of-faith",
+        name: "Leap of Faith",
+        description: "Sign out on 29 February.",
+        tier: "hidden",
+        rule: BadgeRule::FixedDatePublicHolidaySignOut { month: 2, day: 29 },
+    },
+    BadgeDefinition {
+        id: "easter-unlucky-for-some",
+        name: "Unlucky for Some",
+        description: "Sign out on a Friday the 13th.",
+        tier: "hidden",
+        rule: BadgeRule::FridayThe13thSignOut,
+    },
 ];
 
 /// Parses a person's stored badge state (`Person.badge_state`). `None`, with a warning,
@@ -1437,7 +1496,9 @@ fn source_for_definition(definition: BadgeDefinition) -> &'static str {
             }
         }
         BadgeRule::AwayCheckIn { .. } => "Away sign-in",
-        BadgeRule::FixedDatePublicHolidaySignOut { .. } => "Attendance",
+        BadgeRule::FixedDatePublicHolidaySignOut { .. } | BadgeRule::FridayThe13thSignOut => {
+            "Attendance"
+        }
     }
 }
 
@@ -1531,7 +1592,9 @@ fn progress_value(rule: BadgeRule, location_state: &LocationBadgeProgress) -> Op
                 .sum();
             Some((current, threshold))
         }
-        BadgeRule::Manual | BadgeRule::FixedDatePublicHolidaySignOut { .. } => None,
+        BadgeRule::Manual
+        | BadgeRule::FixedDatePublicHolidaySignOut { .. }
+        | BadgeRule::FridayThe13thSignOut => None,
     }
 }
 
@@ -1874,6 +1937,9 @@ pub fn apply_event(
                 matches!(event, BadgeEvent::SignOut)
                     && is_fixed_month_day_public_holiday(now_sec, month, day)
             }
+            BadgeRule::FridayThe13thSignOut => {
+                matches!(event, BadgeEvent::SignOut) && is_friday_the_13th(now_sec)
+            }
         };
 
         if !should_award {
@@ -1908,6 +1974,14 @@ fn is_fixed_month_day_public_holiday(timestamp_sec: u64, month: u32, day: u32) -
     };
     let local_date = dt.with_timezone(&chrono_tz::Australia::Sydney).date_naive();
     local_date.month() == month && local_date.day() == day
+}
+
+fn is_friday_the_13th(timestamp_sec: u64) -> bool {
+    let Some(dt) = chrono::DateTime::from_timestamp(timestamp_sec as i64, 0) else {
+        return false;
+    };
+    let local_date = dt.with_timezone(&chrono_tz::Australia::Sydney).date_naive();
+    local_date.day() == 13 && local_date.weekday() == chrono::Weekday::Fri
 }
 
 fn maybe_award_sign_out_easter_eggs(
@@ -2463,6 +2537,82 @@ mod tests {
                 "{badge_id} not awarded for category {category_id}"
             );
         }
+    }
+
+    #[test]
+    fn sign_in_milestones_award_at_100_250_and_1000() {
+        let mut state = BadgeState::default();
+        let mut earned_at = std::collections::HashMap::new();
+        for i in 1..=1000_u64 {
+            for badge in apply_event(
+                &mut state,
+                "loc-milestones",
+                BadgeEvent::CheckIn,
+                i,
+                false,
+                None,
+                None,
+            ) {
+                earned_at.insert(badge.id, i);
+            }
+        }
+        assert_eq!(earned_at.get("checkin-century-mark"), Some(&100));
+        assert_eq!(earned_at.get("checkin-quarter-thousand"), Some(&250));
+        assert_eq!(earned_at.get("legacy-legend"), Some(&500));
+        assert_eq!(earned_at.get("checkin-thousand-club"), Some(&1000));
+    }
+
+    fn sydney(y: i32, m: u32, d: u32, h: u32) -> u64 {
+        chrono_tz::Australia::Sydney
+            .with_ymd_and_hms(y, m, d, h, 0, 0)
+            .single()
+            .unwrap()
+            .timestamp() as u64
+    }
+
+    fn sign_out_at(timestamp: u64) -> Vec<String> {
+        let mut state = BadgeState::default();
+        apply_event(
+            &mut state,
+            "loc-dates",
+            BadgeEvent::SignOut,
+            timestamp,
+            false,
+            Some("KfSya4BaVcN5"),
+            None,
+        )
+        .into_iter()
+        .map(|badge| badge.id)
+        .collect()
+    }
+
+    #[test]
+    fn date_easter_eggs_award_on_their_sydney_day_only() {
+        for (timestamp, badge_id) in [
+            (sydney(2026, 10, 31, 20), "easter-spooky-shift"),
+            (sydney(2026, 12, 31, 21), "easter-countdown-crew"),
+            (sydney(2028, 2, 29, 19), "easter-leap-of-faith"),
+            // 13 November 2026 is a Friday.
+            (sydney(2026, 11, 13, 19), "easter-unlucky-for-some"),
+        ] {
+            assert!(
+                sign_out_at(timestamp).contains(&badge_id.to_string()),
+                "{badge_id}"
+            );
+            let day_after = timestamp + 24 * 60 * 60;
+            assert!(
+                !sign_out_at(day_after).contains(&badge_id.to_string()),
+                "{badge_id}"
+            );
+        }
+        // A 13th that isn't a Friday (Tuesday 13 October 2026).
+        assert!(
+            !sign_out_at(sydney(2026, 10, 13, 19)).contains(&"easter-unlucky-for-some".to_string())
+        );
+        // Signing out after midnight on New Year's Eve is New Year's Day.
+        let after_midnight = sign_out_at(sydney(2027, 1, 1, 0) + 30 * 60);
+        assert!(!after_midnight.contains(&"easter-countdown-crew".to_string()));
+        assert!(after_midnight.contains(&"public-holiday-new-years-day".to_string()));
     }
 
     #[test]
