@@ -121,6 +121,13 @@ const TRAINING_TRAFFIC_SAFETY_CATEGORY_IDS: &[&str] = &["IZHsBlJsip7y"];
 const TRAINING_OTHER_CATEGORY_IDS: &[&str] = &["rohwW8dkppNz"];
 const TRAINER_PIARO_CATEGORY_IDS: &[&str] = &["qgs9Xs1hSTDL"];
 const TRAINER_OPERATE_COMMS_CATEGORY_IDS: &[&str] = &["2hPheSGKMo0A"];
+// The single Storm and Water category was split into Ground and Heights in
+// September 2026; the old one is disabled but still holds the history.
+const TRAINER_STORM_WATER_CATEGORY_IDS: &[&str] = &[
+    "iDmbliqZlKMw", // Storm & Water (disabled)
+    "diTqk82vnZxc", // Storm & Water: Ground
+    "oqYjg2M9LKEl", // Storm & Water: Heights
+];
 const MAINTENANCE_EQUIPMENT_CATEGORY_IDS: &[&str] = &["ly9uPGjoundF"];
 const UNIT_MEETING_MUSTER_CATEGORY_IDS: &[&str] = &["6uFM5NP8o1x8"];
 const ATTEND_EXERCISE_SES_CATEGORY_IDS: &[&str] = &["ifc9uKYAb0ZS"];
@@ -362,12 +369,13 @@ const BADGE_DEFINITIONS: &[BadgeDefinition] = &[
     },
     BadgeDefinition {
         id: "trainer-storm-water-splash-class",
-        name: "Storm Trooper",
+        name: "Splash Class",
         description: "First Trainer Storm and Water sign-out.",
         tier: "starter",
-        rule: BadgeRule::CategorySignOut {
-            category_id: "iDmbliqZlKMw",
+        rule: BadgeRule::CategorySignOutAny {
+            category_ids: TRAINER_STORM_WATER_CATEGORY_IDS,
             threshold: 1,
+            source: "Trainer Storm and Water",
         },
     },
     BadgeDefinition {
@@ -1054,7 +1062,6 @@ fn source_for_definition(definition: BadgeDefinition) -> &'static str {
         BadgeRule::Manual => "Attendance",
         BadgeRule::CategorySignOut { category_id, .. } => match category_id {
             "Xu7e3YQO2L91" => "Storm",
-            "iDmbliqZlKMw" => "Training",
             "LEnc4hCVnidW" => "Training",
             "JxJaXiWKdJOs" => "Training",
             "V4dyh0T2vjfd" => "Training",
@@ -1982,6 +1989,63 @@ mod tests {
                 .iter()
                 .any(|badge| badge.id == "trainer-storm-water-splash-class")
         );
+    }
+
+    #[test]
+    fn splash_class_counts_the_ground_and_heights_trainer_categories() {
+        for category_id in ["diTqk82vnZxc", "oqYjg2M9LKEl"] {
+            let mut state = BadgeState::default();
+            let awarded = apply_event(
+                &mut state,
+                "loc-splash",
+                BadgeEvent::SignOut,
+                600,
+                false,
+                Some(category_id),
+                None,
+            );
+            let splash_class = awarded
+                .iter()
+                .find(|badge| badge.id == "trainer-storm-water-splash-class")
+                .unwrap();
+            assert_eq!(splash_class.name, "Splash Class");
+        }
+    }
+
+    #[test]
+    fn badge_ids_are_unique() {
+        let mut seen = std::collections::HashSet::new();
+        for definition in BADGE_DEFINITIONS {
+            assert!(
+                seen.insert(definition.id),
+                "duplicate badge id {:?}",
+                definition.id
+            );
+        }
+    }
+
+    /// The kiosk and admin pages draw every badge from its own file in
+    /// web/public/image/badges/by-id/, so a badge without one shows a broken image.
+    #[test]
+    fn every_badge_has_an_icon_file() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../web/public/image/badges/by-id");
+        for definition in BADGE_DEFINITIONS {
+            let path = dir.join(format!("{}.svg", definition.id));
+            assert!(path.is_file(), "no icon at {}", path.display());
+        }
+    }
+
+    #[test]
+    fn badge_names_are_unique() {
+        let mut seen = std::collections::HashSet::new();
+        for definition in BADGE_DEFINITIONS {
+            assert!(
+                seen.insert(definition.name),
+                "two badges are called {:?}",
+                definition.name
+            );
+        }
     }
 
     #[test]
