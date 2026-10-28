@@ -389,6 +389,18 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         Ok(Some(person))
     }
 
+    async fn category_is_virtual(&self, category_id: &str) -> Result<bool> {
+        Ok(self
+            .app
+            .db()
+            .get_categories(&[category_id])
+            .await?
+            .into_iter()
+            .next()
+            .flatten()
+            .is_some_and(|category| category.is_virtual))
+    }
+
     /// Credit a kiosk sign-in or sign-out to the member's badges, returning the awards
     /// to celebrate. Best-effort: the scan itself has already been written, so a
     /// failure here is logged and treated as "nothing earned" rather than failing a
@@ -417,6 +429,16 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
                 .await?
             else {
                 return Ok(vec![]);
+            };
+            // Kiosks don't list virtual categories, but a quick-pick can still offer one
+            // that was recently used at the location.
+            let event = match (event, sign_out_category_id) {
+                (badges::BadgeEvent::SignOut, Some(category_id))
+                    if self.category_is_virtual(category_id).await? =>
+                {
+                    badges::BadgeEvent::VirtualSignOut
+                }
+                (event, _) => event,
             };
             self.apply_badge_event(
                 &person,
@@ -447,13 +469,16 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
     /// undisplayed until the member's next scan at a kiosk that celebrates badges, as
     /// there is no kiosk screen here. Best-effort, like `award_kiosk_badges`: the period
     /// has already been created.
+    ///
+    /// A period in a virtual category has no sign-in half and counts only towards its
+    /// own category's badges (see `BadgeEvent::VirtualSignOut`).
     async fn apply_badge_events_for_period(
         &self,
         person: &db::Person,
         location: &db::Location,
         start_time: u64,
         end_time: u64,
-        category_id: &str,
+        category: &db::Category,
     ) {
         let result = async {
             if !location.gamification_enabled {
@@ -470,22 +495,27 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
 
             let visiting = person.location_id != location.id;
             badge_store::update(self.app.db(), person, |_, state| {
+                let sign_out = if category.is_virtual {
+                    badges::BadgeEvent::VirtualSignOut
+                } else {
+                    let _ = badges::apply_event(
+                        state,
+                        &location.id,
+                        badges::BadgeEvent::CheckIn,
+                        start_time,
+                        visiting,
+                        None,
+                        None,
+                    );
+                    badges::BadgeEvent::SignOut
+                };
                 let _ = badges::apply_event(
                     state,
                     &location.id,
-                    badges::BadgeEvent::CheckIn,
-                    start_time,
-                    visiting,
-                    None,
-                    None,
-                );
-                let _ = badges::apply_event(
-                    state,
-                    &location.id,
-                    badges::BadgeEvent::SignOut,
+                    sign_out,
                     end_time,
                     visiting,
-                    Some(category_id),
+                    Some(&category.id),
                     Some((start_time, end_time)),
                 );
                 Some(())
@@ -1445,7 +1475,8 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
             .next()
             .flatten()
             .ok_or_else(|| anyhow!("Person {:?} not found", person_id))?;
-        self.app
+        let category = self
+            .app
             .db()
             .get_categories(&[&category_id])
             .await?
@@ -1477,7 +1508,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
             &location,
             start_time as u64,
             end_time as u64,
-            &category_id,
+            &category,
         )
         .await;
 
