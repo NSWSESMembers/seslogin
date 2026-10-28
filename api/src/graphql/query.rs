@@ -395,6 +395,7 @@ pub struct BadgeTierCount {
 pub struct LocationBadgeLeaderboardEntry<A: App + HasDb + Send + Sync> {
     _marker: std::marker::PhantomData<A>,
     person_id: String,
+    rank: i64,
     badge_count: i64,
     recent_badge_count_7d: i64,
     latest_badge_award_at: i64,
@@ -412,6 +413,8 @@ impl<A: App + HasDb + Send + Sync> LocationBadgeLeaderboardEntry<A> {
         Self {
             _marker: Default::default(),
             person_id,
+            // Assigned by `assign_leaderboard_ranks` once the board is sorted.
+            rank: 0,
             badge_count,
             recent_badge_count_7d,
             latest_badge_award_at,
@@ -436,6 +439,12 @@ impl<A: App + HasDb + Send + Sync + 'static> LocationBadgeLeaderboardEntry<A> {
             .ok_or_else(|| anyhow!("Person with ID {} missing", self.person_id))
     }
 
+    /// 1-based place on the board. Members with the same badge count share a place,
+    /// and the next place skips past them (1, 1, 3), so it is not the row's index.
+    async fn rank(&self) -> i64 {
+        self.rank
+    }
+
     async fn badge_count(&self) -> i64 {
         self.badge_count
     }
@@ -450,6 +459,24 @@ impl<A: App + HasDb + Send + Sync + 'static> LocationBadgeLeaderboardEntry<A> {
 
     async fn tier_counts(&self) -> Vec<BadgeTierCount> {
         self.tier_counts.clone()
+    }
+}
+
+/// Number a leaderboard already sorted by descending badge count, using standard
+/// competition ranking: a tie on badge count shares a place, and the following place
+/// skips the tied rows (1, 1, 3). The other sort keys still decide the order *within*
+/// a tie, but not the place.
+fn assign_leaderboard_ranks<A: App + HasDb + Send + Sync>(
+    leaderboard: &mut [LocationBadgeLeaderboardEntry<A>],
+) {
+    let mut previous: Option<(i64, i64)> = None;
+    for (idx, entry) in leaderboard.iter_mut().enumerate() {
+        let rank = match previous {
+            Some((count, rank)) if count == entry.badge_count => rank,
+            _ => idx as i64 + 1,
+        };
+        entry.rank = rank;
+        previous = Some((entry.badge_count, rank));
     }
 }
 
@@ -1832,6 +1859,48 @@ pub(super) async fn build_quick_pick<A: App + HasDb + Send + Sync + 'static>(
 }
 
 #[cfg(test)]
+mod leaderboard_rank_tests {
+    use super::*;
+    use crate::app::MyApp;
+    use crate::{mockdb, mockmail, mockqueue, mockrealtime};
+
+    type TestApp =
+        MyApp<mockdb::Handler, mockqueue::Handler, mockmail::Handler, mockrealtime::Handler>;
+
+    fn ranks(badge_counts: &[i64]) -> Vec<i64> {
+        let mut board: Vec<LocationBadgeLeaderboardEntry<TestApp>> = badge_counts
+            .iter()
+            .enumerate()
+            .map(|(idx, &count)| {
+                LocationBadgeLeaderboardEntry::new(format!("p{idx}"), count, 0, 0, vec![])
+            })
+            .collect();
+        assign_leaderboard_ranks(&mut board);
+        board.iter().map(|entry| entry.rank).collect()
+    }
+
+    #[test]
+    fn distinct_counts_rank_in_order() {
+        assert_eq!(ranks(&[9, 5, 2]), vec![1, 2, 3]);
+    }
+
+    #[test]
+    fn ties_share_a_place_and_the_next_place_skips() {
+        assert_eq!(ranks(&[7, 7, 4, 3, 3, 3, 1]), vec![1, 1, 3, 4, 4, 4, 7]);
+    }
+
+    #[test]
+    fn everyone_tied_is_first() {
+        assert_eq!(ranks(&[2, 2, 2]), vec![1, 1, 1]);
+    }
+
+    #[test]
+    fn empty_board() {
+        assert_eq!(ranks(&[]), Vec::<i64>::new());
+    }
+}
+
+#[cfg(test)]
 mod recent_categories_tests {
     use super::*;
 
@@ -3049,6 +3118,7 @@ impl<A: App + HasDb + Send + Sync> Location<A> {
                 .then_with(|| a.person_id.cmp(&b.person_id))
         });
         leaderboard.truncate(limit_usize.min(100));
+        assign_leaderboard_ranks(&mut leaderboard);
 
         Ok(leaderboard)
     }
