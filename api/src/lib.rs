@@ -11,6 +11,7 @@ pub mod base_url;
 pub mod client_info;
 pub mod clock;
 pub mod db;
+pub mod directory_sync;
 pub mod dynamodb;
 pub mod environment;
 pub mod expire;

@@ -44,6 +44,8 @@ pub(crate) struct FakeDb {
     pub(crate) fail_audit_writes: AtomicBool,
     pub(crate) user_tokens: Mutex<HashMap<String, db::UserToken>>,
     pub(crate) webauthn_credentials: Mutex<HashMap<String, db::WebauthnCredential>>,
+    /// `person_unit` rows by person id.
+    pub(crate) person_units: Mutex<HashMap<String, Vec<db::PersonUnit>>>,
 }
 
 impl FakeDb {
@@ -477,6 +479,9 @@ impl db::Handler for FakeDb {
             registration_number: Some(registration_number.to_string()),
             ses_api_person_id: None,
             email: None,
+            mobile: None,
+            phones: None,
+            preferred_name: None,
             badge_state: None,
             capability_tags: None,
             deleted: None,
@@ -975,6 +980,36 @@ impl db::Handler for FakeDb {
     ) -> db::Result<db::ScanPage<db::Person>> {
         unsupported()
     }
+    async fn scan_person_units(&self) -> db::Result<Vec<db::PersonUnit>> {
+        Ok(self
+            .person_units
+            .lock()
+            .unwrap()
+            .values()
+            .flatten()
+            .cloned()
+            .collect())
+    }
+    async fn list_person_units(&self, person_id: &str) -> db::Result<Vec<db::PersonUnit>> {
+        Ok(self
+            .person_units
+            .lock()
+            .unwrap()
+            .get(person_id)
+            .cloned()
+            .unwrap_or_default())
+    }
+    async fn replace_person_units(
+        &self,
+        person_id: &str,
+        units: &[db::PersonUnit],
+    ) -> db::Result<()> {
+        self.person_units
+            .lock()
+            .unwrap()
+            .insert(person_id.to_string(), units.to_vec());
+        Ok(())
+    }
     async fn scan_periods(
         &self,
         _cursor: Option<db::ScanCursor>,
@@ -1396,6 +1431,9 @@ pub(crate) fn seed_person(
             registration_number: Some(member_number.to_string()),
             ses_api_person_id: ses_api_person_id.map(str::to_string),
             email: None,
+            mobile: None,
+            phones: None,
+            preferred_name: None,
             badge_state: None,
             capability_tags: None,
             deleted: None,

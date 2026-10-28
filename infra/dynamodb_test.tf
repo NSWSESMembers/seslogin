@@ -489,6 +489,37 @@ resource "aws_dynamodb_table" "test_audit_log" {
   }
 }
 
+resource "aws_dynamodb_table" "test_person_unit" {
+  name         = "${var.db_prefix_test}_person_unit"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "person_id"
+  range_key    = "entity_id"
+
+  attribute {
+    name = "person_id"
+    type = "S"
+  }
+  attribute {
+    name = "entity_id"
+    type = "S"
+  }
+  attribute {
+    name = "location_id"
+    type = "S"
+  }
+
+  # Sparse: only assignments to an entity that is one of our locations carry a
+  # location_id. Nothing reads it yet; it is for per-unit membership views.
+  global_secondary_index {
+    name = "location_id-index"
+    key_schema {
+      attribute_name = "location_id"
+      key_type       = "HASH"
+    }
+    projection_type = "ALL"
+  }
+}
+
 # ── Test API access to the test tables ────────────────────────────────────────
 # seslogin-test-api's DB_PREFIX is var.db_prefix_test, and its dynamodb-access
 # policy in dynamodb.tf is scoped to ${var.db_prefix_test}* only, so the test

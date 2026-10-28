@@ -172,6 +172,13 @@ pub struct Person {
     pub registration_number: Option<String>,
     pub ses_api_person_id: Option<String>,
     pub email: Option<String>,
+    /// The member's first Australian mobile number from the SES directory, E.164.
+    pub mobile: Option<String>,
+    /// Every distinct phone number the SES directory lists for the member, exactly as
+    /// stored: JSON text, `[{"number", "types": [..]}]`, the mobile first.
+    pub phones: Option<String>,
+    /// The SES directory's preferred name, when set. Stored, not yet displayed.
+    pub preferred_name: Option<String>,
     /// Badge counters and awards, exactly as stored: the JSON text `badges::read_state`
     /// parses. Kept unparsed so that loading a person can never fail on it, and so a
     /// badge write can be made conditional on it being unchanged since it was read.
@@ -214,6 +221,14 @@ pub enum PersonUpdateShape<'a> {
     Email {
         email: Option<&'a str>,
     },
+    /// Written only by directory sync: replaces all four directory fields, removing
+    /// each one that is `None`.
+    Directory {
+        email: Option<&'a str>,
+        mobile: Option<&'a str>,
+        phones: Option<&'a str>,
+        preferred_name: Option<&'a str>,
+    },
     /// Replaces the capability tags JSON text; `None` removes it.
     CapabilityTags {
         capability_tags: Option<&'a str>,
@@ -233,6 +248,43 @@ pub enum PersonUpdateShape<'a> {
     },
     Undelete,
     Delete,
+}
+
+/// One SES directory entity (a unit, cluster, team, section, ...) a member is assigned
+/// to, with everything they hold there. Written only by directory sync.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct PersonUnit {
+    pub person_id: String,
+    /// The directory `EntityId`.
+    pub entity_id: String,
+    /// The location this entity is, when it is one of ours.
+    pub location_id: Option<String>,
+    pub entity_name: Option<String>,
+    pub entity_code: Option<String>,
+    /// The zone the directory files the assignment under.
+    pub zone: Option<String>,
+    /// The Volunteer assignment's detail (Member, Probationary, Life, ...). `None` for a
+    /// staff-only row.
+    pub membership_type: Option<String>,
+    pub ranks: Vec<String>,
+    pub roles: Vec<String>,
+    pub positions: Vec<String>,
+    /// Whether `location_id` is the member's primary (`Person.location_id`) location.
+    pub is_primary: bool,
+    pub updated_at: Option<u64>,
+}
+
+impl PersonUnit {
+    /// Equal in everything directory sync writes, ignoring `updated_at`.
+    pub fn same_content(&self, other: &PersonUnit) -> bool {
+        PersonUnit {
+            updated_at: None,
+            ..self.clone()
+        } == PersonUnit {
+            updated_at: None,
+            ..other.clone()
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -1304,6 +1356,24 @@ pub trait Handler: Sync {
         cursor: Option<ScanCursor>,
         limit: i32,
     ) -> impl Future<Output = Result<ScanPage<Period>>> + Send;
+
+    /// Every `person_unit` row (about 12k). Directory sync reads the table once a run.
+    fn scan_person_units(&self) -> impl Future<Output = Result<Vec<PersonUnit>>> + Send;
+
+    /// A member's `person_unit` rows, by entity id.
+    fn list_person_units(
+        &self,
+        person_id: &str,
+    ) -> impl Future<Output = Result<Vec<PersonUnit>>> + Send;
+
+    /// Make a member's `person_unit` rows exactly `units` (every one of which must carry
+    /// this `person_id`): rows not in it are deleted, and rows that are new or differ
+    /// are written. An empty `units` removes them all.
+    fn replace_person_units(
+        &self,
+        person_id: &str,
+        units: &[PersonUnit],
+    ) -> impl Future<Output = Result<()>> + Send;
 
     /// Unlike `list_sessions`, this reaches soft-deleted sessions — they have no
     /// `active` attribute, so they are absent from `active-location_id-index`.

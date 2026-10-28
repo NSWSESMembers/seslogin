@@ -395,6 +395,9 @@ fn person_fields(p: &Person) -> Fields {
             opt_text(p.ses_api_person_id.as_deref()),
         )
         .with("email", opt_text(p.email.as_deref()))
+        .with("mobile", opt_text(p.mobile.as_deref()))
+        .with("phones", json_text(p.phones.as_deref()))
+        .with("preferred_name", opt_text(p.preferred_name.as_deref()))
         .with("capability_tags", json_text(p.capability_tags.as_deref()))
         .with("deleted", opt_num(p.deleted))
         .with("missing_since", opt_num(p.missing_since))
@@ -441,6 +444,17 @@ pub fn person_update_changes(
         db::PersonUpdateShape::Email { email } => {
             after.set("email", opt_text(*email));
         }
+        db::PersonUpdateShape::Directory {
+            email,
+            mobile,
+            phones,
+            preferred_name,
+        } => {
+            after.set("email", opt_text(*email));
+            after.set("mobile", opt_text(*mobile));
+            after.set("phones", json_text(*phones));
+            after.set("preferred_name", opt_text(*preferred_name));
+        }
         db::PersonUpdateShape::CapabilityTags { capability_tags } => {
             after.set("capability_tags", json_text(*capability_tags));
         }
@@ -460,6 +474,48 @@ pub fn person_update_changes(
         }
     }
     (action, diff(&before, &after))
+}
+
+/// A member's units as the audit log shows them: one line per unit, e.g.
+/// `"Aberdeen Unit: Member, SES Operator, SES Team Leader"`, sorted. Absent when none.
+fn person_units_summary(units: &[db::PersonUnit]) -> Option<Value> {
+    let mut lines: Vec<String> = units
+        .iter()
+        .map(|u| {
+            let name = u.entity_name.as_deref().unwrap_or(&u.entity_id);
+            let held: Vec<&str> = u
+                .membership_type
+                .iter()
+                .chain(&u.ranks)
+                .chain(&u.roles)
+                .chain(&u.positions)
+                .map(String::as_str)
+                .collect();
+            if held.is_empty() {
+                name.to_string()
+            } else {
+                format!("{name}: {}", held.join(", "))
+            }
+        })
+        .collect();
+    if lines.is_empty() {
+        return None;
+    }
+    lines.sort();
+    Some(json!(lines))
+}
+
+/// The audited change of a `replace_person_units`: a single synthetic `units` field, so
+/// a member's units show as an ordinary person change rather than a kind of record of
+/// their own.
+pub fn person_units_changes(
+    before: &[db::PersonUnit],
+    after: &[db::PersonUnit],
+) -> Vec<AuditFieldChange> {
+    diff(
+        &Fields::default().with("units", person_units_summary(before)),
+        &Fields::default().with("units", person_units_summary(after)),
+    )
 }
 
 /// The locations a person update affects: the person's current one, plus the new one
@@ -2047,6 +2103,48 @@ impl<D: db::Handler> db::Handler for AuditingHandler<D> {
         self.inner.scan_periods(cursor, limit).await
     }
 
+    async fn scan_person_units(&self) -> db::Result<Vec<db::PersonUnit>> {
+        self.inner.scan_person_units().await
+    }
+
+    async fn list_person_units(&self, person_id: &str) -> db::Result<Vec<db::PersonUnit>> {
+        self.inner.list_person_units(person_id).await
+    }
+
+    /// Recorded as one `person` update per member, with a `units` field summarising the
+    /// rows before and after. Only a changed summary is recorded: a row's location or
+    /// primary flag changing alone is bookkeeping that follows from other changes.
+    async fn replace_person_units(
+        &self,
+        person_id: &str,
+        units: &[db::PersonUnit],
+    ) -> db::Result<()> {
+        let before_units = match self.inner.list_person_units(person_id).await {
+            Ok(rows) => rows,
+            Err(e) => {
+                warn!(
+                    "audit: failed to read person_unit rows for {} before the write: {}",
+                    person_id, e
+                );
+                Vec::new()
+            }
+        };
+        let before = self.before_person(person_id).await;
+        self.inner.replace_person_units(person_id, units).await?;
+        self.record(Recorded {
+            entity_type: AuditEntityType::Person,
+            entity_id: person_id,
+            action: AuditAction::Update,
+            label: before
+                .as_ref()
+                .map(|p| full_name(&p.first_name, &p.last_name)),
+            location_ids: before.map(|p| p.location_id).into_iter().collect(),
+            changes: person_units_changes(&before_units, units),
+        })
+        .await;
+        Ok(())
+    }
+
     async fn scan_sessions(
         &self,
         cursor: Option<db::ScanCursor>,
@@ -2280,6 +2378,9 @@ mod tests {
             registration_number: Some("1001".to_string()),
             ses_api_person_id: None,
             email: None,
+            mobile: None,
+            phones: None,
+            preferred_name: None,
             badge_state: None,
             capability_tags: None,
             deleted: None,
@@ -3061,6 +3162,66 @@ mod tests {
         // `last_successful_member_sync` is the heartbeat, never part of the diff.
         assert!(
             !fields(&location_create_changes(&location())).contains(&"last_successful_member_sync")
+        );
+    }
+
+    #[test]
+    fn person_units_are_audited_as_one_summary_field() {
+        let unit = |entity: &str, name: &str, roles: &[&str]| db::PersonUnit {
+            person_id: "p1".into(),
+            entity_id: entity.into(),
+            entity_name: Some(name.into()),
+            membership_type: Some("Member".into()),
+            ranks: vec!["SES Operator".into()],
+            roles: roles.iter().map(|r| r.to_string()).collect(),
+            ..Default::default()
+        };
+        let before = vec![unit("70000047", "Aberdeen Unit", &[])];
+        let after = vec![
+            unit("70000099", "Hume - HMC", &[]),
+            unit("70000047", "Aberdeen Unit", &["SES Team Leader"]),
+        ];
+        let changes = person_units_changes(&before, &after);
+        assert_eq!(fields(&changes), vec!["units"]);
+        assert_eq!(
+            changes[0].before,
+            Some(json!(["Aberdeen Unit: Member, SES Operator"]))
+        );
+        assert_eq!(
+            changes[0].after,
+            Some(json!([
+                "Aberdeen Unit: Member, SES Operator, SES Team Leader",
+                "Hume - HMC: Member, SES Operator"
+            ]))
+        );
+        assert!(person_units_changes(&after, &after).is_empty());
+        assert_eq!(person_units_changes(&before, &[])[0].after, None);
+
+        // A row whose location or primary flag changed, and nothing else, is not news.
+        let mut moved = before.clone();
+        moved[0].location_id = Some("loc1".into());
+        moved[0].is_primary = true;
+        assert!(person_units_changes(&before, &moved).is_empty());
+    }
+
+    #[test]
+    fn person_directory_shape_diffs_its_four_fields() {
+        let mut p = person();
+        p.email = Some("a@example.test".into());
+        let (_, changes) = person_update_changes(
+            Some(&p),
+            &db::PersonUpdateShape::Directory {
+                email: Some("a@example.test"),
+                mobile: Some("+61400000001"),
+                phones: Some(r#"[{"number":"+61400000001","types":["SMS"]}]"#),
+                preferred_name: None,
+            },
+            100,
+        );
+        assert_eq!(fields(&changes), vec!["mobile", "phones"]);
+        assert_eq!(
+            change(&changes, "phones").after,
+            Some(json!([{"number": "+61400000001", "types": ["SMS"]}]))
         );
     }
 

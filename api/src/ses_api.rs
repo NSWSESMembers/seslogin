@@ -92,8 +92,29 @@ pub struct SesSearchResult {
     pub id: Option<String>,
     #[serde(rename = "Type")]
     pub result_type: Option<String>,
+    #[serde(rename = "PreferredName", default)]
+    pub preferred_name: Option<String>,
+    #[serde(rename = "Assignments", default)]
+    pub assignments: Vec<SesAssignment>,
     #[serde(rename = "ContactDetails", default)]
     pub contact_details: Vec<SesContactDetail>,
+}
+
+/// One thing a person holds at a directory entity: a Volunteer membership (`Detail` is
+/// the membership type), a Rank, a Role or a paid-staff Position.
+#[derive(Debug, Clone, Deserialize)]
+pub struct SesAssignment {
+    #[serde(rename = "Type")]
+    pub assignment_type: Option<String>,
+    #[serde(rename = "Detail")]
+    pub detail: Option<String>,
+    /// The zone.
+    #[serde(rename = "Location")]
+    pub location: Option<String>,
+    #[serde(rename = "EntityId")]
+    pub entity_id: Option<String>,
+    #[serde(rename = "EntityName")]
+    pub entity_name: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -1175,6 +1196,81 @@ impl SesSearchClient {
         }
     }
 
+    /// Every person in the directory (about 12,200, ~13 pages), with their assignments and
+    /// contact details.
+    ///
+    /// Complete or an error: every page must succeed and the distinct `Id`s must add up
+    /// to the `@odata.count` the first page reported. Paging by `$skip` over a sort that
+    /// can shift between requests could otherwise skip or repeat people unnoticed.
+    pub async fn fetch_all_people(&self) -> Result<Vec<SesSearchResult>> {
+        let top = SEARCH_PAGE_SIZE.to_string();
+        let mut people: Vec<SesSearchResult> = Vec::new();
+        let mut ids: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let mut expected: Option<usize> = None;
+        let mut skip = 0usize;
+
+        loop {
+            let skip_param = skip.to_string();
+            let page: SesSearchResponse = self
+                .get_search_page(
+                    &format!("all people skip={skip}"),
+                    &[
+                        ("search", "*"),
+                        ("$filter", "Type eq 'Person'"),
+                        (
+                            "$select",
+                            "Id,Type,PreferredName,Assignments,ContactDetails",
+                        ),
+                        ("$orderby", "DisplayName asc"),
+                        ("$count", "true"),
+                        ("$skip", skip_param.as_str()),
+                        ("$top", top.as_str()),
+                    ],
+                )
+                .await?;
+            if expected.is_none() {
+                expected = page.count.map(|c| c.max(0) as usize);
+            }
+            let rows = page.value.len();
+            skip += rows;
+            for person in page.value {
+                if let Some(id) = person
+                    .id
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                {
+                    ids.insert(id.to_string());
+                }
+                people.push(person);
+            }
+            let Some(expected) = expected else {
+                return Err(anyhow!(
+                    "SES directory person search returned no @odata.count"
+                ));
+            };
+            if rows == 0 || skip >= expected {
+                break;
+            }
+            if skip >= SEARCH_MAX_SKIP {
+                return Err(anyhow!(
+                    "SES directory reports {expected} people, more than $skip can page through"
+                ));
+            }
+        }
+
+        let expected = expected.unwrap_or_default();
+        if ids.len() != expected || people.len() != expected {
+            return Err(anyhow!(
+                "SES directory person fetch is incomplete: {} rows, {} distinct ids, @odata.count {}",
+                people.len(),
+                ids.len(),
+                expected
+            ));
+        }
+        Ok(people)
+    }
+
     /// Every directory entity (units, clusters, zones, sections, ...). There are about 650,
     /// so one page holds them all; more than a page's worth is refused rather than truncated.
     pub async fn list_entities(&self) -> Result<Vec<SesDirectoryEntity>> {
@@ -1330,6 +1426,8 @@ mod tests {
         let result = SesSearchResult {
             id: Some("40043760".to_string()),
             result_type: Some("Person".to_string()),
+            preferred_name: None,
+            assignments: vec![],
             contact_details: vec![
                 contact(
                     "Volunteers Primary E-Mail",
@@ -1346,6 +1444,8 @@ mod tests {
         let result = SesSearchResult {
             id: Some("40043760".to_string()),
             result_type: Some("Person".to_string()),
+            preferred_name: None,
+            assignments: vec![],
             contact_details: vec![contact(
                 "Volunteers Primary E-Mail",
                 "personal@member.ses.nsw.gov.au",
@@ -1359,6 +1459,8 @@ mod tests {
         let result = SesSearchResult {
             id: Some("40043760".to_string()),
             result_type: Some("Person".to_string()),
+            preferred_name: None,
+            assignments: vec![],
             contact_details: vec![
                 contact("Agency Email Address", "   "),
                 contact(
@@ -1415,6 +1517,8 @@ mod tests {
         let result = SesSearchResult {
             id: Some("40043760".to_string()),
             result_type: Some("Person".to_string()),
+            preferred_name: None,
+            assignments: vec![],
             contact_details: vec![contact("Primary Telephone", "+61405229810")],
         };
         assert_eq!(result.email(), None);

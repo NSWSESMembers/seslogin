@@ -333,6 +333,22 @@ impl db::Handler for Handler {
         Self::unsupported()
     }
 
+    async fn scan_person_units(&self) -> db::Result<Vec<db::PersonUnit>> {
+        Self::unsupported()
+    }
+
+    async fn list_person_units(&self, _person_id: &str) -> db::Result<Vec<db::PersonUnit>> {
+        Self::unsupported()
+    }
+
+    async fn replace_person_units(
+        &self,
+        _person_id: &str,
+        _units: &[db::PersonUnit],
+    ) -> db::Result<()> {
+        Self::unsupported()
+    }
+
     async fn scan_persons(
         &self,
         _cursor: Option<db::ScanCursor>,

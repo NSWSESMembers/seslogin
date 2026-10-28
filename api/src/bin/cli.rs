@@ -632,6 +632,30 @@ fn short_date(epoch_secs: u64) -> String {
     }
 }
 
+/// The numbers, with their types, from a person's stored phones JSON, or the raw text
+/// if it does not parse.
+fn phone_numbers(json: Option<&str>) -> String {
+    let Some(json) = json else {
+        return "-".to_string();
+    };
+    match serde_json::from_str::<Vec<serde_json::Value>>(json) {
+        Ok(phones) => phones
+            .iter()
+            .map(|p| {
+                let number = p.get("number").and_then(|n| n.as_str()).unwrap_or("?");
+                let types: Vec<&str> = p
+                    .get("types")
+                    .and_then(|t| t.as_array())
+                    .map(|t| t.iter().filter_map(|t| t.as_str()).collect())
+                    .unwrap_or_default();
+                format!("{number} ({})", types.join(", "))
+            })
+            .collect::<Vec<_>>()
+            .join("; "),
+        Err(_) => json.to_string(),
+    }
+}
+
 /// The tag names from a person's stored capability tags JSON, or the raw text if it
 /// does not parse.
 fn capability_tag_names(json: Option<&str>) -> String {
@@ -805,6 +829,9 @@ async fn show_persons(db: &impl Handler, persons: &[Person]) {
             registration_number,
             ses_api_person_id,
             email,
+            mobile,
+            phones,
+            preferred_name,
             badge_state,
             capability_tags,
             deleted,
@@ -812,7 +839,7 @@ async fn show_persons(db: &impl Handler, persons: &[Person]) {
             created_at,
             updated_at,
         } = p;
-        print_detail(&[
+        let mut rows = vec![
             ("id", id.clone()),
             ("first_name", first_name.clone()),
             ("last_name", last_name.clone()),
@@ -820,6 +847,9 @@ async fn show_persons(db: &impl Handler, persons: &[Person]) {
             ("location_id", decorate(location_id, locs.get(location_id))),
             ("ses_api_person_id", opt_str(ses_api_person_id)),
             ("email", opt_str(email)),
+            ("mobile", opt_str(mobile)),
+            ("phones", phone_numbers(phones.as_deref())),
+            ("preferred_name", opt_str(preferred_name)),
             // Summarised rather than dumped: the raw state is a JSON blob of per-location
             // counters that would swamp the rest of the record.
             (
@@ -834,8 +864,48 @@ async fn show_persons(db: &impl Handler, persons: &[Person]) {
             ("missing_since", opt_ts(*missing_since)),
             ("created_at", opt_ts(*created_at)),
             ("updated_at", opt_ts(*updated_at)),
-        ]);
+        ];
+        rows.extend(person_unit_rows(db, id).await);
+        print_detail(&rows);
     }
+}
+
+/// A member's `person_unit` rows as detail rows, one per unit. The table may not exist
+/// yet in every environment, so a failed read is shown rather than fatal.
+async fn person_unit_rows(db: &impl Handler, person_id: &str) -> Vec<(&'static str, String)> {
+    let units = match db.list_person_units(person_id).await {
+        Ok(units) => units,
+        Err(e) => return vec![("units", format!("(unreadable: {e})"))],
+    };
+    if units.is_empty() {
+        return vec![("units", "-".to_string())];
+    }
+    units
+        .iter()
+        .enumerate()
+        .map(|(n, u)| {
+            let held: Vec<&str> = u
+                .membership_type
+                .iter()
+                .chain(&u.ranks)
+                .chain(&u.roles)
+                .chain(&u.positions)
+                .map(String::as_str)
+                .collect();
+            let line = format!(
+                "{} [{}{}]{} {}",
+                u.entity_name.as_deref().unwrap_or("?"),
+                u.entity_id,
+                u.location_id
+                    .as_deref()
+                    .map(|l| format!(" -> {l}"))
+                    .unwrap_or_default(),
+                if u.is_primary { " (primary)" } else { "" },
+                held.join(", "),
+            );
+            (if n == 0 { "units" } else { "" }, line)
+        })
+        .collect()
 }
 
 async fn show_locations(_db: &impl Handler, locs: &[Location]) {

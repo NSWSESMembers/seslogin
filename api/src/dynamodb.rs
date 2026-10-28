@@ -381,6 +381,9 @@ impl TryInto<Person> for Item {
             registration_number: self.string_field("registration_number")?,
             ses_api_person_id: self.string_field("ses_api_person_id")?,
             email: self.string_field("email")?,
+            mobile: self.string_field("mobile")?,
+            phones: self.string_field("phones")?,
+            preferred_name: self.string_field("preferred_name")?,
             // Stored as a JSON string rather than a DynamoDB map: the badge code owns
             // the shape, and round-tripping it as text keeps hydration from having to
             // mirror every nested counter as an AttributeValue. Not parsed here, so a
@@ -399,6 +402,77 @@ impl TryInto<Person> for Item {
             updated_at: self.i64_field("updated_at")?.map(|i| i as u64),
         })
     }
+}
+
+impl TryInto<db::PersonUnit> for Item {
+    type Error = HydrationError;
+    fn try_into(self) -> Result<db::PersonUnit, Self::Error> {
+        Ok(db::PersonUnit {
+            person_id: self
+                .string_field("person_id")?
+                .ok_or_else(|| anyhow!("PersonUnit missing person_id"))?,
+            entity_id: self
+                .string_field("entity_id")?
+                .ok_or_else(|| anyhow!("PersonUnit missing entity_id"))?,
+            location_id: self.string_field("location_id")?,
+            entity_name: self.string_field("entity_name")?,
+            entity_code: self.string_field("entity_code")?,
+            zone: self.string_field("zone")?,
+            membership_type: self.string_field("membership_type")?,
+            ranks: sorted(self.string_set_field("ranks")?),
+            roles: sorted(self.string_set_field("roles")?),
+            positions: sorted(self.string_set_field("positions")?),
+            is_primary: self.bool_field("is_primary")?.unwrap_or(false),
+            updated_at: self.i64_field("updated_at")?.map(|i| i as u64),
+        })
+    }
+}
+
+/// A string set comes back in no particular order; `PersonUnit` keeps them sorted so
+/// that comparing two is meaningful.
+fn sorted(mut v: Vec<String>) -> Vec<String> {
+    v.sort();
+    v
+}
+
+/// The item for a `person_unit` row. Absent values, empty sets and a false
+/// `is_primary` are left off, so the row carries only what it has.
+fn person_unit_item(unit: &db::PersonUnit, now: u64) -> HashMap<String, AttributeValue> {
+    let mut item = HashMap::from([
+        (
+            "person_id".to_string(),
+            AttributeValue::S(unit.person_id.clone()),
+        ),
+        (
+            "entity_id".to_string(),
+            AttributeValue::S(unit.entity_id.clone()),
+        ),
+        ("updated_at".to_string(), AttributeValue::N(now.to_string())),
+    ]);
+    for (name, value) in [
+        ("location_id", &unit.location_id),
+        ("entity_name", &unit.entity_name),
+        ("entity_code", &unit.entity_code),
+        ("zone", &unit.zone),
+        ("membership_type", &unit.membership_type),
+    ] {
+        if let Some(v) = value {
+            item.insert(name.to_string(), AttributeValue::S(v.clone()));
+        }
+    }
+    for (name, values) in [
+        ("ranks", &unit.ranks),
+        ("roles", &unit.roles),
+        ("positions", &unit.positions),
+    ] {
+        if !values.is_empty() {
+            item.insert(name.to_string(), AttributeValue::Ss(values.clone()));
+        }
+    }
+    if unit.is_primary {
+        item.insert("is_primary".to_string(), AttributeValue::Bool(true));
+    }
+    item
 }
 
 impl TryInto<Session> for Item {
@@ -2349,6 +2423,9 @@ impl db::Handler for Handler {
             registration_number: Some(registration_number.to_string()),
             ses_api_person_id: None,
             email: None,
+            mobile: None,
+            phones: None,
+            preferred_name: None,
             badge_state: None,
             capability_tags: None,
             deleted: None,
@@ -2464,6 +2541,32 @@ impl db::Handler for Handler {
                     .send()
                     .await
                     .map_err(|e| map_update_err(e, format!("Person {}", id)))?;
+                record_capacity("update_person", resp.consumed_capacity(), CapKind::Write);
+            }
+            db::PersonUpdateShape::Directory {
+                email,
+                mobile,
+                phones,
+                preferred_name,
+            } => {
+                let s = |v: Option<&str>| v.map(|v| AttributeValue::S(v.to_string()));
+                let resp = set_or_remove(
+                    self.client
+                        .update_item()
+                        .table_name(self.table_name("person"))
+                        .key("id", AttributeValue::S(id.to_string()))
+                        .condition_expression("attribute_exists(id)"),
+                    vec![
+                        ("email", s(email)),
+                        ("mobile", s(mobile)),
+                        ("phones", s(phones)),
+                        ("preferred_name", s(preferred_name)),
+                    ],
+                )
+                .return_consumed_capacity(ReturnConsumedCapacity::Total)
+                .send()
+                .await
+                .map_err(|e| map_update_err(e, format!("Person {}", id)))?;
                 record_capacity("update_person", resp.consumed_capacity(), CapKind::Write);
             }
             db::PersonUpdateShape::CapabilityTags { capability_tags } => {
@@ -4096,6 +4199,90 @@ impl db::Handler for Handler {
     ) -> db::Result<db::ScanPage<Period>> {
         self.scan_page("scan_periods", "period", cursor, limit)
             .await
+    }
+
+    async fn scan_person_units(&self) -> db::Result<Vec<db::PersonUnit>> {
+        scan_all("scan_person_units", || {
+            self.client
+                .scan()
+                .table_name(self.table_name("person_unit"))
+        })
+        .await
+    }
+
+    async fn list_person_units(&self, person_id: &str) -> db::Result<Vec<db::PersonUnit>> {
+        query_all("list_person_units", || {
+            self.client
+                .query()
+                .table_name(self.table_name("person_unit"))
+                .key_condition_expression("person_id = :person_id")
+                .expression_attribute_values(":person_id", AttributeValue::S(person_id.to_string()))
+                .consistent_read(true)
+        })
+        .await
+    }
+
+    async fn replace_person_units(
+        &self,
+        person_id: &str,
+        units: &[db::PersonUnit],
+    ) -> db::Result<()> {
+        if self.read_only {
+            return Err(db::Error::MutationDisabled);
+        }
+        if let Some(stray) = units.iter().find(|u| u.person_id != person_id) {
+            return Err(db::Error::Infrastructure(format!(
+                "replace_person_units for {person_id} was given a row for {}",
+                stray.person_id
+            )));
+        }
+        let table = self.table_name("person_unit");
+        let current = self.list_person_units(person_id).await?;
+        let now = crate::clock::now_sec();
+
+        for old in &current {
+            if units.iter().any(|u| u.entity_id == old.entity_id) {
+                continue;
+            }
+            let resp = self
+                .client
+                .delete_item()
+                .table_name(&table)
+                .key("person_id", AttributeValue::S(person_id.to_string()))
+                .key("entity_id", AttributeValue::S(old.entity_id.clone()))
+                .return_consumed_capacity(ReturnConsumedCapacity::Total)
+                .send()
+                .await
+                .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
+            record_capacity(
+                "replace_person_units",
+                resp.consumed_capacity(),
+                CapKind::Write,
+            );
+        }
+        for unit in units {
+            if current
+                .iter()
+                .any(|c| c.entity_id == unit.entity_id && c.same_content(unit))
+            {
+                continue;
+            }
+            let resp = self
+                .client
+                .put_item()
+                .table_name(&table)
+                .set_item(Some(person_unit_item(unit, now)))
+                .return_consumed_capacity(ReturnConsumedCapacity::Total)
+                .send()
+                .await
+                .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
+            record_capacity(
+                "replace_person_units",
+                resp.consumed_capacity(),
+                CapKind::Write,
+            );
+        }
+        Ok(())
     }
 
     async fn scan_sessions(

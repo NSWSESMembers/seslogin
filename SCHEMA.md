@@ -89,6 +89,32 @@ Written only by location sync (`api/src/location_sync.rs`), each omitted when SE
 
 ---
 
+### `{prefix}person_unit`
+
+One row per (member, SES intranet directory entity) the member is assigned to: their units, plus clusters, Community Action Teams, zone capability units and staff sections. Written only by directory sync, which replaces a member's rows to exactly what their directory record lists. Rows exist only for live members of our `person` table; a member's rows are removed once they are soft-deleted.
+
+| Attribute     | Type | Role                                                     |
+| ------------- | ---- | -------------------------------------------------------- |
+| `person_id`   | S    | Hash key                                                 |
+| `entity_id`   | S    | Range key — the directory `EntityId`                     |
+| `location_id` | S    | Sparse GSI hash key — present only when the entity is one of our locations (`location.ses_directory_entity_id`) |
+
+| GSI                 | Hash key      | Sort key | Projection | Purpose                                         |
+| ------------------- | ------------- | -------- | ---------- | ----------------------------------------------- |
+| `location_id-index` | `location_id` | —        | ALL        | A location's members, primary or not. Not read yet |
+
+**Other attributes** (each omitted when absent or empty):
+
+- `entity_name`, `entity_code`, `zone` (S) — from the assignment and the entity
+- `membership_type` (S) — the Volunteer assignment's detail (Member, Probationary, Life, …); absent on a staff-only row
+- `ranks`, `roles`, `positions` (SS)
+- `is_primary` (Bool) — only written as `true`, when `location_id` is the member's `person.location_id`
+- `updated_at` (N)
+
+Every Rank and Role sits at an entity where the member also has a Volunteer assignment, and nobody has two Volunteer assignments at one entity, so one row per (member, entity) loses nothing.
+
+---
+
 ### `{prefix}period`
 
 | Attribute       | Type | Role                                                                                              |
@@ -153,6 +179,8 @@ The `start_time` sort key across the location/person GSIs means DynamoDB returns
 
 - `registration_number` (S) — the SES member registration number (zero-padded)
 - `ses_api_person_id` (S) — absent until member sync links the record
+- `email` (S) — agency address first, else "Volunteers Primary E-Mail". Written by member sync's per-unit directory lookup and by directory sync, which never clears it
+- `mobile` (S), `phones` (S), `preferred_name` (S) — written only by directory sync (`api/src/directory_sync.rs`). `mobile` is the first `+614…` number among Primary Telephone, Personal Mobile Phone, SMS and Work Mobile Phone. `phones` is JSON text, `[{"number", "types": [..]}]`, one entry per distinct number (faxes excluded), the mobile first. A directory record with no phones keeps the stored `mobile`/`phones`. `preferred_name` is set only when the directory has one
 - `capability_tags` (S) — JSON text of the member's SES API `capabilityTags` (qualifications such as Job Ready, flood rescue levels, driver), `[{"id", "name", "description"}]` sorted by id. Written only by member sync; absent when SES lists none
 - `deleted` (Bool)
 - `missing_since` (N) — unix seconds at which member sync first saw this person absent from
