@@ -103,6 +103,19 @@ enum BadgeRule {
         day: u32,
     },
     FridayThe13thSignOut,
+    /// A teaching sign-out in a discipline the member has a training sign-out in.
+    TrainThenTeach,
+    /// Taught or assessed in this many `TEACHING_DISCIPLINES`.
+    TeachingDisciplines {
+        count: usize,
+    },
+    /// Signed out to training, an operational role, community ed and admin or
+    /// maintenance.
+    AllRounder,
+    /// Signed in at this many locations.
+    DistinctLocations {
+        count: usize,
+    },
     Manual,
 }
 
@@ -274,6 +287,482 @@ const TRAINING_RCR_CATEGORY_IDS: &[&str] = &["HLdLk5jkxtns"];
 const TRAINING_AIIMS_CATEGORY_IDS: &[&str] = &["RX2bfpU6ppvV"];
 const TRAINING_VR_CATEGORY_IDS: &[&str] = &["ttkcxzz4zoSb"];
 const TRAINING_MAP_NAV_CATEGORY_IDS: &[&str] = &["62ps1a9wv19I"];
+#[derive(Clone, Copy)]
+struct TeachingDiscipline {
+    teaching: &'static [&'static str],
+    training: &'static [&'static str],
+}
+
+// Each discipline members teach in, with the categories for teaching or assessing it
+// and for being trained in it. Storm & Water's Ground and Heights splits fold into
+// Storm & Water, whose old category holds the history.
+const TEACHING_DISCIPLINES: &[TeachingDiscipline] = &[
+    TeachingDiscipline {
+        teaching: &[
+            "FzHtdFLZy3Nl", // Assessor - AIIMS
+            "frU0zHKQm84n", // Trainer - AIIMS
+            "odLkV3XCPOu0", // Workshop - Trainer - AIIMS
+        ],
+        training: &[
+            "RX2bfpU6ppvV", // Training - AIIMS
+        ],
+    },
+    TeachingDiscipline {
+        teaching: &[
+            "BwI6H9yQB7q8", // Workshop - Trainer - Admin
+        ],
+        training: &[
+            "AnTds4h0UskW", // Training - Admin
+        ],
+    },
+    TeachingDiscipline {
+        teaching: &[
+            "sM3Qi8VtInuL", // Assessor - Beacon
+            "V3cOiC45Oist", // Trainer - Beacon
+            "3YGnFoZX0WaH", // Workshop - Trainer - Beacon
+        ],
+        training: &[
+            "LEnc4hCVnidW", // Training - Beacon
+        ],
+    },
+    TeachingDiscipline {
+        teaching: &[
+            "1RwtdwX3JGc6", // Assessor - Chain Saw
+            "2K3cfNuoTBYB", // Trainer - Chain Saw
+            "xIJbGAJvzkUF", // Workshop - Trainer - Chain Saw
+        ],
+        training: &[
+            "aW7d1yFParRV", // Training - Chain Saw
+        ],
+    },
+    TeachingDiscipline {
+        teaching: &[
+            "P5VfddCKN1cN", // Workshop - Trainer - Combat
+        ],
+        training: &[
+            "JA1TCOM8d98G", // Training - Combat
+        ],
+    },
+    TeachingDiscipline {
+        teaching: &[
+            "YjgiQmgP7IAx", // Assessor - Critical Incident Support
+            "1VRot6gzgW7c", // Trainer - Critical Incident Support
+            "piYtp3ePWdPO", // Workshop - Trainer - Critical Incident Support
+        ],
+        training: &[
+            "ShqXWGVX0v5X", // Training - Critical Incident Support
+        ],
+    },
+    TeachingDiscipline {
+        teaching: &[
+            "PpugLj0p7EGr", // Assessor - Drive Operational Vehicles
+            "XPzg5TODlRd6", // Trainer - Drive Operational Vehicles
+            "9D5082BTEu6I", // Workshop - Trainer - Drive Operational Vehicles
+        ],
+        training: &[
+            "zBlDlNOZ82zS", // Training - Drive Operational Vehicles
+        ],
+    },
+    TeachingDiscipline {
+        teaching: &[
+            "lO7YmMpXj3Xu", // Assessor - Field Core Skills
+            "k1ZvM6M1Y793", // Trainer - Field Core Skills
+            "LxphpIZFAXnF", // Workshop - Trainer - Field Core Skills
+        ],
+        training: &[
+            "u6kQTDAj4BbU", // Training - Field Core Skills
+        ],
+    },
+    TeachingDiscipline {
+        teaching: &[
+            "obMaRo09LtmW", // Assessor - First Aid
+            "7gmFiRLfnB9k", // Trainer - First Aid
+            "dEfSFXJ3JZ8x", // Workshop - Trainer - First Aid
+        ],
+        training: &[
+            "mbkLfxuoDyzT", // Training - First Aid
+        ],
+    },
+    TeachingDiscipline {
+        teaching: &[
+            "Iki2svFjFU48", // Assessor - Fit for Role
+            "EXhm0fqWJCiF", // Trainer - Fit for Role
+        ],
+        training: &[
+            "V4dyh0T2vjfd", // Training - Fit for Role
+        ],
+    },
+    TeachingDiscipline {
+        teaching: &[
+            "8laRD0BMm5vc", // Assessor - Flood Boat
+            "KCTijlBmkTis", // Trainer - Flood Boat
+            "fSqCW6NDuaZ4", // Workshop - Trainer - Flood Boat
+        ],
+        training: &[
+            "kqCWsfdEnVKo", // Training - Flood Boat
+        ],
+    },
+    TeachingDiscipline {
+        teaching: &[
+            "KoF18gOkiFM3", // Assessor - Flood Rescue: In Water
+            "EnXtbYiMUD3g", // Trainer - Flood Rescue: In Water
+            "oG2K4hfdXDWQ", // Workshop - Trainer - Flood Rescue: In Water
+        ],
+        training: &[
+            "Sam5VHGJHiK9", // Training - Flood Rescue: In Water
+        ],
+    },
+    TeachingDiscipline {
+        teaching: &[
+            "hj9KzuwFbM13", // Assessor - Flood Rescue: Land Based
+            "AKinZhtlbvL1", // Trainer - Flood Rescue: Land Based
+            "d51eXzmfIuXm", // Workshop - Trainer - Flood Rescue: Land Based
+        ],
+        training: &[
+            "Na5anfu2SjxY", // Training - Flood Rescue: Land Based
+        ],
+    },
+    TeachingDiscipline {
+        teaching: &[
+            "5deKL3XPdfgN", // Assessor - Flood Rescue: On Water
+            "z4HrmoDyzpfh", // Trainer - Flood Rescue: On Water
+            "DQR24Sl5Zs25", // Workshop - Trainer - Flood Rescue: On Water
+        ],
+        training: &[
+            "aMNwgsYk8hwA", // Training - Flood Rescue: On Water
+        ],
+    },
+    TeachingDiscipline {
+        teaching: &[
+            "JwQIf2BsuSuW", // Assessor - Fundamentals
+            "Y5ZETL8ZvpPr", // Trainer - Fundamentals
+            "oJBfuHvRCuOa", // Workshop - Trainer - Fundamentals
+        ],
+        training: &[
+            "jZCZLNtgatH0", // Training - Fundamentals
+        ],
+    },
+    TeachingDiscipline {
+        teaching: &[
+            "QxvJp8w9GQb4", // Assessor - General Rescue
+        ],
+        training: &[],
+    },
+    TeachingDiscipline {
+        teaching: &[
+            "Sptu5z1uHT3j", // Assessor - HCV: Logistics
+            "mLS5y13rviWd", // Trainer - HCV: Logistics
+            "w4qQnuEEmudR", // Workshop - Trainer - HCV: Logistics
+        ],
+        training: &[
+            "y9NOZQK71qKn", // Training - HCV: Logistics
+        ],
+    },
+    TeachingDiscipline {
+        teaching: &[
+            "lD2ApJFJNgbd", // Assessor - HCV: Operational
+            "dZI5ChtSALlV", // Trainer - HCV: Operational
+            "IqGj5X3nt3UX", // Workshop - Trainer - HCV: Operational
+        ],
+        training: &[
+            "zR3BbJ5qzVkD", // Training - HCV: Operational
+        ],
+    },
+    TeachingDiscipline {
+        teaching: &[
+            "KSYEZhqFOsXz", // Assessor - Induction
+        ],
+        training: &[],
+    },
+    TeachingDiscipline {
+        teaching: &[
+            "NcjHY3oJ3O7R", // Assessor - Industrial & Domestic Rescue
+            "kFn9u1x04Mfp", // Trainer - Industrial & Domestic Rescue
+            "DZWgLGSX8MqH", // Workshop - Trainer - Industrial & Domestic Rescue
+        ],
+        training: &[
+            "NruR2qQJBBmP", // Training - Industrial & Domestic Rescue
+        ],
+    },
+    TeachingDiscipline {
+        teaching: &[
+            "NEh5XLQptyUU", // Assessor - Job Ready
+            "Nk5azjGAsk0R", // Trainer - Job Ready
+            "TD0Jx573gvu4", // Workshop - Trainer - Job Ready
+        ],
+        training: &[
+            "JxJaXiWKdJOs", // Training - Job Ready
+        ],
+    },
+    TeachingDiscipline {
+        teaching: &[
+            "KWU2BCxSXms0", // Assessor - Land Search
+            "ICKlc0A7MjB8", // Trainer - Land Search
+            "jpFAvdc0oWhp", // Workshop - Trainer - Land Search
+        ],
+        training: &[
+            "yvw0CgIIwxcv", // Training - Land Search
+        ],
+    },
+    TeachingDiscipline {
+        teaching: &[
+            "MLj55OZs9zZQ", // Assessor - Large Animal Rescue
+            "baSX02PJul3U", // Trainer - Large Animal Rescue
+            "SYalliqM4bVy", // Workshop - Trainer - Large Animal Rescue
+        ],
+        training: &[
+            "0iTKaUHjMxi2", // Training - Large Animal Rescue
+        ],
+    },
+    TeachingDiscipline {
+        teaching: &[
+            "ODmjOAZANjlC", // Assessor - Maintain Team Safety
+            "nT68nwU6z9RO", // Trainer - Maintain Team Safety
+            "CN1FKIHb9YaV", // Workshop - Trainer - Maintain Team Safety
+        ],
+        training: &[
+            "wUF3cjnnoNrf", // Training - Maintain Team Safety
+        ],
+    },
+    TeachingDiscipline {
+        teaching: &[
+            "6QFlxZROgoQl", // Assessor - Map & Navigation
+            "xfqtWeU35pxp", // Trainer - Map & Navigation
+            "ZLRHFadlZ56G", // Workshop - Trainer - Map & Navigation
+        ],
+        training: &[
+            "62ps1a9wv19I", // Training - Map & Navigation
+        ],
+    },
+    TeachingDiscipline {
+        teaching: &[
+            "A2XvF62XdCcE", // Assessor - Map Reading
+            "H31i8o2NHcnq", // Trainer - Map Reading
+        ],
+        training: &[],
+    },
+    TeachingDiscipline {
+        teaching: &[
+            "C4XmDopYEFwg", // Assessor - Navigation
+            "gnEdJKNllXys", // Trainer - Navigation
+            "026wm7XnCZ9Y", // Workshop - Trainer - Navigation
+        ],
+        training: &[
+            "a5pfMCPKt3oV", // Training - Navigation
+        ],
+    },
+    TeachingDiscipline {
+        teaching: &[
+            "Af82dlFtLwTV", // Workshop - Trainer - OH&S
+        ],
+        training: &[
+            "Z8An9yDaTBUJ", // Training - OH&S
+        ],
+    },
+    TeachingDiscipline {
+        teaching: &[
+            "Y5U7nkss3YAR", // Assessor - Operate Comms. Equip.
+            "2hPheSGKMo0A", // Trainer - Operate Comms. Equip.
+            "hFQ3A4o2qFPq", // Workshop - Trainer - Operate Comms. Equip.
+        ],
+        training: &[
+            "FTxxoiet5j42", // Training - Operate Comms. Equip.
+        ],
+    },
+    TeachingDiscipline {
+        teaching: &[
+            "khQ3BnnpebpZ", // Workshop - Trainer - Operation Centre
+        ],
+        training: &[
+            "SvkD0jBQ2hRw", // Training - Operation Centre
+        ],
+    },
+    TeachingDiscipline {
+        teaching: &[
+            "LooCgpp67kFc", // Trainer - Other
+            "p0vRqFeoQ5uP", // Workshop - Trainer - Other
+        ],
+        training: &[
+            "rohwW8dkppNz", // Training - Other
+        ],
+    },
+    TeachingDiscipline {
+        teaching: &[
+            "UOEIfufGm0CW", // Assessor - PIARO
+            "qgs9Xs1hSTDL", // Trainer - PIARO
+            "mjz48eIkDO3X", // Workshop - Trainer - PIARO
+        ],
+        training: &[
+            "OB9oatj3InVH", // Training - PIARO
+        ],
+    },
+    TeachingDiscipline {
+        teaching: &[
+            "8kJBD0LHgqFr", // Assessor - RCR
+            "SOiIjTV9Jmow", // Trainer - RCR
+            "F7qbkbbWPQF7", // Workshop - Trainer - RCR
+        ],
+        training: &[
+            "HLdLk5jkxtns", // Training - RCR
+        ],
+    },
+    TeachingDiscipline {
+        teaching: &[
+            "YcW1zHz3dD79", // Assessor - Remote Search
+        ],
+        training: &[],
+    },
+    TeachingDiscipline {
+        teaching: &[
+            "jglow9sXOWy9", // Workshop - Trainer - Scenario Setup
+        ],
+        training: &[
+            "Pjl8xHTwJ0yT", // Training - Scenario Setup
+        ],
+    },
+    TeachingDiscipline {
+        teaching: &[
+            "7OvMSXibYs3z", // Assessor - Storm & Water
+            "TDK8NAUXx2e5", // Assessor - Storm & Water: Ground
+            "dCiJLtDOzm9n", // Assessor - Storm & Water: Heights
+            "iDmbliqZlKMw", // Trainer - Storm & Water
+            "diTqk82vnZxc", // Trainer - Storm & Water: Ground
+            "oqYjg2M9LKEl", // Trainer - Storm & Water: Heights
+            "wt646enF5jlq", // Workshop - Trainer - Storm & Water
+            "i8tDOYEFstSy", // Workshop - Trainer - Storm & Water: Ground
+            "Q2QydIou53oo", // Workshop - Trainer - Storm & Water: Heights
+        ],
+        training: &[
+            "wXd1O7sNLChh", // Training - Storm & Water
+            "a4nhHUkrXFEH", // Training - Storm & Water: Ground
+            "cQ8raY24VoPt", // Training - Storm & Water: Heights
+        ],
+    },
+    TeachingDiscipline {
+        teaching: &[
+            "iacUn4eOC9lp", // Assessor - Swift Water Rescue
+            "mmizimV8RGEb", // Trainer - Swift Water Rescue
+            "6K2muMRCL5qF", // Workshop - Trainer - Swift Water Rescue
+        ],
+        training: &[
+            "fN1tYIK6Z2Tg", // Training - Swift Water Rescue
+        ],
+    },
+    TeachingDiscipline {
+        teaching: &[
+            "5iKzI7fMcnCl", // Assessor - Traffic Safety
+            "7H2Dou6jMtrs", // Trainer - Traffic Safety
+            "2TgPkvR7rc7s", // Workshop - Trainer - Traffic Safety
+        ],
+        training: &[
+            "IZHsBlJsip7y", // Training - Traffic Safety
+        ],
+    },
+    TeachingDiscipline {
+        teaching: &[
+            "TiruXst14mbp", // Assessor - USAR
+            "B2nP2FfkxfIg", // Trainer - USAR
+            "WlyrCxgloooJ", // Workshop - Trainer - USAR
+        ],
+        training: &[
+            "YNAcvH3HtjdU", // Training - USAR
+        ],
+    },
+    TeachingDiscipline {
+        teaching: &[
+            "Bsp6gvf5OMpL", // Assessor - VR
+            "MiJ9l7SqCDr4", // Trainer - VR
+            "851qu7WSFxxI", // Workshop - Trainer - VR
+        ],
+        training: &[
+            "ttkcxzz4zoSb", // Training - VR
+        ],
+    },
+    TeachingDiscipline {
+        teaching: &[
+            "Yo8p9M4kCdTO", // Assessor - Vehicle Driving
+            "b8gKkgUH5kEd", // Trainer - Vehicle Driving
+        ],
+        training: &[],
+    },
+];
+const ALL_TRAINING_CATEGORY_IDS: &[&str] = &[
+    "RX2bfpU6ppvV", // Training - AIIMS
+    "AnTds4h0UskW", // Training - Admin
+    "LEnc4hCVnidW", // Training - Beacon
+    "aW7d1yFParRV", // Training - Chain Saw
+    "JA1TCOM8d98G", // Training - Combat
+    "ShqXWGVX0v5X", // Training - Critical Incident Support
+    "zBlDlNOZ82zS", // Training - Drive Operational Vehicles
+    "u6kQTDAj4BbU", // Training - Field Core Skills
+    "mbkLfxuoDyzT", // Training - First Aid
+    "V4dyh0T2vjfd", // Training - Fit for Role
+    "kqCWsfdEnVKo", // Training - Flood Boat
+    "Sam5VHGJHiK9", // Training - Flood Rescue: In Water
+    "Na5anfu2SjxY", // Training - Flood Rescue: Land Based
+    "aMNwgsYk8hwA", // Training - Flood Rescue: On Water
+    "jZCZLNtgatH0", // Training - Fundamentals
+    "y9NOZQK71qKn", // Training - HCV: Logistics
+    "zR3BbJ5qzVkD", // Training - HCV: Operational
+    "NruR2qQJBBmP", // Training - Industrial & Domestic Rescue
+    "JxJaXiWKdJOs", // Training - Job Ready
+    "yvw0CgIIwxcv", // Training - Land Search
+    "0iTKaUHjMxi2", // Training - Large Animal Rescue
+    "wUF3cjnnoNrf", // Training - Maintain Team Safety
+    "62ps1a9wv19I", // Training - Map & Navigation
+    "a5pfMCPKt3oV", // Training - Navigation
+    "Z8An9yDaTBUJ", // Training - OH&S
+    "FTxxoiet5j42", // Training - Operate Comms. Equip.
+    "SvkD0jBQ2hRw", // Training - Operation Centre
+    "rohwW8dkppNz", // Training - Other
+    "OB9oatj3InVH", // Training - PIARO
+    "HLdLk5jkxtns", // Training - RCR
+    "Pjl8xHTwJ0yT", // Training - Scenario Setup
+    "wXd1O7sNLChh", // Training - Storm & Water
+    "a4nhHUkrXFEH", // Training - Storm & Water: Ground
+    "cQ8raY24VoPt", // Training - Storm & Water: Heights
+    "fN1tYIK6Z2Tg", // Training - Swift Water Rescue
+    "IZHsBlJsip7y", // Training - Traffic Safety
+    "YNAcvH3HtjdU", // Training - USAR
+    "ttkcxzz4zoSb", // Training - VR
+];
+const OPERATIONAL_CATEGORY_IDS: &[&str] = &[
+    "bi3X5omY9NS5", // Accredited Rescue Role - Animal
+    "fd3U3fXOIBqA", // Accredited Rescue Role - Flood
+    "o3tOhfsOgFmY", // Accredited Rescue Role - Flood Boat
+    "kRVkibutOxMf", // Accredited Rescue Role - General
+    "cf9AnZsuMLxg", // Accredited Rescue Role - RCR
+    "3Qnl53IQTywx", // Accredited Rescue Role - Swift Water Rescue
+    "Oc8kSgyTtWaW", // Accredited Rescue Role - VR
+    "INAO3KzDT9vA", // Combat Roles - Coastal Erosion
+    "pHuVGi6JHXK8", // Combat Roles - Flood
+    "CsaTqfcTq2Bg", // Combat Roles - Flood Boat Rescue
+    "efo7JlKhA1XE", // Combat Roles - Flood Ops. (Non Rescue)
+    "EncbZIFXI7E4", // Combat Roles - Flood Rescue (SWR)
+    "lWQYWv8QkZ2P", // Combat Roles - Operations
+    "Xu7e3YQO2L91", // Combat Roles - Storm
+    "xjJxcDFUQtRM", // Combat Roles - Tsunami
+    "OT8eJ08iLMmU", // Combat Roles - Tsunami Land Inundation
+    "0sPhRm9JteVI", // Combat Roles - Tsunami Watch
+    "f3ZNT0A0fLCt", // Combat Roles - Tsunami Water Inundation
+    "7H8xiXLBw7MQ", // Support Roles - Assist Ambulance
+    "mvpBB7QcroPB", // Support Roles - Assist Police
+    "9GMIshTceGQT", // Support Roles - Assist RFS
+    "Ktb4luVUcehq", // Support Roles - Bushfire support
+    "CyQwwbwOqSVs", // Support Roles - Earthquake
+    "zQRd0ST1pHnp", // Support Roles - First Responder
+    "XFpiD4vS7fNi", // Support Roles - Land Search
+    "3hhECO26czRF", // Support Roles - Search
+    "rjrngI122qrh", // Support Roles - Search - Evidence
+    "CUyTMZhXshDS", // Support Roles - USAR
+];
+const ADMIN_OR_MAINTENANCE_CATEGORY_IDS: &[&str] = &[
+    "iP1cxp6Oygoc", // Other - Administration
+    "ouXC4etC8lxy", // Other - Administration - Training
+    "u25bkFaIRr6I", // Other - Administration Operations
+    "MBaJJzYArrxi", // Other - Maintenance - Building/Land
+    "ly9uPGjoundF", // Other - Maintenance - Equipment
+];
 const MAINTENANCE_EQUIPMENT_CATEGORY_IDS: &[&str] = &["ly9uPGjoundF"];
 const UNIT_MEETING_MUSTER_CATEGORY_IDS: &[&str] = &["6uFM5NP8o1x8"];
 const ATTEND_EXERCISE_SES_CATEGORY_IDS: &[&str] = &["ifc9uKYAb0ZS"];
@@ -1196,6 +1685,34 @@ const BADGE_DEFINITIONS: &[BadgeDefinition] = &[
         },
     },
     BadgeDefinition {
+        id: "trainer-full-circle",
+        name: "Full Circle",
+        description: "Trained others in a discipline you were trained in.",
+        tier: "bronze",
+        rule: BadgeRule::TrainThenTeach,
+    },
+    BadgeDefinition {
+        id: "trainer-multi-tool",
+        name: "Multi-Tool",
+        description: "Trainer or Assessor in 5 different disciplines.",
+        tier: "silver",
+        rule: BadgeRule::TeachingDisciplines { count: 5 },
+    },
+    BadgeDefinition {
+        id: "away-hat-trick",
+        name: "Hat Trick",
+        description: "Signed in at 3 different units.",
+        tier: "passport-stamps",
+        rule: BadgeRule::DistinctLocations { count: 3 },
+    },
+    BadgeDefinition {
+        id: "away-unit-hopper",
+        name: "Unit Hopper",
+        description: "Signed in at 5 different units.",
+        tier: "passport-stamps",
+        rule: BadgeRule::DistinctLocations { count: 5 },
+    },
+    BadgeDefinition {
         id: "training-first-aid-patch-job",
         name: "Patch Job",
         description: "First sign-out to First Aid training.",
@@ -1357,6 +1874,20 @@ const BADGE_DEFINITIONS: &[BadgeDefinition] = &[
         tier: "hidden",
         rule: BadgeRule::FridayThe13thSignOut,
     },
+    BadgeDefinition {
+        id: "easter-all-rounder",
+        name: "All-Rounder",
+        description: "Signed out to training, an operational role, community ed and admin or maintenance.",
+        tier: "hidden",
+        rule: BadgeRule::AllRounder,
+    },
+    BadgeDefinition {
+        id: "easter-iron-shift",
+        name: "Iron Shift",
+        description: "A single sign-in lasting 12 to 24 hours.",
+        tier: "hidden",
+        rule: BadgeRule::Manual,
+    },
 ];
 
 /// Parses a person's stored badge state (`Person.badge_state`). `None`, with a warning,
@@ -1496,9 +2027,11 @@ fn source_for_definition(definition: BadgeDefinition) -> &'static str {
             }
         }
         BadgeRule::AwayCheckIn { .. } => "Away sign-in",
-        BadgeRule::FixedDatePublicHolidaySignOut { .. } | BadgeRule::FridayThe13thSignOut => {
-            "Attendance"
-        }
+        BadgeRule::FixedDatePublicHolidaySignOut { .. }
+        | BadgeRule::FridayThe13thSignOut
+        | BadgeRule::AllRounder => "Attendance",
+        BadgeRule::TrainThenTeach | BadgeRule::TeachingDisciplines { .. } => "Training",
+        BadgeRule::DistinctLocations { .. } => "Away sign-in",
     }
 }
 
@@ -1592,9 +2125,14 @@ fn progress_value(rule: BadgeRule, location_state: &LocationBadgeProgress) -> Op
                 .sum();
             Some((current, threshold))
         }
+        // Person-wide rules: one location's counters can't say how far along they are.
         BadgeRule::Manual
         | BadgeRule::FixedDatePublicHolidaySignOut { .. }
-        | BadgeRule::FridayThe13thSignOut => None,
+        | BadgeRule::FridayThe13thSignOut
+        | BadgeRule::TrainThenTeach
+        | BadgeRule::TeachingDisciplines { .. }
+        | BadgeRule::AllRounder
+        | BadgeRule::DistinctLocations { .. } => None,
     }
 }
 
@@ -1927,7 +2465,12 @@ pub fn apply_event(
                     false
                 }
             }
-            BadgeRule::Manual => false,
+            // Manual badges are awarded elsewhere; the person-wide ones after this loop.
+            BadgeRule::Manual
+            | BadgeRule::TrainThenTeach
+            | BadgeRule::TeachingDisciplines { .. }
+            | BadgeRule::AllRounder
+            | BadgeRule::DistinctLocations { .. } => false,
             BadgeRule::AwayCheckIn { threshold } => {
                 matches!(event, BadgeEvent::CheckIn)
                     && is_away_from_home
@@ -1955,11 +2498,105 @@ pub fn apply_event(
         awarded.push(award_from_definition(definition, now_sec).badge);
     }
 
-    if let (BadgeEvent::SignOut, Some((start_sec, end_sec))) = (event, sign_out_times) {
+    if let (BadgeEvent::SignOut, Some((start_sec, end_sec))) = (&event, sign_out_times) {
         maybe_award_sign_out_easter_eggs(location_state, start_sec, end_sec, now_sec, &mut awarded);
     }
 
+    if !matches!(event, BadgeEvent::VirtualSignOut) {
+        award_person_wide_badges(state, location_id, &event, sign_out_category_id, now_sec)
+            .into_iter()
+            .for_each(|badge| awarded.push(badge));
+    }
+
     awarded
+}
+
+/// Badges whose rules look at all of a person's location buckets, not just the one
+/// this event is in. Each is awarded once per person, into this event's bucket.
+fn award_person_wide_badges(
+    state: &mut BadgeState,
+    location_id: &str,
+    event: &BadgeEvent,
+    sign_out_category_id: Option<&str>,
+    now_sec: u64,
+) -> Vec<BadgeAward> {
+    let signed_out_to = |category_ids: &[&str]| {
+        state.locations.values().any(|location_state| {
+            category_ids.iter().any(|id| {
+                location_state
+                    .category_sign_out_counts
+                    .get(*id)
+                    .is_some_and(|count| *count > 0)
+            })
+        })
+    };
+
+    let mut earned = Vec::new();
+    for definition in BADGE_DEFINITIONS.iter().copied() {
+        let qualifies = match definition.rule {
+            BadgeRule::TrainThenTeach => {
+                matches!(event, BadgeEvent::SignOut)
+                    && sign_out_category_id.is_some_and(|category_id| {
+                        TEACHING_DISCIPLINES.iter().any(|discipline| {
+                            discipline.teaching.contains(&category_id)
+                                && signed_out_to(discipline.training)
+                        })
+                    })
+            }
+            BadgeRule::TeachingDisciplines { count } => {
+                matches!(event, BadgeEvent::SignOut)
+                    && TEACHING_DISCIPLINES
+                        .iter()
+                        .filter(|discipline| signed_out_to(discipline.teaching))
+                        .count()
+                        >= count
+            }
+            BadgeRule::AllRounder => {
+                matches!(event, BadgeEvent::SignOut)
+                    && [
+                        ALL_TRAINING_CATEGORY_IDS,
+                        OPERATIONAL_CATEGORY_IDS,
+                        COMMUNITY_ED_MEDIA_CATEGORY_IDS,
+                        ADMIN_OR_MAINTENANCE_CATEGORY_IDS,
+                    ]
+                    .iter()
+                    .all(|group| signed_out_to(group))
+            }
+            BadgeRule::DistinctLocations { count } => {
+                matches!(event, BadgeEvent::CheckIn)
+                    && state
+                        .locations
+                        .values()
+                        .filter(|location_state| location_state.check_in_count > 0)
+                        .count()
+                        >= count
+            }
+            _ => false,
+        };
+        let held = state.locations.values().any(|location_state| {
+            location_state
+                .awarded_badge_ids
+                .iter()
+                .any(|id| id == definition.id)
+        });
+        if qualifies && !held {
+            earned.push(definition);
+        }
+    }
+
+    let location_state = state.locations.entry(location_id.to_string()).or_default();
+    earned
+        .into_iter()
+        .map(|definition| {
+            location_state
+                .awarded_badge_ids
+                .push(definition.id.to_string());
+            location_state
+                .awarded_badge_times
+                .insert(definition.id.to_string(), now_sec);
+            award_from_definition(definition, now_sec).badge
+        })
+        .collect()
 }
 
 fn local_sydney_day_number(timestamp_sec: u64) -> Option<i32> {
@@ -1994,6 +2631,23 @@ fn maybe_award_sign_out_easter_eggs(
     let duration_sec = end_sec.saturating_sub(start_sec);
     if duration_sec < 5 * 60
         && let Some(definition) = badge_definition_by_id("easter-just-five-minutes")
+        && !location_state
+            .awarded_badge_ids
+            .iter()
+            .any(|id| id == definition.id)
+    {
+        location_state
+            .awarded_badge_ids
+            .push(definition.id.to_string());
+        location_state
+            .awarded_badge_times
+            .insert(definition.id.to_string(), now_sec);
+        awarded.push(award_from_definition(definition, now_sec).badge);
+    }
+
+    // Up to a day: anything longer is a sign-out that was forgotten, not a shift.
+    if (12 * 60 * 60..=24 * 60 * 60).contains(&duration_sec)
+        && let Some(definition) = badge_definition_by_id("easter-iron-shift")
         && !location_state
             .awarded_badge_ids
             .iter()
@@ -2613,6 +3267,177 @@ mod tests {
         let after_midnight = sign_out_at(sydney(2027, 1, 1, 0) + 30 * 60);
         assert!(!after_midnight.contains(&"easter-countdown-crew".to_string()));
         assert!(after_midnight.contains(&"public-holiday-new-years-day".to_string()));
+    }
+
+    fn sign_out_to(state: &mut BadgeState, location_id: &str, category_id: &str) -> Vec<String> {
+        apply_event(
+            state,
+            location_id,
+            BadgeEvent::SignOut,
+            50_000,
+            false,
+            Some(category_id),
+            None,
+        )
+        .into_iter()
+        .map(|badge| badge.id)
+        .collect()
+    }
+
+    const TRAINING_PIARO: &str = "OB9oatj3InVH";
+    const TRAINER_PIARO: &str = "qgs9Xs1hSTDL";
+    const ASSESSOR_PIARO: &str = "UOEIfufGm0CW";
+
+    #[test]
+    fn full_circle_needs_training_in_the_same_discipline_at_any_unit() {
+        let mut state = BadgeState::default();
+        // Teaching first, with no training on record: nothing.
+        assert!(
+            !sign_out_to(&mut state, "loc-a", TRAINER_PIARO)
+                .contains(&"trainer-full-circle".into())
+        );
+        // Trained in something else.
+        sign_out_to(&mut state, "loc-a", "mbkLfxuoDyzT");
+        assert!(
+            !sign_out_to(&mut state, "loc-a", TRAINER_PIARO)
+                .contains(&"trainer-full-circle".into())
+        );
+        // Trained in PIARO at one unit, then teaches it at another.
+        sign_out_to(&mut state, "loc-a", TRAINING_PIARO);
+        assert!(
+            sign_out_to(&mut state, "loc-b", ASSESSOR_PIARO)
+                .contains(&"trainer-full-circle".into())
+        );
+        // Once per person.
+        assert!(
+            !sign_out_to(&mut state, "loc-a", TRAINER_PIARO)
+                .contains(&"trainer-full-circle".into())
+        );
+    }
+
+    #[test]
+    fn full_circle_folds_storm_and_water_ground_and_heights_together() {
+        let mut state = BadgeState::default();
+        sign_out_to(&mut state, "loc-a", "wXd1O7sNLChh"); // Training - Storm & Water (old)
+        // Trainer - Storm & Water: Heights
+        assert!(
+            sign_out_to(&mut state, "loc-a", "oqYjg2M9LKEl")
+                .contains(&"trainer-full-circle".into())
+        );
+    }
+
+    #[test]
+    fn multi_tool_counts_disciplines_not_categories() {
+        let mut state = BadgeState::default();
+        // Trainer and Assessor in PIARO are one discipline.
+        sign_out_to(&mut state, "loc-a", TRAINER_PIARO);
+        sign_out_to(&mut state, "loc-a", ASSESSOR_PIARO);
+        // Workshop - Trainer - First Aid, Trainer - Chain Saw, Assessor - RCR.
+        for category_id in ["dEfSFXJ3JZ8x", "2K3cfNuoTBYB", "8kJBD0LHgqFr"] {
+            assert!(
+                !sign_out_to(&mut state, "loc-b", category_id)
+                    .contains(&"trainer-multi-tool".into())
+            );
+        }
+        // Trainer - VR is the fifth.
+        assert!(
+            sign_out_to(&mut state, "loc-a", "MiJ9l7SqCDr4").contains(&"trainer-multi-tool".into())
+        );
+    }
+
+    #[test]
+    fn all_rounder_needs_all_four_kinds_of_work() {
+        let mut state = BadgeState::default();
+        for category_id in [
+            TRAINING_PIARO,
+            "Xu7e3YQO2L91", // Combat Roles - Storm
+            "m61kz8bUD3Rp", // Community Ed. & Media - Public Relations
+        ] {
+            assert!(
+                !sign_out_to(&mut state, "loc-a", category_id)
+                    .contains(&"easter-all-rounder".into())
+            );
+        }
+        // Other - Maintenance - Equipment, at another unit.
+        assert!(
+            sign_out_to(&mut state, "loc-b", "ly9uPGjoundF").contains(&"easter-all-rounder".into())
+        );
+    }
+
+    #[test]
+    fn hat_trick_and_unit_hopper_count_distinct_units() {
+        let mut state = BadgeState::default();
+        let mut earned = Vec::new();
+        for (i, location_id) in [
+            "loc-1", "loc-1", "loc-2", "loc-3", "loc-4", "loc-5", "loc-6",
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let ids: Vec<String> = apply_event(
+                &mut state,
+                location_id,
+                BadgeEvent::CheckIn,
+                i as u64,
+                false,
+                None,
+                None,
+            )
+            .into_iter()
+            .map(|badge| badge.id)
+            .collect();
+            earned.push(ids);
+        }
+        assert!(earned[2].iter().all(|id| id != "away-hat-trick"));
+        assert!(earned[3].contains(&"away-hat-trick".to_string()));
+        assert!(earned[5].contains(&"away-unit-hopper".to_string()));
+        assert!(
+            earned[6]
+                .iter()
+                .all(|id| id != "away-unit-hopper" && id != "away-hat-trick")
+        );
+    }
+
+    #[test]
+    fn iron_shift_needs_twelve_to_twenty_four_hours() {
+        let hour = 60 * 60;
+        for (hours, expected) in [(11, false), (12, true), (24, true), (25, false)] {
+            let mut state = BadgeState::default();
+            let awarded = apply_event(
+                &mut state,
+                "loc-shift",
+                BadgeEvent::SignOut,
+                1_000_000 + hours * hour,
+                false,
+                Some("Xu7e3YQO2L91"),
+                Some((1_000_000, 1_000_000 + hours * hour)),
+            );
+            assert_eq!(
+                awarded.iter().any(|badge| badge.id == "easter-iron-shift"),
+                expected,
+                "{hours} hours"
+            );
+        }
+    }
+
+    #[test]
+    fn person_wide_badges_ignore_virtual_sign_outs() {
+        let mut state = BadgeState::default();
+        sign_out_to(&mut state, "loc-a", TRAINING_PIARO);
+        let awarded = apply_event(
+            &mut state,
+            "loc-a",
+            BadgeEvent::VirtualSignOut,
+            1,
+            false,
+            Some(TRAINER_PIARO),
+            None,
+        );
+        assert!(
+            awarded
+                .iter()
+                .all(|badge| badge.id != "trainer-full-circle")
+        );
     }
 
     #[test]
