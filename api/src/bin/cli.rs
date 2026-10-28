@@ -11,9 +11,9 @@ use clap::{Parser, Subcommand};
 use seslogin::audit::{self, AuditContext, AuditingHandler};
 use seslogin::badges;
 use seslogin::db::{
-    ApiToken, Category, Handler, ListApiTokensFilter, ListLocationsFilter, ListPeriodsPage,
-    ListSessionsQuery, Location, NitcEvent, NitcGroup, Period, PeriodCursor, Person, ScanCursor,
-    Session, SessionUpdateShape, User,
+    self, ApiToken, Category, Handler, ListApiTokensFilter, ListLocationsFilter, ListPeriodsPage,
+    ListSessionsQuery, Location, NitcEvent, NitcGroup, Period, PeriodCursor, Person,
+    PersonUpdateShape, ScanCursor, Session, SessionUpdateShape, User,
 };
 use seslogin::dynamodb;
 use seslogin::jwt::{ExpirePolicy, Key};
@@ -34,7 +34,8 @@ struct Cli {
 
     /// Report what the command would change without writing anything. Only the
     /// write commands (`session set-config-key`, `session purge-legacy`, `session
-    /// edit`, `period-link issue`) act on it; the inspectors never write either way.
+    /// edit`, `person clear-badges`, `period-link issue`) act on it; the inspectors
+    /// never write either way.
     #[arg(long, global = true, default_value_t = false)]
     dry_run: bool,
 
@@ -231,6 +232,16 @@ enum PersonCmd {
         /// Emit RFC 4180 CSV on stdout instead of a table.
         #[arg(long)]
         csv: bool,
+    },
+    /// Clear the badge state (counters, streaks and awards) of every member of every
+    /// location with badges enabled, so they start earning again from nothing. Walks
+    /// disabled and soft-deleted rows too, so a member restored later doesn't bring old
+    /// badges back. WRITES to the `person` table (not audited: badge state is derived
+    /// data) — pass the global `--dry-run` to preview instead.
+    ClearBadges {
+        /// Restrict to one location, which must have badges enabled.
+        #[arg(long)]
+        location: Option<String>,
     },
 }
 
@@ -1359,6 +1370,14 @@ async fn run_cli() -> Result<()> {
         return run_session_purge_legacy(&db_prefix, cli.dry_run).await;
     }
 
+    // And for wiping badge state.
+    if let Object::Person {
+        cmd: PersonCmd::ClearBadges { location },
+    } = &cli.object
+    {
+        return run_person_clear_badges(&db_prefix, location.as_deref(), cli.dry_run).await;
+    }
+
     // Category and NITC group writes: same story, each opens its own handler
     // (read-only under --dry-run) rather than the shared read-only one.
     if let Object::Category {
@@ -1855,6 +1874,121 @@ async fn run_session_purge_legacy(db_prefix: &str, dry_run: bool) -> Result<()> 
         if dry_run { "would be purged" } else { "purged" },
     );
     Ok(())
+}
+
+/// Clear the badge state of every member of the badge-enabled locations. See
+/// [`PersonCmd::ClearBadges`]. Like `set-config-key`, opens its own handler, read-only
+/// under `--dry-run`.
+async fn run_person_clear_badges(
+    db_prefix: &str,
+    location: Option<&str>,
+    dry_run: bool,
+) -> Result<()> {
+    let db = AuditingHandler::new(dynamodb::Handler::new(db_prefix, dry_run).await);
+
+    // Disabled locations too: the flag says whose members hold badges, not whether
+    // the unit is currently live.
+    let mut locations: Vec<Location> = db
+        .list_locations(ListLocationsFilter::All)
+        .await?
+        .into_iter()
+        .filter(|l| l.gamification_enabled)
+        .collect();
+    if let Some(id) = location {
+        locations.retain(|l| l.id == id);
+        if locations.is_empty() {
+            return Err(anyhow!(
+                "location {id} does not exist or does not have badges enabled"
+            ));
+        }
+    }
+    locations.sort_by(|a, b| a.name.cmp(&b.name));
+
+    let mut examined = 0usize;
+    let mut targets: Vec<(Person, &str)> = Vec::new();
+    for loc in &locations {
+        let people = db.list_people_for_location(&loc.id, false).await?;
+        examined += people.len();
+        targets.extend(
+            people
+                .into_iter()
+                .filter(|p| p.badge_state.is_some())
+                .map(|p| (p, loc.name.as_str())),
+        );
+    }
+
+    let rows: Vec<Vec<String>> = targets
+        .iter()
+        .map(|(p, loc_name)| {
+            vec![
+                p.id.clone(),
+                format!("{} {}", p.first_name, p.last_name),
+                loc_name.to_string(),
+                badges_earned_str(&p.id, p.badge_state.as_deref()),
+            ]
+        })
+        .collect();
+    print_table(&["id", "name", "location", "badges_earned"], &rows);
+
+    if !dry_run {
+        for (p, _) in &targets {
+            clear_badge_state(&db, p).await?;
+        }
+    }
+    println!(
+        "\n{} complete: {} location(s) with badges enabled, {examined} member(s) examined, \
+         {} badge state(s) {}.",
+        if dry_run { "dry-run" } else { "apply" },
+        locations.len(),
+        targets.len(),
+        if dry_run {
+            "would be cleared"
+        } else {
+            "cleared"
+        },
+    );
+    Ok(())
+}
+
+/// Removes `person`'s badge state. The write is conditional on the stored state being
+/// the one last read, so a kiosk scan or the nightly evaluator updating the member
+/// meanwhile is a conflict: re-read and clear whatever they wrote. Unlike
+/// `badge_store::update`, this never parses the state, so it clears one this build
+/// can't read as well — there is nothing in it worth keeping.
+async fn clear_badge_state(db: &impl Handler, person: &Person) -> Result<()> {
+    const MAX_ATTEMPTS: u32 = 5;
+    let mut expected = person.badge_state.clone();
+    for attempt in 1..=MAX_ATTEMPTS {
+        let Some(current) = expected.as_deref() else {
+            return Ok(());
+        };
+        match db
+            .update_person(
+                &person.id,
+                PersonUpdateShape::BadgeState {
+                    badge_state: None,
+                    expected: Some(current),
+                },
+            )
+            .await
+        {
+            Ok(()) => return Ok(()),
+            Err(db::Error::Conflict(_)) if attempt < MAX_ATTEMPTS => {
+                // Person reads are eventually consistent; give the winning write a
+                // moment to show up before re-reading.
+                tokio::time::sleep(std::time::Duration::from_millis(50 * u64::from(attempt))).await;
+                expected = db
+                    .get_persons(&[&person.id])
+                    .await?
+                    .into_iter()
+                    .flatten()
+                    .next()
+                    .and_then(|p| p.badge_state);
+            }
+            Err(e) => return Err(e.into()),
+        }
+    }
+    unreachable!("the last attempt returns")
 }
 
 /// Issue a period-link token. Opens a WRITABLE DB handler because issuing persists a
@@ -2527,6 +2661,9 @@ async fn run(db: &impl Handler, object: Object) -> Result<()> {
                     csv,
                 )
                 .await?;
+            }
+            PersonCmd::ClearBadges { .. } => {
+                unreachable!("clear-badges is handled before the read-only DB is opened")
             }
         },
 
