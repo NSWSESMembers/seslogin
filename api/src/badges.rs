@@ -64,6 +64,10 @@ pub struct BadgeProgress {
 pub enum BadgeEvent {
     CheckIn,
     SignOut,
+    /// A sign-out to a virtual category. It counts only towards badges for its own
+    /// category (the myAvailability ones), never towards sign-in or sign-out totals,
+    /// streaks, holidays or easter eggs, and has no sign-in half.
+    VirtualSignOut,
 }
 
 #[derive(Clone, Copy)]
@@ -1378,8 +1382,10 @@ pub fn apply_event(
                 &mut awarded,
             );
         }
-        BadgeEvent::SignOut => {
-            location_state.sign_out_count = location_state.sign_out_count.saturating_add(1);
+        BadgeEvent::SignOut | BadgeEvent::VirtualSignOut => {
+            if matches!(event, BadgeEvent::SignOut) {
+                location_state.sign_out_count = location_state.sign_out_count.saturating_add(1);
+            }
             if let Some(category_id) = sign_out_category_id {
                 let count = location_state
                     .category_sign_out_counts
@@ -1421,12 +1427,22 @@ pub fn apply_event(
         }
     }
 
+    let is_sign_out = matches!(event, BadgeEvent::SignOut | BadgeEvent::VirtualSignOut);
     for definition in BADGE_DEFINITIONS.iter().copied() {
         if location_state
             .awarded_badge_ids
             .iter()
             .any(|id| id == definition.id)
         {
+            continue;
+        }
+        let is_category_rule = matches!(
+            definition.rule,
+            BadgeRule::CategorySignOut { .. }
+                | BadgeRule::CategorySignOutConsecutiveDays { .. }
+                | BadgeRule::CategorySignOutAny { .. }
+        );
+        if matches!(event, BadgeEvent::VirtualSignOut) && !is_category_rule {
             continue;
         }
 
@@ -1442,8 +1458,7 @@ pub fn apply_event(
                 category_id,
                 threshold,
             } => {
-                if matches!(event, BadgeEvent::SignOut) && sign_out_category_id == Some(category_id)
-                {
+                if is_sign_out && sign_out_category_id == Some(category_id) {
                     location_state
                         .category_sign_out_counts
                         .get(category_id)
@@ -1455,8 +1470,7 @@ pub fn apply_event(
                 }
             }
             BadgeRule::CategorySignOutConsecutiveDays { category_id, days } => {
-                if matches!(event, BadgeEvent::SignOut) && sign_out_category_id == Some(category_id)
-                {
+                if is_sign_out && sign_out_category_id == Some(category_id) {
                     location_state
                         .category_sign_out_day_streaks
                         .get(category_id)
@@ -1472,8 +1486,7 @@ pub fn apply_event(
                 threshold,
                 ..
             } => {
-                if matches!(event, BadgeEvent::SignOut)
-                    && sign_out_category_id.is_some_and(|id| category_ids.contains(&id))
+                if is_sign_out && sign_out_category_id.is_some_and(|id| category_ids.contains(&id))
                 {
                     category_ids
                         .iter()
@@ -1969,6 +1982,37 @@ mod tests {
                 .iter()
                 .any(|badge| badge.id == "trainer-storm-water-splash-class")
         );
+    }
+
+    #[test]
+    fn virtual_sign_out_counts_only_towards_its_own_category() {
+        let mut state = BadgeState::default();
+        let location_id = "loc-virtual";
+        // A counter badge this member has reached but not yet been given: only a
+        // non-virtual event may award it.
+        state
+            .locations
+            .entry(location_id.to_string())
+            .or_default()
+            .check_in_count = 5;
+
+        // Under five minutes, so a real sign-out would also earn an easter egg.
+        let awarded = apply_event(
+            &mut state,
+            location_id,
+            BadgeEvent::VirtualSignOut,
+            700,
+            false,
+            Some("oOUqPfAMfMdv"),
+            Some((650, 700)),
+        );
+        let ids: Vec<&str> = awarded.iter().map(|badge| badge.id.as_str()).collect();
+        assert_eq!(ids, ["myavailability-usage-now-you-see-me"]);
+
+        let location_state = &state.locations[location_id];
+        assert_eq!(location_state.sign_out_count, 0);
+        assert_eq!(location_state.check_in_count, 5);
+        assert_eq!(location_state.category_sign_out_counts["oOUqPfAMfMdv"], 1);
     }
 
     #[test]

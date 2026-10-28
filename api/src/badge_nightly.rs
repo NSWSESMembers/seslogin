@@ -32,6 +32,16 @@ pub async fn run(db: &impl db::Handler, args: NightlyArgs) -> Result<()> {
         .map(|location| location.id.clone())
         .collect();
 
+    // Virtual periods count only towards their own category's badges, which the
+    // nightly rules don't cover.
+    let virtual_category_ids: HashSet<String> = db
+        .list_categories()
+        .await?
+        .into_iter()
+        .filter(|category| category.is_virtual)
+        .map(|category| category.id)
+        .collect();
+
     for location in locations {
         if !location.gamification_enabled {
             continue;
@@ -47,6 +57,13 @@ pub async fn run(db: &impl db::Handler, args: NightlyArgs) -> Result<()> {
         let mut person_early_days: HashMap<String, HashSet<NaiveDate>> = HashMap::new();
         for period in periods {
             if period.start_time < streak_window_start_ts || period.start_time > now_ts {
+                continue;
+            }
+            if period
+                .category_id
+                .as_ref()
+                .is_some_and(|id| virtual_category_ids.contains(id))
+            {
                 continue;
             }
             // Guest sign-ins carry no `person_id` and belong to nobody, so there is no
