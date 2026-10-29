@@ -72,3 +72,33 @@ async fn only_members_whose_home_location_takes_part_earn_badges() {
     );
     assert_eq!(persons["bob"].badge_state, None);
 }
+
+#[tokio::test]
+async fn service_badges_count_from_a_first_sign_in_outside_the_window() {
+    let app = fake_app();
+    seed_location(&app, "loc-a", "Unit A");
+    app.db
+        .locations
+        .lock()
+        .unwrap()
+        .get_mut("loc-a")
+        .unwrap()
+        .gamification_enabled = true;
+    seed_person(&app, "alice", "loc-a", "Alice", "Anderson", "1001", None);
+    let now = seslogin::clock::now_sec();
+    // First signed in six years ago, and again yesterday.
+    seed_period(&app, period("first", "alice", now - 6 * 366 * DAY));
+    seed_period(&app, period("latest", "alice", now - DAY));
+
+    badge_nightly::run(&app.db, NightlyArgs { dry_run: false })
+        .await
+        .unwrap();
+
+    let state = app.db.persons.lock().unwrap()["alice"]
+        .badge_state
+        .clone()
+        .unwrap();
+    assert!(state.contains("service-one-year-in"), "{state}");
+    assert!(state.contains("service-five-seasons"), "{state}");
+    assert!(!state.contains("service-decade-of-duty"), "{state}");
+}
