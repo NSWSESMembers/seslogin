@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<143771d7847de4ee4550c78cd19fe066>>
+ * @generated SignedSource<<f7c333bf1c15762c39ca0bfb038158a8>>
  * @lightSyntaxTransform
  */
 
@@ -16,6 +16,7 @@ export type LocationList_item$data = {
   readonly name: string;
   readonly nitcCompleteOnExport: boolean;
   readonly nitcEnabled: number | null | undefined;
+  readonly sesApiHeadquartersId: string | null | undefined;
   readonly " $fragmentType": "LocationList_item";
 };
 export type LocationList_item$key = {
@@ -72,12 +73,19 @@ const node: ReaderFragment = {
       "kind": "ScalarField",
       "name": "lastSuccessfulMemberSync",
       "storageKey": null
+    },
+    {
+      "alias": null,
+      "args": null,
+      "kind": "ScalarField",
+      "name": "sesApiHeadquartersId",
+      "storageKey": null
     }
   ],
   "type": "Location",
   "abstractKey": null
 };
 
-(node as any).hash = "f20a9d6035256997c2e79e5fea80577d";
+(node as any).hash = "7adc99bb1c389139c5e752d30a596e37";
 
 export default node;

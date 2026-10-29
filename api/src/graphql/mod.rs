@@ -24,6 +24,7 @@ pub mod error_injection;
 pub mod mutations;
 pub mod pagination;
 pub mod query;
+pub mod ses_details;
 
 pub use self::mutations::MutationRoot;
 pub use self::query::{

@@ -31,6 +31,43 @@ daily update. **Sync now** refreshes the member list only. Members' email
 addresses, which reminders are sent to, come from the SES contact directory,
 which SESLogin reads once a day, early each morning.
 
+## A member's details
+
+Press **Details** next to a member with a green dot to open a read-only panel
+with what SES holds about them. Everyone with access to your unit can open it,
+including Read only users. Members you [added by hand](#adding-a-member) have
+no **Details** button, because there is nothing from SES to show.
+
+The panel shows:
+
+- their name, and the name they prefer to be called if SES has one;
+- their SES ID and member number;
+- their email address, mobile number and any other phone numbers, with what
+  each number is used for. Tap an email address or number to start a message or
+  call;
+- their **qualifications** (SES capability tags), such as first aid or
+  chainsaw operation. Hover over one to see its description;
+- their **units**: every unit, cluster or team they are assigned to in SES, with
+  their membership type, ranks, roles and positions. Their main unit is marked
+  **Primary**.
+
+Anything SES doesn't have is left out, or shown as "None recorded". You can't
+change any of it here. Correct it in SES and the change arrives with the next
+update: contact details and units are refreshed once a day, early each morning,
+and qualifications come with the daily member update.
+
+> [!NOTE]
+> These are personal details. Only people who can see your unit can open the
+> panel, and kiosks never show them.
+
+## Your unit's details
+
+Next to **Last successful member sync** at the top of the list, press **Unit
+details** to see what SES holds about your unit: its SES code and ID,
+location on a map, street and postal addresses, contact email and phone, and
+rescue accreditations with their status. Like the member panel it is read-only,
+and it is refreshed once a day.
+
 ## When members leave your unit
 
 When someone no longer appears in your unit's list in SES, SESLogin doesn't

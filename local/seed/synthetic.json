@@ -8,7 +8,35 @@
         "name": { "S": "Test A Unit" },
         "enabled": { "BOOL": true },
         "created_at": { "N": "1767225600" },
-        "updated_at": { "N": "1767225600" }
+        "updated_at": { "N": "1767225600" },
+        "ses_api_headquarters_id": { "S": "900001" },
+        "code": { "S": "TST-A" },
+        "latitude": { "N": "-33.8688" },
+        "longitude": { "N": "151.2093" },
+        "ses_directory_entity_id": { "S": "70001" },
+        "address": {
+          "M": {
+            "line1": { "S": "1 Example Street" },
+            "suburb": { "S": "Exampleville" },
+            "state": { "S": "NSW" },
+            "postcode": { "S": "2000" },
+            "formatted": { "S": "1 Example Street, Exampleville NSW 2000" }
+          }
+        },
+        "postal_address": {
+          "M": {
+            "line1": { "S": "PO Box 123" },
+            "suburb": { "S": "Exampleville" },
+            "state": { "S": "NSW" },
+            "postcode": { "S": "2000" },
+            "formatted": { "S": "PO Box 123, Exampleville NSW 2000" }
+          }
+        },
+        "email": { "S": "unit-a@example.com" },
+        "phone": { "S": "02 5550 0100" },
+        "accreditations": {
+          "S": "[{\"type\":\"Flood Rescue\",\"status\":\"Accredited\",\"number\":\"FR-0001\"},{\"type\":\"Land Search\",\"status\":\"Accredited\"},{\"type\":\"Vertical Rescue\",\"status\":\"Provisional\",\"note\":\"Assessment due next quarter\"}]"
+        }
       },
       {
         "_comment": "The second unit: for cross-unit sign-in, and for checking that a user granted only Test A Unit cannot reach it.",
@@ -39,7 +67,16 @@
         "registration_number": { "S": "10000002" },
         "ses_api_person_id": { "S": "10000002" },
         "created_at": { "N": "1767225600" },
-        "updated_at": { "N": "1767225600" }
+        "updated_at": { "N": "1767225600" },
+        "email": { "S": "bob.brown@example.com" },
+        "mobile": { "S": "+61400000123" },
+        "phones": {
+          "S": "[{\"number\":\"+61400000123\",\"types\":[\"Primary Telephone\",\"SMS\"]},{\"number\":\"+61255500142\",\"types\":[\"Home Telephone\"]}]"
+        },
+        "preferred_name": { "S": "Bobby" },
+        "capability_tags": {
+          "S": "[{\"id\":101,\"name\":\"Chainsaw Operator\",\"description\":\"Operate a chainsaw on storm damage\"},{\"id\":102,\"name\":\"Flood Rescue Operator\",\"description\":\"Operate in flood water rescue\"},{\"id\":103,\"name\":\"First Aid\"}]"
+        }
       },
       {
         "_comment": "For testing a sign-in at Test A Unit's kiosk by someone who belongs to Test B Unit. registration_number is what a scan resolves against (get_person_id_by_registration_number); ses_api_person_id is the separate sync identity.",
@@ -140,6 +177,33 @@
         "active": { "N": "1" },
         "last_contact": { "N": "1767225600" },
         "created_at": { "N": "1767225600" },
+        "updated_at": { "N": "1767225600" }
+      }
+    ],
+    "person_unit": [
+      {
+        "_comment": "Invented directory assignments for Bob Brown, so the member Details panel has units to show: his primary unit and a cluster with no location of ours.",
+        "person_id": { "S": "TestAMember2" },
+        "entity_id": { "S": "70001" },
+        "location_id": { "S": "TestAUnit001" },
+        "entity_name": { "S": "Test A Unit" },
+        "entity_code": { "S": "TST-A" },
+        "zone": { "S": "Test Zone" },
+        "membership_type": { "S": "Member" },
+        "ranks": { "SS": ["Team Leader"] },
+        "roles": { "SS": ["Operator"] },
+        "positions": { "SS": ["Training Officer"] },
+        "is_primary": { "BOOL": true },
+        "updated_at": { "N": "1767225600" }
+      },
+      {
+        "person_id": { "S": "TestAMember2" },
+        "entity_id": { "S": "70900" },
+        "entity_name": { "S": "Test Cluster" },
+        "entity_code": { "S": "TST-CL" },
+        "zone": { "S": "Test Zone" },
+        "membership_type": { "S": "Member" },
+        "roles": { "SS": ["Cluster Support"] },
         "updated_at": { "N": "1767225600" }
       }
     ]

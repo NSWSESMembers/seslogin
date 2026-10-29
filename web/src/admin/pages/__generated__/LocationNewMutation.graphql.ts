@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<666f0c5bb828899338d5bf206e887703>>
+ * @generated SignedSource<<74f24b1f3bc167a56907a4963dff4304>>
  * @lightSyntaxTransform
  */
 
@@ -133,6 +133,13 @@ return {
             "kind": "ScalarField",
             "name": "lastSuccessfulMemberSync",
             "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "sesApiHeadquartersId",
+            "storageKey": null
           }
         ],
         "storageKey": null
@@ -140,12 +147,12 @@ return {
     ]
   },
   "params": {
-    "cacheID": "4afd1345dc0ca261bd618037887d0120",
+    "cacheID": "5e7ca377b9a2bafa86d906de3f0c1db1",
     "id": null,
     "metadata": {},
     "name": "LocationNewMutation",
     "operationKind": "mutation",
-    "text": "mutation LocationNewMutation(\n  $name: String!\n  $nitcEnabled: Int\n) {\n  createLocation(name: $name, nitcEnabled: $nitcEnabled) {\n    id\n    ...LocationList_item\n  }\n}\n\nfragment LocationList_item on Location {\n  id\n  name\n  enabled\n  nitcEnabled\n  nitcCompleteOnExport\n  lastSuccessfulMemberSync\n}\n"
+    "text": "mutation LocationNewMutation(\n  $name: String!\n  $nitcEnabled: Int\n) {\n  createLocation(name: $name, nitcEnabled: $nitcEnabled) {\n    id\n    ...LocationList_item\n  }\n}\n\nfragment LocationList_item on Location {\n  id\n  name\n  enabled\n  nitcEnabled\n  nitcCompleteOnExport\n  lastSuccessfulMemberSync\n  sesApiHeadquartersId\n}\n"
   }
 };
 })();

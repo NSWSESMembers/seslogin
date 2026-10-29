@@ -16,6 +16,8 @@ import { useNotify } from "../components/useNotify";
 import { AdminTable, Th, Td } from "../../components/ui/Table";
 import { Button, ButtonLink } from "../../components/ui/Button";
 import { Popover } from "../../components/ui/Popover";
+import MemberDetailsDialog from "../components/MemberDetailsDialog";
+import LocationDetailsDialog from "../components/LocationDetailsDialog";
 import TextInput from "../../components/ui/TextInput";
 import {
   TIER_ORDER_DESC,
@@ -87,6 +89,7 @@ function Row({
   showBadges: boolean;
 }) {
   const { notifyError, notifySuccess } = useNotify();
+  const [showDetails, setShowDetails] = useState(false);
   const [commitMutation, isMutationInFlight] =
     useMutation<MembersListDeleteMutation>(graphql`
       mutation MembersListDeleteMutation($id: ID!) {
@@ -179,6 +182,11 @@ function Row({
       )}
       <Td options>
         <div className="flex justify-end gap-1">
+          {sesApiPersonId && (
+            <Button size="row" onClick={() => setShowDetails(true)}>
+              Details
+            </Button>
+          )}
           <ButtonLink size="row" to={`/admin/members/activity/${person.id}`}>
             Activity
           </ButtonLink>
@@ -203,6 +211,13 @@ function Row({
             </>
           ) : null}
         </div>
+        {showDetails && (
+          <MemberDetailsDialog
+            personId={person.id}
+            personName={`${person.firstName} ${person.lastName}`.trim()}
+            onClose={() => setShowDetails(false)}
+          />
+        )}
       </Td>
     </tr>
   );
@@ -263,6 +278,7 @@ export default function MembersList() {
   }
 
   const [filter, setFilter] = useState("");
+  const [showUnitDetails, setShowUnitDetails] = useState(false);
 
   const location = data?.location;
   const sortedPeople = [...location.people]
@@ -307,6 +323,19 @@ export default function MembersList() {
             >
               Sync now
             </button>
+          )}{" "}
+          <button
+            className="cursor-pointer"
+            onClick={() => setShowUnitDetails(true)}
+          >
+            Unit details
+          </button>
+          {showUnitDetails && (
+            <LocationDetailsDialog
+              locationId={location.id}
+              locationName={selectedLocation.name}
+              onClose={() => setShowUnitDetails(false)}
+            />
           )}
         </div>
       ) : null}
