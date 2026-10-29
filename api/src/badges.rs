@@ -38,6 +38,25 @@ pub struct LocationBadgeProgress {
     pub awarded_badge_times: HashMap<String, u64>,
     #[serde(default)]
     pub displayed_badge_ids: Vec<String>,
+    /// Time on site, each sign-in capped at `MAX_COUNTED_SIGN_IN_SECONDS`.
+    #[serde(default)]
+    pub on_site_seconds: u64,
+    #[serde(default)]
+    pub weekend_check_in_count: u64,
+    #[serde(default)]
+    pub storm_water_course: CourseProgress,
+}
+
+/// Sessions of a course run as blocks of weekly nights. A gap of
+/// `COURSE_BLOCK_GAP_DAYS` or more starts a new block, a new intake.
+#[derive(Clone, Debug, Serialize, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
+pub struct CourseProgress {
+    pub last_day_number: Option<i32>,
+    /// Days with a session in the current block.
+    pub block_days: u64,
+    /// Blocks that reached `COURSE_BLOCK_SESSIONS` days.
+    pub blocks: u64,
 }
 
 #[derive(Clone, Debug)]
@@ -74,6 +93,19 @@ pub enum BadgeEvent {
 enum BadgeMetric {
     CheckIn,
     SignOut,
+    OnSiteHours,
+    WeekendCheckIn,
+}
+
+impl BadgeMetric {
+    fn value(self, location_state: &LocationBadgeProgress) -> u64 {
+        match self {
+            BadgeMetric::CheckIn => location_state.check_in_count,
+            BadgeMetric::SignOut => location_state.sign_out_count,
+            BadgeMetric::OnSiteHours => location_state.on_site_seconds / 3600,
+            BadgeMetric::WeekendCheckIn => location_state.weekend_check_in_count,
+        }
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -103,6 +135,10 @@ enum BadgeRule {
         day: u32,
     },
     FridayThe13thSignOut,
+    /// Came back for this many Storm and Water training blocks.
+    StormWaterCourseBlocks {
+        count: u64,
+    },
     /// A teaching sign-out in a discipline the member has a training sign-out in.
     TrainThenTeach,
     /// Taught or assessed in this many `TEACHING_DISCIPLINES`.
@@ -817,6 +853,11 @@ const WORKSHOP_ATTENDANCE_OR_PARTICIPANT_CATEGORY_IDS: &[&str] = &[
 const FIRST_SIGNIN_LOCATION_BADGE_PREFIX: &str = "first-signin-location-";
 const FIRST_AWAY_SIGNIN_LOCATION_BADGE_PREFIX: &str = "first-away-signin-location-";
 const SIX_MONTHS_SECONDS: u64 = 60 * 60 * 24 * 30 * 6;
+/// Longer sign-ins are almost always forgotten sign-outs, so only this much of one
+/// counts towards hours.
+const MAX_COUNTED_SIGN_IN_SECONDS: u64 = 12 * 60 * 60;
+const COURSE_BLOCK_GAP_DAYS: i32 = 8 * 7;
+const COURSE_BLOCK_SESSIONS: u64 = 5;
 
 const BADGE_DEFINITIONS: &[BadgeDefinition] = &[
     BadgeDefinition {
@@ -1612,6 +1653,73 @@ const BADGE_DEFINITIONS: &[BadgeDefinition] = &[
         },
     },
     BadgeDefinition {
+        id: "training-storm-water-back-on-the-roof",
+        name: "Back on the Roof",
+        description: "Came back for another Storm and Water course.",
+        tier: "gold",
+        rule: BadgeRule::StormWaterCourseBlocks { count: 2 },
+    },
+    BadgeDefinition {
+        id: "hours-clocked-on",
+        name: "Clocked On",
+        description: "50 hours on site.",
+        tier: "starter",
+        rule: BadgeRule::Counter {
+            metric: BadgeMetric::OnSiteHours,
+            threshold: 50,
+        },
+    },
+    BadgeDefinition {
+        id: "hours-ton-of-time",
+        name: "Ton of Time",
+        description: "100 hours on site.",
+        tier: "bronze",
+        rule: BadgeRule::Counter {
+            metric: BadgeMetric::OnSiteHours,
+            threshold: 100,
+        },
+    },
+    BadgeDefinition {
+        id: "hours-overtime-unpaid",
+        name: "Overtime (Unpaid)",
+        description: "500 hours on site.",
+        tier: "silver",
+        rule: BadgeRule::Counter {
+            metric: BadgeMetric::OnSiteHours,
+            threshold: 500,
+        },
+    },
+    BadgeDefinition {
+        id: "hours-golden-hours",
+        name: "Golden Hours",
+        description: "1,000 hours on site.",
+        tier: "gold",
+        rule: BadgeRule::Counter {
+            metric: BadgeMetric::OnSiteHours,
+            threshold: 1000,
+        },
+    },
+    BadgeDefinition {
+        id: "habit-weekend-warrior",
+        name: "Weekend Warrior",
+        description: "25 sign-ins on a Saturday or Sunday.",
+        tier: "bronze",
+        rule: BadgeRule::Counter {
+            metric: BadgeMetric::WeekendCheckIn,
+            threshold: 25,
+        },
+    },
+    BadgeDefinition {
+        id: "habit-weekend-regular",
+        name: "Saturday Specialist",
+        description: "100 sign-ins on a Saturday or Sunday.",
+        tier: "silver",
+        rule: BadgeRule::Counter {
+            metric: BadgeMetric::WeekendCheckIn,
+            threshold: 100,
+        },
+    },
+    BadgeDefinition {
         id: "support-roles-extra-hands",
         name: "Extra Hands",
         description: "First Support Roles sign-out.",
@@ -2013,14 +2121,8 @@ fn award_from_definition(definition: BadgeDefinition, awarded_at: u64) -> TimedB
 
 fn source_for_definition(definition: BadgeDefinition) -> &'static str {
     match definition.rule {
-        BadgeRule::Counter {
-            metric: BadgeMetric::CheckIn,
-            ..
-        } => "Attendance",
-        BadgeRule::Counter {
-            metric: BadgeMetric::SignOut,
-            ..
-        } => "Attendance",
+        BadgeRule::Counter { .. } => "Attendance",
+        BadgeRule::StormWaterCourseBlocks { .. } => "Training",
         BadgeRule::Manual => "Attendance",
         BadgeRule::CategorySignOut { category_id, .. } => match category_id {
             "Xu7e3YQO2L91" => "Storm",
@@ -2097,12 +2199,9 @@ pub fn awards_all_locations(state: &BadgeState) -> Vec<TimedBadgeAward> {
 /// state instead of a progress bar.
 fn progress_value(rule: BadgeRule, location_state: &LocationBadgeProgress) -> Option<(u64, u64)> {
     match rule {
-        BadgeRule::Counter { metric, threshold } => {
-            let current = match metric {
-                BadgeMetric::CheckIn => location_state.check_in_count,
-                BadgeMetric::SignOut => location_state.sign_out_count,
-            };
-            Some((current, threshold))
+        BadgeRule::Counter { metric, threshold } => Some((metric.value(location_state), threshold)),
+        BadgeRule::StormWaterCourseBlocks { count } => {
+            Some((location_state.storm_water_course.blocks, count))
         }
         BadgeRule::AwayCheckIn { threshold } => {
             Some((location_state.away_check_in_count, threshold))
@@ -2355,6 +2454,10 @@ pub fn apply_event(
                 location_state.away_check_in_count =
                     location_state.away_check_in_count.saturating_add(1);
             }
+            if is_sydney_weekend(now_sec) {
+                location_state.weekend_check_in_count =
+                    location_state.weekend_check_in_count.saturating_add(1);
+            }
 
             maybe_award_check_in_easter_eggs(
                 location_state,
@@ -2366,6 +2469,19 @@ pub fn apply_event(
         BadgeEvent::SignOut | BadgeEvent::VirtualSignOut => {
             if matches!(event, BadgeEvent::SignOut) {
                 location_state.sign_out_count = location_state.sign_out_count.saturating_add(1);
+                if let Some((start_sec, end_sec)) = sign_out_times {
+                    let counted = end_sec
+                        .saturating_sub(start_sec)
+                        .min(MAX_COUNTED_SIGN_IN_SECONDS);
+                    location_state.on_site_seconds =
+                        location_state.on_site_seconds.saturating_add(counted);
+                }
+                if sign_out_category_id
+                    .is_some_and(|id| TRAINING_STORM_WATER_CATEGORY_IDS.contains(&id))
+                    && let Some(day_number) = local_sydney_day_number(now_sec)
+                {
+                    location_state.storm_water_course.record_session(day_number);
+                }
             }
             if let Some(category_id) = sign_out_category_id {
                 let count = location_state
@@ -2428,12 +2544,9 @@ pub fn apply_event(
         }
 
         let should_award = match definition.rule {
-            BadgeRule::Counter { metric, threshold } => {
-                let metric_value = match metric {
-                    BadgeMetric::CheckIn => location_state.check_in_count,
-                    BadgeMetric::SignOut => location_state.sign_out_count,
-                };
-                metric_value >= threshold
+            BadgeRule::Counter { metric, threshold } => metric.value(location_state) >= threshold,
+            BadgeRule::StormWaterCourseBlocks { count } => {
+                location_state.storm_water_course.blocks >= count
             }
             BadgeRule::CategorySignOut {
                 category_id,
@@ -2669,6 +2782,31 @@ fn award_person_wide_badges(
             award_from_definition(definition, now_sec).badge
         })
         .collect()
+}
+
+impl CourseProgress {
+    fn record_session(&mut self, day_number: i32) {
+        match self.last_day_number {
+            Some(last) if last == day_number => return,
+            Some(last) if day_number - last >= COURSE_BLOCK_GAP_DAYS => self.block_days = 0,
+            _ => {}
+        }
+        self.last_day_number = Some(day_number);
+        self.block_days = self.block_days.saturating_add(1);
+        if self.block_days == COURSE_BLOCK_SESSIONS {
+            self.blocks = self.blocks.saturating_add(1);
+        }
+    }
+}
+
+fn is_sydney_weekend(timestamp_sec: u64) -> bool {
+    let Some(dt) = chrono::DateTime::from_timestamp(timestamp_sec as i64, 0) else {
+        return false;
+    };
+    matches!(
+        dt.with_timezone(&chrono_tz::Australia::Sydney).weekday(),
+        chrono::Weekday::Sat | chrono::Weekday::Sun
+    )
 }
 
 fn local_sydney_day_number(timestamp_sec: u64) -> Option<i32> {
@@ -3535,6 +3673,121 @@ mod tests {
             ["away-long-haul"]
         );
         assert!(ids(apply_away_distance(&mut state, "loc-away", 400.0, 4)).is_empty());
+    }
+
+    #[test]
+    fn hours_count_each_sign_in_up_to_twelve_hours() {
+        let mut state = BadgeState::default();
+        let hour = 60 * 60;
+        let mut earned = Vec::new();
+        // Four 20-hour sign-ins count as 48 hours, not 80.
+        for i in 0..4 {
+            let start = 1_000_000 + i * 100 * hour;
+            earned.extend(apply_event(
+                &mut state,
+                "loc-hours",
+                BadgeEvent::SignOut,
+                start + 20 * hour,
+                false,
+                Some("Xu7e3YQO2L91"),
+                Some((start, start + 20 * hour)),
+            ));
+        }
+        assert_eq!(state.locations["loc-hours"].on_site_seconds, 48 * hour);
+        assert!(earned.iter().all(|badge| badge.id != "hours-clocked-on"));
+        let fifth = apply_event(
+            &mut state,
+            "loc-hours",
+            BadgeEvent::SignOut,
+            2_000_000 + 2 * hour,
+            false,
+            Some("Xu7e3YQO2L91"),
+            Some((2_000_000, 2_000_000 + 2 * hour)),
+        );
+        assert!(fifth.iter().any(|badge| badge.id == "hours-clocked-on"));
+        let progress = progress_for_location(&state, "loc-hours");
+        let ton = progress
+            .iter()
+            .find(|p| p.badge.id == "hours-ton-of-time")
+            .unwrap();
+        assert_eq!((ton.current, ton.target), (Some(50), Some(100)));
+    }
+
+    #[test]
+    fn weekend_sign_ins_are_counted_in_sydney_time() {
+        let mut state = BadgeState::default();
+        // Saturday 31 October 2026, and the Friday before it.
+        for timestamp in [sydney(2026, 10, 31, 9), sydney(2026, 10, 30, 19)] {
+            apply_event(
+                &mut state,
+                "loc-wk",
+                BadgeEvent::CheckIn,
+                timestamp,
+                false,
+                None,
+                None,
+            );
+        }
+        // 11pm UTC on Friday is already Saturday morning in Sydney.
+        let late_friday_utc = chrono::Utc
+            .with_ymd_and_hms(2026, 11, 6, 23, 0, 0)
+            .unwrap()
+            .timestamp() as u64;
+        apply_event(
+            &mut state,
+            "loc-wk",
+            BadgeEvent::CheckIn,
+            late_friday_utc,
+            false,
+            None,
+            None,
+        );
+        assert_eq!(state.locations["loc-wk"].weekend_check_in_count, 2);
+    }
+
+    #[test]
+    fn back_on_the_roof_needs_a_second_block_of_five_after_a_gap() {
+        let mut state = BadgeState::default();
+        let week = 7 * 24 * 60 * 60;
+        let mut night = sydney(2026, 2, 3, 19);
+        let session = |state: &mut BadgeState, night: u64| -> bool {
+            apply_event(
+                state,
+                "loc-sw",
+                BadgeEvent::SignOut,
+                night,
+                false,
+                Some("a4nhHUkrXFEH"),
+                None,
+            )
+            .iter()
+            .any(|badge| badge.id == "training-storm-water-back-on-the-roof")
+        };
+        // First intake: five weekly nights, one with a second sign-out the same day.
+        for _ in 0..5 {
+            assert!(!session(&mut state, night));
+            night += week;
+        }
+        assert!(!session(&mut state, night - week + 60));
+        // Seven weeks off is the same intake, not a new one.
+        night += 6 * week;
+        assert!(!session(&mut state, night));
+        assert_eq!(state.locations["loc-sw"].storm_water_course.blocks, 1);
+        // Ten weeks off, then a new intake: the badge on its fifth night.
+        night += 10 * week;
+        for i in 0..5 {
+            assert_eq!(session(&mut state, night), i == 4, "night {i}");
+            night += week;
+        }
+    }
+
+    #[test]
+    fn state_stored_before_the_hours_and_course_counters_still_reads() {
+        let stored = r#"{"locations":{"loc-1":{"check_in_count":3,"away_check_in_count":0,"sign_out_count":2,"category_sign_out_counts":{},"awarded_badge_ids":["first-steps"],"awarded_badge_times":{"first-steps":1}}}}"#;
+        let state = read_state("person-1", Some(stored)).unwrap();
+        let location_state = &state.locations["loc-1"];
+        assert_eq!(location_state.on_site_seconds, 0);
+        assert_eq!(location_state.storm_water_course.blocks, 0);
     }
 
     #[test]
