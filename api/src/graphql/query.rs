@@ -3446,7 +3446,7 @@ impl<A: App + HasDb + Send + Sync + 'static> Session<A> {
         })
     }
 
-    /// When this kiosk's enrolled key stops authenticating. Null for code-enrolled kiosks.
+    /// When this kiosk's enrolled key stops authenticating. Null once its key was released.
     async fn key_expires_at(&self) -> Option<i64> {
         self.rec.key_expires_at.map(|ts| ts as i64)
     }
@@ -3477,8 +3477,9 @@ impl<A: App + HasDb + Send + Sync + 'static> Session<A> {
         Json(self.rec.config.clone())
     }
 
-    /// True for a kiosk set up through the QR / public-key flow, false for one set up
-    /// with a 6-digit code. Only the former can be reactivated once it expires.
+    /// Whether this kiosk holds an enrolled key. False only for a leftover whose key was
+    /// released (see `keyReleasedAt`), and for a kiosk once set up with the removed
+    /// 6-digit code that was never converted — neither can authenticate.
     async fn key_enrolled(&self) -> bool {
         self.rec.key_fingerprint.is_some()
     }
@@ -3486,14 +3487,13 @@ impl<A: App + HasDb + Send + Sync + 'static> Session<A> {
     /// When this kiosk's key was released because its device was set up again by scanning
     /// its QR code, which moved the key onto a new kiosk entry. Non-null only for such a
     /// leftover: it no longer authenticates, can never come back online, and is safe to
-    /// delete. Null for every working kiosk — including a legacy code-enrolled one, which
-    /// otherwise looks identical.
+    /// delete. Null for every working kiosk.
     async fn key_released_at(&self) -> Option<i64> {
         self.rec.key_released_at.map(|t| t as i64)
     }
 
-    /// Hex SHA-256 of the kiosk's enrolled public key (SPKI DER), or null for a kiosk set
-    /// up with a 6-digit code. The kiosk shows the same value under its enrollment QR
+    /// Hex SHA-256 of the kiosk's enrolled public key (SPKI DER), or null once its key
+    /// was released. The kiosk shows the same value under its enrollment QR
     /// code, so an admin can check they are reactivating the device in front of them.
     async fn key_fingerprint(&self) -> Option<&str> {
         self.rec.key_fingerprint.as_deref()
@@ -4047,17 +4047,6 @@ impl<A: App + HasDb + HasRealtime + Send + Sync + 'static> QueryRoot<A> {
         Ok(Session::new(rec))
     }
 
-    /// Always empty. Kiosk session JWTs are no longer accepted, so there is nothing to
-    /// refresh; the field stays only so a kiosk bundle loaded before that change can still
-    /// run its session query.
-    #[graphql(
-        guard = "AuthGuard::new(AuthRequirement::Session)",
-        deprecation = "Kiosk session JWTs are no longer accepted; always returns an empty string"
-    )]
-    async fn refresh_token(&self) -> String {
-        String::new()
-    }
-
     /// A signed Ably token request scoped to exactly this kiosk's own
     /// location channel (`kiosk:<db_prefix>:<location_id>`, subscribe-only).
     /// The location comes from the caller's own session record, never from an
@@ -4358,7 +4347,7 @@ impl<A: App + HasDb + HasRealtime + Send + Sync + 'static> QueryRoot<A> {
     ) -> Result<OAuthAuthorizationRequest> {
         let app = ctx.data_unchecked::<Arc<A>>();
         let registration =
-            crate::oauth::decode_client_id(&app.jwt().oauth_client_id_key(), &client_id)
+            crate::oauth::decode_client_id(&app.server_secret().oauth_client_id_key(), &client_id)
                 .ok_or_else(|| anyhow!("Unknown or invalid client"))?;
         if !registration
             .redirect_uris

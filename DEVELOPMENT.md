@@ -262,10 +262,11 @@ token you can paste into that same key, which exercises the ordinary authenticat
 instead of bypassing it. See [§9](#logging-in). Prefer it — dev auth is for pointing a
 server at a caller it has no token for, not for getting past this gate.
 
-The kiosk keeps its session token the same way — as `scanAuthToken` inside its own
-per-profile settings entry, in
-[KioskEnvironment.tsx](web/src/kiosk/components/KioskEnvironment.tsx) — so expect the same
-kind of gate there.
+The kiosk has the same kind of gate: it only leaves the enrolment screen once its
+per-profile settings entry says `authMode: "key"` (see
+[KioskEnvironment.tsx](web/src/kiosk/components/KioskEnvironment.tsx)), and it then signs
+requests with the key it keeps in IndexedDB. With `--dev-auth-session`, setting that entry
+is enough, since the server accepts any request as the given session.
 
 > ⚠️ Dev only — this exists solely in the `poem` binary, not the deployed Lambda, and the
 > server logs a loud warning at startup. If you've also set `DB_PREFIX=seslogin_prod`,
@@ -410,7 +411,7 @@ than the thing standing between production data and a public repo.
 | **Test B Unit** (`TestBUnit001`) | Second unit, for cross-unit sign-in and for checking a grant is enforced. Member **Crossunit Tester** (`20000001`) |
 | **Users** | `super@seslogin.test` (super), `testunit@seslogin.test` (Admin at Test A Unit only) and `readonly@seslogin.test` (Read only at Test A Unit) |
 | **User tokens** | One ready-made login per user — see [Logging in](#logging-in) |
-| **Kiosk sessions** | `TestAKiosk01` at Test A Unit, a **legacy JWT** kiosk; `TestAKiosk02`, the same unit but **key-enrolled** |
+| **Kiosk session** | `TestAKiosk02` at Test A Unit, **key-enrolled** |
 | **Categories** | All 220, plus the 99 NITC groups they point at |
 
 Neither unit name contains the other, so a selector matching on name text can't hit both —
@@ -423,14 +424,9 @@ has one, so it hides both and shows the synced bullet
 changes a member, and Bob to check the read-only half. A fixture where every member is
 sync-owned looks fine and quietly makes the member edit form unreachable.
 
-**The two kiosks cover the two ways a kiosk authenticates:**
+**The kiosk:**
 
-- `TestAKiosk01` is a **legacy JWT kiosk** that never converted: it has no key, like the
-  kiosks enrolled with a 6-digit setup code before that flow was removed. Session JWTs are
-  now refused, so a kiosk holding one (`make local-cli ARGS="jwt session TestAKiosk01"`,
-  stored as `scanAuthToken` in its `kiosk_<profile>` localStorage entry) lands on the QR
-  enrolment screen. `cli session purge-legacy` would delete it.
-- `TestAKiosk02` is **key-enrolled**: it carries the public half of a fixed P-256 keypair
+- `TestAKiosk02` is **key-enrolled**, as every kiosk is: it carries the public half of a fixed P-256 keypair
   and signs every request with the private half (the `SLKey` scheme, see
   [api/src/session_key.rs](api/src/session_key.rs)). The private half is committed in
   [local/seed/kiosk-signing-key.json](local/seed/kiosk-signing-key.json) and

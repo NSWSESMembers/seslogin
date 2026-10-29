@@ -8,7 +8,6 @@ use sha2::{Digest, Sha256};
 use common::{FakeDb, fake_app, seed_user};
 use seslogin::app::MyApp;
 use seslogin::auth::{self, AuthError, AuthInfo};
-use seslogin::client_info::ClientReport;
 use seslogin::db::Handler as _;
 use seslogin::{mockmail, mockqueue, mockrealtime};
 
@@ -19,7 +18,7 @@ fn sha256_hex(s: &str) -> String {
 }
 
 async fn verify(app: &FakeApp, token: &str) -> Result<AuthInfo, AuthError> {
-    auth::verify_token(app, token, &ClientReport::default()).await
+    auth::verify_token(app, token).await
 }
 
 #[tokio::test]

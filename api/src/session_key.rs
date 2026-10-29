@@ -215,40 +215,6 @@ pub fn verify_signature(
         .map_err(|e| anyhow!("signature verification failed: {e}"))
 }
 
-/// The body a legacy JWT kiosk signs to prove it holds the private half of the key it
-/// asks to attach to its session (`convertSessionToKey`). Signed exactly like a request
-/// body, so the kiosk reuses its ordinary request signer. A real request body is GraphQL
-/// JSON, starting with `{`, so a proof can never double as the signature of a request.
-pub fn conversion_proof_body(session_id: &str) -> String {
-    format!("slkey-convert:{session_id}")
-}
-
-/// Check a key-conversion proof: `proof` is a signed key header (the part after
-/// `SLKey `) over [`conversion_proof_body`] for `session_id`, made with the private half
-/// of `spki_b64`. Returns the key's fingerprint.
-pub fn verify_conversion_proof(
-    spki_b64: &str,
-    proof: &str,
-    session_id: &str,
-    now: u64,
-) -> Result<String> {
-    let (_, fingerprint) = validate_public_key_spki_b64(spki_b64)?;
-    let header = parse_signed_key_header(proof)?;
-    if header.fingerprint != fingerprint {
-        bail!("proof was signed for a different key");
-    }
-    check_timestamp_window(header.timestamp, now)?;
-    let body_hash = sha256_hex(conversion_proof_body(session_id).as_bytes());
-    verify_signature(
-        spki_b64,
-        &fingerprint,
-        header.timestamp,
-        &body_hash,
-        &header.signature,
-    )?;
-    Ok(fingerprint)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -422,59 +388,6 @@ mod tests {
             ((), b64, ofp)
         };
         assert!(verify_signature(&other_spki, &fp, ts, &body_hash, &sig_bytes).is_err());
-    }
-
-    /// A conversion proof as the kiosk builds it: its request signer over the proof body.
-    fn conversion_proof(signing: &SigningKey, fp: &str, ts: u64, session_id: &str) -> String {
-        let body_hash = sha256_hex(conversion_proof_body(session_id).as_bytes());
-        let sig: Signature = signing.sign(canonical_payload(fp, ts, &body_hash).as_bytes());
-        format!("{fp}.{ts}.{}", BASE64.encode(sig.to_bytes()))
-    }
-
-    #[test]
-    fn conversion_proof_accepts_the_key_holder() {
-        let (signing, spki_b64, fp) = test_key();
-        let now = 1_700_000_000;
-        let proof = conversion_proof(&signing, &fp, now, "Sess1");
-        assert_eq!(
-            verify_conversion_proof(&spki_b64, &proof, "Sess1", now).unwrap(),
-            fp
-        );
-    }
-
-    #[test]
-    fn conversion_proof_is_bound_to_the_session() {
-        let (signing, spki_b64, fp) = test_key();
-        let now = 1_700_000_000;
-        let proof = conversion_proof(&signing, &fp, now, "Sess1");
-        assert!(verify_conversion_proof(&spki_b64, &proof, "Sess2", now).is_err());
-    }
-
-    #[test]
-    fn conversion_proof_rejects_stale_timestamp() {
-        let (signing, spki_b64, fp) = test_key();
-        let now = 1_700_000_000;
-        let ts = now - SIGNATURE_WINDOW_S - 1;
-        let proof = conversion_proof(&signing, &fp, ts, "Sess1");
-        assert!(verify_conversion_proof(&spki_b64, &proof, "Sess1", now).is_err());
-    }
-
-    #[test]
-    fn conversion_proof_rejects_a_key_the_caller_does_not_hold() {
-        // Signed by another key, but presented with this key's fingerprint and SPKI.
-        let (_, spki_b64, fp) = test_key();
-        let other = SigningKey::from_slice(&[9u8; 32]).unwrap();
-        let now = 1_700_000_000;
-        let proof = conversion_proof(&other, &fp, now, "Sess1");
-        assert!(verify_conversion_proof(&spki_b64, &proof, "Sess1", now).is_err());
-    }
-
-    #[test]
-    fn conversion_proof_rejects_mismatched_fingerprint() {
-        let (signing, spki_b64, _) = test_key();
-        let now = 1_700_000_000;
-        let proof = conversion_proof(&signing, "abcdef", now, "Sess1");
-        assert!(verify_conversion_proof(&spki_b64, &proof, "Sess1", now).is_err());
     }
 
     #[test]

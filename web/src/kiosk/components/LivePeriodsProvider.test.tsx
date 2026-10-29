@@ -13,7 +13,7 @@ import { setupServer } from "msw/node";
 import { graphql, HttpResponse, type GraphQLResponseResolver } from "msw";
 import { RelayEnvironmentProvider } from "react-relay";
 import { getGraphQLEndpoint } from "../../lib/api";
-import { createKioskGraphQLEnvironment } from "../../lib/environments";
+import { createKioskKeyGraphQLEnvironment } from "../../lib/environments";
 import { KioskSessionContext, type KioskSession } from "./KioskSessionContext";
 import { KioskRealtimeProvider } from "./KioskRealtimeProvider";
 import { LivePeriodsProvider } from "./LivePeriodsProvider";
@@ -174,8 +174,8 @@ function Consumer() {
 }
 
 function renderProvider(kioskSession: KioskSession = session) {
-  const environment = createKioskGraphQLEnvironment(
-    () => "test-token",
+  const environment = createKioskKeyGraphQLEnvironment(
+    () => Promise.resolve("SLKey test"),
     () => {},
   );
   return render(

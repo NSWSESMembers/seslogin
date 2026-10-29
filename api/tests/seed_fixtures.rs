@@ -32,7 +32,6 @@ const DOCUMENTED: &[&str] = &[
     "TestAUnit001",
     "TestBUnit001",
     "TestAMember1",
-    "TestAKiosk01",
     "TestAKiosk02",
     "10000001",
     "10000002",
@@ -147,14 +146,17 @@ fn synthetic_references_resolve() {
 }
 
 #[test]
-fn sessions_carry_no_setup_code() {
+fn every_session_holds_a_key() {
     for session in rows(&synthetic(), "session") {
-        // Setup codes can no longer be redeemed, so a seeded one would only mislead.
-        assert!(
-            s(session, "code").is_none(),
-            "session {} carries a setup code",
-            id(session)
-        );
+        // Kiosks authenticate only by signing with an enrolled key, so a keyless seeded
+        // session could never be used.
+        for field in ["public_key", "key_fingerprint"] {
+            assert!(
+                s(session, field).is_some(),
+                "session {} has no {field}",
+                id(session)
+            );
+        }
 
         let config = s(session, "config").expect("session.config");
         serde_json::from_str::<Value>(&config)

@@ -84,10 +84,6 @@ impl db::Handler for Handler {
         Self::unsupported()
     }
 
-    async fn list_session_ids_with_code(&self) -> db::Result<Vec<String>> {
-        Self::unsupported()
-    }
-
     async fn list_people_for_location(
         &self,
         _location_id: &str,

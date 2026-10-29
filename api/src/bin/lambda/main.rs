@@ -9,10 +9,10 @@ use seslogin::auth;
 use seslogin::db;
 use seslogin::dynamodb;
 use seslogin::graphql;
-use seslogin::jwt;
 use seslogin::mail;
 use seslogin::queue;
 use seslogin::realtime;
+use seslogin::server_secret::ServerSecret;
 use seslogin::sesmail;
 use seslogin::sqs;
 use std::env;
@@ -25,7 +25,7 @@ async fn main() -> Result<(), Error> {
     // load JWT secret from env
     let secret = env::var("JWT_SECRET").expect("JWT_SECRET must be set");
 
-    let key = jwt::Key::new(&secret, None)?;
+    let key = ServerSecret::new(&secret);
 
     let queues = sqs::Queues::from_env().await?;
     let mailer = sesmail::Mailer::new().await;

@@ -3,10 +3,7 @@ import UserEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vitest } from "vitest";
 import KioskStatusDialog from "./KioskStatusDialog";
 import { KioskSessionContext } from "./KioskSessionContext";
-import {
-  KioskEnvironmentContext,
-  type KioskAuthMode,
-} from "./KioskEnvironmentContext";
+import { KioskEnvironmentContext } from "./KioskEnvironmentContext";
 import {
   LivePeriodsContext,
   type LivePeriodsContextType,
@@ -64,7 +61,6 @@ const defaultLivePeriods: LivePeriodsContextType = {
 
 function renderDialog(
   onClose = vitest.fn(),
-  authMode: KioskAuthMode = "key",
   onKeyEnrolled = vitest.fn(),
   livePeriods: Partial<LivePeriodsContextType> = {},
   categoryScale?: number,
@@ -73,7 +69,6 @@ function renderDialog(
     <KioskEnvironmentContext.Provider
       value={{
         profile: "default",
-        authMode,
         onKeyEnrolled,
       }}
     >
@@ -109,11 +104,10 @@ describe("KioskStatusDialog", () => {
       document.body.textContent?.includes("Last server check-in"),
     ).toBeTruthy();
     expect(screen.getByText(/0s ago/)).toBeDefined();
-    expect(screen.getByText("enrolled key")).toBeDefined();
   });
 
   it("shows the automatically chosen category size", () => {
-    renderDialog(undefined, "key", undefined, {}, 0.85);
+    renderDialog(undefined, undefined, {}, 0.85);
     expect(screen.getByText("auto (85%)")).toBeDefined();
   });
 
@@ -189,7 +183,7 @@ describe("KioskStatusDialog", () => {
   });
 
   it("reports realtime as connected when live, with no last-poll row", () => {
-    renderDialog(vitest.fn(), "key", vitest.fn(), {
+    renderDialog(vitest.fn(), vitest.fn(), {
       live: true,
       connectionState: "connected",
     });
@@ -202,7 +196,7 @@ describe("KioskStatusDialog", () => {
     // Ably's channel can report `attached` a beat before the connection
     // itself settles into "connected" — surfacing the raw state helps
     // distinguish that from a stuck/looping connection.
-    renderDialog(vitest.fn(), "key", vitest.fn(), {
+    renderDialog(vitest.fn(), vitest.fn(), {
       live: true,
       connectionState: "connecting",
     });
@@ -212,7 +206,7 @@ describe("KioskStatusDialog", () => {
 
   it("falls back to reporting the last poll time when not live", () => {
     const lastPollAt = Date.now() - 5_000;
-    renderDialog(vitest.fn(), "key", vitest.fn(), {
+    renderDialog(vitest.fn(), vitest.fn(), {
       live: false,
       connectionState: "disconnected",
       lastPollAt,
@@ -228,7 +222,7 @@ describe("KioskStatusDialog", () => {
   it("reports realtime as off with no poll yet when it was never attempted", () => {
     // Avoids "never" also matching the (unrelated) server check-in row below.
     recordServerContactSuccess(null);
-    renderDialog(vitest.fn(), "key", vitest.fn(), {
+    renderDialog(vitest.fn(), vitest.fn(), {
       live: false,
       connectionState: null,
       lastPollAt: null,

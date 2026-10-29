@@ -1,7 +1,7 @@
-// Captures the kiosk scan flow, using a token seeded directly into
-// localStorage (the kiosk_<profile> settings blob's scanAuthToken).
-// Requires the API to be running with --dev-auth-session <id> so that
-// token is accepted without a real kiosk session existing.
+// Captures the kiosk scan flow, with the kiosk put straight into key mode
+// (`authMode: "key"` in its kiosk_<profile> settings blob). The browser generates
+// a key the server has never enrolled, so this requires the API to be running
+// with --dev-auth-session <id>, which accepts any request as that session.
 //
 // Without --enable-mutations the sign-in mutation itself will fail (by
 // design, so screenshots never write data) but the resulting error-state
@@ -21,13 +21,7 @@ const page = await browser.newPage({ viewport: { width: 1024, height: 768 } });
 
 await page.goto(`${BASE_URL}/kiosk`);
 await page.evaluate(() => {
-  localStorage.setItem(
-    "kiosk_default",
-    JSON.stringify({
-      scanAuthToken: "devtoken",
-      scanAuthTokenIssuedAt: Date.now(),
-    }),
-  );
+  localStorage.setItem("kiosk_default", JSON.stringify({ authMode: "key" }));
 });
 await page.goto(`${BASE_URL}/kiosk`);
 await page.waitForTimeout(2500);
