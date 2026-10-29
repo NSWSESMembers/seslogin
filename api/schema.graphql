@@ -457,6 +457,11 @@ type LocationAddress {
 type LocationBadgeLeaderboardEntry {
 	personId: ID!
 	person: Person!
+	"""
+	1-based place on the board. Members with the same badge count share a place,
+	and the next place skips past them (1, 1, 3), so it is not the row's index.
+	"""
+	rank: Int!
 	badgeCount: Int!
 	recentBadgeCount7D: Int!
 	latestBadgeAwardAt: Int!

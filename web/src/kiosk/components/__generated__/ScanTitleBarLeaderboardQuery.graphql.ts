@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<c94067551200dcc86d71495b1b9b767b>>
+ * @generated SignedSource<<09a47475e911cd7baf83fd1eb3615123>>
  * @lightSyntaxTransform
  */
 
@@ -22,6 +22,7 @@ export type ScanTitleBarLeaderboardQuery$data = {
         readonly id: string;
         readonly lastName: string;
       };
+      readonly rank: number;
       readonly recentBadgeCount7D: number;
       readonly tierCounts: ReadonlyArray<{
         readonly count: number;
@@ -84,6 +85,13 @@ v3 = [
         "name": "badgeLeaderboard",
         "plural": true,
         "selections": [
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "rank",
+            "storageKey": null
+          },
           {
             "alias": null,
             "args": null,
@@ -187,16 +195,16 @@ return {
     "selections": (v3/*:: as any*/)
   },
   "params": {
-    "cacheID": "068dfa2fb0d4c6bdd80994a18efa8ace",
+    "cacheID": "0b626f0b854368e560275befa7b62f3f",
     "id": null,
     "metadata": {},
     "name": "ScanTitleBarLeaderboardQuery",
     "operationKind": "query",
-    "text": "query ScanTitleBarLeaderboardQuery(\n  $locationId: ID!\n  $limit: Int\n) {\n  location(id: $locationId) {\n    id\n    badgeLeaderboard(limit: $limit) {\n      person {\n        id\n        firstName\n        lastName\n      }\n      badgeCount\n      recentBadgeCount7D\n      latestBadgeAwardAt\n      tierCounts {\n        tier\n        count\n      }\n    }\n  }\n}\n"
+    "text": "query ScanTitleBarLeaderboardQuery(\n  $locationId: ID!\n  $limit: Int\n) {\n  location(id: $locationId) {\n    id\n    badgeLeaderboard(limit: $limit) {\n      rank\n      person {\n        id\n        firstName\n        lastName\n      }\n      badgeCount\n      recentBadgeCount7D\n      latestBadgeAwardAt\n      tierCounts {\n        tier\n        count\n      }\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "481b64a77a47ab075b29ece58ba16bcf";
+(node as any).hash = "967c9b5062c3d491535a471fdb7a4ad3";
 
 export default node;

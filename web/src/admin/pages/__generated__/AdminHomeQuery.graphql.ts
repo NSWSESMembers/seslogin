@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<1d7510246d81715d19150748d5f91850>>
+ * @generated SignedSource<<28ded90aadee26e19139cb759bb90e08>>
  * @lightSyntaxTransform
  */
 
@@ -23,6 +23,7 @@ export type AdminHomeQuery$data = {
         readonly id: string;
         readonly lastName: string;
       };
+      readonly rank: number;
       readonly recentBadgeCount7D: number;
     }>;
     readonly dashboardSummary: {
@@ -337,6 +338,13 @@ v6 = [
               {
                 "alias": null,
                 "args": null,
+                "kind": "ScalarField",
+                "name": "rank",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
                 "concreteType": "Person",
                 "kind": "LinkedField",
                 "name": "person",
@@ -418,16 +426,16 @@ return {
     "selections": (v6/*:: as any*/)
   },
   "params": {
-    "cacheID": "e99da4e6d10c9b4c9065a581adf888a0",
+    "cacheID": "d8863d8d4a860a184031e13d3311e89c",
     "id": null,
     "metadata": {},
     "name": "AdminHomeQuery",
     "operationKind": "query",
-    "text": "query AdminHomeQuery(\n  $location: ID!\n  $now: Int!\n  $includeBadgeLeaderboard: Boolean!\n) {\n  location(id: $location) {\n    id\n    name\n    dashboardSummary(asOf: $now) {\n      totalMembers\n      activeMembers24H\n      activeMembers24HVirtual\n      activeMembers24HNonVirtual\n      activeMembers30D\n      checkIns24H\n      checkIns7D\n      checkIns7DVirtual\n      totalTime7D\n      totalTime7DVirtual\n      avgCompletedDuration7D\n      totalKiosks\n      onlineKiosks\n      recentlyActiveKiosks\n      lastSuccessfulMemberSync\n      dailyPeriods7D {\n        dayStart\n        periodCount\n        totalTime\n        periodCountVirtual\n        totalTimeVirtual\n      }\n      topCategories7D {\n        categoryId\n        categoryName\n        periodCount\n        totalTime\n        isVirtual\n      }\n    }\n    badgeLeaderboard(limit: 8) @include(if: $includeBadgeLeaderboard) {\n      person {\n        id\n        firstName\n        lastName\n      }\n      badgeCount\n      recentBadgeCount7D\n      latestBadgeAwardAt\n    }\n  }\n}\n"
+    "text": "query AdminHomeQuery(\n  $location: ID!\n  $now: Int!\n  $includeBadgeLeaderboard: Boolean!\n) {\n  location(id: $location) {\n    id\n    name\n    dashboardSummary(asOf: $now) {\n      totalMembers\n      activeMembers24H\n      activeMembers24HVirtual\n      activeMembers24HNonVirtual\n      activeMembers30D\n      checkIns24H\n      checkIns7D\n      checkIns7DVirtual\n      totalTime7D\n      totalTime7DVirtual\n      avgCompletedDuration7D\n      totalKiosks\n      onlineKiosks\n      recentlyActiveKiosks\n      lastSuccessfulMemberSync\n      dailyPeriods7D {\n        dayStart\n        periodCount\n        totalTime\n        periodCountVirtual\n        totalTimeVirtual\n      }\n      topCategories7D {\n        categoryId\n        categoryName\n        periodCount\n        totalTime\n        isVirtual\n      }\n    }\n    badgeLeaderboard(limit: 8) @include(if: $includeBadgeLeaderboard) {\n      rank\n      person {\n        id\n        firstName\n        lastName\n      }\n      badgeCount\n      recentBadgeCount7D\n      latestBadgeAwardAt\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "c5eed57b78caf48a88ee2335dfbe90e1";
+(node as any).hash = "b68c66e479aa18fea28eda44d83a1b9e";
 
 export default node;

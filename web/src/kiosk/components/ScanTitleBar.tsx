@@ -210,6 +210,7 @@ function LeaderboardModal(props: {
         location(id: $locationId) {
           id
           badgeLeaderboard(limit: $limit) {
+            rank
             person {
               id
               firstName
@@ -299,13 +300,13 @@ function LeaderboardModal(props: {
             </p>
           ) : (
             <ol className="m-0 grid list-none gap-2.5 p-0">
-              {rows.map((row, idx) => (
+              {rows.map((row) => (
                 <li
                   key={row.person.id}
                   className="grid grid-cols-[62px_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 rounded-xl border border-[rgba(121,154,206,0.4)] bg-white/82 px-3 py-2.5 [grid-template-areas:'rank_member_latest'_'rank_metrics_latest']"
                 >
                   <div className="flex size-12.5 items-center justify-center rounded-full bg-linear-[140deg] from-[#2f7fd2] to-[#1b4e8f] text-base font-extrabold text-white shadow-[inset_0_0_0_2px_rgba(255,255,255,0.28)] [grid-area:rank]">
-                    #{idx + 1}
+                    #{row.rank}
                   </div>
                   <div className="min-w-0 text-lg/tight font-extrabold text-kiosk-modal-heading [grid-area:member]">
                     {row.person.firstName} {row.person.lastName}

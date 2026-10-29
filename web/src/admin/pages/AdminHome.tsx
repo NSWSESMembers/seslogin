@@ -109,6 +109,7 @@ export default function AdminHome() {
             }
           }
           badgeLeaderboard(limit: 8) @include(if: $includeBadgeLeaderboard) {
+            rank
             person {
               id
               firstName
@@ -322,14 +323,14 @@ export default function AdminHome() {
             <Muted>No badges have been earned at this location yet.</Muted>
           ) : (
             <div className="grid grid-cols-1 gap-2.5 min-[781px]:grid-cols-[repeat(auto-fit,minmax(220px,1fr))]">
-              {badgeLeaders.map((entry, idx) => (
+              {badgeLeaders.map((entry) => (
                 <article
                   key={entry.person.id}
                   className="grid gap-2 rounded-[10px] border border-line-faint bg-surface p-2.5"
                 >
                   <div className="grid grid-cols-[auto_1fr] items-center gap-2">
                     <span className="inline-flex h-6 min-w-8.5 items-center justify-center rounded-full bg-rank-badge text-xs font-bold text-rank-badge-ink dark:bg-accent/15 dark:text-accent-light">
-                      #{idx + 1}
+                      #{entry.rank}
                     </span>
                     <span className="min-w-0 font-bold">
                       {entry.person.firstName} {entry.person.lastName}
