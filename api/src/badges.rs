@@ -116,6 +116,10 @@ enum BadgeRule {
     DistinctLocations {
         count: usize,
     },
+    /// Signed in at a location at least this far from home; see `apply_away_distance`.
+    AwayDistance {
+        km: u32,
+    },
     Manual,
 }
 
@@ -1713,6 +1717,20 @@ const BADGE_DEFINITIONS: &[BadgeDefinition] = &[
         rule: BadgeRule::DistinctLocations { count: 5 },
     },
     BadgeDefinition {
+        id: "away-over-the-range",
+        name: "Over the Range",
+        description: "Signed in 100 km or more from your home unit.",
+        tier: "bronze",
+        rule: BadgeRule::AwayDistance { km: 100 },
+    },
+    BadgeDefinition {
+        id: "away-long-haul",
+        name: "Long Haul",
+        description: "Signed in 250 km or more from your home unit.",
+        tier: "silver",
+        rule: BadgeRule::AwayDistance { km: 250 },
+    },
+    BadgeDefinition {
         id: "training-first-aid-patch-job",
         name: "Patch Job",
         description: "First sign-out to First Aid training.",
@@ -2031,7 +2049,7 @@ fn source_for_definition(definition: BadgeDefinition) -> &'static str {
         | BadgeRule::FridayThe13thSignOut
         | BadgeRule::AllRounder => "Attendance",
         BadgeRule::TrainThenTeach | BadgeRule::TeachingDisciplines { .. } => "Training",
-        BadgeRule::DistinctLocations { .. } => "Away sign-in",
+        BadgeRule::DistinctLocations { .. } | BadgeRule::AwayDistance { .. } => "Away sign-in",
     }
 }
 
@@ -2132,7 +2150,8 @@ fn progress_value(rule: BadgeRule, location_state: &LocationBadgeProgress) -> Op
         | BadgeRule::TrainThenTeach
         | BadgeRule::TeachingDisciplines { .. }
         | BadgeRule::AllRounder
-        | BadgeRule::DistinctLocations { .. } => None,
+        | BadgeRule::DistinctLocations { .. }
+        | BadgeRule::AwayDistance { .. } => None,
     }
 }
 
@@ -2470,7 +2489,8 @@ pub fn apply_event(
             | BadgeRule::TrainThenTeach
             | BadgeRule::TeachingDisciplines { .. }
             | BadgeRule::AllRounder
-            | BadgeRule::DistinctLocations { .. } => false,
+            | BadgeRule::DistinctLocations { .. }
+            | BadgeRule::AwayDistance { .. } => false,
             BadgeRule::AwayCheckIn { threshold } => {
                 matches!(event, BadgeEvent::CheckIn)
                     && is_away_from_home
@@ -2509,6 +2529,58 @@ pub fn apply_event(
     }
 
     awarded
+}
+
+/// Great-circle distance in kilometres between two (latitude, longitude) points.
+pub fn distance_km(from: (f64, f64), to: (f64, f64)) -> f64 {
+    const EARTH_RADIUS_KM: f64 = 6371.0;
+    let (lat1, lon1) = (from.0.to_radians(), from.1.to_radians());
+    let (lat2, lon2) = (to.0.to_radians(), to.1.to_radians());
+    let a = ((lat2 - lat1) / 2.0).sin().powi(2)
+        + lat1.cos() * lat2.cos() * ((lon2 - lon1) / 2.0).sin().powi(2);
+    2.0 * EARTH_RADIUS_KM * a.sqrt().asin()
+}
+
+/// Credit an away sign-in at `location_id`, `distance_km` from the member's home unit,
+/// towards the distance badges. Kept apart from `apply_event` because only callers
+/// that know both locations' coordinates can work the distance out; one that can't
+/// simply doesn't call it. Each badge is awarded once per member.
+pub fn apply_away_distance(
+    state: &mut BadgeState,
+    location_id: &str,
+    distance_km: f64,
+    now_sec: u64,
+) -> Vec<BadgeAward> {
+    let earned: Vec<BadgeDefinition> = BADGE_DEFINITIONS
+        .iter()
+        .copied()
+        .filter(|definition| match definition.rule {
+            BadgeRule::AwayDistance { km } => distance_km >= f64::from(km),
+            _ => false,
+        })
+        .filter(|definition| {
+            !state.locations.values().any(|location_state| {
+                location_state
+                    .awarded_badge_ids
+                    .iter()
+                    .any(|id| id == definition.id)
+            })
+        })
+        .collect();
+
+    let location_state = state.locations.entry(location_id.to_string()).or_default();
+    earned
+        .into_iter()
+        .map(|definition| {
+            location_state
+                .awarded_badge_ids
+                .push(definition.id.to_string());
+            location_state
+                .awarded_badge_times
+                .insert(definition.id.to_string(), now_sec);
+            award_from_definition(definition, now_sec).badge
+        })
+        .collect()
 }
 
 /// Badges whose rules look at all of a person's location buckets, not just the one
@@ -3438,6 +3510,31 @@ mod tests {
                 .iter()
                 .all(|badge| badge.id != "trainer-full-circle")
         );
+    }
+
+    #[test]
+    fn distance_km_matches_a_known_distance() {
+        // Sydney GPO to Wollongong, about 68 km as the crow flies.
+        let km = distance_km((-33.8679, 151.2073), (-34.4248, 150.8931));
+        assert!((67.0..70.0).contains(&km), "{km}");
+    }
+
+    #[test]
+    fn away_distance_badges_award_once_at_their_thresholds() {
+        let mut state = BadgeState::default();
+        let ids = |awards: Vec<BadgeAward>| -> Vec<String> {
+            awards.into_iter().map(|badge| badge.id).collect()
+        };
+        assert!(ids(apply_away_distance(&mut state, "loc-near", 99.0, 1)).is_empty());
+        assert_eq!(
+            ids(apply_away_distance(&mut state, "loc-far", 120.0, 2)),
+            ["away-over-the-range"]
+        );
+        assert_eq!(
+            ids(apply_away_distance(&mut state, "loc-further", 300.0, 3)),
+            ["away-long-haul"]
+        );
+        assert!(ids(apply_away_distance(&mut state, "loc-away", 400.0, 4)).is_empty());
     }
 
     #[test]

@@ -254,3 +254,46 @@ async fn unreadable_badge_state_still_signs_in_and_is_left_alone() {
     assert!(badge_ids(&data["scanSignOutWithBadges"]["awardedBadges"]).is_empty());
     assert_eq!(badge_state(&app).as_deref(), Some(unreadable));
 }
+
+#[tokio::test]
+async fn a_visit_far_from_home_earns_the_distance_badges_when_both_units_have_coordinates() {
+    let app = app(ALL_ON);
+    {
+        let mut locations = app.db.locations.lock().unwrap();
+        // Bob's home, Unit B, in Sydney; the kiosk's Unit A in Wagga Wagga, ~370 km away.
+        let set = |location: &mut db::Location, latitude, longitude| {
+            location.ses_details.latitude = Some(latitude);
+            location.ses_details.longitude = Some(longitude);
+        };
+        set(locations.get_mut("loc-b").unwrap(), -33.8679, 151.2073);
+        set(locations.get_mut("loc-a").unwrap(), -35.1082, 147.3598);
+    }
+    let (_, awarded) = sign_in(&app, true).await;
+    let awarded = awarded.unwrap();
+    assert!(
+        awarded.contains(&"away-over-the-range".to_string()),
+        "{awarded:?}"
+    );
+    assert!(
+        awarded.contains(&"away-long-haul".to_string()),
+        "{awarded:?}"
+    );
+}
+
+#[tokio::test]
+async fn no_distance_badges_without_coordinates_for_both_units() {
+    let app = app(ALL_ON);
+    {
+        let mut locations = app.db.locations.lock().unwrap();
+        let details = &mut locations.get_mut("loc-a").unwrap().ses_details;
+        details.latitude = Some(-35.1082);
+        details.longitude = Some(147.3598);
+    }
+    let (_, awarded) = sign_in(&app, true).await;
+    let awarded = awarded.unwrap();
+    assert!(
+        !awarded
+            .iter()
+            .any(|id| id.starts_with("away-over") || id == "away-long-haul")
+    );
+}

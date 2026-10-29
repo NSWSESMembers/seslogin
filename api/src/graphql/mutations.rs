@@ -389,6 +389,27 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         Ok(Some(person))
     }
 
+    /// How far `location` is from the member's home unit, for the distance badges, or
+    /// `None` when either has no coordinates.
+    async fn away_distance_km(
+        &self,
+        person: &db::Person,
+        location: &db::Location,
+    ) -> Result<Option<f64>> {
+        let coordinates = |location: &db::Location| {
+            let details = &location.ses_details;
+            details.latitude.zip(details.longitude)
+        };
+        let Some(here) = coordinates(location) else {
+            return Ok(None);
+        };
+        let home = self.location_by_id(&person.location_id).await?;
+        Ok(home
+            .as_ref()
+            .and_then(coordinates)
+            .map(|home| badges::distance_km(home, here)))
+    }
+
     async fn category_is_virtual(&self, category_id: &str) -> Result<bool> {
         Ok(self
             .app
@@ -494,6 +515,11 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
             }
 
             let visiting = person.location_id != location.id;
+            let away_distance_km = if visiting && !category.is_virtual {
+                self.away_distance_km(person, location).await?
+            } else {
+                None
+            };
             badge_store::update(self.app.db(), person, |_, state| {
                 let sign_out = if category.is_virtual {
                     badges::BadgeEvent::VirtualSignOut
@@ -507,6 +533,9 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
                         None,
                         None,
                     );
+                    if let Some(km) = away_distance_km {
+                        let _ = badges::apply_away_distance(state, &location.id, km, start_time);
+                    }
                     badges::BadgeEvent::SignOut
                 };
                 let _ = badges::apply_event(
@@ -544,6 +573,11 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
     ) -> Result<Vec<BadgeAward>> {
         let now = crate::clock::now_sec();
         let visiting = person.location_id != location.id;
+        let away_distance_km = if visiting && matches!(event, badges::BadgeEvent::CheckIn) {
+            self.away_distance_km(person, location).await?
+        } else {
+            None
+        };
         // `None` when the member's badge state is unreadable: nothing was saved, so there
         // is nothing to celebrate.
         let awards_to_display = badge_store::update(self.app.db(), person, |_, state| {
@@ -556,6 +590,9 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
                 sign_out_category_id,
                 sign_out_times,
             );
+            if let Some(km) = away_distance_km {
+                let _ = badges::apply_away_distance(state, &location.id, km, now);
+            }
             if !display {
                 return Some(vec![]);
             }
