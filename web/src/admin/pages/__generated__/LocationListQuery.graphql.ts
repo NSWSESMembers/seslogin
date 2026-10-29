@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<e1ff5070d0c11f287eb48cb1a9fa4328>>
+ * @generated SignedSource<<e4d4d62962bec9fc9ffd1cc3206c753e>>
  * @lightSyntaxTransform
  */
 
@@ -114,6 +114,13 @@ return {
             "kind": "ScalarField",
             "name": "lastSuccessfulMemberSync",
             "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "sesApiHeadquartersId",
+            "storageKey": null
           }
         ],
         "storageKey": null
@@ -121,12 +128,12 @@ return {
     ]
   },
   "params": {
-    "cacheID": "c33e467ae1eea1ad325cb771b79208dc",
+    "cacheID": "ec092a56fdfec83ac967dd63eb8fd14a",
     "id": null,
     "metadata": {},
     "name": "LocationListQuery",
     "operationKind": "query",
-    "text": "query LocationListQuery {\n  locations {\n    id\n    name\n    enabled\n    ...LocationList_item\n  }\n}\n\nfragment LocationList_item on Location {\n  id\n  name\n  enabled\n  nitcEnabled\n  nitcCompleteOnExport\n  lastSuccessfulMemberSync\n}\n"
+    "text": "query LocationListQuery {\n  locations {\n    id\n    name\n    enabled\n    ...LocationList_item\n  }\n}\n\nfragment LocationList_item on Location {\n  id\n  name\n  enabled\n  nitcEnabled\n  nitcCompleteOnExport\n  lastSuccessfulMemberSync\n  sesApiHeadquartersId\n}\n"
   }
 };
 })();

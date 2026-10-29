@@ -12,6 +12,7 @@ import { useUserInfo } from "../components/useUserInfo";
 import { useNotify } from "../components/useNotify";
 import { AdminTable, Th, Td } from "../../components/ui/Table";
 import { Button, ButtonLink } from "../../components/ui/Button";
+import LocationDetailsDialog from "../components/LocationDetailsDialog";
 
 function Row(props: {
   location: LocationList_item$key;
@@ -32,11 +33,13 @@ function Row(props: {
         nitcEnabled
         nitcCompleteOnExport
         lastSuccessfulMemberSync
+        sesApiHeadquartersId
       }
     `,
     props.location,
   );
 
+  const [showDetails, setShowDetails] = useState(false);
   const [commitMutation, isMutationInFlight] =
     useMutation<LocationListToggleMutation>(graphql`
       mutation LocationListToggleMutation(
@@ -142,6 +145,11 @@ function Row(props: {
       </Td>
       <Td options>
         <div className="flex justify-end gap-1">
+          {location.sesApiHeadquartersId && (
+            <Button size="row" onClick={() => setShowDetails(true)}>
+              Details
+            </Button>
+          )}
           <Button size="row" onClick={switchToLocation}>
             Switch to
           </Button>
@@ -160,6 +168,13 @@ function Row(props: {
             {location.enabled ? "Disable" : "Enable"}
           </Button>
         </div>
+        {showDetails && (
+          <LocationDetailsDialog
+            locationId={location.id}
+            locationName={location.name}
+            onClose={() => setShowDetails(false)}
+          />
+        )}
       </Td>
     </tr>
   );

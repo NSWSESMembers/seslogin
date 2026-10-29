@@ -27,7 +27,10 @@ vi.mock("../components/useUserInfo", () => ({
   useUserInfo: () => ({ isDev: false }),
 }));
 
-function renderList(viewerCanEdit: boolean) {
+function renderList(
+  viewerCanEdit: boolean,
+  sesApiPersonId: string | null = null,
+) {
   selected.viewerCanEdit = viewerCanEdit;
   const environment = createMockEnvironment();
   render(
@@ -61,7 +64,7 @@ function renderList(viewerCanEdit: boolean) {
               firstName: "Alice",
               lastName: "Anderson",
               memberNumber: "1",
-              sesApiPersonId: null,
+              sesApiPersonId,
               missingSince: null,
             },
           ],
@@ -95,5 +98,28 @@ describe("MembersList", () => {
     expect(
       screen.queryByRole("button", { name: "Sync now" }),
     ).not.toBeInTheDocument();
+  });
+});
+
+describe("MembersList details", () => {
+  it("offers Details only for synced members, even to read only users", async () => {
+    renderList(false, null);
+    expect(await screen.findByText("Alice Anderson")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Details" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows Details first for a synced member", async () => {
+    renderList(false, "55");
+    expect(await screen.findByText("Alice Anderson")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Details" })).toBeInTheDocument();
+  });
+
+  it("offers Unit details next to the last sync time", async () => {
+    renderList(false);
+    expect(
+      await screen.findByRole("button", { name: "Unit details" }),
+    ).toBeInTheDocument();
   });
 });

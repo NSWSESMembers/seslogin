@@ -32,6 +32,7 @@ use crate::ses_api;
 use super::audit_log::{self, AuditEntityType, AuditEntryConnection};
 use super::auth::{AuthGuard, AuthRequirement, can_write_location, require_location_access};
 use super::dataloader::DatabaseLoader;
+use super::ses_details;
 use super::{CategoryId, LocationId, NitcEventId, PersonId, SessionId, UserId};
 
 async fn location_name_by_id_for_badges<A: App + HasDb + Send + Sync>(
@@ -671,6 +672,76 @@ pub struct PersonBadgeProgress {
     pub target: Option<i64>,
 }
 
+/// A phone number the SES directory lists for a member.
+#[derive(SimpleObject, Clone, Debug)]
+pub struct PersonPhone {
+    pub number: String,
+    /// The directory's contact types for the number (Primary Telephone, SMS, ...).
+    pub types: Vec<String>,
+}
+
+/// A qualification SES records against a member.
+#[derive(SimpleObject, Clone, Debug)]
+pub struct CapabilityTag {
+    /// The SES capability tag id, as text.
+    pub id: String,
+    pub name: Option<String>,
+    pub description: Option<String>,
+}
+
+/// A directory entity (unit, cluster, team, section, ...) a member is assigned to.
+#[derive(SimpleObject, Clone, Debug)]
+pub struct PersonUnitAssignment {
+    pub entity_id: String,
+    pub entity_name: Option<String>,
+    pub entity_code: Option<String>,
+    /// The location this entity is, when it is one of ours.
+    pub location_id: Option<ID>,
+    pub zone: Option<String>,
+    pub membership_type: Option<String>,
+    pub ranks: Vec<String>,
+    pub roles: Vec<String>,
+    pub positions: Vec<String>,
+    /// Whether this is the member's primary location.
+    pub is_primary: bool,
+    pub updated_at: Option<i64>,
+}
+
+/// A unit's address from the SES directory.
+#[derive(SimpleObject, Clone, Debug)]
+pub struct LocationAddress {
+    pub line1: Option<String>,
+    pub line2: Option<String>,
+    pub suburb: Option<String>,
+    pub state: Option<String>,
+    pub postcode: Option<String>,
+    /// The whole address on one line, when the directory supplies it.
+    pub formatted: Option<String>,
+}
+
+impl From<&db::LocationAddress> for LocationAddress {
+    fn from(a: &db::LocationAddress) -> Self {
+        Self {
+            line1: a.line1.clone(),
+            line2: a.line2.clone(),
+            suburb: a.suburb.clone(),
+            state: a.state.clone(),
+            postcode: a.postcode.clone(),
+            formatted: a.formatted.clone(),
+        }
+    }
+}
+
+/// One of a unit's rescue accreditations from the SES API.
+#[derive(SimpleObject, Clone, Debug)]
+pub struct LocationAccreditation {
+    #[graphql(name = "type")]
+    pub accreditation_type: String,
+    pub status: Option<String>,
+    pub number: Option<String>,
+    pub note: Option<String>,
+}
+
 #[Object]
 impl<A: App + HasDb + Send + Sync> Person<A> {
     async fn id(&self) -> ID {
@@ -704,6 +775,104 @@ impl<A: App + HasDb + Send + Sync> Person<A> {
     /// this can be null
     async fn email(&self) -> &Option<String> {
         &self.rec.email
+    }
+
+    // The fields below are personal contact details and qualifications, so each one is
+    // limited to users and API tokens with access to the person's *home* location.
+    // This deliberately narrows the rule that `Person`'s own fields are unchecked (that
+    // exists so a kiosk can show a visiting member from another unit): a kiosk never
+    // needs these, so sessions are refused outright.
+
+    /// The SES directory's preferred name. Users and API tokens with access to the
+    /// member's home location only; never a kiosk.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::UserOrApiToken)")]
+    async fn preferred_name(&self, ctx: &Context<'_>) -> Result<Option<String>> {
+        require_location_access(ctx, &self.rec.location_id)?;
+        Ok(self.rec.preferred_name.clone())
+    }
+
+    /// The member's mobile number from the SES directory (E.164). Same access as
+    /// `preferredName`.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::UserOrApiToken)")]
+    async fn mobile(&self, ctx: &Context<'_>) -> Result<Option<String>> {
+        require_location_access(ctx, &self.rec.location_id)?;
+        Ok(self.rec.mobile.clone())
+    }
+
+    /// Every phone number the SES directory lists, mobile first. Same access as
+    /// `preferredName`.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::UserOrApiToken)")]
+    async fn phones(&self, ctx: &Context<'_>) -> Result<Vec<PersonPhone>> {
+        require_location_access(ctx, &self.rec.location_id)?;
+        Ok(
+            ses_details::read_phones(&self.rec.id, self.rec.phones.as_deref())
+                .into_iter()
+                .map(|p| PersonPhone {
+                    number: p.number,
+                    types: p.types,
+                })
+                .collect(),
+        )
+    }
+
+    /// The member's SES qualifications, by id. Same access as `preferredName`.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::UserOrApiToken)")]
+    async fn capability_tags(&self, ctx: &Context<'_>) -> Result<Vec<CapabilityTag>> {
+        require_location_access(ctx, &self.rec.location_id)?;
+        Ok(
+            ses_details::read_capability_tags(&self.rec.id, self.rec.capability_tags.as_deref())
+                .into_iter()
+                .map(|t| CapabilityTag {
+                    id: t.id.to_string(),
+                    name: t.name,
+                    description: t.description,
+                })
+                .collect(),
+        )
+    }
+
+    /// The SES directory entities the member is assigned to, primary first and then by
+    /// name. Same access as `preferredName`.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::UserOrApiToken)")]
+    async fn units(&self, ctx: &Context<'_>) -> Result<Vec<PersonUnitAssignment>> {
+        require_location_access(ctx, &self.rec.location_id)?;
+        let app = ctx.data_unchecked::<Arc<A>>();
+        let mut units = app
+            .db()
+            .list_person_units(&self.rec.id)
+            .await
+            .map_err(|e| {
+                warn!("db error: {:?}", e);
+                e
+            })?;
+        units.sort_by(|a, b| {
+            b.is_primary
+                .cmp(&a.is_primary)
+                .then_with(|| {
+                    a.entity_name
+                        .as_deref()
+                        .unwrap_or_default()
+                        .to_lowercase()
+                        .cmp(&b.entity_name.as_deref().unwrap_or_default().to_lowercase())
+                })
+                .then_with(|| a.entity_id.cmp(&b.entity_id))
+        });
+        Ok(units
+            .into_iter()
+            .map(|u| PersonUnitAssignment {
+                entity_id: u.entity_id,
+                entity_name: u.entity_name,
+                entity_code: u.entity_code,
+                location_id: u.location_id.map(ID),
+                zone: u.zone,
+                membership_type: u.membership_type,
+                ranks: u.ranks,
+                roles: u.roles,
+                positions: u.positions,
+                is_primary: u.is_primary,
+                updated_at: u.updated_at.map(|t| t as i64),
+            })
+            .collect())
     }
 
     async fn deleted(&self) -> bool {
@@ -2108,6 +2277,87 @@ impl<A: App + HasDb + Send + Sync> Location<A> {
 
     async fn last_successful_member_sync(&self) -> Option<i64> {
         self.rec.last_successful_member_sync.map(|t| t as i64)
+    }
+
+    // The fields below are a unit's SES details. Like `people`, they need access to
+    // this location, and never a kiosk's, API tokens and users only.
+
+    /// The unit's SES code. Users and API tokens with access to this location only.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::UserOrApiToken)")]
+    async fn code(&self, ctx: &Context<'_>) -> Result<Option<String>> {
+        require_location_access(ctx, &self.rec.id)?;
+        Ok(self.rec.ses_details.code.clone())
+    }
+
+    /// Latitude from the SES API. Same access as `code`.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::UserOrApiToken)")]
+    async fn latitude(&self, ctx: &Context<'_>) -> Result<Option<f64>> {
+        require_location_access(ctx, &self.rec.id)?;
+        Ok(self.rec.ses_details.latitude)
+    }
+
+    /// Longitude from the SES API. Same access as `code`.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::UserOrApiToken)")]
+    async fn longitude(&self, ctx: &Context<'_>) -> Result<Option<f64>> {
+        require_location_access(ctx, &self.rec.id)?;
+        Ok(self.rec.ses_details.longitude)
+    }
+
+    /// The SES intranet directory entity this unit resolved to. Same access as `code`.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::UserOrApiToken)")]
+    async fn ses_directory_entity_id(&self, ctx: &Context<'_>) -> Result<Option<String>> {
+        require_location_access(ctx, &self.rec.id)?;
+        Ok(self.rec.directory_details.entity_id.clone())
+    }
+
+    /// The unit's street address from the directory. Same access as `code`.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::UserOrApiToken)")]
+    async fn address(&self, ctx: &Context<'_>) -> Result<Option<LocationAddress>> {
+        require_location_access(ctx, &self.rec.id)?;
+        Ok(self.rec.directory_details.address.as_ref().map(Into::into))
+    }
+
+    /// The unit's postal address from the directory. Same access as `code`.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::UserOrApiToken)")]
+    async fn postal_address(&self, ctx: &Context<'_>) -> Result<Option<LocationAddress>> {
+        require_location_access(ctx, &self.rec.id)?;
+        Ok(self
+            .rec
+            .directory_details
+            .postal_address
+            .as_ref()
+            .map(Into::into))
+    }
+
+    /// The unit's contact email from the directory. Same access as `code`.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::UserOrApiToken)")]
+    async fn email(&self, ctx: &Context<'_>) -> Result<Option<String>> {
+        require_location_access(ctx, &self.rec.id)?;
+        Ok(self.rec.directory_details.email.clone())
+    }
+
+    /// The unit's contact phone from the directory. Same access as `code`.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::UserOrApiToken)")]
+    async fn phone(&self, ctx: &Context<'_>) -> Result<Option<String>> {
+        require_location_access(ctx, &self.rec.id)?;
+        Ok(self.rec.directory_details.phone.clone())
+    }
+
+    /// The unit's rescue accreditations, sorted by type. Same access as `code`.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::UserOrApiToken)")]
+    async fn accreditations(&self, ctx: &Context<'_>) -> Result<Vec<LocationAccreditation>> {
+        require_location_access(ctx, &self.rec.id)?;
+        Ok(
+            ses_details::read_accreditations(&self.rec.id, self.rec.accreditations.as_deref())
+                .into_iter()
+                .map(|a| LocationAccreditation {
+                    accreditation_type: a.accreditation_type,
+                    status: a.status,
+                    number: a.number,
+                    note: a.note,
+                })
+                .collect(),
+        )
     }
 
     async fn created_at(&self) -> i64 {

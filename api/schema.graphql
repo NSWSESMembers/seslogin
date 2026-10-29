@@ -217,6 +217,18 @@ type BadgeTierCount {
 	count: Int!
 }
 
+"""
+A qualification SES records against a member.
+"""
+type CapabilityTag {
+	"""
+	The SES capability tag id, as text.
+	"""
+	id: String!
+	name: String
+	description: String
+}
+
 type Category {
 	id: ID!
 	name: String!
@@ -356,6 +368,42 @@ type Location {
 	gamificationEnabled: Boolean!
 	sesApiHeadquartersId: String
 	lastSuccessfulMemberSync: Int
+	"""
+	The unit's SES code. Users and API tokens with access to this location only.
+	"""
+	code: String
+	"""
+	Latitude from the SES API. Same access as `code`.
+	"""
+	latitude: Float
+	"""
+	Longitude from the SES API. Same access as `code`.
+	"""
+	longitude: Float
+	"""
+	The SES intranet directory entity this unit resolved to. Same access as `code`.
+	"""
+	sesDirectoryEntityId: String
+	"""
+	The unit's street address from the directory. Same access as `code`.
+	"""
+	address: LocationAddress
+	"""
+	The unit's postal address from the directory. Same access as `code`.
+	"""
+	postalAddress: LocationAddress
+	"""
+	The unit's contact email from the directory. Same access as `code`.
+	"""
+	email: String
+	"""
+	The unit's contact phone from the directory. Same access as `code`.
+	"""
+	phone: String
+	"""
+	The unit's rescue accreditations, sorted by type. Same access as `code`.
+	"""
+	accreditations: [LocationAccreditation!]!
 	createdAt: Int!
 	updatedAt: Int!
 	people: [Person!]!
@@ -379,6 +427,31 @@ type Location {
 	sessions: [Session!]!
 	dashboardSummary(asOf: Int): LocationDashboardSummary!
 	badgeLeaderboard(limit: Int): [LocationBadgeLeaderboardEntry!]!
+}
+
+"""
+One of a unit's rescue accreditations from the SES API.
+"""
+type LocationAccreditation {
+	type: String!
+	status: String
+	number: String
+	note: String
+}
+
+"""
+A unit's address from the SES directory.
+"""
+type LocationAddress {
+	line1: String
+	line2: String
+	suburb: String
+	state: String
+	postcode: String
+	"""
+	The whole address on one line, when the directory supplies it.
+	"""
+	formatted: String
 }
 
 type LocationBadgeLeaderboardEntry {
@@ -855,6 +928,30 @@ type Person {
 	this can be null
 	"""
 	email: String
+	"""
+	The SES directory's preferred name. Users and API tokens with access to the
+	member's home location only; never a kiosk.
+	"""
+	preferredName: String
+	"""
+	The member's mobile number from the SES directory (E.164). Same access as
+	`preferredName`.
+	"""
+	mobile: String
+	"""
+	Every phone number the SES directory lists, mobile first. Same access as
+	`preferredName`.
+	"""
+	phones: [PersonPhone!]!
+	"""
+	The member's SES qualifications, by id. Same access as `preferredName`.
+	"""
+	capabilityTags: [CapabilityTag!]!
+	"""
+	The SES directory entities the member is assigned to, primary first and then by
+	name. Same access as `preferredName`.
+	"""
+	units: [PersonUnitAssignment!]!
 	deleted: Boolean!
 	"""
 	Set when member sync has observed this person missing from their location's SES
@@ -922,6 +1019,17 @@ type PersonBadgeProgress {
 	target: Int
 }
 
+"""
+A phone number the SES directory lists for a member.
+"""
+type PersonPhone {
+	number: String!
+	"""
+	The directory's contact types for the number (Primary Telephone, SMS, ...).
+	"""
+	types: [String!]!
+}
+
 type PersonRecentCategory {
 	category: Category!
 	periodCount: Int!
@@ -941,6 +1049,29 @@ type PersonRef {
 	The registration/member number that was looked up.
 	"""
 	memberNumber: String!
+}
+
+"""
+A directory entity (unit, cluster, team, section, ...) a member is assigned to.
+"""
+type PersonUnitAssignment {
+	entityId: String!
+	entityName: String
+	entityCode: String
+	"""
+	The location this entity is, when it is one of ours.
+	"""
+	locationId: ID
+	zone: String
+	membershipType: String
+	ranks: [String!]!
+	roles: [String!]!
+	positions: [String!]!
+	"""
+	Whether this is the member's primary location.
+	"""
+	isPrimary: Boolean!
+	updatedAt: Int
 }
 
 type QueryRoot {
