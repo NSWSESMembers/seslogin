@@ -6,6 +6,7 @@ import {
   type FetchFunction,
 } from "relay-runtime";
 import { fetchGraphQL } from "./graphql";
+import { adoptServerClock } from "../kiosk/lib/kioskKey";
 
 type GetTokenFn = () => Promise<string>;
 
@@ -72,6 +73,7 @@ export function createKioskKeyGraphQLEnvironment(
         onUnauthorized();
         throw new Error("Unauthorized from server");
       },
+      adoptServerClock,
     );
   };
 

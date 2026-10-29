@@ -59,11 +59,24 @@ function nextRequestLeaseId(): string {
 export type AuthHeaderProvider =
   string | null | ((body: string) => Promise<string | null>);
 
+/** `serverTime` (unix seconds) from a 401 refusing a kiosk signature only for its clock (`CLOCK_SKEW`), else null. */
+export function clockSkewServerTime(body: unknown): number | null {
+  const extensions = (
+    body as { errors?: { extensions?: Record<string, unknown> }[] } | null
+  )?.errors?.[0]?.extensions;
+  return extensions?.code === "CLOCK_SKEW" &&
+    typeof extensions.serverTime === "number"
+    ? extensions.serverTime
+    : null;
+}
+
 export async function fetchGraphQL(
   authHeader: AuthHeaderProvider,
   request: RequestParameters,
   variables: Variables,
   onUnauthorized: () => void,
+  /** Signed kiosk requests: adopt the server's clock, then the request is re-signed and sent once more. */
+  onClockSkew?: (serverTimeSec: number) => void,
 ) {
   console.log(
     "fetchGraphQL for request ",
@@ -105,6 +118,13 @@ export async function fetchGraphQL(
     clearBlockClientUpdates(leaseId);
   }
   if (resp.status === 401) {
+    const serverTime = onClockSkew
+      ? clockSkewServerTime(await resp.json().catch(() => null))
+      : null;
+    if (serverTime != null) {
+      onClockSkew!(serverTime);
+      return fetchGraphQL(authHeader, request, variables, onUnauthorized);
+    }
     onUnauthorized();
     throw new Error("Unauthorized");
   }
