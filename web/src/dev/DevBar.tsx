@@ -259,6 +259,13 @@ const GROUPS: [string, Action[]][] = [
           "Overwrite every seeded row with the fixtures, undoing edits to them?",
       },
       {
+        label: "Seed: Demo",
+        run: () => devApi("demo"),
+        api: true,
+        danger:
+          "Overwrite every Test C Unit demo row with the fixture, undoing edits to them?",
+      },
+      {
         label: "Clear",
         run: () => devApi("clear"),
         api: true,

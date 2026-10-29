@@ -86,6 +86,11 @@ local-reset:
 local-seed:
 	@$(LOCAL_ENV) cd api && cargo run --quiet --bin local-seed -- apply
 
+# Add local/seed/demo.json on top: Test C Unit with months of activity, times relative to now.
+# Re-run it to bring the demo data up to date.
+local-demo:
+	@$(LOCAL_ENV) cd api && cargo run --quiet --bin local-seed -- demo
+
 # Refresh local/seed/from-prod.json from the real database. Needs AWS access, and
 # is the only part of the local stack that does — run it rarely, review the diff.
 local-seed-extract:

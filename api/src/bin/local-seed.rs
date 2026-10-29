@@ -73,6 +73,9 @@ enum Command {
     /// instead of in — so a script that half-finished quietly breaks the one after
     /// it. `local-reset` fixes it too, by destroying and rebuilding every table.
     Clear,
+    /// Write `demo.json` too: Test C Unit with months of realistic activity, for a dashboard that looks
+    /// lived in. Its times are relative to now, so re-running it brings the data up to date.
+    Demo,
 }
 
 // ── DynamoDB item <-> JSON ────────────────────────────────────────────────────
@@ -137,12 +140,18 @@ fn json_to_av(value: &Value) -> Result<AttributeValue> {
                 .ok_or_else(|| anyhow!("S must be a string"))?
                 .to_string(),
         ),
-        // Numbers stay strings on the wire; that is how DynamoDB avoids float loss.
-        "N" => AttributeValue::N(
-            v.as_str()
-                .ok_or_else(|| anyhow!("N must be a string, not a JSON number"))?
-                .to_string(),
-        ),
+        // Numbers stay strings on the wire; that is how DynamoDB avoids float loss. A string starting with a
+        // letter is a time relative to this run (`now-2h`, `monday-3w+1d+19h`).
+        "N" => {
+            let n = v
+                .as_str()
+                .ok_or_else(|| anyhow!("N must be a string, not a JSON number"))?;
+            AttributeValue::N(if n.starts_with(|c: char| c.is_ascii_alphabetic()) {
+                seslogin::local_dev::resolve_relative_time(n, *NOW)?.to_string()
+            } else {
+                n.to_string()
+            })
+        }
         "BOOL" => AttributeValue::Bool(v.as_bool().ok_or_else(|| anyhow!("BOOL must be a bool"))?),
         "NULL" => AttributeValue::Null(true),
         "SS" => AttributeValue::Ss(str_list(v)?),
@@ -395,46 +404,94 @@ async fn clear() -> Result<()> {
     Ok(())
 }
 
+/// One moment for the whole run, so every relative time in it resolves against the same now.
+static NOW: std::sync::LazyLock<chrono::DateTime<chrono::Utc>> =
+    std::sync::LazyLock::new(chrono::Utc::now);
+
+/// Write one fixture's rows, or only `only`'s table; returns how many were written.
+async fn write_fixture(
+    client: &Client,
+    prefix: &str,
+    file: &str,
+    only: Option<&str>,
+) -> Result<usize> {
+    let tables = load_tables(&seed_dir().join(file))?;
+    println!("  {file}");
+    let now = NOW.timestamp();
+    let in_future = |n: Option<&AttributeValue>| matches!(n, Some(AttributeValue::N(n)) if n.parse::<i64>().is_ok_and(|t| t > now));
+    let mut total = 0;
+    for (table, rows) in &tables {
+        if only.is_some_and(|t| t != table) {
+            continue;
+        }
+        let rows = rows
+            .as_array()
+            .ok_or_else(|| anyhow!("{file}: {table} must be an array"))?;
+        let (mut written, mut skipped) = (0, 0);
+        for row in rows {
+            let obj = row
+                .as_object()
+                .ok_or_else(|| anyhow!("{file}: {table} rows must be objects"))?;
+            let item = json_to_item(obj)?;
+            // A relative time can land after now, eg this week's training night seeded on a Monday: not yet.
+            // Delete the copy an earlier run wrote under this id too: it holds that run's dates, so left in place
+            // it would sit a week early, on top of the previous week's own row.
+            if table == "period"
+                && (in_future(item.get("start_time")) || in_future(item.get("end_time")))
+            {
+                client
+                    .delete_item()
+                    .table_name(format!("{prefix}_{table}"))
+                    .set_key(Some(item.into_iter().filter(|(k, _)| k == "id").collect()))
+                    .send()
+                    .await
+                    .with_context(|| format!("removing a not-yet-due {table} row from {file}"))?;
+                skipped += 1;
+                continue;
+            }
+            client
+                .put_item()
+                .table_name(format!("{prefix}_{table}"))
+                .set_item(Some(item))
+                .send()
+                .await
+                .with_context(|| format!("writing a {table} row from {file}"))?;
+            written += 1;
+        }
+        if skipped > 0 {
+            println!("    {table:>12}: {written} row(s), {skipped} not due yet");
+        } else {
+            println!("    {table:>12}: {written} row(s)");
+        }
+        total += written;
+    }
+    Ok(total)
+}
+
 async fn apply(only: Option<&str>) -> Result<()> {
     let endpoint = seslogin::local_dev::require_local_dynamodb_endpoint()?;
     let prefix = std::env::var("DB_PREFIX").map_err(|_| anyhow!("DB_PREFIX must be set"))?;
     let client = seslogin::local_dev::dynamodb_client().await;
     println!("seeding {prefix}_* at {endpoint}");
-
-    let mut written: Vec<(String, usize)> = Vec::new();
+    let mut total = 0;
     for file in ["from-prod.json", "synthetic.json"] {
-        let path = seed_dir().join(file);
-        let tables = load_tables(&path)?;
-        println!("  {file}");
-        for (table, rows) in &tables {
-            if only.is_some_and(|t| t != table) {
-                continue;
-            }
-            let rows = rows
-                .as_array()
-                .ok_or_else(|| anyhow!("{file}: {table} must be an array"))?;
-            for row in rows {
-                let obj = row
-                    .as_object()
-                    .ok_or_else(|| anyhow!("{file}: {table} rows must be objects"))?;
-                client
-                    .put_item()
-                    .table_name(format!("{prefix}_{table}"))
-                    .set_item(Some(json_to_item(obj)?))
-                    .send()
-                    .await
-                    .with_context(|| format!("writing a {table} row from {file}"))?;
-            }
-            println!("    {:>12}: {} row(s)", table, rows.len());
-            written.push((table.clone(), rows.len()));
-        }
+        total += write_fixture(&client, &prefix, file, only).await?;
     }
     if let Some(t) = only
-        && written.is_empty()
+        && total == 0
     {
-        bail!("no fixture table named `{t}`");
+        bail!("no fixture rows for table `{t}`");
     }
-    let total: usize = written.iter().map(|(_, n)| n).sum();
+    println!("{total} row(s) written");
+    Ok(())
+}
+
+async fn demo() -> Result<()> {
+    let endpoint = seslogin::local_dev::require_local_dynamodb_endpoint()?;
+    let prefix = std::env::var("DB_PREFIX").map_err(|_| anyhow!("DB_PREFIX must be set"))?;
+    let client = seslogin::local_dev::dynamodb_client().await;
+    println!("seeding demo data into {prefix}_* at {endpoint}");
+    let total = write_fixture(&client, &prefix, "demo.json", None).await?;
     println!("{total} row(s) written");
     Ok(())
 }
@@ -450,5 +507,6 @@ async fn main() -> Result<()> {
         } => extract(&source_prefix, allow_personal_data).await,
         Command::Apply { table } => apply(table.as_deref()).await,
         Command::Clear => clear().await,
+        Command::Demo => demo().await,
     }
 }
