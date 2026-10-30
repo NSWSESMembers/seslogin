@@ -167,6 +167,20 @@ impl db::Handler for Handler {
         Self::unsupported()
     }
 
+    async fn list_contact_changes(
+        &self,
+        _after: Option<&str>,
+        _before: &str,
+        _include_deleted: bool,
+        _limit: usize,
+    ) -> db::Result<db::ContactPage> {
+        Self::unsupported()
+    }
+
+    async fn count_contacts(&self, _before: &str) -> db::Result<u64> {
+        Self::unsupported()
+    }
+
     async fn create_period(
         &self,
         _person_id: &str,

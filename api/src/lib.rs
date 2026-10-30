@@ -31,6 +31,7 @@ pub mod nonce;
 pub mod oauth;
 pub mod oauth_clients;
 pub mod oauth_http;
+pub mod offline_sync;
 pub mod period_link;
 pub mod queue;
 pub mod realtime;

@@ -109,6 +109,32 @@ impl<
                 .emit();
                 return oauth_reply_response(reply);
             }
+            (Method::GET, seslogin::offline_sync::SYNC_PATH) => {
+                let header = |name: &str| headers.get(name).and_then(|v| v.to_str().ok());
+                let reply = seslogin::offline_sync::sync(
+                    &*self.app,
+                    host,
+                    header("Authorization"),
+                    header("Accept-Encoding"),
+                    request.uri().query().unwrap_or(""),
+                )
+                .await;
+                RequestTelemetry {
+                    status: reply.status,
+                    operation_name: "offline:sync",
+                    latency_ms: request_start.elapsed().as_secs_f64() * 1000.0,
+                    ..Default::default()
+                }
+                .emit();
+                let mut builder = Response::builder().status(reply.status);
+                for (name, value) in &reply.headers {
+                    builder = builder.header(name.as_str(), value.as_str());
+                }
+                return builder
+                    .body(Body::Binary(reply.body))
+                    .map_err(ServerError::from)
+                    .map_err(Error::from);
+            }
             (Method::GET, "/mcp") | (Method::DELETE, "/mcp") => {
                 return oauth_reply_response(seslogin::mcp::method_not_allowed());
             }

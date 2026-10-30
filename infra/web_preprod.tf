@@ -139,10 +139,11 @@ resource "aws_cloudfront_distribution" "preprod" {
   # The MCP endpoint and its OAuth authorization server, on the same Lambda and
   # with the same settings as /graphql plus cross-origin CORS (see
   # preprod_oauth_mcp_cors). The 403/404 rewrite below is safe here too: these
-  # handlers return only 200/201/202/204/400/401/405/500/503. API_BASE_URL on
-  # the Lambda must name this host, since CloudFront doesn't forward Host.
+  # handlers return only 200/201/202/204/400/401/405/410/500/503. API_BASE_URL
+  # on the Lambda must name this host, since CloudFront doesn't forward Host.
+  # /api/* is the REST surface for SESLogin's own apps (Tally's offline sync).
   dynamic "ordered_cache_behavior" {
-    for_each = ["/mcp", "/oauth/*", "/.well-known/oauth-*"]
+    for_each = ["/mcp", "/oauth/*", "/.well-known/oauth-*", "/api/*"]
     content {
       path_pattern               = ordered_cache_behavior.value
       target_origin_id           = "preprod-api-lambda"

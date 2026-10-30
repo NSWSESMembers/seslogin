@@ -1225,6 +1225,7 @@ fn scan_cursor_from_key(key: Option<HashMap<String, AttributeValue>>) -> Option<
 const CONTACT_FEED_ATTR: &str = "contact_feed";
 const CONTACT_KEY_ATTR: &str = "contact_key";
 const CONTACT_FEED: &str = "all";
+const CONTACT_FEED_INDEX: &str = "contact_feed-contact_key-index";
 const CONTACT_STAMP_SET: &str = "contact_feed = :contact_feed, contact_key = :contact_key";
 
 /// `<microseconds, zero-padded to 20 digits>#<person id>`: sorts by change time, and the
@@ -2894,6 +2895,112 @@ impl db::Handler for Handler {
             CapKind::Write,
         );
         Ok(())
+    }
+
+    async fn list_contact_changes(
+        &self,
+        after: Option<&str>,
+        before: &str,
+        include_deleted: bool,
+        limit: usize,
+    ) -> db::Result<db::ContactPage> {
+        // BETWEEN refuses an inverted range. A cursor can sit at or past this read's
+        // bound when this Lambda's clock is a little behind the one that issued it.
+        if after.is_some_and(|a| a >= before) {
+            return Ok(db::ContactPage {
+                changes: Vec::new(),
+                has_more: false,
+            });
+        }
+        let mut changes = Vec::new();
+        let mut exclusive_start_key = None;
+        // One extra row tells us whether there is more.
+        while changes.len() <= limit {
+            let mut query = self
+                .client
+                .query()
+                .table_name(self.table_name("person"))
+                .index_name(CONTACT_FEED_INDEX)
+                .expression_attribute_values(":feed", AttributeValue::S(CONTACT_FEED.to_string()))
+                .expression_attribute_values(":before", AttributeValue::S(before.to_string()))
+                .limit((limit + 1 - changes.len()).min(1000) as i32)
+                .set_exclusive_start_key(exclusive_start_key.take())
+                .return_consumed_capacity(ReturnConsumedCapacity::Total);
+            // A key condition takes one range comparison, so a lower bound means
+            // BETWEEN (inclusive): the row at exactly `after` is dropped below.
+            // `before` has no `#<id>` suffix, so no key ever equals it.
+            query = match after {
+                Some(after) => query
+                    .key_condition_expression(
+                        "contact_feed = :feed AND contact_key BETWEEN :after AND :before",
+                    )
+                    .expression_attribute_values(":after", AttributeValue::S(after.to_string())),
+                None => {
+                    query.key_condition_expression("contact_feed = :feed AND contact_key < :before")
+                }
+            };
+            let resp = query
+                .send()
+                .await
+                .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
+            record_capacity(
+                "list_contact_changes",
+                resp.consumed_capacity(),
+                CapKind::Read,
+            );
+
+            for raw in resp.items.unwrap_or_default() {
+                let key = raw
+                    .get(CONTACT_KEY_ATTR)
+                    .and_then(|v| v.as_s().ok())
+                    .cloned()
+                    .unwrap_or_default();
+                if Some(key.as_str()) == after {
+                    continue;
+                }
+                let person: Person = hydrate_item(raw)?;
+                if !include_deleted && person.deleted.is_some() {
+                    continue;
+                }
+                changes.push(db::ContactChange { key, person });
+            }
+            exclusive_start_key = resp.last_evaluated_key;
+            if exclusive_start_key.is_none() {
+                break;
+            }
+        }
+        let has_more = changes.len() > limit;
+        changes.truncate(limit);
+        Ok(db::ContactPage { changes, has_more })
+    }
+
+    async fn count_contacts(&self, before: &str) -> db::Result<u64> {
+        let mut count = 0u64;
+        let mut exclusive_start_key = None;
+        loop {
+            let resp = self
+                .client
+                .query()
+                .table_name(self.table_name("person"))
+                .index_name(CONTACT_FEED_INDEX)
+                .key_condition_expression("contact_feed = :feed AND contact_key < :before")
+                .filter_expression("attribute_not_exists(deleted) OR deleted = :live")
+                .expression_attribute_values(":feed", AttributeValue::S(CONTACT_FEED.to_string()))
+                .expression_attribute_values(":before", AttributeValue::S(before.to_string()))
+                .expression_attribute_values(":live", AttributeValue::N("0".to_string()))
+                .select(aws_sdk_dynamodb::types::Select::Count)
+                .set_exclusive_start_key(exclusive_start_key.take())
+                .return_consumed_capacity(ReturnConsumedCapacity::Total)
+                .send()
+                .await
+                .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
+            record_capacity("count_contacts", resp.consumed_capacity(), CapKind::Read);
+            count += resp.count as u64;
+            exclusive_start_key = resp.last_evaluated_key;
+            if exclusive_start_key.is_none() {
+                return Ok(count);
+            }
+        }
     }
 
     async fn create_period(
