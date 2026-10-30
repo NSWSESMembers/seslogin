@@ -54,6 +54,13 @@ pub enum Actor {
         id: String,
         via: Option<String>,
     },
+    /// A member signed in to Tally. `via` is `oauth_grant:<id>`, or
+    /// `oauth_client:<client_id>` for the token endpoint acting for them. A user signed
+    /// in alongside is not recorded here: the grant names them.
+    Member {
+        person_id: String,
+        via: Option<String>,
+    },
     /// A kiosk.
     Session {
         id: String,
@@ -80,6 +87,7 @@ impl Actor {
     pub fn kind(&self) -> &'static str {
         match self {
             Self::User { .. } => "user",
+            Self::Member { .. } => "member",
             Self::Session { .. } => "session",
             Self::ApiToken { .. } => "api_token",
             Self::PeriodLink { .. } => "period_link",
@@ -89,11 +97,12 @@ impl Actor {
         }
     }
 
-    /// Stored as `actor_id`: the user/session/token id, the period id for a period
-    /// link, or the job name for a system actor.
+    /// Stored as `actor_id`: the user/session/token id, the member (person) id, the
+    /// period id for a period link, or the job name for a system actor.
     pub fn id(&self) -> Option<&str> {
         match self {
             Self::User { id, .. } | Self::Session { id } | Self::ApiToken { id } => Some(id),
+            Self::Member { person_id, .. } => Some(person_id),
             Self::PeriodLink { period_id } => Some(period_id),
             Self::System { job } => Some(job),
             Self::Unauthenticated | Self::Unknown => None,
@@ -103,7 +112,7 @@ impl Actor {
     /// Stored as `actor_via`.
     pub fn via(&self) -> Option<&str> {
         match self {
-            Self::User { via, .. } => via.as_deref(),
+            Self::User { via, .. } | Self::Member { via, .. } => via.as_deref(),
             _ => None,
         }
     }
@@ -135,6 +144,14 @@ impl Actor {
             Some(AuthInfo::ApiToken { id, .. }) => Self::ApiToken { id: id.clone() },
             Some(AuthInfo::PeriodLink { period_id }) => Self::PeriodLink {
                 period_id: period_id.clone(),
+            },
+            Some(AuthInfo::Member {
+                person_id,
+                grant_id,
+                ..
+            }) => Self::Member {
+                person_id: person_id.clone(),
+                via: Some(format!("oauth_grant:{grant_id}")),
             },
         }
     }
@@ -1391,7 +1408,8 @@ pub fn user_token_create_changes(t: &db::UserToken) -> Vec<AuditFieldChange> {
 
 fn oauth_grant_fields(g: &OAuthGrant) -> Fields {
     Fields::default()
-        .with("user_id", text(&g.user_id))
+        .with("user_id", opt_text(g.user_id.as_deref()))
+        .with("person_id", opt_text(g.person_id.as_deref()))
         .with("client_id", text(&g.client_id))
         .with("client_name", text(&g.client_name))
         .with("redirect_uri", text(&g.redirect_uri))
@@ -1408,7 +1426,8 @@ pub fn oauth_grant_create_changes(g: &OAuthGrant) -> Vec<AuditFieldChange> {
 pub fn oauth_grant_delete_changes(g: &OAuthGrant) -> Vec<AuditFieldChange> {
     removal(
         &Fields::default()
-            .with("user_id", text(&g.user_id))
+            .with("user_id", opt_text(g.user_id.as_deref()))
+            .with("person_id", opt_text(g.person_id.as_deref()))
             .with("client_id", text(&g.client_id))
             .with("client_name", text(&g.client_name)),
     )
@@ -3618,6 +3637,14 @@ mod tests {
                 "period_link",
                 Some("per"),
             ),
+            (
+                Actor::Member {
+                    person_id: "p".into(),
+                    via: None,
+                },
+                "member",
+                Some("p"),
+            ),
             (Actor::system("cli"), "system", Some("cli")),
             (Actor::Unauthenticated, "unauthenticated", None),
             (Actor::Unknown, "unknown", None),
@@ -3626,6 +3653,25 @@ mod tests {
             assert_eq!(actor.kind(), kind);
             assert_eq!(actor.id(), id);
         }
+    }
+
+    #[test]
+    fn actor_from_auth_info_records_a_member_by_person_and_grant() {
+        let member = AuthInfo::Member {
+            person_id: "p1".to_string(),
+            location_id: "loc".to_string(),
+            user_id: Some("u1".to_string()),
+            is_super: false,
+            user_location_ids: vec![],
+            grant_id: "g1".to_string(),
+        };
+        assert_eq!(
+            Actor::from_auth_info(Some(&member)),
+            Actor::Member {
+                person_id: "p1".into(),
+                via: Some("oauth_grant:g1".into()),
+            }
+        );
     }
 
     #[test]
@@ -4497,7 +4543,8 @@ mod tests {
         };
         let grant = OAuthGrant {
             id: "g1".into(),
-            user_id: "u1".into(),
+            user_id: Some("u1".into()),
+            person_id: None,
             client_id: "client".into(),
             client_name: "Claude".into(),
             redirect_uri: "https://claude.ai/cb".into(),

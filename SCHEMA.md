@@ -735,9 +735,9 @@ Access patterns: per-location newest-first (`Query` on `location_id-sk-index`) a
 - `entity_type` (S) — `user`, `person`, `period`, `session`, `api_token`, `location`, `category`, `nitc_group`, `nitc_tag`, `user_token`, `oauth_grant`, `webauthn_credential`, `task`, `task_list`, `note`, `note_folder`, `map_pin`, `map_layer`, `on_call_role`, `equipment`, `equipment_log_entry`, `equipment_reservation`, `calendar`, `calendar_event` or `location_share`
 - `entity_id` (S) — ID of the entity changed
 - `entity_label` (S) — human-readable name of the entity at the time; omitted when unknown
-- `actor_kind` (S) — `user`, `session` (kiosk), `api_token`, `period_link`, `system` (a job or the CLI), `unauthenticated` or `unknown`
-- `actor_id` (S) — the user/session/token ID, the period ID for a period link, or the job name for `system`; omitted for `unauthenticated`/`unknown`
-- `actor_via` (S) — `oauth_grant:<id>` (a connected app, over MCP or GraphQL), `user_token:<id>` or `oauth_client:<id>`; omitted for an ordinary web login and for non-user actors
+- `actor_kind` (S) — `user`, `member` (a member signed in to Tally), `session` (kiosk), `api_token`, `period_link`, `system` (a job or the CLI), `unauthenticated` or `unknown`
+- `actor_id` (S) — the user/session/token ID, the person ID for `member`, the period ID for a period link, or the job name for `system`; omitted for `unauthenticated`/`unknown`
+- `actor_via` (S) — `oauth_grant:<id>` (a connected app, over MCP or GraphQL), `user_token:<id>` or `oauth_client:<id>`; omitted for an ordinary web login and for actors other than users and members
 - `ip` (S) — caller's IP address; omitted when unknown
 - `changes` (S) — JSON array of `{"field", "before", "after"}`; a side that is absent (a create has no `before`, a cleared field has no `after`) is omitted. Secrets are never stored: a secret field that changed appears as `"[redacted]"`
 

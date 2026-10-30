@@ -96,7 +96,8 @@ async fn full_round_trip_authorization_code_then_refresh() {
     let code = seed_code(
         &app,
         AuthCodePayload {
-            user_id: "user-1".to_string(),
+            user_id: Some("user-1".to_string()),
+            person_id: None,
             client_id: client_id.clone(),
             client_name: "Test Client".to_string(),
             redirect_uri: REDIRECT_URI.to_string(),
@@ -157,7 +158,8 @@ async fn authorization_code_rejects_pkce_mismatch() {
     let code = seed_code(
         &app,
         AuthCodePayload {
-            user_id: "user-1".to_string(),
+            user_id: Some("user-1".to_string()),
+            person_id: None,
             client_id: client_id.clone(),
             client_name: "Test Client".to_string(),
             redirect_uri: REDIRECT_URI.to_string(),
@@ -188,7 +190,8 @@ async fn authorization_code_is_single_use() {
     let code = seed_code(
         &app,
         AuthCodePayload {
-            user_id: "user-1".to_string(),
+            user_id: Some("user-1".to_string()),
+            person_id: None,
             client_id: client_id.clone(),
             client_name: "Test Client".to_string(),
             redirect_uri: REDIRECT_URI.to_string(),
@@ -218,7 +221,8 @@ async fn authorization_code_rejects_a_redirect_uri_mismatch() {
     let code = seed_code(
         &app,
         AuthCodePayload {
-            user_id: "user-1".to_string(),
+            user_id: Some("user-1".to_string()),
+            person_id: None,
             client_id: client_id.clone(),
             client_name: "Test Client".to_string(),
             redirect_uri: REDIRECT_URI.to_string(),
@@ -258,7 +262,8 @@ async fn authorization_code_rejects_a_client_id_mismatch() {
     let code = seed_code(
         &app,
         AuthCodePayload {
-            user_id: "user-1".to_string(),
+            user_id: Some("user-1".to_string()),
+            person_id: None,
             client_id: client_id.clone(),
             client_name: "Test Client".to_string(),
             redirect_uri: REDIRECT_URI.to_string(),
@@ -290,7 +295,8 @@ async fn refresh_is_refused_once_the_user_is_disabled() {
     let code = seed_code(
         &app,
         AuthCodePayload {
-            user_id: "user-1".to_string(),
+            user_id: Some("user-1".to_string()),
+            person_id: None,
             client_id: client_id.clone(),
             client_name: "Test Client".to_string(),
             redirect_uri: REDIRECT_URI.to_string(),
@@ -332,7 +338,8 @@ async fn exchange(
     let code = seed_code(
         app,
         AuthCodePayload {
-            user_id: "user-1".to_string(),
+            user_id: Some("user-1".to_string()),
+            person_id: None,
             client_id: client_id.to_string(),
             client_name: "Test Client".to_string(),
             redirect_uri: redirect_uri.to_string(),

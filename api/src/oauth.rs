@@ -103,12 +103,23 @@ fn mint_tokens(grant_id: &str) -> (String, String) {
     (access, refresh)
 }
 
+/// Who a grant acts for: a user (approved at the consent screen), or a member signed
+/// in to Tally, with the user whose email matched if there was one.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum GrantSubject {
+    User(String),
+    Member {
+        person_id: String,
+        user_id: Option<String>,
+    },
+}
+
 /// Build a fresh [`db::OAuthGrant`] plus its plaintext access and refresh tokens.
-/// The grant isn't persisted here — the caller (the future `/oauth/token` handler)
-/// does that with `create_oauth_grant`, so this stays a pure function to keep it
-/// easy to unit test.
+/// The grant isn't persisted here — the caller (the `/oauth/token` handler) does that
+/// with `create_oauth_grant`, so this stays a pure function to keep it easy to unit
+/// test.
 pub fn mint_grant(
-    user_id: &str,
+    subject: &GrantSubject,
     client_id: &str,
     client_name: &str,
     redirect_uri: &str,
@@ -120,9 +131,14 @@ pub fn mint_grant(
     let (access_token, refresh_token) = mint_tokens(&id);
     let expires_at = now + GRANT_ABSOLUTE_LIFETIME_S;
 
+    let (user_id, person_id) = match subject {
+        GrantSubject::User(id) => (Some(id.clone()), None),
+        GrantSubject::Member { person_id, user_id } => (user_id.clone(), Some(person_id.clone())),
+    };
     let grant = db::OAuthGrant {
         id,
-        user_id: user_id.to_string(),
+        user_id,
+        person_id,
         client_id: client_id.to_string(),
         client_name: client_name.to_string(),
         redirect_uri: redirect_uri.to_string(),
@@ -160,7 +176,8 @@ pub fn rotate_grant(
 /// Verify an `slat_` access token for `expected_resource` (the audience the caller
 /// is trying to reach: `<base>/mcp` from the MCP handler, `<base>/graphql` from
 /// [`crate::auth::verify_token`]; see [`crate::base_url::api_resource`]) and
-/// resolve it to an [`AuthInfo::User`] with `grant_id` set. The match is exact, so
+/// resolve it to an [`AuthInfo::User`] with `grant_id` set — or, for a Tally sign-in
+/// grant, an [`AuthInfo::Member`] (see [`grant_auth_info`]). The match is exact, so
 /// a grant only ever works on the endpoint it was granted for.
 ///
 /// Missing grant, hash mismatch, wrong resource, or an expired access token or
@@ -220,23 +237,87 @@ pub async fn verify_access_token<A: App + HasDb>(
         }
     }
 
-    match fetch_update_user_auth_info(app, grant.user_id).await? {
-        AuthInfo::User {
-            id,
-            is_super,
-            location_grants,
-            location_read_only_grants,
-            ..
-        } => Ok(AuthInfo::User {
-            id,
-            is_super,
-            location_grants,
-            location_read_only_grants,
-            token_id: None,
-            grant_id: Some(grant.id),
-        }),
-        other => Ok(other),
-    }
+    grant_auth_info(app, &grant).await
+}
+
+/// Who a live grant acts for now, read fresh on every verification and refresh so a
+/// change to the user or member takes effect within an access token's lifetime.
+///
+/// A consent-screen grant is its user ([`AuthInfo::User`]); a disabled or missing user
+/// is [`AuthError::Permanent`]. A Tally sign-in grant is its member
+/// ([`AuthInfo::Member`]): the member the user is now linked to if they are, else the
+/// one the grant names, and refused once that member is gone or soft-deleted. The user
+/// adds their units only while they exist and are enabled; without them the member
+/// still has their home unit.
+pub(crate) async fn grant_auth_info<A: App + HasDb>(
+    app: &A,
+    grant: &db::OAuthGrant,
+) -> Result<AuthInfo, AuthError> {
+    let Some(grant_person_id) = &grant.person_id else {
+        let user_id = grant
+            .user_id
+            .clone()
+            .ok_or_else(|| AuthError::Permanent("OAuth grant names no user".into()))?;
+        return match fetch_update_user_auth_info(app, user_id).await? {
+            AuthInfo::User {
+                id,
+                is_super,
+                location_grants,
+                location_read_only_grants,
+                ..
+            } => Ok(AuthInfo::User {
+                id,
+                is_super,
+                location_grants,
+                location_read_only_grants,
+                token_id: None,
+                grant_id: Some(grant.id.clone()),
+            }),
+            other => Ok(other),
+        };
+    };
+
+    let user = match &grant.user_id {
+        Some(user_id) => app
+            .db()
+            .get_users(&[user_id])
+            .await
+            .map_err(|e| classify_db_err("fetch user from db", e))?
+            .into_iter()
+            .next()
+            .flatten()
+            .filter(|u| u.enabled),
+        None => None,
+    };
+    let person_id = user
+        .as_ref()
+        .and_then(|u| u.person_id.clone())
+        .unwrap_or_else(|| grant_person_id.clone());
+    let person = app
+        .db()
+        .get_persons(&[&person_id])
+        .await
+        .map_err(|e| classify_db_err("fetch person from db", e))?
+        .into_iter()
+        .next()
+        .flatten()
+        .filter(|p| p.deleted.is_none())
+        .ok_or_else(|| AuthError::Permanent("Member not found".into()))?;
+
+    Ok(AuthInfo::Member {
+        person_id: person.id,
+        location_id: person.location_id,
+        user_id: user.as_ref().map(|u| u.id.clone()),
+        is_super: user.as_ref().is_some_and(|u| u.is_super),
+        user_location_ids: user
+            .map(|u| {
+                let mut ids = u.location_grants;
+                ids.extend(u.location_read_only_grants);
+                ids
+            })
+            .unwrap_or_default(),
+        grant_id: grant.id.clone(),
+    })
 }
 
 /// A dynamically-registered OAuth client, as encoded into its `client_id`. Nothing
@@ -329,7 +410,7 @@ mod tests {
     fn mint_grant_round_trips_through_parse_and_hash() {
         let now = 1_000_000;
         let (grant, access, refresh) = mint_grant(
-            "user-1",
+            &GrantSubject::User("user-1".to_string()),
             "client-1",
             "Claude",
             "https://example.com/cb",
@@ -358,7 +439,7 @@ mod tests {
     fn rotate_grant_replaces_both_secrets_and_caps_refresh_at_absolute_expiry() {
         let now = 1_000_000;
         let (grant, old_access, old_refresh) = mint_grant(
-            "user-1",
+            &GrantSubject::User("user-1".to_string()),
             "client-1",
             "Claude",
             "https://example.com/cb",

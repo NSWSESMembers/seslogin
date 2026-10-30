@@ -44,7 +44,7 @@ enum AuditAction {
 type AuditActor {
 	kind: AuditActorKind!
 	"""
-	The actor's ID: a user, kiosk session or API token ID, the period ID of an edit
+	The actor's ID: a user, member, kiosk session or API token ID, the period ID of an edit
 	link, or the job name for `SYSTEM` (`member-sync`, `cli`, …). Null when none was
 	recorded.
 	"""
@@ -57,7 +57,8 @@ type AuditActor {
 	"""
 	via: String
 	"""
-	A name for the actor, looked up now rather than recorded: a user's email, a kiosk's
+	A name for the actor, looked up now rather than recorded: a user's email, a member's
+	name, a kiosk's
 	name, an API token's name, the job name for `SYSTEM`, "Period edit link" for an
 	edit link. Null when there is nothing to show or the record no longer exists.
 	"""
@@ -72,6 +73,10 @@ enum AuditActorKind {
 	A signed-in user (web, MCP or a user token).
 	"""
 	USER
+	"""
+	A member signed in to Tally.
+	"""
+	MEMBER
 	"""
 	A kiosk device.
 	"""

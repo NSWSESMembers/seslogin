@@ -4511,7 +4511,8 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         let now = crate::clock::now_sec();
         let code = crate::nonce::generate_nonce(32);
         let payload = crate::oauth_http::AuthCodePayload {
-            user_id,
+            user_id: Some(user_id),
+            person_id: None,
             client_id: client_id.clone(),
             client_name: client.client_name,
             redirect_uri: redirect_uri.clone(),
@@ -4558,7 +4559,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
             .get_oauth_grant(&id)
             .await?
             .ok_or_else(|| anyhow!("OAuth grant not found"))?;
-        if !is_super && grant.user_id != caller_id {
+        if !is_super && grant.user_id.as_deref() != Some(caller_id.as_str()) {
             return Err(anyhow!("OAuth grant not found"));
         }
 

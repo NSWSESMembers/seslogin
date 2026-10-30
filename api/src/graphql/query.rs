@@ -4091,7 +4091,8 @@ impl<A: App + HasDb + HasRealtime + Send + Sync + 'static> QueryRoot<A> {
                 Some(AuthInfo::User { id, .. }) => id.to_string(),
                 Some(AuthInfo::Session { .. })
                 | Some(AuthInfo::ApiToken { .. })
-                | Some(AuthInfo::PeriodLink { .. }) => {
+                | Some(AuthInfo::PeriodLink { .. })
+                | Some(AuthInfo::Member { .. }) => {
                     return Err(anyhow!("Sessions cannot query without user ID"));
                 }
                 None => {
@@ -4114,7 +4115,8 @@ impl<A: App + HasDb + HasRealtime + Send + Sync + 'static> QueryRoot<A> {
             }
             Some(AuthInfo::Session { .. })
             | Some(AuthInfo::ApiToken { .. })
-            | Some(AuthInfo::PeriodLink { .. }) => {
+            | Some(AuthInfo::PeriodLink { .. })
+            | Some(AuthInfo::Member { .. }) => {
                 return Err(anyhow!("Not authorized to query users"));
             }
             None => return Err(anyhow!("Cannot query users if not logged in")),
@@ -4371,7 +4373,8 @@ impl<A: App + HasDb + HasRealtime + Send + Sync + 'static> QueryRoot<A> {
                 Some(AuthInfo::Session { id, .. }) => id.to_string(),
                 Some(AuthInfo::User { .. })
                 | Some(AuthInfo::ApiToken { .. })
-                | Some(AuthInfo::PeriodLink { .. }) => {
+                | Some(AuthInfo::PeriodLink { .. })
+                | Some(AuthInfo::Member { .. }) => {
                     return Err(anyhow!("Cannot query without session ID"));
                 }
                 None => {

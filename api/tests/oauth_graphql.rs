@@ -29,7 +29,7 @@ const HOST: &str = "api.seslogin.com";
 async fn grant_for(app: &App, user_id: &str, resource: &str) -> (String, String) {
     use seslogin::db::Handler as _;
     let (grant, access_token, _refresh) = oauth::mint_grant(
-        user_id,
+        &oauth::GrantSubject::User(user_id.to_string()),
         "tally",
         "Tally",
         "tally://oauth/callback",

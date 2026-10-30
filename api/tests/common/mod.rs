@@ -273,7 +273,7 @@ impl db::Handler for FakeDb {
             .lock()
             .unwrap()
             .values()
-            .filter(|g| g.user_id == user_id)
+            .filter(|g| g.user_id.as_deref() == Some(user_id))
             .cloned()
             .collect())
     }
@@ -2669,7 +2669,8 @@ pub(crate) fn seed_grant(
 ) -> OAuthGrant {
     let grant = OAuthGrant {
         id: id.to_string(),
-        user_id: user_id.to_string(),
+        user_id: Some(user_id.to_string()),
+        person_id: None,
         client_id: "test-client-id".to_string(),
         client_name: client_name.to_string(),
         redirect_uri: "https://claude.ai/callback".to_string(),
