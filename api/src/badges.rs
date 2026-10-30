@@ -128,6 +128,151 @@ const TRAINER_STORM_WATER_CATEGORY_IDS: &[&str] = &[
     "diTqk82vnZxc", // Storm & Water: Ground
     "oqYjg2M9LKEl", // Storm & Water: Heights
 ];
+// Split into Ground and Heights in September 2026, like the trainer categories.
+const TRAINING_STORM_WATER_CATEGORY_IDS: &[&str] = &[
+    "wXd1O7sNLChh", // Training - Storm & Water
+    "a4nhHUkrXFEH", // Training - Storm & Water: Ground
+    "cQ8raY24VoPt", // Training - Storm & Water: Heights
+];
+const SUPPORT_ROLES_CATEGORY_IDS: &[&str] = &[
+    "7H8xiXLBw7MQ", // Support Roles - Assist Ambulance
+    "mvpBB7QcroPB", // Support Roles - Assist Police
+    "9GMIshTceGQT", // Support Roles - Assist RFS
+    "Ktb4luVUcehq", // Support Roles - Bushfire support
+    "CyQwwbwOqSVs", // Support Roles - Earthquake
+    "zQRd0ST1pHnp", // Support Roles - First Responder
+    "XFpiD4vS7fNi", // Support Roles - Land Search
+    "3hhECO26czRF", // Support Roles - Search
+    "rjrngI122qrh", // Support Roles - Search - Evidence
+    "CUyTMZhXshDS", // Support Roles - USAR
+];
+// Every category where the member taught or assessed others, any discipline.
+const TRAINER_OR_ASSESSOR_CATEGORY_IDS: &[&str] = &[
+    "FzHtdFLZy3Nl", // Assessor - AIIMS
+    "fGqoVDquP0EP", // Assessor - Assessor (old)
+    "sM3Qi8VtInuL", // Assessor - Beacon
+    "1RwtdwX3JGc6", // Assessor - Chain Saw
+    "YjgiQmgP7IAx", // Assessor - Critical Incident Support
+    "PpugLj0p7EGr", // Assessor - Drive Operational Vehicles
+    "lO7YmMpXj3Xu", // Assessor - Field Core Skills
+    "obMaRo09LtmW", // Assessor - First Aid
+    "Iki2svFjFU48", // Assessor - Fit for Role
+    "8laRD0BMm5vc", // Assessor - Flood Boat
+    "KoF18gOkiFM3", // Assessor - Flood Rescue: In Water
+    "hj9KzuwFbM13", // Assessor - Flood Rescue: Land Based
+    "5deKL3XPdfgN", // Assessor - Flood Rescue: On Water
+    "JwQIf2BsuSuW", // Assessor - Fundamentals
+    "QxvJp8w9GQb4", // Assessor - General Rescue
+    "Sptu5z1uHT3j", // Assessor - HCV: Logistics
+    "lD2ApJFJNgbd", // Assessor - HCV: Operational
+    "KSYEZhqFOsXz", // Assessor - Induction
+    "NcjHY3oJ3O7R", // Assessor - Industrial & Domestic Rescue
+    "NEh5XLQptyUU", // Assessor - Job Ready
+    "KWU2BCxSXms0", // Assessor - Land Search
+    "MLj55OZs9zZQ", // Assessor - Large Animal Rescue
+    "ODmjOAZANjlC", // Assessor - Maintain Team Safety
+    "6QFlxZROgoQl", // Assessor - Map & Navigation
+    "A2XvF62XdCcE", // Assessor - Map Reading
+    "C4XmDopYEFwg", // Assessor - Navigation
+    "Y5U7nkss3YAR", // Assessor - Operate Comms. Equip.
+    "UOEIfufGm0CW", // Assessor - PIARO
+    "8kJBD0LHgqFr", // Assessor - RCR
+    "YcW1zHz3dD79", // Assessor - Remote Search
+    "7OvMSXibYs3z", // Assessor - Storm & Water
+    "TDK8NAUXx2e5", // Assessor - Storm & Water: Ground
+    "dCiJLtDOzm9n", // Assessor - Storm & Water: Heights
+    "iacUn4eOC9lp", // Assessor - Swift Water Rescue
+    "5iKzI7fMcnCl", // Assessor - Traffic Safety
+    "TiruXst14mbp", // Assessor - USAR
+    "Bsp6gvf5OMpL", // Assessor - VR
+    "Yo8p9M4kCdTO", // Assessor - Vehicle Driving
+    "frU0zHKQm84n", // Trainer - AIIMS
+    "V3cOiC45Oist", // Trainer - Beacon
+    "2K3cfNuoTBYB", // Trainer - Chain Saw
+    "1VRot6gzgW7c", // Trainer - Critical Incident Support
+    "XPzg5TODlRd6", // Trainer - Drive Operational Vehicles
+    "k1ZvM6M1Y793", // Trainer - Field Core Skills
+    "7gmFiRLfnB9k", // Trainer - First Aid
+    "EXhm0fqWJCiF", // Trainer - Fit for Role
+    "KCTijlBmkTis", // Trainer - Flood Boat
+    "EnXtbYiMUD3g", // Trainer - Flood Rescue: In Water
+    "AKinZhtlbvL1", // Trainer - Flood Rescue: Land Based
+    "z4HrmoDyzpfh", // Trainer - Flood Rescue: On Water
+    "Y5ZETL8ZvpPr", // Trainer - Fundamentals
+    "mLS5y13rviWd", // Trainer - HCV: Logistics
+    "dZI5ChtSALlV", // Trainer - HCV: Operational
+    "kFn9u1x04Mfp", // Trainer - Industrial & Domestic Rescue
+    "Nk5azjGAsk0R", // Trainer - Job Ready
+    "ICKlc0A7MjB8", // Trainer - Land Search
+    "baSX02PJul3U", // Trainer - Large Animal Rescue
+    "nT68nwU6z9RO", // Trainer - Maintain Team Safety
+    "xfqtWeU35pxp", // Trainer - Map & Navigation
+    "H31i8o2NHcnq", // Trainer - Map Reading
+    "gnEdJKNllXys", // Trainer - Navigation
+    "2hPheSGKMo0A", // Trainer - Operate Comms. Equip.
+    "LooCgpp67kFc", // Trainer - Other
+    "qgs9Xs1hSTDL", // Trainer - PIARO
+    "SOiIjTV9Jmow", // Trainer - RCR
+    "iDmbliqZlKMw", // Trainer - Storm & Water
+    "diTqk82vnZxc", // Trainer - Storm & Water: Ground
+    "oqYjg2M9LKEl", // Trainer - Storm & Water: Heights
+    "mmizimV8RGEb", // Trainer - Swift Water Rescue
+    "7H2Dou6jMtrs", // Trainer - Traffic Safety
+    "zWHSfewJRzyg", // Trainer - Trainer (old)
+    "B2nP2FfkxfIg", // Trainer - USAR
+    "MiJ9l7SqCDr4", // Trainer - VR
+    "b8gKkgUH5kEd", // Trainer - Vehicle Driving
+    "odLkV3XCPOu0", // Workshop - Trainer - AIIMS
+    "BwI6H9yQB7q8", // Workshop - Trainer - Admin
+    "3YGnFoZX0WaH", // Workshop - Trainer - Beacon
+    "xIJbGAJvzkUF", // Workshop - Trainer - Chain Saw
+    "P5VfddCKN1cN", // Workshop - Trainer - Combat
+    "piYtp3ePWdPO", // Workshop - Trainer - Critical Incident Support
+    "9D5082BTEu6I", // Workshop - Trainer - Drive Operational Vehicles
+    "LxphpIZFAXnF", // Workshop - Trainer - Field Core Skills
+    "dEfSFXJ3JZ8x", // Workshop - Trainer - First Aid
+    "fSqCW6NDuaZ4", // Workshop - Trainer - Flood Boat
+    "oG2K4hfdXDWQ", // Workshop - Trainer - Flood Rescue: In Water
+    "d51eXzmfIuXm", // Workshop - Trainer - Flood Rescue: Land Based
+    "DQR24Sl5Zs25", // Workshop - Trainer - Flood Rescue: On Water
+    "oJBfuHvRCuOa", // Workshop - Trainer - Fundamentals
+    "w4qQnuEEmudR", // Workshop - Trainer - HCV: Logistics
+    "IqGj5X3nt3UX", // Workshop - Trainer - HCV: Operational
+    "DZWgLGSX8MqH", // Workshop - Trainer - Industrial & Domestic Rescue
+    "TD0Jx573gvu4", // Workshop - Trainer - Job Ready
+    "jpFAvdc0oWhp", // Workshop - Trainer - Land Search
+    "SYalliqM4bVy", // Workshop - Trainer - Large Animal Rescue
+    "CN1FKIHb9YaV", // Workshop - Trainer - Maintain Team Safety
+    "ZLRHFadlZ56G", // Workshop - Trainer - Map & Navigation
+    "026wm7XnCZ9Y", // Workshop - Trainer - Navigation
+    "Af82dlFtLwTV", // Workshop - Trainer - OH&S
+    "hFQ3A4o2qFPq", // Workshop - Trainer - Operate Comms. Equip.
+    "khQ3BnnpebpZ", // Workshop - Trainer - Operation Centre
+    "p0vRqFeoQ5uP", // Workshop - Trainer - Other
+    "mjz48eIkDO3X", // Workshop - Trainer - PIARO
+    "F7qbkbbWPQF7", // Workshop - Trainer - RCR
+    "jglow9sXOWy9", // Workshop - Trainer - Scenario Setup
+    "wt646enF5jlq", // Workshop - Trainer - Storm & Water
+    "i8tDOYEFstSy", // Workshop - Trainer - Storm & Water: Ground
+    "Q2QydIou53oo", // Workshop - Trainer - Storm & Water: Heights
+    "6K2muMRCL5qF", // Workshop - Trainer - Swift Water Rescue
+    "2TgPkvR7rc7s", // Workshop - Trainer - Traffic Safety
+    "WlyrCxgloooJ", // Workshop - Trainer - USAR
+    "851qu7WSFxxI", // Workshop - Trainer - VR
+];
+const TRAINING_FLOOD_RESCUE_CATEGORY_IDS: &[&str] = &[
+    "Sam5VHGJHiK9", // Training - Flood Rescue: In Water
+    "Na5anfu2SjxY", // Training - Flood Rescue: Land Based
+    "aMNwgsYk8hwA", // Training - Flood Rescue: On Water
+];
+const TRAINING_FIRST_AID_CATEGORY_IDS: &[&str] = &["mbkLfxuoDyzT"];
+const TRAINING_CHAIN_SAW_CATEGORY_IDS: &[&str] = &["aW7d1yFParRV"];
+const TRAINING_DRIVE_CATEGORY_IDS: &[&str] = &["zBlDlNOZ82zS"];
+const TRAINING_LAND_SEARCH_CATEGORY_IDS: &[&str] = &["yvw0CgIIwxcv"];
+const TRAINING_RCR_CATEGORY_IDS: &[&str] = &["HLdLk5jkxtns"];
+const TRAINING_AIIMS_CATEGORY_IDS: &[&str] = &["RX2bfpU6ppvV"];
+const TRAINING_VR_CATEGORY_IDS: &[&str] = &["ttkcxzz4zoSb"];
+const TRAINING_MAP_NAV_CATEGORY_IDS: &[&str] = &["62ps1a9wv19I"];
 const MAINTENANCE_EQUIPMENT_CATEGORY_IDS: &[&str] = &["ly9uPGjoundF"];
 const UNIT_MEETING_MUSTER_CATEGORY_IDS: &[&str] = &["6uFM5NP8o1x8"];
 const ATTEND_EXERCISE_SES_CATEGORY_IDS: &[&str] = &["ifc9uKYAb0ZS"];
@@ -907,6 +1052,215 @@ const BADGE_DEFINITIONS: &[BadgeDefinition] = &[
             category_ids: COMMUNITY_ED_MEDIA_CATEGORY_IDS,
             threshold: 75,
             source: "Community Ed. & Media",
+        },
+    },
+    BadgeDefinition {
+        id: "training-storm-water-ladder-up",
+        name: "Ladder Up",
+        description: "First Storm and Water training sign-out.",
+        tier: "starter",
+        rule: BadgeRule::CategorySignOutAny {
+            category_ids: TRAINING_STORM_WATER_CATEGORY_IDS,
+            threshold: 1,
+            source: "Training Storm and Water",
+        },
+    },
+    BadgeDefinition {
+        id: "training-storm-water-halfway-up",
+        name: "Halfway Up",
+        description: "8 Storm and Water training sign-outs: halfway through a course.",
+        tier: "bronze",
+        rule: BadgeRule::CategorySignOutAny {
+            category_ids: TRAINING_STORM_WATER_CATEGORY_IDS,
+            threshold: 8,
+            source: "Training Storm and Water",
+        },
+    },
+    BadgeDefinition {
+        id: "training-storm-water-tarp-tamer",
+        name: "Tarp Tamer",
+        description: "15 Storm and Water training sign-outs: a full course.",
+        tier: "silver",
+        rule: BadgeRule::CategorySignOutAny {
+            category_ids: TRAINING_STORM_WATER_CATEGORY_IDS,
+            threshold: 15,
+            source: "Training Storm and Water",
+        },
+    },
+    BadgeDefinition {
+        id: "support-roles-extra-hands",
+        name: "Extra Hands",
+        description: "First Support Roles sign-out.",
+        tier: "starter",
+        rule: BadgeRule::CategorySignOutAny {
+            category_ids: SUPPORT_ROLES_CATEGORY_IDS,
+            threshold: 1,
+            source: "Support Roles",
+        },
+    },
+    BadgeDefinition {
+        id: "support-roles-right-behind-you",
+        name: "Right Behind You",
+        description: "10 Support Roles sign-outs completed.",
+        tier: "bronze",
+        rule: BadgeRule::CategorySignOutAny {
+            category_ids: SUPPORT_ROLES_CATEGORY_IDS,
+            threshold: 10,
+            source: "Support Roles",
+        },
+    },
+    BadgeDefinition {
+        id: "support-roles-agency-ally",
+        name: "Agency Ally",
+        description: "25 Support Roles sign-outs completed.",
+        tier: "silver",
+        rule: BadgeRule::CategorySignOutAny {
+            category_ids: SUPPORT_ROLES_CATEGORY_IDS,
+            threshold: 25,
+            source: "Support Roles",
+        },
+    },
+    BadgeDefinition {
+        id: "support-roles-combined-ops",
+        name: "Combined Ops",
+        description: "50 Support Roles sign-outs completed.",
+        tier: "gold",
+        rule: BadgeRule::CategorySignOutAny {
+            category_ids: SUPPORT_ROLES_CATEGORY_IDS,
+            threshold: 50,
+            source: "Support Roles",
+        },
+    },
+    BadgeDefinition {
+        id: "trainer-whiteboard-warrior",
+        name: "Whiteboard Warrior",
+        description: "10 Trainer or Assessor sign-outs, any discipline.",
+        tier: "bronze",
+        rule: BadgeRule::CategorySignOutAny {
+            category_ids: TRAINER_OR_ASSESSOR_CATEGORY_IDS,
+            threshold: 10,
+            source: "Trainer",
+        },
+    },
+    BadgeDefinition {
+        id: "trainer-chalk-dust",
+        name: "Chalk Dust",
+        description: "50 Trainer or Assessor sign-outs, any discipline.",
+        tier: "silver",
+        rule: BadgeRule::CategorySignOutAny {
+            category_ids: TRAINER_OR_ASSESSOR_CATEGORY_IDS,
+            threshold: 50,
+            source: "Trainer",
+        },
+    },
+    BadgeDefinition {
+        id: "trainer-head-of-class",
+        name: "Head of Class",
+        description: "100 Trainer or Assessor sign-outs, any discipline.",
+        tier: "gold",
+        rule: BadgeRule::CategorySignOutAny {
+            category_ids: TRAINER_OR_ASSESSOR_CATEGORY_IDS,
+            threshold: 100,
+            source: "Trainer",
+        },
+    },
+    BadgeDefinition {
+        id: "training-first-aid-patch-job",
+        name: "Patch Job",
+        description: "First sign-out to First Aid training.",
+        tier: "starter",
+        rule: BadgeRule::CategorySignOutAny {
+            category_ids: TRAINING_FIRST_AID_CATEGORY_IDS,
+            threshold: 1,
+            source: "Training First Aid",
+        },
+    },
+    BadgeDefinition {
+        id: "training-chain-saw-cut-above",
+        name: "Cut Above",
+        description: "First Chain Saw training sign-out.",
+        tier: "starter",
+        rule: BadgeRule::CategorySignOutAny {
+            category_ids: TRAINING_CHAIN_SAW_CATEGORY_IDS,
+            threshold: 1,
+            source: "Training Chain Saw",
+        },
+    },
+    BadgeDefinition {
+        id: "training-drive-behind-the-wheel",
+        name: "Behind the Wheel",
+        description: "First Drive Operational Vehicles training sign-out.",
+        tier: "starter",
+        rule: BadgeRule::CategorySignOutAny {
+            category_ids: TRAINING_DRIVE_CATEGORY_IDS,
+            threshold: 1,
+            source: "Training Drive Operational Vehicles",
+        },
+    },
+    BadgeDefinition {
+        id: "training-land-search-line-search",
+        name: "Line Search",
+        description: "First Land Search training sign-out.",
+        tier: "starter",
+        rule: BadgeRule::CategorySignOutAny {
+            category_ids: TRAINING_LAND_SEARCH_CATEGORY_IDS,
+            threshold: 1,
+            source: "Training Land Search",
+        },
+    },
+    BadgeDefinition {
+        id: "training-flood-rescue-making-waves",
+        name: "Making Waves",
+        description: "First Flood Rescue training sign-out.",
+        tier: "starter",
+        rule: BadgeRule::CategorySignOutAny {
+            category_ids: TRAINING_FLOOD_RESCUE_CATEGORY_IDS,
+            threshold: 1,
+            source: "Training Flood Rescue",
+        },
+    },
+    BadgeDefinition {
+        id: "training-rcr-jaws-ready",
+        name: "Jaws Ready",
+        description: "First RCR training sign-out.",
+        tier: "starter",
+        rule: BadgeRule::CategorySignOutAny {
+            category_ids: TRAINING_RCR_CATEGORY_IDS,
+            threshold: 1,
+            source: "Training RCR",
+        },
+    },
+    BadgeDefinition {
+        id: "training-aiims-chain-of-command",
+        name: "Chain of Command",
+        description: "First AIIMS training sign-out.",
+        tier: "starter",
+        rule: BadgeRule::CategorySignOutAny {
+            category_ids: TRAINING_AIIMS_CATEGORY_IDS,
+            threshold: 1,
+            source: "Training AIIMS",
+        },
+    },
+    BadgeDefinition {
+        id: "training-vr-going-vertical",
+        name: "Going Vertical",
+        description: "First VR training sign-out.",
+        tier: "starter",
+        rule: BadgeRule::CategorySignOutAny {
+            category_ids: TRAINING_VR_CATEGORY_IDS,
+            threshold: 1,
+            source: "Training VR",
+        },
+    },
+    BadgeDefinition {
+        id: "training-map-nav-true-north",
+        name: "True North",
+        description: "First Map and Navigation training sign-out.",
+        tier: "starter",
+        rule: BadgeRule::CategorySignOutAny {
+            category_ids: TRAINING_MAP_NAV_CATEGORY_IDS,
+            threshold: 1,
+            source: "Training Map and Navigation",
         },
     },
     BadgeDefinition {
@@ -2009,6 +2363,105 @@ mod tests {
                 .find(|badge| badge.id == "trainer-storm-water-splash-class")
                 .unwrap();
             assert_eq!(splash_class.name, "Splash Class");
+        }
+    }
+
+    fn sign_outs(
+        state: &mut BadgeState,
+        location_id: &str,
+        category_ids: &[&str],
+        count: u64,
+    ) -> Vec<String> {
+        let mut awarded = Vec::new();
+        for i in 0..count {
+            let category_id = category_ids[i as usize % category_ids.len()];
+            awarded.extend(
+                apply_event(
+                    state,
+                    location_id,
+                    BadgeEvent::SignOut,
+                    10_000 + i,
+                    false,
+                    Some(category_id),
+                    None,
+                )
+                .into_iter()
+                .map(|badge| badge.id),
+            );
+        }
+        awarded
+    }
+
+    #[test]
+    fn storm_water_training_ladder_follows_the_course_across_old_and_split_categories() {
+        let mut state = BadgeState::default();
+        let mixed = ["wXd1O7sNLChh", "a4nhHUkrXFEH", "cQ8raY24VoPt"];
+
+        let first = sign_outs(&mut state, "loc-sw", &mixed, 1);
+        assert!(first.contains(&"training-storm-water-ladder-up".to_string()));
+        let to_seven = sign_outs(&mut state, "loc-sw", &mixed, 6);
+        assert!(!to_seven.contains(&"training-storm-water-halfway-up".to_string()));
+        let eighth = sign_outs(&mut state, "loc-sw", &mixed, 1);
+        assert!(eighth.contains(&"training-storm-water-halfway-up".to_string()));
+        let to_fifteen = sign_outs(&mut state, "loc-sw", &mixed, 7);
+        assert!(to_fifteen.contains(&"training-storm-water-tarp-tamer".to_string()));
+    }
+
+    #[test]
+    fn support_roles_ladder_counts_every_support_role() {
+        let mut state = BadgeState::default();
+        let awarded = sign_outs(&mut state, "loc-support", SUPPORT_ROLES_CATEGORY_IDS, 50);
+        for id in [
+            "support-roles-extra-hands",
+            "support-roles-right-behind-you",
+            "support-roles-agency-ally",
+            "support-roles-combined-ops",
+        ] {
+            assert!(awarded.contains(&id.to_string()), "{id} not awarded");
+        }
+        assert!(!awarded.contains(&"combat-roles-storm-eye-opener".to_string()));
+    }
+
+    #[test]
+    fn trainer_ladder_counts_trainer_assessor_and_workshop_trainer_sign_outs() {
+        let mut state = BadgeState::default();
+        // Trainer - PIARO, Assessor - First Aid, Workshop - Trainer - RCR.
+        let mixed = ["qgs9Xs1hSTDL", "obMaRo09LtmW", "F7qbkbbWPQF7"];
+        let nine = sign_outs(&mut state, "loc-trainer", &mixed, 9);
+        assert!(!nine.contains(&"trainer-whiteboard-warrior".to_string()));
+        let rest = sign_outs(&mut state, "loc-trainer", &mixed, 91);
+        for id in [
+            "trainer-whiteboard-warrior",
+            "trainer-chalk-dust",
+            "trainer-head-of-class",
+        ] {
+            assert!(rest.contains(&id.to_string()), "{id} not awarded");
+        }
+        // Teaching a workshop is not attending one.
+        assert!(!nine.contains(&"workshop-kickoff".to_string()));
+    }
+
+    #[test]
+    fn first_time_training_badges_award_on_their_own_category() {
+        for (category_id, badge_id) in [
+            ("mbkLfxuoDyzT", "training-first-aid-patch-job"),
+            ("aW7d1yFParRV", "training-chain-saw-cut-above"),
+            ("zBlDlNOZ82zS", "training-drive-behind-the-wheel"),
+            ("yvw0CgIIwxcv", "training-land-search-line-search"),
+            ("Sam5VHGJHiK9", "training-flood-rescue-making-waves"),
+            ("Na5anfu2SjxY", "training-flood-rescue-making-waves"),
+            ("aMNwgsYk8hwA", "training-flood-rescue-making-waves"),
+            ("HLdLk5jkxtns", "training-rcr-jaws-ready"),
+            ("RX2bfpU6ppvV", "training-aiims-chain-of-command"),
+            ("ttkcxzz4zoSb", "training-vr-going-vertical"),
+            ("62ps1a9wv19I", "training-map-nav-true-north"),
+        ] {
+            let mut state = BadgeState::default();
+            let awarded = sign_outs(&mut state, "loc-first", &[category_id], 1);
+            assert!(
+                awarded.contains(&badge_id.to_string()),
+                "{badge_id} not awarded for category {category_id}"
+            );
         }
     }
 
