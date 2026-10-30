@@ -144,11 +144,18 @@ const TABLES: &[Table] = &[
             Attr("location_id", S),
             Attr("registration_number", S),
             Attr("ses_api_person_id", S),
+            Attr("contact_feed", S),
+            Attr("contact_key", S),
         ],
         gsis: &[
             all("location_id-index", "location_id", None),
             keys_only("registration_number-index", "registration_number"),
             keys_only("ses_api_person_id-index", "ses_api_person_id"),
+            all(
+                "contact_feed-contact_key-index",
+                "contact_feed",
+                Some("contact_key"),
+            ),
         ],
         ttl: None,
     },

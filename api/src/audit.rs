@@ -2020,9 +2020,15 @@ impl<D: db::Handler> db::Handler for AuditingHandler<D> {
     //     `bump_*_version`, `set_*`, `*_synced`, `update_period_nitc_exported`,
     //     `clear_period_nitc_participant`): written by the export worker, not by a
     //     person, and replayed on every export.
+    //   * `stamp_person_contact`: re-orders a person in the contacts feed without
+    //     changing any field; the change that prompted it is audited where it is made.
     // The excluded *shapes* of audited methods (`AccessTime`, session `Info`,
     // `TouchLastUsed`, `LastSyncTime`) are handled inside those methods above.
     // `put_audit_entry` itself must of course not recurse into auditing.
+
+    async fn stamp_person_contact(&self, id: &str) -> db::Result<()> {
+        self.inner.stamp_person_contact(id).await
+    }
 
     async fn put_audit_entry(&self, entry: &AuditEntry) -> db::Result<()> {
         self.inner.put_audit_entry(entry).await

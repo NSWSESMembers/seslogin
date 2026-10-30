@@ -533,6 +533,9 @@ impl db::Handler for FakeDb {
         }
         Ok(())
     }
+    async fn stamp_person_contact(&self, _id: &str) -> db::Result<()> {
+        unsupported()
+    }
     async fn create_period(
         &self,
         person_id: &str,

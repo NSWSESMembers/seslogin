@@ -1329,6 +1329,14 @@ pub trait Handler: Sync {
         id: &str,
         change: PersonUpdateShape<'_>,
     ) -> impl Future<Output = Result<()>> + Send;
+
+    /// Give the person a fresh `contact_key`, putting them back at the head of the
+    /// contacts feed without changing anything else. Used when something the feed
+    /// returns changed outside the person row (their location's name, their
+    /// `person_unit` rows) and to backfill rows written before the feed existed. The
+    /// writes that change a returned field (`create_person`, and `update_person` other
+    /// than `SesApiPersonId`, `MissingSince` and `BadgeState`) stamp the key themselves.
+    fn stamp_person_contact(&self, id: &str) -> impl Future<Output = Result<()>> + Send;
     fn create_period(
         &self,
         person_id: &str,
@@ -1521,7 +1529,8 @@ pub trait Handler: Sync {
 
     /// Make a member's `person_unit` rows exactly `units` (every one of which must carry
     /// this `person_id`): rows not in it are deleted, and rows that are new or differ
-    /// are written. An empty `units` removes them all.
+    /// are written. An empty `units` removes them all. If anything changed, the person
+    /// gets a fresh `contact_key`, since the contacts feed serves their units.
     fn replace_person_units(
         &self,
         person_id: &str,

@@ -163,6 +163,10 @@ impl db::Handler for Handler {
         Self::unsupported()
     }
 
+    async fn stamp_person_contact(&self, _id: &str) -> db::Result<()> {
+        Self::unsupported()
+    }
+
     async fn create_period(
         &self,
         _person_id: &str,
