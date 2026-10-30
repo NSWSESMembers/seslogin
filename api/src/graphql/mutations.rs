@@ -1384,6 +1384,50 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         ))
     }
 
+    /// Set the member a user acts as when signing in or out from the mobile app, or
+    /// clear it with a null `personId`. Any user may be given any member, the super
+    /// user themselves included, and several users may share one member.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::SuperUser)")]
+    async fn set_user_member(
+        &self,
+        user_id: ID,
+        #[graphql(desc = "The member to act as; null clears the link.")] person_id: Option<ID>,
+    ) -> Result<User<A>> {
+        self.app
+            .db()
+            .get_users(&[&user_id])
+            .await?
+            .into_iter()
+            .next()
+            .flatten()
+            .ok_or_else(|| anyhow!("User {:?} not found", user_id))?;
+        if let Some(person_id) = &person_id {
+            self.app
+                .db()
+                .get_persons(&[person_id])
+                .await?
+                .into_iter()
+                .next()
+                .flatten()
+                .filter(|p| p.deleted.is_none())
+                .ok_or_else(|| anyhow!("Member {:?} not found", person_id))?;
+        }
+        self.app
+            .db()
+            .update_user(
+                &user_id,
+                db::UserUpdateShape::Person {
+                    person_id: person_id.as_ref().map(|id| id.as_str()),
+                },
+            )
+            .await?;
+
+        let rec = self.app.db().get_users(&[&user_id]).await?;
+        Ok(User::new(rec.into_iter().next().flatten().ok_or_else(
+            || anyhow!("User with ID {:?} missing", user_id),
+        )?))
+    }
+
     #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
     async fn create_person(
         &self,

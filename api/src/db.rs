@@ -130,6 +130,9 @@ pub struct User {
     /// Locations where the user is Read only: they can view but not change.
     /// Disjoint from `location_grants`.
     pub location_read_only_grants: Vec<String>,
+    /// The member record this user acts as when signing in or out from the mobile
+    /// app. Set by a super user; any number of users may share one member.
+    pub person_id: Option<String>,
     pub access_time: Option<u64>,
     pub email_config: serde_json::Map<String, serde_json::Value>,
     pub disaggregate_virtual_periods: bool,
@@ -160,6 +163,10 @@ pub enum UserUpdateShape<'a> {
     },
     DisaggregateVirtualPeriods {
         value: bool,
+    },
+    /// Set (`Some`) or clear (`None`) the member the user acts as.
+    Person {
+        person_id: Option<&'a str>,
     },
 }
 

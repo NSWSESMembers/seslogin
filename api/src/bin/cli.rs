@@ -1178,6 +1178,7 @@ async fn show_users(db: &impl Handler, users: &[User]) {
             enabled,
             location_grants,
             location_read_only_grants,
+            person_id,
             access_time,
             email_config,
             disaggregate_virtual_periods,
@@ -1210,6 +1211,10 @@ async fn show_users(db: &impl Handler, users: &[User]) {
             ("enabled", bool_str(*enabled)),
             ("location_grants", grants),
             ("location_read_only_grants", read_only_grants),
+            (
+                "person_id",
+                person_id.clone().unwrap_or_else(|| "-".to_string()),
+            ),
             ("access_time", opt_ts(*access_time)),
             (
                 "email_config",

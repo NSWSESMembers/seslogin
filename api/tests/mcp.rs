@@ -380,6 +380,7 @@ async fn tools_list_lists_every_tool() {
         "update_user",
         "disable_user",
         "enable_user",
+        "set_user_member",
         "get_location",
         "list_members",
         "get_member",
@@ -623,6 +624,47 @@ async fn super_user_can_list_create_and_update_users() {
     .await;
     assert_eq!(reply.json["result"]["isError"], false, "{:?}", reply.json);
     assert!(app.db.users.lock().unwrap().get(&new_id).unwrap().enabled);
+
+    // set_user_member links a member, and null clears it.
+    seed_person(&app, "p-1", "loc-1", "Alice", "Anderson", "10000001", None);
+    let reply = post(
+        &app,
+        &schema,
+        Some(&format!("Bearer {token}")),
+        tool_call(
+            "set_user_member",
+            json!({ "userId": new_id, "personId": "p-1" }),
+        ),
+    )
+    .await;
+    assert_eq!(reply.json["result"]["isError"], false, "{:?}", reply.json);
+    assert_eq!(
+        reply.json["result"]["structuredContent"]["user"]["personId"],
+        "p-1"
+    );
+    let reply = post(
+        &app,
+        &schema,
+        Some(&format!("Bearer {token}")),
+        tool_call("set_user_member", json!({ "userId": new_id })),
+    )
+    .await;
+    assert_eq!(reply.json["result"]["isError"], true, "{:?}", reply.json);
+    let reply = post(
+        &app,
+        &schema,
+        Some(&format!("Bearer {token}")),
+        tool_call(
+            "set_user_member",
+            json!({ "userId": new_id, "personId": null }),
+        ),
+    )
+    .await;
+    assert_eq!(reply.json["result"]["isError"], false, "{:?}", reply.json);
+    assert_eq!(
+        app.db.users.lock().unwrap().get(&new_id).unwrap().person_id,
+        None
+    );
 }
 
 #[tokio::test]

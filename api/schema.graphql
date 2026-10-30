@@ -584,6 +584,17 @@ type MutationRoot {
 		"""
 		readOnlyLocationGrants: [String!]
 	): User!
+	"""
+	Set the member a user acts as when signing in or out from the mobile app, or
+	clear it with a null `personId`. Any user may be given any member, the super
+	user themselves included, and several users may share one member.
+	"""
+	setUserMember(		userId: ID!,
+		"""
+		The member to act as; null clears the link.
+		"""
+		personId: ID
+	): User!
 	createPerson(locationId: ID!, firstName: String!, lastName: String!, memberNumber: String!): Person!
 	updatePerson(id: ID!, firstName: String!, lastName: String!, memberNumber: String!): Person!
 	deletePerson(id: ID!): Boolean!
@@ -1629,6 +1640,14 @@ type User {
 	Locations where the user is Read only (can view but not change).
 	"""
 	readOnlyLocationGrantIds: [ID!]!
+	"""
+	The member this user acts as when signing in or out from the mobile app.
+	"""
+	personId: ID
+	"""
+	The member this user acts as, or null if none is set or it no longer exists.
+	"""
+	person: Person
 	locations: [Location!]!
 	passkeys: [PasskeyInfo!]!
 	"""
