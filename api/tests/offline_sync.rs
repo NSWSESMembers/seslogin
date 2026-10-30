@@ -420,6 +420,123 @@ async fn tallys_graphql_grant_works_but_an_mcp_grant_does_not() {
     assert_eq!(status, 401);
 }
 
+fn unit_names(body: &Value) -> Vec<String> {
+    body["units"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|u| u["name"].as_str().unwrap().to_string())
+        .collect()
+}
+
+#[tokio::test]
+async fn units_come_with_a_full_sync_and_again_only_when_they_change() {
+    let (app, auth) = setup().await;
+    seed_location(&app, "loc-h", "Hornsby Unit");
+    seed_location(&app, "loc-gone", "Closed Unit");
+    {
+        let mut locations = app.db.locations.lock().unwrap();
+        locations.get_mut("loc-gone").unwrap().enabled = false;
+        let hornsby = locations.get_mut("loc-h").unwrap();
+        hornsby.ses_details = db::LocationSesDetails {
+            code: Some("HOR".to_string()),
+            latitude: Some(-33.7),
+            longitude: Some(151.1),
+        };
+        hornsby.directory_details = db::LocationDirectoryDetails {
+            entity_id: Some("ent-h".to_string()),
+            address: Some(db::LocationAddress {
+                line1: Some("1 Example Street".to_string()),
+                suburb: Some("Hornsby".to_string()),
+                state: Some("NSW".to_string()),
+                postcode: Some("2077".to_string()),
+                formatted: Some("1 Example Street, Hornsby NSW 2077".to_string()),
+                ..Default::default()
+            }),
+            postal_address: Some(db::LocationAddress {
+                formatted: Some("PO Box 1, Hornsby NSW 1630".to_string()),
+                ..Default::default()
+            }),
+            email: Some("hornsby@example.com".to_string()),
+            phone: Some("(02) 5550 1234".to_string()),
+        };
+        hornsby.accreditations = Some(
+            r#"[{"type":"Flood Rescue","status":"Accredited","number":"FR-1"},{"type":"Vertical Rescue","status":"Not Applicable"}]"#
+                .to_string(),
+        );
+    }
+    for (i, name) in ["Ann", "Ben"].iter().enumerate() {
+        add_person(&app, name, &format!("1000000{i}")).await;
+    }
+    app.db.age_contacts(60);
+
+    // A full sync's first page has every enabled unit, by name; the next page doesn't.
+    let (_, page1) = get(&app, Some(&auth), "limit=1").await;
+    assert_eq!(unit_names(&page1), ["Alpha Unit", "Hornsby Unit"]);
+    assert_eq!(
+        page1["units"][0],
+        serde_json::json!({"id": "loc-a", "name": "Alpha Unit"})
+    );
+    assert_eq!(
+        page1["units"][1],
+        serde_json::json!({
+            "id": "loc-h",
+            "name": "Hornsby Unit",
+            "code": "HOR",
+            "address": {
+                "line1": "1 Example Street", "suburb": "Hornsby", "state": "NSW",
+                "postcode": "2077", "formatted": "1 Example Street, Hornsby NSW 2077",
+            },
+            "postalAddress": { "formatted": "PO Box 1, Hornsby NSW 1630" },
+            "latitude": -33.7,
+            "longitude": 151.1,
+            "phone": "(02) 5550 1234",
+            "email": "hornsby@example.com",
+            "accreditations": [
+                { "type": "Flood Rescue", "status": "Accredited", "number": "FR-1" },
+                { "type": "Vertical Rescue", "status": "Not Applicable" },
+            ],
+        })
+    );
+    let (_, page2) = get(
+        &app,
+        Some(&auth),
+        &format!("limit=1&{}", cursor_query(&page1)),
+    )
+    .await;
+    assert_eq!(ids(&page2).len(), 1);
+    assert!(page2.get("units").is_none());
+    let (_, delta) = get(&app, Some(&auth), &cursor_query(&page2)).await;
+    assert!(delta.get("units").is_none());
+
+    // A change to any unit sends the whole list again, once.
+    app.db
+        .locations
+        .lock()
+        .unwrap()
+        .get_mut("loc-a")
+        .unwrap()
+        .directory_details
+        .phone = Some("(02) 5550 9999".to_string());
+    let (_, changed) = get(&app, Some(&auth), &cursor_query(&delta)).await;
+    assert!(ids(&changed).is_empty());
+    assert_eq!(unit_names(&changed), ["Alpha Unit", "Hornsby Unit"]);
+    assert_eq!(changed["units"][0]["phone"], "(02) 5550 9999");
+    let (_, after) = get(&app, Some(&auth), &cursor_query(&changed)).await;
+    assert!(after.get("units").is_none());
+
+    // So does a unit closing.
+    app.db
+        .locations
+        .lock()
+        .unwrap()
+        .get_mut("loc-h")
+        .unwrap()
+        .enabled = false;
+    let (_, closed) = get(&app, Some(&auth), &cursor_query(&after)).await;
+    assert_eq!(unit_names(&closed), ["Alpha Unit"]);
+}
+
 #[tokio::test]
 async fn limit_is_clamped() {
     let (app, auth) = setup().await;

@@ -1,5 +1,8 @@
 //! `GET /api/v1/sync`: Tally's offline sync, a cursor-based change feed of the data the
-//! app keeps on the device. Today that is the statewide member directory (`contacts`).
+//! app keeps on the device: the statewide member directory (`contacts`) and the unit
+//! directory (`units`), so the app has one sync to run and the API one to maintain.
+//!
+//! Contacts are a change feed:
 //!
 //! - No cursor: every live member, page by page (a full sync).
 //! - With a cursor: only what changed since it — upserts, and `{id, deleted: true}`
@@ -10,6 +13,14 @@
 //! the client replaces what it holds rather than merging. A contact carries the member's
 //! directory details (preferred name, mobile, every phone number), their SES capability
 //! tags and their unit assignments (`person_unit`, primary first, then by name).
+//!
+//! Units are small (one per enabled location, ~280) and change rarely, so they are not a
+//! feed: a response carries the whole list, by name, whenever it differs from the one
+//! the cursor last delivered, and leaves `units` out otherwise. The cursor records a
+//! hash of the list it was issued with, so a full sync's first page always has them and
+//! the pages after it don't. Each unit is what location sync stored for the location
+//! (code, coordinates, addresses, phone, email, accreditations), any of which may be
+//! missing.
 //!
 //! Ordering comes from the person table's `contact_key` (see SCHEMA.md), restamped by
 //! every write that changes a field returned here. The cursor is the last key sent,
@@ -73,6 +84,9 @@ struct Cursor {
     k: String,
     /// `DB_PREFIX`: a cursor only means anything against the database it came from.
     e: String,
+    /// The [`units_version`] of the units list already delivered, if any.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    u: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -161,10 +175,70 @@ enum Entry<'a> {
     Tombstone(Tombstone<'a>),
 }
 
+/// One enabled location, as location sync stored it.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct Unit<'a> {
+    id: &'a str,
+    name: &'a str,
+    /// The SES code, e.g. `HOR`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    code: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    address: Option<Address<'a>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    postal_address: Option<Address<'a>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    latitude: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    longitude: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    phone: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    email: Option<&'a str>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    accreditations: Vec<Accreditation>,
+}
+
+/// A directory address; `formatted` is the whole address on one line.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct Address<'a> {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    line1: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    line2: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    suburb: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    state: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    postcode: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    formatted: Option<&'a str>,
+}
+
+/// One of a unit's rescue accreditations. "Not Applicable" rows are kept, so "not
+/// applicable" and "no record" stay distinct.
+#[derive(Serialize)]
+struct Accreditation {
+    #[serde(rename = "type")]
+    accreditation_type: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    status: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    number: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    note: Option<String>,
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct SyncResponse<'a> {
     contacts: Vec<Entry<'a>>,
+    /// Every unit, when the list differs from the one the cursor last delivered.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    units: Option<&'a [Unit<'a>]>,
     next_cursor: String,
     has_more: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -210,14 +284,36 @@ pub async fn sync<A: App + HasDb + HasQueues>(
     let after = match params.get("cursor").filter(|c| !c.is_empty()) {
         None => None,
         Some(raw) => match decode_cursor(&key, raw) {
-            Some(c) if c.v == CURSOR_VERSION && c.e == env => Some(c.k),
+            Some(c) if c.v == CURSOR_VERSION && c.e == env => Some(c),
             _ => return error_reply(410, "cursor_expired"),
         },
+    };
+    let (after, units_delivered) = match after {
+        Some(c) => (Some(c.k), c.u),
+        None => (None, None),
     };
     let full_sync = after.is_none();
     let before = format!("{:020}", crate::clock::now_us().saturating_sub(SETTLE_US));
 
     let db = app.db();
+    let mut directory = match db
+        .list_locations(db::ListLocationsFilter::EnabledOnly)
+        .await
+    {
+        Ok(rows) => rows,
+        Err(e) => return db_failure("list locations", e),
+    };
+    directory.retain(|l| l.enabled);
+    directory.sort_by(|a, b| {
+        a.name
+            .to_lowercase()
+            .cmp(&b.name.to_lowercase())
+            .then_with(|| a.id.cmp(&b.id))
+    });
+    let directory_units: Vec<Unit> = directory.iter().map(unit).collect();
+    let version = units_version(&directory_units);
+    let send_units = units_delivered.as_deref() != Some(version.as_str());
+
     // A full sync skips tombstones: the client removes whatever it didn't receive.
     let page = match db
         .list_contact_changes(after.as_deref(), &before, !full_sync, limit)
@@ -320,6 +416,7 @@ pub async fn sync<A: App + HasDb + HasQueues>(
             v: CURSOR_VERSION,
             k: next_key,
             e: env,
+            u: Some(version),
         },
     );
 
@@ -334,6 +431,7 @@ pub async fn sync<A: App + HasDb + HasQueues>(
 
     let body = serde_json::to_vec(&SyncResponse {
         contacts,
+        units: send_units.then_some(&directory_units[..]),
         next_cursor,
         has_more: page.has_more,
         total,
@@ -397,6 +495,47 @@ fn unit_assignment(u: &db::PersonUnit) -> UnitAssignment<'_> {
         positions: &u.positions,
         is_primary: u.is_primary,
     }
+}
+
+fn address(a: &db::LocationAddress) -> Address<'_> {
+    Address {
+        line1: a.line1.as_deref(),
+        line2: a.line2.as_deref(),
+        suburb: a.suburb.as_deref(),
+        state: a.state.as_deref(),
+        postcode: a.postcode.as_deref(),
+        formatted: a.formatted.as_deref(),
+    }
+}
+
+fn unit(l: &db::Location) -> Unit<'_> {
+    Unit {
+        id: &l.id,
+        name: &l.name,
+        code: l.ses_details.code.as_deref(),
+        address: l.directory_details.address.as_ref().map(address),
+        postal_address: l.directory_details.postal_address.as_ref().map(address),
+        latitude: l.ses_details.latitude,
+        longitude: l.ses_details.longitude,
+        phone: l.directory_details.phone.as_deref(),
+        email: l.directory_details.email.as_deref(),
+        accreditations: ses_details::read_accreditations(&l.id, l.accreditations.as_deref())
+            .into_iter()
+            .map(|a| Accreditation {
+                accreditation_type: a.accreditation_type,
+                status: a.status,
+                number: a.number,
+                note: a.note,
+            })
+            .collect(),
+    }
+}
+
+/// A short hash of the units list as it is serialized: equal exactly when the list is.
+fn units_version(units: &[Unit]) -> String {
+    use sha2::Digest;
+    let json = serde_json::to_vec(units).expect("units are plain serde structs");
+    BASE64_URL_SAFE_NO_PAD.encode(&Sha256::digest(&json)[..12])
 }
 
 fn db_prefix() -> String {
@@ -499,6 +638,7 @@ mod tests {
             v: 1,
             k: "00000000000000000001#abc".into(),
             e: "seslogin_test".into(),
+            u: Some("abc".into()),
         };
         let raw = encode_cursor(&key, &cursor);
         assert_eq!(decode_cursor(&key, &raw), Some(cursor));

@@ -431,8 +431,9 @@ mutation {
 
 `GET /api/v1/sync?cursor=<opaque>&limit=<n>` is the Tally app's offline sync
 (`src/offline_sync.rs`): one cursor-based change feed for the data the app keeps on the
-device, so there is a single sync to maintain. Today that is the member directory
-(`contacts`): every member, statewide, with only these fields:
+device, so there is a single sync to maintain: the member directory (`contacts`) and
+the unit directory (`units`). Contacts are every member, statewide, with only these
+fields:
 
 ```json
 {
@@ -450,6 +451,15 @@ device, so there is a single sync to maintain. Today that is the member director
       "updatedAt": 1783655893 },
     { "id": "…", "deleted": true }
   ],
+  "units": [
+    { "id": "…", "name": "Hornsby Unit", "code": "HOR",
+      "address": { "line1": "…", "line2": "…", "suburb": "Hornsby", "state": "NSW",
+                   "postcode": "2077", "formatted": "…" },
+      "postalAddress": { "formatted": "…" },
+      "latitude": -33.7, "longitude": 151.1, "phone": "…", "email": "…",
+      "accreditations": [{ "type": "Flood Rescue", "status": "Accredited", "number": "…",
+                           "note": "…" }] }
+  ],
   "nextCursor": "…",
   "hasMore": false,
   "total": 12034
@@ -461,6 +471,19 @@ from member sync, and `units` are the member's `person_unit` rows (their units p
 clusters, Community Action Teams and staff sections), primary first and then by name.
 An optional field, and an empty list, is left out, and an upsert is always the whole
 contact, so the client replaces what it holds rather than merging.
+
+**Units** are not a change feed: there are only ~280 and they rarely change, so a
+response carries the whole list, every enabled location by name, whenever it differs
+from the list the cursor last delivered, and leaves `units` out otherwise. The cursor
+records a hash of the list, so a full sync's first page always has it and its later
+pages don't. When `units` is present the client replaces its whole list (a unit missing
+from it has closed). Each unit is what location sync stored: the code and coordinates
+from the SES API's headquarters record, the addresses, phone and email from the
+location's SES intranet directory entity, and the accreditations (sorted by type,
+"Not Applicable" rows kept) from the SES API. Any of those may be missing: 29 units have
+no coordinates, and State Headquarters and a few pseudo-units have no directory entity.
+Zones and State Headquarters are locations too, so they are listed. Each response reads
+the location table (a Scan of ~280 rows) to compute the hash.
 
 - **No cursor** is a full sync: every live member, page by page, with `total` on the
   first page. Tombstones are left out; the client drops anything it didn't receive.
