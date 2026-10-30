@@ -1,4 +1,4 @@
-import { Outlet, useLocation } from "react-router";
+import { Link, Outlet, useLocation } from "react-router";
 import { ErrorBoundary } from "react-error-boundary";
 import TopBar from "../admin/components/TopBar";
 import ClientVersionLabel from "../components/ClientVersionLabel";
@@ -20,7 +20,8 @@ export default function Layout() {
       <Outlet />
       <footer className="bg-surface-sunken p-2.5 text-center text-xs text-ink-muted">
         NSW SES Volunteers &mdash; SESLogin v2 &mdash; <ClientVersionLabel />{" "}
-        &mdash; <HelpLink>{(close) => <EmailHelp onClose={close} />}</HelpLink>
+        &mdash; <HelpLink>{(close) => <EmailHelp onClose={close} />}</HelpLink>{" "}
+        &mdash; <Link to="/privacy">Privacy</Link>
       </footer>
     </ErrorBoundary>
   );
