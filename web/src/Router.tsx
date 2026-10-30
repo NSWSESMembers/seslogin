@@ -16,6 +16,7 @@ import NotFound from "./components/NotFound";
 // Home is the landing page — keep it eager for fast first paint.
 import HomeLayout from "./home/Layout";
 import Home from "./home/Home";
+import Privacy from "./home/Privacy";
 import Support from "./home/Support";
 
 // Admin and kiosk are mutually-exclusive areas, lazily loaded as separate chunks.
@@ -60,6 +61,8 @@ export default function Router() {
               <Route index element={<Home />} />
               {/* The Support URL listed on the app stores for Tally. */}
               <Route path="support" element={<Support />} />
+              {/* The privacy policy URL listed on the app stores for Tally. */}
+              <Route path="privacy" element={<Privacy />} />
             </Route>
 
             {/* User guides - public, static pages compiled from web/guide/ */}
