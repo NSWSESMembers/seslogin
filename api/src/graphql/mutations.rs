@@ -3554,15 +3554,18 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
             _ => return Err(anyhow!("Must provide user token")),
         };
 
-        let registration =
-            oauth::decode_client_id(&self.app.server_secret().oauth_client_id_key(), &client_id)
-                .ok_or_else(|| anyhow!("Unknown or invalid client"))?;
-        if !registration
-            .redirect_uris
-            .iter()
-            .any(|u| u == &redirect_uri)
+        let client = crate::oauth_clients::resolve_client(
+            &self.app.server_secret().oauth_client_id_key(),
+            &client_id,
+        )
+        .ok_or_else(|| anyhow!("Unknown or invalid client"))?;
+        super::auth::check_oauth_redirect(ctx, &*self.app, &client, &redirect_uri).await?;
+        // Path only: there's no reliable API base URL here. The token endpoint
+        // checks the full URL; this just refuses early, before a code is minted.
+        if let Some(resource) = &resource
+            && !client.allows_resource_path(resource)
         {
-            return Err(anyhow!("redirect_uri is not registered for this client"));
+            return Err(anyhow!("resource is not available to this client"));
         }
         if code_challenge_method != "S256" {
             return Err(anyhow!("code_challenge_method must be S256"));
@@ -3589,7 +3592,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         let payload = crate::oauth_http::AuthCodePayload {
             user_id,
             client_id: client_id.clone(),
-            client_name: registration.client_name,
+            client_name: client.client_name,
             redirect_uri: redirect_uri.clone(),
             code_challenge,
             scope,

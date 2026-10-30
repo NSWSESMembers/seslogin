@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<816a1b3e976e5e43e0b1298dc2530d90>>
+ * @generated SignedSource<<df5490bce504ac72c3eb9340ce70cd4d>>
  * @lightSyntaxTransform
  */
 
@@ -15,6 +15,8 @@ export type OAuthAuthorizeQuery$variables = {
 export type OAuthAuthorizeQuery$data = {
   readonly oauthAuthorizationRequest: {
     readonly clientName: string;
+    readonly isDevelopmentBuild: boolean;
+    readonly isFirstParty: boolean;
     readonly redirectHost: string;
   };
 };
@@ -69,6 +71,20 @@ v1 = [
         "kind": "ScalarField",
         "name": "redirectHost",
         "storageKey": null
+      },
+      {
+        "alias": null,
+        "args": null,
+        "kind": "ScalarField",
+        "name": "isFirstParty",
+        "storageKey": null
+      },
+      {
+        "alias": null,
+        "args": null,
+        "kind": "ScalarField",
+        "name": "isDevelopmentBuild",
+        "storageKey": null
       }
     ],
     "storageKey": null
@@ -94,16 +110,16 @@ return {
     "selections": (v1/*:: as any*/)
   },
   "params": {
-    "cacheID": "fb956fce805ba584d8f8f6f43c3e659e",
+    "cacheID": "31e43eb92984b348682bc01e1cc6ec5d",
     "id": null,
     "metadata": {},
     "name": "OAuthAuthorizeQuery",
     "operationKind": "query",
-    "text": "query OAuthAuthorizeQuery(\n  $clientId: String!\n  $redirectUri: String!\n) {\n  oauthAuthorizationRequest(clientId: $clientId, redirectUri: $redirectUri) {\n    clientName\n    redirectHost\n  }\n}\n"
+    "text": "query OAuthAuthorizeQuery(\n  $clientId: String!\n  $redirectUri: String!\n) {\n  oauthAuthorizationRequest(clientId: $clientId, redirectUri: $redirectUri) {\n    clientName\n    redirectHost\n    isFirstParty\n    isDevelopmentBuild\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "ace7dc519e98ff36fe04a5796dec84a3";
+(node as any).hash = "5ced6686bd805bb988066d3e1b0e30bb";
 
 export default node;

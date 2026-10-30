@@ -24,6 +24,7 @@ use crate::clock::now_sec;
 use crate::db;
 use crate::db::Handler;
 use crate::oauth::{self, ACCESS_TOKEN_LIFETIME_S, DEFAULT_SCOPE};
+use crate::oauth_clients::resolve_client;
 
 /// A framework-agnostic HTTP response: enough for the three plain-JSON endpoints
 /// here, nothing more (no streaming, no multi-value headers beyond what a
@@ -307,17 +308,13 @@ pub struct AuthCodePayload {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub scope: Option<String>,
     /// RFC 8707 `resource`, as given at the authorization request (or `None` if
-    /// the client didn't send one). `None` here means "default to `<api base>/mcp`
-    /// at token time" — the authorization endpoint has no reliable API base URL
-    /// of its own to fill this in with (see `graphql::mutations::approve_oauth_authorization`).
+    /// the client didn't send one). `None` here means "default to the client's
+    /// first allowed resource at token time" (`<api base>/mcp` for a dynamic
+    /// client; see [`crate::oauth_clients::Client::default_resource`]) — the
+    /// authorization endpoint has no reliable API base URL of its own to fill
+    /// this in with (see `graphql::mutations::approve_oauth_authorization`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub resource: Option<String>,
-}
-
-/// The resource (audience) a grant is minted for when the client never asked for
-/// one explicitly, at either the authorization request or the token request.
-fn default_resource(host: Option<&str>) -> String {
-    format!("{}/mcp", api_base_url(host))
 }
 
 // ── RFC 6749 §3.2: token endpoint ───────────────────────────────────────────
@@ -397,10 +394,9 @@ async fn token_authorization_code<A: App + HasDb>(
         return error_reply(400, "invalid_grant", "Malformed authorization code");
     };
 
-    let key = app.server_secret().oauth_client_id_key();
-    if oauth::decode_client_id(&key, client_id).is_none() {
+    let Some(client) = resolve_client(&app.server_secret().oauth_client_id_key(), client_id) else {
         return error_reply(401, "invalid_client", "Unknown client");
-    }
+    };
     if payload.client_id != *client_id {
         return error_reply(
             400,
@@ -423,10 +419,11 @@ async fn token_authorization_code<A: App + HasDb>(
         );
     }
 
+    let api_base = api_base_url(host);
     let resource = payload
         .resource
         .clone()
-        .unwrap_or_else(|| default_resource(host));
+        .unwrap_or_else(|| client.default_resource(&api_base));
     if let Some(requested) = params.get("resource")
         && requested != &resource
     {
@@ -434,6 +431,15 @@ async fn token_authorization_code<A: App + HasDb>(
             400,
             "invalid_target",
             "resource does not match the authorization request",
+        );
+    }
+    // Dynamic clients get `<base>/mcp` only; a static client gets only the
+    // resources listed for it (`oauth_clients::STATIC_CLIENTS`).
+    if !client.allows_resource(&api_base, &resource) {
+        return error_reply(
+            400,
+            "invalid_target",
+            "resource is not available to this client",
         );
     }
     let scope = payload

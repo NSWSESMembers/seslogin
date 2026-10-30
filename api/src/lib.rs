@@ -29,6 +29,7 @@ pub mod mockrealtime;
 pub mod nitc_export;
 pub mod nonce;
 pub mod oauth;
+pub mod oauth_clients;
 pub mod oauth_http;
 pub mod period_link;
 pub mod queue;

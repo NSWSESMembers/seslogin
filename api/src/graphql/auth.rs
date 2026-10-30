@@ -4,8 +4,10 @@ use async_graphql::ErrorExtensions;
 use async_graphql::Guard;
 
 use super::error::ApiError;
+use crate::app::{App, HasDb};
 use crate::auth::AuthInfo;
 use crate::db;
+use crate::db::Handler as _;
 
 /// Build a guard-check failure carrying `extensions.code = "UNAUTHENTICATED"`.
 /// Guard failures bypass the resolver entirely — there is no `anyhow::Result` for
@@ -214,6 +216,44 @@ pub(crate) fn require_period_write_access(ctx: &Context<'_>, period: &db::Period
         }
         _ => require_location_write_access(ctx, &period.location_id),
     }
+}
+
+/// Check `redirect_uri` against `client` at the OAuth consent step
+/// (`oauthAuthorizationRequest`, `approveOauthAuthorization`). Returns whether it
+/// is an Expo Go development redirect, which only a developer account (`is_dev`)
+/// may approve; see [`crate::oauth_clients::is_dev_expo_redirect`].
+pub(crate) async fn check_oauth_redirect<A: App + HasDb>(
+    ctx: &Context<'_>,
+    app: &A,
+    client: &crate::oauth_clients::Client,
+    redirect_uri: &str,
+) -> Result<bool> {
+    if client.allows_redirect_uri(redirect_uri) {
+        return Ok(false);
+    }
+    if !client.allows_dev_redirect_uri(redirect_uri) {
+        return Err(anyhow::anyhow!(
+            "redirect_uri is not registered for this client"
+        ));
+    }
+    let Some(AuthInfo::User { id, .. }) = ctx.data_opt::<AuthInfo>() else {
+        return Err(anyhow::anyhow!("Must provide user token"));
+    };
+    let is_dev = app
+        .db()
+        .get_users(&[id])
+        .await?
+        .into_iter()
+        .next()
+        .flatten()
+        .is_some_and(|u| u.is_dev);
+    if !is_dev {
+        return Err(ApiError::forbidden(
+            "redirect_uri is a development build's; only a developer account can approve it",
+        )
+        .into());
+    }
+    Ok(true)
 }
 
 /// Reject read-only API tokens. Called at the top of every mutation resolver.

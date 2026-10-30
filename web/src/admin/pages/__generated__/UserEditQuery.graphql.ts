@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<dd7eb8a3999fbacb629c8c3a9c5712d6>>
+ * @generated SignedSource<<52486860c4c79ee64a2c1e5e3aa19a5b>>
  * @lightSyntaxTransform
  */
 
@@ -27,6 +27,7 @@ export type UserEditQuery$data = {
       readonly clientName: string;
       readonly createdAt: number;
       readonly id: string;
+      readonly isFirstParty: boolean;
       readonly lastUsedAt: number | null | undefined;
       readonly redirectHost: string;
     }>;
@@ -138,6 +139,13 @@ v2 = [
             "alias": null,
             "args": null,
             "kind": "ScalarField",
+            "name": "isFirstParty",
+            "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
             "name": "createdAt",
             "storageKey": null
           },
@@ -194,16 +202,16 @@ return {
     "selections": (v2/*:: as any*/)
   },
   "params": {
-    "cacheID": "5a5dcdf3ecde1042a4e4dbb822eca501",
+    "cacheID": "81a0c271e3c9a264d6f2084b52a6eaa8",
     "id": null,
     "metadata": {},
     "name": "UserEditQuery",
     "operationKind": "query",
-    "text": "query UserEditQuery(\n  $id: ID!\n) {\n  user(id: $id) {\n    id\n    email\n    isSuper\n    isDev\n    enabled\n    locationGrantIds\n    readOnlyLocationGrantIds\n    oauthGrants {\n      id\n      clientName\n      redirectHost\n      createdAt\n      lastUsedAt\n    }\n  }\n  locations {\n    id\n    name\n  }\n}\n"
+    "text": "query UserEditQuery(\n  $id: ID!\n) {\n  user(id: $id) {\n    id\n    email\n    isSuper\n    isDev\n    enabled\n    locationGrantIds\n    readOnlyLocationGrantIds\n    oauthGrants {\n      id\n      clientName\n      redirectHost\n      isFirstParty\n      createdAt\n      lastUsedAt\n    }\n  }\n  locations {\n    id\n    name\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "dbe28d8d598a6edf9aa511b3f9f1cb4e";
+(node as any).hash = "4091db3c3926f4a8eeb2c9ec964e398d";
 
 export default node;

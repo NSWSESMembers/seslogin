@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<4fbd412bea52ef869e1b36a866f79460>>
+ * @generated SignedSource<<3dc59bc446977888fe8eb4a25035b5a6>>
  * @lightSyntaxTransform
  */
 
@@ -16,6 +16,7 @@ export type SettingsConnectedAppsQuery$data = {
       readonly clientName: string;
       readonly createdAt: number;
       readonly id: string;
+      readonly isFirstParty: boolean;
       readonly lastUsedAt: number | null | undefined;
       readonly redirectHost: string;
       readonly refreshExpiresAt: number;
@@ -72,6 +73,13 @@ v1 = [
             "alias": null,
             "args": null,
             "kind": "ScalarField",
+            "name": "isFirstParty",
+            "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
             "name": "createdAt",
             "storageKey": null
           },
@@ -116,16 +124,16 @@ return {
     "selections": (v1/*:: as any*/)
   },
   "params": {
-    "cacheID": "31a93e4ec04f712e0e60d2f20a312e16",
+    "cacheID": "e314d9e3ceccecc8c05a8b179e64bc4c",
     "id": null,
     "metadata": {},
     "name": "SettingsConnectedAppsQuery",
     "operationKind": "query",
-    "text": "query SettingsConnectedAppsQuery {\n  user {\n    id\n    oauthGrants {\n      id\n      clientName\n      redirectHost\n      createdAt\n      lastUsedAt\n      refreshExpiresAt\n    }\n  }\n}\n"
+    "text": "query SettingsConnectedAppsQuery {\n  user {\n    id\n    oauthGrants {\n      id\n      clientName\n      redirectHost\n      isFirstParty\n      createdAt\n      lastUsedAt\n      refreshExpiresAt\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "e342aad0f648f190acf755bea82b562d";
+(node as any).hash = "9308c20e6a4c9076e1e459950d9c80d4";
 
 export default node;

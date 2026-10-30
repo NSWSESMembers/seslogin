@@ -315,3 +315,147 @@ async fn refresh_is_refused_once_the_user_is_disabled() {
     assert_eq!(reply.status, 400);
     assert_eq!(body_of(&reply)["error"], "invalid_grant");
 }
+
+// ── resource rules (static vs dynamic clients) ──────────────────────────────
+
+const TALLY_REDIRECT_URI: &str = "tally://oauth/callback";
+
+/// Seed a code for `client_id`/`redirect_uri` asking for `resource` at the
+/// authorization request, exchange it at `api.seslogin.com`, and return the reply.
+async fn exchange(
+    app: &MyApp<FakeDb, mockqueue::Handler, mockmail::Handler, mockrealtime::Handler>,
+    client_id: &str,
+    redirect_uri: &str,
+    resource: Option<&str>,
+) -> oauth_http::HttpReply {
+    let (verifier, challenge) = pkce_pair();
+    let code = seed_code(
+        app,
+        AuthCodePayload {
+            user_id: "user-1".to_string(),
+            client_id: client_id.to_string(),
+            client_name: "Test Client".to_string(),
+            redirect_uri: redirect_uri.to_string(),
+            code_challenge: challenge.to_string(),
+            scope: None,
+            resource: resource.map(str::to_string),
+        },
+    )
+    .await;
+    let body = format!(
+        "grant_type=authorization_code&code={code}&client_id={client_id}&redirect_uri={}&code_verifier={verifier}",
+        urlencoding_stub(redirect_uri),
+    );
+    oauth_http::token(app, Some("api.seslogin.com"), body.as_bytes()).await
+}
+
+fn only_grant_resource(
+    app: &MyApp<FakeDb, mockqueue::Handler, mockmail::Handler, mockrealtime::Handler>,
+) -> String {
+    let grants = app.db.oauth_grants.lock().unwrap();
+    assert_eq!(grants.len(), 1);
+    grants.values().next().unwrap().resource.clone()
+}
+
+#[tokio::test]
+async fn static_client_defaults_to_its_own_resource() {
+    let app = fake_app();
+    seed_user(&app, "user-1", true);
+    let reply = exchange(&app, "tally", TALLY_REDIRECT_URI, None).await;
+    assert_eq!(reply.status, 200, "body: {}", reply.body);
+    assert_eq!(
+        only_grant_resource(&app),
+        "https://api.seslogin.com/graphql"
+    );
+}
+
+#[tokio::test]
+async fn static_client_gets_an_explicitly_requested_allowed_resource() {
+    let app = fake_app();
+    seed_user(&app, "user-1", true);
+    let reply = exchange(
+        &app,
+        "tally",
+        TALLY_REDIRECT_URI,
+        Some("https://api.seslogin.com/graphql"),
+    )
+    .await;
+    assert_eq!(reply.status, 200, "body: {}", reply.body);
+    assert_eq!(
+        only_grant_resource(&app),
+        "https://api.seslogin.com/graphql"
+    );
+}
+
+#[tokio::test]
+async fn static_client_cannot_get_a_resource_not_listed_for_it() {
+    for resource in [
+        "https://api.seslogin.com/mcp",
+        "https://elsewhere.example/graphql",
+    ] {
+        let app = fake_app();
+        seed_user(&app, "user-1", true);
+        let reply = exchange(&app, "tally", TALLY_REDIRECT_URI, Some(resource)).await;
+        assert_eq!(reply.status, 400, "{resource}: {}", reply.body);
+        assert_eq!(body_of(&reply)["error"], "invalid_target");
+        assert!(app.db.oauth_grants.lock().unwrap().is_empty());
+    }
+}
+
+#[tokio::test]
+async fn dynamic_client_defaults_to_mcp() {
+    let app = fake_app();
+    seed_user(&app, "user-1", true);
+    let client_id = registration_client_id(&app, REDIRECT_URI);
+    let reply = exchange(&app, &client_id, REDIRECT_URI, None).await;
+    assert_eq!(reply.status, 200, "body: {}", reply.body);
+    assert_eq!(only_grant_resource(&app), "https://api.seslogin.com/mcp");
+}
+
+#[tokio::test]
+async fn dynamic_client_cannot_get_anything_but_mcp() {
+    for resource in [
+        "https://api.seslogin.com/graphql",
+        "https://api.seslogin.com/",
+        "https://api.seslogin.com/mcp/",
+        "https://elsewhere.example/mcp",
+    ] {
+        let app = fake_app();
+        seed_user(&app, "user-1", true);
+        let client_id = registration_client_id(&app, REDIRECT_URI);
+        let reply = exchange(&app, &client_id, REDIRECT_URI, Some(resource)).await;
+        assert_eq!(reply.status, 400, "{resource}: {}", reply.body);
+        assert_eq!(body_of(&reply)["error"], "invalid_target");
+        assert!(app.db.oauth_grants.lock().unwrap().is_empty());
+    }
+}
+
+#[tokio::test]
+async fn refresh_cannot_change_the_grants_resource() {
+    let app = fake_app();
+    seed_user(&app, "user-1", true);
+    let reply = exchange(&app, "tally", TALLY_REDIRECT_URI, None).await;
+    assert_eq!(reply.status, 200, "body: {}", reply.body);
+    let refresh_token = body_of(&reply)["refresh_token"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let body = format!(
+        "grant_type=refresh_token&refresh_token={refresh_token}&client_id=tally&resource={}",
+        urlencoding_stub("https://api.seslogin.com/mcp"),
+    );
+    let reply = oauth_http::token(&app, Some("api.seslogin.com"), body.as_bytes()).await;
+    assert_eq!(reply.status, 400, "body: {}", reply.body);
+    assert_eq!(body_of(&reply)["error"], "invalid_target");
+
+    // The refused request didn't rotate the grant: the same refresh token still
+    // works, and the grant keeps its resource.
+    let body = format!("grant_type=refresh_token&refresh_token={refresh_token}&client_id=tally");
+    let reply = oauth_http::token(&app, Some("api.seslogin.com"), body.as_bytes()).await;
+    assert_eq!(reply.status, 200, "body: {}", reply.body);
+    assert_eq!(
+        only_grant_resource(&app),
+        "https://api.seslogin.com/graphql"
+    );
+}

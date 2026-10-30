@@ -134,6 +134,8 @@ function ConsentScreen({
         ) {
           clientName
           redirectHost
+          isFirstParty
+          isDevelopmentBuild
         }
       }
     `,
@@ -194,7 +196,8 @@ function ConsentScreen({
     window.location.assign(denialUrl(redirectUri, state));
   }
 
-  const { clientName, redirectHost } = data.oauthAuthorizationRequest;
+  const { clientName, redirectHost, isFirstParty, isDevelopmentBuild } =
+    data.oauthAuthorizationRequest;
   const busy = isApproving || denying;
 
   return (
@@ -205,12 +208,29 @@ function ConsentScreen({
           <strong>{clientName}</strong> wants to connect to your SESLogin
           account.
         </PanelIntro>
-        <PanelMessage variant="warning">
-          It will redirect to <strong>{redirectHost}</strong> once approved.
-          Only approve this if you started this connection yourself, from that
-          app or AI tool — don't approve it because a link or message told you
-          to.
-        </PanelMessage>
+        {isDevelopmentBuild ? (
+          // Only a developer account gets here: the API refuses anyone else.
+          <PanelMessage variant="warning">
+            This is a <strong>development build</strong> of {clientName},
+            running from <strong>{redirectHost}</strong>. Only approve this if
+            you are running it on that machine yourself.
+          </PanelMessage>
+        ) : isFirstParty ? (
+          // A first-party app's redirect is a custom scheme whose "host" means
+          // nothing to a reader, so name the app instead.
+          <PanelMessage variant="warning">
+            {clientName} is SESLogin's own app. Only approve this if you just
+            signed in from {clientName} yourself — don't approve it because a
+            link or message told you to.
+          </PanelMessage>
+        ) : (
+          <PanelMessage variant="warning">
+            It will redirect to <strong>{redirectHost}</strong> once approved.
+            Only approve this if you started this connection yourself, from that
+            app or AI tool — don't approve it because a link or message told you
+            to.
+          </PanelMessage>
+        )}
         <p className="my-4">
           This will let it act as you (<strong>{user.email}</strong>) in
           SESLogin, with all of your permissions.

@@ -325,13 +325,23 @@ pub struct Environment {
 }
 
 /// What the OAuth consent screen needs to show before a user approves or denies
-/// an authorization request: the client's self-claimed name, and — the one
-/// value that actually matters, since DCR is unauthenticated — the host it will
-/// redirect back to.
+/// an authorization request: the client's name, and — the one value that
+/// actually matters for a dynamically registered client, whose name is
+/// self-claimed — the host it will redirect back to.
 #[derive(SimpleObject, Clone, Debug)]
 pub struct OAuthAuthorizationRequest {
     pub client_name: String,
+    /// Host of the redirect URI. Meaningless for a first-party app's custom
+    /// scheme (`tally://oauth/callback` gives `oauth`), so show
+    /// `isFirstParty` instead when it's true.
     pub redirect_host: String,
+    /// One of SESLogin's own apps (`oauth_clients::STATIC_CLIENTS`), whose name
+    /// and redirect are fixed in code, rather than a self-registered client.
+    pub is_first_party: bool,
+    /// A development build of a first-party app, redirecting to the Expo server
+    /// on a developer's machine (`redirectHost`, with its port). Only a developer
+    /// account gets this far; anyone else is refused.
+    pub is_development_build: bool,
 }
 
 #[derive(SimpleObject, Clone, Debug)]
@@ -3625,12 +3635,19 @@ impl OAuthGrant {
     }
     /// Host the client's tokens redirect back to. Shown instead of the
     /// (unauthenticated, self-claimed) client name alone, same as on the
-    /// consent screen.
+    /// consent screen. Meaningless when `isFirstParty`, so show that instead.
     async fn redirect_host(&self) -> String {
         url::Url::parse(&self.rec.redirect_uri)
             .ok()
             .and_then(|u| u.host_str().map(str::to_string))
             .unwrap_or_else(|| self.rec.redirect_uri.clone())
+    }
+    /// Granted to one of SESLogin's own apps (`oauth_clients::STATIC_CLIENTS`)
+    /// at one of its registered redirects. False for a self-registered client,
+    /// and for a development build's grant, which shows its address instead.
+    async fn is_first_party(&self) -> bool {
+        crate::oauth_clients::static_client(&self.rec.client_id)
+            .is_some_and(|c| c.redirect_uris.contains(&self.rec.redirect_uri.as_str()))
     }
     async fn scope(&self) -> &str {
         &self.rec.scope
@@ -4416,22 +4433,27 @@ impl<A: App + HasDb + HasRealtime + Send + Sync + 'static> QueryRoot<A> {
         redirect_uri: String,
     ) -> Result<OAuthAuthorizationRequest> {
         let app = ctx.data_unchecked::<Arc<A>>();
-        let registration =
-            crate::oauth::decode_client_id(&app.server_secret().oauth_client_id_key(), &client_id)
-                .ok_or_else(|| anyhow!("Unknown or invalid client"))?;
-        if !registration
-            .redirect_uris
-            .iter()
-            .any(|u| u == &redirect_uri)
-        {
-            return Err(anyhow!("redirect_uri is not registered for this client"));
-        }
-        let redirect_host = url::Url::parse(&redirect_uri)
-            .ok()
-            .and_then(|u| u.host_str().map(str::to_string))
+        let client = crate::oauth_clients::resolve_client(
+            &app.server_secret().oauth_client_id_key(),
+            &client_id,
+        )
+        .ok_or_else(|| anyhow!("Unknown or invalid client"))?;
+        let is_development_build =
+            super::auth::check_oauth_redirect(ctx, &**app, &client, &redirect_uri).await?;
+        let url = url::Url::parse(&redirect_uri)
+            .map_err(|_| anyhow!("redirect_uri is not a valid URL"))?;
+        let host = url
+            .host_str()
             .ok_or_else(|| anyhow!("redirect_uri has no host"))?;
+        // A development build is identified by the machine serving it, port and all.
+        let redirect_host = match url.port() {
+            Some(port) if is_development_build => format!("{host}:{port}"),
+            _ => host.to_string(),
+        };
         Ok(OAuthAuthorizationRequest {
-            client_name: registration.client_name,
+            is_first_party: client.is_first_party(),
+            is_development_build,
+            client_name: client.client_name,
             redirect_host,
         })
     }
