@@ -49,7 +49,7 @@ struct Table {
     /// Suffix after `${DB_PREFIX}_`.
     name: &'static str,
     hash: &'static str,
-    /// The table's range key, for the one table that has one.
+    /// The table's range key, if it has one.
     range: Option<&'static str>,
     /// Every attribute used as a table or index key, with its type.
     attrs: &'static [Attr],
@@ -74,6 +74,15 @@ const fn keys_only(name: &'static str, hash: &'static str) -> Gsi {
         name,
         hash,
         range: None,
+        keys_only: true,
+    }
+}
+
+const fn keys_only_ranged(name: &'static str, hash: &'static str, range: &'static str) -> Gsi {
+    Gsi {
+        name,
+        hash,
+        range: Some(range),
         keys_only: true,
     }
 }
@@ -361,6 +370,14 @@ const TABLES: &[Table] = &[
         range: None,
         attrs: &[Attr("id", S), Attr("location_id", S)],
         gsis: &[all("location_id-index", "location_id", None)],
+        ttl: Some("expires_at"),
+    },
+    Table {
+        name: "notification",
+        hash: "user_id",
+        range: Some("sk"),
+        attrs: &[Attr("user_id", S), Attr("sk", S), Attr("unread_user_id", S)],
+        gsis: &[keys_only_ranged("unread-index", "unread_user_id", "sk")],
         ttl: Some("expires_at"),
     },
     Table {

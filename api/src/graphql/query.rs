@@ -37,6 +37,7 @@ use super::equipment::{self, Equipment};
 use super::location_share::{self, LocationShare};
 use super::map::{self, MapLayer, MapPin};
 use super::notes::{self, Note, NoteFolder};
+use super::notifications::{self, NotificationConnection};
 use super::on_call::{self, OnCallRole};
 use super::reservations::{self, EquipmentReservation};
 use super::self_sign_in::{self, SelfSignInStatus};
@@ -4319,6 +4320,27 @@ impl<A: App + HasDb + HasRealtime + Send + Sync + 'static> QueryRoot<A> {
     #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
     async fn my_location_share(&self, ctx: &Context<'_>) -> Result<Option<LocationShare<A>>> {
         location_share::my_location_share(ctx).await
+    }
+
+    /// The caller's in-app notifications, newest first. `unreadOnly` lists just the ones
+    /// not yet read. At most 200 per page, 50 by default; a notification about a location
+    /// the caller can no longer access is left out.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    async fn my_notifications(
+        &self,
+        ctx: &Context<'_>,
+        first: Option<i32>,
+        after: Option<String>,
+        unread_only: Option<bool>,
+    ) -> Result<NotificationConnection> {
+        notifications::my_notifications::<A>(ctx, first, after, unread_only).await
+    }
+
+    /// How many notifications the caller has unread, counting no further than 100 (show
+    /// "99+" above 99).
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    async fn my_unread_notification_count(&self, ctx: &Context<'_>) -> Result<i32> {
+        notifications::my_unread_notification_count::<A>(ctx).await
     }
 
     /// One on-call role; null if it does not exist or was deleted.

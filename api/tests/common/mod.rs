@@ -58,6 +58,10 @@ pub(crate) struct FakeDb {
     pub(crate) equipment_reservations: Mutex<HashMap<String, db::EquipmentReservation>>,
     pub(crate) on_call_roles: Mutex<HashMap<String, db::OnCallRole>>,
     pub(crate) location_shares: Mutex<HashMap<String, db::LocationShare>>,
+    /// Every notification, across all users' inboxes.
+    pub(crate) notifications: Mutex<Vec<db::NotificationRecord>>,
+    /// Makes `put_notifications` fail, like the notification table not existing yet.
+    pub(crate) fail_notification_writes: AtomicBool,
     pub(crate) map_pins: Mutex<HashMap<String, db::MapPin>>,
     pub(crate) map_layers: Mutex<HashMap<String, db::MapLayer>>,
     pub(crate) calendars: Mutex<HashMap<String, db::Calendar>>,
@@ -2384,6 +2388,61 @@ impl db::Handler for FakeDb {
     }
     async fn delete_location_share(&self, user_id: &str) -> db::Result<Option<db::LocationShare>> {
         Ok(self.location_shares.lock().unwrap().remove(user_id))
+    }
+    async fn put_notifications(&self, records: Vec<db::NotificationRecord>) -> db::Result<()> {
+        if self.fail_notification_writes.load(Ordering::SeqCst) {
+            return Err(db::Error::Infrastructure(
+                "notification table does not exist".to_string(),
+            ));
+        }
+        self.notifications.lock().unwrap().extend(records);
+        Ok(())
+    }
+    async fn list_notifications(
+        &self,
+        user_id: &str,
+        after_sk: Option<&str>,
+        limit: usize,
+        unread_only: bool,
+    ) -> db::Result<Vec<db::NotificationRecord>> {
+        let mut rows: Vec<_> = self
+            .notifications
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|n| n.user_id == user_id)
+            .filter(|n| !unread_only || n.read_at.is_none())
+            .filter(|n| after_sk.is_none_or(|after| n.sk.as_str() < after))
+            .cloned()
+            .collect();
+        // Newest first, as a descending query on the sort key.
+        rows.sort_by(|a, b| b.sk.cmp(&a.sk));
+        rows.truncate(limit);
+        Ok(rows)
+    }
+    async fn count_unread_notifications(&self, user_id: &str, cap: usize) -> db::Result<usize> {
+        let unread = self
+            .notifications
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|n| n.user_id == user_id && n.read_at.is_none())
+            .count();
+        Ok(unread.min(cap))
+    }
+    async fn mark_notifications_read(
+        &self,
+        user_id: &str,
+        sks: &[String],
+        read_at: u64,
+    ) -> db::Result<()> {
+        // The same condition as the DynamoDB update: only an unread row of this user.
+        for n in self.notifications.lock().unwrap().iter_mut() {
+            if n.user_id == user_id && n.read_at.is_none() && sks.contains(&n.sk) {
+                n.read_at = Some(read_at);
+            }
+        }
+        Ok(())
     }
     async fn put_audit_entry(&self, entry: &db::AuditEntry) -> db::Result<()> {
         if self.fail_audit_writes.load(Ordering::SeqCst) {

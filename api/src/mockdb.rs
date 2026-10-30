@@ -995,6 +995,33 @@ impl db::Handler for Handler {
         Self::unsupported()
     }
 
+    async fn put_notifications(&self, _records: Vec<db::NotificationRecord>) -> db::Result<()> {
+        Self::unsupported()
+    }
+
+    async fn list_notifications(
+        &self,
+        _user_id: &str,
+        _after_sk: Option<&str>,
+        _limit: usize,
+        _unread_only: bool,
+    ) -> db::Result<Vec<db::NotificationRecord>> {
+        Self::unsupported()
+    }
+
+    async fn count_unread_notifications(&self, _user_id: &str, _cap: usize) -> db::Result<usize> {
+        Self::unsupported()
+    }
+
+    async fn mark_notifications_read(
+        &self,
+        _user_id: &str,
+        _sks: &[String],
+        _read_at: u64,
+    ) -> db::Result<()> {
+        Self::unsupported()
+    }
+
     async fn put_audit_entry(&self, _entry: &db::AuditEntry) -> db::Result<()> {
         Self::unsupported()
     }

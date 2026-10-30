@@ -191,6 +191,19 @@ pub fn current() -> AuditContext {
     })
 }
 
+/// The ID of the user acting in the context in scope, if a user is, without the warning
+/// [`current`] gives when there is no context. Used to keep people from being notified of
+/// their own actions.
+pub fn current_user_id() -> Option<String> {
+    AUDIT_CONTEXT
+        .try_with(|c| match &c.actor {
+            Actor::User { id, .. } => Some(id.clone()),
+            _ => None,
+        })
+        .ok()
+        .flatten()
+}
+
 /// Just the client IP of the context in scope, without the warning [`current`] gives.
 pub fn current_ip() -> Option<String> {
     AUDIT_CONTEXT.try_with(|c| c.ip.clone()).ok().flatten()
@@ -2784,6 +2797,10 @@ impl<D: db::Handler> db::Handler for AuditingHandler<D> {
     //     changing any field; the change that prompted it is audited where it is made.
     //   * `update_location_share_position`: a phone reporting where it is every minute
     //     or so while sharing. Starting and stopping a share are audited.
+    //   * the notification methods (`put_notifications`, `mark_notifications_read`):
+    //     a user's inbox is plumbing. The business write that caused a notification is
+    //     audited where it is made, and read state is a personal marker like
+    //     `TouchLastUsed`. Reads pass through.
     // The excluded *shapes* of audited methods (`AccessTime`, session `Info`,
     // `TouchLastUsed`, `LastSyncTime`) are handled inside those methods above.
     // `put_audit_entry` itself must of course not recurse into auditing.
@@ -2813,6 +2830,37 @@ impl<D: db::Handler> db::Handler for AuditingHandler<D> {
 
     async fn list_location_shares(&self, location_id: &str) -> db::Result<Vec<db::LocationShare>> {
         self.inner.list_location_shares(location_id).await
+    }
+
+    async fn put_notifications(&self, records: Vec<db::NotificationRecord>) -> db::Result<()> {
+        self.inner.put_notifications(records).await
+    }
+
+    async fn list_notifications(
+        &self,
+        user_id: &str,
+        after_sk: Option<&str>,
+        limit: usize,
+        unread_only: bool,
+    ) -> db::Result<Vec<db::NotificationRecord>> {
+        self.inner
+            .list_notifications(user_id, after_sk, limit, unread_only)
+            .await
+    }
+
+    async fn count_unread_notifications(&self, user_id: &str, cap: usize) -> db::Result<usize> {
+        self.inner.count_unread_notifications(user_id, cap).await
+    }
+
+    async fn mark_notifications_read(
+        &self,
+        user_id: &str,
+        sks: &[String],
+        read_at: u64,
+    ) -> db::Result<()> {
+        self.inner
+            .mark_notifications_read(user_id, sks, read_at)
+            .await
     }
 
     async fn put_audit_entry(&self, entry: &AuditEntry) -> db::Result<()> {

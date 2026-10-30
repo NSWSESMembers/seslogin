@@ -1113,3 +1113,47 @@ async fn location_shares_record_starting_and_stopping_but_not_positions() {
     assert_eq!(entries[0].action, AuditAction::Create);
     assert_eq!(entries[1].action, AuditAction::Delete);
 }
+
+#[tokio::test]
+async fn notifications_are_stored_and_read_without_auditing() {
+    let app = app();
+    let record = db::NotificationRecord {
+        user_id: "caller".to_string(),
+        sk: db::notification_sk(1_700_000_000_000, "n1"),
+        notification_id: "n1".to_string(),
+        source: "reservations".to_string(),
+        kind: "reservation.for_you".to_string(),
+        location_id: Some("loc-a".to_string()),
+        actor_user_id: None,
+        title: "Truck booked".to_string(),
+        body: None,
+        target_type: None,
+        target_id: None,
+        created_at: 1_700_000_000,
+        read_at: None,
+        expires_at: 1_707_776_000,
+    };
+    app.db
+        .put_notifications(vec![record.clone()])
+        .await
+        .unwrap();
+    assert_eq!(
+        app.db
+            .list_notifications("caller", None, 10, true)
+            .await
+            .unwrap(),
+        vec![record.clone()]
+    );
+    app.db
+        .mark_notifications_read("caller", std::slice::from_ref(&record.sk), 1_700_000_100)
+        .await
+        .unwrap();
+    assert_eq!(
+        app.db
+            .count_unread_notifications("caller", 100)
+            .await
+            .unwrap(),
+        0
+    );
+    assert!(app.db.inner().audit_entries().is_empty());
+}

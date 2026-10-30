@@ -12,7 +12,8 @@ use aws_sdk_dynamodb::operation::scan::builders::ScanFluentBuilder;
 use aws_sdk_dynamodb::operation::update_item::UpdateItemError;
 use aws_sdk_dynamodb::operation::update_item::builders::UpdateItemFluentBuilder;
 use aws_sdk_dynamodb::types::{
-    ConsumedCapacity, KeysAndAttributes, ReturnConsumedCapacity, ReturnValue, TransactWriteItem,
+    ConsumedCapacity, KeysAndAttributes, PutRequest, ReturnConsumedCapacity, ReturnValue, Select,
+    TransactWriteItem, WriteRequest,
 };
 use aws_sdk_dynamodb::{Client, types::AttributeValue};
 use std::collections::HashMap;
@@ -1316,6 +1317,76 @@ impl TryInto<db::LocationShare> for Item {
     }
 }
 
+impl TryInto<db::NotificationRecord> for Item {
+    type Error = HydrationError;
+    fn try_into(self) -> Result<db::NotificationRecord, Self::Error> {
+        let required = |field: &str| -> Result<String, HydrationError> {
+            Ok(self
+                .string_field(field)?
+                .ok_or_else(|| anyhow!("Notification missing {field}"))?)
+        };
+        let number = |field: &str| -> Result<u64, HydrationError> {
+            Ok(self
+                .i64_field(field)?
+                .ok_or_else(|| anyhow!("Notification missing {field}"))? as u64)
+        };
+        Ok(db::NotificationRecord {
+            user_id: required("user_id")?,
+            sk: required("sk")?,
+            notification_id: required("notification_id")?,
+            source: required("source")?,
+            kind: required("kind")?,
+            location_id: self.string_field("location_id")?,
+            actor_user_id: self.string_field("actor_user_id")?,
+            title: required("title")?,
+            body: self.string_field("body")?,
+            target_type: self.string_field("target_type")?,
+            target_id: self.string_field("target_id")?,
+            created_at: number("created_at")?,
+            read_at: self.i64_field("read_at")?.map(|n| n as u64),
+            expires_at: number("expires_at")?,
+        })
+    }
+}
+
+/// The item for a notification. `unread_user_id` is present only while unread, which is
+/// what keeps `unread-index` sparse; other absent optionals are omitted, never Null.
+fn notification_item(n: &db::NotificationRecord) -> HashMap<String, AttributeValue> {
+    let s = |v: &str| AttributeValue::S(v.to_string());
+    let num = |v: u64| AttributeValue::N(v.to_string());
+    let mut item = HashMap::from([
+        ("user_id".to_string(), s(&n.user_id)),
+        ("sk".to_string(), s(&n.sk)),
+        ("notification_id".to_string(), s(&n.notification_id)),
+        ("source".to_string(), s(&n.source)),
+        ("kind".to_string(), s(&n.kind)),
+        ("title".to_string(), s(&n.title)),
+        ("created_at".to_string(), num(n.created_at)),
+        ("expires_at".to_string(), num(n.expires_at)),
+    ]);
+    let optional = [
+        ("location_id", &n.location_id),
+        ("actor_user_id", &n.actor_user_id),
+        ("body", &n.body),
+        ("target_type", &n.target_type),
+        ("target_id", &n.target_id),
+    ];
+    for (attr, value) in optional {
+        if let Some(value) = value {
+            item.insert(attr.to_string(), s(value));
+        }
+    }
+    match n.read_at {
+        Some(at) => {
+            item.insert("read_at".to_string(), num(at));
+        }
+        None => {
+            item.insert("unread_user_id".to_string(), s(&n.user_id));
+        }
+    }
+    item
+}
+
 impl TryInto<db::OnCallRole> for Item {
     type Error = HydrationError;
     fn try_into(self) -> Result<db::OnCallRole, Self::Error> {
@@ -1599,72 +1670,16 @@ impl Handler {
         Item: TryInto<R, Error = HydrationError>,
     {
         let ids = ids.iter().map(|id| id.as_ref()).collect::<Vec<&str>>();
-        let table_name = self.table_name(name);
         let mut results: HashMap<String, R> = HashMap::new();
 
         for chunk in ids.chunks(100) {
-            // DynamoDB is allowed to return fewer items than requested — under
-            // throttling or when a response would exceed 16MB it defers the rest into
-            // `UnprocessedKeys`. Those keys must be re-requested, or the caller sees a
-            // row that exists as if it were missing.
-            let mut pending: Vec<HashMap<String, AttributeValue>> = chunk
+            let keys = chunk
                 .iter()
                 .map(|id| HashMap::from([("id".to_string(), AttributeValue::S(id.to_string()))]))
                 .collect();
-
-            for attempt in 1..=BATCH_GET_MAX_ATTEMPTS {
-                if attempt > 1 {
-                    tokio::time::sleep(batch_get_backoff(attempt - 1)).await;
-                }
-
-                let resp = self
-                    .client
-                    .batch_get_item()
-                    .request_items(
-                        table_name.clone(),
-                        KeysAndAttributes::builder()
-                            .set_keys(Some(pending.clone()))
-                            .build()
-                            .map_err(|e| Error::Infrastructure(e.to_string()))?,
-                    )
-                    .return_consumed_capacity(ReturnConsumedCapacity::Total)
-                    .send()
-                    .await
-                    .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
-
-                batch_record_capacity(
-                    &format!("batch_get {name}"),
-                    resp.consumed_capacity(),
-                    CapKind::Read,
-                );
-                if let Some(mut responses) = resp.responses
-                    && let Some(items) = responses.remove(&table_name)
-                {
-                    for item in items {
-                        let rec: R = hydrate_item(item)?;
-                        results.insert(rec.id().to_string(), rec);
-                    }
-                }
-
-                pending = unprocessed_keys_for(&table_name, resp.unprocessed_keys);
-                if pending.is_empty() {
-                    break;
-                }
-                tracing::warn!(
-                    table = %table_name,
-                    unprocessed = pending.len(),
-                    attempt,
-                    "batch_get returned unprocessed keys; retrying"
-                );
-            }
-
-            if !pending.is_empty() {
-                // Returning `None` for these would be indistinguishable from the rows
-                // not existing, so fail loudly instead.
-                return Err(Error::Infrastructure(format!(
-                    "batch_get {table_name}: {} key(s) still unprocessed after {BATCH_GET_MAX_ATTEMPTS} attempts",
-                    pending.len(),
-                )));
+            for item in self.batch_get_items(name, keys).await? {
+                let rec: R = hydrate_item(item)?;
+                results.insert(rec.id().to_string(), rec);
             }
         }
 
@@ -1673,6 +1688,73 @@ impl Handler {
             .into_iter()
             .map(|id| results.remove(id))
             .collect())
+    }
+
+    /// `BatchGetItem` for up to 100 primary keys of one table, in no particular order;
+    /// a key with no row simply yields nothing.
+    ///
+    /// DynamoDB is allowed to return fewer items than requested — under throttling or
+    /// when a response would exceed 16MB it defers the rest into `UnprocessedKeys`.
+    /// Those keys must be re-requested, or the caller sees a row that exists as if it
+    /// were missing.
+    async fn batch_get_items(
+        &self,
+        name: &str,
+        keys: Vec<HashMap<String, AttributeValue>>,
+    ) -> db::Result<Vec<HashMap<String, AttributeValue>>> {
+        let table_name = self.table_name(name);
+        let mut pending = keys;
+        let mut items = Vec::new();
+
+        for attempt in 1..=BATCH_GET_MAX_ATTEMPTS {
+            if attempt > 1 {
+                tokio::time::sleep(batch_get_backoff(attempt - 1)).await;
+            }
+
+            let resp = self
+                .client
+                .batch_get_item()
+                .request_items(
+                    table_name.clone(),
+                    KeysAndAttributes::builder()
+                        .set_keys(Some(pending.clone()))
+                        .build()
+                        .map_err(|e| Error::Infrastructure(e.to_string()))?,
+                )
+                .return_consumed_capacity(ReturnConsumedCapacity::Total)
+                .send()
+                .await
+                .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
+
+            batch_record_capacity(
+                &format!("batch_get {name}"),
+                resp.consumed_capacity(),
+                CapKind::Read,
+            );
+            if let Some(mut responses) = resp.responses
+                && let Some(found) = responses.remove(&table_name)
+            {
+                items.extend(found);
+            }
+
+            pending = unprocessed_keys_for(&table_name, resp.unprocessed_keys);
+            if pending.is_empty() {
+                return Ok(items);
+            }
+            tracing::warn!(
+                table = %table_name,
+                unprocessed = pending.len(),
+                attempt,
+                "batch_get returned unprocessed keys; retrying"
+            );
+        }
+
+        // Returning nothing for these would be indistinguishable from the rows not
+        // existing, so fail loudly instead.
+        Err(Error::Infrastructure(format!(
+            "batch_get {table_name}: {} key(s) still unprocessed after {BATCH_GET_MAX_ATTEMPTS} attempts",
+            pending.len(),
+        )))
     }
 }
 
@@ -8118,6 +8200,234 @@ impl db::Handler for Handler {
             Some(item) if !item.is_empty() => Ok(Some(hydrate_item(item)?)),
             _ => Ok(None),
         }
+    }
+
+    async fn put_notifications(&self, records: Vec<db::NotificationRecord>) -> db::Result<()> {
+        if self.read_only {
+            return Err(db::Error::MutationDisabled);
+        }
+        let table_name = self.table_name("notification");
+        // BatchWriteItem takes at most 25 puts.
+        for chunk in records.chunks(25) {
+            let mut pending = chunk
+                .iter()
+                .map(|n| {
+                    Ok(WriteRequest::builder()
+                        .put_request(
+                            PutRequest::builder()
+                                .set_item(Some(notification_item(n)))
+                                .build()
+                                .map_err(|e| Error::Infrastructure(e.to_string()))?,
+                        )
+                        .build())
+                })
+                .collect::<db::Result<Vec<_>>>()?;
+
+            // As with BatchGetItem, DynamoDB may defer part of a batch.
+            for attempt in 1..=BATCH_GET_MAX_ATTEMPTS {
+                if attempt > 1 {
+                    tokio::time::sleep(batch_get_backoff(attempt - 1)).await;
+                }
+                let resp = self
+                    .client
+                    .batch_write_item()
+                    .request_items(table_name.clone(), pending)
+                    .return_consumed_capacity(ReturnConsumedCapacity::Total)
+                    .send()
+                    .await
+                    .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
+                batch_record_capacity(
+                    "put_notifications",
+                    resp.consumed_capacity(),
+                    CapKind::Write,
+                );
+                pending = resp
+                    .unprocessed_items
+                    .and_then(|mut tables| tables.remove(&table_name))
+                    .unwrap_or_default();
+                if pending.is_empty() {
+                    break;
+                }
+                tracing::warn!(
+                    table = %table_name,
+                    unprocessed = pending.len(),
+                    attempt,
+                    "batch_write returned unprocessed items; retrying"
+                );
+            }
+            if !pending.is_empty() {
+                return Err(Error::Infrastructure(format!(
+                    "batch_write {table_name}: {} item(s) still unprocessed after {BATCH_GET_MAX_ATTEMPTS} attempts",
+                    pending.len(),
+                )));
+            }
+        }
+        Ok(())
+    }
+
+    async fn list_notifications(
+        &self,
+        user_id: &str,
+        after_sk: Option<&str>,
+        limit: usize,
+        unread_only: bool,
+    ) -> db::Result<Vec<db::NotificationRecord>> {
+        if limit == 0 {
+            return Ok(Vec::new());
+        }
+        let (index, hash_attr) = if unread_only {
+            (Some("unread-index"), "unread_user_id")
+        } else {
+            (None, "user_id")
+        };
+        // The base table is read newest first a page at a time. The sparse unread index
+        // yields only keys, so each page of those is then fetched in full; a key whose
+        // row has gone (TTL) leaves the page short, so keep going until it is full.
+        let mut cursor = after_sk.map(str::to_string);
+        let mut rows: Vec<db::NotificationRecord> = Vec::new();
+        loop {
+            let want = limit - rows.len();
+            let mut query = self
+                .client
+                .query()
+                .table_name(self.table_name("notification"))
+                .key_condition_expression(if cursor.is_some() {
+                    "#h = :h AND sk < :after"
+                } else {
+                    "#h = :h"
+                })
+                .expression_attribute_names("#h", hash_attr)
+                .expression_attribute_values(":h", AttributeValue::S(user_id.to_string()))
+                .scan_index_forward(false)
+                .limit(i32::try_from(want).unwrap_or(i32::MAX))
+                .return_consumed_capacity(ReturnConsumedCapacity::Total);
+            if let Some(index) = index {
+                query = query.index_name(index);
+            }
+            if let Some(after) = &cursor {
+                query =
+                    query.expression_attribute_values(":after", AttributeValue::S(after.clone()));
+            }
+            let resp = query
+                .send()
+                .await
+                .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
+            record_capacity(
+                "list_notifications",
+                resp.consumed_capacity(),
+                CapKind::Read,
+            );
+            let items = resp.items.unwrap_or_default();
+            let fetched = items.len();
+            cursor = items
+                .last()
+                .and_then(|i| i.get("sk"))
+                .and_then(|v| v.as_s().ok())
+                .cloned();
+
+            if unread_only {
+                let keys: Vec<_> = items
+                    .into_iter()
+                    .filter_map(|mut i| {
+                        let sk = i.remove("sk")?;
+                        Some(HashMap::from([
+                            (
+                                "user_id".to_string(),
+                                AttributeValue::S(user_id.to_string()),
+                            ),
+                            ("sk".to_string(), sk),
+                        ]))
+                    })
+                    .collect();
+                let mut found: Vec<db::NotificationRecord> = Vec::new();
+                for item in self.batch_get_items("notification", keys).await? {
+                    found.push(hydrate_item(item)?);
+                }
+                // BatchGetItem returns rows in no particular order.
+                found.sort_by(|a, b| b.sk.cmp(&a.sk));
+                rows.extend(found);
+            } else {
+                for item in items {
+                    rows.push(hydrate_item(item)?);
+                }
+            }
+
+            if rows.len() >= limit || fetched < want || resp.last_evaluated_key.is_none() {
+                return Ok(rows);
+            }
+        }
+    }
+
+    async fn count_unread_notifications(&self, user_id: &str, cap: usize) -> db::Result<usize> {
+        let mut count = 0usize;
+        let mut exclusive_start_key = None;
+        while count < cap {
+            let resp = self
+                .client
+                .query()
+                .table_name(self.table_name("notification"))
+                .index_name("unread-index")
+                .key_condition_expression("unread_user_id = :u")
+                .expression_attribute_values(":u", AttributeValue::S(user_id.to_string()))
+                .select(Select::Count)
+                .limit(i32::try_from(cap - count).unwrap_or(i32::MAX))
+                .set_exclusive_start_key(exclusive_start_key.take())
+                .return_consumed_capacity(ReturnConsumedCapacity::Total)
+                .send()
+                .await
+                .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
+            record_capacity(
+                "count_unread_notifications",
+                resp.consumed_capacity(),
+                CapKind::Read,
+            );
+            count += usize::try_from(resp.count()).unwrap_or(0);
+            exclusive_start_key = resp.last_evaluated_key;
+            if exclusive_start_key.is_none() {
+                break;
+            }
+        }
+        Ok(count.min(cap))
+    }
+
+    async fn mark_notifications_read(
+        &self,
+        user_id: &str,
+        sks: &[String],
+        read_at: u64,
+    ) -> db::Result<()> {
+        if self.read_only {
+            return Err(db::Error::MutationDisabled);
+        }
+        for sk in sks {
+            let result = self
+                .client
+                .update_item()
+                .table_name(self.table_name("notification"))
+                .key("user_id", AttributeValue::S(user_id.to_string()))
+                .key("sk", AttributeValue::S(sk.clone()))
+                .update_expression("SET read_at = :read_at REMOVE unread_user_id")
+                .expression_attribute_values(":read_at", AttributeValue::N(read_at.to_string()))
+                // `unread_user_id` exists only on an unread row, so this skips both a
+                // row that is already read (keeping its original `read_at`) and one that
+                // does not exist, which an update would otherwise create.
+                .condition_expression(
+                    "attribute_exists(user_id) AND attribute_exists(unread_user_id)",
+                )
+                .return_consumed_capacity(ReturnConsumedCapacity::Total)
+                .send()
+                .await;
+            match result {
+                Ok(resp) => record_capacity(
+                    "mark_notifications_read",
+                    resp.consumed_capacity(),
+                    CapKind::Write,
+                ),
+                Err(e) if is_conditional_check_failed(&e) => {}
+                Err(e) => return Err(Error::Infrastructure(sdk_err_msg(e))),
+            }
+        }
+        Ok(())
     }
 
     async fn put_audit_entry(&self, entry: &db::AuditEntry) -> db::Result<()> {
