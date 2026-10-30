@@ -347,6 +347,17 @@ impl db::Handler for FakeDb {
     ) -> db::Result<Vec<String>> {
         unsupported()
     }
+    async fn get_person_ids_by_email(&self, email: &str) -> db::Result<Vec<String>> {
+        let key = db::email_key(email);
+        Ok(self
+            .persons
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|p| p.email.as_deref().map(db::email_key) == Some(key.clone()))
+            .map(|p| p.id.clone())
+            .collect())
+    }
     async fn get_sessions<T: AsRef<str> + Sync>(
         &self,
         ids: &[T],
@@ -550,6 +561,17 @@ impl db::Handler for FakeDb {
             db::PersonUpdateShape::Location { location_id } => {
                 person.location_id = location_id.to_string();
             }
+            db::PersonUpdateShape::Directory {
+                email,
+                mobile,
+                phones,
+                preferred_name,
+            } => {
+                person.email = email.map(str::to_string);
+                person.mobile = mobile.map(str::to_string);
+                person.phones = phones.map(str::to_string);
+                person.preferred_name = preferred_name.map(str::to_string);
+            }
             db::PersonUpdateShape::Delete => {
                 person.deleted = Some(seslogin::clock::now_sec());
             }
@@ -573,6 +595,9 @@ impl db::Handler for FakeDb {
     async fn stamp_person_contact(&self, id: &str) -> db::Result<()> {
         self.stamp_contact(id);
         Ok(())
+    }
+    async fn stamp_person_email_key(&self, _id: &str, _email: &str) -> db::Result<()> {
+        unsupported()
     }
     async fn list_contact_changes(
         &self,
