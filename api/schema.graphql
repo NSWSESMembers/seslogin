@@ -111,6 +111,8 @@ enum AuditEntityType {
 	USER_TOKEN
 	OAUTH_GRANT
 	WEBAUTHN_CREDENTIAL
+	TASK
+	TASK_LIST
 }
 
 type AuditEntry {
