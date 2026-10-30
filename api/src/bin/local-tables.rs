@@ -376,10 +376,14 @@ const TABLES: &[Table] = &[
     },
     Table {
         name: "notification",
-        hash: "user_id",
+        hash: "person_id",
         range: Some("sk"),
-        attrs: &[Attr("user_id", S), Attr("sk", S), Attr("unread_user_id", S)],
-        gsis: &[keys_only_ranged("unread-index", "unread_user_id", "sk")],
+        attrs: &[
+            Attr("person_id", S),
+            Attr("sk", S),
+            Attr("unread_person_id", S),
+        ],
+        gsis: &[keys_only_ranged("unread-index", "unread_person_id", "sk")],
         ttl: Some("expires_at"),
     },
     Table {

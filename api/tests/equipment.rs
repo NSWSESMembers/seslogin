@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 use async_graphql::{Request, Value};
 
-use common::{FakeDb, fake_app, seed_location, seed_user};
+use common::{FakeDb, fake_app, seed_location, seed_person, seed_user};
 use seslogin::app::MyApp;
 use seslogin::auth::AuthInfo;
 use seslogin::db::{self, Handler as _};
@@ -35,13 +35,17 @@ fn webauthn() -> Arc<webauthn_rs::prelude::Webauthn> {
 }
 
 fn user(admin: &[&str], read_only: &[&str]) -> AuthInfo {
-    AuthInfo::User {
-        id: "caller".to_string(),
+    AuthInfo::Member {
+        person_id: "caller".to_string(),
+        location_id: "loc-home".to_string(),
+        user_id: Some("caller".to_string()),
         is_super: false,
-        location_grants: admin.iter().map(|s| s.to_string()).collect(),
-        location_read_only_grants: read_only.iter().map(|s| s.to_string()).collect(),
-        token_id: None,
-        grant_id: None,
+        user_location_ids: {
+            let mut ids: Vec<String> = admin.iter().map(|s| s.to_string()).collect();
+            ids.extend::<Vec<String>>(read_only.iter().map(|s| s.to_string()).collect());
+            ids
+        },
+        grant_id: "grant".to_string(),
     }
 }
 
@@ -54,13 +58,13 @@ fn read_only() -> AuthInfo {
 }
 
 fn super_user() -> AuthInfo {
-    AuthInfo::User {
-        id: "super".to_string(),
+    AuthInfo::Member {
+        person_id: "super".to_string(),
+        location_id: "loc-home".to_string(),
+        user_id: Some("super".to_string()),
         is_super: true,
-        location_grants: vec![],
-        location_read_only_grants: vec![],
-        token_id: None,
-        grant_id: None,
+        user_location_ids: vec![],
+        grant_id: "grant".to_string(),
     }
 }
 
@@ -69,6 +73,9 @@ fn app() -> Arc<TestApp> {
     seed_location(&app, "loc-a", "Unit A");
     seed_location(&app, "loc-b", "Unit B");
     seed_user(&app, "caller", true);
+    seed_person(
+        &app, "caller", "loc-home", "Casey", "Caller", "99999999", None,
+    );
     Arc::new(app)
 }
 
@@ -122,10 +129,10 @@ async fn names(app: &Arc<TestApp>, args: &str) -> Vec<String> {
     let response = run(
         app,
         read_only(),
-        &format!(r#"{{ location(id: "loc-a") {{ equipment{args} {{ name }} }} }}"#),
+        &format!(r#"{{ tallyLocation(id: "loc-a") {{ equipment{args} {{ name }} }} }}"#),
     )
     .await;
-    json(&response)["location"]["equipment"]
+    json(&response)["tallyLocation"]["equipment"]
         .as_array()
         .unwrap()
         .iter()
@@ -231,7 +238,7 @@ async fn kiosks_api_tokens_and_other_units_cannot_use_equipment() {
     ];
     for (who, auth) in outsiders {
         for query in [
-            r#"{ location(id: "loc-a") { equipment { id } } }"#.to_string(),
+            r#"{ tallyLocation(id: "loc-a") { equipment { id } } }"#.to_string(),
             format!(r#"{{ equipment(id: "{id}") {{ id }} }}"#),
             r#"mutation { createEquipment(locationId: "loc-a", type: BAG, name: "Sneaky") { id } }"#
                 .to_string(),
@@ -287,7 +294,7 @@ async fn status_changes_and_checks_are_logged_newest_first() {
             "previousStatus": null,
             "status": "OUT_OF_SERVICE",
             "comment": "Waiting on rego",
-            "createdBy": "caller@example.com",
+            "createdBy": "Casey Caller",
         }])
     );
 
@@ -325,28 +332,28 @@ async fn status_changes_and_checks_are_logged_newest_first() {
                 "previousStatus": null,
                 "status": "IN_SERVICE",
                 "comment": "",
-                "createdBy": "caller@example.com",
+                "createdBy": "Casey Caller",
             },
             {
                 "kind": "CHECK",
                 "previousStatus": null,
                 "status": "IN_SERVICE",
                 "comment": "Fuel full",
-                "createdBy": "caller@example.com",
+                "createdBy": "Casey Caller",
             },
             {
                 "kind": "STATUS_CHANGE",
                 "previousStatus": "OUT_OF_SERVICE",
                 "status": "IN_SERVICE",
                 "comment": "Rego done",
-                "createdBy": "caller@example.com",
+                "createdBy": "Casey Caller",
             },
             {
                 "kind": "STATUS_CHANGE",
                 "previousStatus": null,
                 "status": "OUT_OF_SERVICE",
                 "comment": "Waiting on rego",
-                "createdBy": "caller@example.com",
+                "createdBy": "Casey Caller",
             },
         ])
     );
@@ -455,7 +462,7 @@ async fn update_equipment_changes_only_what_it_is_given() {
     assert_eq!(updated["name"], "Truck 1");
     assert_eq!(updated["description"], "Isuzu");
     assert_eq!(updated["type"], "VEHICLE");
-    assert_eq!(updated["updatedBy"], "caller@example.com");
+    assert_eq!(updated["updatedBy"], "Casey Caller");
 
     // Whitespace-only description clears it.
     let response = run(

@@ -34,13 +34,17 @@ fn webauthn() -> Arc<webauthn_rs::prelude::Webauthn> {
 }
 
 fn user(admin: &[&str], read_only: &[&str]) -> AuthInfo {
-    AuthInfo::User {
-        id: "caller".to_string(),
+    AuthInfo::Member {
+        person_id: "caller".to_string(),
+        location_id: "loc-home".to_string(),
+        user_id: Some("caller".to_string()),
         is_super: false,
-        location_grants: admin.iter().map(|s| s.to_string()).collect(),
-        location_read_only_grants: read_only.iter().map(|s| s.to_string()).collect(),
-        token_id: None,
-        grant_id: None,
+        user_location_ids: {
+            let mut ids: Vec<String> = admin.iter().map(|s| s.to_string()).collect();
+            ids.extend::<Vec<String>>(read_only.iter().map(|s| s.to_string()).collect());
+            ids
+        },
+        grant_id: "grant".to_string(),
     }
 }
 
@@ -53,13 +57,13 @@ fn read_only() -> AuthInfo {
 }
 
 fn super_user() -> AuthInfo {
-    AuthInfo::User {
-        id: "super".to_string(),
+    AuthInfo::Member {
+        person_id: "super".to_string(),
+        location_id: "loc-home".to_string(),
+        user_id: Some("super".to_string()),
         is_super: true,
-        location_grants: vec![],
-        location_read_only_grants: vec![],
-        token_id: None,
-        grant_id: None,
+        user_location_ids: vec![],
+        grant_id: "grant".to_string(),
     }
 }
 
@@ -68,6 +72,9 @@ fn app() -> Arc<TestApp> {
     seed_location(&app, "loc-a", "Unit A");
     seed_location(&app, "loc-b", "Unit B");
     seed_user(&app, "caller", true);
+    seed_person(
+        &app, "caller", "loc-home", "Casey", "Caller", "99999999", None,
+    );
     seed_person(&app, "alice", "loc-a", "Alice", "Anderson", "1001", None);
     seed_person(&app, "bob", "loc-a", "Bob", "Brown", "1002", None);
     seed_person(&app, "carol", "loc-a", "carol", "Clark", "1003", None);
@@ -183,7 +190,7 @@ async fn admin_read_only_and_super_users_can_manage_roles() {
     }
     // The creator is reported by email; a role made with just a name is empty.
     let role = create(&app, "Duty Incident Controller", "").await;
-    assert_eq!(role["createdBy"], "caller@example.com");
+    assert_eq!(role["createdBy"], "Casey Caller");
     assert_eq!(role["description"], "");
     assert!(role["phone"].is_null());
     assert!(role["primary"].is_null());
@@ -219,7 +226,7 @@ async fn kiosks_api_tokens_and_other_units_cannot_use_on_call() {
         let read = run(
             &app,
             auth.clone(),
-            r#"{ location(id: "loc-a") { onCallRoles { id } } }"#,
+            r#"{ tallyLocation(id: "loc-a") { onCallRoles { id } } }"#,
         )
         .await;
         assert!(code_of(&read).is_some(), "{who} read roles");
@@ -266,11 +273,11 @@ async fn roles_are_listed_by_name() {
     let response = run(
         &app,
         read_only(),
-        r#"{ location(id: "loc-a") { onCallRoles { name } } }"#,
+        r#"{ tallyLocation(id: "loc-a") { onCallRoles { name } } }"#,
     )
     .await;
     assert_eq!(
-        json(&response)["location"]["onCallRoles"],
+        json(&response)["tallyLocation"]["onCallRoles"],
         serde_json::json!([
             { "name": "admin cover" },
             { "name": "Duty Incident Controller" },
@@ -315,7 +322,7 @@ async fn a_role_has_one_primary_and_any_secondaries() {
     let handed = json(&response)["updateOnCallRole"].clone();
     assert_eq!(handed["primary"]["id"], "bob");
     assert_eq!(ids(&handed["secondaries"]), vec!["alice"]);
-    assert_eq!(handed["updatedBy"], "caller@example.com");
+    assert_eq!(handed["updatedBy"], "Casey Caller");
 
     // Emptying the role.
     let response = update(
@@ -481,11 +488,11 @@ async fn a_deleted_role_is_gone() {
     let response = run(
         &app,
         read_only(),
-        r#"{ location(id: "loc-a") { onCallRoles { id } } }"#,
+        r#"{ tallyLocation(id: "loc-a") { onCallRoles { id } } }"#,
     )
     .await;
     assert_eq!(
-        json(&response)["location"]["onCallRoles"],
+        json(&response)["tallyLocation"]["onCallRoles"],
         serde_json::json!([])
     );
     let response = run(

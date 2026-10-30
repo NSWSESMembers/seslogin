@@ -1924,7 +1924,7 @@ impl db::Handler for FakeDb {
             equipment_ids: r.equipment_ids.to_vec(),
             start_time: r.start_time,
             end_time: r.end_time,
-            reserved_for_user_id: r.reserved_for_user_id.map(str::to_string),
+            reserved_for_person_id: r.reserved_for_person_id.map(str::to_string),
             reserved_for_text: r.reserved_for_text.map(str::to_string),
             description: r.description.to_string(),
             created_by: r.created_by.map(str::to_string),
@@ -1959,7 +1959,7 @@ impl db::Handler for FakeDb {
                 equipment_ids,
                 start_time,
                 end_time,
-                reserved_for_user_id,
+                reserved_for_person_id,
                 reserved_for_text,
                 description,
                 by,
@@ -1971,7 +1971,7 @@ impl db::Handler for FakeDb {
                 r.equipment_ids = equipment_ids.to_vec();
                 r.start_time = start_time;
                 r.end_time = end_time;
-                r.reserved_for_user_id = reserved_for_user_id.map(str::to_string);
+                r.reserved_for_person_id = reserved_for_person_id.map(str::to_string);
                 r.reserved_for_text = reserved_for_text.map(str::to_string);
                 r.description = description.to_string();
                 r.updated_by = by.map(str::to_string);
@@ -2389,10 +2389,10 @@ impl db::Handler for FakeDb {
     }
     async fn get_location_shares<T: AsRef<str> + Sync>(
         &self,
-        user_ids: &[T],
+        person_ids: &[T],
     ) -> db::Result<Vec<Option<db::LocationShare>>> {
         let shares = self.location_shares.lock().unwrap();
-        Ok(user_ids
+        Ok(person_ids
             .iter()
             .map(|id| shares.get(id.as_ref()).cloned())
             .collect())
@@ -2411,12 +2411,12 @@ impl db::Handler for FakeDb {
         self.location_shares
             .lock()
             .unwrap()
-            .insert(share.user_id.clone(), share.clone());
+            .insert(share.person_id.clone(), share.clone());
         Ok(())
     }
     async fn update_location_share_position(
         &self,
-        user_id: &str,
+        person_id: &str,
         position: &db::SharedPosition,
         updated_at: u64,
         expires_at: u64,
@@ -2424,18 +2424,21 @@ impl db::Handler for FakeDb {
         let mut shares = self.location_shares.lock().unwrap();
         // The same condition as the DynamoDB `ConditionExpression`.
         let s = shares
-            .get_mut(user_id)
+            .get_mut(person_id)
             .filter(|s| s.ends_at > updated_at)
             .ok_or_else(|| {
-                db::Error::NotFound(format!("No location share for {user_id}, or it ended"))
+                db::Error::NotFound(format!("No location share for {person_id}, or it ended"))
             })?;
         s.position = *position;
         s.updated_at = updated_at;
         s.expires_at = expires_at;
         Ok(s.clone())
     }
-    async fn delete_location_share(&self, user_id: &str) -> db::Result<Option<db::LocationShare>> {
-        Ok(self.location_shares.lock().unwrap().remove(user_id))
+    async fn delete_location_share(
+        &self,
+        person_id: &str,
+    ) -> db::Result<Option<db::LocationShare>> {
+        Ok(self.location_shares.lock().unwrap().remove(person_id))
     }
     async fn put_notifications(&self, records: Vec<db::NotificationRecord>) -> db::Result<()> {
         if self.fail_notification_writes.load(Ordering::SeqCst) {
@@ -2448,7 +2451,7 @@ impl db::Handler for FakeDb {
     }
     async fn list_notifications(
         &self,
-        user_id: &str,
+        person_id: &str,
         after_sk: Option<&str>,
         limit: usize,
         unread_only: bool,
@@ -2458,7 +2461,7 @@ impl db::Handler for FakeDb {
             .lock()
             .unwrap()
             .iter()
-            .filter(|n| n.user_id == user_id)
+            .filter(|n| n.person_id == person_id)
             .filter(|n| !unread_only || n.read_at.is_none())
             .filter(|n| after_sk.is_none_or(|after| n.sk.as_str() < after))
             .cloned()
@@ -2468,25 +2471,25 @@ impl db::Handler for FakeDb {
         rows.truncate(limit);
         Ok(rows)
     }
-    async fn count_unread_notifications(&self, user_id: &str, cap: usize) -> db::Result<usize> {
+    async fn count_unread_notifications(&self, person_id: &str, cap: usize) -> db::Result<usize> {
         let unread = self
             .notifications
             .lock()
             .unwrap()
             .iter()
-            .filter(|n| n.user_id == user_id && n.read_at.is_none())
+            .filter(|n| n.person_id == person_id && n.read_at.is_none())
             .count();
         Ok(unread.min(cap))
     }
     async fn mark_notifications_read(
         &self,
-        user_id: &str,
+        person_id: &str,
         sks: &[String],
         read_at: u64,
     ) -> db::Result<()> {
         // The same condition as the DynamoDB update: only an unread row of this user.
         for n in self.notifications.lock().unwrap().iter_mut() {
-            if n.user_id == user_id && n.read_at.is_none() && sks.contains(&n.sk) {
+            if n.person_id == person_id && n.read_at.is_none() && sks.contains(&n.sk) {
                 n.read_at = Some(read_at);
             }
         }

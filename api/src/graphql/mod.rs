@@ -34,6 +34,7 @@ pub mod query;
 pub mod reservations;
 pub mod self_sign_in;
 pub mod ses_details;
+pub mod tally;
 pub mod tally_sign_in;
 pub mod tasks;
 pub mod wifi;

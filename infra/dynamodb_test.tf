@@ -917,11 +917,11 @@ resource "aws_dynamodb_table" "test_location_share" {
 resource "aws_dynamodb_table" "test_notification" {
   name         = "${var.db_prefix_test}_notification"
   billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "user_id"
+  hash_key     = "person_id"
   range_key    = "sk"
 
   attribute {
-    name = "user_id"
+    name = "person_id"
     type = "S"
   }
   attribute {
@@ -929,14 +929,14 @@ resource "aws_dynamodb_table" "test_notification" {
     type = "S"
   }
   attribute {
-    name = "unread_user_id"
+    name = "unread_person_id"
     type = "S"
   }
 
   global_secondary_index {
     name = "unread-index"
     key_schema {
-      attribute_name = "unread_user_id"
+      attribute_name = "unread_person_id"
       key_type       = "HASH"
     }
     key_schema {

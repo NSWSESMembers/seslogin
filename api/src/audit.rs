@@ -208,13 +208,13 @@ pub fn current() -> AuditContext {
     })
 }
 
-/// The ID of the user acting in the context in scope, if a user is, without the warning
-/// [`current`] gives when there is no context. Used to keep people from being notified of
-/// their own actions.
-pub fn current_user_id() -> Option<String> {
+/// The person ID of the member acting in the context in scope, if a member is, without
+/// the warning [`current`] gives when there is no context. Used to keep members from
+/// being notified of their own actions.
+pub fn current_member_id() -> Option<String> {
     AUDIT_CONTEXT
         .try_with(|c| match &c.actor {
-            Actor::User { id, .. } => Some(id.clone()),
+            Actor::Member { person_id, .. } => Some(person_id.clone()),
             _ => None,
         })
         .ok()
@@ -1332,8 +1332,8 @@ fn equipment_reservation_fields(r: &db::EquipmentReservation) -> Fields {
         .with("start_time", Some(json!(r.start_time)))
         .with("end_time", Some(json!(r.end_time)))
         .with(
-            "reserved_for_user_id",
-            opt_text(r.reserved_for_user_id.as_deref()),
+            "reserved_for_person_id",
+            opt_text(r.reserved_for_person_id.as_deref()),
         )
         .with(
             "reserved_for_text",
@@ -2776,7 +2776,7 @@ impl<D: db::Handler> db::Handler for AuditingHandler<D> {
         self.inner.put_location_share(share).await?;
         self.record_create(
             AuditEntityType::LocationShare,
-            &share.user_id,
+            &share.person_id,
             None,
             vec![share.location_id.clone()],
             location_share_create_changes(share),
@@ -2785,12 +2785,15 @@ impl<D: db::Handler> db::Handler for AuditingHandler<D> {
         Ok(())
     }
 
-    async fn delete_location_share(&self, user_id: &str) -> db::Result<Option<db::LocationShare>> {
-        let removed = self.inner.delete_location_share(user_id).await?;
+    async fn delete_location_share(
+        &self,
+        person_id: &str,
+    ) -> db::Result<Option<db::LocationShare>> {
+        let removed = self.inner.delete_location_share(person_id).await?;
         if let Some(share) = &removed {
             self.record(Recorded {
                 entity_type: AuditEntityType::LocationShare,
-                entity_id: user_id,
+                entity_id: person_id,
                 action: AuditAction::Delete,
                 label: None,
                 location_ids: vec![share.location_id.clone()],
@@ -2835,21 +2838,21 @@ impl<D: db::Handler> db::Handler for AuditingHandler<D> {
 
     async fn update_location_share_position(
         &self,
-        user_id: &str,
+        person_id: &str,
         position: &db::SharedPosition,
         updated_at: u64,
         expires_at: u64,
     ) -> db::Result<db::LocationShare> {
         self.inner
-            .update_location_share_position(user_id, position, updated_at, expires_at)
+            .update_location_share_position(person_id, position, updated_at, expires_at)
             .await
     }
 
     async fn get_location_shares<T: AsRef<str> + Sync>(
         &self,
-        user_ids: &[T],
+        person_ids: &[T],
     ) -> db::Result<Vec<Option<db::LocationShare>>> {
-        self.inner.get_location_shares(user_ids).await
+        self.inner.get_location_shares(person_ids).await
     }
 
     async fn list_location_shares(&self, location_id: &str) -> db::Result<Vec<db::LocationShare>> {
@@ -2862,28 +2865,28 @@ impl<D: db::Handler> db::Handler for AuditingHandler<D> {
 
     async fn list_notifications(
         &self,
-        user_id: &str,
+        person_id: &str,
         after_sk: Option<&str>,
         limit: usize,
         unread_only: bool,
     ) -> db::Result<Vec<db::NotificationRecord>> {
         self.inner
-            .list_notifications(user_id, after_sk, limit, unread_only)
+            .list_notifications(person_id, after_sk, limit, unread_only)
             .await
     }
 
-    async fn count_unread_notifications(&self, user_id: &str, cap: usize) -> db::Result<usize> {
-        self.inner.count_unread_notifications(user_id, cap).await
+    async fn count_unread_notifications(&self, person_id: &str, cap: usize) -> db::Result<usize> {
+        self.inner.count_unread_notifications(person_id, cap).await
     }
 
     async fn mark_notifications_read(
         &self,
-        user_id: &str,
+        person_id: &str,
         sks: &[String],
         read_at: u64,
     ) -> db::Result<()> {
         self.inner
-            .mark_notifications_read(user_id, sks, read_at)
+            .mark_notifications_read(person_id, sks, read_at)
             .await
     }
 

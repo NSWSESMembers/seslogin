@@ -1,4 +1,4 @@
-//! `Query.wifiNetworks`: only users get the networks, and a client that already has the
+//! `Query.wifiNetworks`: only members signed in to Tally get the networks, and a client that already has the
 //! current version isn't sent them again. Parsing `WIFI_NETWORKS` is unit-tested in
 //! `src/wifi.rs`; it is unset here, so the list is empty.
 
@@ -43,10 +43,22 @@ async fn run(auth: Option<AuthInfo>, query: &str) -> async_graphql::Response {
     schema.execute(request).await
 }
 
+fn member() -> AuthInfo {
+    AuthInfo::Member {
+        person_id: "alice".to_string(),
+        location_id: "loc-a".to_string(),
+        user_id: None,
+        is_super: false,
+        user_location_ids: vec![],
+        grant_id: "grant".to_string(),
+    }
+}
+
+/// A user on their own, through a connected app: not a Tally member.
 fn user() -> AuthInfo {
     AuthInfo::User {
         id: "alice".to_string(),
-        is_super: false,
+        is_super: true,
         location_grants: vec![],
         location_read_only_grants: vec![],
         token_id: None,
@@ -60,8 +72,8 @@ fn query(known_version: Option<&str>) -> String {
 }
 
 #[tokio::test]
-async fn a_user_gets_the_list_and_then_only_its_version() {
-    let response = run(Some(user()), &query(None)).await;
+async fn a_member_gets_the_list_and_then_only_its_version() {
+    let response = run(Some(member()), &query(None)).await;
     assert!(response.errors.is_empty(), "{:?}", response.errors);
     let data = response.data.into_json().unwrap();
     let version = data["wifiNetworks"]["version"]
@@ -70,7 +82,7 @@ async fn a_user_gets_the_list_and_then_only_its_version() {
         .to_string();
     assert_eq!(data["wifiNetworks"]["networks"], serde_json::json!([]));
 
-    let response = run(Some(user()), &query(Some(&version))).await;
+    let response = run(Some(member()), &query(Some(&version))).await;
     assert!(response.errors.is_empty(), "{:?}", response.errors);
     let data = response.data.into_json().unwrap();
     assert_eq!(data["wifiNetworks"]["version"], version.as_str());
@@ -78,8 +90,9 @@ async fn a_user_gets_the_list_and_then_only_its_version() {
 }
 
 #[tokio::test]
-async fn kiosks_api_tokens_and_anonymous_callers_are_refused() {
+async fn users_kiosks_api_tokens_and_anonymous_callers_are_refused() {
     let callers = [
+        Some(user()),
         Some(AuthInfo::Session {
             id: "kiosk".to_string(),
             location: "loc-a".to_string(),

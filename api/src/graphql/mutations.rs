@@ -2414,10 +2414,10 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         )?))
     }
 
-    /// Add a task to a location's shared to-do list. Any user with access to the
-    /// location may, Read only included. `dueDate` (`YYYY-MM-DD`, Sydney) hides the
+    /// Add a task to a location's shared to-do list. Any member who can use the
+    /// unit in Tally may. `dueDate` (`YYYY-MM-DD`, Sydney) hides the
     /// task until that day; a recurring task with no date is due today.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn create_task(
         &self,
         ctx: &Context<'_>,
@@ -2446,7 +2446,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
     /// Change an open task. Omitted arguments are left as they are; `null` clears
     /// `description`, `listId`, `dueDate` or `recurrence`. Fails with `CONFLICT` if
     /// the task is no longer at `expectedVersion`.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn update_task(
         &self,
         ctx: &Context<'_>,
@@ -2477,7 +2477,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
     /// Complete a task. A recurring task stays open, due again its interval after
     /// today; any other task is done. Fails with `CONFLICT` if someone else completed
     /// or changed it since `expectedVersion` was read.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn complete_task(
         &self,
         ctx: &Context<'_>,
@@ -2488,12 +2488,12 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
     }
 
     /// Delete a task. Returns its ID.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn delete_task(&self, ctx: &Context<'_>, id: ID) -> Result<ID> {
         tasks::delete_task(ctx, self.app.as_ref(), &id).await
     }
 
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn create_task_list(
         &self,
         ctx: &Context<'_>,
@@ -2503,7 +2503,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         tasks::create_task_list(ctx, self.app.as_ref(), &location_id, &name).await
     }
 
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn rename_task_list(
         &self,
         ctx: &Context<'_>,
@@ -2514,14 +2514,14 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
     }
 
     /// Delete a task list. Its tasks stay on the location. Returns its ID.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn delete_task_list(&self, ctx: &Context<'_>, id: ID) -> Result<ID> {
         tasks::delete_task_list(ctx, self.app.as_ref(), &id).await
     }
 
-    /// Add a note to a location's shared notebook. Any user with access to the
-    /// location may, Read only included.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    /// Add a note to a location's shared notebook. Any member who can use the
+    /// unit in Tally may.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn create_note(
         &self,
         ctx: &Context<'_>,
@@ -2546,7 +2546,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
     /// Change a note. Omitted arguments are left as they are; `null` takes it out of
     /// its folder. Fails with `CONFLICT` if the note is no longer at
     /// `expectedVersion`.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn update_note(
         &self,
         ctx: &Context<'_>,
@@ -2571,12 +2571,12 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
     }
 
     /// Delete a note. Returns its ID.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn delete_note(&self, ctx: &Context<'_>, id: ID) -> Result<ID> {
         notes::delete_note(ctx, self.app.as_ref(), &id).await
     }
 
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn create_note_folder(
         &self,
         ctx: &Context<'_>,
@@ -2586,7 +2586,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         notes::create_note_folder(ctx, self.app.as_ref(), &location_id, &name).await
     }
 
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn rename_note_folder(
         &self,
         ctx: &Context<'_>,
@@ -2597,15 +2597,15 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
     }
 
     /// Delete a note folder. Its notes stay on the location. Returns its ID.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn delete_note_folder(&self, ctx: &Context<'_>, id: ID) -> Result<ID> {
         notes::delete_note_folder(ctx, self.app.as_ref(), &id).await
     }
 
     /// Add a piece of equipment to a location's register, logged in `status` (in
-    /// service unless given) with an optional `comment`. Any user with access to the
-    /// location may, Read only included.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    /// service unless given) with an optional `comment`. Any member who can use the
+    /// unit in Tally may.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn create_equipment(
         &self,
         ctx: &Context<'_>,
@@ -2634,7 +2634,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
     /// Edit a piece of equipment's type, name or description; omitted arguments are
     /// left as they are. The status is changed with `changeEquipmentStatus`. Fails with
     /// `CONFLICT` if it is no longer at `expectedVersion`.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn update_equipment(
         &self,
         ctx: &Context<'_>,
@@ -2659,14 +2659,14 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
     }
 
     /// Delete a piece of equipment. Returns its ID.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn delete_equipment(&self, ctx: &Context<'_>, id: ID) -> Result<ID> {
         equipment::delete_equipment(ctx, self.app.as_ref(), &id).await
     }
 
     /// Change a piece of equipment's status, logging it with `comment` saying why
     /// (required). Fails with `CONFLICT` if someone else changed it at the same moment.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn change_equipment_status(
         &self,
         ctx: &Context<'_>,
@@ -2679,7 +2679,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
 
     /// Log that you have checked a piece of equipment, with an optional comment. The
     /// status is unchanged.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn check_equipment(
         &self,
         ctx: &Context<'_>,
@@ -2692,9 +2692,9 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
     /// Reserve one or more pieces of a location's equipment from `startTime` to
     /// `endTime` (Unix seconds; the end must be in the future). It is for the caller
     /// unless `reservedFor` names someone or something else. Overlapping another
-    /// reservation is allowed: read `conflicts` on the result to warn about it. Any user
-    /// with access to the location may, Read only included.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    /// reservation is allowed: read `conflicts` on the result to warn about it. Any member
+    /// who can use the unit in Tally may.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn create_equipment_reservation(
         &self,
         ctx: &Context<'_>,
@@ -2723,7 +2723,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
     /// Change a reservation; omitted arguments are left as they are. `reservedFor`
     /// null or blank makes it for the caller. A changed time range must end in the
     /// future. Fails with `CONFLICT` if it is no longer at `expectedVersion`.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn update_equipment_reservation(
         &self,
         ctx: &Context<'_>,
@@ -2752,14 +2752,14 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
     }
 
     /// Cancel (delete) a reservation. Returns its ID.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn delete_equipment_reservation(&self, ctx: &Context<'_>, id: ID) -> Result<ID> {
         reservations::delete_reservation(ctx, self.app.as_ref(), &id).await
     }
 
     /// Add a pin to a location's shared map, optionally of a `type` (a plain pin
-    /// without). Any user with access to the location may, Read only included.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    /// without). Any member who can use the unit in Tally may.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn create_map_pin(
         &self,
         ctx: &Context<'_>,
@@ -2792,7 +2792,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
     /// Change a map pin. Omitted arguments are left as they are; `layerId: null` takes
     /// it off its layer and `type: null` makes it a plain pin. Fails with `CONFLICT` if the pin is no longer at
     /// `expectedVersion`.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn update_map_pin(
         &self,
         ctx: &Context<'_>,
@@ -2825,12 +2825,12 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
     }
 
     /// Delete a map pin. Returns its ID.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn delete_map_pin(&self, ctx: &Context<'_>, id: ID) -> Result<ID> {
         map::delete_map_pin(ctx, self.app.as_ref(), &id).await
     }
 
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn create_map_layer(
         &self,
         ctx: &Context<'_>,
@@ -2840,7 +2840,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         map::create_map_layer(ctx, self.app.as_ref(), &location_id, &name).await
     }
 
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn rename_map_layer(
         &self,
         ctx: &Context<'_>,
@@ -2851,7 +2851,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
     }
 
     /// Delete a map layer. Its pins stay on the location's map. Returns its ID.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn delete_map_layer(&self, ctx: &Context<'_>, id: ID) -> Result<ID> {
         map::delete_map_layer(ctx, self.app.as_ref(), &id).await
     }
@@ -2860,8 +2860,8 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
     /// Timed events take `startTime` and `endTime` (Unix seconds); all-day ones take
     /// `startDate` and optionally `endDate` (`YYYY-MM-DD`, inclusive; default one day).
     /// `repeat` makes it repeat daily or weekly, through `repeatUntil` or forever. Any
-    /// user with access to the location may, Read only included.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    /// member who can use the unit in Tally may.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn create_calendar_event(
         &self,
         ctx: &Context<'_>,
@@ -2902,7 +2902,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
     /// repeating and `repeatUntil: null` makes it repeat forever. Giving a new start
     /// without an end keeps its length; changing `allDay` needs the new start. Fails
     /// with `CONFLICT` if it is no longer at `expectedVersion`.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn update_calendar_event(
         &self,
         ctx: &Context<'_>,
@@ -2941,12 +2941,12 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
     }
 
     /// Delete an event, every occurrence of it. Returns its ID.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn delete_calendar_event(&self, ctx: &Context<'_>, id: ID) -> Result<ID> {
         calendar::delete_event(ctx, self.app.as_ref(), &id).await
     }
 
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn create_calendar(
         &self,
         ctx: &Context<'_>,
@@ -2958,7 +2958,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
     }
 
     /// Rename a calendar or change its colour; omitted arguments are left as they are.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn update_calendar(
         &self,
         ctx: &Context<'_>,
@@ -2970,16 +2970,16 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
     }
 
     /// Delete a calendar. Its events stay, in no calendar. Returns its ID.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn delete_calendar(&self, ctx: &Context<'_>, id: ID) -> Result<ID> {
         calendar::delete_calendar(ctx, self.app.as_ref(), &id).await
     }
 
     /// Share your position with a location's members for `durationMinutes` (5, 15, 30
     /// or 60), saying how often you will send it (`intervalSeconds`, 60 to 300).
-    /// Replaces any share you already have. Any user with access to the location may,
-    /// Read only included.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    /// Replaces any share you already have. Any member who can use the unit in
+    /// Tally may.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn start_location_share(
         &self,
         ctx: &Context<'_>,
@@ -3003,7 +3003,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
 
     /// Send your latest position for your share. Fails with `NOT_FOUND` once it has
     /// ended or been stopped: stop sending then.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn update_location_share(
         &self,
         ctx: &Context<'_>,
@@ -3014,14 +3014,14 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
 
     /// Stop sharing your position; it stops showing straight away. False if you
     /// weren't sharing.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn stop_location_share(&self, ctx: &Context<'_>) -> Result<bool> {
         location_share::stop_location_share(ctx, self.app.as_ref()).await
     }
 
     /// Mark some of your notifications read (at most 200 IDs). One that is already read,
     /// or is not yours, is ignored. Returns how many you still have unread.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn mark_notifications_read(
         &self,
         ctx: &Context<'_>,
@@ -3032,7 +3032,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
 
     /// Mark all your notifications read. Returns how many you still have unread (usually
     /// none).
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn mark_all_notifications_read(
         &self,
         ctx: &Context<'_>,
@@ -3041,9 +3041,9 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
     }
 
     /// Add an on-call role (e.g. Duty Officer) to a location, optionally with the people
-    /// in it. Anyone in it needs a primary. Any user with access to the location may,
-    /// Read only included.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    /// in it. Anyone in it needs a primary. Any member who can use the unit in
+    /// Tally may.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn create_on_call_role(
         &self,
         ctx: &Context<'_>,
@@ -3073,7 +3073,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
     /// `phone: null` removes the number and `primaryPersonId: null` (with
     /// `secondaryPersonIds: []`) empties the role. Fails with `CONFLICT` if the role is
     /// no longer at `expectedVersion`.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn update_on_call_role(
         &self,
         ctx: &Context<'_>,
@@ -3102,7 +3102,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
     }
 
     /// Delete an on-call role. Returns its ID.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn delete_on_call_role(&self, ctx: &Context<'_>, id: ID) -> Result<ID> {
         on_call::delete_on_call_role(ctx, self.app.as_ref(), &id).await
     }
@@ -3630,11 +3630,11 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         })
     }
 
-    /// Sign the signed-in user's linked member in at their home unit, as typing their
-    /// member number at a kiosk there would, for the Tally app. Idempotent: if the
-    /// member is already signed in at home, that period is returned unchanged, so a
-    /// double tap never opens two. A period open at another unit is ignored. Users
-    /// only, and no location grant is needed (the member link is the authority).
+    /// Sign the member signed in to Tally in at their home unit, as typing their member
+    /// number at a kiosk there would. Idempotent: if the member is already signed in at
+    /// home, that period is returned unchanged, so a double tap never opens two. A
+    /// period open at another unit is ignored. Tally members only, and no location
+    /// grant is needed (being the member is the authority).
     async fn self_sign_in(&self, ctx: &Context<'_>) -> Result<Period<A>> {
         require_writable(ctx)?;
         let person = require_linked_person(ctx, self.app.as_ref()).await?;
@@ -3651,7 +3651,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         Ok(Period::new(rec))
     }
 
-    /// Sign the linked member out of one of their own open home-unit periods, as
+    /// Sign the member out of one of their own open home-unit periods, as
     /// `scanSignOut` does at a kiosk. `expectedVersion` is the period's `version` as
     /// the app last saw it; if it, or the sign-in, has changed since (e.g. a kiosk
     /// signed them out first) the write is refused with `CONFLICT` and nothing changes.

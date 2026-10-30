@@ -1081,7 +1081,7 @@ impl TryInto<db::EquipmentReservation> for Item {
                 .i64_field("end_time")?
                 .ok_or_else(|| anyhow!("EquipmentReservation missing end_time"))?
                 as u64,
-            reserved_for_user_id: self.string_field("reserved_for_user_id")?,
+            reserved_for_person_id: self.string_field("reserved_for_person_id")?,
             reserved_for_text: self.string_field("reserved_for_text")?,
             description: self.string_field("description")?.unwrap_or_default(),
             created_by: self.string_field("created_by")?,
@@ -1289,7 +1289,7 @@ impl TryInto<db::LocationShare> for Item {
                 .ok_or_else(|| anyhow!("LocationShare missing {field}"))? as u64)
         };
         Ok(db::LocationShare {
-            user_id: self.id()?,
+            person_id: self.id()?,
             location_id: self
                 .string_field("location_id")?
                 .ok_or_else(|| anyhow!("LocationShare missing location_id"))?,
@@ -1330,13 +1330,13 @@ impl TryInto<db::NotificationRecord> for Item {
                 .ok_or_else(|| anyhow!("Notification missing {field}"))? as u64)
         };
         Ok(db::NotificationRecord {
-            user_id: required("user_id")?,
+            person_id: required("person_id")?,
             sk: required("sk")?,
             notification_id: required("notification_id")?,
             source: required("source")?,
             kind: required("kind")?,
             location_id: self.string_field("location_id")?,
-            actor_user_id: self.string_field("actor_user_id")?,
+            actor_person_id: self.string_field("actor_person_id")?,
             title: required("title")?,
             body: self.string_field("body")?,
             target_type: self.string_field("target_type")?,
@@ -1348,13 +1348,13 @@ impl TryInto<db::NotificationRecord> for Item {
     }
 }
 
-/// The item for a notification. `unread_user_id` is present only while unread, which is
+/// The item for a notification. `unread_person_id` is present only while unread, which is
 /// what keeps `unread-index` sparse; other absent optionals are omitted, never Null.
 fn notification_item(n: &db::NotificationRecord) -> HashMap<String, AttributeValue> {
     let s = |v: &str| AttributeValue::S(v.to_string());
     let num = |v: u64| AttributeValue::N(v.to_string());
     let mut item = HashMap::from([
-        ("user_id".to_string(), s(&n.user_id)),
+        ("person_id".to_string(), s(&n.person_id)),
         ("sk".to_string(), s(&n.sk)),
         ("notification_id".to_string(), s(&n.notification_id)),
         ("source".to_string(), s(&n.source)),
@@ -1365,7 +1365,7 @@ fn notification_item(n: &db::NotificationRecord) -> HashMap<String, AttributeVal
     ]);
     let optional = [
         ("location_id", &n.location_id),
-        ("actor_user_id", &n.actor_user_id),
+        ("actor_person_id", &n.actor_person_id),
         ("body", &n.body),
         ("target_type", &n.target_type),
         ("target_id", &n.target_id),
@@ -1380,7 +1380,7 @@ fn notification_item(n: &db::NotificationRecord) -> HashMap<String, AttributeVal
             item.insert("read_at".to_string(), num(at));
         }
         None => {
-            item.insert("unread_user_id".to_string(), s(&n.user_id));
+            item.insert("unread_person_id".to_string(), s(&n.person_id));
         }
     }
     item
@@ -8023,10 +8023,10 @@ impl db::Handler for Handler {
             .item("updated_at", AttributeValue::N(now.to_string()))
             .condition_expression("attribute_not_exists(id)")
             .return_consumed_capacity(ReturnConsumedCapacity::Total);
-        if let Some(user_id) = r.reserved_for_user_id {
+        if let Some(person_id) = r.reserved_for_person_id {
             put = put.item(
-                "reserved_for_user_id",
-                AttributeValue::S(user_id.to_string()),
+                "reserved_for_person_id",
+                AttributeValue::S(person_id.to_string()),
             );
         }
         if let Some(text) = r.reserved_for_text {
@@ -8054,7 +8054,7 @@ impl db::Handler for Handler {
             equipment_ids: r.equipment_ids.to_vec(),
             start_time: r.start_time,
             end_time: r.end_time,
-            reserved_for_user_id: r.reserved_for_user_id.map(str::to_string),
+            reserved_for_person_id: r.reserved_for_person_id.map(str::to_string),
             reserved_for_text: r.reserved_for_text.map(str::to_string),
             description: r.description.to_string(),
             created_by: r.created_by.map(str::to_string),
@@ -8083,7 +8083,7 @@ impl db::Handler for Handler {
                 equipment_ids,
                 start_time,
                 end_time,
-                reserved_for_user_id,
+                reserved_for_person_id,
                 reserved_for_text,
                 description,
                 by,
@@ -8098,8 +8098,8 @@ impl db::Handler for Handler {
                 update.set("start_time", AttributeValue::N(start_time.to_string()));
                 update.set("end_time", AttributeValue::N(end_time.to_string()));
                 update.set_or_remove(
-                    "reserved_for_user_id",
-                    reserved_for_user_id.map(|u| AttributeValue::S(u.to_string())),
+                    "reserved_for_person_id",
+                    reserved_for_person_id.map(|u| AttributeValue::S(u.to_string())),
                 );
                 update.set_or_remove(
                     "reserved_for_text",
@@ -8154,9 +8154,9 @@ impl db::Handler for Handler {
 
     async fn get_location_shares<T: AsRef<str> + Sync>(
         &self,
-        user_ids: &[T],
+        person_ids: &[T],
     ) -> db::Result<Vec<Option<db::LocationShare>>> {
-        self.get_records("location_share", user_ids).await
+        self.get_records("location_share", person_ids).await
     }
 
     async fn list_location_shares(&self, location_id: &str) -> db::Result<Vec<db::LocationShare>> {
@@ -8183,7 +8183,7 @@ impl db::Handler for Handler {
             .client
             .put_item()
             .table_name(self.table_name("location_share"))
-            .item("id", AttributeValue::S(share.user_id.clone()))
+            .item("id", AttributeValue::S(share.person_id.clone()))
             .item("location_id", AttributeValue::S(share.location_id.clone()))
             .item("interval_secs", n(share.interval_secs))
             .item("started_at", n(share.started_at))
@@ -8211,7 +8211,7 @@ impl db::Handler for Handler {
 
     async fn update_location_share_position(
         &self,
-        user_id: &str,
+        person_id: &str,
         position: &db::SharedPosition,
         updated_at: u64,
         expires_at: u64,
@@ -8229,7 +8229,7 @@ impl db::Handler for Handler {
             .client
             .update_item()
             .table_name(self.table_name("location_share"))
-            .key("id", AttributeValue::S(user_id.to_string()))
+            .key("id", AttributeValue::S(person_id.to_string()))
             .update_expression(update.expression(""))
             .set_expression_attribute_names(Some(update.names))
             .set_expression_attribute_values(Some(update.values))
@@ -8239,7 +8239,7 @@ impl db::Handler for Handler {
             .send()
             .await
             .map_err(|e| {
-                map_update_err(e, format!("No location share for {user_id}, or it ended"))
+                map_update_err(e, format!("No location share for {person_id}, or it ended"))
             })?;
         record_capacity(
             "update_location_share_position",
@@ -8249,7 +8249,10 @@ impl db::Handler for Handler {
         Ok(hydrate_item(resp.attributes.unwrap_or_default())?)
     }
 
-    async fn delete_location_share(&self, user_id: &str) -> db::Result<Option<db::LocationShare>> {
+    async fn delete_location_share(
+        &self,
+        person_id: &str,
+    ) -> db::Result<Option<db::LocationShare>> {
         if self.read_only {
             return Err(db::Error::MutationDisabled);
         }
@@ -8257,7 +8260,7 @@ impl db::Handler for Handler {
             .client
             .delete_item()
             .table_name(self.table_name("location_share"))
-            .key("id", AttributeValue::S(user_id.to_string()))
+            .key("id", AttributeValue::S(person_id.to_string()))
             .return_values(ReturnValue::AllOld)
             .return_consumed_capacity(ReturnConsumedCapacity::Total)
             .send()
@@ -8339,7 +8342,7 @@ impl db::Handler for Handler {
 
     async fn list_notifications(
         &self,
-        user_id: &str,
+        person_id: &str,
         after_sk: Option<&str>,
         limit: usize,
         unread_only: bool,
@@ -8348,9 +8351,9 @@ impl db::Handler for Handler {
             return Ok(Vec::new());
         }
         let (index, hash_attr) = if unread_only {
-            (Some("unread-index"), "unread_user_id")
+            (Some("unread-index"), "unread_person_id")
         } else {
-            (None, "user_id")
+            (None, "person_id")
         };
         // The base table is read newest first a page at a time. The sparse unread index
         // yields only keys, so each page of those is then fetched in full; a key whose
@@ -8369,7 +8372,7 @@ impl db::Handler for Handler {
                     "#h = :h"
                 })
                 .expression_attribute_names("#h", hash_attr)
-                .expression_attribute_values(":h", AttributeValue::S(user_id.to_string()))
+                .expression_attribute_values(":h", AttributeValue::S(person_id.to_string()))
                 .scan_index_forward(false)
                 .limit(i32::try_from(want).unwrap_or(i32::MAX))
                 .return_consumed_capacity(ReturnConsumedCapacity::Total);
@@ -8404,8 +8407,8 @@ impl db::Handler for Handler {
                         let sk = i.remove("sk")?;
                         Some(HashMap::from([
                             (
-                                "user_id".to_string(),
-                                AttributeValue::S(user_id.to_string()),
+                                "person_id".to_string(),
+                                AttributeValue::S(person_id.to_string()),
                             ),
                             ("sk".to_string(), sk),
                         ]))
@@ -8433,7 +8436,7 @@ impl db::Handler for Handler {
         }
     }
 
-    async fn count_unread_notifications(&self, user_id: &str, cap: usize) -> db::Result<usize> {
+    async fn count_unread_notifications(&self, person_id: &str, cap: usize) -> db::Result<usize> {
         let mut count = 0usize;
         let mut exclusive_start_key = None;
         while count < cap {
@@ -8442,8 +8445,8 @@ impl db::Handler for Handler {
                 .query()
                 .table_name(self.table_name("notification"))
                 .index_name("unread-index")
-                .key_condition_expression("unread_user_id = :u")
-                .expression_attribute_values(":u", AttributeValue::S(user_id.to_string()))
+                .key_condition_expression("unread_person_id = :u")
+                .expression_attribute_values(":u", AttributeValue::S(person_id.to_string()))
                 .select(Select::Count)
                 .limit(i32::try_from(cap - count).unwrap_or(i32::MAX))
                 .set_exclusive_start_key(exclusive_start_key.take())
@@ -8467,7 +8470,7 @@ impl db::Handler for Handler {
 
     async fn mark_notifications_read(
         &self,
-        user_id: &str,
+        person_id: &str,
         sks: &[String],
         read_at: u64,
     ) -> db::Result<()> {
@@ -8479,15 +8482,15 @@ impl db::Handler for Handler {
                 .client
                 .update_item()
                 .table_name(self.table_name("notification"))
-                .key("user_id", AttributeValue::S(user_id.to_string()))
+                .key("person_id", AttributeValue::S(person_id.to_string()))
                 .key("sk", AttributeValue::S(sk.clone()))
-                .update_expression("SET read_at = :read_at REMOVE unread_user_id")
+                .update_expression("SET read_at = :read_at REMOVE unread_person_id")
                 .expression_attribute_values(":read_at", AttributeValue::N(read_at.to_string()))
-                // `unread_user_id` exists only on an unread row, so this skips both a
+                // `unread_person_id` exists only on an unread row, so this skips both a
                 // row that is already read (keeping its original `read_at`) and one that
                 // does not exist, which an update would otherwise create.
                 .condition_expression(
-                    "attribute_exists(user_id) AND attribute_exists(unread_user_id)",
+                    "attribute_exists(person_id) AND attribute_exists(unread_person_id)",
                 )
                 .return_consumed_capacity(ReturnConsumedCapacity::Total)
                 .send()

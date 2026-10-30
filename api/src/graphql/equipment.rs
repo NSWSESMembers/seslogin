@@ -5,23 +5,21 @@
 //! `mutations.rs` call through thin resolvers.
 //!
 //! Access is [`require_equipment_access`] on the equipment's location throughout: any
-//! user with Admin or Read only access, and super users.
+//! member who can use the unit in Tally. Authors are recorded by person ID.
 
 use anyhow::{Result, anyhow};
 use async_graphql::dataloader::DataLoader;
 use async_graphql::{Context, Enum, ID, Object};
 use std::sync::Arc;
 
+use super::LocationId;
 use super::auth::require_equipment_access;
 use super::dataloader::DatabaseLoader;
 use super::error::{ApiError, ErrorCode};
 use super::query::Location;
-use super::{LocationId, UserId};
 use crate::app::{App, HasDb};
-use crate::auth::AuthInfo;
 use crate::db::{self, Handler};
 use crate::equipment::{self as rules, EquipmentStatus as Status, EquipmentType as Type};
-use crate::notifications::{Audience, NewNotification, notify};
 
 /// What kind of thing a piece of equipment is. More types are expected, so clients
 /// should cope with a value they don't know.
@@ -130,20 +128,6 @@ fn parse_status(s: &str) -> Result<EquipmentStatus> {
         .ok_or_else(|| anyhow!("Unknown equipment status {s}"))
 }
 
-async fn user_email<A: App + HasDb + Send + Sync + 'static>(
-    ctx: &Context<'_>,
-    id: Option<&str>,
-) -> Result<Option<String>> {
-    let Some(id) = id else { return Ok(None) };
-    let loader = ctx.data_unchecked::<DataLoader<DatabaseLoader<A>>>();
-    Ok(loader
-        .load_one(UserId(ID(id.to_string())))
-        .await
-        .map_err(|e| anyhow!("Failed to load user via DataLoader: {}", e))?
-        .flatten()
-        .map(|u| u.rec.email))
-}
-
 pub struct Equipment<A: App + HasDb + 'static> {
     _marker: std::marker::PhantomData<A>,
     rec: db::Equipment,
@@ -225,18 +209,18 @@ impl<A: App + HasDb + Send + Sync + 'static> Equipment<A> {
         self.rec.created_at as i64
     }
 
-    /// Email of the user who added it.
+    /// Name of the member who added it.
     async fn created_by(&self, ctx: &Context<'_>) -> Result<Option<String>> {
-        user_email::<A>(ctx, self.rec.created_by.as_deref()).await
+        super::tally::member_name::<A>(ctx, self.rec.created_by.as_deref()).await
     }
 
     async fn updated_at(&self) -> i64 {
         self.rec.updated_at as i64
     }
 
-    /// Email of the user who last edited it.
+    /// Name of the member who last edited it.
     async fn updated_by(&self, ctx: &Context<'_>) -> Result<Option<String>> {
-        user_email::<A>(ctx, self.rec.updated_by.as_deref()).await
+        super::tally::member_name::<A>(ctx, self.rec.updated_by.as_deref()).await
     }
 }
 
@@ -289,9 +273,9 @@ impl<A: App + HasDb + Send + Sync + 'static> EquipmentLogEntry<A> {
         self.rec.created_at as i64
     }
 
-    /// Email of the user who made the entry.
+    /// Name of the member who made the entry.
     async fn created_by(&self, ctx: &Context<'_>) -> Result<Option<String>> {
-        user_email::<A>(ctx, self.rec.created_by.as_deref()).await
+        super::tally::member_name::<A>(ctx, self.rec.created_by.as_deref()).await
     }
 }
 
@@ -339,10 +323,7 @@ fn bad_request(message: String) -> anyhow::Error {
 }
 
 fn caller_id<'a>(ctx: &'a Context<'_>) -> Option<&'a str> {
-    match ctx.data_opt::<AuthInfo>() {
-        Some(AuthInfo::User { id, .. }) => Some(id.as_str()),
-        _ => None,
-    }
+    super::tally::member_id(ctx)
 }
 
 /// Live equipment the caller may change.
@@ -368,34 +349,6 @@ fn conflict_if_not_found(e: db::Error) -> anyhow::Error {
         db::Error::NotFound(_) => conflict(),
         e => e.into(),
     }
-}
-
-/// Tell everyone with access to the equipment's location (including Read only users)
-/// that it needs attention, if `status` says so. `comment` is the reason given, if any.
-async fn notify_needs_attention(
-    app: &(impl HasDb + Sync),
-    rec: &db::Equipment,
-    status: Status,
-    comment: &str,
-) {
-    let Some(title) = status.attention_title(&rec.name) else {
-        return;
-    };
-    let mut n = NewNotification::new("equipment", "equipment.status", &title)
-        .location(&rec.location_id)
-        .target("equipment", &rec.id);
-    if !comment.is_empty() {
-        n = n.body(comment);
-    }
-    notify(
-        app,
-        n,
-        Audience::Location {
-            location_id: rec.location_id.clone(),
-            include_read_only: true,
-        },
-    )
-    .await;
 }
 
 pub(super) struct CreateEquipmentArgs {
@@ -433,7 +386,6 @@ pub(super) async fn create_equipment<A: App + HasDb + Send + Sync + 'static>(
         })
         .await?;
     // Equipment registered already in trouble is news; one registered fine is not.
-    notify_needs_attention(app, &rec, Status::from(args.status), &comment).await;
     Ok(Equipment::new(rec))
 }
 
@@ -534,7 +486,6 @@ pub(super) async fn change_equipment_status<A: App + HasDb + Send + Sync + 'stat
         .await
         .map_err(conflict_if_not_found)?;
     // The status differs from the old one (checked above), so this is a change into it.
-    notify_needs_attention(app, &rec, Status::from(status), &comment).await;
     Ok(Equipment::new(rec))
 }
 

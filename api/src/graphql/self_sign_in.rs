@@ -1,14 +1,13 @@
-//! Self sign-in: a signed-in user signs themselves in and out at their linked
-//! member's home unit, from the Tally app, exactly as they would by typing their
-//! member number at a kiosk there.
+//! Self sign-in: a member signed in to Tally signs themselves in and out at their home
+//! unit, exactly as they would by typing their member number at a kiosk there.
 //!
-//! The authority is the user's `person_id` link (set by a super user with
-//! `setUserMember`), **not** a location grant: a member needs no role anywhere to
-//! sign themselves in. So this deliberately uses neither `require_location_access`
-//! nor `require_location_write_access`; [`linked_person`] is the whole check. Only
-//! people qualify — kiosk sessions, API tokens and period links are refused — and
-//! only the home unit's periods are ever considered, as at a kiosk, which scopes
-//! by location. See `mutations.rs` for `selfSignIn` / `selfSignOut`.
+//! The authority is being that member (an [`AuthInfo::Member`]), **not** a location
+//! grant: a member needs no role anywhere to sign themselves in. So this deliberately
+//! uses neither `require_location_access` nor `require_location_write_access`;
+//! [`linked_person`] is the whole check. Only Tally members qualify — users on their
+//! own, kiosk sessions, API tokens and period links are refused — and only the home
+//! unit's periods are ever considered, as at a kiosk, which scopes by location. See
+//! `mutations.rs` for `selfSignIn` / `selfSignOut`.
 
 use anyhow::{Result, anyhow};
 use async_graphql::{Context, ID, Object, SimpleObject};
@@ -23,16 +22,18 @@ use crate::auth::AuthInfo;
 use crate::db::{self, Handler};
 
 /// Why a mutation could not find the caller's member.
-const NO_MEMBER: &str = "No member is linked to your account";
+const NO_MEMBER: &str = "Your member record is no longer available";
 
-/// The id of the signed-in user, refusing every other kind of caller. A kiosk, an API
-/// token and an edit link are FORBIDDEN (they are not a member acting for themselves).
-pub(super) fn require_user_id(ctx: &Context<'_>) -> Result<String> {
+/// The person ID of the member signed in to Tally, refusing every other kind of caller.
+/// A user on their own, a kiosk, an API token and an edit link are FORBIDDEN (they are
+/// not a member acting for themselves).
+pub(super) fn require_member_id(ctx: &Context<'_>) -> Result<String> {
     match ctx.data_opt::<AuthInfo>() {
-        Some(AuthInfo::User { id, .. }) => Ok(id.clone()),
-        Some(_) => {
-            Err(ApiError::forbidden("Only a signed-in user can sign themselves in or out").into())
-        }
+        Some(AuthInfo::Member { person_id, .. }) => Ok(person_id.clone()),
+        Some(_) => Err(ApiError::forbidden(
+            "Only a member signed in to Tally can sign themselves in or out",
+        )
+        .into()),
         None => Err(ApiError::new(
             super::error::ErrorCode::Unauthenticated,
             "Must be authenticated",
@@ -41,24 +42,12 @@ pub(super) fn require_user_id(ctx: &Context<'_>) -> Result<String> {
     }
 }
 
-/// The caller's linked member, read fresh from their user record: `None` when no
-/// member is linked or the member has been deleted.
+/// The caller's member, read fresh: `None` when they have since been deleted.
 pub(super) async fn linked_person<A: App + HasDb + Send + Sync + 'static>(
     ctx: &Context<'_>,
     app: &A,
 ) -> Result<Option<db::Person>> {
-    let user_id = require_user_id(ctx)?;
-    let Some(person_id) = app
-        .db()
-        .get_users(&[&user_id])
-        .await?
-        .into_iter()
-        .next()
-        .flatten()
-        .and_then(|u| u.person_id)
-    else {
-        return Ok(None);
-    };
+    let person_id = require_member_id(ctx)?;
     Ok(app
         .db()
         .get_persons(&[&person_id])
@@ -118,7 +107,7 @@ pub struct WhosHereEntry {
     guest: bool,
     /// Unix seconds.
     start_time: u64,
-    /// This is the caller's linked member's own period.
+    /// This is the calling member's own period.
     is_me: bool,
 }
 
@@ -191,7 +180,7 @@ async fn whos_here(db: &impl Handler, person: &db::Person) -> Result<Vec<WhosHer
         .collect())
 }
 
-/// A signed-in user's own sign-in state at their linked member's home unit.
+/// A member's own sign-in state at their home unit.
 pub struct SelfSignInStatus<A: App + HasDb + 'static> {
     _marker: std::marker::PhantomData<A>,
     pub(super) person: db::Person,
@@ -199,10 +188,10 @@ pub struct SelfSignInStatus<A: App + HasDb + 'static> {
     pub(super) open_period: Option<db::Period>,
 }
 
-/// A signed-in user's own sign-in state at their linked member's home unit.
+/// A member's own sign-in state at their home unit.
 #[Object]
 impl<A: App + HasDb + Send + Sync + 'static> SelfSignInStatus<A> {
-    /// The linked member.
+    /// The member.
     async fn person(&self) -> Person<A> {
         Person::new(self.person.clone())
     }

@@ -377,3 +377,125 @@ async fn a_member_grant_is_refused_by_mcp() {
     .await;
     assert_eq!(reply.status, 401);
 }
+
+// ── Tally's entry points ─────────────────────────────────────────────────────
+
+fn member_at(home: &str, units: &[&str], is_super: bool) -> AuthInfo {
+    AuthInfo::Member {
+        person_id: "alice".to_string(),
+        location_id: home.to_string(),
+        user_id: Some("u1".to_string()),
+        is_super,
+        user_location_ids: units.iter().map(|s| s.to_string()).collect(),
+        grant_id: "g1".to_string(),
+    }
+}
+
+fn data(response: &async_graphql::Response) -> serde_json::Value {
+    assert!(response.errors.is_empty(), "{:?}", response.errors);
+    response.data.clone().into_json().unwrap()
+}
+
+const VIEWER: &str =
+    "{ tallyViewer { name homeLocationId userEmail member { id } locations { id name } } }";
+
+#[tokio::test]
+async fn the_viewer_is_the_member_with_their_home_unit_and_their_users_units() {
+    let app = app();
+    seed_user(&app, "u1", true);
+    seed_location(&app, "loc-c", "Unit C");
+    let viewer = data(&run(&app, member_at("loc-a", &["loc-c"], false), VIEWER).await);
+    assert_eq!(
+        viewer["tallyViewer"],
+        json!({
+            "name": "Alice Anderson",
+            "homeLocationId": "loc-a",
+            "userEmail": "u1@example.com",
+            "member": { "id": "alice" },
+            "locations": [
+                { "id": "loc-a", "name": "Unit A" },
+                { "id": "loc-c", "name": "Unit C" },
+            ],
+        })
+    );
+
+    // A super user's member sees every unit.
+    let viewer = data(&run(&app, member_at("loc-a", &[], true), VIEWER).await);
+    assert_eq!(
+        viewer["tallyViewer"]["locations"].as_array().unwrap().len(),
+        3
+    );
+}
+
+#[tokio::test]
+async fn tally_location_is_only_for_a_unit_the_member_can_use() {
+    let app = app();
+    let doc = |id: &str| format!(r#"{{ tallyLocation(id: "{id}") {{ name tasks {{ id }} }} }}"#);
+    let home = data(&run(&app, member_at("loc-a", &[], false), &doc("loc-a")).await);
+    assert_eq!(home["tallyLocation"]["name"], "Unit A");
+    let extra = data(&run(&app, member_at("loc-b", &["loc-a"], false), &doc("loc-a")).await);
+    assert_eq!(extra["tallyLocation"]["name"], "Unit A");
+
+    let elsewhere = run(&app, member_at("loc-b", &[], false), &doc("loc-a")).await;
+    assert!(!elsewhere.errors.is_empty());
+
+    // A user on their own — even a super user — is not a Tally member.
+    let user = AuthInfo::User {
+        id: "u1".to_string(),
+        is_super: true,
+        location_grants: vec![],
+        location_read_only_grants: vec![],
+        token_id: None,
+        grant_id: None,
+    };
+    assert!(
+        !run(&app, user.clone(), &doc("loc-a"))
+            .await
+            .errors
+            .is_empty()
+    );
+    assert!(!run(&app, user, VIEWER).await.errors.is_empty());
+}
+
+#[tokio::test]
+async fn core_fields_reachable_from_tally_still_refuse_a_member() {
+    let app = app();
+    let alice = member_at("loc-a", &[], false);
+    let created = data(
+        &run(
+            &app,
+            alice.clone(),
+            r#"mutation { createOnCallRole(locationId: "loc-a", name: "Duty Officer",
+                primaryPersonId: "bob") { id } }"#,
+        )
+        .await,
+    );
+    let id = created["createOnCallRole"]["id"].as_str().unwrap();
+
+    // Names are fine; a unit's people and a member's periods are not.
+    let names = data(
+        &run(
+            &app,
+            alice.clone(),
+            &format!(
+                r#"{{ onCallRole(id: "{id}") {{ primary {{ firstName }} location {{ name }} }} }}"#
+            ),
+        )
+        .await,
+    );
+    assert_eq!(names["onCallRole"]["primary"]["firstName"], "Bob");
+    assert_eq!(names["onCallRole"]["location"]["name"], "Unit A");
+    for field in [
+        "location { people { id } }",
+        "location { sessions { id } }",
+        "primary { periods(first: 1) { edges { cursor } } }",
+    ] {
+        let response = run(
+            &app,
+            alice.clone(),
+            &format!(r#"{{ onCallRole(id: "{id}") {{ {field} }} }}"#),
+        )
+        .await;
+        assert!(!response.errors.is_empty(), "a member reached {field}");
+    }
+}
