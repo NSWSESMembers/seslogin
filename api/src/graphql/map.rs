@@ -9,7 +9,7 @@
 
 use anyhow::{Result, anyhow};
 use async_graphql::dataloader::DataLoader;
-use async_graphql::{Context, ID, MaybeUndefined, Object};
+use async_graphql::{Context, Enum, ID, MaybeUndefined, Object};
 use std::sync::Arc;
 
 use super::auth::require_map_access;
@@ -20,7 +20,41 @@ use super::{LocationId, MapLayerId, UserId};
 use crate::app::{App, HasDb};
 use crate::auth::AuthInfo;
 use crate::db::{self, Handler};
-use crate::map;
+use crate::map::{self, MapPinType as Type};
+
+/// What a pin marks, shown in the app as an icon. More types are expected, so clients
+/// should cope with a value they don't know.
+#[derive(Enum, Copy, Clone, Debug, Eq, PartialEq)]
+pub enum MapPinType {
+    /// A lock, gate or key: how to get in once there.
+    Access,
+    /// Where to enter a site, or the way in.
+    Entry,
+    Flood,
+    Hazard,
+}
+
+impl From<Type> for MapPinType {
+    fn from(t: Type) -> Self {
+        match t {
+            Type::Access => Self::Access,
+            Type::Entry => Self::Entry,
+            Type::Flood => Self::Flood,
+            Type::Hazard => Self::Hazard,
+        }
+    }
+}
+
+impl From<MapPinType> for Type {
+    fn from(t: MapPinType) -> Self {
+        match t {
+            MapPinType::Access => Self::Access,
+            MapPinType::Entry => Self::Entry,
+            MapPinType::Flood => Self::Flood,
+            MapPinType::Hazard => Self::Hazard,
+        }
+    }
+}
 
 pub struct MapPin<A: App + HasDb + 'static> {
     _marker: std::marker::PhantomData<A>,
@@ -72,6 +106,17 @@ impl<A: App + HasDb + Send + Sync + 'static> MapPin<A> {
     /// One line of plain text.
     async fn title(&self) -> &str {
         &self.rec.title
+    }
+
+    /// What the pin marks; null for a plain pin, and for a type this server no longer
+    /// knows.
+    #[graphql(name = "type")]
+    async fn pin_type(&self) -> Option<MapPinType> {
+        self.rec
+            .pin_type
+            .as_deref()
+            .and_then(Type::parse)
+            .map(Into::into)
     }
 
     /// WGS 84 latitude, in degrees.
@@ -283,6 +328,7 @@ pub(super) struct CreateMapPinArgs {
     pub address: Option<String>,
     pub note: Option<String>,
     pub layer_id: Option<ID>,
+    pub pin_type: Option<MapPinType>,
 }
 
 pub(super) async fn create_map_pin<A: App + HasDb + Send + Sync + 'static>(
@@ -307,6 +353,7 @@ pub(super) async fn create_map_pin<A: App + HasDb + Send + Sync + 'static>(
         .create_map_pin(db::NewMapPin {
             location_id: &args.location_id,
             layer_id: args.layer_id.as_ref().map(|l| l.as_str()),
+            pin_type: args.pin_type.map(|t| Type::from(t).as_str()),
             title: &title,
             latitude,
             longitude,
@@ -327,6 +374,7 @@ pub(super) struct UpdateMapPinArgs {
     pub address: Option<String>,
     pub note: Option<String>,
     pub layer_id: MaybeUndefined<ID>,
+    pub pin_type: MaybeUndefined<MapPinType>,
 }
 
 pub(super) async fn update_map_pin<A: App + HasDb + Send + Sync + 'static>(
@@ -364,12 +412,18 @@ pub(super) async fn update_map_pin<A: App + HasDb + Send + Sync + 'static>(
             Some(l.to_string())
         }
     };
+    let pin_type = match args.pin_type {
+        MaybeUndefined::Undefined => rec.pin_type.clone(),
+        MaybeUndefined::Null => None,
+        MaybeUndefined::Value(t) => Some(Type::from(t).as_str().to_string()),
+    };
     let rec = app
         .db()
         .update_map_pin(
             &rec.id,
             db::MapPinUpdateShape::Fields {
                 layer_id: layer_id.as_deref(),
+                pin_type: pin_type.as_deref(),
                 title: &title,
                 latitude,
                 longitude,

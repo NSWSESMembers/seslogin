@@ -1115,6 +1115,7 @@ fn map_pin_fields(p: &db::MapPin) -> Fields {
             opt_text(Some(p.note.as_str()).filter(|n| !n.is_empty())),
         )
         .with("layer_id", opt_text(p.layer_id.as_deref()))
+        .with("pin_type", opt_text(p.pin_type.as_deref()))
 }
 
 pub fn map_pin_create_changes(p: &db::MapPin) -> Vec<AuditFieldChange> {

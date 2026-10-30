@@ -41,7 +41,7 @@ use super::auth::{
 use super::dataloader::DatabaseLoader;
 use super::equipment::{self, Equipment, EquipmentStatus, EquipmentType};
 use super::error::{ApiError, ErrorCode};
-use super::map::{self, MapLayer, MapPin};
+use super::map::{self, MapLayer, MapPin, MapPinType};
 use super::notes::{self, Note, NoteFolder};
 use super::on_call::{self, OnCallRole};
 use super::query::{QuickPick, build_quick_pick};
@@ -2730,8 +2730,8 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         reservations::delete_reservation(ctx, self.app.as_ref(), &id).await
     }
 
-    /// Add a pin to a location's shared map. Any user with access to the location may,
-    /// Read only included.
+    /// Add a pin to a location's shared map, optionally of a `type` (a plain pin
+    /// without). Any user with access to the location may, Read only included.
     #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
     async fn create_map_pin(
         &self,
@@ -2743,6 +2743,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         address: Option<String>,
         note: Option<String>,
         layer_id: Option<ID>,
+        #[graphql(name = "type")] pin_type: Option<MapPinType>,
     ) -> Result<MapPin<A>> {
         map::create_map_pin(
             ctx,
@@ -2755,13 +2756,14 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
                 address,
                 note,
                 layer_id,
+                pin_type,
             },
         )
         .await
     }
 
     /// Change a map pin. Omitted arguments are left as they are; `layerId: null` takes
-    /// it off its layer. Fails with `CONFLICT` if the pin is no longer at
+    /// it off its layer and `type: null` makes it a plain pin. Fails with `CONFLICT` if the pin is no longer at
     /// `expectedVersion`.
     #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
     async fn update_map_pin(
@@ -2775,6 +2777,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         address: Option<String>,
         note: Option<String>,
         layer_id: MaybeUndefined<ID>,
+        #[graphql(name = "type")] pin_type: MaybeUndefined<MapPinType>,
     ) -> Result<MapPin<A>> {
         map::update_map_pin(
             ctx,
@@ -2788,6 +2791,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
                 address,
                 note,
                 layer_id,
+                pin_type,
             },
         )
         .await

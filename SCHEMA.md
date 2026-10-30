@@ -433,6 +433,7 @@ The pins on a location's shared map ("Map").
 **Non-obvious attributes (not in table definition):**
 
 - `layer_id` (S) — optional `map_layer` the pin is on; it may name a deleted layer
+- `pin_type` (S, optional) — what the pin marks, shown as an icon: `access`, `entry`, `flood` or `hazard`; absent for a plain pin. More are expected, so readers tolerate a value they don't know
 - `title` (S) — one line of plain text
 - `latitude` / `longitude` (N) — WGS 84 degrees
 - `address` (S, optional) — free text, not geocoded; absent when empty
