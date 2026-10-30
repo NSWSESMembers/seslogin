@@ -60,6 +60,21 @@ pub fn api_base_url(host_header: Option<&str>) -> String {
     format!("{scheme}://{host}")
 }
 
+/// Path of the GraphQL endpoint as an OAuth resource. Locally `poem` serves
+/// GraphQL at `/`, but the resource is an identifier, not a route: deployed, the
+/// API is reached at `<base>/graphql` through CloudFront.
+pub const GRAPHQL_RESOURCE_PATH: &str = "/graphql";
+/// Path of the MCP endpoint as an OAuth resource.
+pub const MCP_RESOURCE_PATH: &str = "/mcp";
+
+/// The OAuth resource (RFC 8707 audience) naming this API's endpoint at `path`
+/// ([`GRAPHQL_RESOURCE_PATH`] or [`MCP_RESOURCE_PATH`]). Both the endpoints that
+/// accept `slat_` tokens derive the resource they expect through this, so they
+/// can't drift from each other or from what the token endpoint grants.
+pub fn api_resource(host_header: Option<&str>, path: &str) -> String {
+    format!("{}{path}", api_base_url(host_header))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

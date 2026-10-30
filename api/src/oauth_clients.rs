@@ -20,6 +20,7 @@
 //! (`<payload>.<sig>`), so the two can't collide and registration can't mint a
 //! static id. [`resolve_client`] is the one lookup every caller uses.
 
+use crate::base_url::{GRAPHQL_RESOURCE_PATH, MCP_RESOURCE_PATH};
 use crate::oauth;
 
 /// A first-party OAuth client, defined in code. See the module docs.
@@ -45,11 +46,11 @@ pub const STATIC_CLIENTS: &[StaticClient] = &[StaticClient {
     client_name: "Tally",
     redirect_uris: &["tally://oauth/callback"],
     dev_expo_redirect_paths: &["/--/oauth/callback"],
-    resources: &["/graphql"],
+    resources: &[GRAPHQL_RESOURCE_PATH],
 }];
 
 /// The only resource a dynamically registered client may be granted.
-pub const DYNAMIC_CLIENT_RESOURCES: &[&str] = &["/mcp"];
+pub const DYNAMIC_CLIENT_RESOURCES: &[&str] = &[MCP_RESOURCE_PATH];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ClientKind {

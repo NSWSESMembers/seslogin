@@ -211,6 +211,31 @@ async fn a_token_minted_for_a_different_resource_is_rejected() {
 }
 
 #[tokio::test]
+async fn a_graphql_bound_token_is_rejected() {
+    use seslogin::db::Handler as _;
+    let (app, schema) = setup();
+    seed_user(&app, "user-1", true);
+    let (grant, token, _refresh) = oauth::mint_grant(
+        "user-1",
+        "tally",
+        "Tally",
+        "tally://oauth/callback",
+        "https://api.seslogin.com/graphql",
+        oauth::DEFAULT_SCOPE,
+        seslogin::clock::now_sec(),
+    );
+    app.db.create_oauth_grant(&grant).await.unwrap();
+    let reply = post(
+        &app,
+        &schema,
+        Some(&format!("Bearer {token}")),
+        rpc("ping", json!({})),
+    )
+    .await;
+    assert_eq!(reply.status, 401);
+}
+
+#[tokio::test]
 async fn a_disabled_users_token_is_rejected() {
     let (app, schema) = setup();
     seed_user(&app, "user-1", false); // disabled

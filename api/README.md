@@ -112,11 +112,10 @@ Two details worth knowing:
 ## OAuth authorization server
 
 `poem`/`poem-local` also serve a small OAuth 2.1 + PKCE authorization server —
-the plumbing an AI client (Claude Code, a claude.ai connector, …) uses to get a
-token that acts as a specific user, with exactly their permissions. It's laid
-out per the MCP authorization spec, though nothing here is MCP-specific yet
-(see `oauth.rs`'s module docs and CLAUDE.md's plan for how a future MCP
-endpoint and other credential types slot into the same tables/tokens):
+the plumbing an AI client (Claude Code, a claude.ai connector, …) or one of
+SESLogin's own apps uses to get a token that acts as a specific user, with
+exactly their permissions. It's laid out per the MCP authorization spec (see
+`oauth.rs`'s module docs):
 
 - `GET /.well-known/oauth-authorization-server` — RFC 8414 metadata.
 - `POST /oauth/register` — RFC 7591 dynamic client registration. Public
@@ -127,6 +126,72 @@ endpoint and other credential types slot into the same tables/tokens):
   the `authorization_code` grant (PKCE S256 required) and `refresh_token`
   rotation (OAuth 2.1 reuse detection: presenting an already-rotated refresh
   token revokes the whole grant).
+
+**Clients.** There are two kinds (`oauth_clients.rs`), and which resource a
+grant is bound to depends on which:
+
+- **Dynamic** clients come from `POST /oauth/register`. Anyone can mint one,
+  so their name is unverified and they are **MCP-only**: the token endpoint
+  grants them `<API base>/mcp` and refuses any other `resource`
+  (`invalid_target`).
+- **Static** clients are SESLogin's own apps, listed in
+  `oauth_clients::STATIC_CLIENTS`. Today that is Tally (`client_id` `tally`,
+  public/PKCE, redirect `tally://oauth/callback`, resource `/graphql`). Each
+  gets only the resource paths listed for it, appended to the API base; with
+  no `resource` it gets the first. Redirect URIs are matched exactly and are
+  not run through `validate_redirect_uri`, which is the only reason a custom
+  scheme like `tally://` works — dynamic registration still requires
+  `https://` or loopback `http://`. Static ids contain no `.`, so they can
+  never collide with a dynamic id (`<payload>.<sig>`).
+
+  **Expo Go development redirects.** A static client may also list
+  `dev_expo_redirect_paths` (Tally: `/--/oauth/callback`), so a developer can
+  sign in from Expo Go with `exp://<their LAN IP>:<port>/--/oauth/callback`,
+  including against prod. Because whoever runs the Expo server at that address
+  receives the code, it is fenced in (`oauth_clients::is_dev_expo_redirect`):
+  only a user with `isDev` (set by a super user on the user's edit page) can
+  see or approve one, so a phishing link with an `exp://` redirect fails for
+  everyone else; the host must be loopback, RFC 1918 or link-local IPv4 (no
+  public hosts, no `*.exp.direct` tunnels); the port, path and absence of a
+  query/fragment are checked; and dynamic clients never get one. The consent
+  page warns that it is a development build and names `ip:port`
+  (`isDevelopmentBuild`), and Connected apps shows the IP rather than
+  "SESLogin app".
+
+  **Adding a static client** is a PR editing `STATIC_CLIENTS`: a new id with
+  no `.`, the app's name, its exact redirect URIs, and its resource paths
+  (`base_url::GRAPHQL_RESOURCE_PATH` and/or `MCP_RESOURCE_PATH`). The unit
+  test over the list checks the shape. A static client listed for `/graphql`
+  gets the whole site API as the user, so only list first-party apps there.
+  A custom scheme can be claimed by any app on the device; PKCE stops a stolen
+  code being redeemed, but not an impostor app starting its own flow, which is
+  why the consent page still tells the user to approve only a sign-in they
+  started.
+
+`oauthAuthorizationRequest.isFirstParty` and `OAuthGrant.isFirstParty` say
+whether the client is static; the consent page and Connected apps name such
+an app as SESLogin's own instead of showing its custom scheme's meaningless
+redirect "host".
+
+**Using a token.** A grant works only on the endpoint its `resource` names,
+matched exactly by `oauth::verify_access_token`: `POST /mcp` expects
+`<API base>/mcp`, and the GraphQL endpoint (`auth::verify_token`) expects
+`<API base>/graphql`. Both derive that from `base_url::api_resource`, so
+behind CloudFront `API_BASE_URL` decides it and elsewhere the `Host` header
+does. Locally GraphQL is served at `http://localhost:8000/`, but the resource
+is still `http://localhost:8000/graphql`: it's an identifier, not a route.
+`slrt_` refresh tokens are accepted only by `/oauth/token`.
+
+**Credentials a grant can't mint.** A caller authenticated with an `slat_`
+token (`AuthInfo::User { grant_id: Some(_), .. }`) is refused, by
+`graphql::auth::require_not_oauth_grant`, anything that would hand out a
+credential outliving or escaping the grant: `createApiToken`,
+`beginPasskeyRegistration`/`finishPasskeyRegistration`,
+`approveOauthAuthorization`, and `enrollSession`/`reactivateSession` (which
+bind a kiosk key to a location). Revoking, deleting and renaming stay allowed:
+they are within the user's own permissions. This applies to MCP and GraphQL
+grants alike. Writes through either are audited with
+`actor_via = oauth_grant:<id>`.
 
 The consent screen a user approves/denies from is a web page
 (`/admin/oauth/authorize`), backed by the `oauthAuthorizationRequest` query and
@@ -148,7 +213,7 @@ the browser at, via the shared `base_url::web_base_url()` helper.
 
 Once a user has approved a client, `User.oauthGrants` (guarded the same way as
 `user(id)` — the user themselves, or a super user) lists their authorized
-grants: client name, redirect host, scope, created/last-used timestamps, and
+grants: client name, redirect host, `isFirstParty`, scope, created/last-used timestamps, and
 `refreshExpiresAt` (when the grant goes dead if never used again). Token
 hashes and the client id are never exposed. Expired grants are filtered out
 client-side, since DynamoDB's TTL deletion lags real expiry.
@@ -208,8 +273,10 @@ Test runs against the `seslogin_test` tables, a snapshot that still holds real
 member data.
 
 **Auth:** only an OAuth `slat_` access token audience-bound to `<API
-base>/mcp` is accepted (an `slu_` user token or a JWT is rejected here, same
-as an `slat_` token is rejected on the GraphQL endpoint — see `oauth.rs`). A
+base>/mcp` is accepted — which only dynamically registered clients can get. An
+`slu_` user token, a JWT, or an `slat_` token bound to `/graphql` (a static
+client's) is rejected here, just as an `/mcp`-bound token is rejected on the
+GraphQL endpoint; see "Using a token" above. A
 missing or invalid token gets a `401` carrying `WWW-Authenticate: Bearer
 resource_metadata="<API base>/.well-known/oauth-protected-resource/mcp"`, per
 the MCP authorization spec's discovery flow.

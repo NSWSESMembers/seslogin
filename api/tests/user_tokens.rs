@@ -18,7 +18,7 @@ fn sha256_hex(s: &str) -> String {
 }
 
 async fn verify(app: &FakeApp, token: &str) -> Result<AuthInfo, AuthError> {
-    auth::verify_token(app, token).await
+    auth::verify_token(app, token, None).await
 }
 
 #[tokio::test]
