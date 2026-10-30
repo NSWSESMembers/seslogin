@@ -487,3 +487,101 @@ async fn deleting_a_task_or_list_records_a_delete() {
     assert_eq!(changed_fields(list_delete), vec!["name"]);
     assert_eq!(list_delete.location_ids, vec!["loc-a".to_string()]);
 }
+
+#[tokio::test]
+async fn note_writes_are_recorded_against_their_location() {
+    let app = app();
+    let note = app
+        .db
+        .create_note(db::NewNote {
+            location_id: "loc-a",
+            folder_id: None,
+            title: "Radio codes",
+            content: "",
+            created_by: Some("caller"),
+        })
+        .await
+        .unwrap();
+    app.db
+        .update_note(
+            &note.id,
+            db::NoteUpdateShape::Fields {
+                folder_id: None,
+                title: "Radio codes",
+                content: "Channel 1",
+                by: Some("caller"),
+                expected_version: note.version,
+            },
+        )
+        .await
+        .unwrap();
+    // A save that lost a race records nothing.
+    app.db
+        .update_note(
+            &note.id,
+            db::NoteUpdateShape::Fields {
+                folder_id: None,
+                title: "Stale",
+                content: "",
+                by: Some("caller"),
+                expected_version: note.version,
+            },
+        )
+        .await
+        .unwrap_err();
+    app.db
+        .update_note(&note.id, db::NoteUpdateShape::Delete { by: Some("caller") })
+        .await
+        .unwrap();
+    let entries = app.db.inner().audit_entries();
+    assert_eq!(entries.len(), 3);
+    for entry in &entries {
+        assert_eq!(entry.entity_type, AuditEntityType::Note);
+        assert_eq!(entry.entity_id, note.id);
+        assert_eq!(entry.entity_label.as_deref(), Some("Radio codes"));
+        assert_eq!(entry.location_ids, vec!["loc-a".to_string()]);
+    }
+    assert_eq!(entries[0].action, AuditAction::Create);
+    assert_eq!(changed_fields(&entries[0]), vec!["title"]);
+    assert_eq!(entries[1].action, AuditAction::Update);
+    assert_eq!(changed_fields(&entries[1]), vec!["content"]);
+    assert_eq!(entries[2].action, AuditAction::Delete);
+    assert_eq!(changed_fields(&entries[2]), vec!["title", "content"]);
+}
+
+#[tokio::test]
+async fn note_folder_writes_are_recorded_against_their_location() {
+    let app = app();
+    let folder = app
+        .db
+        .create_note_folder("loc-a", "Vehicles", Some("caller"))
+        .await
+        .unwrap();
+    app.db
+        .update_note_folder(
+            &folder.id,
+            db::NoteFolderUpdateShape::Name { name: "Trucks" },
+        )
+        .await
+        .unwrap();
+    app.db
+        .update_note_folder(&folder.id, db::NoteFolderUpdateShape::Delete)
+        .await
+        .unwrap();
+    let entries = app.db.inner().audit_entries();
+    let actions: Vec<_> = entries.iter().map(|e| e.action).collect();
+    assert_eq!(
+        actions,
+        vec![
+            AuditAction::Create,
+            AuditAction::Update,
+            AuditAction::Delete
+        ]
+    );
+    for entry in &entries {
+        assert_eq!(entry.entity_type, AuditEntityType::NoteFolder);
+        assert_eq!(entry.location_ids, vec!["loc-a".to_string()]);
+        assert_eq!(changed_fields(entry), vec!["name"]);
+    }
+    assert_eq!(entries[2].entity_label.as_deref(), Some("Trucks"));
+}

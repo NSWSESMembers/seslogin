@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<522567d56912eb80aaead54b4c91e988>>
+ * @generated SignedSource<<e11a8c73e10ddcd49078f8bebaec1e1e>>
  * @lightSyntaxTransform
  */
 
@@ -9,7 +9,7 @@
 
 import { ConcreteRequest } from 'relay-runtime';
 import { FragmentRefs } from "relay-runtime";
-export type AuditEntityType = "API_TOKEN" | "CATEGORY" | "LOCATION" | "NITC_GROUP" | "NITC_TAG" | "OAUTH_GRANT" | "PERIOD" | "PERSON" | "SESSION" | "TASK" | "TASK_LIST" | "USER" | "USER_TOKEN" | "WEBAUTHN_CREDENTIAL" | "%future added value";
+export type AuditEntityType = "API_TOKEN" | "CATEGORY" | "LOCATION" | "NITC_GROUP" | "NITC_TAG" | "NOTE" | "NOTE_FOLDER" | "OAUTH_GRANT" | "PERIOD" | "PERSON" | "SESSION" | "TASK" | "TASK_LIST" | "USER" | "USER_TOKEN" | "WEBAUTHN_CREDENTIAL" | "%future added value";
 export type AuditLogQuery$variables = {
   after?: string | null | undefined;
   all: boolean;

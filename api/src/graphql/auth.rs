@@ -208,6 +208,19 @@ pub(crate) fn require_task_access(ctx: &Context<'_>, location_id: &str) -> Resul
     }
 }
 
+/// Check the caller may use a location's Notes (its shared notebook): read them, and
+/// also create, edit and delete notes and manage its note folders.
+///
+/// The same rule as [`require_task_access`], for the same reason: notes are a shared
+/// unit tool, so **Read only** users may write them too, and only people may — kiosk
+/// sessions, API tokens and edit links are refused.
+pub(crate) fn require_note_access(ctx: &Context<'_>, location_id: &str) -> Result<()> {
+    match ctx.data_opt::<AuthInfo>() {
+        Some(AuthInfo::User { .. }) => require_location_access(ctx, location_id),
+        _ => Err(ApiError::forbidden("Notes are only available to signed-in users").into()),
+    }
+}
+
 /// Whether the caller may make changes at the location — the boolean form of
 /// [`require_location_write_access`] plus [`require_writable`], for resolvers that
 /// report capability (e.g. `Location.viewerCanEdit`) rather than enforce it.

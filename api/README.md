@@ -506,6 +506,38 @@ curl -s --compressed -H 'Authorization: Bearer slu_TokenReadOnly.localdev-readon
   'http://localhost:8000/api/v1/sync?limit=2'
 ```
 
+## Notes
+
+A location's shared notebook, used by the Tally app (`src/graphql/notes.rs`, rules in
+`src/notes.rs`, storage in SCHEMA.md's `note` and `note_folder` sections).
+
+- **Who:** the same as Tasks — any *user* with Admin **or** Read only access to the location,
+  and super users, may read, create, edit and delete notes and manage note folders
+  (`graphql::auth::require_note_access`). Kiosk sessions, API tokens and edit links are
+  refused.
+- **Reading:** `Location.notes(folderId, search)` lists the location's notes, most recently
+  changed first. Without `folderId` every note at the location is listed, whatever folder it
+  is in. `search` keeps notes whose title contains it, ignoring case. `Location.noteFolders`
+  (by name) and `Query.note(id)` complete the reads.
+- **Fields:** `title` is one trimmed line (max 200 characters). `content` is plain text, kept
+  exactly as written (max 20,000 characters; only-whitespace counts as empty). It is expected
+  to grow markdown-like formatting later.
+- **Writes:** `createNote`, `updateNote` (omitted arguments unchanged, `folderId: null` takes
+  the note out of its folder), `deleteNote`, `createNoteFolder`, `renameNoteFolder`,
+  `deleteNoteFolder`. Deleting a folder leaves its notes on the location (`Note.folder`
+  becomes null).
+- **Concurrency:** `updateNote` takes `expectedVersion`; if someone else saved the note since
+  it was read, the save fails with `CONFLICT` rather than overwriting their change.
+- **Tables:** only the test tables (`seslogin_test_note`, `seslogin_test_note_folder`) exist
+  so far, so a deployed API on the prod tables fails Notes calls, and nothing else.
+
+```graphql
+mutation {
+  createNote(locationId: "TestAUnit001", title: "Radio channels",
+             content: "Ops: 1\nAdmin: 2") { id version }
+}
+```
+
 ## Audit log
 
 Every business write (people, periods, kiosk sessions, users, locations, categories, API tokens, passkeys, OAuth grants, …) is recorded in the `{DB_PREFIX}_audit_log` DynamoDB table: who did it, which location(s) it touched, and which fields changed from what to what. The table is defined in `infra/dynamodb*.tf` and documented in `SCHEMA.md`; it must exist (`terraform apply`) for entries to land. It is read through GraphQL (below); there is no UI for it yet.

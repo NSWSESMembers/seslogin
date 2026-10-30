@@ -113,6 +113,8 @@ enum AuditEntityType {
 	WEBAUTHN_CREDENTIAL
 	TASK
 	TASK_LIST
+	NOTE
+	NOTE_FOLDER
 }
 
 type AuditEntry {
@@ -438,6 +440,18 @@ type Location {
 	The location's task lists, by name.
 	"""
 	taskLists: [TaskList!]!
+	"""
+	The location's notes (its shared notebook), most recently changed first.
+	`folderId` narrows to one of its note folders; without it every note at the
+	location is listed, whichever folder it is in. `search` keeps notes whose title
+	contains it, ignoring case. Users only (Admin or Read only); see
+	`graphql::notes`.
+	"""
+	notes(folderId: ID, search: String): [Note!]!
+	"""
+	The location's note folders, by name.
+	"""
+	noteFolders: [NoteFolder!]!
 	sessions: [Session!]!
 	dashboardSummary(asOf: Int): LocationDashboardSummary!
 	badgeLeaderboard(limit: Int): [LocationBadgeLeaderboardEntry!]!
@@ -666,6 +680,27 @@ type MutationRoot {
 	Delete a task list. Its tasks stay on the location. Returns its ID.
 	"""
 	deleteTaskList(id: ID!): ID!
+	"""
+	Add a note to a location's shared notebook. Any user with access to the
+	location may, Read only included.
+	"""
+	createNote(locationId: ID!, title: String!, content: String, folderId: ID): Note!
+	"""
+	Change a note. Omitted arguments are left as they are; `null` takes it out of
+	its folder. Fails with `CONFLICT` if the note is no longer at
+	`expectedVersion`.
+	"""
+	updateNote(id: ID!, expectedVersion: Int!, title: String, content: String, folderId: ID): Note!
+	"""
+	Delete a note. Returns its ID.
+	"""
+	deleteNote(id: ID!): ID!
+	createNoteFolder(locationId: ID!, name: String!): NoteFolder!
+	renameNoteFolder(id: ID!, name: String!): NoteFolder!
+	"""
+	Delete a note folder. Its notes stay on the location. Returns its ID.
+	"""
+	deleteNoteFolder(id: ID!): ID!
 	deleteSession(id: ID!): Boolean!
 	"""
 	Bring back a QR-enrolled kiosk that expired after two weeks offline, without
@@ -797,6 +832,47 @@ type NitcGroup {
 	sesTags: [SesNonIncidentTag!]!
 	createdAt: Int
 	updatedAt: Int
+}
+
+type Note {
+	id: ID!
+	"""
+	One line of plain text.
+	"""
+	title: String!
+	"""
+	The body of the note, plain text; empty when there is none.
+	"""
+	content: String!
+	locationId: ID!
+	location: Location!
+	"""
+	The folder the note is in, if any. Null too when that folder has been deleted:
+	the note then just belongs to its location.
+	"""
+	folder: NoteFolder
+	"""
+	Bumped by every change; pass it back to `updateNote`.
+	"""
+	version: Int!
+	createdAt: Int!
+	"""
+	Email of the user who created the note.
+	"""
+	createdBy: String
+	updatedAt: Int!
+	"""
+	Email of the user who last changed the note.
+	"""
+	updatedBy: String
+}
+
+type NoteFolder {
+	id: ID!
+	name: String!
+	locationId: ID!
+	location: Location!
+	createdAt: Int!
 }
 
 """
@@ -1198,6 +1274,10 @@ type QueryRoot {
 	One task, open or completed; null if it does not exist or was deleted.
 	"""
 	task(id: ID!): Task
+	"""
+	One note; null if it does not exist or was deleted.
+	"""
+	note(id: ID!): Note
 	session(
 		"""
 		ID for the session to look up

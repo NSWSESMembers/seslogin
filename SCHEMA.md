@@ -366,6 +366,52 @@ Optional named lists a location's tasks can be grouped on.
 
 ---
 
+### `{prefix}note`
+
+A location's shared notebook ("Notes").
+
+| Attribute     | Type | Role                                  |
+| ------------- | ---- | ------------------------------------- |
+| `id`          | S    | Hash key (PK)                         |
+| `location_id` | S    | GSI hash key (`location_id-index`)    |
+
+**GSIs:**
+
+| GSI                 | Hash key      | Sort key | Projection | Purpose                  |
+| ------------------- | ------------- | -------- | ---------- | ------------------------ |
+| `location_id-index` | `location_id` | —        | ALL        | A location's notes; deleted ones are filtered out on read, and the API sorts and searches them in memory |
+
+**Non-obvious attributes (not in table definition):**
+
+- `folder_id` (S) — optional `note_folder` the note is in; it may name a deleted folder
+- `title` (S) — one line of plain text
+- `content` (S, optional) — plain text; absent when empty
+- `v` (N) — version, bumped by every write; saves are conditional on it, so two people editing the same note cannot silently overwrite each other
+- `created_by` / `updated_by` (S) — user IDs
+- `deleted` (N) — Unix seconds when soft-deleted; absent otherwise
+- `created_at` / `updated_at` (N)
+
+---
+
+### `{prefix}note_folder`
+
+Optional named folders a location's notes can be filed in.
+
+| Attribute     | Type | Role                                  |
+| ------------- | ---- | ------------------------------------- |
+| `id`          | S    | Hash key (PK)                         |
+| `location_id` | S    | GSI hash key (`location_id-index`)    |
+
+**GSIs:**
+
+| GSI                 | Hash key      | Sort key | Projection | Purpose                  |
+| ------------------- | ------------- | -------- | ---------- | ------------------------ |
+| `location_id-index` | `location_id` | —        | ALL        | A location's folders; deleted ones are filtered out on read |
+
+**Non-obvious attributes (not in table definition):** `name` (S), `created_by` (S), `deleted` (N, soft delete — the folder's notes are left alone), `created_at` / `updated_at` (N).
+
+---
+
 ### `{prefix}audit_log`
 
 An append-only record of business database writes, shown in the admin UI. Entries are kept forever (no TTL). One item is written **per affected location** for each audited event, so a write touching two locations produces two items sharing an `event_id`.
@@ -395,7 +441,7 @@ Access patterns: per-location newest-first (`Query` on `location_id-sk-index`) a
 - `ts` (N) — Unix seconds when the event happened
 - `event_id` (S) — shared by every item written for the same event
 - `action` (S) — `create`, `update`, `delete` or `restore`
-- `entity_type` (S) — `user`, `person`, `period`, `session`, `api_token`, `location`, `category`, `nitc_group`, `nitc_tag`, `user_token`, `oauth_grant`, `webauthn_credential`, `task` or `task_list`
+- `entity_type` (S) — `user`, `person`, `period`, `session`, `api_token`, `location`, `category`, `nitc_group`, `nitc_tag`, `user_token`, `oauth_grant`, `webauthn_credential`, `task`, `task_list`, `note` or `note_folder`
 - `entity_id` (S) — ID of the entity changed
 - `entity_label` (S) — human-readable name of the entity at the time; omitted when unknown
 - `actor_kind` (S) — `user`, `session` (kiosk), `api_token`, `period_link`, `system` (a job or the CLI), `unauthenticated` or `unknown`

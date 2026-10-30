@@ -304,6 +304,22 @@ const TABLES: &[Table] = &[
         ttl: None,
     },
     Table {
+        name: "note",
+        hash: "id",
+        range: None,
+        attrs: &[Attr("id", S), Attr("location_id", S)],
+        gsis: &[all("location_id-index", "location_id", None)],
+        ttl: None,
+    },
+    Table {
+        name: "note_folder",
+        hash: "id",
+        range: None,
+        attrs: &[Attr("id", S), Attr("location_id", S)],
+        gsis: &[all("location_id-index", "location_id", None)],
+        ttl: None,
+    },
+    Table {
         name: "test_pagination",
         hash: "id",
         range: None,

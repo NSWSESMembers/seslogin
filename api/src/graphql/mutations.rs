@@ -40,6 +40,7 @@ use super::auth::{
 };
 use super::dataloader::DatabaseLoader;
 use super::error::{ApiError, ErrorCode};
+use super::notes::{self, Note, NoteFolder};
 use super::query::{QuickPick, build_quick_pick};
 use super::tasks::{self, Task, TaskList, TaskRecurrenceInput};
 use super::{
@@ -2478,6 +2479,89 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
     #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
     async fn delete_task_list(&self, ctx: &Context<'_>, id: ID) -> Result<ID> {
         tasks::delete_task_list(ctx, self.app.as_ref(), &id).await
+    }
+
+    /// Add a note to a location's shared notebook. Any user with access to the
+    /// location may, Read only included.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    async fn create_note(
+        &self,
+        ctx: &Context<'_>,
+        location_id: ID,
+        title: String,
+        content: Option<String>,
+        folder_id: Option<ID>,
+    ) -> Result<Note<A>> {
+        notes::create_note(
+            ctx,
+            self.app.as_ref(),
+            notes::CreateNoteArgs {
+                location_id,
+                title,
+                content,
+                folder_id,
+            },
+        )
+        .await
+    }
+
+    /// Change a note. Omitted arguments are left as they are; `null` takes it out of
+    /// its folder. Fails with `CONFLICT` if the note is no longer at
+    /// `expectedVersion`.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    async fn update_note(
+        &self,
+        ctx: &Context<'_>,
+        id: ID,
+        expected_version: i32,
+        title: Option<String>,
+        content: Option<String>,
+        folder_id: MaybeUndefined<ID>,
+    ) -> Result<Note<A>> {
+        notes::update_note(
+            ctx,
+            self.app.as_ref(),
+            notes::UpdateNoteArgs {
+                id,
+                expected_version,
+                title,
+                content,
+                folder_id,
+            },
+        )
+        .await
+    }
+
+    /// Delete a note. Returns its ID.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    async fn delete_note(&self, ctx: &Context<'_>, id: ID) -> Result<ID> {
+        notes::delete_note(ctx, self.app.as_ref(), &id).await
+    }
+
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    async fn create_note_folder(
+        &self,
+        ctx: &Context<'_>,
+        location_id: ID,
+        name: String,
+    ) -> Result<NoteFolder<A>> {
+        notes::create_note_folder(ctx, self.app.as_ref(), &location_id, &name).await
+    }
+
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    async fn rename_note_folder(
+        &self,
+        ctx: &Context<'_>,
+        id: ID,
+        name: String,
+    ) -> Result<NoteFolder<A>> {
+        notes::rename_note_folder(ctx, self.app.as_ref(), &id, &name).await
+    }
+
+    /// Delete a note folder. Its notes stay on the location. Returns its ID.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    async fn delete_note_folder(&self, ctx: &Context<'_>, id: ID) -> Result<ID> {
+        notes::delete_note_folder(ctx, self.app.as_ref(), &id).await
     }
 
     #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
