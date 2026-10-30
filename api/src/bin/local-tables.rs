@@ -158,13 +158,11 @@ const TABLES: &[Table] = &[
         range: None,
         attrs: &[
             Attr("id", S),
-            Attr("code", S),
             Attr("location_id", S),
             Attr("active", N),
             Attr("key_fingerprint", S),
         ],
         gsis: &[
-            keys_only("code-index", "code"),
             all("active-location_id-index", "active", Some("location_id")),
             keys_only("key_fingerprint-index", "key_fingerprint"),
         ],

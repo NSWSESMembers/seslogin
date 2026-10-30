@@ -70,15 +70,7 @@ await page.evaluate(
 
     const key = `kiosk_${profile}`;
     const settings = JSON.parse(localStorage.getItem(key) ?? "{}");
-    localStorage.setItem(
-      key,
-      JSON.stringify({
-        ...settings,
-        authMode: "key",
-        scanAuthToken: null,
-        scanAuthTokenIssuedAt: null,
-      }),
-    );
+    localStorage.setItem(key, JSON.stringify({ ...settings, authMode: "key" }));
   },
   {
     profile: PROFILE,

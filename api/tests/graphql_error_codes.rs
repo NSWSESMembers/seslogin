@@ -13,11 +13,11 @@ use async_graphql::{Request, Value};
 use seslogin::app::{self, MyApp};
 use seslogin::auth::AuthInfo;
 use seslogin::graphql;
-use seslogin::jwt;
 use seslogin::mockdb;
 use seslogin::mockmail;
 use seslogin::mockqueue;
 use seslogin::mockrealtime;
+use seslogin::server_secret::ServerSecret;
 
 type TestSchema = async_graphql::Schema<
     graphql::QueryRoot<
@@ -35,7 +35,7 @@ struct Fixture {
 }
 
 fn fixture() -> Fixture {
-    let key = jwt::Key::new("test", None).expect("valid test JWT key");
+    let key = ServerSecret::new("test");
     let db = mockdb::Handler::new();
     // The mock backends record instead of dispatching, so nothing here touches the
     // network or needs AWS config resolution.

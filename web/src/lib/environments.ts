@@ -45,36 +45,6 @@ export function createAdminGraphQLEnvironment(
 }
 
 /**
- * Creates a Relay environment for kiosk routes that uses the cached kiosk auth token
- */
-export function createKioskGraphQLEnvironment(
-  getScanToken: () => string | null,
-  onUnauthorized: () => void,
-): Environment {
-  const _fetchGraphQL: FetchFunction = async (request, variables) => {
-    const authToken = getScanToken();
-
-    if (authToken == null) {
-      onUnauthorized();
-      throw new Error("Failed to get auth token");
-    }
-
-    return await fetchGraphQL(`Bearer ${authToken}`, request, variables, () => {
-      console.log("Unauthorized in kiosk section");
-      onUnauthorized();
-      throw new Error("Unauthorized from server");
-    });
-  };
-
-  const environment = new Environment({
-    network: Network.create(_fetchGraphQL),
-    store: new Store(new RecordSource(), { gcReleaseBufferSize: 0 }),
-  });
-
-  return environment;
-}
-
-/**
  * Creates a Relay environment for a kiosk enrolled via public key. Each request is
  * signed: `getAuthHeader` is called with the serialized body and returns a full
  * `SLKey <fp>.<ts>.<sig>` Authorization header. A 401 (session disabled / key expired)

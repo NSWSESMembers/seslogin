@@ -86,7 +86,7 @@ export function SessionPushListener({
 
     async function handleChanged(sessionId: string) {
       const env = latest.current.kioskEnvironment;
-      if (env?.authMode === "key") {
+      if (env) {
         await waitForKeyToMove(env.profile, sessionId, () => cancelled);
       }
       if (!cancelled) latest.current.refreshNow();

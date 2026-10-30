@@ -5,9 +5,9 @@
 //! released to a new enrolment keeps `active` on purpose, an expired key keeps it so an
 //! admin can reactivate the kiosk, and a legacy JWT kiosk keeps it after its last JWT
 //! lapses. Left alone, they pile up in every location's kiosk list. Retiring one
-//! ([`SessionUpdateShape::Retire`]) removes `active`, any leftover code and the key
-//! fields, and stamps `retired_at`. The row itself stays, so its id still resolves to
-//! its name and location.
+//! ([`SessionUpdateShape::Retire`]) removes `active` and the key fields, and stamps
+//! `retired_at`. The row itself stays, so its id still resolves to its name and
+//! location.
 //!
 //! Each kind of dead session is dated by the attribute that made it unusable:
 //!
@@ -21,8 +21,8 @@
 //! (an admin can reactivate it), so the grace period is also how long that stays
 //! possible. A legacy kiosk with no key can only have authenticated with a session JWT,
 //! and every JWT it was issued expires within 14 days of a request that also refreshed
-//! `last_contact`. A legacy session still holding a setup code it never redeemed is
-//! covered by the same rule: nothing can redeem that code any more.
+//! `last_contact`. Session JWTs are no longer accepted at all, so the offset is now only
+//! conservative.
 //!
 //! The planner is pure; [`run`] walks the table and applies it. Each write re-checks
 //! the plan's condition in DynamoDB, so a kiosk that comes back between the scan and
@@ -205,7 +205,6 @@ mod tests {
             client_version: None,
             client_info: None,
             client_info_updated_at: None,
-            code: None,
             config: serde_json::Map::new(),
             healthcheck_url: None,
             public_key: None,
@@ -281,15 +280,6 @@ mod tests {
         assert_eq!(plan.reason, RetireReason::LegacyIdle);
         assert_eq!(plan.unusable_since, NOW - GRACE_S - 1);
         assert_eq!(plan.unusable_before, NOW - JWT - GRACE_S);
-    }
-
-    #[test]
-    fn a_legacy_session_with_an_unredeemable_code_follows_the_legacy_rule() {
-        let unredeemed = Session {
-            code: Some("123456".into()),
-            ..legacy(NOW - JWT - GRACE_S - 1)
-        };
-        assert_eq!(reason(&unredeemed), Some(RetireReason::LegacyIdle));
     }
 
     #[test]

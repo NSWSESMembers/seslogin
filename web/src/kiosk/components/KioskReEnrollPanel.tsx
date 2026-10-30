@@ -1,5 +1,4 @@
 import { Button } from "../../components/ui/Button";
-import { useEnrollmentWatch } from "../lib/useEnrollmentWatch";
 import { useEnrollmentQr } from "../lib/useEnrollmentQr";
 import useKioskEnvironment from "./useKioskEnvironment";
 import { FingerprintChip } from "../../components/FingerprintChip";
@@ -27,22 +26,11 @@ export default function KioskReEnrollPanel({
   shown: boolean;
   onHide: () => void;
 }) {
-  const { profile, authMode, onKeyEnrolled } = useKioskEnvironment();
-  const { info, published, fingerprint, qrDataUrl, error } = useEnrollmentQr(
-    profile,
-    shown,
-  );
-
-  // A code-authenticated kiosk keeps using its stored JWT — and so keeps showing the
-  // old kiosk — until we notice the key has been enrolled and hand over to it. Kiosks
-  // already signing with the key need no handover: the server tells their old session
-  // to refetch (`session.changed`, see SessionPushListener), which resolves the key to
-  // whichever session now holds it.
-  useEnrollmentWatch({
-    info,
-    enabled: published && shown && authMode === "jwt",
-    onEnrolled: onKeyEnrolled,
-  });
+  const { profile } = useKioskEnvironment();
+  // No handover is needed once the key is enrolled elsewhere: the server tells this
+  // kiosk's old session to refetch (`session.changed`, see SessionPushListener), which
+  // resolves the key to whichever session now holds it.
+  const { fingerprint, qrDataUrl, error } = useEnrollmentQr(profile, shown);
 
   if (!shown) {
     return null;

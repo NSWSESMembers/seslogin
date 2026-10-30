@@ -275,17 +275,13 @@ make local-seed-extract   # refresh local/seed/from-prod.json (the only step nee
 Unit** (`TestBUnit001`, member Crossunit Tester `20000001`, for cross-unit sign-in) — three
 users (`super@seslogin.test`, `testunit@seslogin.test` Admin at Test A Unit only, and
 `readonly@seslogin.test` Read only at Test A Unit — use it to check write refusals), a
-ready-made user token for each, two kiosk sessions at Test A Unit — `TestAKiosk01`
-(legacy JWT kiosk, no key) and `TestAKiosk02` (key-enrolled) — and all 220 categories
+ready-made user token for each, a key-enrolled kiosk session at Test A Unit
+(`TestAKiosk02`), and all 220 categories
 with the 99 NITC groups they reference. Neither unit name contains the other, so a selector
 matching on name text cannot hit both.
 
-`TestAKiosk01` stands in for a kiosk enrolled with
-the removed 6-digit setup code that never converted to key auth: it has no key, and its
-session JWT (`make local-cli ARGS="jwt session TestAKiosk01"`) is now refused, so a kiosk
-holding one drops to the QR enrolment screen. `make local-cli ARGS="--dry-run session
-purge-legacy"` lists it as a row the legacy purge would delete. `TestAKiosk02` is the working
-kiosk: it holds the public half of a fixed P-256 keypair and signs each request with the private half
+`TestAKiosk02` holds the public half of a fixed P-256 keypair and signs each request with
+the private half
 (`SLKey`, see `api/src/session_key.rs`); the private half is committed in
 `local/seed/kiosk-signing-key.json` — a throwaway key valid only against a local database.
 Regenerating it means updating both files.
@@ -391,7 +387,7 @@ Unlike `mockdb`, the queue, mail and realtime mocks *succeed* — they exist so 
 **Auth**: `api/src/auth.rs` — token verification dispatches on prefix:
 1. API tokens (`slgn_` prefix) — opaque hashed secrets for programmatic access, shaped `slgn_<id>.<secret>` and verified the same way as user tokens below
 2. User tokens (`slu_` prefix) — opaque hashed secrets issued via email-code auth, shaped `slu_<id>.<secret>` so verification is one strongly consistent `GetItem` by id plus a constant-time hash check. Neither table has a hash index; a legacy `slu_<secret>`/`slgn_<secret>` token (no `.`) is refused
-3. Anything else is refused, including the session JWTs once held by kiosks enrolled with the since-removed 6-digit setup code. Those kiosks converted themselves to key auth (`convertSessionToKey`, with a signature proving they hold the key); one that didn't drops to the QR enrolment screen. `cli session purge-legacy` deletes the leftover rows. User JWTs are no longer issued or accepted; users authenticate with `slu_` tokens
+3. `slp_` — single-period edit links (see `api/src/period_link.rs`). Anything else is refused: there are no JWTs, for users or kiosks. Kiosks authenticate only with an `Authorization: SLKey <fp>.<ts>.<sig>` header, signing each request with their enrolled key (`api/src/session_key.rs`, `auth::verify_signed_key`)
 
 Authorization uses an `AuthRequirement` guard enum per field: `Session`, `UserOrSession`, `User`, `SuperUser`.
 
@@ -407,7 +403,7 @@ A user can see and revoke their own authorized grants — the "Connected apps" l
 
 **Audit log**: every *business* DB write is recorded in the `{prefix}_audit_log` table (see SCHEMA.md) with the actor, the affected location(s) and a field-level diff. `api/src/audit.rs`'s `AuditingHandler<D: db::Handler>` wraps the real handler and delegates every method; for an audited write it reads the "before" entity through the inner handler, performs the write, and — only if that succeeded — calls `put_audit_entry`. Who made the write is not an argument of any `db::Handler` method, so it travels in the `AUDIT_CONTEXT` task-local (`Actor` + client IP), set at each entry point: the GraphQL handlers in `server.rs` and `bin/lambda/handler.rs` and `mcp.rs` (from the request's `AuthInfo`, via `audit::scope_for_request`), the OAuth token endpoint, `member_sync::run` (`system: member-sync`), `location_sync::run`, `directory_sync::run` (`system: directory-sync`), the checker Lambda's session retirement (`system: session-retire`), the `cli` and `load-nitc-tags`; `request_metrics::request_spawner` copies it into DataLoader tasks. A write with no context in scope is still recorded, as actor `unknown`, with a warning. Audited: users (`Fields`, `EmailConfig`, `DisaggregateVirtualPeriods`), people, periods, kiosk sessions (create, `Fields`/`ExtendKey`/`ReleaseKey`/`Delete`/`Retire`), API tokens (`Fields`/`Revoke`), locations (`Fields`/`Name`), categories, NITC groups and tags, user tokens, OAuth grants (create/delete) and passkeys (create/`Rename`/delete). Deliberately **not** audited: `AccessTime`, session `Info`, person `BadgeState` (derived from periods), every `TouchLastUsed`, `LastSyncTime`, OAuth `Rotate`, login codes, WebAuthn/ephemeral state and the NITC export bookkeeping — they are plumbing, not business changes. Secrets (token hashes, passkey material, kiosk keys, OAuth secrets) are never stored; a field that changed but is secret is shown as `"[redacted]"`. **Auditing is best-effort**: a failed before-read is logged and the write proceeds, and a failed `put_audit_entry` (e.g. the table not created yet) is logged at `error!` and swallowed — the business write's own result is returned unchanged. **Reading the log**: `Location.auditLog` (any *user* with Admin **or** Read only access to the location, plus super users; kiosk sessions, API tokens and edit links are refused) and `Query.auditLog` (super users only: every event once, including global entities) — Relay connections in `api/src/graphql/audit_log.rs`, newest first, default 50 / max 200, backed by `db::Handler::list_audit_entries` (`AuditScope::Location` → `location_id-sk-index`, `AuditScope::All` → `scope-sk-index`; the cursor is the item's `sk`). A write touching several locations is an item in each, so it is in each location's log but once in the root one. `ip` and `actor.via` are returned to super users only; `actor.label` is resolved at read time through the dataloader. **Adding a new write method to `db::Handler`?** The trait has no default methods, so `AuditingHandler` will not compile until you classify it: audit it (read before, write, record after) or pass it through explicitly and say why.
 
-**Session retirement**: `api/src/session_retire.rs` hides kiosk sessions that have been unable to authenticate for more than 14 days — a released key (`key_released_at`), an expired key (`key_expires_at`), or a legacy JWT kiosk whose last token lapsed (`last_contact` + 14 days). `SessionUpdateShape::Retire` removes `active` (so the row leaves `active-location_id-index`), any leftover code and the key fields, and stamps `retired_at`; the row stays, so the id still resolves to its name and location. Each write is conditional on the session still being in the state it was planned from, so a kiosk reactivated or back online in the meantime is left alone. It runs daily in the checker Lambda (`seslogin-checker`, 06:00 Sydney, audited as `system: session-retire`) before that Lambda's stale-sync check; a failed retirement still lets the sync alert go out, then fails the invocation. Run it by hand with `cli session retire-stale` (global `--dry-run` to preview).
+**Session retirement**: `api/src/session_retire.rs` hides kiosk sessions that have been unable to authenticate for more than 14 days — a released key (`key_released_at`), an expired key (`key_expires_at`), or a leftover setup-code kiosk with no key (`last_contact` + 14 days). `SessionUpdateShape::Retire` removes `active` (so the row leaves `active-location_id-index`) and the key fields, and stamps `retired_at`; the row stays, so the id still resolves to its name and location. Each write is conditional on the session still being in the state it was planned from, so a kiosk reactivated or back online in the meantime is left alone. It runs daily in the checker Lambda (`seslogin-checker`, 06:00 Sydney, audited as `system: session-retire`) before that Lambda's stale-sync check; a failed retirement still lets the sync alert go out, then fails the invocation. Run it by hand with `cli session retire-stale` (global `--dry-run` to preview).
 
 **Member sync**: `api/src/member_sync.rs` — Fetches paginated member list from SES API, diffs against local DB, plans and optionally applies changes (adopt IDs, create, update, soft-delete). It also stores each member's SES `capabilityTags`. It no longer touches email: contacts and unit assignments come from **directory sync** (below), so member sync depends on the SES API alone. In production, sync runs as two Lambdas: `dispatcher-lambda` (triggered by EventBridge every hour, `cron(0 * * * ? *)` UTC) hashes each location ID into one of 24 hour buckets and enqueues only the locations whose bucket matches the current UTC hour; `sync-members-lambda` consumes each SQS message and runs the sync for that location. Net effect: each location is synced once per 24-hour cycle at a consistent but distributed UTC hour. The SQS queue has a DLQ with 3 retries.
 
@@ -429,7 +425,7 @@ Absence writes are excluded from `max_mutations`: a location with a large but le
 
 **SES API client**: `api/src/ses_api.rs` — HTTP client with retry logic for the external headquarters system.
 
-**JWT**: `api/src/jwt.rs` — HMAC-SHA256 kiosk session tokens with claims `{ session_id, exp }`. A JWT carrying `user_id` instead is rejected.
+**Server secret**: `api/src/server_secret.rs` — the `JWT_SECRET` value (named for the kiosk session JWTs it once signed). Its only use now is deriving the key that signs stateless OAuth client ids, so rotating it makes every MCP client register again.
 
 ### Core Data Model
 
@@ -449,7 +445,7 @@ All entities use soft deletes (`deleted` flag).
 Environment variables (loaded from `.env` and `.env.secret`; see
 [.env.secret.example](.env.secret.example) for the full secret list):
 - `DB_PREFIX` — DynamoDB table name prefix. `.env` sets `seslogin_test` (dev snapshot); deployed envs use `seslogin_prod`.
-- `JWT_SECRET` — JWT signing key
+- `JWT_SECRET` — server HMAC secret; derives the OAuth client-id signing key (`api/src/server_secret.rs`). No JWTs are issued any more
 - `SES_API_BASE_URL` / `SES_API_KEY` — External member sync API
 - `SES_INTRANET_SEARCH_API_BASE_URL` / `SES_INTRANET_SEARCH_API_KEY` — SES intranet contact-directory search, used by directory sync (member contacts and unit assignments) and location sync (unit addresses and contacts). Separate credential from `SES_API_KEY` (uses the `Ocp-Apim-Subscription-Key` header).
 - `MEMBER_SYNC_QUEUE_URL` / `NITC_EXPORT_QUEUE_URL` — SQS queue URLs, read by `poem` and the API Lambda. Either may be unset or blank to disable that queue: `enqueueMemberSync` then fails with "Member sync is not available on this environment" and period writes skip their NITC export. The test API sets neither, because the workers consuming the queues read the prod tables. `poem-local` never reads them. Kiosk healthcheck pings are not queued: the API makes them inline (`api/src/healthcheck.rs`), public addresses only.

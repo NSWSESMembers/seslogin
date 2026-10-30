@@ -1956,8 +1956,8 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
 
     /// Complete a public-key kiosk enrollment: create a session bound to the public key a
     /// kiosk previously published via [`submit_enrollment_key`], identified by its
-    /// `key_fingerprint`. The kiosk then authenticates every request by signing it (no
-    /// 6-digit code, no JWT). Reached from the admin SessionEnroll page after scanning
+    /// `key_fingerprint`. The kiosk then authenticates every request by signing it.
+    /// Reached from the admin SessionEnroll page after scanning
     /// the kiosk's QR code.
     ///
     /// Works whatever state the device's current enrollment is in — live, expired, or
@@ -2319,7 +2319,6 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
 
     /// Bring back a QR-enrolled kiosk that expired after two weeks offline, without
     /// deleting and re-enrolling it — it keeps its name, config and healthcheck URL.
-    /// Kiosks set up with a 6-digit code cannot be reactivated.
     ///
     /// Only succeeds while the kiosk is switched on and showing its enrollment QR screen,
     /// and only grants a short window: the kiosk must come back with one signed request,
@@ -2345,21 +2344,21 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         if !existing.active {
             return Err(anyhow!("This kiosk has been deleted."));
         }
-        // A record whose key was released has been stripped like a code-enrolled one, so
-        // answer it before the message below, which would be wrong about why.
+        // A record whose key was released has no key left, so answer it before the
+        // message below, which would be wrong about why.
         if existing.key_released_at.is_some() {
             return Err(anyhow!(
                 "This kiosk's computer has since been set up again by scanning its QR code, so this entry can't be brought back. Delete it, or set the computer up again here."
             ));
         }
-        // Code-enrolled kiosks have nothing to revive: their single-use code was wiped the
-        // first time it was entered.
+        // A kiosk with no key at all (one set up with the removed 6-digit code) has
+        // nothing to revive.
         let (Some(key_fingerprint), Some(_)) = (
             existing.key_fingerprint.as_deref(),
             existing.public_key.as_deref(),
         ) else {
             return Err(anyhow!(
-                "This kiosk was set up with a setup code, so it can't be reactivated — delete it and set it up again."
+                "This kiosk has no enrolled key, so it can't be reactivated — delete it and set it up again."
             ));
         };
 
@@ -2395,109 +2394,6 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         let rec = self.app.db().get_sessions(&[&id]).await?;
         Ok(Session::new(rec.into_iter().next().flatten().ok_or_else(
             || anyhow!("Session with ID {:?} missing", id),
-        )?))
-    }
-
-    /// Convert the calling kiosk from a legacy setup-code JWT to key auth, by attaching
-    /// `public_key` to its own session. The kiosk drives this itself (no admin involved)
-    /// and then switches to signing every request with the key's private half.
-    ///
-    /// `proof` is a signed key header — the part after `SLKey ` — over
-    /// `slkey-convert:<session id>`, showing the caller holds that private half. Without
-    /// it, anyone holding the JWT could bind a key they don't control (or another
-    /// device's) to the session.
-    ///
-    /// Idempotent: a kiosk whose session already holds this key gets `Ok`, so a lost
-    /// response heals on the next attempt. Fails with `CONFLICT` if another session holds
-    /// the key; the kiosk just stays on its JWT and tries again later.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::Session)")]
-    async fn convert_session_to_key(
-        &self,
-        ctx: &Context<'_>,
-        public_key: String,
-        proof: String,
-    ) -> Result<Session<A>> {
-        require_writable(ctx)?;
-        let session_id = match ctx.data_opt::<AuthInfo>() {
-            Some(AuthInfo::Session { id, .. }) => id.clone(),
-            _ => return Err(anyhow!("Cannot convert a session without session auth")),
-        };
-
-        let now = crate::clock::now_sec();
-        let fingerprint =
-            crate::session_key::verify_conversion_proof(&public_key, &proof, &session_id, now)
-                .map_err(|e| ApiError::bad_request(format!("Invalid key proof: {e:#}")))?;
-
-        let existing = self
-            .app
-            .db()
-            .get_sessions(&[&session_id])
-            .await?
-            .into_iter()
-            .next()
-            .flatten()
-            .ok_or_else(|| ApiError::not_found("Session", &session_id))?;
-
-        match existing.key_fingerprint.as_deref() {
-            Some(held) if held == fingerprint => return Ok(Session::new(existing)),
-            Some(_) => {
-                return Err(ApiError::new(
-                    ErrorCode::Conflict,
-                    "This kiosk already has a different key",
-                )
-                .into());
-            }
-            None => {}
-        }
-
-        // Only one session may hold a fingerprint (`auth` rejects the key outright if two
-        // ever do). Unlike enrollment, never take it from another session: this kiosk is
-        // still working on its JWT, so it can simply try again later.
-        let holders = self
-            .app
-            .db()
-            .get_session_id_by_key_fingerprint(&fingerprint)
-            .await?;
-        if holders.iter().any(|id| *id != session_id) {
-            return Err(ApiError::new(
-                ErrorCode::Conflict,
-                "This key already belongs to another kiosk",
-            )
-            .into());
-        }
-
-        self.app
-            .db()
-            .update_session(
-                &session_id,
-                db::SessionUpdateShape::AttachKey {
-                    public_key: &public_key,
-                    fingerprint: &fingerprint,
-                    expires_at: now + crate::session_key::KEY_LIFETIME_S,
-                },
-            )
-            .await
-            .map_err(|e| -> anyhow::Error {
-                match e {
-                    // The conditional write refused: the row gained a key (a concurrent
-                    // conversion with another key), or was deleted or released since
-                    // the read above.
-                    db::Error::NotFound(_) => ApiError::new(
-                        ErrorCode::Conflict,
-                        "This kiosk can no longer be converted to key auth",
-                    )
-                    .into(),
-                    e => e.into(),
-                }
-            })?;
-        info!(
-            "Converted kiosk session {} ({:?}) at location {} from JWT to key {}",
-            existing.id, existing.name, existing.location_id, fingerprint
-        );
-
-        let rec = self.app.db().get_sessions(&[&session_id]).await?;
-        Ok(Session::new(rec.into_iter().next().flatten().ok_or_else(
-            || ApiError::not_found("Session", &session_id),
         )?))
     }
 
@@ -3622,7 +3518,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         };
 
         let registration =
-            oauth::decode_client_id(&self.app.jwt().oauth_client_id_key(), &client_id)
+            oauth::decode_client_id(&self.app.server_secret().oauth_client_id_key(), &client_id)
                 .ok_or_else(|| anyhow!("Unknown or invalid client"))?;
         if !registration
             .redirect_uris

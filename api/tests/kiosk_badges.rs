@@ -77,7 +77,6 @@ fn app(switches: Switches) -> Arc<TestApp> {
             client_version: None,
             client_info: None,
             client_info_updated_at: None,
-            code: None,
             config,
             healthcheck_url: None,
             public_key: None,

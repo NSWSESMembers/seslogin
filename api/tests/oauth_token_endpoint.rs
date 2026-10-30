@@ -63,7 +63,7 @@ fn registration_client_id(
         redirect_uris: vec![redirect_uri.to_string()],
         iat: seslogin::clock::now_sec(),
     };
-    oauth::encode_client_id(&app.jwt.oauth_client_id_key(), &registration)
+    oauth::encode_client_id(&app.server_secret.oauth_client_id_key(), &registration)
 }
 
 fn body_of(reply: &oauth_http::HttpReply) -> serde_json::Value {
@@ -250,8 +250,10 @@ async fn authorization_code_rejects_a_client_id_mismatch() {
         redirect_uris: vec![REDIRECT_URI.to_string()],
         iat: seslogin::clock::now_sec(),
     };
-    let other_client_id =
-        oauth::encode_client_id(&app.jwt.oauth_client_id_key(), &other_registration);
+    let other_client_id = oauth::encode_client_id(
+        &app.server_secret.oauth_client_id_key(),
+        &other_registration,
+    );
     let (verifier, challenge) = pkce_pair();
     let code = seed_code(
         &app,

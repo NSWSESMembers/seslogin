@@ -1,16 +1,11 @@
 import { createContext } from "react";
 
-/** How this kiosk is authenticating: a legacy JWT, or a signed key. */
-export type KioskAuthMode = "jwt" | "key";
-
 export type KioskEnvironmentContextType = {
   /** Which `/kiosk/:profile` this device is running as (`"default"` if unset). */
   profile: string;
-  authMode: KioskAuthMode;
   /**
-   * Switch this kiosk over to signing with its enrolled key, dropping any stored JWT.
-   * Called once an admin has enrolled the key — from the enrollment screen, or from
-   * the re-enroll section of the status dialog.
+   * Switch this kiosk over to signing with its enrolled key. Called from the
+   * enrollment screen once an admin has enrolled the key.
    */
   onKeyEnrolled: () => void;
 };

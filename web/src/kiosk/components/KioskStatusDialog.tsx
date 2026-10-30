@@ -132,7 +132,7 @@ export default function KioskStatusDialog({
   categoryScale?: number;
 }) {
   const session = useKioskSession();
-  const { profile, authMode } = useKioskEnvironment();
+  const { profile } = useKioskEnvironment();
   const environmentInfo = useEnvironmentInfo();
   const { live, connectionState, lastPollAt } = useLivePeriods();
   // Uptime and screen size are read on the tick alongside the clock: called bare in
@@ -300,9 +300,6 @@ export default function KioskStatusDialog({
           </Row>
         )}
 
-        <Row label="Auth mode">
-          {authMode === "key" ? "enrolled key" : "setup code"}
-        </Row>
         {serverStatus.keyExpiresAt != null && (
           <Row label="Key expires">
             in {formatShortDuration(serverStatus.keyExpiresAt - now / 1000)} (

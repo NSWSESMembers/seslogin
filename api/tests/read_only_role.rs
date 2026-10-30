@@ -1,6 +1,6 @@
 //! Coverage for the per-location Read only role: a user granted a location via
 //! `location_read_only_grants` can view it but every write there is FORBIDDEN, and
-//! the write-capable `Session.code` and `Location.viewerCanEdit` reflect that.
+//! `Location.viewerCanEdit` reflects that.
 //!
 //! Uses the shared `FakeDb` (`tests/common/mod.rs`) and runs real GraphQL documents
 //! through `graphql::build_schema`, like `oauth_grants.rs`. Write mutations are
@@ -65,7 +65,6 @@ fn app_with_location() -> Arc<TestApp> {
             client_version: None,
             client_info: None,
             client_info_updated_at: None,
-            code: None,
             config: serde_json::Map::new(),
             healthcheck_url: None,
             public_key: None,

@@ -1,24 +1,15 @@
-import { useCallback, useMemo, useRef, useState, type ReactNode } from "react";
-import KioskRelayEnvironment from "./KioskRelayEnvironment";
+import { useCallback, useMemo, useState, type ReactNode } from "react";
 import KioskKeyRelayEnvironment from "./KioskKeyRelayEnvironment";
 import { KioskEnvironmentContext } from "./KioskEnvironmentContext";
 import { KioskSessionProvider } from "./KioskSessionProvider";
 import KioskEnrollment from "./KioskEnrollment";
-import { KioskKeyConversion } from "./KioskKeyConversion";
-import {
-  markKeyEnrolled,
-  readAppSettings,
-  writeAppSettings,
-  type AppSettingsStorage,
-} from "../lib/kioskSettings";
+import { markKeyEnrolled, readAppSettings } from "../lib/kioskSettings";
 
 /**
- * - `enrolling`: default; showing the QR code, waiting for an admin to enroll this key.
- * - `authed-jwt`: holding a JWT from the legacy setup-code flow. The server now refuses
- *   those, so this lasts only until the first request 401s into `enrolling`.
+ * - `enrolling`: showing the QR code, waiting for an admin to enroll this key.
  * - `authed-key`: authenticated by signing each request with the enrolled key.
  */
-type KioskAuthState = "enrolling" | "authed-jwt" | "authed-key";
+type KioskAuthState = "enrolling" | "authed-key";
 
 export default function KioskEnvironment({
   profile,
@@ -27,95 +18,41 @@ export default function KioskEnvironment({
   profile: string;
   children: ReactNode;
 }) {
-  // Lazy useState initializer: read the persisted settings once on mount. Later
-  // `profile` changes intentionally don't re-seed the ref/state below.
-  const [initialSettings] = useState<AppSettingsStorage>(() =>
-    readAppSettings(profile),
-  );
-  const scanAuthTokenRef = useRef<string | null>(
-    typeof initialSettings.scanAuthToken === "string"
-      ? initialSettings.scanAuthToken
-      : null,
-  );
-  const [authState, setAuthState] = useState<KioskAuthState>(() => {
-    if (scanAuthTokenRef.current != null) return "authed-jwt";
+  // Read the persisted settings once on mount. Later `profile` changes intentionally
+  // don't re-seed the state below.
+  const [authState, setAuthState] = useState<KioskAuthState>(() =>
     // Optimistic: assume the enrolled key still works; the first request 401s into
     // `enrolling` if the session was disabled.
-    if (initialSettings.authMode === "key") return "authed-key";
-    return "enrolling";
-  });
-
-  const getToken = useCallback(() => scanAuthTokenRef.current, []);
-
-  const clearToken = useCallback(() => {
-    const currentSettings = readAppSettings(profile);
-
-    writeAppSettings(profile, {
-      ...currentSettings,
-      scanAuthToken: null,
-      scanAuthTokenIssuedAt: null,
-    });
-
-    scanAuthTokenRef.current = null;
-  }, [profile]);
+    readAppSettings(profile).authMode === "key" ? "authed-key" : "enrolling",
+  );
 
   const onEnrolled = useCallback(() => {
     markKeyEnrolled(profile);
-    scanAuthTokenRef.current = null;
     setAuthState("authed-key");
   }, [profile]);
 
   const contextValue = useMemo(
-    () => ({
-      profile,
-      authMode:
-        authState === "authed-key" ? ("key" as const) : ("jwt" as const),
-      onKeyEnrolled: onEnrolled,
-    }),
-    [profile, authState, onEnrolled],
+    () => ({ profile, onKeyEnrolled: onEnrolled }),
+    [profile, onEnrolled],
   );
 
-  // A legacy JWT kiosk that loses its token can only come back by enrolling its key.
-  const onJwtUnauthorized = useCallback(() => {
-    clearToken();
-    setAuthState("enrolling");
-  }, [clearToken]);
-
-  // Key mode 401: session was disabled. Revert to enrollment but keep the key — it
+  // A 401: the session was disabled. Revert to enrollment but keep the key — it
   // re-submits the same public key so an admin can re-enroll it into a fresh session.
   const onKeyUnauthorized = useCallback(() => {
     setAuthState("enrolling");
   }, []);
 
-  let body: ReactNode;
-  switch (authState) {
-    case "enrolling":
-      body = <KioskEnrollment profile={profile} onEnrolled={onEnrolled} />;
-      break;
-    case "authed-jwt":
-      body = (
-        <KioskRelayEnvironment
-          getToken={getToken}
-          onUnauthorized={onJwtUnauthorized}
-        >
-          <KioskSessionProvider>
-            <KioskKeyConversion profile={profile} />
-            {children}
-          </KioskSessionProvider>
-        </KioskRelayEnvironment>
-      );
-      break;
-    case "authed-key":
-      body = (
-        <KioskKeyRelayEnvironment
-          profile={profile}
-          onUnauthorized={onKeyUnauthorized}
-        >
-          <KioskSessionProvider>{children}</KioskSessionProvider>
-        </KioskKeyRelayEnvironment>
-      );
-      break;
-  }
+  const body =
+    authState === "authed-key" ? (
+      <KioskKeyRelayEnvironment
+        profile={profile}
+        onUnauthorized={onKeyUnauthorized}
+      >
+        <KioskSessionProvider>{children}</KioskSessionProvider>
+      </KioskKeyRelayEnvironment>
+    ) : (
+      <KioskEnrollment profile={profile} onEnrolled={onEnrolled} />
+    );
 
   return (
     <KioskEnvironmentContext.Provider value={contextValue}>
