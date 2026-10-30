@@ -1,4 +1,4 @@
-import { Link } from "react-router";
+import { TextLink } from "../components/ui/TextLink";
 import { EmailHelp } from "../components/EmailHelp";
 
 /**
@@ -19,7 +19,7 @@ export default function Support() {
       </p>
       <p className="my-4">
         For step-by-step instructions, see the{" "}
-        <Link to="/guide">SESLogin user guides</Link>.
+        <TextLink to="/guide">SESLogin user guides</TextLink>.
       </p>
     </div>
   );

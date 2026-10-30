@@ -1,3 +1,4 @@
+import { TextLink } from "./ui/TextLink";
 import { Button } from "./ui/Button";
 import { buttonSizes, buttonVariants } from "./ui/buttonStyles";
 import { cn } from "../lib/tw";
@@ -24,8 +25,9 @@ export function EmailHelp({ onClose }: { onClose?: () => void }) {
   return (
     <div className="text-left">
       <p className="my-4">
-        Email the SESLogin team at <a href={SUPPORT_MAILTO}>{SUPPORT_EMAIL}</a>{" "}
-        about anything, for example to:
+        Email the SESLogin team at{" "}
+        <TextLink href={SUPPORT_MAILTO}>{SUPPORT_EMAIL}</TextLink> about
+        anything, for example to:
       </p>
       <HelpUses />
       <div className="flex gap-3">
