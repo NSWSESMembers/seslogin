@@ -2604,6 +2604,11 @@ type TallyViewer {
 	"""
 	userEmail: String
 	"""
+	Whether the user signed in alongside the member is a super user, and so can use
+	every unit. False when no user signed in alongside them.
+	"""
+	isSuper: Boolean!
+	"""
 	Every unit the member can use in Tally, by name: their home unit, plus the units
 	the user signed in alongside them holds either role at (every enabled unit for a
 	super user). Disabled units are left out, except a member's own home unit.
