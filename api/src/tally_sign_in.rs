@@ -22,6 +22,11 @@
 //!
 //! The grant then resolves on every use through [`crate::oauth::grant_auth_info`],
 //! so the user's units and member link are read fresh, not frozen at sign-in.
+//!
+//! One email can be given a fixed code instead of a random one, through
+//! [`REVIEW_SIGN_IN_VAR`], so App Store reviewers can sign in without the inbox. It
+//! is set only on the test API, whose database is the only one holding that account,
+//! and it is a secret: the repository is public.
 
 use anyhow::{Context, Result, anyhow};
 use sha2::{Digest, Sha256};
@@ -42,6 +47,9 @@ pub const CODE_TTL_S: u64 = 10 * 60;
 const RESEND_AFTER_S: u64 = 30;
 /// Wrong guesses allowed before a code is thrown away.
 const MAX_ATTEMPTS: u64 = 5;
+/// `<email>:<6 digits>`: that email is always sent that code. Unset or blank on every
+/// environment but test.
+pub const REVIEW_SIGN_IN_VAR: &str = "TALLY_REVIEW_SIGN_IN";
 
 /// Who an email signs in as. See the module docs.
 #[derive(Clone, Debug, PartialEq)]
@@ -119,6 +127,23 @@ async fn live_person<H: db::Handler>(db: &H, id: &str) -> db::Result<Option<db::
         .filter(|p| p.deleted.is_none()))
 }
 
+/// The fixed code `config` (a [`REVIEW_SIGN_IN_VAR`] value) gives `email`, if any. A
+/// malformed value gives nobody one, and is never quoted, since it holds the code.
+pub fn review_code(config: &str, email: &str) -> Option<String> {
+    let config = config.trim();
+    if config.is_empty() {
+        return None;
+    }
+    let parsed = config
+        .rsplit_once(':')
+        .filter(|(_, code)| code.len() == 6 && code.bytes().all(|b| b.is_ascii_digit()));
+    let Some((review_email, code)) = parsed else {
+        warn!("{REVIEW_SIGN_IN_VAR} is not <email>:<6 digits>; ignoring it");
+        return None;
+    };
+    (db::email_key(review_email) == db::email_key(email)).then(|| code.to_string())
+}
+
 fn code_hash(code: &str) -> String {
     hex::encode(Sha256::digest(code.trim().as_bytes()))
 }
@@ -141,7 +166,8 @@ pub async fn send_code<A: HasDb + HasMail>(app: &A, email: &str) -> Result<()> {
         return Ok(());
     }
 
-    let code = crate::nonce::generate_code(6);
+    let review = std::env::var(REVIEW_SIGN_IN_VAR).unwrap_or_default();
+    let code = review_code(&review, email).unwrap_or_else(|| crate::nonce::generate_code(6));
     // Only in debug builds, so codes never reach production logs.
     #[cfg(debug_assertions)]
     info!("Tally sign-in code for email={key}: {code}");
@@ -305,4 +331,33 @@ pub async fn complete<A: App + HasDb>(
         url.query_pairs_mut().append_pair("state", state);
     }
     Ok(url.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn review_code_only_for_its_email() {
+        let config = " AppleTest@Example.com:012345 ";
+        assert_eq!(
+            review_code(config, "appletest@example.com ").as_deref(),
+            Some("012345")
+        );
+        assert_eq!(review_code(config, "someone@example.com"), None);
+    }
+
+    #[test]
+    fn review_code_unset_or_malformed_is_none() {
+        for config in [
+            "",
+            "  ",
+            "a@example.com",
+            "a@example.com:12345",
+            "a@example.com:1234567",
+            "a@example.com:12345x",
+        ] {
+            assert_eq!(review_code(config, "a@example.com"), None, "{config:?}");
+        }
+    }
 }
