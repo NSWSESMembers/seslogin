@@ -49,7 +49,7 @@ struct Table {
     /// Suffix after `${DB_PREFIX}_`.
     name: &'static str,
     hash: &'static str,
-    /// The table's range key, for the one table that has one.
+    /// The table's range key, if it has one.
     range: Option<&'static str>,
     /// Every attribute used as a table or index key, with its type.
     attrs: &'static [Attr],
@@ -74,6 +74,15 @@ const fn keys_only(name: &'static str, hash: &'static str) -> Gsi {
         name,
         hash,
         range: None,
+        keys_only: true,
+    }
+}
+
+const fn keys_only_ranged(name: &'static str, hash: &'static str, range: &'static str) -> Gsi {
+    Gsi {
+        name,
+        hash,
+        range: Some(range),
         keys_only: true,
     }
 }
@@ -144,11 +153,20 @@ const TABLES: &[Table] = &[
             Attr("location_id", S),
             Attr("registration_number", S),
             Attr("ses_api_person_id", S),
+            Attr("contact_feed", S),
+            Attr("contact_key", S),
+            Attr("email_key", S),
         ],
         gsis: &[
             all("location_id-index", "location_id", None),
             keys_only("registration_number-index", "registration_number"),
             keys_only("ses_api_person_id-index", "ses_api_person_id"),
+            all(
+                "contact_feed-contact_key-index",
+                "contact_feed",
+                Some("contact_key"),
+            ),
+            keys_only("email_key-index", "email_key"),
         ],
         ttl: None,
     },
@@ -270,6 +288,138 @@ const TABLES: &[Table] = &[
             Attr("location_id", S),
         ],
         gsis: &[all("location_id-index", "location_id", None)],
+        ttl: None,
+    },
+    Table {
+        name: "task",
+        hash: "id",
+        range: None,
+        attrs: &[
+            Attr("id", S),
+            Attr("open_location_id", S),
+            Attr("show_date", S),
+        ],
+        gsis: &[all(
+            "open_location_id-show_date-index",
+            "open_location_id",
+            Some("show_date"),
+        )],
+        ttl: None,
+    },
+    Table {
+        name: "task_list",
+        hash: "id",
+        range: None,
+        attrs: &[Attr("id", S), Attr("location_id", S)],
+        gsis: &[all("location_id-index", "location_id", None)],
+        ttl: None,
+    },
+    Table {
+        name: "note",
+        hash: "id",
+        range: None,
+        attrs: &[Attr("id", S), Attr("location_id", S)],
+        gsis: &[all("location_id-index", "location_id", None)],
+        ttl: None,
+    },
+    Table {
+        name: "note_folder",
+        hash: "id",
+        range: None,
+        attrs: &[Attr("id", S), Attr("location_id", S)],
+        gsis: &[all("location_id-index", "location_id", None)],
+        ttl: None,
+    },
+    Table {
+        name: "map_pin",
+        hash: "id",
+        range: None,
+        attrs: &[Attr("id", S), Attr("location_id", S)],
+        gsis: &[all("location_id-index", "location_id", None)],
+        ttl: None,
+    },
+    Table {
+        name: "map_layer",
+        hash: "id",
+        range: None,
+        attrs: &[Attr("id", S), Attr("location_id", S)],
+        gsis: &[all("location_id-index", "location_id", None)],
+        ttl: None,
+    },
+    Table {
+        name: "calendar",
+        hash: "id",
+        range: None,
+        attrs: &[Attr("id", S), Attr("location_id", S)],
+        gsis: &[all("location_id-index", "location_id", None)],
+        ttl: None,
+    },
+    Table {
+        name: "calendar_event",
+        hash: "id",
+        range: None,
+        attrs: &[Attr("id", S), Attr("location_id", S), Attr("last_end", N)],
+        gsis: &[all(
+            "location_id-last_end-index",
+            "location_id",
+            Some("last_end"),
+        )],
+        ttl: None,
+    },
+    Table {
+        name: "location_share",
+        hash: "id",
+        range: None,
+        attrs: &[Attr("id", S), Attr("location_id", S)],
+        gsis: &[all("location_id-index", "location_id", None)],
+        ttl: Some("expires_at"),
+    },
+    Table {
+        name: "notification",
+        hash: "person_id",
+        range: Some("sk"),
+        attrs: &[
+            Attr("person_id", S),
+            Attr("sk", S),
+            Attr("unread_person_id", S),
+        ],
+        gsis: &[keys_only_ranged("unread-index", "unread_person_id", "sk")],
+        ttl: Some("expires_at"),
+    },
+    Table {
+        name: "on_call_role",
+        hash: "id",
+        range: None,
+        attrs: &[Attr("id", S), Attr("location_id", S)],
+        gsis: &[all("location_id-index", "location_id", None)],
+        ttl: None,
+    },
+    Table {
+        name: "equipment",
+        hash: "id",
+        range: None,
+        attrs: &[Attr("id", S), Attr("location_id", S)],
+        gsis: &[all("location_id-index", "location_id", None)],
+        ttl: None,
+    },
+    Table {
+        name: "equipment_log",
+        hash: "id",
+        range: None,
+        attrs: &[Attr("id", S), Attr("equipment_id", S)],
+        gsis: &[all("equipment_id-index", "equipment_id", None)],
+        ttl: None,
+    },
+    Table {
+        name: "equipment_reservation",
+        hash: "id",
+        range: None,
+        attrs: &[Attr("id", S), Attr("location_id", S), Attr("end_time", N)],
+        gsis: &[all(
+            "location_id-end_time-index",
+            "location_id",
+            Some("end_time"),
+        )],
         ttl: None,
     },
     Table {

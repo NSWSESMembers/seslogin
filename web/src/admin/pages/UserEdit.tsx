@@ -10,6 +10,7 @@ import { FieldList, FormField } from "../../components/ui/FormField";
 import TextInput from "../../components/ui/TextInput";
 import { Button } from "../../components/ui/Button";
 import LocationRolesField from "../components/LocationRolesField";
+import UserMemberField from "../components/UserMemberField";
 import {
   joinLocationRoles,
   splitLocationRoles,
@@ -36,10 +37,12 @@ export default function UserEdit() {
           enabled
           locationGrantIds
           readOnlyLocationGrantIds
+          ...UserMemberField_user
           oauthGrants {
             id
             clientName
             redirectHost
+            isFirstParty
             createdAt
             lastUsedAt
           }
@@ -219,6 +222,9 @@ export default function UserEdit() {
         </FieldList>
       </form>
 
+      <SectionHeading>Member</SectionHeading>
+      <UserMemberField user={user} locations={locations} />
+
       <SectionHeading>Connected apps</SectionHeading>
       {user.oauthGrants.length === 0 && (
         <p className="my-4">No apps connected.</p>
@@ -241,7 +247,9 @@ export default function UserEdit() {
                 className={idx % 2 === 0 ? "bg-surface-raised" : undefined}
               >
                 <Td>{grant.clientName}</Td>
-                <Td>{grant.redirectHost}</Td>
+                <Td>
+                  {grant.isFirstParty ? "SESLogin app" : grant.redirectHost}
+                </Td>
                 <Td>{formatFullDateTime(new Date(grant.createdAt * 1000))}</Td>
                 <Td>
                   {grant.lastUsedAt

@@ -352,3 +352,808 @@ async fn a_person_move_records_both_locations() {
     );
     assert_eq!(changed_fields(entry), vec!["location_id"]);
 }
+
+fn new_task<'a>(title: &'a str, recurrence: Option<db::TaskRecurrence>) -> db::NewTask<'a> {
+    let day = chrono::NaiveDate::from_ymd_opt(2026, 3, 2).unwrap();
+    db::NewTask {
+        location_id: "loc-a",
+        list_id: None,
+        title,
+        description: None,
+        due_date: Some(day),
+        show_date: day,
+        recurrence,
+        created_by: Some("caller"),
+    }
+}
+
+#[tokio::test]
+async fn task_writes_are_recorded_against_their_location() {
+    let app = app();
+    let task = app
+        .db
+        .create_task(new_task("Check the radios", None))
+        .await
+        .unwrap();
+    app.db
+        .update_task(
+            &task.id,
+            db::TaskUpdateShape::Complete {
+                by: Some("caller"),
+                expected_version: task.version,
+            },
+        )
+        .await
+        .unwrap();
+    let entries = app.db.inner().audit_entries();
+    assert_eq!(entries.len(), 2);
+    for entry in &entries {
+        assert_eq!(entry.entity_type, AuditEntityType::Task);
+        assert_eq!(entry.entity_id, task.id);
+        assert_eq!(entry.entity_label.as_deref(), Some("Check the radios"));
+        assert_eq!(entry.location_ids, vec!["loc-a".to_string()]);
+    }
+    assert_eq!(entries[0].action, AuditAction::Create);
+    assert_eq!(
+        changed_fields(&entries[0]),
+        vec!["title", "due_date", "show_date"]
+    );
+    assert_eq!(entries[1].action, AuditAction::Update);
+    assert_eq!(changed_fields(&entries[1]), vec!["completed_at"]);
+}
+
+#[tokio::test]
+async fn completing_a_recurring_task_records_its_new_dates() {
+    let app = app();
+    let weekly = db::TaskRecurrence {
+        every: 1,
+        unit: db::TaskRecurrenceUnit::Weeks,
+    };
+    let task = app
+        .db
+        .create_task(new_task("Wash the truck", Some(weekly)))
+        .await
+        .unwrap();
+    let next = chrono::NaiveDate::from_ymd_opt(2026, 3, 9).unwrap();
+    app.db
+        .update_task(
+            &task.id,
+            db::TaskUpdateShape::CompleteOccurrence {
+                next_date: next,
+                by: Some("caller"),
+                expected_version: task.version,
+            },
+        )
+        .await
+        .unwrap();
+    let entry = app.db.inner().audit_entries().pop().unwrap();
+    assert_eq!(entry.action, AuditAction::Update);
+    assert_eq!(
+        changed_fields(&entry),
+        vec!["due_date", "show_date", "last_completed_at"]
+    );
+}
+
+#[tokio::test]
+async fn a_task_write_that_loses_a_race_records_nothing() {
+    let app = app();
+    let task = app
+        .db
+        .create_task(new_task("Check the radios", None))
+        .await
+        .unwrap();
+    let stale = db::TaskUpdateShape::Complete {
+        by: Some("caller"),
+        expected_version: task.version + 1,
+    };
+    let err = app.db.update_task(&task.id, stale).await.unwrap_err();
+    assert!(matches!(err, db::Error::NotFound(_)), "{err:?}");
+    assert_eq!(app.db.inner().audit_entries().len(), 1);
+}
+
+#[tokio::test]
+async fn deleting_a_task_or_list_records_a_delete() {
+    let app = app();
+    let list = app
+        .db
+        .create_task_list("loc-a", "Vehicles", Some("caller"))
+        .await
+        .unwrap();
+    let task = app
+        .db
+        .create_task(new_task("Check the radios", None))
+        .await
+        .unwrap();
+    app.db
+        .update_task(&task.id, db::TaskUpdateShape::Delete { by: Some("caller") })
+        .await
+        .unwrap();
+    app.db
+        .update_task_list(&list.id, db::TaskListUpdateShape::Delete)
+        .await
+        .unwrap();
+    let entries = app.db.inner().audit_entries();
+    let task_delete = &entries[2];
+    assert_eq!(task_delete.entity_type, AuditEntityType::Task);
+    assert_eq!(task_delete.action, AuditAction::Delete);
+    assert_eq!(
+        changed_fields(task_delete),
+        vec!["title", "due_date", "show_date"]
+    );
+    let list_delete = &entries[3];
+    assert_eq!(list_delete.entity_type, AuditEntityType::TaskList);
+    assert_eq!(list_delete.action, AuditAction::Delete);
+    assert_eq!(list_delete.entity_label.as_deref(), Some("Vehicles"));
+    assert_eq!(changed_fields(list_delete), vec!["name"]);
+    assert_eq!(list_delete.location_ids, vec!["loc-a".to_string()]);
+}
+
+#[tokio::test]
+async fn note_writes_are_recorded_against_their_location() {
+    let app = app();
+    let note = app
+        .db
+        .create_note(db::NewNote {
+            location_id: "loc-a",
+            folder_id: None,
+            title: "Radio codes",
+            content: "",
+            created_by: Some("caller"),
+        })
+        .await
+        .unwrap();
+    app.db
+        .update_note(
+            &note.id,
+            db::NoteUpdateShape::Fields {
+                folder_id: None,
+                title: "Radio codes",
+                content: "Channel 1",
+                by: Some("caller"),
+                expected_version: note.version,
+            },
+        )
+        .await
+        .unwrap();
+    // A save that lost a race records nothing.
+    app.db
+        .update_note(
+            &note.id,
+            db::NoteUpdateShape::Fields {
+                folder_id: None,
+                title: "Stale",
+                content: "",
+                by: Some("caller"),
+                expected_version: note.version,
+            },
+        )
+        .await
+        .unwrap_err();
+    app.db
+        .update_note(&note.id, db::NoteUpdateShape::Delete { by: Some("caller") })
+        .await
+        .unwrap();
+    let entries = app.db.inner().audit_entries();
+    assert_eq!(entries.len(), 3);
+    for entry in &entries {
+        assert_eq!(entry.entity_type, AuditEntityType::Note);
+        assert_eq!(entry.entity_id, note.id);
+        assert_eq!(entry.entity_label.as_deref(), Some("Radio codes"));
+        assert_eq!(entry.location_ids, vec!["loc-a".to_string()]);
+    }
+    assert_eq!(entries[0].action, AuditAction::Create);
+    assert_eq!(changed_fields(&entries[0]), vec!["title"]);
+    assert_eq!(entries[1].action, AuditAction::Update);
+    assert_eq!(changed_fields(&entries[1]), vec!["content"]);
+    assert_eq!(entries[2].action, AuditAction::Delete);
+    assert_eq!(changed_fields(&entries[2]), vec!["title", "content"]);
+}
+
+#[tokio::test]
+async fn note_folder_writes_are_recorded_against_their_location() {
+    let app = app();
+    let folder = app
+        .db
+        .create_note_folder("loc-a", "Vehicles", Some("caller"))
+        .await
+        .unwrap();
+    app.db
+        .update_note_folder(
+            &folder.id,
+            db::NoteFolderUpdateShape::Name { name: "Trucks" },
+        )
+        .await
+        .unwrap();
+    app.db
+        .update_note_folder(&folder.id, db::NoteFolderUpdateShape::Delete)
+        .await
+        .unwrap();
+    let entries = app.db.inner().audit_entries();
+    let actions: Vec<_> = entries.iter().map(|e| e.action).collect();
+    assert_eq!(
+        actions,
+        vec![
+            AuditAction::Create,
+            AuditAction::Update,
+            AuditAction::Delete
+        ]
+    );
+    for entry in &entries {
+        assert_eq!(entry.entity_type, AuditEntityType::NoteFolder);
+        assert_eq!(entry.location_ids, vec!["loc-a".to_string()]);
+        assert_eq!(changed_fields(entry), vec!["name"]);
+    }
+    assert_eq!(entries[2].entity_label.as_deref(), Some("Trucks"));
+}
+
+#[tokio::test]
+async fn equipment_writes_and_log_entries_are_recorded_against_their_location() {
+    let app = app();
+    let (equipment, _) = app
+        .db
+        .create_equipment(db::NewEquipment {
+            location_id: "loc-a",
+            equipment_type: "vehicle",
+            name: "Truck 1",
+            description: "",
+            status: "in_service",
+            comment: "",
+            created_by: Some("caller"),
+        })
+        .await
+        .unwrap();
+    app.db
+        .update_equipment(
+            &equipment.id,
+            db::EquipmentUpdateShape::Fields {
+                equipment_type: "vehicle",
+                name: "Truck 1",
+                description: "Isuzu",
+                by: Some("caller"),
+                expected_version: equipment.version,
+            },
+        )
+        .await
+        .unwrap();
+    let (_, entry) = app
+        .db
+        .add_equipment_log_entry(db::NewEquipmentLogEntry {
+            equipment_id: &equipment.id,
+            location_id: "loc-a",
+            change: db::EquipmentLogChange::Status {
+                from: "in_service",
+                to: "out_of_service",
+            },
+            comment: "Flat tyre",
+            by: Some("caller"),
+        })
+        .await
+        .unwrap();
+    // A change from a status it is no longer in records nothing.
+    app.db
+        .add_equipment_log_entry(db::NewEquipmentLogEntry {
+            equipment_id: &equipment.id,
+            location_id: "loc-a",
+            change: db::EquipmentLogChange::Status {
+                from: "in_service",
+                to: "missing",
+            },
+            comment: "Stale",
+            by: Some("caller"),
+        })
+        .await
+        .unwrap_err();
+    app.db
+        .update_equipment(
+            &equipment.id,
+            db::EquipmentUpdateShape::Delete { by: Some("caller") },
+        )
+        .await
+        .unwrap();
+
+    let entries = app.db.inner().audit_entries();
+    assert_eq!(entries.len(), 4);
+    for entry in &entries {
+        assert_eq!(entry.entity_label.as_deref(), Some("Truck 1"));
+        assert_eq!(entry.location_ids, vec!["loc-a".to_string()]);
+    }
+    assert_eq!(entries[0].entity_type, AuditEntityType::Equipment);
+    assert_eq!(entries[0].action, AuditAction::Create);
+    assert_eq!(
+        changed_fields(&entries[0]),
+        vec!["equipment_type", "name", "status"]
+    );
+    assert_eq!(entries[1].action, AuditAction::Update);
+    assert_eq!(changed_fields(&entries[1]), vec!["description"]);
+    assert_eq!(entries[2].entity_type, AuditEntityType::EquipmentLogEntry);
+    assert_eq!(entries[2].entity_id, entry.id);
+    assert_eq!(entries[2].action, AuditAction::Create);
+    assert_eq!(
+        changed_fields(&entries[2]),
+        vec!["equipment_id", "kind", "from_status", "status", "comment"]
+    );
+    assert_eq!(entries[3].entity_type, AuditEntityType::Equipment);
+    assert_eq!(entries[3].action, AuditAction::Delete);
+    assert_eq!(
+        changed_fields(&entries[3]),
+        vec!["equipment_type", "name", "description"]
+    );
+}
+
+#[tokio::test]
+async fn equipment_reservation_writes_are_recorded_against_their_location() {
+    let app = app();
+    let ids = vec!["truck-1".to_string()];
+    let reservation = app
+        .db
+        .create_equipment_reservation(db::NewEquipmentReservation {
+            location_id: "loc-a",
+            equipment_ids: &ids,
+            start_time: 2_000_000_000,
+            end_time: 2_000_003_600,
+            reserved_for_person_id: Some("caller"),
+            reserved_for_text: None,
+            description: "",
+            created_by: Some("caller"),
+        })
+        .await
+        .unwrap();
+    app.db
+        .update_equipment_reservation(
+            &reservation.id,
+            db::EquipmentReservationUpdateShape::Fields {
+                equipment_ids: &ids,
+                start_time: 2_000_000_000,
+                end_time: 2_000_007_200,
+                reserved_for_person_id: None,
+                reserved_for_text: Some("Detailing / clean"),
+                description: "",
+                by: Some("caller"),
+                expected_version: reservation.version,
+            },
+        )
+        .await
+        .unwrap();
+    app.db
+        .update_equipment_reservation(
+            &reservation.id,
+            db::EquipmentReservationUpdateShape::Delete { by: Some("caller") },
+        )
+        .await
+        .unwrap();
+
+    let entries = app.db.inner().audit_entries();
+    let actions: Vec<_> = entries.iter().map(|e| e.action).collect();
+    assert_eq!(
+        actions,
+        vec![
+            AuditAction::Create,
+            AuditAction::Update,
+            AuditAction::Delete
+        ]
+    );
+    for entry in &entries {
+        assert_eq!(entry.entity_type, AuditEntityType::EquipmentReservation);
+        assert_eq!(entry.entity_id, reservation.id);
+        assert_eq!(entry.location_ids, vec!["loc-a".to_string()]);
+    }
+    assert_eq!(
+        changed_fields(&entries[0]),
+        vec![
+            "equipment_ids",
+            "start_time",
+            "end_time",
+            "reserved_for_person_id"
+        ]
+    );
+    assert_eq!(
+        changed_fields(&entries[1]),
+        vec!["end_time", "reserved_for_person_id", "reserved_for_text"]
+    );
+    assert_eq!(
+        entries[2].entity_label.as_deref(),
+        Some("Detailing / clean")
+    );
+}
+
+#[tokio::test]
+async fn map_pin_writes_are_recorded_against_their_location() {
+    let app = app();
+    let pin = app
+        .db
+        .create_map_pin(db::NewMapPin {
+            location_id: "loc-a",
+            layer_id: None,
+            pin_type: None,
+            title: "Staging area",
+            latitude: -33.5,
+            longitude: 151.25,
+            address: "",
+            note: "",
+            created_by: Some("caller"),
+        })
+        .await
+        .unwrap();
+    app.db
+        .update_map_pin(
+            &pin.id,
+            db::MapPinUpdateShape::Fields {
+                layer_id: None,
+                pin_type: Some("entry"),
+                title: "Staging area",
+                latitude: -33.6,
+                longitude: 151.25,
+                address: "1 Example St",
+                note: "",
+                by: Some("caller"),
+                expected_version: pin.version,
+            },
+        )
+        .await
+        .unwrap();
+    // A save that lost a race records nothing.
+    app.db
+        .update_map_pin(
+            &pin.id,
+            db::MapPinUpdateShape::Fields {
+                layer_id: None,
+                pin_type: None,
+                title: "Stale",
+                latitude: 0.0,
+                longitude: 0.0,
+                address: "",
+                note: "",
+                by: Some("caller"),
+                expected_version: pin.version,
+            },
+        )
+        .await
+        .unwrap_err();
+    app.db
+        .update_map_pin(
+            &pin.id,
+            db::MapPinUpdateShape::Delete { by: Some("caller") },
+        )
+        .await
+        .unwrap();
+    let entries = app.db.inner().audit_entries();
+    assert_eq!(entries.len(), 3);
+    for entry in &entries {
+        assert_eq!(entry.entity_type, AuditEntityType::MapPin);
+        assert_eq!(entry.entity_id, pin.id);
+        assert_eq!(entry.entity_label.as_deref(), Some("Staging area"));
+        assert_eq!(entry.location_ids, vec!["loc-a".to_string()]);
+    }
+    assert_eq!(entries[0].action, AuditAction::Create);
+    assert_eq!(
+        changed_fields(&entries[0]),
+        vec!["title", "latitude", "longitude"]
+    );
+    assert_eq!(entries[1].action, AuditAction::Update);
+    assert_eq!(
+        changed_fields(&entries[1]),
+        vec!["latitude", "address", "pin_type"]
+    );
+    assert_eq!(entries[2].action, AuditAction::Delete);
+    assert_eq!(
+        changed_fields(&entries[2]),
+        vec!["title", "latitude", "longitude", "address", "pin_type"]
+    );
+}
+
+#[tokio::test]
+async fn map_layer_writes_are_recorded_against_their_location() {
+    let app = app();
+    let layer = app
+        .db
+        .create_map_layer("loc-a", "Hazards", Some("caller"))
+        .await
+        .unwrap();
+    app.db
+        .update_map_layer(&layer.id, db::MapLayerUpdateShape::Name { name: "Risks" })
+        .await
+        .unwrap();
+    app.db
+        .update_map_layer(&layer.id, db::MapLayerUpdateShape::Delete)
+        .await
+        .unwrap();
+    let entries = app.db.inner().audit_entries();
+    let actions: Vec<_> = entries.iter().map(|e| e.action).collect();
+    assert_eq!(
+        actions,
+        vec![
+            AuditAction::Create,
+            AuditAction::Update,
+            AuditAction::Delete
+        ]
+    );
+    for entry in &entries {
+        assert_eq!(entry.entity_type, AuditEntityType::MapLayer);
+        assert_eq!(entry.location_ids, vec!["loc-a".to_string()]);
+        assert_eq!(changed_fields(entry), vec!["name"]);
+    }
+    assert_eq!(entries[2].entity_label.as_deref(), Some("Risks"));
+}
+
+#[tokio::test]
+async fn on_call_role_writes_are_recorded_against_their_location() {
+    let app = app();
+    let role = app
+        .db
+        .create_on_call_role(db::NewOnCallRole {
+            location_id: "loc-a",
+            name: "Duty Officer",
+            description: "",
+            phone: Some("0400 000 000"),
+            primary_person_id: Some("alice"),
+            secondary_person_ids: &[],
+            created_by: Some("caller"),
+        })
+        .await
+        .unwrap();
+    let secondaries = vec!["bob".to_string()];
+    app.db
+        .update_on_call_role(
+            &role.id,
+            db::OnCallRoleUpdateShape::Fields {
+                name: "Duty Officer",
+                description: "",
+                phone: Some("0400 000 000"),
+                primary_person_id: Some("carol"),
+                secondary_person_ids: &secondaries,
+                members_changed_at: Some(1),
+                by: Some("caller"),
+                expected_version: role.version,
+            },
+        )
+        .await
+        .unwrap();
+    app.db
+        .update_on_call_role(
+            &role.id,
+            db::OnCallRoleUpdateShape::Delete { by: Some("caller") },
+        )
+        .await
+        .unwrap();
+    let entries = app.db.inner().audit_entries();
+    assert_eq!(entries.len(), 3);
+    for entry in &entries {
+        assert_eq!(entry.entity_type, AuditEntityType::OnCallRole);
+        assert_eq!(entry.entity_id, role.id);
+        assert_eq!(entry.entity_label.as_deref(), Some("Duty Officer"));
+        assert_eq!(entry.location_ids, vec!["loc-a".to_string()]);
+    }
+    assert_eq!(entries[0].action, AuditAction::Create);
+    assert_eq!(
+        changed_fields(&entries[0]),
+        vec!["name", "phone", "primary_person_id"]
+    );
+    assert_eq!(entries[1].action, AuditAction::Update);
+    assert_eq!(
+        changed_fields(&entries[1]),
+        vec!["primary_person_id", "secondary_person_ids"]
+    );
+    assert_eq!(entries[2].action, AuditAction::Delete);
+}
+
+#[tokio::test]
+async fn calendar_event_writes_are_recorded_against_their_location() {
+    use seslogin::calendar::{Recurrence, Repeat, Timing};
+    let app = app();
+    let event = app
+        .db
+        .create_calendar_event(db::NewCalendarEvent {
+            location_id: "loc-a",
+            calendar_id: None,
+            title: "Training",
+            description: "",
+            timing: Timing::Timed {
+                start: 2_000_000_000,
+                end: 2_000_003_600,
+            },
+            recurrence: None,
+            created_by: Some("caller"),
+        })
+        .await
+        .unwrap();
+    // Made weekly and all day: the times go and the dates and repeat arrive.
+    let day = chrono::NaiveDate::from_ymd_opt(2033, 5, 18).unwrap();
+    app.db
+        .update_calendar_event(
+            &event.id,
+            db::CalendarEventUpdateShape::Fields {
+                calendar_id: None,
+                title: "Training",
+                description: "",
+                timing: Timing::AllDay {
+                    start: day,
+                    end: day,
+                },
+                recurrence: Some(Recurrence {
+                    repeat: Repeat::Weekly,
+                    until: None,
+                }),
+                by: Some("caller"),
+                expected_version: event.version,
+            },
+        )
+        .await
+        .unwrap();
+    // A save that lost a race records nothing.
+    app.db
+        .update_calendar_event(
+            &event.id,
+            db::CalendarEventUpdateShape::Fields {
+                calendar_id: None,
+                title: "Stale",
+                description: "",
+                timing: event.timing,
+                recurrence: None,
+                by: Some("caller"),
+                expected_version: event.version,
+            },
+        )
+        .await
+        .unwrap_err();
+    app.db
+        .update_calendar_event(
+            &event.id,
+            db::CalendarEventUpdateShape::Delete { by: Some("caller") },
+        )
+        .await
+        .unwrap();
+    let entries = app.db.inner().audit_entries();
+    assert_eq!(entries.len(), 3);
+    for entry in &entries {
+        assert_eq!(entry.entity_type, AuditEntityType::CalendarEvent);
+        assert_eq!(entry.entity_id, event.id);
+        assert_eq!(entry.entity_label.as_deref(), Some("Training"));
+        assert_eq!(entry.location_ids, vec!["loc-a".to_string()]);
+    }
+    assert_eq!(entries[0].action, AuditAction::Create);
+    assert_eq!(
+        changed_fields(&entries[0]),
+        vec!["title", "start_time", "end_time"]
+    );
+    assert_eq!(entries[1].action, AuditAction::Update);
+    assert_eq!(
+        changed_fields(&entries[1]),
+        vec!["start_time", "end_time", "start_date", "end_date", "repeat"]
+    );
+    assert_eq!(entries[2].action, AuditAction::Delete);
+    assert_eq!(
+        changed_fields(&entries[2]),
+        vec!["title", "start_date", "end_date", "repeat"]
+    );
+}
+
+#[tokio::test]
+async fn calendar_writes_are_recorded_against_their_location() {
+    let app = app();
+    let calendar = app
+        .db
+        .create_calendar("loc-a", "Training", "blue", Some("caller"))
+        .await
+        .unwrap();
+    app.db
+        .update_calendar(
+            &calendar.id,
+            db::CalendarUpdateShape::Fields {
+                name: "Training",
+                color: "green",
+            },
+        )
+        .await
+        .unwrap();
+    app.db
+        .update_calendar(&calendar.id, db::CalendarUpdateShape::Delete)
+        .await
+        .unwrap();
+    let entries = app.db.inner().audit_entries();
+    let actions: Vec<_> = entries.iter().map(|e| e.action).collect();
+    assert_eq!(
+        actions,
+        vec![
+            AuditAction::Create,
+            AuditAction::Update,
+            AuditAction::Delete
+        ]
+    );
+    for entry in &entries {
+        assert_eq!(entry.entity_type, AuditEntityType::Calendar);
+        assert_eq!(entry.location_ids, vec!["loc-a".to_string()]);
+    }
+    assert_eq!(changed_fields(&entries[0]), vec!["name", "color"]);
+    assert_eq!(changed_fields(&entries[1]), vec!["color"]);
+    assert_eq!(changed_fields(&entries[2]), vec!["name", "color"]);
+}
+
+#[tokio::test]
+async fn location_shares_record_starting_and_stopping_but_not_positions() {
+    let app = app();
+    let position = db::SharedPosition {
+        latitude: -33.7,
+        longitude: 151.1,
+        accuracy: Some(5.0),
+        altitude: None,
+        altitude_accuracy: None,
+        heading: None,
+        speed: None,
+        recorded_at: 100,
+    };
+    let share = db::LocationShare {
+        person_id: "caller".to_string(),
+        location_id: "loc-a".to_string(),
+        position,
+        interval_secs: 60,
+        started_at: 100,
+        ends_at: u64::MAX,
+        updated_at: 100,
+        expires_at: 520,
+    };
+    app.db.put_location_share(&share).await.unwrap();
+    app.db
+        .update_location_share_position("caller", &position, 160, 580)
+        .await
+        .unwrap();
+    app.db.delete_location_share("caller").await.unwrap();
+    // Nothing left to stop, so nothing to record.
+    app.db.delete_location_share("caller").await.unwrap();
+    let entries = app.db.inner().audit_entries();
+    assert_eq!(entries.len(), 2);
+    for entry in &entries {
+        assert_eq!(entry.entity_type, AuditEntityType::LocationShare);
+        assert_eq!(entry.entity_id, "caller");
+        assert_eq!(entry.location_ids, vec!["loc-a".to_string()]);
+        assert_eq!(
+            changed_fields(entry),
+            vec!["started_at", "ends_at", "interval_secs"]
+        );
+    }
+    assert_eq!(entries[0].action, AuditAction::Create);
+    assert_eq!(entries[1].action, AuditAction::Delete);
+}
+
+#[tokio::test]
+async fn notifications_are_stored_and_read_without_auditing() {
+    let app = app();
+    let record = db::NotificationRecord {
+        person_id: "caller".to_string(),
+        sk: db::notification_sk(1_700_000_000_000, "n1"),
+        notification_id: "n1".to_string(),
+        source: "reservations".to_string(),
+        kind: "reservation.for_you".to_string(),
+        location_id: Some("loc-a".to_string()),
+        actor_person_id: None,
+        title: "Truck booked".to_string(),
+        body: None,
+        target_type: None,
+        target_id: None,
+        created_at: 1_700_000_000,
+        read_at: None,
+        expires_at: 1_707_776_000,
+    };
+    app.db
+        .put_notifications(vec![record.clone()])
+        .await
+        .unwrap();
+    assert_eq!(
+        app.db
+            .list_notifications("caller", None, 10, true)
+            .await
+            .unwrap(),
+        vec![record.clone()]
+    );
+    app.db
+        .mark_notifications_read("caller", std::slice::from_ref(&record.sk), 1_700_000_100)
+        .await
+        .unwrap();
+    assert_eq!(
+        app.db
+            .count_unread_notifications("caller", 100)
+            .await
+            .unwrap(),
+        0
+    );
+    assert!(app.db.inner().audit_entries().is_empty());
+}

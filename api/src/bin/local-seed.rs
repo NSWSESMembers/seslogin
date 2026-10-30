@@ -312,6 +312,20 @@ const TRANSIENT_TABLES: &[&str] = &[
     "ephemeral_state",
     "webauthn_credential",
     "audit_log",
+    "task",
+    "task_list",
+    "note",
+    "note_folder",
+    "equipment",
+    "equipment_log",
+    "equipment_reservation",
+    "on_call_role",
+    "map_pin",
+    "map_layer",
+    "calendar",
+    "calendar_event",
+    "location_share",
+    "notification",
 ];
 
 async fn clear() -> Result<()> {
@@ -323,6 +337,21 @@ async fn clear() -> Result<()> {
     let mut total = 0usize;
     for table in TRANSIENT_TABLES {
         let name = format!("{prefix}_{table}");
+        // Most tables are keyed by `id` alone; `notification` has a range key too.
+        let key_attrs: Vec<String> = client
+            .describe_table()
+            .table_name(&name)
+            .send()
+            .await
+            .with_context(|| format!("describing {name}"))?
+            .table()
+            .map(|t| {
+                t.key_schema()
+                    .iter()
+                    .map(|k| k.attribute_name().to_string())
+                    .collect()
+            })
+            .unwrap_or_default();
         let mut deleted = 0usize;
         let mut start_key = None;
         loop {
@@ -330,19 +359,20 @@ async fn clear() -> Result<()> {
                 .scan()
                 .table_name(&name)
                 // Only the key is needed to delete, and a period row is large.
-                .projection_expression("id")
+                .projection_expression(key_attrs.join(", "))
                 .set_exclusive_start_key(start_key.clone())
                 .send()
                 .await
                 .with_context(|| format!("scanning {name}"))?;
             for item in page.items() {
-                let id = item
-                    .get("id")
-                    .ok_or_else(|| anyhow!("{name}: a row has no `id`"))?;
-                client
-                    .delete_item()
-                    .table_name(&name)
-                    .key("id", id.clone())
+                let mut delete = client.delete_item().table_name(&name);
+                for attr in &key_attrs {
+                    let value = item
+                        .get(attr)
+                        .ok_or_else(|| anyhow!("{name}: a row has no `{attr}`"))?;
+                    delete = delete.key(attr, value.clone());
+                }
+                delete
                     .send()
                     .await
                     .with_context(|| format!("deleting from {name}"))?;

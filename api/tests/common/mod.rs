@@ -43,12 +43,50 @@ pub(crate) struct FakeDb {
     /// Makes `put_audit_entry` fail, like the audit table not existing yet.
     pub(crate) fail_audit_writes: AtomicBool,
     pub(crate) user_tokens: Mutex<HashMap<String, db::UserToken>>,
+    /// Login codes, by email (the `login_code` table's key).
+    pub(crate) login_codes: Mutex<HashMap<String, db::LoginCode>>,
     pub(crate) webauthn_credentials: Mutex<HashMap<String, db::WebauthnCredential>>,
     /// `person_unit` rows by person id.
     pub(crate) person_units: Mutex<HashMap<String, Vec<db::PersonUnit>>>,
+    pub(crate) tasks: Mutex<HashMap<String, db::Task>>,
+    pub(crate) task_lists: Mutex<HashMap<String, db::TaskList>>,
+    /// Each person's contact-feed stamp, as Unix microseconds; the `contact_key` is
+    /// formatted from it on read, as `dynamodb.rs` does. See [`FakeDb::age_contacts`].
+    pub(crate) contact_stamps: Mutex<HashMap<String, u64>>,
+    pub(crate) notes: Mutex<HashMap<String, db::Note>>,
+    pub(crate) note_folders: Mutex<HashMap<String, db::NoteFolder>>,
+    pub(crate) equipment: Mutex<HashMap<String, db::Equipment>>,
+    pub(crate) equipment_log: Mutex<HashMap<String, db::EquipmentLogEntry>>,
+    pub(crate) equipment_reservations: Mutex<HashMap<String, db::EquipmentReservation>>,
+    pub(crate) on_call_roles: Mutex<HashMap<String, db::OnCallRole>>,
+    pub(crate) location_shares: Mutex<HashMap<String, db::LocationShare>>,
+    /// Every notification, across all users' inboxes.
+    pub(crate) notifications: Mutex<Vec<db::NotificationRecord>>,
+    /// Makes `put_notifications` fail, like the notification table not existing yet.
+    pub(crate) fail_notification_writes: AtomicBool,
+    pub(crate) map_pins: Mutex<HashMap<String, db::MapPin>>,
+    pub(crate) map_layers: Mutex<HashMap<String, db::MapLayer>>,
+    pub(crate) calendars: Mutex<HashMap<String, db::Calendar>>,
+    pub(crate) calendar_events: Mutex<HashMap<String, db::CalendarEvent>>,
 }
 
 impl FakeDb {
+    fn stamp_contact(&self, id: &str) {
+        self.contact_stamps
+            .lock()
+            .unwrap()
+            .insert(id.to_string(), seslogin::clock::now_us());
+    }
+
+    /// Move every contact-feed stamp `secs` into the past, so writes a test just made
+    /// are old enough for the feed to serve.
+    #[allow(dead_code)] // see `seed_super_user`'s doc comment
+    pub(crate) fn age_contacts(&self, secs: u64) {
+        for stamp in self.contact_stamps.lock().unwrap().values_mut() {
+            *stamp -= secs * 1_000_000;
+        }
+    }
+
     /// The audit entries recorded so far.
     #[allow(dead_code)] // see `seed_super_user`'s doc comment
     pub(crate) fn audit_entries(&self) -> Vec<db::AuditEntry> {
@@ -145,6 +183,15 @@ impl db::Handler for FakeDb {
                 user.disaggregate_virtual_periods = value;
                 Ok(())
             }
+            db::UserUpdateShape::Person { person_id } => {
+                let mut users = self.users.lock().unwrap();
+                let user = users
+                    .get_mut(id)
+                    .ok_or_else(|| db::Error::NotFound(id.to_string()))?;
+                user.person_id = person_id.map(str::to_string);
+                user.updated_at = seslogin::clock::now_sec();
+                Ok(())
+            }
         }
     }
 
@@ -228,7 +275,7 @@ impl db::Handler for FakeDb {
             .lock()
             .unwrap()
             .values()
-            .filter(|g| g.user_id == user_id)
+            .filter(|g| g.user_id.as_deref() == Some(user_id))
             .cloned()
             .collect())
     }
@@ -238,8 +285,15 @@ impl db::Handler for FakeDb {
     // the MCP tool tests (`tests/mcp.rs`), which run real `users`/`createUser`/
     // `updateUser`/`locations` GraphQL documents the same way the OAuth grant
     // tests run theirs.
-    async fn get_user_id_by_email(&self, _email: &str) -> db::Result<Vec<String>> {
-        unsupported()
+    async fn get_user_id_by_email(&self, email: &str) -> db::Result<Vec<String>> {
+        Ok(self
+            .users
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|u| u.email == email)
+            .map(|u| u.id.clone())
+            .collect())
     }
     async fn list_users(&self) -> db::Result<Vec<User>> {
         Ok(self.users.lock().unwrap().values().cloned().collect())
@@ -260,6 +314,7 @@ impl db::Handler for FakeDb {
             enabled: true,
             location_grants,
             location_read_only_grants,
+            person_id: None,
             access_time: None,
             email_config: serde_json::Map::new(),
             disaggregate_virtual_periods: false,
@@ -300,6 +355,17 @@ impl db::Handler for FakeDb {
         _ses_api_person_id: &str,
     ) -> db::Result<Vec<String>> {
         unsupported()
+    }
+    async fn get_person_ids_by_email(&self, email: &str) -> db::Result<Vec<String>> {
+        let key = db::email_key(email);
+        Ok(self
+            .persons
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|p| p.email.as_deref().map(db::email_key) == Some(key.clone()))
+            .map(|p| p.id.clone())
+            .collect())
     }
     async fn get_sessions<T: AsRef<str> + Sync>(
         &self,
@@ -483,6 +549,7 @@ impl db::Handler for FakeDb {
             .lock()
             .unwrap()
             .insert(person.id.clone(), person.clone());
+        self.stamp_contact(&person.id);
         Ok(person)
     }
     async fn update_person(&self, id: &str, change: db::PersonUpdateShape<'_>) -> db::Result<()> {
@@ -503,6 +570,17 @@ impl db::Handler for FakeDb {
             db::PersonUpdateShape::Location { location_id } => {
                 person.location_id = location_id.to_string();
             }
+            db::PersonUpdateShape::Directory {
+                email,
+                mobile,
+                phones,
+                preferred_name,
+            } => {
+                person.email = email.map(str::to_string);
+                person.mobile = mobile.map(str::to_string);
+                person.phones = phones.map(str::to_string);
+                person.preferred_name = preferred_name.map(str::to_string);
+            }
             db::PersonUpdateShape::Delete => {
                 person.deleted = Some(seslogin::clock::now_sec());
             }
@@ -519,7 +597,49 @@ impl db::Handler for FakeDb {
             }
             _ => return unsupported(),
         }
+        drop(persons);
+        self.stamp_contact(id);
         Ok(())
+    }
+    async fn stamp_person_contact(&self, id: &str) -> db::Result<()> {
+        self.stamp_contact(id);
+        Ok(())
+    }
+    async fn stamp_person_email_key(&self, _id: &str, _email: &str) -> db::Result<()> {
+        unsupported()
+    }
+    async fn list_contact_changes(
+        &self,
+        after: Option<&str>,
+        before: &str,
+        include_deleted: bool,
+        limit: usize,
+    ) -> db::Result<db::ContactPage> {
+        let persons = self.persons.lock().unwrap();
+        let mut changes: Vec<db::ContactChange> = self
+            .contact_stamps
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|(id, us)| (format!("{us:020}#{id}"), id))
+            .filter(|(key, _)| after.is_none_or(|a| key.as_str() > a) && key.as_str() < before)
+            .filter_map(|(key, id)| {
+                let person = persons.get(id)?.clone();
+                (include_deleted || person.deleted.is_none())
+                    .then_some(db::ContactChange { key, person })
+            })
+            .collect();
+        changes.sort_by(|a, b| a.key.cmp(&b.key));
+        let has_more = changes.len() > limit;
+        changes.truncate(limit);
+        Ok(db::ContactPage { changes, has_more })
+    }
+    async fn count_contacts(&self, before: &str) -> db::Result<u64> {
+        Ok(self
+            .list_contact_changes(None, before, false, usize::MAX - 1)
+            .await?
+            .changes
+            .len() as u64)
     }
     async fn create_period(
         &self,
@@ -574,8 +694,14 @@ impl db::Handler for FakeDb {
                 end_time,
                 category_id,
                 comment,
+                expected_version,
                 ..
             } => {
+                if let Some(expected) = expected_version
+                    && (period.version != expected || period.end_time.is_some())
+                {
+                    return Err(db::Error::Conflict(id.to_string()));
+                }
                 period.start_time = start_time as u64;
                 period.end_time = Some(end_time as u64);
                 period.category_id = Some(category_id.to_string());
@@ -872,6 +998,7 @@ impl db::Handler for FakeDb {
         is_virtual: bool,
         nitc_group_id: Option<&str>,
         nitc_participant_type: Option<&str>,
+        display: &db::CategoryDisplay,
     ) -> db::Result<db::Category> {
         let id = id
             .map(str::to_string)
@@ -883,12 +1010,16 @@ impl db::Handler for FakeDb {
             is_virtual,
             nitc_participant_type: nitc_participant_type.map(str::to_string),
             nitc_group_id: nitc_group_id.map(str::to_string),
+            group_name: display.group_name.clone(),
+            short_name: display.short_name.clone(),
+            icon: display.icon.clone(),
             created_at: seslogin::clock::now_sec(),
             updated_at: seslogin::clock::now_sec(),
         };
         self.categories.lock().unwrap().insert(id, category.clone());
         Ok(category)
     }
+    #[allow(clippy::too_many_arguments)]
     async fn update_category(
         &self,
         id: &str,
@@ -897,6 +1028,7 @@ impl db::Handler for FakeDb {
         is_virtual: bool,
         nitc_group_id: Option<&str>,
         nitc_participant_type: Option<&str>,
+        display: &db::CategoryDisplay,
     ) -> db::Result<()> {
         let mut categories = self.categories.lock().unwrap();
         let category = categories
@@ -907,6 +1039,9 @@ impl db::Handler for FakeDb {
         category.is_virtual = is_virtual;
         category.nitc_group_id = nitc_group_id.map(str::to_string);
         category.nitc_participant_type = nitc_participant_type.map(str::to_string);
+        category.group_name = display.group_name.clone();
+        category.short_name = display.short_name.clone();
+        category.icon = display.icon.clone();
         Ok(())
     }
     async fn list_nitc_events_for_day(
@@ -971,10 +1106,15 @@ impl db::Handler for FakeDb {
         person_id: &str,
         units: &[db::PersonUnit],
     ) -> db::Result<()> {
-        self.person_units
+        let old = self
+            .person_units
             .lock()
             .unwrap()
-            .insert(person_id.to_string(), units.to_vec());
+            .insert(person_id.to_string(), units.to_vec())
+            .unwrap_or_default();
+        if old != units {
+            self.stamp_contact(person_id);
+        }
         Ok(())
     }
     async fn scan_periods(
@@ -1117,21 +1257,35 @@ impl db::Handler for FakeDb {
     }
     async fn put_login_code(
         &self,
-        _email: &str,
-        _code_hash: &str,
-        _expires_at: u64,
-        _last_sent_at: u64,
+        email: &str,
+        code_hash: &str,
+        expires_at: u64,
+        last_sent_at: u64,
     ) -> db::Result<()> {
-        unsupported()
+        self.login_codes.lock().unwrap().insert(
+            email.to_string(),
+            db::LoginCode {
+                email: email.to_string(),
+                code_hash: code_hash.to_string(),
+                expires_at,
+                attempts: 0,
+                last_sent_at,
+            },
+        );
+        Ok(())
     }
-    async fn get_login_code(&self, _email: &str) -> db::Result<Option<db::LoginCode>> {
-        unsupported()
+    async fn get_login_code(&self, email: &str) -> db::Result<Option<db::LoginCode>> {
+        Ok(self.login_codes.lock().unwrap().get(email).cloned())
     }
-    async fn delete_login_code(&self, _email: &str) -> db::Result<()> {
-        unsupported()
+    async fn delete_login_code(&self, email: &str) -> db::Result<()> {
+        self.login_codes.lock().unwrap().remove(email);
+        Ok(())
     }
-    async fn increment_login_code_attempts(&self, _email: &str) -> db::Result<()> {
-        unsupported()
+    async fn increment_login_code_attempts(&self, email: &str) -> db::Result<()> {
+        if let Some(code) = self.login_codes.lock().unwrap().get_mut(email) {
+            code.attempts += 1;
+        }
+        Ok(())
     }
     async fn create_user_token(
         &self,
@@ -1248,6 +1402,1099 @@ impl db::Handler for FakeDb {
     async fn delete_webauthn_state(&self, _id: &str) -> db::Result<()> {
         unsupported()
     }
+    async fn get_tasks<T: AsRef<str> + Sync>(
+        &self,
+        ids: &[T],
+    ) -> db::Result<Vec<Option<db::Task>>> {
+        let tasks = self.tasks.lock().unwrap();
+        Ok(ids
+            .iter()
+            .map(|id| tasks.get(id.as_ref()).cloned())
+            .collect())
+    }
+    async fn list_tasks(&self, query: db::ListTasksQuery) -> db::Result<Vec<db::Task>> {
+        let db::ListTasksQuery::Open {
+            location_id,
+            show_dates,
+        } = query;
+        // Mirrors `open_location_id-show_date-index`: open rows only, in date order.
+        let mut rows: Vec<db::Task> = self
+            .tasks
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|t| t.open && t.location_id == location_id)
+            .filter(|t| match show_dates {
+                db::TaskShowDates::OnOrBefore(d) => t.show_date <= d,
+                db::TaskShowDates::After(d) => t.show_date > d,
+            })
+            .cloned()
+            .collect();
+        rows.sort_by(|a, b| (a.show_date, &a.id).cmp(&(b.show_date, &b.id)));
+        Ok(rows)
+    }
+    async fn create_task(&self, task: db::NewTask<'_>) -> db::Result<db::Task> {
+        let now = seslogin::clock::now_sec();
+        let row = db::Task {
+            id: db::new_id(),
+            location_id: task.location_id.to_string(),
+            list_id: task.list_id.map(str::to_string),
+            title: task.title.to_string(),
+            description: task.description.map(str::to_string),
+            due_date: task.due_date,
+            show_date: task.show_date,
+            recurrence: task.recurrence,
+            open: true,
+            created_by: task.created_by.map(str::to_string),
+            updated_by: None,
+            completed_at: None,
+            completed_by: None,
+            last_completed_at: None,
+            last_completed_by: None,
+            version: 1,
+            deleted: None,
+            created_at: now,
+            updated_at: now,
+        };
+        self.tasks
+            .lock()
+            .unwrap()
+            .insert(row.id.clone(), row.clone());
+        Ok(row)
+    }
+    async fn update_task(&self, id: &str, change: db::TaskUpdateShape<'_>) -> db::Result<db::Task> {
+        let now = seslogin::clock::now_sec();
+        let mut tasks = self.tasks.lock().unwrap();
+        let not_found =
+            || db::Error::NotFound(format!("Task {id} not found, no longer open, or changed"));
+        let t = tasks.get_mut(id).ok_or_else(not_found)?;
+        // The same conditions as the DynamoDB `ConditionExpression`s.
+        let live = |t: &db::Task, v: u64| t.open && t.version == v;
+        match change {
+            db::TaskUpdateShape::Fields {
+                list_id,
+                title,
+                description,
+                due_date,
+                show_date,
+                recurrence,
+                by,
+                expected_version,
+            } => {
+                if !live(t, expected_version) {
+                    return Err(not_found());
+                }
+                t.list_id = list_id.map(str::to_string);
+                t.title = title.to_string();
+                t.description = description.map(str::to_string);
+                t.due_date = due_date;
+                t.show_date = show_date;
+                t.recurrence = recurrence;
+                t.updated_by = by.map(str::to_string);
+            }
+            db::TaskUpdateShape::CompleteOccurrence {
+                next_date,
+                by,
+                expected_version,
+            } => {
+                if !live(t, expected_version) {
+                    return Err(not_found());
+                }
+                t.due_date = Some(next_date);
+                t.show_date = next_date;
+                t.last_completed_at = Some(now);
+                t.last_completed_by = by.map(str::to_string);
+            }
+            db::TaskUpdateShape::Complete {
+                by,
+                expected_version,
+            } => {
+                if !live(t, expected_version) {
+                    return Err(not_found());
+                }
+                t.completed_at = Some(now);
+                t.completed_by = by.map(str::to_string);
+                t.open = false;
+            }
+            db::TaskUpdateShape::Delete { by } => {
+                if t.deleted.is_some() {
+                    return Err(not_found());
+                }
+                t.deleted = Some(now);
+                t.updated_by = by.map(str::to_string);
+                t.open = false;
+            }
+        }
+        t.version += 1;
+        t.updated_at = now;
+        Ok(t.clone())
+    }
+    async fn get_task_lists<T: AsRef<str> + Sync>(
+        &self,
+        ids: &[T],
+    ) -> db::Result<Vec<Option<db::TaskList>>> {
+        let lists = self.task_lists.lock().unwrap();
+        Ok(ids
+            .iter()
+            .map(|id| lists.get(id.as_ref()).cloned())
+            .collect())
+    }
+    async fn list_task_lists(&self, location_id: &str) -> db::Result<Vec<db::TaskList>> {
+        Ok(self
+            .task_lists
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|l| l.location_id == location_id && l.deleted.is_none())
+            .cloned()
+            .collect())
+    }
+    async fn create_task_list(
+        &self,
+        location_id: &str,
+        name: &str,
+        created_by: Option<&str>,
+    ) -> db::Result<db::TaskList> {
+        let now = seslogin::clock::now_sec();
+        let row = db::TaskList {
+            id: db::new_id(),
+            location_id: location_id.to_string(),
+            name: name.to_string(),
+            created_by: created_by.map(str::to_string),
+            deleted: None,
+            created_at: now,
+            updated_at: now,
+        };
+        self.task_lists
+            .lock()
+            .unwrap()
+            .insert(row.id.clone(), row.clone());
+        Ok(row)
+    }
+    async fn update_task_list(
+        &self,
+        id: &str,
+        change: db::TaskListUpdateShape<'_>,
+    ) -> db::Result<db::TaskList> {
+        let now = seslogin::clock::now_sec();
+        let mut lists = self.task_lists.lock().unwrap();
+        let l = lists
+            .get_mut(id)
+            .filter(|l| l.deleted.is_none())
+            .ok_or_else(|| db::Error::NotFound(format!("Task list {id} not found")))?;
+        match change {
+            db::TaskListUpdateShape::Name { name } => l.name = name.to_string(),
+            db::TaskListUpdateShape::Delete => l.deleted = Some(now),
+        }
+        l.updated_at = now;
+        Ok(l.clone())
+    }
+    async fn get_notes<T: AsRef<str> + Sync>(
+        &self,
+        ids: &[T],
+    ) -> db::Result<Vec<Option<db::Note>>> {
+        let notes = self.notes.lock().unwrap();
+        Ok(ids
+            .iter()
+            .map(|id| notes.get(id.as_ref()).cloned())
+            .collect())
+    }
+    async fn list_notes(&self, location_id: &str) -> db::Result<Vec<db::Note>> {
+        Ok(self
+            .notes
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|n| n.location_id == location_id && n.deleted.is_none())
+            .cloned()
+            .collect())
+    }
+    async fn create_note(&self, note: db::NewNote<'_>) -> db::Result<db::Note> {
+        let now = seslogin::clock::now_sec();
+        let row = db::Note {
+            id: db::new_id(),
+            location_id: note.location_id.to_string(),
+            folder_id: note.folder_id.map(str::to_string),
+            title: note.title.to_string(),
+            content: note.content.to_string(),
+            created_by: note.created_by.map(str::to_string),
+            updated_by: None,
+            version: 1,
+            deleted: None,
+            created_at: now,
+            updated_at: now,
+        };
+        self.notes
+            .lock()
+            .unwrap()
+            .insert(row.id.clone(), row.clone());
+        Ok(row)
+    }
+    async fn update_note(&self, id: &str, change: db::NoteUpdateShape<'_>) -> db::Result<db::Note> {
+        let now = seslogin::clock::now_sec();
+        let mut notes = self.notes.lock().unwrap();
+        let not_found = || db::Error::NotFound(format!("Note {id} not found, or changed"));
+        // The same conditions as the DynamoDB `ConditionExpression`s.
+        let n = notes
+            .get_mut(id)
+            .filter(|n| n.deleted.is_none())
+            .ok_or_else(not_found)?;
+        match change {
+            db::NoteUpdateShape::Fields {
+                folder_id,
+                title,
+                content,
+                by,
+                expected_version,
+            } => {
+                if n.version != expected_version {
+                    return Err(not_found());
+                }
+                n.folder_id = folder_id.map(str::to_string);
+                n.title = title.to_string();
+                n.content = content.to_string();
+                n.updated_by = by.map(str::to_string);
+            }
+            db::NoteUpdateShape::Delete { by } => {
+                n.deleted = Some(now);
+                n.updated_by = by.map(str::to_string);
+            }
+        }
+        n.version += 1;
+        n.updated_at = now;
+        Ok(n.clone())
+    }
+    async fn get_note_folders<T: AsRef<str> + Sync>(
+        &self,
+        ids: &[T],
+    ) -> db::Result<Vec<Option<db::NoteFolder>>> {
+        let folders = self.note_folders.lock().unwrap();
+        Ok(ids
+            .iter()
+            .map(|id| folders.get(id.as_ref()).cloned())
+            .collect())
+    }
+    async fn list_note_folders(&self, location_id: &str) -> db::Result<Vec<db::NoteFolder>> {
+        Ok(self
+            .note_folders
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|f| f.location_id == location_id && f.deleted.is_none())
+            .cloned()
+            .collect())
+    }
+    async fn create_note_folder(
+        &self,
+        location_id: &str,
+        name: &str,
+        created_by: Option<&str>,
+    ) -> db::Result<db::NoteFolder> {
+        let now = seslogin::clock::now_sec();
+        let row = db::NoteFolder {
+            id: db::new_id(),
+            location_id: location_id.to_string(),
+            name: name.to_string(),
+            created_by: created_by.map(str::to_string),
+            deleted: None,
+            created_at: now,
+            updated_at: now,
+        };
+        self.note_folders
+            .lock()
+            .unwrap()
+            .insert(row.id.clone(), row.clone());
+        Ok(row)
+    }
+    async fn update_note_folder(
+        &self,
+        id: &str,
+        change: db::NoteFolderUpdateShape<'_>,
+    ) -> db::Result<db::NoteFolder> {
+        let now = seslogin::clock::now_sec();
+        let mut folders = self.note_folders.lock().unwrap();
+        let f = folders
+            .get_mut(id)
+            .filter(|f| f.deleted.is_none())
+            .ok_or_else(|| db::Error::NotFound(format!("Note folder {id} not found")))?;
+        match change {
+            db::NoteFolderUpdateShape::Name { name } => f.name = name.to_string(),
+            db::NoteFolderUpdateShape::Delete => f.deleted = Some(now),
+        }
+        f.updated_at = now;
+        Ok(f.clone())
+    }
+    async fn get_equipment<T: AsRef<str> + Sync>(
+        &self,
+        ids: &[T],
+    ) -> db::Result<Vec<Option<db::Equipment>>> {
+        let equipment = self.equipment.lock().unwrap();
+        Ok(ids
+            .iter()
+            .map(|id| equipment.get(id.as_ref()).cloned())
+            .collect())
+    }
+    async fn list_equipment(&self, location_id: &str) -> db::Result<Vec<db::Equipment>> {
+        Ok(self
+            .equipment
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|e| e.location_id == location_id && e.deleted.is_none())
+            .cloned()
+            .collect())
+    }
+    async fn create_equipment(
+        &self,
+        equipment: db::NewEquipment<'_>,
+    ) -> db::Result<(db::Equipment, db::EquipmentLogEntry)> {
+        let now = seslogin::clock::now_sec();
+        let row = db::Equipment {
+            id: db::new_id(),
+            location_id: equipment.location_id.to_string(),
+            equipment_type: equipment.equipment_type.to_string(),
+            name: equipment.name.to_string(),
+            description: equipment.description.to_string(),
+            status: equipment.status.to_string(),
+            status_changed_at: now,
+            last_checked_at: None,
+            created_by: equipment.created_by.map(str::to_string),
+            updated_by: None,
+            version: 1,
+            deleted: None,
+            created_at: now,
+            updated_at: now,
+        };
+        let entry = db::EquipmentLogEntry {
+            id: db::new_id(),
+            equipment_id: row.id.clone(),
+            location_id: row.location_id.clone(),
+            kind: db::EquipmentLogKind::StatusChange,
+            from_status: None,
+            status: row.status.clone(),
+            comment: equipment.comment.to_string(),
+            created_by: row.created_by.clone(),
+            created_at: now,
+            created_us: seslogin::clock::now_us(),
+        };
+        self.equipment
+            .lock()
+            .unwrap()
+            .insert(row.id.clone(), row.clone());
+        self.equipment_log
+            .lock()
+            .unwrap()
+            .insert(entry.id.clone(), entry.clone());
+        Ok((row, entry))
+    }
+    async fn update_equipment(
+        &self,
+        id: &str,
+        change: db::EquipmentUpdateShape<'_>,
+    ) -> db::Result<db::Equipment> {
+        let now = seslogin::clock::now_sec();
+        let mut equipment = self.equipment.lock().unwrap();
+        let not_found = || db::Error::NotFound(format!("Equipment {id} not found, or changed"));
+        // The same conditions as the DynamoDB `ConditionExpression`s.
+        let e = equipment
+            .get_mut(id)
+            .filter(|e| e.deleted.is_none())
+            .ok_or_else(not_found)?;
+        match change {
+            db::EquipmentUpdateShape::Fields {
+                equipment_type,
+                name,
+                description,
+                by,
+                expected_version,
+            } => {
+                if e.version != expected_version {
+                    return Err(not_found());
+                }
+                e.equipment_type = equipment_type.to_string();
+                e.name = name.to_string();
+                e.description = description.to_string();
+                e.updated_by = by.map(str::to_string);
+            }
+            db::EquipmentUpdateShape::Delete { by } => {
+                e.deleted = Some(now);
+                e.updated_by = by.map(str::to_string);
+            }
+        }
+        e.version += 1;
+        e.updated_at = now;
+        Ok(e.clone())
+    }
+    async fn add_equipment_log_entry(
+        &self,
+        entry: db::NewEquipmentLogEntry<'_>,
+    ) -> db::Result<(db::Equipment, db::EquipmentLogEntry)> {
+        let now = seslogin::clock::now_sec();
+        let mut equipment = self.equipment.lock().unwrap();
+        let (expected, kind, from_status, status) = match entry.change {
+            db::EquipmentLogChange::Status { from, to } => {
+                (from, db::EquipmentLogKind::StatusChange, Some(from), to)
+            }
+            db::EquipmentLogChange::Check { status } => {
+                (status, db::EquipmentLogKind::Check, None, status)
+            }
+        };
+        // The same condition as the DynamoDB transaction's.
+        let e = equipment
+            .get_mut(entry.equipment_id)
+            .filter(|e| e.deleted.is_none() && e.status == expected)
+            .ok_or_else(|| {
+                db::Error::NotFound(format!(
+                    "Equipment {} not found, or changed",
+                    entry.equipment_id
+                ))
+            })?;
+        match kind {
+            db::EquipmentLogKind::StatusChange => {
+                e.status = status.to_string();
+                e.status_changed_at = now;
+            }
+            db::EquipmentLogKind::Check => e.last_checked_at = Some(now),
+        }
+        let row = db::EquipmentLogEntry {
+            id: db::new_id(),
+            equipment_id: entry.equipment_id.to_string(),
+            location_id: entry.location_id.to_string(),
+            kind,
+            from_status: from_status.map(str::to_string),
+            status: status.to_string(),
+            comment: entry.comment.to_string(),
+            created_by: entry.by.map(str::to_string),
+            created_at: now,
+            created_us: seslogin::clock::now_us(),
+        };
+        self.equipment_log
+            .lock()
+            .unwrap()
+            .insert(row.id.clone(), row.clone());
+        Ok((e.clone(), row))
+    }
+    async fn list_equipment_log(
+        &self,
+        equipment_id: &str,
+    ) -> db::Result<Vec<db::EquipmentLogEntry>> {
+        Ok(self
+            .equipment_log
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|l| l.equipment_id == equipment_id)
+            .cloned()
+            .collect())
+    }
+    async fn get_equipment_reservations<T: AsRef<str> + Sync>(
+        &self,
+        ids: &[T],
+    ) -> db::Result<Vec<Option<db::EquipmentReservation>>> {
+        let rows = self.equipment_reservations.lock().unwrap();
+        Ok(ids
+            .iter()
+            .map(|id| rows.get(id.as_ref()).cloned())
+            .collect())
+    }
+    async fn list_equipment_reservations(
+        &self,
+        location_id: &str,
+        ending_after: u64,
+    ) -> db::Result<Vec<db::EquipmentReservation>> {
+        Ok(self
+            .equipment_reservations
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|r| {
+                r.location_id == location_id && r.end_time > ending_after && r.deleted.is_none()
+            })
+            .cloned()
+            .collect())
+    }
+    async fn create_equipment_reservation(
+        &self,
+        r: db::NewEquipmentReservation<'_>,
+    ) -> db::Result<db::EquipmentReservation> {
+        let now = seslogin::clock::now_sec();
+        let row = db::EquipmentReservation {
+            id: db::new_id(),
+            location_id: r.location_id.to_string(),
+            equipment_ids: r.equipment_ids.to_vec(),
+            start_time: r.start_time,
+            end_time: r.end_time,
+            reserved_for_person_id: r.reserved_for_person_id.map(str::to_string),
+            reserved_for_text: r.reserved_for_text.map(str::to_string),
+            description: r.description.to_string(),
+            created_by: r.created_by.map(str::to_string),
+            updated_by: None,
+            version: 1,
+            deleted: None,
+            created_at: now,
+            updated_at: now,
+        };
+        self.equipment_reservations
+            .lock()
+            .unwrap()
+            .insert(row.id.clone(), row.clone());
+        Ok(row)
+    }
+    async fn update_equipment_reservation(
+        &self,
+        id: &str,
+        change: db::EquipmentReservationUpdateShape<'_>,
+    ) -> db::Result<db::EquipmentReservation> {
+        let now = seslogin::clock::now_sec();
+        let mut rows = self.equipment_reservations.lock().unwrap();
+        let not_found =
+            || db::Error::NotFound(format!("Equipment reservation {id} not found, or changed"));
+        // The same conditions as the DynamoDB `ConditionExpression`s.
+        let r = rows
+            .get_mut(id)
+            .filter(|r| r.deleted.is_none())
+            .ok_or_else(not_found)?;
+        match change {
+            db::EquipmentReservationUpdateShape::Fields {
+                equipment_ids,
+                start_time,
+                end_time,
+                reserved_for_person_id,
+                reserved_for_text,
+                description,
+                by,
+                expected_version,
+            } => {
+                if r.version != expected_version {
+                    return Err(not_found());
+                }
+                r.equipment_ids = equipment_ids.to_vec();
+                r.start_time = start_time;
+                r.end_time = end_time;
+                r.reserved_for_person_id = reserved_for_person_id.map(str::to_string);
+                r.reserved_for_text = reserved_for_text.map(str::to_string);
+                r.description = description.to_string();
+                r.updated_by = by.map(str::to_string);
+            }
+            db::EquipmentReservationUpdateShape::Delete { by } => {
+                r.deleted = Some(now);
+                r.updated_by = by.map(str::to_string);
+            }
+        }
+        r.version += 1;
+        r.updated_at = now;
+        Ok(r.clone())
+    }
+    async fn get_map_pins<T: AsRef<str> + Sync>(
+        &self,
+        ids: &[T],
+    ) -> db::Result<Vec<Option<db::MapPin>>> {
+        let pins = self.map_pins.lock().unwrap();
+        Ok(ids
+            .iter()
+            .map(|id| pins.get(id.as_ref()).cloned())
+            .collect())
+    }
+    async fn list_map_pins(&self, location_id: &str) -> db::Result<Vec<db::MapPin>> {
+        Ok(self
+            .map_pins
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|p| p.location_id == location_id && p.deleted.is_none())
+            .cloned()
+            .collect())
+    }
+    async fn create_map_pin(&self, pin: db::NewMapPin<'_>) -> db::Result<db::MapPin> {
+        let now = seslogin::clock::now_sec();
+        let row = db::MapPin {
+            id: db::new_id(),
+            location_id: pin.location_id.to_string(),
+            layer_id: pin.layer_id.map(str::to_string),
+            pin_type: pin.pin_type.map(str::to_string),
+            title: pin.title.to_string(),
+            latitude: pin.latitude,
+            longitude: pin.longitude,
+            address: pin.address.to_string(),
+            note: pin.note.to_string(),
+            created_by: pin.created_by.map(str::to_string),
+            updated_by: None,
+            version: 1,
+            deleted: None,
+            created_at: now,
+            updated_at: now,
+        };
+        self.map_pins
+            .lock()
+            .unwrap()
+            .insert(row.id.clone(), row.clone());
+        Ok(row)
+    }
+    async fn update_map_pin(
+        &self,
+        id: &str,
+        change: db::MapPinUpdateShape<'_>,
+    ) -> db::Result<db::MapPin> {
+        let now = seslogin::clock::now_sec();
+        let mut pins = self.map_pins.lock().unwrap();
+        let not_found = || db::Error::NotFound(format!("Map pin {id} not found, or changed"));
+        // The same conditions as the DynamoDB `ConditionExpression`s.
+        let p = pins
+            .get_mut(id)
+            .filter(|p| p.deleted.is_none())
+            .ok_or_else(not_found)?;
+        match change {
+            db::MapPinUpdateShape::Fields {
+                layer_id,
+                pin_type,
+                title,
+                latitude,
+                longitude,
+                address,
+                note,
+                by,
+                expected_version,
+            } => {
+                if p.version != expected_version {
+                    return Err(not_found());
+                }
+                p.layer_id = layer_id.map(str::to_string);
+                p.pin_type = pin_type.map(str::to_string);
+                p.title = title.to_string();
+                p.latitude = latitude;
+                p.longitude = longitude;
+                p.address = address.to_string();
+                p.note = note.to_string();
+                p.updated_by = by.map(str::to_string);
+            }
+            db::MapPinUpdateShape::Delete { by } => {
+                p.deleted = Some(now);
+                p.updated_by = by.map(str::to_string);
+            }
+        }
+        p.version += 1;
+        p.updated_at = now;
+        Ok(p.clone())
+    }
+    async fn get_map_layers<T: AsRef<str> + Sync>(
+        &self,
+        ids: &[T],
+    ) -> db::Result<Vec<Option<db::MapLayer>>> {
+        let layers = self.map_layers.lock().unwrap();
+        Ok(ids
+            .iter()
+            .map(|id| layers.get(id.as_ref()).cloned())
+            .collect())
+    }
+    async fn list_map_layers(&self, location_id: &str) -> db::Result<Vec<db::MapLayer>> {
+        Ok(self
+            .map_layers
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|l| l.location_id == location_id && l.deleted.is_none())
+            .cloned()
+            .collect())
+    }
+    async fn create_map_layer(
+        &self,
+        location_id: &str,
+        name: &str,
+        created_by: Option<&str>,
+    ) -> db::Result<db::MapLayer> {
+        let now = seslogin::clock::now_sec();
+        let row = db::MapLayer {
+            id: db::new_id(),
+            location_id: location_id.to_string(),
+            name: name.to_string(),
+            created_by: created_by.map(str::to_string),
+            deleted: None,
+            created_at: now,
+            updated_at: now,
+        };
+        self.map_layers
+            .lock()
+            .unwrap()
+            .insert(row.id.clone(), row.clone());
+        Ok(row)
+    }
+    async fn update_map_layer(
+        &self,
+        id: &str,
+        change: db::MapLayerUpdateShape<'_>,
+    ) -> db::Result<db::MapLayer> {
+        let now = seslogin::clock::now_sec();
+        let mut layers = self.map_layers.lock().unwrap();
+        let l = layers
+            .get_mut(id)
+            .filter(|l| l.deleted.is_none())
+            .ok_or_else(|| db::Error::NotFound(format!("Map layer {id} not found")))?;
+        match change {
+            db::MapLayerUpdateShape::Name { name } => l.name = name.to_string(),
+            db::MapLayerUpdateShape::Delete => l.deleted = Some(now),
+        }
+        l.updated_at = now;
+        Ok(l.clone())
+    }
+    async fn get_calendars<T: AsRef<str> + Sync>(
+        &self,
+        ids: &[T],
+    ) -> db::Result<Vec<Option<db::Calendar>>> {
+        let calendars = self.calendars.lock().unwrap();
+        Ok(ids
+            .iter()
+            .map(|id| calendars.get(id.as_ref()).cloned())
+            .collect())
+    }
+    async fn list_calendars(&self, location_id: &str) -> db::Result<Vec<db::Calendar>> {
+        Ok(self
+            .calendars
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|c| c.location_id == location_id && c.deleted.is_none())
+            .cloned()
+            .collect())
+    }
+    async fn create_calendar(
+        &self,
+        location_id: &str,
+        name: &str,
+        color: &str,
+        created_by: Option<&str>,
+    ) -> db::Result<db::Calendar> {
+        let now = seslogin::clock::now_sec();
+        let row = db::Calendar {
+            id: db::new_id(),
+            location_id: location_id.to_string(),
+            name: name.to_string(),
+            color: color.to_string(),
+            created_by: created_by.map(str::to_string),
+            deleted: None,
+            created_at: now,
+            updated_at: now,
+        };
+        self.calendars
+            .lock()
+            .unwrap()
+            .insert(row.id.clone(), row.clone());
+        Ok(row)
+    }
+    async fn update_calendar(
+        &self,
+        id: &str,
+        change: db::CalendarUpdateShape<'_>,
+    ) -> db::Result<db::Calendar> {
+        let now = seslogin::clock::now_sec();
+        let mut calendars = self.calendars.lock().unwrap();
+        let c = calendars
+            .get_mut(id)
+            .filter(|c| c.deleted.is_none())
+            .ok_or_else(|| db::Error::NotFound(format!("Calendar {id} not found")))?;
+        match change {
+            db::CalendarUpdateShape::Fields { name, color } => {
+                c.name = name.to_string();
+                c.color = color.to_string();
+            }
+            db::CalendarUpdateShape::Delete => c.deleted = Some(now),
+        }
+        c.updated_at = now;
+        Ok(c.clone())
+    }
+    async fn get_calendar_events<T: AsRef<str> + Sync>(
+        &self,
+        ids: &[T],
+    ) -> db::Result<Vec<Option<db::CalendarEvent>>> {
+        let events = self.calendar_events.lock().unwrap();
+        Ok(ids
+            .iter()
+            .map(|id| events.get(id.as_ref()).cloned())
+            .collect())
+    }
+    async fn list_calendar_events(
+        &self,
+        location_id: &str,
+        ending_after: u64,
+    ) -> db::Result<Vec<db::CalendarEvent>> {
+        // The same as the `location_id-last_end-index` key condition.
+        Ok(self
+            .calendar_events
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|e| {
+                e.location_id == location_id && e.last_end > ending_after && e.deleted.is_none()
+            })
+            .cloned()
+            .collect())
+    }
+    async fn create_calendar_event(
+        &self,
+        event: db::NewCalendarEvent<'_>,
+    ) -> db::Result<db::CalendarEvent> {
+        let now = seslogin::clock::now_sec();
+        let row = db::CalendarEvent {
+            id: db::new_id(),
+            location_id: event.location_id.to_string(),
+            calendar_id: event.calendar_id.map(str::to_string),
+            title: event.title.to_string(),
+            description: event.description.to_string(),
+            timing: event.timing,
+            recurrence: event.recurrence,
+            last_end: seslogin::calendar::last_end(event.timing, event.recurrence),
+            created_by: event.created_by.map(str::to_string),
+            updated_by: None,
+            version: 1,
+            deleted: None,
+            created_at: now,
+            updated_at: now,
+        };
+        self.calendar_events
+            .lock()
+            .unwrap()
+            .insert(row.id.clone(), row.clone());
+        Ok(row)
+    }
+    async fn update_calendar_event(
+        &self,
+        id: &str,
+        change: db::CalendarEventUpdateShape<'_>,
+    ) -> db::Result<db::CalendarEvent> {
+        let now = seslogin::clock::now_sec();
+        let mut events = self.calendar_events.lock().unwrap();
+        let not_found =
+            || db::Error::NotFound(format!("Calendar event {id} not found, or changed"));
+        // The same conditions as the DynamoDB `ConditionExpression`s.
+        let e = events
+            .get_mut(id)
+            .filter(|e| e.deleted.is_none())
+            .ok_or_else(not_found)?;
+        match change {
+            db::CalendarEventUpdateShape::Fields {
+                calendar_id,
+                title,
+                description,
+                timing,
+                recurrence,
+                by,
+                expected_version,
+            } => {
+                if e.version != expected_version {
+                    return Err(not_found());
+                }
+                e.calendar_id = calendar_id.map(str::to_string);
+                e.title = title.to_string();
+                e.description = description.to_string();
+                e.timing = timing;
+                e.recurrence = recurrence;
+                e.last_end = seslogin::calendar::last_end(timing, recurrence);
+                e.updated_by = by.map(str::to_string);
+            }
+            db::CalendarEventUpdateShape::Delete { by } => {
+                e.deleted = Some(now);
+                e.updated_by = by.map(str::to_string);
+            }
+        }
+        e.version += 1;
+        e.updated_at = now;
+        Ok(e.clone())
+    }
+    async fn get_on_call_roles<T: AsRef<str> + Sync>(
+        &self,
+        ids: &[T],
+    ) -> db::Result<Vec<Option<db::OnCallRole>>> {
+        let roles = self.on_call_roles.lock().unwrap();
+        Ok(ids
+            .iter()
+            .map(|id| roles.get(id.as_ref()).cloned())
+            .collect())
+    }
+    async fn list_on_call_roles(&self, location_id: &str) -> db::Result<Vec<db::OnCallRole>> {
+        Ok(self
+            .on_call_roles
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|r| r.location_id == location_id && r.deleted.is_none())
+            .cloned()
+            .collect())
+    }
+    async fn create_on_call_role(&self, role: db::NewOnCallRole<'_>) -> db::Result<db::OnCallRole> {
+        let now = seslogin::clock::now_sec();
+        let row = db::OnCallRole {
+            id: db::new_id(),
+            location_id: role.location_id.to_string(),
+            name: role.name.to_string(),
+            description: role.description.to_string(),
+            phone: role.phone.map(str::to_string),
+            primary_person_id: role.primary_person_id.map(str::to_string),
+            secondary_person_ids: role.secondary_person_ids.to_vec(),
+            members_changed_at: role.primary_person_id.map(|_| now),
+            created_by: role.created_by.map(str::to_string),
+            updated_by: None,
+            version: 1,
+            deleted: None,
+            created_at: now,
+            updated_at: now,
+        };
+        self.on_call_roles
+            .lock()
+            .unwrap()
+            .insert(row.id.clone(), row.clone());
+        Ok(row)
+    }
+    async fn update_on_call_role(
+        &self,
+        id: &str,
+        change: db::OnCallRoleUpdateShape<'_>,
+    ) -> db::Result<db::OnCallRole> {
+        let now = seslogin::clock::now_sec();
+        let mut roles = self.on_call_roles.lock().unwrap();
+        let not_found = || db::Error::NotFound(format!("On-call role {id} not found, or changed"));
+        // The same conditions as the DynamoDB `ConditionExpression`s.
+        let r = roles
+            .get_mut(id)
+            .filter(|r| r.deleted.is_none())
+            .ok_or_else(not_found)?;
+        match change {
+            db::OnCallRoleUpdateShape::Fields {
+                name,
+                description,
+                phone,
+                primary_person_id,
+                secondary_person_ids,
+                members_changed_at,
+                by,
+                expected_version,
+            } => {
+                if r.version != expected_version {
+                    return Err(not_found());
+                }
+                r.name = name.to_string();
+                r.description = description.to_string();
+                r.phone = phone.map(str::to_string);
+                r.primary_person_id = primary_person_id.map(str::to_string);
+                r.secondary_person_ids = secondary_person_ids.to_vec();
+                r.members_changed_at = members_changed_at;
+                r.updated_by = by.map(str::to_string);
+            }
+            db::OnCallRoleUpdateShape::Delete { by } => {
+                r.deleted = Some(now);
+                r.updated_by = by.map(str::to_string);
+            }
+        }
+        r.version += 1;
+        r.updated_at = now;
+        Ok(r.clone())
+    }
+    async fn get_location_shares<T: AsRef<str> + Sync>(
+        &self,
+        person_ids: &[T],
+    ) -> db::Result<Vec<Option<db::LocationShare>>> {
+        let shares = self.location_shares.lock().unwrap();
+        Ok(person_ids
+            .iter()
+            .map(|id| shares.get(id.as_ref()).cloned())
+            .collect())
+    }
+    async fn list_location_shares(&self, location_id: &str) -> db::Result<Vec<db::LocationShare>> {
+        Ok(self
+            .location_shares
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|s| s.location_id == location_id)
+            .cloned()
+            .collect())
+    }
+    async fn put_location_share(&self, share: &db::LocationShare) -> db::Result<()> {
+        self.location_shares
+            .lock()
+            .unwrap()
+            .insert(share.person_id.clone(), share.clone());
+        Ok(())
+    }
+    async fn update_location_share_position(
+        &self,
+        person_id: &str,
+        position: &db::SharedPosition,
+        updated_at: u64,
+        expires_at: u64,
+    ) -> db::Result<db::LocationShare> {
+        let mut shares = self.location_shares.lock().unwrap();
+        // The same condition as the DynamoDB `ConditionExpression`.
+        let s = shares
+            .get_mut(person_id)
+            .filter(|s| s.ends_at > updated_at)
+            .ok_or_else(|| {
+                db::Error::NotFound(format!("No location share for {person_id}, or it ended"))
+            })?;
+        s.position = *position;
+        s.updated_at = updated_at;
+        s.expires_at = expires_at;
+        Ok(s.clone())
+    }
+    async fn delete_location_share(
+        &self,
+        person_id: &str,
+    ) -> db::Result<Option<db::LocationShare>> {
+        Ok(self.location_shares.lock().unwrap().remove(person_id))
+    }
+    async fn put_notifications(&self, records: Vec<db::NotificationRecord>) -> db::Result<()> {
+        if self.fail_notification_writes.load(Ordering::SeqCst) {
+            return Err(db::Error::Infrastructure(
+                "notification table does not exist".to_string(),
+            ));
+        }
+        self.notifications.lock().unwrap().extend(records);
+        Ok(())
+    }
+    async fn list_notifications(
+        &self,
+        person_id: &str,
+        after_sk: Option<&str>,
+        limit: usize,
+        unread_only: bool,
+    ) -> db::Result<Vec<db::NotificationRecord>> {
+        let mut rows: Vec<_> = self
+            .notifications
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|n| n.person_id == person_id)
+            .filter(|n| !unread_only || n.read_at.is_none())
+            .filter(|n| after_sk.is_none_or(|after| n.sk.as_str() < after))
+            .cloned()
+            .collect();
+        // Newest first, as a descending query on the sort key.
+        rows.sort_by(|a, b| b.sk.cmp(&a.sk));
+        rows.truncate(limit);
+        Ok(rows)
+    }
+    async fn count_unread_notifications(&self, person_id: &str, cap: usize) -> db::Result<usize> {
+        let unread = self
+            .notifications
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|n| n.person_id == person_id && n.read_at.is_none())
+            .count();
+        Ok(unread.min(cap))
+    }
+    async fn mark_notifications_read(
+        &self,
+        person_id: &str,
+        sks: &[String],
+        read_at: u64,
+    ) -> db::Result<()> {
+        // The same condition as the DynamoDB update: only an unread row of this user.
+        for n in self.notifications.lock().unwrap().iter_mut() {
+            if n.person_id == person_id && n.read_at.is_none() && sks.contains(&n.sk) {
+                n.read_at = Some(read_at);
+            }
+        }
+        Ok(())
+    }
     async fn put_audit_entry(&self, entry: &db::AuditEntry) -> db::Result<()> {
         if self.fail_audit_writes.load(Ordering::SeqCst) {
             return Err(db::Error::Infrastructure(
@@ -1339,6 +2586,7 @@ pub(crate) fn seed_user(
             enabled,
             location_grants: vec![],
             location_read_only_grants: vec![],
+            person_id: None,
             access_time: None,
             email_config: serde_json::Map::new(),
             disaggregate_virtual_periods: false,
@@ -1447,7 +2695,8 @@ pub(crate) fn seed_grant(
 ) -> OAuthGrant {
     let grant = OAuthGrant {
         id: id.to_string(),
-        user_id: user_id.to_string(),
+        user_id: Some(user_id.to_string()),
+        person_id: None,
         client_id: "test-client-id".to_string(),
         client_name: client_name.to_string(),
         redirect_uri: "https://claude.ai/callback".to_string(),
@@ -1486,6 +2735,9 @@ pub(crate) fn seed_category(
             is_virtual: false,
             nitc_participant_type: None,
             nitc_group_id: None,
+            group_name: None,
+            short_name: None,
+            icon: None,
             created_at: 0,
             updated_at: 0,
         },

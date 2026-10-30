@@ -18,6 +18,13 @@ const NANOID_ALPHABET: [char; 62] = [
 ///
 /// Lives here rather than in `dynamodb.rs` so code that is independent of the AWS
 /// implementation (the audit wrapper) can mint IDs too; `dynamodb::new_id` re-exports it.
+/// How a person's email is compared when looking them up by it: trimmed and
+/// lowercased, since SES and the person typing it may not agree on case. Stored as the
+/// person's `email_key`, which backs the `email_key-index`.
+pub fn email_key(email: &str) -> String {
+    email.trim().to_lowercase()
+}
+
 pub fn new_id() -> String {
     // https://alex7kom.github.io/nano-nanoid-cc/?alphabet=0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz&size=12&speed=1000&speedUnit=hour
     nanoid!(12, &NANOID_ALPHABET)
@@ -42,7 +49,7 @@ pub enum Error {
     #[error("Data type conversion error: {0}")]
     TypeConversion(String),
     /// returned when a conditional write finds the row changed since the caller read it
-    /// (a member's badge state)
+    /// (a stale expected version, a period already ended, or a member's badge state)
     #[error("Conflict: {0}")]
     Conflict(String),
     #[error("Mutation disabled")]
@@ -130,6 +137,9 @@ pub struct User {
     /// Locations where the user is Read only: they can view but not change.
     /// Disjoint from `location_grants`.
     pub location_read_only_grants: Vec<String>,
+    /// The member record this user acts as when signing in or out from the mobile
+    /// app. Set by a super user; any number of users may share one member.
+    pub person_id: Option<String>,
     pub access_time: Option<u64>,
     pub email_config: serde_json::Map<String, serde_json::Value>,
     pub disaggregate_virtual_periods: bool,
@@ -160,6 +170,10 @@ pub enum UserUpdateShape<'a> {
     },
     DisaggregateVirtualPeriods {
         value: bool,
+    },
+    /// Set (`Some`) or clear (`None`) the member the user acts as.
+    Person {
+        person_id: Option<&'a str>,
     },
 }
 
@@ -203,6 +217,22 @@ impl HasID for Person {
     fn id(&self) -> &str {
         &self.id
     }
+}
+
+/// One row of the contacts feed: a person and the `contact_key` that orders them.
+/// See [`Handler::list_contact_changes`].
+#[derive(Clone, Debug, PartialEq)]
+pub struct ContactChange {
+    pub key: String,
+    pub person: Person,
+}
+
+/// A page of [`ContactChange`]s, oldest change first.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ContactPage {
+    pub changes: Vec<ContactChange>,
+    /// Whether more rows lie between the last one returned and `before`.
+    pub has_more: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -595,6 +625,704 @@ impl HasID for NitcGroup {
     }
 }
 
+/// How often a recurring [`Task`] comes back once it is completed.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TaskRecurrenceUnit {
+    Days,
+    Weeks,
+}
+
+impl TaskRecurrenceUnit {
+    /// Stable string stored in the `recurrence_unit` attribute.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Days => "days",
+            Self::Weeks => "weeks",
+        }
+    }
+
+    /// Inverse of [`TaskRecurrenceUnit::as_str`].
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "days" => Some(Self::Days),
+            "weeks" => Some(Self::Weeks),
+            _ => None,
+        }
+    }
+}
+
+/// A recurring task comes back `every` days or weeks after it is completed.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TaskRecurrence {
+    pub every: u32,
+    pub unit: TaskRecurrenceUnit,
+}
+
+/// One item on a location's shared to-do list ("Tasks"). See SCHEMA.md's `task` section.
+///
+/// Dates are Sydney-local calendar dates. `show_date` is the day the task starts
+/// appearing: its `due_date` when it has one, otherwise the day it was created. A task
+/// is `open` until it is completed (non-recurring) or deleted; a recurring task is
+/// never completed for good, it moves its dates forward instead.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Task {
+    pub id: String,
+    pub location_id: String,
+    pub list_id: Option<String>,
+    pub title: String,
+    pub description: Option<String>,
+    pub due_date: Option<NaiveDate>,
+    pub show_date: NaiveDate,
+    pub recurrence: Option<TaskRecurrence>,
+    /// Whether the task is still to be done, i.e. it carries `open_location_id` and so
+    /// is in `open_location_id-show_date-index`.
+    pub open: bool,
+    pub created_by: Option<String>,
+    pub updated_by: Option<String>,
+    /// When a non-recurring task was completed, and by which user.
+    pub completed_at: Option<u64>,
+    pub completed_by: Option<String>,
+    /// When a recurring task was last completed, and by which user.
+    pub last_completed_at: Option<u64>,
+    pub last_completed_by: Option<String>,
+    pub version: u64,
+    pub deleted: Option<u64>,
+    pub created_at: u64,
+    pub updated_at: u64,
+}
+
+impl HasID for Task {
+    fn id(&self) -> &str {
+        &self.id
+    }
+}
+
+/// The fields of a task being created. See [`Task`].
+#[derive(Clone, Debug, PartialEq)]
+pub struct NewTask<'a> {
+    pub location_id: &'a str,
+    pub list_id: Option<&'a str>,
+    pub title: &'a str,
+    pub description: Option<&'a str>,
+    pub due_date: Option<NaiveDate>,
+    pub show_date: NaiveDate,
+    pub recurrence: Option<TaskRecurrence>,
+    pub created_by: Option<&'a str>,
+}
+
+/// Which open tasks of a location to list, by `show_date`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TaskShowDates {
+    /// Showing on or before this day: what is due now.
+    OnOrBefore(NaiveDate),
+    /// Showing only after this day: what is scheduled.
+    After(NaiveDate),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ListTasksQuery {
+    /// Open tasks of a location, in `show_date` order.
+    Open {
+        location_id: String,
+        show_dates: TaskShowDates,
+    },
+}
+
+/// Every write to a task. Each one fails with [`Error::NotFound`] when the task does not
+/// exist, is deleted or — for all but `Delete` — is no longer open or no longer at
+/// `expected_version`, so two people completing the same task cannot both succeed.
+/// Each returns the task as it is after the write.
+#[derive(Clone, Debug, PartialEq)]
+pub enum TaskUpdateShape<'a> {
+    /// Replace the editable fields. Absent optionals are removed.
+    Fields {
+        list_id: Option<&'a str>,
+        title: &'a str,
+        description: Option<&'a str>,
+        due_date: Option<NaiveDate>,
+        show_date: NaiveDate,
+        recurrence: Option<TaskRecurrence>,
+        by: Option<&'a str>,
+        expected_version: u64,
+    },
+    /// Complete one occurrence of a recurring task: it stays open and is due again on
+    /// `next_date`.
+    CompleteOccurrence {
+        next_date: NaiveDate,
+        by: Option<&'a str>,
+        expected_version: u64,
+    },
+    /// Complete a non-recurring task for good: it stops being open.
+    Complete {
+        by: Option<&'a str>,
+        expected_version: u64,
+    },
+    /// Soft-delete the task. It stops being open.
+    Delete { by: Option<&'a str> },
+}
+
+/// A named list a location's tasks can be put on. Every task belongs to its location;
+/// a list is an optional way to group some of them.
+#[derive(Clone, Debug, PartialEq)]
+pub struct TaskList {
+    pub id: String,
+    pub location_id: String,
+    pub name: String,
+    pub created_by: Option<String>,
+    pub deleted: Option<u64>,
+    pub created_at: u64,
+    pub updated_at: u64,
+}
+
+impl HasID for TaskList {
+    fn id(&self) -> &str {
+        &self.id
+    }
+}
+
+/// Every write to a task list. Each fails with [`Error::NotFound`] when the list does
+/// not exist or is deleted, and returns the list as it is after the write. Deleting a
+/// list leaves its tasks alone: they keep `list_id` and stay on their location.
+#[derive(Clone, Debug, PartialEq)]
+pub enum TaskListUpdateShape<'a> {
+    Name { name: &'a str },
+    Delete,
+}
+
+/// A note in a location's shared notebook ("Notes"). See SCHEMA.md's `note` section.
+///
+/// Every note belongs to its location; `folder_id` optionally files it in one of the
+/// location's [`NoteFolder`]s. `content` is plain text for now (empty when absent).
+#[derive(Clone, Debug, PartialEq)]
+pub struct Note {
+    pub id: String,
+    pub location_id: String,
+    pub folder_id: Option<String>,
+    pub title: String,
+    pub content: String,
+    pub created_by: Option<String>,
+    pub updated_by: Option<String>,
+    pub version: u64,
+    pub deleted: Option<u64>,
+    pub created_at: u64,
+    pub updated_at: u64,
+}
+
+impl HasID for Note {
+    fn id(&self) -> &str {
+        &self.id
+    }
+}
+
+/// The fields of a note being created. See [`Note`].
+#[derive(Clone, Debug, PartialEq)]
+pub struct NewNote<'a> {
+    pub location_id: &'a str,
+    pub folder_id: Option<&'a str>,
+    pub title: &'a str,
+    pub content: &'a str,
+    pub created_by: Option<&'a str>,
+}
+
+/// Every write to a note. Each fails with [`Error::NotFound`] when the note does not
+/// exist, is deleted or — for `Fields` — is no longer at `expected_version`, so two
+/// people saving the same note cannot silently overwrite each other. Each returns the
+/// note as it is after the write.
+#[derive(Clone, Debug, PartialEq)]
+pub enum NoteUpdateShape<'a> {
+    /// Replace the editable fields. An absent folder, or empty content, is removed.
+    Fields {
+        folder_id: Option<&'a str>,
+        title: &'a str,
+        content: &'a str,
+        by: Option<&'a str>,
+        expected_version: u64,
+    },
+    /// Soft-delete the note.
+    Delete { by: Option<&'a str> },
+}
+
+/// A named folder a location's notes can be filed in.
+#[derive(Clone, Debug, PartialEq)]
+pub struct NoteFolder {
+    pub id: String,
+    pub location_id: String,
+    pub name: String,
+    pub created_by: Option<String>,
+    pub deleted: Option<u64>,
+    pub created_at: u64,
+    pub updated_at: u64,
+}
+
+impl HasID for NoteFolder {
+    fn id(&self) -> &str {
+        &self.id
+    }
+}
+
+/// Every write to a note folder. Each fails with [`Error::NotFound`] when the folder
+/// does not exist or is deleted, and returns the folder as it is after the write.
+/// Deleting a folder leaves its notes alone: they keep `folder_id` and stay on their
+/// location.
+#[derive(Clone, Debug, PartialEq)]
+pub enum NoteFolderUpdateShape<'a> {
+    Name { name: &'a str },
+    Delete,
+}
+
+/// A piece of equipment in a location's register ("Equipment"). See SCHEMA.md's
+/// `equipment` section and [`crate::equipment`] for the rules.
+///
+/// `equipment_type` and `status` hold [`crate::equipment::EquipmentType::as_str`] and
+/// [`crate::equipment::EquipmentStatus::as_str`] values. The status is only changed by
+/// [`Handler::add_equipment_log_entry`], so every change is in the log.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Equipment {
+    pub id: String,
+    pub location_id: String,
+    pub equipment_type: String,
+    pub name: String,
+    pub description: String,
+    pub status: String,
+    /// When the status last changed (or the equipment was added).
+    pub status_changed_at: u64,
+    /// When someone last logged that they checked it.
+    pub last_checked_at: Option<u64>,
+    pub created_by: Option<String>,
+    pub updated_by: Option<String>,
+    /// Bumped by every [`EquipmentUpdateShape`] write, not by log entries.
+    pub version: u64,
+    pub deleted: Option<u64>,
+    pub created_at: u64,
+    pub updated_at: u64,
+}
+
+impl HasID for Equipment {
+    fn id(&self) -> &str {
+        &self.id
+    }
+}
+
+/// A piece of equipment being added. Its first log entry, a status change from nothing
+/// to `status` with `comment`, is written with it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct NewEquipment<'a> {
+    pub location_id: &'a str,
+    pub equipment_type: &'a str,
+    pub name: &'a str,
+    pub description: &'a str,
+    pub status: &'a str,
+    pub comment: &'a str,
+    pub created_by: Option<&'a str>,
+}
+
+/// Every write to a piece of equipment other than a log entry. Each fails with
+/// [`Error::NotFound`] when it does not exist, is deleted or — for `Fields` — is no
+/// longer at `expected_version`. Each returns the equipment as it is after the write.
+#[derive(Clone, Debug, PartialEq)]
+pub enum EquipmentUpdateShape<'a> {
+    /// Replace the editable fields. Empty description is removed.
+    Fields {
+        equipment_type: &'a str,
+        name: &'a str,
+        description: &'a str,
+        by: Option<&'a str>,
+        expected_version: u64,
+    },
+    /// Soft-delete the equipment. Its log is kept.
+    Delete { by: Option<&'a str> },
+}
+
+/// One line of a piece of equipment's log.
+#[derive(Clone, Debug, PartialEq)]
+pub struct EquipmentLogEntry {
+    pub id: String,
+    pub equipment_id: String,
+    pub location_id: String,
+    pub kind: EquipmentLogKind,
+    /// The status before a status change; `None` for the entry written when the
+    /// equipment was added, and for checks.
+    pub from_status: Option<String>,
+    /// The status after a status change, or the status it was checked in.
+    pub status: String,
+    /// Why, in the words of whoever made the entry; may be empty for a check.
+    pub comment: String,
+    pub created_by: Option<String>,
+    pub created_at: u64,
+    /// When it was written, in Unix microseconds: orders entries made within the same
+    /// second.
+    pub created_us: u64,
+}
+
+impl HasID for EquipmentLogEntry {
+    fn id(&self) -> &str {
+        &self.id
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum EquipmentLogKind {
+    StatusChange,
+    Check,
+}
+
+impl EquipmentLogKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::StatusChange => "status_change",
+            Self::Check => "check",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "status_change" => Some(Self::StatusChange),
+            "check" => Some(Self::Check),
+            _ => None,
+        }
+    }
+}
+
+/// What a new log entry records.
+#[derive(Clone, Debug, PartialEq)]
+pub enum EquipmentLogChange<'a> {
+    /// The status changed from `from` to `to`.
+    Status { from: &'a str, to: &'a str },
+    /// Someone checked it, in `status`; the status is unchanged.
+    Check { status: &'a str },
+}
+
+/// A log entry being added to a piece of equipment.
+#[derive(Clone, Debug, PartialEq)]
+pub struct NewEquipmentLogEntry<'a> {
+    pub equipment_id: &'a str,
+    pub location_id: &'a str,
+    pub change: EquipmentLogChange<'a>,
+    pub comment: &'a str,
+    pub by: Option<&'a str>,
+}
+
+/// A booking of one or more pieces of a location's equipment for a time range
+/// ("Reservations"). See SCHEMA.md's `equipment_reservation` section and
+/// [`crate::reservations`] for the rules.
+///
+/// It is for `reserved_for_person_id` (the user who made it, unless changed) or, when
+/// `reserved_for_text` is set, for whoever that names. Overlapping reservations are
+/// allowed; the API reports them as a warning.
+#[derive(Clone, Debug, PartialEq)]
+pub struct EquipmentReservation {
+    pub id: String,
+    pub location_id: String,
+    /// At least one, with no repeats. Stored as a set, so in no particular order.
+    pub equipment_ids: Vec<String>,
+    pub start_time: u64,
+    pub end_time: u64,
+    pub reserved_for_person_id: Option<String>,
+    pub reserved_for_text: Option<String>,
+    pub description: String,
+    pub created_by: Option<String>,
+    pub updated_by: Option<String>,
+    /// Bumped by every [`EquipmentReservationUpdateShape`] write.
+    pub version: u64,
+    pub deleted: Option<u64>,
+    pub created_at: u64,
+    pub updated_at: u64,
+}
+
+impl HasID for EquipmentReservation {
+    fn id(&self) -> &str {
+        &self.id
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct NewEquipmentReservation<'a> {
+    pub location_id: &'a str,
+    pub equipment_ids: &'a [String],
+    pub start_time: u64,
+    pub end_time: u64,
+    pub reserved_for_person_id: Option<&'a str>,
+    pub reserved_for_text: Option<&'a str>,
+    pub description: &'a str,
+    pub created_by: Option<&'a str>,
+}
+
+/// Every write to a reservation. Each fails with [`Error::NotFound`] when it does not
+/// exist, is deleted or — for `Fields` — is no longer at `expected_version`. Each
+/// returns the reservation as it is after the write.
+#[derive(Clone, Debug, PartialEq)]
+pub enum EquipmentReservationUpdateShape<'a> {
+    /// Replace the editable fields. An absent `reserved_for_*` or empty description is
+    /// removed.
+    Fields {
+        equipment_ids: &'a [String],
+        start_time: u64,
+        end_time: u64,
+        reserved_for_person_id: Option<&'a str>,
+        reserved_for_text: Option<&'a str>,
+        description: &'a str,
+        by: Option<&'a str>,
+        expected_version: u64,
+    },
+    /// Soft-delete the reservation.
+    Delete { by: Option<&'a str> },
+}
+
+/// A pin on a location's shared map ("Map"). See SCHEMA.md's `map_pin` section.
+///
+/// Every pin belongs to its location; `layer_id` optionally puts it on one of the
+/// location's [`MapLayer`]s. `latitude` / `longitude` are WGS 84 degrees. `address` and
+/// `note` are free text, empty when absent. `pin_type` is a
+/// [`MapPinType::as_str`](crate::map::MapPinType::as_str), absent for a plain pin.
+#[derive(Clone, Debug, PartialEq)]
+pub struct MapPin {
+    pub id: String,
+    pub location_id: String,
+    pub layer_id: Option<String>,
+    pub pin_type: Option<String>,
+    pub title: String,
+    pub latitude: f64,
+    pub longitude: f64,
+    pub address: String,
+    pub note: String,
+    pub created_by: Option<String>,
+    pub updated_by: Option<String>,
+    pub version: u64,
+    pub deleted: Option<u64>,
+    pub created_at: u64,
+    pub updated_at: u64,
+}
+
+impl HasID for MapPin {
+    fn id(&self) -> &str {
+        &self.id
+    }
+}
+
+/// The fields of a map pin being created. See [`MapPin`].
+#[derive(Clone, Debug, PartialEq)]
+pub struct NewMapPin<'a> {
+    pub location_id: &'a str,
+    pub layer_id: Option<&'a str>,
+    pub pin_type: Option<&'a str>,
+    pub title: &'a str,
+    pub latitude: f64,
+    pub longitude: f64,
+    pub address: &'a str,
+    pub note: &'a str,
+    pub created_by: Option<&'a str>,
+}
+
+/// Every write to a map pin. Each fails with [`Error::NotFound`] when the pin does not
+/// exist, is deleted or — for `Fields` — is no longer at `expected_version`, so two
+/// people saving the same pin cannot silently overwrite each other. Each returns the
+/// pin as it is after the write.
+#[derive(Clone, Debug, PartialEq)]
+pub enum MapPinUpdateShape<'a> {
+    /// Replace the editable fields. An absent layer or type, or an empty address or
+    /// note, is removed.
+    Fields {
+        layer_id: Option<&'a str>,
+        pin_type: Option<&'a str>,
+        title: &'a str,
+        latitude: f64,
+        longitude: f64,
+        address: &'a str,
+        note: &'a str,
+        by: Option<&'a str>,
+        expected_version: u64,
+    },
+    /// Soft-delete the pin.
+    Delete { by: Option<&'a str> },
+}
+
+/// A named layer a location's map pins can be put on.
+#[derive(Clone, Debug, PartialEq)]
+pub struct MapLayer {
+    pub id: String,
+    pub location_id: String,
+    pub name: String,
+    pub created_by: Option<String>,
+    pub deleted: Option<u64>,
+    pub created_at: u64,
+    pub updated_at: u64,
+}
+
+impl HasID for MapLayer {
+    fn id(&self) -> &str {
+        &self.id
+    }
+}
+
+/// Every write to a map layer. Each fails with [`Error::NotFound`] when the layer does
+/// not exist or is deleted, and returns the layer as it is after the write. Deleting a
+/// layer leaves its pins alone: they keep `layer_id` and stay on their location's map.
+#[derive(Clone, Debug, PartialEq)]
+pub enum MapLayerUpdateShape<'a> {
+    Name { name: &'a str },
+    Delete,
+}
+
+/// A named, coloured calendar a location's events can be put in ("Calendar"). See
+/// SCHEMA.md's `calendar` section.
+///
+/// `color` holds a [`crate::calendar::CalendarColor::as_str`] value.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Calendar {
+    pub id: String,
+    pub location_id: String,
+    pub name: String,
+    pub color: String,
+    pub created_by: Option<String>,
+    pub deleted: Option<u64>,
+    pub created_at: u64,
+    pub updated_at: u64,
+}
+
+impl HasID for Calendar {
+    fn id(&self) -> &str {
+        &self.id
+    }
+}
+
+/// Every write to a calendar. Each fails with [`Error::NotFound`] when the calendar does
+/// not exist or is deleted, and returns it as it is after the write. Deleting a calendar
+/// leaves its events alone: they keep `calendar_id` and show as in no calendar.
+#[derive(Clone, Debug, PartialEq)]
+pub enum CalendarUpdateShape<'a> {
+    Fields { name: &'a str, color: &'a str },
+    Delete,
+}
+
+/// An event in a location's shared calendar ("Calendar"). See SCHEMA.md's
+/// `calendar_event` section and [`crate::calendar`] for the rules.
+///
+/// `calendar_id` optionally puts it in one of the location's [`Calendar`]s. `last_end`
+/// is [`crate::calendar::last_end`] of its timing and recurrence, stored for the index
+/// that finds the events reaching a window.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CalendarEvent {
+    pub id: String,
+    pub location_id: String,
+    pub calendar_id: Option<String>,
+    pub title: String,
+    pub description: String,
+    pub timing: crate::calendar::Timing,
+    pub recurrence: Option<crate::calendar::Recurrence>,
+    pub last_end: u64,
+    pub created_by: Option<String>,
+    pub updated_by: Option<String>,
+    /// Bumped by every [`CalendarEventUpdateShape`] write.
+    pub version: u64,
+    pub deleted: Option<u64>,
+    pub created_at: u64,
+    pub updated_at: u64,
+}
+
+impl HasID for CalendarEvent {
+    fn id(&self) -> &str {
+        &self.id
+    }
+}
+
+/// The fields of an event being created. See [`CalendarEvent`].
+#[derive(Clone, Debug, PartialEq)]
+pub struct NewCalendarEvent<'a> {
+    pub location_id: &'a str,
+    pub calendar_id: Option<&'a str>,
+    pub title: &'a str,
+    pub description: &'a str,
+    pub timing: crate::calendar::Timing,
+    pub recurrence: Option<crate::calendar::Recurrence>,
+    pub created_by: Option<&'a str>,
+}
+
+/// Every write to an event. Each fails with [`Error::NotFound`] when it does not exist,
+/// is deleted or — for `Fields` — is no longer at `expected_version`. Each returns the
+/// event as it is after the write.
+#[derive(Clone, Debug, PartialEq)]
+pub enum CalendarEventUpdateShape<'a> {
+    /// Replace the editable fields. An absent calendar or recurrence, or an empty
+    /// description, is removed.
+    Fields {
+        calendar_id: Option<&'a str>,
+        title: &'a str,
+        description: &'a str,
+        timing: crate::calendar::Timing,
+        recurrence: Option<crate::calendar::Recurrence>,
+        by: Option<&'a str>,
+        expected_version: u64,
+    },
+    /// Soft-delete the event.
+    Delete { by: Option<&'a str> },
+}
+
+/// An on-call role at a location ("On Call"), such as Duty Officer, and who holds it
+/// now. See SCHEMA.md's `on_call_role` section.
+///
+/// A role with anyone in it has exactly one primary; `secondary_person_ids` are the
+/// others sharing it and is empty when the primary is absent.
+#[derive(Clone, Debug, PartialEq)]
+pub struct OnCallRole {
+    pub id: String,
+    pub location_id: String,
+    pub name: String,
+    /// Plain text; empty when absent.
+    pub description: String,
+    /// A number that reaches whoever holds the role (e.g. a diverted duty phone).
+    pub phone: Option<String>,
+    pub primary_person_id: Option<String>,
+    pub secondary_person_ids: Vec<String>,
+    /// When the people in the role last changed, or when it was created with people in
+    /// it. Absent while nobody has been put in it.
+    pub members_changed_at: Option<u64>,
+    pub created_by: Option<String>,
+    pub updated_by: Option<String>,
+    pub version: u64,
+    pub deleted: Option<u64>,
+    pub created_at: u64,
+    pub updated_at: u64,
+}
+
+impl HasID for OnCallRole {
+    fn id(&self) -> &str {
+        &self.id
+    }
+}
+
+/// The fields of an on-call role being created. See [`OnCallRole`].
+#[derive(Clone, Debug, PartialEq)]
+pub struct NewOnCallRole<'a> {
+    pub location_id: &'a str,
+    pub name: &'a str,
+    pub description: &'a str,
+    pub phone: Option<&'a str>,
+    pub primary_person_id: Option<&'a str>,
+    pub secondary_person_ids: &'a [String],
+    pub created_by: Option<&'a str>,
+}
+
+/// Every write to an on-call role. Each fails with [`Error::NotFound`] when the role
+/// does not exist, is deleted or — for `Fields` — is no longer at `expected_version`.
+/// Each returns the role as it is after the write.
+#[derive(Clone, Debug, PartialEq)]
+pub enum OnCallRoleUpdateShape<'a> {
+    /// Replace the editable fields. Absent values, an empty description and an empty
+    /// list of secondaries are removed.
+    Fields {
+        name: &'a str,
+        description: &'a str,
+        phone: Option<&'a str>,
+        primary_person_id: Option<&'a str>,
+        secondary_person_ids: &'a [String],
+        members_changed_at: Option<u64>,
+        by: Option<&'a str>,
+        expected_version: u64,
+    },
+    /// Soft-delete the role.
+    Delete { by: Option<&'a str> },
+}
+
 impl HasID for Period {
     fn id(&self) -> &str {
         &self.id
@@ -630,6 +1358,11 @@ pub enum PeriodUpdateShape<'a> {
         /// existing comment untouched, `Some(None)` clears it, and
         /// `Some(Some(_))` sets it.
         comment: Option<Option<&'a str>>,
+        /// When `Some`, the write only lands if the period is still at this version
+        /// and still open; otherwise it fails with [`Error::Conflict`] and changes
+        /// nothing. `None` (the admin edit pages, the kiosk) only requires the row to
+        /// exist.
+        expected_version: Option<u64>,
     },
     /// Admin edit of a guest period: name, times, and comment only. A guest
     /// period has no person and no category, so those are never touched here.
@@ -715,8 +1448,34 @@ pub struct Category {
     pub is_virtual: bool,
     pub nitc_participant_type: Option<String>,
     pub nitc_group_id: Option<String>,
+    /// The kiosk group the category sits under ("Training"). Display metadata
+    /// duplicated from the kiosk's hard-coded tree for the mobile app.
+    pub group_name: Option<String>,
+    /// The short name the kiosk shows ("AIIMS").
+    pub short_name: Option<String>,
+    /// The kiosk icon's file stem ("aiims").
+    pub icon: Option<String>,
     pub created_at: u64,
     pub updated_at: u64,
+}
+
+impl Category {
+    pub fn display(&self) -> CategoryDisplay {
+        CategoryDisplay {
+            group_name: self.group_name.clone(),
+            short_name: self.short_name.clone(),
+            icon: self.icon.clone(),
+        }
+    }
+}
+
+/// A category's optional display metadata. Writes replace all three: `None` removes
+/// the attribute.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct CategoryDisplay {
+    pub group_name: Option<String>,
+    pub short_name: Option<String>,
+    pub icon: Option<String>,
 }
 
 impl HasID for Category {
@@ -757,7 +1516,13 @@ pub enum UserTokenUpdateShape {
 #[derive(Clone, Debug, PartialEq)]
 pub struct OAuthGrant {
     pub id: String,
-    pub user_id: String,
+    /// The user the grant acts for. Always set on a grant approved at the consent
+    /// screen; on a Tally sign-in grant (`person_id` set) only when the email they
+    /// signed in with is also a user's.
+    pub user_id: Option<String>,
+    /// Set only on a Tally sign-in grant: the member it acts for. Such a grant resolves
+    /// to [`crate::auth::AuthInfo::Member`] rather than a user.
+    pub person_id: Option<String>,
     pub client_id: String,
     pub client_name: String,
     pub redirect_uri: String,
@@ -844,6 +1609,97 @@ pub struct EphemeralState {
     pub expires_at: u64,
 }
 
+/// Where a device was when it reported in for a [`LocationShare`]: WGS 84 degrees,
+/// metres and metres per second, as the phone reported them.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SharedPosition {
+    pub latitude: f64,
+    pub longitude: f64,
+    /// Radius of uncertainty of the position, in metres.
+    pub accuracy: Option<f64>,
+    /// Metres above the WGS 84 ellipsoid.
+    pub altitude: Option<f64>,
+    pub altitude_accuracy: Option<f64>,
+    /// Direction of travel, degrees clockwise from true north (0 ≤ heading < 360).
+    pub heading: Option<f64>,
+    pub speed: Option<f64>,
+    /// Unix seconds when the device took the fix, never later than when it was stored.
+    pub recorded_at: u64,
+}
+
+/// A user sharing their position with a location's members ("Locate"), for a fixed
+/// time. One per user: starting another replaces it. Only the latest position is kept.
+/// See SCHEMA.md's `location_share` section.
+#[derive(Clone, Debug, PartialEq)]
+pub struct LocationShare {
+    /// The sharing member's person ID; also the table's key (`id`).
+    pub person_id: String,
+    pub location_id: String,
+    pub position: SharedPosition,
+    /// How often the device said it would report in, in seconds.
+    pub interval_secs: u64,
+    pub started_at: u64,
+    /// When sharing stops: later reports are refused.
+    pub ends_at: u64,
+    /// When the latest position arrived.
+    pub updated_at: u64,
+    /// When the share stops showing, a while after the latest position (the table's TTL).
+    pub expires_at: u64,
+}
+
+impl HasID for LocationShare {
+    fn id(&self) -> &str {
+        &self.person_id
+    }
+}
+
+// ── Notifications ────────────────────────────────────────────────────────────
+
+/// One notification in one user's inbox. An event notifying several users is stored as
+/// a full copy per recipient, sharing `notification_id`, so reading an inbox is a
+/// single query. See SCHEMA.md's `notification` section.
+#[derive(Clone, Debug, PartialEq)]
+pub struct NotificationRecord {
+    /// The recipient: a member, by person ID. The table's hash key.
+    pub person_id: String,
+    /// See [`notification_sk`]. The table's range key, and the paging cursor.
+    pub sk: String,
+    /// Shared by every recipient's copy of one event.
+    pub notification_id: String,
+    /// The producing app, e.g. `reservations`.
+    pub source: String,
+    /// What happened, e.g. `reservation.for_you`.
+    pub kind: String,
+    pub location_id: Option<String>,
+    /// The member whose action caused it, if a member did.
+    pub actor_person_id: Option<String>,
+    pub title: String,
+    pub body: Option<String>,
+    /// What tapping the notification should open, e.g. `reservation` and its ID.
+    pub target_type: Option<String>,
+    pub target_id: Option<String>,
+    /// Unix seconds.
+    pub created_at: u64,
+    /// Unix seconds; None while unread.
+    pub read_at: Option<u64>,
+    /// Unix seconds; the table's TTL.
+    pub expires_at: u64,
+}
+
+impl NotificationRecord {
+    pub fn is_read(&self) -> bool {
+        self.read_at.is_some()
+    }
+}
+
+/// The `sk` of a `notification` item: the creation time in milliseconds zero-padded to
+/// 13 digits, `#`, then the event's `notification_id`. Lexical order is time order
+/// (until the year 2286), so newest first is a descending query, and the ID keeps it
+/// unique when two events share a millisecond.
+pub fn notification_sk(created_ms: u64, notification_id: &str) -> String {
+    format!("{created_ms:013}#{notification_id}")
+}
+
 // ── Audit log ────────────────────────────────────────────────────────────────
 
 /// What an audited write did to its entity.
@@ -893,6 +1749,19 @@ pub enum AuditEntityType {
     UserToken,
     OAuthGrant,
     WebauthnCredential,
+    Task,
+    TaskList,
+    Note,
+    NoteFolder,
+    Equipment,
+    EquipmentLogEntry,
+    EquipmentReservation,
+    OnCallRole,
+    MapPin,
+    MapLayer,
+    Calendar,
+    CalendarEvent,
+    LocationShare,
 }
 
 impl AuditEntityType {
@@ -911,6 +1780,19 @@ impl AuditEntityType {
             "user_token" => Self::UserToken,
             "oauth_grant" => Self::OAuthGrant,
             "webauthn_credential" => Self::WebauthnCredential,
+            "task" => Self::Task,
+            "task_list" => Self::TaskList,
+            "on_call_role" => Self::OnCallRole,
+            "note" => Self::Note,
+            "note_folder" => Self::NoteFolder,
+            "equipment" => Self::Equipment,
+            "equipment_log_entry" => Self::EquipmentLogEntry,
+            "equipment_reservation" => Self::EquipmentReservation,
+            "map_pin" => Self::MapPin,
+            "map_layer" => Self::MapLayer,
+            "calendar" => Self::Calendar,
+            "calendar_event" => Self::CalendarEvent,
+            "location_share" => Self::LocationShare,
             _ => return None,
         })
     }
@@ -930,6 +1812,19 @@ impl AuditEntityType {
             Self::UserToken => "user_token",
             Self::OAuthGrant => "oauth_grant",
             Self::WebauthnCredential => "webauthn_credential",
+            Self::OnCallRole => "on_call_role",
+            Self::Task => "task",
+            Self::TaskList => "task_list",
+            Self::Note => "note",
+            Self::NoteFolder => "note_folder",
+            Self::Equipment => "equipment",
+            Self::EquipmentLogEntry => "equipment_log_entry",
+            Self::EquipmentReservation => "equipment_reservation",
+            Self::MapPin => "map_pin",
+            Self::MapLayer => "map_layer",
+            Self::Calendar => "calendar",
+            Self::CalendarEvent => "calendar_event",
+            Self::LocationShare => "location_share",
         }
     }
 }
@@ -1074,6 +1969,13 @@ pub trait Handler: Sync {
         &self,
         ses_api_person_id: &str,
     ) -> impl Future<Output = Result<Vec<String>>> + Send;
+    /// Returns the IDs of every person whose email matches, compared by [`email_key`].
+    /// Several people may share an address (a family's, say), and soft-deleted people
+    /// are included: the caller decides what either means.
+    fn get_person_ids_by_email(
+        &self,
+        email: &str,
+    ) -> impl Future<Output = Result<Vec<String>>> + Send;
     fn get_sessions<T: AsRef<str> + Sync>(
         &self,
         ids: &[T],
@@ -1152,6 +2054,39 @@ pub trait Handler: Sync {
         id: &str,
         change: PersonUpdateShape<'_>,
     ) -> impl Future<Output = Result<()>> + Send;
+
+    /// Give the person a fresh `contact_key`, putting them back at the head of the
+    /// contacts feed without changing anything else. Used when something the feed
+    /// returns changed outside the person row (their location's name, their
+    /// `person_unit` rows) and to backfill rows written before the feed existed. The
+    /// writes that change a returned field (`create_person`, and `update_person` other
+    /// than `SesApiPersonId`, `MissingSince` and `BadgeState`) stamp the key themselves.
+    fn stamp_person_contact(&self, id: &str) -> impl Future<Output = Result<()>> + Send;
+
+    /// Write the person's `email_key` (see [`email_key`]) from `email`, provided their
+    /// email is still exactly `email`; [`Error::NotFound`] otherwise. Changes nothing
+    /// else. `update_person`'s `Email` shape writes the key itself; this backfills rows
+    /// written before the key existed.
+    fn stamp_person_email_key(
+        &self,
+        id: &str,
+        email: &str,
+    ) -> impl Future<Output = Result<()>> + Send;
+
+    /// Up to `limit` people from the contacts feed with `after < contact_key < before`,
+    /// in key order. `after: None` starts from the beginning. Soft-deleted people are
+    /// included (as tombstones) only when `include_deleted`.
+    fn list_contact_changes(
+        &self,
+        after: Option<&str>,
+        before: &str,
+        include_deleted: bool,
+        limit: usize,
+    ) -> impl Future<Output = Result<ContactPage>> + Send;
+
+    /// How many live (not soft-deleted) people the contacts feed holds below `before`.
+    /// Reads the whole index, so only for the first page of a full sync.
+    fn count_contacts(&self, before: &str) -> impl Future<Output = Result<u64>> + Send;
     fn create_period(
         &self,
         person_id: &str,
@@ -1250,7 +2185,9 @@ pub trait Handler: Sync {
         is_virtual: bool,
         nitc_group_id: Option<&str>,
         nitc_participant_type: Option<&str>,
+        display: &CategoryDisplay,
     ) -> impl Future<Output = Result<Category>> + Send;
+    #[allow(clippy::too_many_arguments)]
     fn update_category(
         &self,
         id: &str,
@@ -1259,6 +2196,7 @@ pub trait Handler: Sync {
         is_virtual: bool,
         nitc_group_id: Option<&str>,
         nitc_participant_type: Option<&str>,
+        display: &CategoryDisplay,
     ) -> impl Future<Output = Result<()>> + Send;
 
     // ── NITC export ──────────────────────────────────────────────────────────
@@ -1344,7 +2282,8 @@ pub trait Handler: Sync {
 
     /// Make a member's `person_unit` rows exactly `units` (every one of which must carry
     /// this `person_id`): rows not in it are deleted, and rows that are new or differ
-    /// are written. An empty `units` removes them all.
+    /// are written. An empty `units` removes them all. If anything changed, the person
+    /// gets a fresh `contact_key`, since the contacts feed serves their units.
     fn replace_person_units(
         &self,
         person_id: &str,
@@ -1581,6 +2520,316 @@ pub trait Handler: Sync {
 
     fn delete_ephemeral_state(&self, id: &str) -> impl Future<Output = Result<()>> + Send;
 
+    // ── Tasks ─────────────────────────────────────────────────────────────────
+
+    fn get_tasks<T: AsRef<str> + Sync>(
+        &self,
+        ids: &[T],
+    ) -> impl Future<Output = Result<Vec<Option<Task>>>> + Send;
+    /// Open tasks only, deleted ones never; in `show_date` order. Reads a GSI, so a
+    /// write may take a moment to show up.
+    fn list_tasks(&self, query: ListTasksQuery) -> impl Future<Output = Result<Vec<Task>>> + Send;
+    fn create_task(&self, task: NewTask<'_>) -> impl Future<Output = Result<Task>> + Send;
+    fn update_task(
+        &self,
+        id: &str,
+        change: TaskUpdateShape<'_>,
+    ) -> impl Future<Output = Result<Task>> + Send;
+
+    fn get_task_lists<T: AsRef<str> + Sync>(
+        &self,
+        ids: &[T],
+    ) -> impl Future<Output = Result<Vec<Option<TaskList>>>> + Send;
+    /// A location's task lists, deleted ones left out.
+    fn list_task_lists(
+        &self,
+        location_id: &str,
+    ) -> impl Future<Output = Result<Vec<TaskList>>> + Send;
+    fn create_task_list(
+        &self,
+        location_id: &str,
+        name: &str,
+        created_by: Option<&str>,
+    ) -> impl Future<Output = Result<TaskList>> + Send;
+    fn update_task_list(
+        &self,
+        id: &str,
+        change: TaskListUpdateShape<'_>,
+    ) -> impl Future<Output = Result<TaskList>> + Send;
+
+    // ── Notes ─────────────────────────────────────────────────────────────────
+
+    fn get_notes<T: AsRef<str> + Sync>(
+        &self,
+        ids: &[T],
+    ) -> impl Future<Output = Result<Vec<Option<Note>>>> + Send;
+    /// A location's notes, deleted ones left out, in no particular order. Reads a GSI,
+    /// so a write may take a moment to show up.
+    fn list_notes(&self, location_id: &str) -> impl Future<Output = Result<Vec<Note>>> + Send;
+    fn create_note(&self, note: NewNote<'_>) -> impl Future<Output = Result<Note>> + Send;
+    fn update_note(
+        &self,
+        id: &str,
+        change: NoteUpdateShape<'_>,
+    ) -> impl Future<Output = Result<Note>> + Send;
+
+    fn get_note_folders<T: AsRef<str> + Sync>(
+        &self,
+        ids: &[T],
+    ) -> impl Future<Output = Result<Vec<Option<NoteFolder>>>> + Send;
+    /// A location's note folders, deleted ones left out.
+    fn list_note_folders(
+        &self,
+        location_id: &str,
+    ) -> impl Future<Output = Result<Vec<NoteFolder>>> + Send;
+    fn create_note_folder(
+        &self,
+        location_id: &str,
+        name: &str,
+        created_by: Option<&str>,
+    ) -> impl Future<Output = Result<NoteFolder>> + Send;
+    fn update_note_folder(
+        &self,
+        id: &str,
+        change: NoteFolderUpdateShape<'_>,
+    ) -> impl Future<Output = Result<NoteFolder>> + Send;
+
+    // ── Equipment ─────────────────────────────────────────────────────────────
+
+    fn get_equipment<T: AsRef<str> + Sync>(
+        &self,
+        ids: &[T],
+    ) -> impl Future<Output = Result<Vec<Option<Equipment>>>> + Send;
+    /// A location's equipment, deleted ones left out, in no particular order. Reads a
+    /// GSI, so a write may take a moment to show up.
+    fn list_equipment(
+        &self,
+        location_id: &str,
+    ) -> impl Future<Output = Result<Vec<Equipment>>> + Send;
+    /// Add a piece of equipment together with its first log entry, atomically.
+    fn create_equipment(
+        &self,
+        equipment: NewEquipment<'_>,
+    ) -> impl Future<Output = Result<(Equipment, EquipmentLogEntry)>> + Send;
+    fn update_equipment(
+        &self,
+        id: &str,
+        change: EquipmentUpdateShape<'_>,
+    ) -> impl Future<Output = Result<Equipment>> + Send;
+    /// Append a log entry and, atomically with it, apply it to the equipment: a status
+    /// change sets the status, a check stamps `last_checked_at`. Fails with
+    /// [`Error::NotFound`] when the equipment does not exist, is deleted or is no longer
+    /// in the status the entry starts from (`from`, or a check's `status`), so the log
+    /// never records a change from a status it was not in. Returns the equipment after
+    /// the write and the new entry.
+    fn add_equipment_log_entry(
+        &self,
+        entry: NewEquipmentLogEntry<'_>,
+    ) -> impl Future<Output = Result<(Equipment, EquipmentLogEntry)>> + Send;
+    /// A piece of equipment's log, in no particular order. Kept when the equipment is
+    /// deleted.
+    fn list_equipment_log(
+        &self,
+        equipment_id: &str,
+    ) -> impl Future<Output = Result<Vec<EquipmentLogEntry>>> + Send;
+
+    // ── Equipment reservations ────────────────────────────────────────────────
+
+    fn get_equipment_reservations<T: AsRef<str> + Sync>(
+        &self,
+        ids: &[T],
+    ) -> impl Future<Output = Result<Vec<Option<EquipmentReservation>>>> + Send;
+    /// A location's reservations that end after `ending_after` (Unix seconds), deleted
+    /// ones left out, in no particular order. Reads a GSI keyed on the end time, so past
+    /// reservations cost nothing, and a write may take a moment to show up.
+    fn list_equipment_reservations(
+        &self,
+        location_id: &str,
+        ending_after: u64,
+    ) -> impl Future<Output = Result<Vec<EquipmentReservation>>> + Send;
+    fn create_equipment_reservation(
+        &self,
+        reservation: NewEquipmentReservation<'_>,
+    ) -> impl Future<Output = Result<EquipmentReservation>> + Send;
+    fn update_equipment_reservation(
+        &self,
+        id: &str,
+        change: EquipmentReservationUpdateShape<'_>,
+    ) -> impl Future<Output = Result<EquipmentReservation>> + Send;
+
+    // ── Map ───────────────────────────────────────────────────────────────────
+
+    fn get_map_pins<T: AsRef<str> + Sync>(
+        &self,
+        ids: &[T],
+    ) -> impl Future<Output = Result<Vec<Option<MapPin>>>> + Send;
+    /// A location's map pins, deleted ones left out, in no particular order. Reads a
+    /// GSI, so a write may take a moment to show up.
+    fn list_map_pins(&self, location_id: &str) -> impl Future<Output = Result<Vec<MapPin>>> + Send;
+    fn create_map_pin(&self, pin: NewMapPin<'_>) -> impl Future<Output = Result<MapPin>> + Send;
+    fn update_map_pin(
+        &self,
+        id: &str,
+        change: MapPinUpdateShape<'_>,
+    ) -> impl Future<Output = Result<MapPin>> + Send;
+
+    fn get_map_layers<T: AsRef<str> + Sync>(
+        &self,
+        ids: &[T],
+    ) -> impl Future<Output = Result<Vec<Option<MapLayer>>>> + Send;
+    /// A location's map layers, deleted ones left out.
+    fn list_map_layers(
+        &self,
+        location_id: &str,
+    ) -> impl Future<Output = Result<Vec<MapLayer>>> + Send;
+    fn create_map_layer(
+        &self,
+        location_id: &str,
+        name: &str,
+        created_by: Option<&str>,
+    ) -> impl Future<Output = Result<MapLayer>> + Send;
+    fn update_map_layer(
+        &self,
+        id: &str,
+        change: MapLayerUpdateShape<'_>,
+    ) -> impl Future<Output = Result<MapLayer>> + Send;
+
+    // ── Calendar ──────────────────────────────────────────────────────────────
+
+    fn get_calendars<T: AsRef<str> + Sync>(
+        &self,
+        ids: &[T],
+    ) -> impl Future<Output = Result<Vec<Option<Calendar>>>> + Send;
+    /// A location's calendars, deleted ones left out.
+    fn list_calendars(
+        &self,
+        location_id: &str,
+    ) -> impl Future<Output = Result<Vec<Calendar>>> + Send;
+    fn create_calendar(
+        &self,
+        location_id: &str,
+        name: &str,
+        color: &str,
+        created_by: Option<&str>,
+    ) -> impl Future<Output = Result<Calendar>> + Send;
+    fn update_calendar(
+        &self,
+        id: &str,
+        change: CalendarUpdateShape<'_>,
+    ) -> impl Future<Output = Result<Calendar>> + Send;
+
+    fn get_calendar_events<T: AsRef<str> + Sync>(
+        &self,
+        ids: &[T],
+    ) -> impl Future<Output = Result<Vec<Option<CalendarEvent>>>> + Send;
+    /// A location's events whose last occurrence ends after `ending_after` (Unix
+    /// seconds), deleted ones left out, in no particular order. Reads a GSI keyed on
+    /// `last_end`, so finished events cost nothing, and a write may take a moment to
+    /// show up.
+    fn list_calendar_events(
+        &self,
+        location_id: &str,
+        ending_after: u64,
+    ) -> impl Future<Output = Result<Vec<CalendarEvent>>> + Send;
+    fn create_calendar_event(
+        &self,
+        event: NewCalendarEvent<'_>,
+    ) -> impl Future<Output = Result<CalendarEvent>> + Send;
+    fn update_calendar_event(
+        &self,
+        id: &str,
+        change: CalendarEventUpdateShape<'_>,
+    ) -> impl Future<Output = Result<CalendarEvent>> + Send;
+
+    // ── On Call ───────────────────────────────────────────────────────────────
+
+    fn get_on_call_roles<T: AsRef<str> + Sync>(
+        &self,
+        ids: &[T],
+    ) -> impl Future<Output = Result<Vec<Option<OnCallRole>>>> + Send;
+    /// A location's on-call roles, deleted ones left out, in no particular order. Reads
+    /// a GSI, so a write may take a moment to show up.
+    fn list_on_call_roles(
+        &self,
+        location_id: &str,
+    ) -> impl Future<Output = Result<Vec<OnCallRole>>> + Send;
+    fn create_on_call_role(
+        &self,
+        role: NewOnCallRole<'_>,
+    ) -> impl Future<Output = Result<OnCallRole>> + Send;
+    fn update_on_call_role(
+        &self,
+        id: &str,
+        change: OnCallRoleUpdateShape<'_>,
+    ) -> impl Future<Output = Result<OnCallRole>> + Send;
+
+    // ── Locate ────────────────────────────────────────────────────────────────
+
+    /// Shares by user ID, whether or not they have ended or lapsed.
+    fn get_location_shares<T: AsRef<str> + Sync>(
+        &self,
+        person_ids: &[T],
+    ) -> impl Future<Output = Result<Vec<Option<LocationShare>>>> + Send;
+    /// A location's shares, in no particular order. Includes any that have lapsed but
+    /// not yet been removed by the TTL, so callers check `expires_at`. Reads a GSI, so a
+    /// write may take a moment to show up.
+    fn list_location_shares(
+        &self,
+        location_id: &str,
+    ) -> impl Future<Output = Result<Vec<LocationShare>>> + Send;
+    /// Store a new share, replacing any the user already has.
+    fn put_location_share(&self, share: &LocationShare) -> impl Future<Output = Result<()>> + Send;
+    /// Record a newer position on a share. Fails with [`Error::NotFound`] when the user
+    /// has no share, or it ended at or before `updated_at`. Returns the share as it is
+    /// after the write.
+    fn update_location_share_position(
+        &self,
+        person_id: &str,
+        position: &SharedPosition,
+        updated_at: u64,
+        expires_at: u64,
+    ) -> impl Future<Output = Result<LocationShare>> + Send;
+    /// Remove the user's share; returns it, or None if they had none.
+    fn delete_location_share(
+        &self,
+        person_id: &str,
+    ) -> impl Future<Output = Result<Option<LocationShare>>> + Send;
+
+    // ── Notifications ─────────────────────────────────────────────────────────
+
+    /// Store notifications (one per recipient), in batches. Anything DynamoDB defers is
+    /// retried; an error means some may not have been written.
+    fn put_notifications(
+        &self,
+        records: Vec<NotificationRecord>,
+    ) -> impl Future<Output = Result<()>> + Send;
+    /// A user's notifications, newest first, starting after the `after_sk` cursor (a
+    /// previous row's `sk`) when given. `unread_only` lists only unread ones. Unread
+    /// rows come through a GSI, so a notification written or marked read a moment ago
+    /// may not show yet. Includes any past `expires_at` the TTL hasn't removed.
+    fn list_notifications(
+        &self,
+        person_id: &str,
+        after_sk: Option<&str>,
+        limit: usize,
+        unread_only: bool,
+    ) -> impl Future<Output = Result<Vec<NotificationRecord>>> + Send;
+    /// How many notifications the user has unread, counting no further than `cap`.
+    /// Reads a GSI, so it can lag a write by a moment.
+    fn count_unread_notifications(
+        &self,
+        person_id: &str,
+        cap: usize,
+    ) -> impl Future<Output = Result<usize>> + Send;
+    /// Mark the user's notifications with these `sk`s read at `read_at`. One that is
+    /// already read, or no longer exists, is left alone and is not an error.
+    fn mark_notifications_read(
+        &self,
+        person_id: &str,
+        sks: &[String],
+        read_at: u64,
+    ) -> impl Future<Output = Result<()>> + Send;
+
     // ── Audit log ─────────────────────────────────────────────────────────────
 
     /// Append an entry to the `audit_log` table. Callers go through
@@ -1601,7 +2850,16 @@ pub trait Handler: Sync {
 
 #[cfg(test)]
 mod tests {
-    use super::{Session, audit_sk, parse_audit_cursor};
+    use super::{Session, audit_sk, email_key, parse_audit_cursor};
+
+    #[test]
+    fn an_email_key_ignores_case_and_surrounding_space() {
+        assert_eq!(
+            email_key("  Alice.Anderson@Example.COM "),
+            "alice.anderson@example.com"
+        );
+        assert_eq!(email_key("bob@example.com"), "bob@example.com");
+    }
 
     #[test]
     fn an_audit_sk_is_a_valid_cursor_that_carries_its_id() {

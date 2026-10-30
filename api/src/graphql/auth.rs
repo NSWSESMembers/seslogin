@@ -4,8 +4,10 @@ use async_graphql::ErrorExtensions;
 use async_graphql::Guard;
 
 use super::error::ApiError;
+use crate::app::{App, HasDb};
 use crate::auth::AuthInfo;
 use crate::db;
+use crate::db::Handler as _;
 
 /// Build a guard-check failure carrying `extensions.code = "UNAUTHENTICATED"`.
 /// Guard failures bypass the resolver entirely — there is no `anyhow::Result` for
@@ -34,6 +36,8 @@ pub(crate) enum AuthRequirement {
     /// serving period-specific data must additionally check the id matches — see
     /// [`require_period_write_access`].
     PeriodLink,
+    /// A member signed in to Tally ([`AuthInfo::Member`]), and nobody else.
+    Member,
 }
 
 pub(crate) struct AuthGuard {
@@ -56,6 +60,8 @@ impl Guard for AuthGuard {
                     Some(AuthInfo::ApiToken { .. }) => true,
                     Some(AuthInfo::User { .. }) => false,
                     Some(AuthInfo::PeriodLink { .. }) => false,
+                    // A Tally member: only Tally's own checks admit one.
+                    Some(AuthInfo::Member { .. }) => false,
                     None => false,
                 } {
                     Ok(())
@@ -70,6 +76,8 @@ impl Guard for AuthGuard {
                     Some(AuthInfo::ApiToken { .. }) => true,
                     // Not a general principal — see the variant docs.
                     Some(AuthInfo::PeriodLink { .. }) => false,
+                    // A Tally member: only Tally's own checks admit one.
+                    Some(AuthInfo::Member { .. }) => false,
                     None => false,
                 } {
                     Ok(())
@@ -83,6 +91,8 @@ impl Guard for AuthGuard {
                     Some(AuthInfo::ApiToken { .. }) => false,
                     Some(AuthInfo::Session { .. }) => false,
                     Some(AuthInfo::PeriodLink { .. }) => false,
+                    // A Tally member: only Tally's own checks admit one.
+                    Some(AuthInfo::Member { .. }) => false,
                     None => false,
                 } {
                     Ok(())
@@ -96,6 +106,8 @@ impl Guard for AuthGuard {
                     Some(AuthInfo::ApiToken { .. }) => true,
                     Some(AuthInfo::Session { .. }) => false,
                     Some(AuthInfo::PeriodLink { .. }) => false,
+                    // A Tally member: only Tally's own checks admit one.
+                    Some(AuthInfo::Member { .. }) => false,
                     None => false,
                 } {
                     Ok(())
@@ -109,11 +121,20 @@ impl Guard for AuthGuard {
                     Some(AuthInfo::Session { .. }) => false,
                     Some(AuthInfo::ApiToken { .. }) => false,
                     Some(AuthInfo::PeriodLink { .. }) => false,
+                    // A Tally member: only Tally's own checks admit one.
+                    Some(AuthInfo::Member { .. }) => false,
                     None => false,
                 } {
                     Ok(())
                 } else {
                     Err(unauthenticated("Must provide super user token"))
+                }
+            }
+            AuthRequirement::Member => {
+                if matches!(auth, Some(AuthInfo::Member { .. })) {
+                    Ok(())
+                } else {
+                    Err(unauthenticated("Only available in Tally"))
                 }
             }
             AuthRequirement::PeriodLink => {
@@ -122,6 +143,8 @@ impl Guard for AuthGuard {
                     Some(AuthInfo::User { .. }) => false,
                     Some(AuthInfo::Session { .. }) => false,
                     Some(AuthInfo::ApiToken { .. }) => false,
+                    // A Tally member: only Tally's own checks admit one.
+                    Some(AuthInfo::Member { .. }) => false,
                     None => false,
                 } {
                     Ok(())
@@ -191,6 +214,84 @@ pub(crate) fn require_location_write_access(ctx: &Context<'_>, location_id: &str
     }
 }
 
+/// Check the caller is a member signed in to Tally who may use `location_id`'s shared
+/// Tally tools: their home unit, any unit the user signed in alongside them holds
+/// either role at, or every unit when that user is a super user. Everyone else —
+/// users on their own, kiosks, API tokens and edit links — is refused with `refusal`:
+/// Tally is for members.
+///
+/// Every shared tool lets any member with the unit read **and** write it: they are a
+/// unit's own tools, not admin data.
+pub(crate) fn require_member_location(
+    ctx: &Context<'_>,
+    location_id: &str,
+    refusal: &str,
+) -> Result<()> {
+    match ctx.data_opt::<AuthInfo>() {
+        Some(AuthInfo::Member {
+            location_id: home,
+            is_super,
+            user_location_ids,
+            ..
+        }) => {
+            if *is_super
+                || home == location_id
+                || user_location_ids.iter().any(|l| l == location_id)
+            {
+                Ok(())
+            } else {
+                Err(ApiError::forbidden("Not authorized for this location").into())
+            }
+        }
+        _ => Err(ApiError::forbidden(refusal).into()),
+    }
+}
+
+/// Check the caller may use a location's Tasks (its shared to-do list): read them,
+/// and also create, edit, complete and delete them and manage its task lists. See
+/// [`require_member_location`].
+pub(crate) fn require_task_access(ctx: &Context<'_>, location_id: &str) -> Result<()> {
+    require_member_location(ctx, location_id, "Tasks are only available in Tally")
+}
+
+/// Check the caller may use a location's Notes (its shared notebook). See
+/// [`require_member_location`].
+pub(crate) fn require_note_access(ctx: &Context<'_>, location_id: &str) -> Result<()> {
+    require_member_location(ctx, location_id, "Notes are only available in Tally")
+}
+
+/// Check the caller may use a location's Map (its shared map pins and layers). See
+/// [`require_member_location`].
+pub(crate) fn require_map_access(ctx: &Context<'_>, location_id: &str) -> Result<()> {
+    require_member_location(ctx, location_id, "The map is only available in Tally")
+}
+
+/// Check the caller may use a location's On Call roles. See [`require_member_location`].
+pub(crate) fn require_on_call_access(ctx: &Context<'_>, location_id: &str) -> Result<()> {
+    require_member_location(ctx, location_id, "On Call is only available in Tally")
+}
+
+/// Check the caller may use a location's Equipment register, log and reservations. See
+/// [`require_member_location`].
+pub(crate) fn require_equipment_access(ctx: &Context<'_>, location_id: &str) -> Result<()> {
+    require_member_location(ctx, location_id, "Equipment is only available in Tally")
+}
+
+/// Check the caller may use a location's Calendar. See [`require_member_location`].
+pub(crate) fn require_calendar_access(ctx: &Context<'_>, location_id: &str) -> Result<()> {
+    require_member_location(ctx, location_id, "The calendar is only available in Tally")
+}
+
+/// Check the caller may use location sharing ("Locate") at a location: share their own
+/// position with it, and see who is sharing there. See [`require_member_location`].
+pub(crate) fn require_location_share_access(ctx: &Context<'_>, location_id: &str) -> Result<()> {
+    require_member_location(
+        ctx,
+        location_id,
+        "Location sharing is only available in Tally",
+    )
+}
+
 /// Whether the caller may make changes at the location — the boolean form of
 /// [`require_location_write_access`] plus [`require_writable`], for resolvers that
 /// report capability (e.g. `Location.viewerCanEdit`) rather than enforce it.
@@ -213,6 +314,62 @@ pub(crate) fn require_period_write_access(ctx: &Context<'_>, period: &db::Period
             }
         }
         _ => require_location_write_access(ctx, &period.location_id),
+    }
+}
+
+/// Check `redirect_uri` against `client` at the OAuth consent step
+/// (`oauthAuthorizationRequest`, `approveOauthAuthorization`). Returns whether it
+/// is an Expo Go development redirect, which only a developer account (`is_dev`)
+/// may approve; see [`crate::oauth_clients::is_dev_expo_redirect`].
+pub(crate) async fn check_oauth_redirect<A: App + HasDb>(
+    ctx: &Context<'_>,
+    app: &A,
+    client: &crate::oauth_clients::Client,
+    redirect_uri: &str,
+) -> Result<bool> {
+    if client.allows_redirect_uri(redirect_uri) {
+        return Ok(false);
+    }
+    if !client.allows_dev_redirect_uri(redirect_uri) {
+        return Err(anyhow::anyhow!(
+            "redirect_uri is not registered for this client"
+        ));
+    }
+    let Some(AuthInfo::User { id, .. }) = ctx.data_opt::<AuthInfo>() else {
+        return Err(anyhow::anyhow!("Must provide user token"));
+    };
+    let is_dev = app
+        .db()
+        .get_users(&[id])
+        .await?
+        .into_iter()
+        .next()
+        .flatten()
+        .is_some_and(|u| u.is_dev);
+    if !is_dev {
+        return Err(ApiError::forbidden(
+            "redirect_uri is a development build's; only a developer account can approve it",
+        )
+        .into());
+    }
+    Ok(true)
+}
+
+/// Refuse a caller acting through an OAuth grant (`slat_`, from a connected app
+/// or the MCP interface) for `what`: a mutation that would hand out a credential
+/// outliving or escaping the grant — an API token, a passkey, another OAuth
+/// grant, or a kiosk bound to a location. A grant is revocable and expires, and
+/// what it can do must stay what the user approved, so these are done only
+/// signed in to SESLogin directly.
+pub(crate) fn require_not_oauth_grant(ctx: &Context<'_>, what: &str) -> Result<()> {
+    match ctx.data_opt::<AuthInfo>() {
+        Some(AuthInfo::User {
+            grant_id: Some(_), ..
+        }) => Err(ApiError::forbidden(format!(
+            "{what} can't be done from a connected app; sign in to SESLogin directly"
+        ))
+        .into()),
+        _ => Ok(()),
     }
 }
 

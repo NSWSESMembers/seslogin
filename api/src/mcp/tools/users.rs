@@ -1,5 +1,5 @@
 //! Admin user tools: `whoami`, `list_users`, `get_user`, `create_user`,
-//! `update_user`, `disable_user`, `enable_user`. Everything but `whoami` and a
+//! `update_user`, `disable_user`, `enable_user`, `set_user_member`. Everything but `whoami` and a
 //! non-super caller's own `get_user` is `SuperUser`-guarded in GraphQL.
 
 use serde_json::{Value, json};
@@ -12,7 +12,7 @@ use crate::app::{App, HasDb, HasMail, HasQueues, HasRealtime};
 /// for them — kept as one literal so the tools' documents can't drift
 /// from each other field-by-field.
 const USER_SELECTION: &str = "id email isSuper isDev enabled accessTime locationGrantIds readOnlyLocationGrantIds \
-     emailSummaryLocationIds disaggregateVirtualPeriods locations { id name }";
+     personId emailSummaryLocationIds disaggregateVirtualPeriods locations { id name }";
 
 fn user_query() -> String {
     format!("query McpUser($id: ID) {{ user(id: $id) {{ {USER_SELECTION} }} }}")
@@ -38,6 +38,13 @@ fn update_user_mutation() -> String {
     )
 }
 
+fn set_user_member_mutation() -> String {
+    format!(
+        "mutation McpSetUserMember($userId: ID!, $personId: ID) \
+         {{ setUserMember(userId: $userId, personId: $personId) {{ {USER_SELECTION} }} }}"
+    )
+}
+
 fn user_input_schema() -> Value {
     json!({
         "type": "object",
@@ -58,6 +65,7 @@ fn user_object_schema() -> Value {
             "accessTime": { "type": ["integer", "null"] },
             "locationGrantIds": { "type": "array", "items": { "type": "string" } },
             "readOnlyLocationGrantIds": { "type": "array", "items": { "type": "string" } },
+            "personId": { "type": ["string", "null"] },
             "emailSummaryLocationIds": { "type": "array", "items": { "type": "string" } },
             "disaggregateVirtualPeriods": { "type": "boolean" },
             "locations": {
@@ -178,6 +186,28 @@ pub(super) fn catalogue() -> Vec<Value> {
             "annotations": { "title": "Update user", "idempotentHint": true },
         }),
         json!({
+            "name": "set_user_member",
+            "title": "Set user's member",
+            "description": "Set the member (by member record id, from `list_members` or \
+                `find_member_by_number`) a SESLogin user acts as when signing in or out \
+                from the mobile app, or pass `personId: null` to clear it. Any user may be \
+                given any member, yourself included, and several users may share one. \
+                Only a super user may call this.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "userId": { "type": "string", "description": "The user's record id." },
+                    "personId": {
+                        "type": ["string", "null"],
+                        "description": "The member's record id, or null to clear the link.",
+                    },
+                },
+                "required": ["userId", "personId"],
+            },
+            "outputSchema": user_output_schema(),
+            "annotations": { "title": "Set user's member", "idempotentHint": true },
+        }),
+        json!({
             "name": "disable_user",
             "title": "Disable user",
             "description": "Disable a SESLogin user, immediately revoking their access \
@@ -211,6 +241,7 @@ where
         "update_user" => update_user(ctx, a).await,
         "disable_user" => set_enabled(ctx, a, false).await,
         "enable_user" => set_enabled(ctx, a, true).await,
+        "set_user_member" => set_user_member(ctx, a).await,
         _ => return None,
     };
     Some(result.into())
@@ -309,4 +340,25 @@ where
         )
         .await;
     rename_root(result, "updateUser", "user")
+}
+
+async fn set_user_member<A>(ctx: &ToolCtx<'_, A>, a: &Value) -> Result<Value, ToolError>
+where
+    A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static,
+{
+    let user_id = args::str_arg(a, "userId")?;
+    // Required even to clear, so a forgotten argument can't silently unlink a member.
+    if !args::has_arg(a, "personId") {
+        return Err(vec![
+            "Missing \"personId\" argument (pass null to clear the member)".to_string(),
+        ]);
+    }
+    let person_id = args::opt_str_arg(a, "personId")?;
+    let result = ctx
+        .graphql(
+            &set_user_member_mutation(),
+            json!({ "userId": user_id, "personId": person_id }),
+        )
+        .await;
+    rename_root(result, "setUserMember", "user")
 }

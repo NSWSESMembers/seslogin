@@ -34,6 +34,7 @@ All IDs are exposed to the API layer as opaque UUID strings. Conversion happens 
 - `is_super` (Bool) — superuser flag
 - `location_grants` (SS) — string set of location UUIDs where this user is an **Admin** (read and write)
 - `location_read_only_grants` (SS) — string set of location UUIDs where this user is **Read only** (can view, cannot change; disjoint from `location_grants`). Omitted when empty, like `location_grants`
+- `person_id` (S) — the member record (`person.id`) this user acts as when signing in or out from the mobile app. Set only by a super user (`setUserMember`); several users may share one. Omitted when unset
 - `deleted` (Bool)
 - `access_time` (N) — Unix timestamp
 
@@ -55,6 +56,9 @@ All IDs are exposed to the API layer as opaque UUID strings. Conversion happens 
 **Non-obvious attributes:**
 
 - `parent_name` (S) — the parent category's display name, denormalized into each item during data import. No join is needed to build the full display name; the item already contains `"{parent_name} - {name}"` or equivalent.
+- `group_name` (S, optional) — the kiosk group the category sits under (`"Training"`). Display metadata duplicated from the kiosk's hard-coded tree (`web/src/lib/categories.ts`) for the mobile app; backfilled by `load-category-display` from `api/assets/category-display.json`. Omitted, never `Null`, when unset.
+- `short_name` (S, optional) — the short name the kiosk shows (`"AIIMS"`). Same provenance as `group_name`.
+- `icon` (S, optional) — the kiosk icon's file stem in `web/src/assets/categories/` (`"aiims"`). Only the name is stored; no image is served. Same provenance as `group_name`.
 - `nitc_enabled` (Bool)
 - `nitc_type` (S) — `'Training'`, `'Other'`, or `'Community Engagement'`
 - `nitc_participant_type` (S) — `'Attendee'`, `'Trainer'`, or `'Assessor'`
@@ -162,6 +166,9 @@ The `start_time` sort key across the location/person GSIs means DynamoDB returns
 | `location_id`         | S    | GSI hash key         |
 | `registration_number` | S    | GSI hash key         |
 | `ses_api_person_id`   | S    | GSI hash key         |
+| `contact_feed`        | S    | GSI hash key         |
+| `contact_key`         | S    | GSI sort key         |
+| `email_key`           | S    | GSI hash key         |
 
 **GSIs:**
 
@@ -170,6 +177,8 @@ The `start_time` sort key across the location/person GSIs means DynamoDB returns
 | `location_id-index`         | `location_id`         | —        | ALL        | List all members at a location for admin views and member sync     |
 | `registration_number-index` | `registration_number` | —        | KEYS_ONLY  | Batch lookup during kiosk scan-in: registration number → person ID |
 | `ses_api_person_id-index`   | `ses_api_person_id`   | —        | KEYS_ONLY  | Member sync reconciliation: HQ person ID → local person ID         |
+| `contact_feed-contact_key-index` | `contact_feed` | `contact_key` | ALL | Contacts feed: every person, ordered by when a field the contacts API returns last changed |
+| `email_key-index`           | `email_key`           | —        | KEYS_ONLY  | Tally sign-in: email → the member(s) it belongs to (sparse)        |
 
 `KEYS_ONLY` on the scan-in and sync indexes avoids storing a full copy of each person item per index, since these lookups only need the primary key to drive a subsequent `BatchGetItem` or direct update.
 
@@ -190,6 +199,24 @@ The `start_time` sort key across the location/person GSIs means DynamoDB returns
   absence pass reads the roster through `location_id-index`, which is `ALL`-projected — a
   `KEYS_ONLY` projection there would hydrate every row with `missing_since: None` and
   silently prevent all deletions.
+- `contact_feed` (S) — always `"all"`: a constant hash key, so every person sits in one
+  ordered partition of `contact_feed-contact_key-index`. The write rate is member sync plus
+  admin edits, far below a partition's limits.
+- `contact_key` (S) — `<Unix microseconds, zero-padded to 20 digits>#<id>`, restamped by
+  every write that changes something the contacts API returns: `create_person`, and
+  `update_person`'s `Fields`, `Location`, `Directory`, `CapabilityTags`, `Undelete` and
+  `Delete` shapes (not `SesApiPersonId`, `MissingSince` or `BadgeState`). Renaming a location
+  restamps every live member there, since their unit name changed, and
+  `replace_person_units` restamps the member when any of their `person_unit` rows changed. Sorting by it orders people by last change; the id suffix
+  keeps it unique when two writes share a microsecond. Soft-deleted rows keep their key, so
+  they double as the feed's tombstones. Rows written before the index existed have neither
+  attribute until `cli person stamp-contacts` backfills them.
+- `email_key` (S) — `email` trimmed and lowercased (`db::email_key`), present exactly when
+  `email` is. Written and removed with `email` by `update_person`'s `Email` shape. Several
+  people may share one, and soft-deleted rows keep theirs, so a lookup returns every match
+  and the caller filters. Rows whose email was set before the index existed have no key
+  until `cli person stamp-email-keys` backfills them. Only the `seslogin_test` table has
+  this index so far; it is only used by Tally sign-in.
 
 ---
 
@@ -297,6 +324,385 @@ No GSIs. The only access pattern is `GetItem` by `id` (called from `get_nitc_gro
 
 ---
 
+### `{prefix}task`
+
+A location's shared to-do list ("Tasks"). Dates are **Sydney-local calendar days** stored as `YYYY-MM-DD`, which sort lexically in date order.
+
+| Attribute          | Type | Role                                                                                            |
+| ------------------ | ---- | ----------------------------------------------------------------------------------------------- |
+| `id`               | S    | Hash key (PK)                                                                                   |
+| `open_location_id` | S    | GSI hash key (`open_location_id-show_date-index`) — a copy of `location_id` while the task is open, otherwise absent |
+| `show_date`        | S    | GSI sort key — the day the task starts showing                                                  |
+
+**GSIs:**
+
+| GSI                                | Hash key           | Sort key    | Projection | Purpose                                                                   |
+| ---------------------------------- | ------------------ | ----------- | ---------- | ------------------------------------------------------------------------- |
+| `open_location_id-show_date-index` | `open_location_id` | `show_date` | ALL        | A location's open tasks: due now (`show_date <= today`) or scheduled (`> today`) |
+
+The index is **sparse**: completing a non-recurring task, or deleting any task, REMOVEs `open_location_id`, so the row leaves it. Completed and deleted tasks stay in the base table, reachable by `id` only. A recurring task is never completed for good — completing it moves `due_date` and `show_date` forward and it stays open.
+
+**Non-obvious attributes (not in table definition):**
+
+- `location_id` (S) — the task's location, kept after it stops being open
+- `list_id` (S) — optional `task_list` the task is on; it may name a deleted list
+- `title` (S), `description` (S, optional)
+- `due_date` (S, optional) — the day the task was scheduled for. `show_date` is this, or the creation day when there is none
+- `recurrence_every` (N), `recurrence_unit` (S: `days` or `weeks`) — both present or both absent
+- `v` (N) — version, bumped by every write; edits and completions are conditional on it, so two people completing the same task cannot both succeed
+- `completed_at` (N), `completed_by` (S) — a non-recurring task's completion, and the person ID of the member who completed it
+- `last_completed_at` (N), `last_completed_by` (S) — a recurring task's latest completion, and who by (person ID)
+- `created_by` / `updated_by` (S) — person IDs of the members who made and last changed it
+- `deleted` (N) — Unix seconds when soft-deleted; absent otherwise
+- `created_at` / `updated_at` (N)
+
+---
+
+### `{prefix}task_list`
+
+Optional named lists a location's tasks can be grouped on.
+
+| Attribute     | Type | Role                                  |
+| ------------- | ---- | ------------------------------------- |
+| `id`          | S    | Hash key (PK)                         |
+| `location_id` | S    | GSI hash key (`location_id-index`)    |
+
+**GSIs:**
+
+| GSI                 | Hash key      | Sort key | Projection | Purpose                  |
+| ------------------- | ------------- | -------- | ---------- | ------------------------ |
+| `location_id-index` | `location_id` | —        | ALL        | A location's lists; deleted ones are filtered out on read |
+
+**Non-obvious attributes (not in table definition):** `name` (S), `created_by` (S), `deleted` (N, soft delete — the list's tasks are left alone), `created_at` / `updated_at` (N).
+
+---
+
+### `{prefix}note`
+
+A location's shared notebook ("Notes").
+
+| Attribute     | Type | Role                                  |
+| ------------- | ---- | ------------------------------------- |
+| `id`          | S    | Hash key (PK)                         |
+| `location_id` | S    | GSI hash key (`location_id-index`)    |
+
+**GSIs:**
+
+| GSI                 | Hash key      | Sort key | Projection | Purpose                  |
+| ------------------- | ------------- | -------- | ---------- | ------------------------ |
+| `location_id-index` | `location_id` | —        | ALL        | A location's notes; deleted ones are filtered out on read, and the API sorts and searches them in memory |
+
+**Non-obvious attributes (not in table definition):**
+
+- `folder_id` (S) — optional `note_folder` the note is in; it may name a deleted folder
+- `title` (S) — one line of plain text
+- `content` (S, optional) — plain text; absent when empty
+- `v` (N) — version, bumped by every write; saves are conditional on it, so two people editing the same note cannot silently overwrite each other
+- `created_by` / `updated_by` (S) — person IDs of the members who made and last changed it
+- `deleted` (N) — Unix seconds when soft-deleted; absent otherwise
+- `created_at` / `updated_at` (N)
+
+---
+
+### `{prefix}note_folder`
+
+Optional named folders a location's notes can be filed in.
+
+| Attribute     | Type | Role                                  |
+| ------------- | ---- | ------------------------------------- |
+| `id`          | S    | Hash key (PK)                         |
+| `location_id` | S    | GSI hash key (`location_id-index`)    |
+
+**GSIs:**
+
+| GSI                 | Hash key      | Sort key | Projection | Purpose                  |
+| ------------------- | ------------- | -------- | ---------- | ------------------------ |
+| `location_id-index` | `location_id` | —        | ALL        | A location's folders; deleted ones are filtered out on read |
+
+**Non-obvious attributes (not in table definition):** `name` (S), `created_by` (S), `deleted` (N, soft delete — the folder's notes are left alone), `created_at` / `updated_at` (N).
+
+---
+
+### `{prefix}map_pin`
+
+The pins on a location's shared map ("Map").
+
+| Attribute     | Type | Role                                  |
+| ------------- | ---- | ------------------------------------- |
+| `id`          | S    | Hash key (PK)                         |
+| `location_id` | S    | GSI hash key (`location_id-index`)    |
+
+**GSIs:**
+
+| GSI                 | Hash key      | Sort key | Projection | Purpose                  |
+| ------------------- | ------------- | -------- | ---------- | ------------------------ |
+| `location_id-index` | `location_id` | —        | ALL        | A location's pins; deleted ones are filtered out on read, and the API filters and sorts them in memory |
+
+**Non-obvious attributes (not in table definition):**
+
+- `layer_id` (S) — optional `map_layer` the pin is on; it may name a deleted layer
+- `pin_type` (S, optional) — what the pin marks, shown as an icon: `access`, `entry`, `flood` or `hazard`; absent for a plain pin. More are expected, so readers tolerate a value they don't know
+- `title` (S) — one line of plain text
+- `latitude` / `longitude` (N) — WGS 84 degrees
+- `address` (S, optional) — free text, not geocoded; absent when empty
+- `note` (S, optional) — plain text; absent when empty
+- `v` (N) — version, bumped by every write; saves are conditional on it, so two people editing the same pin cannot silently overwrite each other
+- `created_by` / `updated_by` (S) — person IDs of the members who made and last changed it
+- `deleted` (N) — Unix seconds when soft-deleted; absent otherwise
+- `created_at` / `updated_at` (N)
+
+---
+
+### `{prefix}map_layer`
+
+Optional named layers a location's map pins can be put on.
+
+| Attribute     | Type | Role                                  |
+| ------------- | ---- | ------------------------------------- |
+| `id`          | S    | Hash key (PK)                         |
+| `location_id` | S    | GSI hash key (`location_id-index`)    |
+
+**GSIs:**
+
+| GSI                 | Hash key      | Sort key | Projection | Purpose                  |
+| ------------------- | ------------- | -------- | ---------- | ------------------------ |
+| `location_id-index` | `location_id` | —        | ALL        | A location's layers; deleted ones are filtered out on read |
+
+**Non-obvious attributes (not in table definition):** `name` (S), `created_by` (S), `deleted` (N, soft delete — the layer's pins are left alone), `created_at` / `updated_at` (N).
+
+---
+
+### `{prefix}on_call_role`
+
+A location's on-call roles ("On Call"), such as Duty Officer, and who holds each one now.
+
+| Attribute     | Type | Role                                  |
+| ------------- | ---- | ------------------------------------- |
+| `id`          | S    | Hash key (PK)                         |
+| `location_id` | S    | GSI hash key (`location_id-index`)    |
+
+**GSIs:**
+
+| GSI                 | Hash key      | Sort key | Projection | Purpose                  |
+| ------------------- | ------------- | -------- | ---------- | ------------------------ |
+| `location_id-index` | `location_id` | —        | ALL        | A location's roles; deleted ones are filtered out on read, and the API sorts them by name |
+
+**Non-obvious attributes (not in table definition):**
+
+- `name` (S) — one line of plain text
+- `description` (S, optional) — plain text; absent when empty
+- `phone` (S, optional) — a number that reaches whoever holds the role, kept as written
+- `primary_person_id` (S, optional) — the `person` on call; absent while the role is empty
+- `secondary_person_ids` (SS, optional) — everyone else in the role; absent when there is nobody else, and never present without a primary. People may be from any location, and may since have been deleted (the API leaves them out)
+- `members_changed_at` (N, optional) — Unix seconds when the people in the role last changed; absent while it is empty
+- `v` (N) — version, bumped by every write; saves are conditional on it
+- `created_by` / `updated_by` (S) — person IDs of the members who made and last changed it
+- `deleted` (N) — Unix seconds when soft-deleted; absent otherwise
+- `created_at` / `updated_at` (N)
+
+---
+
+### `{prefix}equipment`
+
+A location's equipment register ("Equipment").
+
+| Attribute     | Type | Role                                  |
+| ------------- | ---- | ------------------------------------- |
+| `id`          | S    | Hash key (PK)                         |
+| `location_id` | S    | GSI hash key (`location_id-index`)    |
+
+**GSIs:**
+
+| GSI                 | Hash key      | Sort key | Projection | Purpose                  |
+| ------------------- | ------------- | -------- | ---------- | ------------------------ |
+| `location_id-index` | `location_id` | —        | ALL        | A location's equipment; deleted items are filtered out on read, and the API sorts and searches them in memory |
+
+**Non-obvious attributes (not in table definition):**
+
+- `equipment_type` (S) — `vehicle`, `trailer`, `vessel`, `radio`, `device`, `bag`, `box` or `tool`; more will be added
+- `name` (S) — one line of plain text
+- `description` (S, optional) — plain text; absent when empty
+- `status` (S) — `in_service`, `has_issue` (usable, but something needs fixing), `out_of_service`, `missing` or `borrowed`. Changed only together with a new `equipment_log` row, in one transaction conditional on the status it changes from
+- `status_changed_at` (N) — when the status last changed, or the equipment was added
+- `last_checked_at` (N, optional) — when someone last logged a check
+- `v` (N) — version, bumped by every edit (not by log entries); edits are conditional on it
+- `created_by` / `updated_by` (S) — person IDs of the members who made and last changed it
+- `deleted` (N) — Unix seconds when soft-deleted; absent otherwise. The log is kept
+- `created_at` / `updated_at` (N)
+
+---
+
+### `{prefix}equipment_log`
+
+Each piece of equipment's log of status changes and checks. Append-only.
+
+| Attribute      | Type | Role                                  |
+| -------------- | ---- | ------------------------------------- |
+| `id`           | S    | Hash key (PK)                         |
+| `equipment_id` | S    | GSI hash key (`equipment_id-index`)   |
+
+**GSIs:**
+
+| GSI                  | Hash key       | Sort key | Projection | Purpose                  |
+| -------------------- | -------------- | -------- | ---------- | ------------------------ |
+| `equipment_id-index` | `equipment_id` | —        | ALL        | A piece of equipment's log; the API sorts it newest first |
+
+**Non-obvious attributes (not in table definition):**
+
+- `location_id` (S) — the equipment's location
+- `kind` (S) — `status_change` or `check`
+- `from_status` (S, optional) — the status before a change; absent for checks and for the row written when the equipment was added
+- `status` (S) — the status after a change, or the status it was checked in
+- `comment` (S, optional) — why, as the member wrote it; required for a status change after the first, absent when empty
+- `created_by` (S) — person ID of the member who made the entry
+- `created_at` (N) — Unix seconds; `created_us` (N) — Unix microseconds, which orders rows written in the same second
+
+---
+
+### `{prefix}equipment_reservation`
+
+Bookings of a location's equipment for a time range ("Reservations"). Overlaps are allowed; the API reports them.
+
+| Attribute     | Type | Role                                                |
+| ------------- | ---- | --------------------------------------------------- |
+| `id`          | S    | Hash key (PK)                                       |
+| `location_id` | S    | GSI hash key (`location_id-end_time-index`)         |
+| `end_time`    | N    | GSI sort key (`location_id-end_time-index`)         |
+
+**GSIs:**
+
+| GSI                          | Hash key      | Sort key   | Projection | Purpose                  |
+| ---------------------------- | ------------- | ---------- | ---------- | ------------------------ |
+| `location_id-end_time-index` | `location_id` | `end_time` | ALL        | A location's reservations ending after a given time, so past ones are never read; deleted ones are filtered out on read, and the API sorts them and finds overlaps in memory |
+
+**Non-obvious attributes (not in table definition):**
+
+- `equipment_ids` (SS) — the equipment reserved, at least one; may name equipment deleted since
+- `start_time` (N) — Unix seconds; `end_time` is after it, by at most 366 days
+- `reserved_for_person_id` (S, optional) — person ID of the member it is for; absent when `reserved_for_text` is set
+- `reserved_for_text` (S, optional) — one line naming who or what it is for instead of a member
+- `description` (S, optional) — plain text; absent when empty
+- `v` (N) — version, bumped by every write; edits are conditional on it
+- `created_by` / `updated_by` (S) — person IDs of the members who made and last changed it
+- `deleted` (N) — Unix seconds when soft-deleted (cancelled); absent otherwise
+- `created_at` / `updated_at` (N)
+
+---
+
+### `{prefix}calendar`
+
+Optional named, coloured calendars a location's events can be put in ("Calendar").
+
+| Attribute     | Type | Role                                  |
+| ------------- | ---- | ------------------------------------- |
+| `id`          | S    | Hash key (PK)                         |
+| `location_id` | S    | GSI hash key (`location_id-index`)    |
+
+**GSIs:**
+
+| GSI                 | Hash key      | Sort key | Projection | Purpose                  |
+| ------------------- | ------------- | -------- | ---------- | ------------------------ |
+| `location_id-index` | `location_id` | —        | ALL        | A location's calendars; deleted ones are filtered out on read |
+
+**Non-obvious attributes (not in table definition):** `name` (S), `color` (S — `red`, `orange`, `yellow`, `green`, `teal`, `blue`, `indigo`, `purple`, `pink` or `grey`), `created_by` (S), `deleted` (N, soft delete — the calendar's events are left alone), `created_at` / `updated_at` (N).
+
+---
+
+### `{prefix}calendar_event`
+
+The events in a location's shared calendar ("Calendar"). An event is timed (instants) or all day (dates), and may repeat daily or weekly.
+
+| Attribute     | Type | Role                                                |
+| ------------- | ---- | --------------------------------------------------- |
+| `id`          | S    | Hash key (PK)                                       |
+| `location_id` | S    | GSI hash key (`location_id-last_end-index`)         |
+| `last_end`    | N    | GSI sort key (`location_id-last_end-index`)         |
+
+**GSIs:**
+
+| GSI                          | Hash key      | Sort key   | Projection | Purpose                  |
+| ---------------------------- | ------------- | ---------- | ---------- | ------------------------ |
+| `location_id-last_end-index` | `location_id` | `last_end` | ALL        | A location's events still running after a given time, so finished ones are never read; deleted ones are filtered out on read, and the API expands repeats and sorts in memory |
+
+**Non-obvious attributes (not in table definition):**
+
+- `last_end` (N) — Unix seconds, an upper bound on when the last occurrence ends (`calendar::last_end`): the end for a one-off event, the end of the `repeat_until` day plus the event's length for a repeating one, and 253402300799 (year 9999) for one repeating forever. Rewritten by every edit
+- `start_time` / `end_time` (N) — a timed event's first occurrence, Unix seconds; absent when all day
+- `start_date` / `end_date` (S, `YYYY-MM-DD`) — an all-day event's first and last date, inclusive, with no time zone; absent when timed
+- `repeat` (S, optional) — `daily` or `weekly`; absent for a one-off event
+- `repeat_until` (S, optional, `YYYY-MM-DD`) — the last date an occurrence may start on (Sydney time for a timed event); absent when it repeats forever
+- `calendar_id` (S, optional) — the `calendar` it is in; it may name a deleted calendar
+- `title` (S) — one line of plain text
+- `description` (S, optional) — plain text; absent when empty
+- `v` (N) — version, bumped by every write; edits are conditional on it
+- `created_by` / `updated_by` (S) — person IDs of the members who made and last changed it
+- `deleted` (N) — Unix seconds when soft-deleted; absent otherwise
+- `created_at` / `updated_at` (N)
+
+---
+
+### `{prefix}location_share`
+
+Members sharing their phone's position with a location's members ("Locate"), for a fixed time. One row per member: starting another share replaces it, and stopping deletes it. Only the latest position is kept; there is no history.
+
+| Attribute     | Type | Role                                  |
+| ------------- | ---- | ------------------------------------- |
+| `id`          | S    | Hash key (PK) — the sharing member's person ID |
+| `location_id` | S    | GSI hash key (`location_id-index`)    |
+
+**GSIs:**
+
+| GSI                 | Hash key      | Sort key | Projection | Purpose                  |
+| ------------------- | ------------- | -------- | ---------- | ------------------------ |
+| `location_id-index` | `location_id` | —        | ALL        | Who is sharing with a location; lapsed rows the TTL hasn't removed yet are filtered out on read |
+
+**TTL:** `expires_at`.
+
+**Non-obvious attributes (not in table definition):**
+
+- `latitude` / `longitude` (N) — WGS 84 degrees, the latest position
+- `accuracy`, `altitude`, `altitude_accuracy`, `heading`, `speed` (N, optional) — metres, degrees from north and metres per second, as the phone reported them; absent when it didn't
+- `recorded_at` (N) — Unix seconds when the phone took the latest fix, never later than `updated_at`
+- `updated_at` (N) — Unix seconds when the latest position arrived
+- `interval_secs` (N) — how often the phone said it would report in, 60 to 300
+- `started_at` / `ends_at` (N) — Unix seconds; positions after `ends_at` are refused
+- `expires_at` (N) — `updated_at` + 7 minutes: the share stops showing then, ended or not
+
+---
+
+### `{prefix}notification`
+
+Each member's in-app notification inbox (Tally), fanned out on write: an event notifying several members is stored as one full copy per recipient, so the inbox is a single query with no join. Titles and bodies are small and written once, so a copy costs the same single write unit as a reference would. Rows are removed by the TTL 90 days after they were created, read or not.
+
+| Attribute        | Type | Role                                                                    |
+| ---------------- | ---- | ----------------------------------------------------------------------- |
+| `person_id`        | S    | Hash key (PK) — the recipient member's person ID                      |
+| `sk`             | S    | Range key — `<created_at in ms, zero-padded to 13 digits>#<notification_id>`, so newest first is a descending query; also the API's notification ID and paging cursor |
+| `unread_person_id` | S    | GSI hash key (`unread-index`) — equal to `person_id`, present **only while unread** |
+
+**GSIs:**
+
+| GSI            | Hash key         | Sort key | Projection | Purpose                  |
+| -------------- | ---------------- | -------- | ---------- | ------------------------ |
+| `unread-index` | `unread_person_id` | `sk`     | KEYS_ONLY  | Sparse: counts and lists a member's unread notifications; the rows are then fetched by key. Marking read removes the attribute, so the row leaves the index |
+
+**TTL:** `expires_at`.
+
+**Non-obvious attributes (not in table definition):**
+
+- `notification_id` (S) — shared by every recipient's copy of one event
+- `source` (S) — the producing app, e.g. `reservations`
+- `kind` (S) — what happened, e.g. `reservation.for_you`
+- `location_id` (S, optional) — the location it is about; the API hides the notification from a reader who no longer has access to it
+- `actor_person_id` (S, optional) — the member whose action caused it, when a member did
+- `title` (S); `body` (S, optional)
+- `target_type` / `target_id` (S, optional) — what tapping it should open
+- `created_at` (N) — Unix seconds
+- `read_at` (N, optional) — Unix seconds; absent while unread
+- `expires_at` (N) — `created_at` + 90 days
+
+---
+
 ### `{prefix}audit_log`
 
 An append-only record of business database writes, shown in the admin UI. Entries are kept forever (no TTL). One item is written **per affected location** for each audited event, so a write touching two locations produces two items sharing an `event_id`.
@@ -326,12 +732,12 @@ Access patterns: per-location newest-first (`Query` on `location_id-sk-index`) a
 - `ts` (N) — Unix seconds when the event happened
 - `event_id` (S) — shared by every item written for the same event
 - `action` (S) — `create`, `update`, `delete` or `restore`
-- `entity_type` (S) — `user`, `person`, `period`, `session`, `api_token`, `location`, `category`, `nitc_group`, `nitc_tag`, `user_token`, `oauth_grant` or `webauthn_credential`
+- `entity_type` (S) — `user`, `person`, `period`, `session`, `api_token`, `location`, `category`, `nitc_group`, `nitc_tag`, `user_token`, `oauth_grant`, `webauthn_credential`, `task`, `task_list`, `note`, `note_folder`, `map_pin`, `map_layer`, `on_call_role`, `equipment`, `equipment_log_entry`, `equipment_reservation`, `calendar`, `calendar_event` or `location_share`
 - `entity_id` (S) — ID of the entity changed
 - `entity_label` (S) — human-readable name of the entity at the time; omitted when unknown
-- `actor_kind` (S) — `user`, `session` (kiosk), `api_token`, `period_link`, `system` (a job or the CLI), `unauthenticated` or `unknown`
-- `actor_id` (S) — the user/session/token ID, the period ID for a period link, or the job name for `system`; omitted for `unauthenticated`/`unknown`
-- `actor_via` (S) — `oauth_grant:<id>` (MCP), `user_token:<id>` or `oauth_client:<id>`; omitted for an ordinary web login and for non-user actors
+- `actor_kind` (S) — `user`, `member` (a member signed in to Tally), `session` (kiosk), `api_token`, `period_link`, `system` (a job or the CLI), `unauthenticated` or `unknown`
+- `actor_id` (S) — the user/session/token ID, the person ID for `member`, the period ID for a period link, or the job name for `system`; omitted for `unauthenticated`/`unknown`
+- `actor_via` (S) — `oauth_grant:<id>` (a connected app, over MCP or GraphQL), `user_token:<id>` or `oauth_client:<id>`; omitted for an ordinary web login and for actors other than users and members
 - `ip` (S) — caller's IP address; omitted when unknown
 - `changes` (S) — JSON array of `{"field", "before", "after"}`; a side that is absent (a create has no `before`, a cleared field has no `after`) is omitted. Secrets are never stored: a secret field that changed appears as `"[redacted]"`
 

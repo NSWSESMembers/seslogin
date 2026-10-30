@@ -44,19 +44,21 @@ enum AuditAction {
 type AuditActor {
 	kind: AuditActorKind!
 	"""
-	The actor's ID: a user, kiosk session or API token ID, the period ID of an edit
+	The actor's ID: a user, member, kiosk session or API token ID, the period ID of an edit
 	link, or the job name for `SYSTEM` (`member-sync`, `cli`, …). Null when none was
 	recorded.
 	"""
 	id: String
 	"""
-	How a user acted when not through an ordinary web login: `oauth_grant:<id>` (an AI
-	client over MCP), `user_token:<id>` or `oauth_client:<id>`. Super users only;
+	How a user acted when not through an ordinary web login: `oauth_grant:<id>` (a
+	connected app: an AI client over MCP, or one of SESLogin's own apps over
+	GraphQL), `user_token:<id>` or `oauth_client:<id>`. Super users only;
 	null for everyone else.
 	"""
 	via: String
 	"""
-	A name for the actor, looked up now rather than recorded: a user's email, a kiosk's
+	A name for the actor, looked up now rather than recorded: a user's email, a member's
+	name, a kiosk's
 	name, an API token's name, the job name for `SYSTEM`, "Period edit link" for an
 	edit link. Null when there is nothing to show or the record no longer exists.
 	"""
@@ -71,6 +73,10 @@ enum AuditActorKind {
 	A signed-in user (web, MCP or a user token).
 	"""
 	USER
+	"""
+	A member signed in to Tally.
+	"""
+	MEMBER
 	"""
 	A kiosk device.
 	"""
@@ -110,6 +116,19 @@ enum AuditEntityType {
 	USER_TOKEN
 	OAUTH_GRANT
 	WEBAUTHN_CREDENTIAL
+	TASK
+	TASK_LIST
+	NOTE
+	NOTE_FOLDER
+	EQUIPMENT
+	EQUIPMENT_LOG_ENTRY
+	EQUIPMENT_RESERVATION
+	ON_CALL_ROLE
+	MAP_PIN
+	MAP_LAYER
+	CALENDAR
+	CALENDAR_EVENT
+	LOCATION_SHARE
 }
 
 type AuditEntry {
@@ -217,6 +236,121 @@ type BadgeTierCount {
 	count: Int!
 }
 
+type Calendar {
+	id: ID!
+	name: String!
+	color: CalendarColor!
+	locationId: ID!
+	location: Location!
+	createdAt: Int!
+}
+
+"""
+The palette a calendar's colour is picked from. Clients decide how each looks.
+"""
+enum CalendarColor {
+	RED
+	ORANGE
+	YELLOW
+	GREEN
+	TEAL
+	BLUE
+	INDIGO
+	PURPLE
+	PINK
+	GREY
+}
+
+type CalendarEvent {
+	id: ID!
+	"""
+	One line of plain text.
+	"""
+	title: String!
+	"""
+	Plain text; empty when there is none.
+	"""
+	description: String!
+	"""
+	Whether it lasts whole days (`startDate`–`endDate`) rather than from `startTime`
+	to `endTime`.
+	"""
+	allDay: Boolean!
+	"""
+	When the first occurrence starts, Unix seconds; null for an all-day event.
+	"""
+	startTime: Int
+	"""
+	When the first occurrence ends, Unix seconds, after `startTime`; null for an
+	all-day event.
+	"""
+	endTime: Int
+	"""
+	An all-day event's first date, `YYYY-MM-DD`; null for a timed event. Dates have
+	no time zone: an event on the 5th is on the 5th wherever it is read.
+	"""
+	startDate: String
+	"""
+	An all-day event's last date, inclusive (the same as `startDate` for one day);
+	null for a timed event.
+	"""
+	endDate: String
+	"""
+	How often it repeats; null for a one-off event.
+	"""
+	repeat: EventRepeat
+	"""
+	The last date an occurrence may start on, `YYYY-MM-DD` (Sydney time for a timed
+	event), inclusive; null when it repeats forever or does not repeat.
+	"""
+	repeatUntil: String
+	"""
+	The calendar it is in. Null when it is in none, or that calendar has been
+	deleted: either way it shows only when no calendar is picked.
+	"""
+	calendar: Calendar
+	"""
+	The ID of `calendar`; null exactly when it is.
+	"""
+	calendarId: ID
+	locationId: ID!
+	location: Location!
+	"""
+	Bumped by every change; pass it back to `updateCalendarEvent`.
+	"""
+	version: Int!
+	createdAt: Int!
+	"""
+	Name of the member who added the event.
+	"""
+	createdBy: String
+	updatedAt: Int!
+	"""
+	Name of the member who last changed the event.
+	"""
+	updatedBy: String
+}
+
+type CalendarEventOccurrence {
+	event: CalendarEvent!
+	"""
+	Unix seconds; null when all day.
+	"""
+	startTime: Int
+	"""
+	Unix seconds; null when all day.
+	"""
+	endTime: Int
+	"""
+	`YYYY-MM-DD`; null unless all day.
+	"""
+	startDate: String
+	"""
+	`YYYY-MM-DD`, inclusive; null unless all day.
+	"""
+	endDate: String
+}
+
 """
 A qualification SES records against a member.
 """
@@ -236,6 +370,18 @@ type Category {
 	isVirtual: Boolean!
 	nitcGroupId: String
 	nitcParticipantType: String
+	"""
+	The kiosk group the category appears under, e.g. "Training".
+	"""
+	groupName: String
+	"""
+	The short name the kiosk shows, e.g. "AIIMS".
+	"""
+	shortName: String
+	"""
+	The kiosk icon's name, e.g. "aiims". Only the name: no image is served.
+	"""
+	icon: String
 	nitcGroup: NitcGroup
 	createdAt: Int!
 	updatedAt: Int!
@@ -304,6 +450,188 @@ type Environment {
 	Whether the server is using the production database tables.
 	"""
 	isProdDb: Boolean!
+}
+
+type Equipment {
+	id: ID!
+	type: EquipmentType!
+	"""
+	One line of plain text.
+	"""
+	name: String!
+	"""
+	Plain text; empty when there is none.
+	"""
+	description: String!
+	status: EquipmentStatus!
+	"""
+	When the status last changed, or the equipment was added.
+	"""
+	statusChangedAt: Int!
+	"""
+	When someone last logged a check of it; null if nobody has.
+	"""
+	lastCheckedAt: Int
+	"""
+	Its status changes and checks, newest first. Every status change has a comment
+	saying why.
+	"""
+	log: [EquipmentLogEntry!]!
+	locationId: ID!
+	location: Location!
+	"""
+	Bumped by every edit (not by log entries); pass it back to `updateEquipment`.
+	"""
+	version: Int!
+	createdAt: Int!
+	"""
+	Name of the member who added it.
+	"""
+	createdBy: String
+	updatedAt: Int!
+	"""
+	Name of the member who last edited it.
+	"""
+	updatedBy: String
+}
+
+type EquipmentLogEntry {
+	id: ID!
+	kind: EquipmentLogKind!
+	"""
+	The status before a change. Null for checks, and for the entry written when the
+	equipment was added.
+	"""
+	previousStatus: EquipmentStatus
+	"""
+	The status after a change, or the status it was in when checked.
+	"""
+	status: EquipmentStatus!
+	"""
+	Why, in the words of whoever made the entry. May be empty for a check, or for
+	the entry written when the equipment was added.
+	"""
+	comment: String!
+	createdAt: Int!
+	"""
+	Name of the member who made the entry.
+	"""
+	createdBy: String
+}
+
+enum EquipmentLogKind {
+	"""
+	The status changed (or, with no `previousStatus`, the equipment was added).
+	"""
+	STATUS_CHANGE
+	"""
+	Someone checked the equipment; the status did not change.
+	"""
+	CHECK
+}
+
+type EquipmentReservation {
+	id: ID!
+	"""
+	Unix seconds.
+	"""
+	startTime: Int!
+	"""
+	Unix seconds; always after `startTime`.
+	"""
+	endTime: Int!
+	"""
+	Every piece of equipment reserved, deleted ones included.
+	"""
+	equipmentIds: [ID!]!
+	"""
+	The equipment reserved, by name. Equipment deleted since is left out, so this
+	can be empty.
+	"""
+	equipment: [Equipment!]!
+	"""
+	Who it is for, to show: `reservedForText` when set, otherwise the member's name.
+	"""
+	reservedFor: String!
+	"""
+	The member it is for; null when it is for someone named in `reservedForText`.
+	"""
+	reservedForMemberId: ID
+	"""
+	Free text naming who it is for: someone else, an organisation, or something
+	like "Detailing / clean". Null when it is for a member.
+	"""
+	reservedForText: String
+	"""
+	Whether it is for the member asking.
+	"""
+	reservedForViewer: Boolean!
+	"""
+	Plain text; empty when there is none.
+	"""
+	description: String!
+	"""
+	The location's other reservations that overlap this one in time and share a
+	piece of equipment with it, by start time. Allowed, but worth a warning. Costs a
+	query per reservation, so a client listing many should compare them itself.
+	"""
+	conflicts: [EquipmentReservation!]!
+	locationId: ID!
+	location: Location!
+	"""
+	Bumped by every change; pass it back to `updateEquipmentReservation`.
+	"""
+	version: Int!
+	createdAt: Int!
+	"""
+	Name of the member who made the reservation.
+	"""
+	createdBy: String
+	updatedAt: Int!
+	"""
+	Name of the member who last changed it.
+	"""
+	updatedBy: String
+}
+
+enum EquipmentStatus {
+	IN_SERVICE
+	"""
+	Can still be used, but has an issue that needs fixing.
+	"""
+	HAS_ISSUE
+	OUT_OF_SERVICE
+	MISSING
+	BORROWED
+}
+
+"""
+What kind of thing a piece of equipment is. More types are expected, so clients
+should cope with a value they don't know.
+"""
+enum EquipmentType {
+	VEHICLE
+	TRAILER
+	VESSEL
+	RADIO
+	DEVICE
+	BAG
+	BOX
+	TOOL
+}
+
+"""
+How often an event repeats.
+"""
+enum EventRepeat {
+	"""
+	Every day.
+	"""
+	DAILY
+	"""
+	Every week, on the weekday it starts.
+	"""
+	WEEKLY
 }
 
 """
@@ -503,6 +831,196 @@ type LocationRecentCategory {
 	recentPeople: [Person!]!
 }
 
+type LocationShare {
+	"""
+	The sharing member's person ID: a member has at most one share.
+	"""
+	id: ID!
+	"""
+	Who is sharing: the member's name.
+	"""
+	name: String!
+	"""
+	The sharing member; null if they have since been deleted.
+	"""
+	person: Person
+	"""
+	Whether the caller is the one sharing.
+	"""
+	isMine: Boolean!
+	locationId: ID!
+	"""
+	The location it is shared with.
+	"""
+	location: Location!
+	"""
+	WGS 84 degrees.
+	"""
+	latitude: Float!
+	longitude: Float!
+	"""
+	Radius of uncertainty of the position, in metres; null if the phone didn't say.
+	"""
+	accuracy: Float
+	"""
+	Metres above the WGS 84 ellipsoid.
+	"""
+	altitude: Float
+	altitudeAccuracy: Float
+	"""
+	Direction of travel, degrees clockwise from north; null when unknown.
+	"""
+	heading: Float
+	"""
+	Metres per second; null when unknown.
+	"""
+	speed: Float
+	"""
+	When the phone took the fix (Unix seconds).
+	"""
+	recordedAt: Int!
+	"""
+	When the latest position arrived (Unix seconds).
+	"""
+	updatedAt: Int!
+	"""
+	How often the phone reports in, in seconds (60 to 300).
+	"""
+	intervalSeconds: Int!
+	startedAt: Int!
+	"""
+	When sharing stops (Unix seconds); later positions are refused.
+	"""
+	endsAt: Int!
+	"""
+	When the share stops showing: 7 minutes after the latest position.
+	"""
+	visibleUntil: Int!
+	"""
+	Whether it is still being shared, i.e. `endsAt` has not passed. An ended share
+	still shows until `visibleUntil`.
+	"""
+	active: Boolean!
+}
+
+"""
+Where the phone is, as it reports it. Leave out what it doesn't know.
+"""
+input LocationSharePositionInput {
+	"""
+	WGS 84 degrees.
+	"""
+	latitude: Float!
+	longitude: Float!
+	"""
+	Radius of uncertainty, in metres.
+	"""
+	accuracy: Float
+	"""
+	Metres above the WGS 84 ellipsoid.
+	"""
+	altitude: Float
+	altitudeAccuracy: Float
+	"""
+	Direction of travel, degrees clockwise from north; negative for unknown.
+	"""
+	heading: Float
+	"""
+	Metres per second; negative for unknown.
+	"""
+	speed: Float
+	"""
+	When the phone took the fix (Unix seconds); now when omitted.
+	"""
+	recordedAt: Int
+}
+
+type MapLayer {
+	id: ID!
+	name: String!
+	locationId: ID!
+	location: Location!
+	createdAt: Int!
+}
+
+type MapPin {
+	id: ID!
+	"""
+	One line of plain text.
+	"""
+	title: String!
+	"""
+	What the pin marks; null for a plain pin, and for a type this server no longer
+	knows.
+	"""
+	type: MapPinType
+	"""
+	WGS 84 latitude, in degrees.
+	"""
+	latitude: Float!
+	"""
+	WGS 84 longitude, in degrees.
+	"""
+	longitude: Float!
+	"""
+	Free text, as typed (not geocoded); empty when there is none.
+	"""
+	address: String!
+	"""
+	A longer note about the place, plain text; empty when there is none.
+	"""
+	note: String!
+	locationId: ID!
+	location: Location!
+	"""
+	The layer the pin is on, if any. Null too when that layer has been deleted: the
+	pin then just belongs to its location's map.
+	"""
+	layer: MapLayer
+	"""
+	Bumped by every change; pass it back to `updateMapPin`.
+	"""
+	version: Int!
+	createdAt: Int!
+	"""
+	Name of the member who added the pin.
+	"""
+	createdBy: String
+	updatedAt: Int!
+	"""
+	Name of the member who last changed the pin.
+	"""
+	updatedBy: String
+}
+
+"""
+What a pin marks, shown in the app as an icon. More types are expected, so clients
+should cope with a value they don't know.
+"""
+enum MapPinType {
+	"""
+	A lock, gate or key: how to get in once there.
+	"""
+	ACCESS
+	"""
+	Where to enter a site, or the way in.
+	"""
+	ENTRY
+	FLOOD
+	HAZARD
+}
+
+"""
+The result of marking notifications read.
+"""
+type MarkNotificationsReadPayload {
+	"""
+	How many notifications are still unread, counting no further than 100 (show
+	"99+" above 99). Read from an index that can lag a moment behind the write.
+	"""
+	unreadCount: Int!
+}
+
 type MemberCategoryPeriodSummary {
 	personId: ID!
 	person: Person!
@@ -538,6 +1056,18 @@ type MutationRoot {
 	"""
 	submitEnrollmentKey(publicKey: String!): String!
 	"""
+	Email a Tally sign-in code, if that email can sign in to Tally (see
+	`tally_sign_in`). Always returns true to avoid email enumeration. Requires a
+	valid Cloudflare Turnstile token.
+	"""
+	requestTallySignInCode(email: String!, turnstileToken: String!): Boolean!
+	"""
+	Redeem a Tally sign-in code and authorize the app that opened the sign-in page,
+	returning the URL (its redirect, with `code` and `state`) to send the browser
+	to. Fails the same way for any wrong, expired or used-up code.
+	"""
+	completeTallySignIn(email: String!, code: String!, request: TallyAuthorizationInput!): String!
+	"""
 	Request an email login code. Always returns true to avoid email enumeration.
 	Requires a valid Cloudflare Turnstile token.
 	"""
@@ -569,6 +1099,17 @@ type MutationRoot {
 		Locations where the user is Read only: can view but not change. Must not overlap `locationGrants`. Omitted leaves the user's existing read-only locations unchanged.
 		"""
 		readOnlyLocationGrants: [String!]
+	): User!
+	"""
+	Set the member a user acts as when signing in or out from the mobile app, or
+	clear it with a null `personId`. Any user may be given any member, the super
+	user themselves included, and several users may share one member.
+	"""
+	setUserMember(		userId: ID!,
+		"""
+		The member to act as; null clears the link.
+		"""
+		personId: ID
 	): User!
 	createPerson(locationId: ID!, firstName: String!, lastName: String!, memberNumber: String!): Person!
 	updatePerson(id: ID!, firstName: String!, lastName: String!, memberNumber: String!): Person!
@@ -613,6 +1154,193 @@ type MutationRoot {
 	updateApiToken(id: ID!, name: String!, locationGrants: [String!]!, readOnly: Boolean!, expiresAt: Int): ApiToken!
 	revokeApiToken(id: ID!): Boolean!
 	updateSession(id: ID!, name: String!, config: String, healthcheckUrl: String): Session!
+	"""
+	Add a task to a location's shared to-do list. Any member who can use the
+	unit in Tally may. `dueDate` (`YYYY-MM-DD`, Sydney) hides the
+	task until that day; a recurring task with no date is due today.
+	"""
+	createTask(locationId: ID!, title: String!, description: String, listId: ID, dueDate: String, recurrence: TaskRecurrenceInput): Task!
+	"""
+	Change an open task. Omitted arguments are left as they are; `null` clears
+	`description`, `listId`, `dueDate` or `recurrence`. Fails with `CONFLICT` if
+	the task is no longer at `expectedVersion`.
+	"""
+	updateTask(id: ID!, expectedVersion: Int!, title: String, description: String, listId: ID, dueDate: String, recurrence: TaskRecurrenceInput): Task!
+	"""
+	Complete a task. A recurring task stays open, due again its interval after
+	today; any other task is done. Fails with `CONFLICT` if someone else completed
+	or changed it since `expectedVersion` was read.
+	"""
+	completeTask(id: ID!, expectedVersion: Int!): Task!
+	"""
+	Delete a task. Returns its ID.
+	"""
+	deleteTask(id: ID!): ID!
+	createTaskList(locationId: ID!, name: String!): TaskList!
+	renameTaskList(id: ID!, name: String!): TaskList!
+	"""
+	Delete a task list. Its tasks stay on the location. Returns its ID.
+	"""
+	deleteTaskList(id: ID!): ID!
+	"""
+	Add a note to a location's shared notebook. Any member who can use the
+	unit in Tally may.
+	"""
+	createNote(locationId: ID!, title: String!, content: String, folderId: ID): Note!
+	"""
+	Change a note. Omitted arguments are left as they are; `null` takes it out of
+	its folder. Fails with `CONFLICT` if the note is no longer at
+	`expectedVersion`.
+	"""
+	updateNote(id: ID!, expectedVersion: Int!, title: String, content: String, folderId: ID): Note!
+	"""
+	Delete a note. Returns its ID.
+	"""
+	deleteNote(id: ID!): ID!
+	createNoteFolder(locationId: ID!, name: String!): NoteFolder!
+	renameNoteFolder(id: ID!, name: String!): NoteFolder!
+	"""
+	Delete a note folder. Its notes stay on the location. Returns its ID.
+	"""
+	deleteNoteFolder(id: ID!): ID!
+	"""
+	Add a piece of equipment to a location's register, logged in `status` (in
+	service unless given) with an optional `comment`. Any member who can use the
+	unit in Tally may.
+	"""
+	createEquipment(locationId: ID!, type: EquipmentType!, name: String!, description: String, status: EquipmentStatus! = IN_SERVICE, comment: String): Equipment!
+	"""
+	Edit a piece of equipment's type, name or description; omitted arguments are
+	left as they are. The status is changed with `changeEquipmentStatus`. Fails with
+	`CONFLICT` if it is no longer at `expectedVersion`.
+	"""
+	updateEquipment(id: ID!, expectedVersion: Int!, type: EquipmentType, name: String, description: String): Equipment!
+	"""
+	Delete a piece of equipment. Returns its ID.
+	"""
+	deleteEquipment(id: ID!): ID!
+	"""
+	Change a piece of equipment's status, logging it with `comment` saying why
+	(required). Fails with `CONFLICT` if someone else changed it at the same moment.
+	"""
+	changeEquipmentStatus(id: ID!, status: EquipmentStatus!, comment: String!): Equipment!
+	"""
+	Log that you have checked a piece of equipment, with an optional comment. The
+	status is unchanged.
+	"""
+	checkEquipment(id: ID!, comment: String): Equipment!
+	"""
+	Reserve one or more pieces of a location's equipment from `startTime` to
+	`endTime` (Unix seconds; the end must be in the future). It is for the caller
+	unless `reservedFor` names someone or something else. Overlapping another
+	reservation is allowed: read `conflicts` on the result to warn about it. Any member
+	who can use the unit in Tally may.
+	"""
+	createEquipmentReservation(locationId: ID!, equipmentIds: [ID!]!, startTime: Int!, endTime: Int!, reservedFor: String, description: String): EquipmentReservation!
+	"""
+	Change a reservation; omitted arguments are left as they are. `reservedFor`
+	null or blank makes it for the caller. A changed time range must end in the
+	future. Fails with `CONFLICT` if it is no longer at `expectedVersion`.
+	"""
+	updateEquipmentReservation(id: ID!, expectedVersion: Int!, equipmentIds: [ID!], startTime: Int, endTime: Int, reservedFor: String, description: String): EquipmentReservation!
+	"""
+	Cancel (delete) a reservation. Returns its ID.
+	"""
+	deleteEquipmentReservation(id: ID!): ID!
+	"""
+	Add a pin to a location's shared map, optionally of a `type` (a plain pin
+	without). Any member who can use the unit in Tally may.
+	"""
+	createMapPin(locationId: ID!, title: String!, latitude: Float!, longitude: Float!, address: String, note: String, layerId: ID, type: MapPinType): MapPin!
+	"""
+	Change a map pin. Omitted arguments are left as they are; `layerId: null` takes
+	it off its layer and `type: null` makes it a plain pin. Fails with `CONFLICT` if the pin is no longer at
+	`expectedVersion`.
+	"""
+	updateMapPin(id: ID!, expectedVersion: Int!, title: String, latitude: Float, longitude: Float, address: String, note: String, layerId: ID, type: MapPinType): MapPin!
+	"""
+	Delete a map pin. Returns its ID.
+	"""
+	deleteMapPin(id: ID!): ID!
+	createMapLayer(locationId: ID!, name: String!): MapLayer!
+	renameMapLayer(id: ID!, name: String!): MapLayer!
+	"""
+	Delete a map layer. Its pins stay on the location's map. Returns its ID.
+	"""
+	deleteMapLayer(id: ID!): ID!
+	"""
+	Add an event to a location's calendar, optionally in one of its calendars.
+	Timed events take `startTime` and `endTime` (Unix seconds); all-day ones take
+	`startDate` and optionally `endDate` (`YYYY-MM-DD`, inclusive; default one day).
+	`repeat` makes it repeat daily or weekly, through `repeatUntil` or forever. Any
+	member who can use the unit in Tally may.
+	"""
+	createCalendarEvent(locationId: ID!, calendarId: ID, title: String!, description: String, allDay: Boolean!, startTime: Int, endTime: Int, startDate: String, endDate: String, repeat: EventRepeat, repeatUntil: String): CalendarEvent!
+	"""
+	Change an event, every occurrence of it. Omitted arguments are left as they are:
+	`calendarId: null` takes it out of its calendar, `repeat: null` stops it
+	repeating and `repeatUntil: null` makes it repeat forever. Giving a new start
+	without an end keeps its length; changing `allDay` needs the new start. Fails
+	with `CONFLICT` if it is no longer at `expectedVersion`.
+	"""
+	updateCalendarEvent(id: ID!, expectedVersion: Int!, calendarId: ID, title: String, description: String, allDay: Boolean, startTime: Int, endTime: Int, startDate: String, endDate: String, repeat: EventRepeat, repeatUntil: String): CalendarEvent!
+	"""
+	Delete an event, every occurrence of it. Returns its ID.
+	"""
+	deleteCalendarEvent(id: ID!): ID!
+	createCalendar(locationId: ID!, name: String!, color: CalendarColor!): Calendar!
+	"""
+	Rename a calendar or change its colour; omitted arguments are left as they are.
+	"""
+	updateCalendar(id: ID!, name: String, color: CalendarColor): Calendar!
+	"""
+	Delete a calendar. Its events stay, in no calendar. Returns its ID.
+	"""
+	deleteCalendar(id: ID!): ID!
+	"""
+	Share your position with a location's members for `durationMinutes` (5, 15, 30
+	or 60), saying how often you will send it (`intervalSeconds`, 60 to 300).
+	Replaces any share you already have. Any member who can use the unit in
+	Tally may.
+	"""
+	startLocationShare(locationId: ID!, durationMinutes: Int!, intervalSeconds: Int!, position: LocationSharePositionInput!): LocationShare!
+	"""
+	Send your latest position for your share. Fails with `NOT_FOUND` once it has
+	ended or been stopped: stop sending then.
+	"""
+	updateLocationShare(position: LocationSharePositionInput!): LocationShare!
+	"""
+	Stop sharing your position; it stops showing straight away. False if you
+	weren't sharing.
+	"""
+	stopLocationShare: Boolean!
+	"""
+	Mark some of your notifications read (at most 200 IDs). One that is already read,
+	or is not yours, is ignored. Returns how many you still have unread.
+	"""
+	markNotificationsRead(ids: [ID!]!): MarkNotificationsReadPayload!
+	"""
+	Mark all your notifications read. Returns how many you still have unread (usually
+	none).
+	"""
+	markAllNotificationsRead: MarkNotificationsReadPayload!
+	"""
+	Add an on-call role (e.g. Duty Officer) to a location, optionally with the people
+	in it. Anyone in it needs a primary. Any member who can use the unit in
+	Tally may.
+	"""
+	createOnCallRole(locationId: ID!, name: String!, description: String, phone: String, primaryPersonId: ID, secondaryPersonIds: [ID!]): OnCallRole!
+	"""
+	Change an on-call role, or who is in it. Omitted arguments are left as they are;
+	`phone: null` removes the number and `primaryPersonId: null` (with
+	`secondaryPersonIds: []`) empties the role. Fails with `CONFLICT` if the role is
+	no longer at `expectedVersion`.
+	"""
+	updateOnCallRole(id: ID!, expectedVersion: Int!, name: String, description: String, phone: String, primaryPersonId: ID, secondaryPersonIds: [ID!]): OnCallRole!
+	"""
+	Delete an on-call role. Returns its ID.
+	"""
+	deleteOnCallRole(id: ID!): ID!
 	deleteSession(id: ID!): Boolean!
 	"""
 	Bring back a QR-enrolled kiosk that expired after two weeks offline, without
@@ -625,8 +1353,34 @@ type MutationRoot {
 	reactivateSession(id: ID!): Session!
 	createLocation(name: String!, nitcEnabled: Int): Location!
 	updateLocation(id: ID!, name: String!, enabled: Boolean!, nitcEnabled: Int, nitcCompleteOnExport: Boolean, gamificationEnabled: Boolean): Location!
-	createCategory(name: String!, isVirtual: Boolean!, nitcGroupId: String, nitcParticipantType: String): Category!
-	updateCategory(id: ID!, name: String!, enabled: Boolean!, isVirtual: Boolean!, nitcGroupId: String, nitcParticipantType: String): Category!
+	createCategory(		name: String!,		isVirtual: Boolean!,		nitcGroupId: String,		nitcParticipantType: String,
+		"""
+		Kiosk group the category appears under, e.g. "Training".
+		"""
+		groupName: String,
+		"""
+		Short name the kiosk shows, e.g. "AIIMS".
+		"""
+		shortName: String,
+		"""
+		Kiosk icon name, e.g. "aiims".
+		"""
+		icon: String
+	): Category!
+	updateCategory(		id: ID!,		name: String!,		enabled: Boolean!,		isVirtual: Boolean!,		nitcGroupId: String,		nitcParticipantType: String,
+		"""
+		Kiosk group name. Omit to leave unchanged, null (or empty) to clear, or a string to set.
+		"""
+		groupName: String,
+		"""
+		Short display name. Omit to leave unchanged, null (or empty) to clear, or a string to set.
+		"""
+		shortName: String,
+		"""
+		Icon name. Omit to leave unchanged, null (or empty) to clear, or a string to set.
+		"""
+		icon: String
+	): Category!
 	createNitcGroup(id: String, nitcType: String!, nitcTagIds: [Int!]!): NitcGroup!
 	updateNitcGroup(id: ID!, nitcType: String!, nitcTagIds: [Int!]!): NitcGroup!
 	deleteNitcGroup(id: ID!): Boolean!
@@ -665,6 +1419,24 @@ type MutationRoot {
 	location and the member's home location all have gamification on.
 	"""
 	scanSignOutWithBadges(id: ID!, startTime: Int!, endTime: Int!, categoryId: ID!): ScanSignOutResult!
+	"""
+	Sign the member signed in to Tally in at a unit, as typing their member number at
+	a kiosk there would: their home unit, or `locationId` when given, which must be a
+	unit they can use in Tally (`FORBIDDEN` otherwise). Idempotent: if the member is
+	already signed in at that unit, that period is returned unchanged, so a double tap
+	never opens two. A period open at another unit is ignored. Tally members only,
+	and no location grant is needed at home (being the member is the authority).
+	"""
+	selfSignIn(locationId: ID): Period!
+	"""
+	Sign the member out of one of their own open periods, at whichever unit, as
+	`scanSignOut` does at a kiosk. `expectedVersion` is the period's `version` as
+	the app last saw it; if it, or the sign-in, has changed since (e.g. a kiosk
+	signed them out first) the write is refused with `CONFLICT` and nothing changes.
+	The end cannot be more than a minute in the future, and the category must exist
+	and be enabled. Times are Unix seconds.
+	"""
+	selfSignOut(id: ID!, expectedVersion: Int!, startTime: Int!, endTime: Int!, categoryId: ID!): Period!
 	"""
 	Sign in a guest (non-member) at the kiosk. Creates an open period with no
 	person and no category, so it never enters per-person views or the NITC export.
@@ -746,15 +1518,139 @@ type NitcGroup {
 	updatedAt: Int
 }
 
+type Note {
+	id: ID!
+	"""
+	One line of plain text.
+	"""
+	title: String!
+	"""
+	The body of the note, plain text; empty when there is none.
+	"""
+	content: String!
+	locationId: ID!
+	location: Location!
+	"""
+	The folder the note is in, if any. Null too when that folder has been deleted:
+	the note then just belongs to its location.
+	"""
+	folder: NoteFolder
+	"""
+	Bumped by every change; pass it back to `updateNote`.
+	"""
+	version: Int!
+	createdAt: Int!
+	"""
+	Name of the member who created the note.
+	"""
+	createdBy: String
+	updatedAt: Int!
+	"""
+	Name of the member who last changed the note.
+	"""
+	updatedBy: String
+}
+
+type NoteFolder {
+	id: ID!
+	name: String!
+	locationId: ID!
+	location: Location!
+	createdAt: Int!
+}
+
+"""
+One entry in the caller's notification inbox.
+"""
+type Notification {
+	"""
+	Unique per notification for the caller; also its paging cursor.
+	"""
+	id: ID!
+	"""
+	The app that produced it, e.g. `reservations`.
+	"""
+	source: String!
+	"""
+	What happened, e.g. `reservation.for_you`.
+	"""
+	kind: String!
+	title: String!
+	body: String
+	"""
+	The location it is about, if any.
+	"""
+	locationId: ID
+	"""
+	What to open when it is tapped, e.g. `reservation`, with `targetId`.
+	"""
+	targetType: String
+	targetId: ID
+	"""
+	Unix seconds.
+	"""
+	createdAt: Int!
+	"""
+	Unix seconds when it was marked read; null while unread.
+	"""
+	readAt: Int
+	read: Boolean!
+}
+
+type NotificationConnection {
+	"""
+	Information to aid in pagination.
+	"""
+	pageInfo: PageInfo!
+	"""
+	A list of edges.
+	"""
+	edges: [NotificationEdge!]!
+	"""
+	A list of nodes.
+	"""
+	nodes: [Notification!]!
+}
+
+"""
+An edge in a connection.
+"""
+type NotificationEdge {
+	"""
+	The item at the end of the edge
+	"""
+	node: Notification!
+	"""
+	A cursor for use in pagination
+	"""
+	cursor: String!
+}
+
 """
 What the OAuth consent screen needs to show before a user approves or denies
-an authorization request: the client's self-claimed name, and — the one
-value that actually matters, since DCR is unauthenticated — the host it will
-redirect back to.
+an authorization request: the client's name, and — the one value that
+actually matters for a dynamically registered client, whose name is
+self-claimed — the host it will redirect back to.
 """
 type OauthAuthorizationRequest {
 	clientName: String!
+	"""
+	Host of the redirect URI. Meaningless for a first-party app's custom
+	scheme (`tally://oauth/callback` gives `oauth`), so show
+	`isFirstParty` instead when it's true.
+	"""
 	redirectHost: String!
+	"""
+	One of SESLogin's own apps (`oauth_clients::STATIC_CLIENTS`), whose name
+	and redirect are fixed in code, rather than a self-registered client.
+	"""
+	isFirstParty: Boolean!
+	"""
+	A development build of a first-party app, redirecting to the Expo server
+	on a developer's machine (`redirectHost`, with its port). Only a developer
+	account gets this far; anyone else is refused.
+	"""
+	isDevelopmentBuild: Boolean!
 }
 
 type OauthGrant {
@@ -763,9 +1659,15 @@ type OauthGrant {
 	"""
 	Host the client's tokens redirect back to. Shown instead of the
 	(unauthenticated, self-claimed) client name alone, same as on the
-	consent screen.
+	consent screen. Meaningless when `isFirstParty`, so show that instead.
 	"""
 	redirectHost: String!
+	"""
+	Granted to one of SESLogin's own apps (`oauth_clients::STATIC_CLIENTS`)
+	at one of its registered redirects. False for a self-registered client,
+	and for a development build's grant, which shows its address instead.
+	"""
+	isFirstParty: Boolean!
 	scope: String!
 	createdAt: Int!
 	lastUsedAt: Int
@@ -776,6 +1678,53 @@ type OauthGrant {
 	signal to show — a grant in active use never approaches it).
 	"""
 	refreshExpiresAt: Int!
+}
+
+type OnCallRole {
+	id: ID!
+	"""
+	One line, e.g. "Duty Officer".
+	"""
+	name: String!
+	"""
+	What the role is for, plain text; empty when there is none.
+	"""
+	description: String!
+	"""
+	A number that reaches whoever holds the role, e.g. a duty phone that diverts to
+	them; null when there is none. Kept as the unit wrote it.
+	"""
+	phone: String
+	locationId: ID!
+	location: Location!
+	"""
+	Who is on call in the role now; null when nobody is, or when the primary has
+	since been deleted.
+	"""
+	primary: Person
+	"""
+	Everyone else in the role now, by name. Deleted people are left out.
+	"""
+	secondaries: [Person!]!
+	"""
+	When the people in the role last changed (Unix seconds); null while nobody is
+	in it.
+	"""
+	membersChangedAt: Int
+	"""
+	Bumped by every change; pass it back to `updateOnCallRole`.
+	"""
+	version: Int!
+	createdAt: Int!
+	"""
+	Name of the member who created the role.
+	"""
+	createdBy: String
+	updatedAt: Int!
+	"""
+	Name of the member who last changed the role.
+	"""
+	updatedBy: String
 }
 
 """
@@ -1119,6 +2068,74 @@ type QueryRoot {
 	about the one period their link was issued for.
 	"""
 	linkedPeriod: Period!
+	"""
+	The member signed in to Tally, and the units they can use there. Tally members
+	only; see `graphql::tally`.
+	"""
+	tallyViewer: TallyViewer!
+	"""
+	One unit's shared Tally tools — tasks, notes, map, calendar, equipment, on call
+	and who is sharing their position. Tally members only, at a unit they can use.
+	"""
+	tallyLocation(id: ID!): TallyLocation!
+	"""
+	The signed-in member's own sign-in state at a unit, for the Tally app: their home
+	unit, or `locationId` when given, which must be a unit they can use in Tally
+	(`FORBIDDEN` otherwise). Null when the member has since been deleted. Tally
+	members only. No location grant is needed at home — being the member is the
+	authority (see `graphql::self_sign_in`).
+	"""
+	selfSignInStatus(locationId: ID): SelfSignInStatus
+	"""
+	One task, open or completed; null if it does not exist or was deleted.
+	"""
+	task(id: ID!): Task
+	"""
+	One note; null if it does not exist or was deleted.
+	"""
+	note(id: ID!): Note
+	"""
+	One piece of equipment; null if it does not exist or was deleted.
+	"""
+	equipment(id: ID!): Equipment
+	"""
+	One equipment reservation; null if it does not exist or was deleted.
+	"""
+	equipmentReservation(id: ID!): EquipmentReservation
+	"""
+	One map pin; null if it does not exist or was deleted.
+	"""
+	mapPin(id: ID!): MapPin
+	"""
+	One calendar event; null if it does not exist or was deleted.
+	"""
+	calendarEvent(id: ID!): CalendarEvent
+	"""
+	The caller's own location share while it still shows (until 7 minutes after its
+	latest position); null otherwise.
+	"""
+	myLocationShare: LocationShare
+	"""
+	The caller's in-app notifications, newest first. `unreadOnly` lists just the ones
+	not yet read. At most 200 per page, 50 by default; a notification about a location
+	the caller can no longer access is left out.
+	"""
+	myNotifications(first: Int, after: String, unreadOnly: Boolean): NotificationConnection!
+	"""
+	How many notifications the caller has unread, counting no further than 100 (show
+	"99+" above 99).
+	"""
+	myUnreadNotificationCount: Int!
+	"""
+	The WiFi networks, with their passwords, for members signed in to Tally (its
+	WiFi app). Never for users on their own, kiosks or API tokens. `networks` is null when `knownVersion` is
+	already current.
+	"""
+	wifiNetworks(knownVersion: String): WifiNetworks!
+	"""
+	One on-call role; null if it does not exist or was deleted.
+	"""
+	onCallRole(id: ID!): OnCallRole
 	session(
 		"""
 		ID for the session to look up
@@ -1207,6 +2224,11 @@ type QueryRoot {
 	ses_nonincident_tags: [SesNonIncidentTag!]!
 	ses_participant_types: [String!]!
 	"""
+	Check the link the Tally sign-in page was opened with: a member sign-in client
+	and one of its redirects. Needs no sign-in.
+	"""
+	tallySignInRequest(clientId: String!, redirectUri: String!): TallySignInRequest!
+	"""
 	Look up an OAuth client + redirect URI before showing the consent
 	screen. Deliberately returns nothing about the client beyond its
 	(self-claimed, DCR is unauthenticated) name and the redirect host — the
@@ -1278,6 +2300,36 @@ type ScanSignOutResult {
 	Badges to celebrate on this sign-out; see `RegisterResult.awardedBadges`.
 	"""
 	awardedBadges: [BadgeAward!]!
+}
+
+"""
+A member's own sign-in state at one unit: their home unit, or the one asked for.
+"""
+type SelfSignInStatus {
+	"""
+	The member.
+	"""
+	person: Person!
+	"""
+	The unit this status is for, where `selfSignIn` with the same `locationId`
+	signs in: the member's home unit unless another was asked for.
+	"""
+	location: Location!
+	"""
+	The member's newest open period at this unit; null when signed out here. A
+	period open at another unit is not shown.
+	"""
+	openPeriod: Period
+	"""
+	The same sign-out shortcuts a kiosk gets. Only computed when selected; null
+	if they could not be built.
+	"""
+	quickPick: QuickPick
+	"""
+	Everyone currently signed in at this unit (open, not deleted periods, members
+	and guests), oldest sign-in first. Computed only when selected.
+	"""
+	whosHere: [WhosHereEntry!]!
 }
 
 type SesHeadquarters {
@@ -1431,6 +2483,247 @@ type SubmittedFeedback {
 	reference: String!
 }
 
+"""
+The OAuth authorization request the sign-in page was opened with, as the app sent
+it (camel-cased in GraphQL).
+"""
+input TallyAuthorizationInput {
+	clientId: String!
+	redirectUri: String!
+	codeChallenge: String!
+	codeChallengeMethod: String!
+	scope: String
+	resource: String
+	state: String
+}
+
+type TallyLocation {
+	id: ID!
+	name: String!
+	"""
+	The unit's open tasks (its shared to-do list): by default those due now,
+	overdue first. `listId` narrows to one of its task lists; without it every
+	task at the unit is listed, whichever list it is on. See `graphql::tasks`.
+	"""
+	tasks(view: TaskView! = DUE, listId: ID): [Task!]!
+	"""
+	The unit's task lists, by name.
+	"""
+	taskLists: [TaskList!]!
+	"""
+	The unit's notes (its shared notebook), most recently changed first.
+	`folderId` narrows to one of its note folders; without it every note at the
+	unit is listed, whichever folder it is in. `search` keeps notes whose title
+	contains it, ignoring case. See `graphql::notes`.
+	"""
+	notes(folderId: ID, search: String): [Note!]!
+	"""
+	The unit's note folders, by name.
+	"""
+	noteFolders: [NoteFolder!]!
+	"""
+	The unit's equipment register, by name. `search` keeps equipment whose name or
+	description contains it, ignoring case. See `graphql::equipment`.
+	"""
+	equipment(search: String): [Equipment!]!
+	"""
+	The unit's equipment reservations that end after `endingAfter` (Unix seconds,
+	default now) — those still to come or under way — by start time.
+	`equipmentId` narrows to reservations of one piece of equipment. See
+	`graphql::reservations`.
+	"""
+	equipmentReservations(endingAfter: Int, equipmentId: ID): [EquipmentReservation!]!
+	"""
+	The unit's reservations a reservation of `equipmentIds` from `startTime` to
+	`endTime` would overlap, by start time, leaving out `excludeId` (the one being
+	edited). Overlaps are allowed; this is so a client can warn before saving.
+	"""
+	equipmentReservationConflicts(equipmentIds: [ID!]!, startTime: Int!, endTime: Int!, excludeId: ID): [EquipmentReservation!]!
+	"""
+	The pins on the unit's shared map, by title. `layerId` narrows to one of its map
+	layers; without it every pin at the unit is listed, whichever layer it is on.
+	See `graphql::map`.
+	"""
+	mapPins(layerId: ID): [MapPin!]!
+	"""
+	The unit's map layers, by name.
+	"""
+	mapLayers: [MapLayer!]!
+	"""
+	The unit's calendars, by name. See `graphql::calendar`.
+	"""
+	calendars: [Calendar!]!
+	"""
+	Every occurrence of the unit's events that overlaps `from`–`to` (Unix seconds,
+	at most 400 days apart), repeats expanded, by start; at most 5,000. All-day
+	occurrences are included when one of their dates overlaps the window in any
+	time zone, so a client should check them against its own days. Events in every
+	calendar, and in none, are listed: a client picking calendars filters on
+	`event.calendarId`.
+	"""
+	calendarEvents(from: Int!, to: Int!): [CalendarEventOccurrence!]!
+	"""
+	Everyone sharing their position with the unit ("Locate"), most recently updated
+	first. A share shows until 7 minutes after its latest position, so this
+	includes shares that have just ended (`active: false`). See
+	`graphql::location_share`.
+	"""
+	locationShares: [LocationShare!]!
+	"""
+	The unit's on-call roles (Duty Officer, …) and who holds each now, by name. See
+	`graphql::on_call`.
+	"""
+	onCallRoles: [OnCallRole!]!
+}
+
+"""
+What the sign-in page shows about the app that opened it.
+"""
+type TallySignInRequest {
+	clientName: String!
+	"""
+	A development build, redirecting to the Expo server on a developer's machine.
+	Only a developer account can finish signing in to one.
+	"""
+	isDevelopmentBuild: Boolean!
+}
+
+type TallyViewer {
+	"""
+	The member.
+	"""
+	member: Person!
+	"""
+	"First Last".
+	"""
+	name: String!
+	"""
+	The member's home unit.
+	"""
+	homeLocationId: ID!
+	"""
+	The email of the SESLogin user signed in alongside the member, when their email
+	matched one; null otherwise.
+	"""
+	userEmail: String
+	"""
+	Whether the user signed in alongside the member is a super user, and so can use
+	every unit. False when no user signed in alongside them.
+	"""
+	isSuper: Boolean!
+	"""
+	Every unit the member can use in Tally, by name: their home unit, plus the units
+	the user signed in alongside them holds either role at (every enabled unit for a
+	super user). Disabled units are left out, except a member's own home unit.
+	"""
+	locations: [TallyLocation!]!
+}
+
+type Task {
+	id: ID!
+	"""
+	One line.
+	"""
+	title: String!
+	description: String
+	locationId: ID!
+	location: Location!
+	"""
+	The list the task is on, if any. Null too when that list has been deleted:
+	the task then just belongs to its location.
+	"""
+	list: TaskList
+	"""
+	The day the task is due (`YYYY-MM-DD`, Sydney), if it has one. A recurring
+	task always does.
+	"""
+	dueDate: String
+	"""
+	The day the task starts showing in the Due view: its due date, or the day it
+	was created.
+	"""
+	showDate: String!
+	"""
+	The first day the task counts as overdue: the day after it is due, or a full
+	week after for a task that repeats in weeks. Null when it has no due date.
+	"""
+	overdueFrom: String
+	"""
+	Whether the task is open and overdue today (Sydney).
+	"""
+	overdue: Boolean!
+	recurrence: TaskRecurrence
+	"""
+	False once a non-recurring task is completed, or any task deleted. A
+	recurring task stays open.
+	"""
+	open: Boolean!
+	"""
+	Bumped by every change; pass it back to `updateTask` / `completeTask`.
+	"""
+	version: Int!
+	createdAt: Int!
+	"""
+	Name of the member who created the task.
+	"""
+	createdBy: String
+	updatedAt: Int!
+	"""
+	When a non-recurring task was completed.
+	"""
+	completedAt: Int
+	completedBy: String
+	"""
+	When a recurring task was last completed.
+	"""
+	lastCompletedAt: Int
+	lastCompletedBy: String
+}
+
+type TaskList {
+	id: ID!
+	name: String!
+	locationId: ID!
+	location: Location!
+	createdAt: Int!
+}
+
+"""
+Once completed, a recurring task is due again `every` days or weeks later,
+counted from the day it was completed.
+"""
+type TaskRecurrence {
+	every: Int!
+	unit: TaskRecurrenceUnit!
+}
+
+input TaskRecurrenceInput {
+	"""
+	1 to 365.
+	"""
+	every: Int!
+	unit: TaskRecurrenceUnit!
+}
+
+enum TaskRecurrenceUnit {
+	DAYS
+	WEEKS
+}
+
+"""
+Which of a location's open tasks to list.
+"""
+enum TaskView {
+	"""
+	Showing today or earlier: what needs doing now, overdue first.
+	"""
+	DUE
+	"""
+	Showing only from a later day, soonest first.
+	"""
+	SCHEDULED
+}
+
 type User {
 	id: ID!
 	email: String!
@@ -1456,6 +2749,14 @@ type User {
 	Locations where the user is Read only (can view but not change).
 	"""
 	readOnlyLocationGrantIds: [ID!]!
+	"""
+	The member this user acts as when signing in or out from the mobile app.
+	"""
+	personId: ID
+	"""
+	The member this user acts as, or null if none is set or it no longer exists.
+	"""
+	person: Person
 	locations: [Location!]!
 	passkeys: [PasskeyInfo!]!
 	"""
@@ -1465,6 +2766,68 @@ type User {
 	deletion lags behind expiry), newest first.
 	"""
 	oauthGrants: [OauthGrant!]!
+}
+
+"""
+One open sign-in at the unit, as the kiosk's Who's here list shows it. Deliberately
+narrow: no guest reason, member number or other period fields.
+"""
+type WhosHereEntry {
+	"""
+	The period id.
+	"""
+	id: ID!
+	"""
+	"First Last" for a member, the guest's name for a guest ("Guest" if blank).
+	"""
+	name: String!
+	guest: Boolean!
+	"""
+	Unix seconds.
+	"""
+	startTime: Int!
+	"""
+	This is the calling member's own period.
+	"""
+	isMe: Boolean!
+}
+
+type WifiNetwork {
+	"""
+	What the list shows, such as "Shed".
+	"""
+	title: String!
+	ssid: String!
+	"""
+	Empty for an open network.
+	"""
+	password: String!
+	security: WifiSecurity!
+	hidden: Boolean!
+}
+
+type WifiNetworks {
+	"""
+	Changes whenever any network does. Pass it back as `knownVersion` next time.
+	"""
+	version: String!
+	"""
+	Null when `knownVersion` is already the current version, so a client that has
+	the list isn't sent the passwords again.
+	"""
+	networks: [WifiNetwork!]
+}
+
+enum WifiSecurity {
+	"""
+	WPA, WPA2 or WPA3 personal.
+	"""
+	WPA
+	WEP
+	"""
+	An open network, with no password.
+	"""
+	NONE
 }
 
 """

@@ -58,6 +58,25 @@ pub enum AuthInfo {
         location_grants: Vec<String>,
         read_only: bool,
     },
+    /// A member signed in to Tally: an OAuth access token (`slat_`) whose grant names a
+    /// member. Only Tally's resolvers accept it — every admin, kiosk and MCP check
+    /// matches the other variants and so refuses it, whatever user rides along.
+    ///
+    /// When the email they signed in with is also a user's, that user rides along in
+    /// `user_id`, and their units (`is_super`, `user_location_ids`) add to the member's
+    /// home unit in Tally. See [`crate::oauth`] for how a grant resolves to this.
+    Member {
+        person_id: String,
+        /// The member's home unit (`Person.location_id`).
+        location_id: String,
+        /// The user signed in alongside the member, if any.
+        user_id: Option<String>,
+        /// That user is a super user, so has every unit.
+        is_super: bool,
+        /// That user's units, either role. Empty when there is no user.
+        user_location_ids: Vec<String>,
+        grant_id: String,
+    },
     /// A single-period edit link (`slp_`), sent to a member by SMS/email so they can
     /// correct one of their own time entries. Deliberately carries no location grants
     /// and no user identity: it authorises exactly one period and nothing else, so
@@ -134,6 +153,7 @@ pub enum CallerType {
     Session,
     ApiToken,
     PeriodLink,
+    Member,
     #[default]
     Unauthenticated,
 }
@@ -145,6 +165,7 @@ impl CallerType {
             Self::Session => "session",
             Self::ApiToken => "api_token",
             Self::PeriodLink => "period_link",
+            Self::Member => "member",
             Self::Unauthenticated => "unauthenticated",
         }
     }
@@ -165,6 +186,7 @@ pub fn caller_info(auth: Option<&AuthInfo>) -> (CallerType, String) {
         Some(AuthInfo::ApiToken { id, .. }) => (CallerType::ApiToken, id.clone()),
         // The token itself is never logged; the period it grants is the useful id.
         Some(AuthInfo::PeriodLink { period_id }) => (CallerType::PeriodLink, period_id.clone()),
+        Some(AuthInfo::Member { person_id, .. }) => (CallerType::Member, person_id.clone()),
     }
 }
 
@@ -518,7 +540,23 @@ async fn verify_token_with_period_link<A: App + HasDb>(
     }
 }
 
-pub async fn verify_token<A: App + HasDb>(app: &A, token: &str) -> Result<AuthInfo, AuthError> {
+/// Verify a bearer token presented to the GraphQL endpoint. `host` is the
+/// request's `Host` header, used (as everywhere, via
+/// [`crate::base_url::api_resource`]) only when `API_BASE_URL` isn't set, to
+/// work out the resource an OAuth access token must be bound to:
+/// `<api base>/graphql`. A token granted for `/mcp` is refused here, as a
+/// `/graphql` one is by `POST /mcp`. Refresh tokens (`slrt_`) are never
+/// accepted: they are refused as unrecognised.
+pub async fn verify_token<A: App + HasDb>(
+    app: &A,
+    token: &str,
+    host: Option<&str>,
+) -> Result<AuthInfo, AuthError> {
+    if token.starts_with(crate::oauth::ACCESS_TOKEN_PREFIX) {
+        let resource = crate::base_url::api_resource(host, crate::base_url::GRAPHQL_RESOURCE_PATH);
+        return crate::oauth::verify_access_token(app, token, &resource).await;
+    }
+
     if token.starts_with(API_TOKEN_PREFIX) {
         return verify_token_with_api_token(app, token).await;
     }
@@ -541,16 +579,18 @@ pub async fn verify_token<A: App + HasDb>(app: &A, token: &str) -> Result<AuthIn
 /// `Bearer <token>` → opaque tokens; `SLKey <fp>.<ts>.<sig>` → signed kiosk key
 /// (binds `body_hash_hex`). Returns `None` when there is no recognized header, so the
 /// request proceeds unauthenticated (the guards then reject anything that requires auth).
-/// Shared by the poem server and the Lambda handler.
+/// Shared by the poem server and the Lambda handler. `host` is the request's `Host`
+/// header; see [`verify_token`].
 pub async fn verify_authorization_header<A: App + HasDb + HasQueues>(
     app: &A,
     auth_header: Option<&str>,
     body_hash_hex: &str,
     client: &ClientReport,
+    host: Option<&str>,
 ) -> Option<Result<AuthInfo, AuthError>> {
     let auth_header = auth_header?;
     if let Some(token) = auth_header.strip_prefix("Bearer ") {
-        Some(verify_token(app, token).await)
+        Some(verify_token(app, token, host).await)
     } else if let Some(rest) = auth_header.strip_prefix(crate::session_key::SESSION_KEY_SCHEME) {
         Some(verify_signed_key(app, rest, body_hash_hex, client).await)
     } else {
@@ -585,14 +625,13 @@ mod verify_token_tests {
         )
     }
 
-    /// `verify_token` must keep rejecting `slat_`/`slrt_` OAuth tokens: they carry no
-    /// prefix it recognizes, so they are refused as unrecognised — never reaching (and,
-    /// with mockdb, never able to reach) the DB. `oauth::verify_access_token` is the
-    /// only accepted entry point for them.
+    /// A malformed `slat_` token is refused before any DB lookup (mockdb would fail
+    /// one as `Transient`). Accepting a well-formed one, and refusing one bound to
+    /// `/mcp`, needs a working DB: see `tests/oauth_graphql.rs`.
     #[tokio::test]
-    async fn rejects_oauth_access_token() {
+    async fn rejects_a_malformed_oauth_access_token() {
         let app = app();
-        let result = verify_token(&app, "slat_abc123.somesecret").await;
+        let result = verify_token(&app, "slat_nosecret", None).await;
         assert!(matches!(result, Err(AuthError::Permanent(_))));
     }
 
@@ -602,14 +641,21 @@ mod verify_token_tests {
     #[tokio::test]
     async fn rejects_an_unprefixed_token() {
         let app = app();
-        let result = verify_token(&app, "eyJhbGciOiJIUzI1NiJ9.eyJzZXNzaW9uX2lkIjoiUyJ9.c2ln").await;
+        let result = verify_token(
+            &app,
+            "eyJhbGciOiJIUzI1NiJ9.eyJzZXNzaW9uX2lkIjoiUyJ9.c2ln",
+            None,
+        )
+        .await;
         assert!(matches!(result, Err(AuthError::Permanent(_))));
     }
 
+    /// Refresh tokens are only ever spent at `/oauth/token`: `verify_token` has no
+    /// branch for them, so they are refused as unrecognised, never reaching the DB.
     #[tokio::test]
     async fn rejects_oauth_refresh_token() {
         let app = app();
-        let result = verify_token(&app, "slrt_abc123.somesecret").await;
+        let result = verify_token(&app, "slrt_abc123.somesecret", None).await;
         assert!(matches!(result, Err(AuthError::Permanent(_))));
     }
 }

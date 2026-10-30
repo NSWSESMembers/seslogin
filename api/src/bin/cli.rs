@@ -11,9 +11,9 @@ use clap::{Parser, Subcommand};
 use seslogin::audit::{self, AuditContext, AuditingHandler};
 use seslogin::badges;
 use seslogin::db::{
-    self, ApiToken, Category, Handler, ListApiTokensFilter, ListLocationsFilter, ListPeriodsPage,
-    ListSessionsQuery, Location, NitcEvent, NitcGroup, Period, PeriodCursor, Person,
-    PersonUpdateShape, ScanCursor, Session, SessionUpdateShape, User,
+    self, ApiToken, Category, CategoryDisplay, Handler, ListApiTokensFilter, ListLocationsFilter,
+    ListPeriodsPage, ListSessionsQuery, Location, NitcEvent, NitcGroup, Period, PeriodCursor,
+    Person, PersonUpdateShape, ScanCursor, Session, SessionUpdateShape, User,
 };
 use seslogin::dynamodb;
 use seslogin::request_metrics::{self, RequestMetrics};
@@ -221,6 +221,15 @@ enum PersonCmd {
         #[arg(long)]
         location: Option<String>,
     },
+    /// Give every person (deleted ones too) a fresh `contact_key`, so the contacts
+    /// feed index holds every row. A one-off backfill for rows written before the
+    /// feed existed; safe to re-run, though each run puts every row back at the head
+    /// of the feed. Writes unless the global `--dry-run` is given.
+    StampContacts,
+    /// Write `email_key` on every person with an email who lacks it, so Tally sign-in
+    /// can find them by email. A one-off backfill for emails set before the key
+    /// existed; safe to re-run. Writes unless the global `--dry-run` is given.
+    StampEmailKeys,
 }
 
 #[derive(Subcommand, Debug)]
@@ -1135,6 +1144,9 @@ async fn show_categories(db: &impl Handler, cats: &[Category]) {
             is_virtual,
             nitc_participant_type,
             nitc_group_id,
+            group_name,
+            short_name,
+            icon,
             created_at,
             updated_at,
         } = c;
@@ -1149,6 +1161,9 @@ async fn show_categories(db: &impl Handler, cats: &[Category]) {
             ("is_virtual", bool_str(*is_virtual)),
             ("nitc_group_id", group),
             ("nitc_participant_type", opt_str(nitc_participant_type)),
+            ("group_name", opt_str(group_name)),
+            ("short_name", opt_str(short_name)),
+            ("icon", opt_str(icon)),
             ("created_at", fmt_ts(*created_at)),
             ("updated_at", fmt_ts(*updated_at)),
         ]);
@@ -1178,6 +1193,7 @@ async fn show_users(db: &impl Handler, users: &[User]) {
             enabled,
             location_grants,
             location_read_only_grants,
+            person_id,
             access_time,
             email_config,
             disaggregate_virtual_periods,
@@ -1210,6 +1226,10 @@ async fn show_users(db: &impl Handler, users: &[User]) {
             ("enabled", bool_str(*enabled)),
             ("location_grants", grants),
             ("location_read_only_grants", read_only_grants),
+            (
+                "person_id",
+                person_id.clone().unwrap_or_else(|| "-".to_string()),
+            ),
             ("access_time", opt_ts(*access_time)),
             (
                 "email_config",
@@ -1427,6 +1447,21 @@ async fn run_cli() -> Result<()> {
             cli.dry_run,
         )
         .await;
+    }
+
+    // And for backfilling the contacts feed.
+    if let Object::Person {
+        cmd: PersonCmd::StampContacts,
+    } = &cli.object
+    {
+        return run_person_stamp_contacts(&db_prefix, cli.dry_run).await;
+    }
+
+    if let Object::Person {
+        cmd: PersonCmd::StampEmailKeys,
+    } = &cli.object
+    {
+        return run_person_stamp_email_keys(&db_prefix, cli.dry_run).await;
     }
 
     // And for retiring dead sessions.
@@ -1667,6 +1702,85 @@ fn scan_outcomes<T>(rows: Vec<seslogin::db::Result<T>>) -> Vec<Result<(), String
     rows.into_iter()
         .map(|r| r.map(|_| ()).map_err(|e| e.to_string()))
         .collect()
+}
+
+/// Stamp a fresh `contact_key` on every person row. Opens its own handler with
+/// `read_only = dry_run`, so a dry run only counts the rows it would stamp.
+async fn run_person_stamp_contacts(db_prefix: &str, dry_run: bool) -> Result<()> {
+    let db = AuditingHandler::new(dynamodb::Handler::new(db_prefix, dry_run).await);
+    let mut cursor: Option<ScanCursor> = None;
+    let mut stamped = 0usize;
+    let mut unreadable = 0usize;
+    loop {
+        let page = db.scan_persons(cursor.clone(), 500).await?;
+        for row in page.rows {
+            match row {
+                Ok(person) => {
+                    if !dry_run {
+                        db.stamp_person_contact(&person.id).await?;
+                    }
+                    stamped += 1;
+                }
+                Err(e) => {
+                    eprintln!("skipping unreadable person row: {e}");
+                    unreadable += 1;
+                }
+            }
+        }
+        match page.next {
+            Some(next) => cursor = Some(next),
+            None => break,
+        }
+    }
+    let verb = if dry_run { "would stamp" } else { "stamped" };
+    println!("{verb} {stamped} people, skipped {unreadable} unreadable rows");
+    Ok(())
+}
+
+/// Write `email_key` on every person whose email is set. Opens its own handler with
+/// `read_only = dry_run`, so a dry run only counts the rows it would stamp. Rows are
+/// stamped whether or not they already carry a key: the scan does not return it, and
+/// rewriting the same derived value is harmless.
+async fn run_person_stamp_email_keys(db_prefix: &str, dry_run: bool) -> Result<()> {
+    let db = AuditingHandler::new(dynamodb::Handler::new(db_prefix, dry_run).await);
+    let mut cursor: Option<ScanCursor> = None;
+    let mut stamped = 0usize;
+    let mut no_email = 0usize;
+    let mut unreadable = 0usize;
+    loop {
+        let page = db.scan_persons(cursor.clone(), 500).await?;
+        for row in page.rows {
+            match row {
+                Ok(person) => match &person.email {
+                    Some(email) => {
+                        if !dry_run {
+                            match db.stamp_person_email_key(&person.id, email).await {
+                                // Their email changed since the scan read it; that write
+                                // stamped the key itself.
+                                Err(seslogin::db::Error::NotFound(_)) => continue,
+                                other => other?,
+                            }
+                        }
+                        stamped += 1;
+                    }
+                    None => no_email += 1,
+                },
+                Err(e) => {
+                    eprintln!("skipping unreadable person row: {e}");
+                    unreadable += 1;
+                }
+            }
+        }
+        match page.next {
+            Some(next) => cursor = Some(next),
+            None => break,
+        }
+    }
+    let verb = if dry_run { "would stamp" } else { "stamped" };
+    println!(
+        "{verb} {stamped} people, {no_email} have no email, skipped {unreadable} unreadable rows"
+    );
+    Ok(())
 }
 
 /// Bulk-set or clear one JSON config key across active sessions. Opens its own DB
@@ -2245,7 +2359,14 @@ async fn run_category_create(
     }
 
     let category = db
-        .create_category(id, name, is_virtual, nitc_group_id, nitc_participant_type)
+        .create_category(
+            id,
+            name,
+            is_virtual,
+            nitc_group_id,
+            nitc_participant_type,
+            &CategoryDisplay::default(),
+        )
         .await?;
     println!("created category {}", category.id);
     Ok(())
@@ -2339,6 +2460,8 @@ async fn run_category_edit(
         new_is_virtual,
         new_nitc_group_id.as_deref(),
         new_nitc_participant_type.as_deref(),
+        // The display metadata has no flags here, so it keeps what is stored.
+        &current.display(),
     )
     .await?;
     println!("updated category {id}");
@@ -2646,6 +2769,13 @@ async fn run(db: &impl Handler, object: Object) -> Result<()> {
             }
             PersonCmd::ClearBadges { .. } => {
                 unreachable!("clear-badges is handled before the read-only DB is opened")
+            }
+            // Handled in `main` before the shared read-only DB is opened.
+            PersonCmd::StampContacts => {
+                unreachable!("stamp-contacts is handled before the read-only DB is opened")
+            }
+            PersonCmd::StampEmailKeys => {
+                unreachable!("stamp-email-keys is handled before the read-only DB is opened")
             }
         },
 

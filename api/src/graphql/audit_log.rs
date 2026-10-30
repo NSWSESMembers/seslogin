@@ -23,7 +23,7 @@ use super::dataloader::DatabaseLoader;
 use super::error::ApiError;
 use super::pagination::{build_connection, pagination_args};
 use super::query::Location;
-use super::{ApiTokenNameId, LocationId, SessionId, UserId};
+use super::{ApiTokenNameId, LocationId, PersonId, SessionId, UserId};
 use crate::app::{App, HasDb};
 use crate::auth::AuthInfo;
 use crate::db::{self, Handler};
@@ -67,6 +67,19 @@ pub enum AuditEntityType {
     #[graphql(name = "OAUTH_GRANT")]
     OAuthGrant,
     WebauthnCredential,
+    Task,
+    TaskList,
+    Note,
+    NoteFolder,
+    Equipment,
+    EquipmentLogEntry,
+    EquipmentReservation,
+    OnCallRole,
+    MapPin,
+    MapLayer,
+    Calendar,
+    CalendarEvent,
+    LocationShare,
 }
 
 impl From<db::AuditEntityType> for AuditEntityType {
@@ -84,6 +97,19 @@ impl From<db::AuditEntityType> for AuditEntityType {
             db::AuditEntityType::UserToken => Self::UserToken,
             db::AuditEntityType::OAuthGrant => Self::OAuthGrant,
             db::AuditEntityType::WebauthnCredential => Self::WebauthnCredential,
+            db::AuditEntityType::Task => Self::Task,
+            db::AuditEntityType::TaskList => Self::TaskList,
+            db::AuditEntityType::OnCallRole => Self::OnCallRole,
+            db::AuditEntityType::Note => Self::Note,
+            db::AuditEntityType::NoteFolder => Self::NoteFolder,
+            db::AuditEntityType::Equipment => Self::Equipment,
+            db::AuditEntityType::EquipmentLogEntry => Self::EquipmentLogEntry,
+            db::AuditEntityType::EquipmentReservation => Self::EquipmentReservation,
+            db::AuditEntityType::MapPin => Self::MapPin,
+            db::AuditEntityType::MapLayer => Self::MapLayer,
+            db::AuditEntityType::Calendar => Self::Calendar,
+            db::AuditEntityType::CalendarEvent => Self::CalendarEvent,
+            db::AuditEntityType::LocationShare => Self::LocationShare,
         }
     }
 }
@@ -103,6 +129,19 @@ impl From<AuditEntityType> for db::AuditEntityType {
             AuditEntityType::UserToken => Self::UserToken,
             AuditEntityType::OAuthGrant => Self::OAuthGrant,
             AuditEntityType::WebauthnCredential => Self::WebauthnCredential,
+            AuditEntityType::OnCallRole => Self::OnCallRole,
+            AuditEntityType::Task => Self::Task,
+            AuditEntityType::TaskList => Self::TaskList,
+            AuditEntityType::Note => Self::Note,
+            AuditEntityType::NoteFolder => Self::NoteFolder,
+            AuditEntityType::Equipment => Self::Equipment,
+            AuditEntityType::EquipmentLogEntry => Self::EquipmentLogEntry,
+            AuditEntityType::EquipmentReservation => Self::EquipmentReservation,
+            AuditEntityType::MapPin => Self::MapPin,
+            AuditEntityType::MapLayer => Self::MapLayer,
+            AuditEntityType::Calendar => Self::Calendar,
+            AuditEntityType::CalendarEvent => Self::CalendarEvent,
+            AuditEntityType::LocationShare => Self::LocationShare,
         }
     }
 }
@@ -112,6 +151,8 @@ impl From<AuditEntityType> for db::AuditEntityType {
 pub enum AuditActorKind {
     /// A signed-in user (web, MCP or a user token).
     User,
+    /// A member signed in to Tally.
+    Member,
     /// A kiosk device.
     Session,
     ApiToken,
@@ -131,6 +172,7 @@ impl AuditActorKind {
     fn from_stored(kind: &str) -> Self {
         match kind {
             "user" => Self::User,
+            "member" => Self::Member,
             "session" => Self::Session,
             "api_token" => Self::ApiToken,
             "period_link" => Self::PeriodLink,
@@ -198,15 +240,16 @@ impl<A: App + HasDb + Send + Sync + 'static> AuditActor<A> {
         self.kind
     }
 
-    /// The actor's ID: a user, kiosk session or API token ID, the period ID of an edit
+    /// The actor's ID: a user, member, kiosk session or API token ID, the period ID of an edit
     /// link, or the job name for `SYSTEM` (`member-sync`, `cli`, …). Null when none was
     /// recorded.
     async fn id(&self) -> Option<&str> {
         self.id.as_deref()
     }
 
-    /// How a user acted when not through an ordinary web login: `oauth_grant:<id>` (an AI
-    /// client over MCP), `user_token:<id>` or `oauth_client:<id>`. Super users only;
+    /// How a user acted when not through an ordinary web login: `oauth_grant:<id>` (a
+    /// connected app: an AI client over MCP, or one of SESLogin's own apps over
+    /// GraphQL), `user_token:<id>` or `oauth_client:<id>`. Super users only;
     /// null for everyone else.
     async fn via(&self, ctx: &Context<'_>) -> Option<&str> {
         if viewer_is_super(ctx) {
@@ -216,7 +259,8 @@ impl<A: App + HasDb + Send + Sync + 'static> AuditActor<A> {
         }
     }
 
-    /// A name for the actor, looked up now rather than recorded: a user's email, a kiosk's
+    /// A name for the actor, looked up now rather than recorded: a user's email, a member's
+    /// name, a kiosk's
     /// name, an API token's name, the job name for `SYSTEM`, "Period edit link" for an
     /// edit link. Null when there is nothing to show or the record no longer exists.
     async fn label(&self, ctx: &Context<'_>) -> Result<Option<String>> {
@@ -234,6 +278,17 @@ impl<A: App + HasDb + Send + Sync + 'static> AuditActor<A> {
                 .map_err(|e| anyhow!("Failed to load user via DataLoader: {}", e))?
                 .flatten()
                 .map(|u| u.rec.email),
+            AuditActorKind::Member => loader
+                .load_one(PersonId(ID(id)))
+                .await
+                .map_err(|e| anyhow!("Failed to load person via DataLoader: {}", e))?
+                .flatten()
+                .map(|p| {
+                    format!("{} {}", p.rec.first_name.trim(), p.rec.last_name.trim())
+                        .trim()
+                        .to_string()
+                })
+                .filter(|name| !name.is_empty()),
             AuditActorKind::Session => loader
                 .load_one(SessionId(ID(id)))
                 .await

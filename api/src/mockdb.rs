@@ -66,6 +66,10 @@ impl db::Handler for Handler {
         Self::unsupported()
     }
 
+    async fn get_person_ids_by_email(&self, _email: &str) -> db::Result<Vec<String>> {
+        Self::unsupported()
+    }
+
     async fn get_sessions<T: AsRef<str> + Sync>(
         &self,
         _ids: &[T],
@@ -160,6 +164,28 @@ impl db::Handler for Handler {
     }
 
     async fn update_person(&self, _id: &str, _change: db::PersonUpdateShape<'_>) -> db::Result<()> {
+        Self::unsupported()
+    }
+
+    async fn stamp_person_contact(&self, _id: &str) -> db::Result<()> {
+        Self::unsupported()
+    }
+
+    async fn stamp_person_email_key(&self, _id: &str, _email: &str) -> db::Result<()> {
+        Self::unsupported()
+    }
+
+    async fn list_contact_changes(
+        &self,
+        _after: Option<&str>,
+        _before: &str,
+        _include_deleted: bool,
+        _limit: usize,
+    ) -> db::Result<db::ContactPage> {
+        Self::unsupported()
+    }
+
+    async fn count_contacts(&self, _before: &str) -> db::Result<u64> {
         Self::unsupported()
     }
 
@@ -277,10 +303,12 @@ impl db::Handler for Handler {
         _is_virtual: bool,
         _nitc_group_id: Option<&str>,
         _nitc_participant_type: Option<&str>,
+        _display: &db::CategoryDisplay,
     ) -> db::Result<Category> {
         Self::unsupported()
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn update_category(
         &self,
         _id: &str,
@@ -289,6 +317,7 @@ impl db::Handler for Handler {
         _is_virtual: bool,
         _nitc_group_id: Option<&str>,
         _nitc_participant_type: Option<&str>,
+        _display: &db::CategoryDisplay,
     ) -> db::Result<()> {
         Self::unsupported()
     }
@@ -634,6 +663,370 @@ impl db::Handler for Handler {
     }
 
     async fn delete_ephemeral_state(&self, _id: &str) -> db::Result<()> {
+        Self::unsupported()
+    }
+
+    async fn get_tasks<T: AsRef<str> + Sync>(
+        &self,
+        _ids: &[T],
+    ) -> db::Result<Vec<Option<db::Task>>> {
+        Self::unsupported()
+    }
+
+    async fn list_tasks(&self, _query: db::ListTasksQuery) -> db::Result<Vec<db::Task>> {
+        Self::unsupported()
+    }
+
+    async fn create_task(&self, _task: db::NewTask<'_>) -> db::Result<db::Task> {
+        Self::unsupported()
+    }
+
+    async fn update_task(
+        &self,
+        _id: &str,
+        _change: db::TaskUpdateShape<'_>,
+    ) -> db::Result<db::Task> {
+        Self::unsupported()
+    }
+
+    async fn get_task_lists<T: AsRef<str> + Sync>(
+        &self,
+        _ids: &[T],
+    ) -> db::Result<Vec<Option<db::TaskList>>> {
+        Self::unsupported()
+    }
+
+    async fn list_task_lists(&self, _location_id: &str) -> db::Result<Vec<db::TaskList>> {
+        Self::unsupported()
+    }
+
+    async fn create_task_list(
+        &self,
+        _location_id: &str,
+        _name: &str,
+        _created_by: Option<&str>,
+    ) -> db::Result<db::TaskList> {
+        Self::unsupported()
+    }
+
+    async fn update_task_list(
+        &self,
+        _id: &str,
+        _change: db::TaskListUpdateShape<'_>,
+    ) -> db::Result<db::TaskList> {
+        Self::unsupported()
+    }
+
+    async fn get_notes<T: AsRef<str> + Sync>(
+        &self,
+        _ids: &[T],
+    ) -> db::Result<Vec<Option<db::Note>>> {
+        Self::unsupported()
+    }
+
+    async fn list_notes(&self, _location_id: &str) -> db::Result<Vec<db::Note>> {
+        Self::unsupported()
+    }
+
+    async fn create_note(&self, _note: db::NewNote<'_>) -> db::Result<db::Note> {
+        Self::unsupported()
+    }
+
+    async fn update_note(
+        &self,
+        _id: &str,
+        _change: db::NoteUpdateShape<'_>,
+    ) -> db::Result<db::Note> {
+        Self::unsupported()
+    }
+
+    async fn get_note_folders<T: AsRef<str> + Sync>(
+        &self,
+        _ids: &[T],
+    ) -> db::Result<Vec<Option<db::NoteFolder>>> {
+        Self::unsupported()
+    }
+
+    async fn list_note_folders(&self, _location_id: &str) -> db::Result<Vec<db::NoteFolder>> {
+        Self::unsupported()
+    }
+
+    async fn create_note_folder(
+        &self,
+        _location_id: &str,
+        _name: &str,
+        _created_by: Option<&str>,
+    ) -> db::Result<db::NoteFolder> {
+        Self::unsupported()
+    }
+
+    async fn update_note_folder(
+        &self,
+        _id: &str,
+        _change: db::NoteFolderUpdateShape<'_>,
+    ) -> db::Result<db::NoteFolder> {
+        Self::unsupported()
+    }
+
+    async fn get_map_pins<T: AsRef<str> + Sync>(
+        &self,
+        _ids: &[T],
+    ) -> db::Result<Vec<Option<db::MapPin>>> {
+        Self::unsupported()
+    }
+
+    async fn list_map_pins(&self, _location_id: &str) -> db::Result<Vec<db::MapPin>> {
+        Self::unsupported()
+    }
+
+    async fn create_map_pin(&self, _pin: db::NewMapPin<'_>) -> db::Result<db::MapPin> {
+        Self::unsupported()
+    }
+
+    async fn update_map_pin(
+        &self,
+        _id: &str,
+        _change: db::MapPinUpdateShape<'_>,
+    ) -> db::Result<db::MapPin> {
+        Self::unsupported()
+    }
+
+    async fn get_map_layers<T: AsRef<str> + Sync>(
+        &self,
+        _ids: &[T],
+    ) -> db::Result<Vec<Option<db::MapLayer>>> {
+        Self::unsupported()
+    }
+
+    async fn list_map_layers(&self, _location_id: &str) -> db::Result<Vec<db::MapLayer>> {
+        Self::unsupported()
+    }
+
+    async fn create_map_layer(
+        &self,
+        _location_id: &str,
+        _name: &str,
+        _created_by: Option<&str>,
+    ) -> db::Result<db::MapLayer> {
+        Self::unsupported()
+    }
+
+    async fn update_map_layer(
+        &self,
+        _id: &str,
+        _change: db::MapLayerUpdateShape<'_>,
+    ) -> db::Result<db::MapLayer> {
+        Self::unsupported()
+    }
+
+    async fn get_calendars<T: AsRef<str> + Sync>(
+        &self,
+        _ids: &[T],
+    ) -> db::Result<Vec<Option<db::Calendar>>> {
+        Self::unsupported()
+    }
+
+    async fn list_calendars(&self, _location_id: &str) -> db::Result<Vec<db::Calendar>> {
+        Self::unsupported()
+    }
+
+    async fn create_calendar(
+        &self,
+        _location_id: &str,
+        _name: &str,
+        _color: &str,
+        _created_by: Option<&str>,
+    ) -> db::Result<db::Calendar> {
+        Self::unsupported()
+    }
+
+    async fn update_calendar(
+        &self,
+        _id: &str,
+        _change: db::CalendarUpdateShape<'_>,
+    ) -> db::Result<db::Calendar> {
+        Self::unsupported()
+    }
+
+    async fn get_calendar_events<T: AsRef<str> + Sync>(
+        &self,
+        _ids: &[T],
+    ) -> db::Result<Vec<Option<db::CalendarEvent>>> {
+        Self::unsupported()
+    }
+
+    async fn list_calendar_events(
+        &self,
+        _location_id: &str,
+        _ending_after: u64,
+    ) -> db::Result<Vec<db::CalendarEvent>> {
+        Self::unsupported()
+    }
+
+    async fn create_calendar_event(
+        &self,
+        _event: db::NewCalendarEvent<'_>,
+    ) -> db::Result<db::CalendarEvent> {
+        Self::unsupported()
+    }
+
+    async fn update_calendar_event(
+        &self,
+        _id: &str,
+        _change: db::CalendarEventUpdateShape<'_>,
+    ) -> db::Result<db::CalendarEvent> {
+        Self::unsupported()
+    }
+
+    async fn get_on_call_roles<T: AsRef<str> + Sync>(
+        &self,
+        _ids: &[T],
+    ) -> db::Result<Vec<Option<db::OnCallRole>>> {
+        Self::unsupported()
+    }
+
+    async fn list_on_call_roles(&self, _location_id: &str) -> db::Result<Vec<db::OnCallRole>> {
+        Self::unsupported()
+    }
+
+    async fn create_on_call_role(
+        &self,
+        _role: db::NewOnCallRole<'_>,
+    ) -> db::Result<db::OnCallRole> {
+        Self::unsupported()
+    }
+
+    async fn update_on_call_role(
+        &self,
+        _id: &str,
+        _change: db::OnCallRoleUpdateShape<'_>,
+    ) -> db::Result<db::OnCallRole> {
+        Self::unsupported()
+    }
+
+    async fn get_equipment<T: AsRef<str> + Sync>(
+        &self,
+        _ids: &[T],
+    ) -> db::Result<Vec<Option<db::Equipment>>> {
+        Self::unsupported()
+    }
+
+    async fn list_equipment(&self, _location_id: &str) -> db::Result<Vec<db::Equipment>> {
+        Self::unsupported()
+    }
+
+    async fn create_equipment(
+        &self,
+        _equipment: db::NewEquipment<'_>,
+    ) -> db::Result<(db::Equipment, db::EquipmentLogEntry)> {
+        Self::unsupported()
+    }
+
+    async fn update_equipment(
+        &self,
+        _id: &str,
+        _change: db::EquipmentUpdateShape<'_>,
+    ) -> db::Result<db::Equipment> {
+        Self::unsupported()
+    }
+
+    async fn add_equipment_log_entry(
+        &self,
+        _entry: db::NewEquipmentLogEntry<'_>,
+    ) -> db::Result<(db::Equipment, db::EquipmentLogEntry)> {
+        Self::unsupported()
+    }
+
+    async fn list_equipment_log(
+        &self,
+        _equipment_id: &str,
+    ) -> db::Result<Vec<db::EquipmentLogEntry>> {
+        Self::unsupported()
+    }
+
+    async fn get_equipment_reservations<T: AsRef<str> + Sync>(
+        &self,
+        _ids: &[T],
+    ) -> db::Result<Vec<Option<db::EquipmentReservation>>> {
+        Self::unsupported()
+    }
+
+    async fn list_equipment_reservations(
+        &self,
+        _location_id: &str,
+        _ending_after: u64,
+    ) -> db::Result<Vec<db::EquipmentReservation>> {
+        Self::unsupported()
+    }
+
+    async fn create_equipment_reservation(
+        &self,
+        _reservation: db::NewEquipmentReservation<'_>,
+    ) -> db::Result<db::EquipmentReservation> {
+        Self::unsupported()
+    }
+
+    async fn update_equipment_reservation(
+        &self,
+        _id: &str,
+        _change: db::EquipmentReservationUpdateShape<'_>,
+    ) -> db::Result<db::EquipmentReservation> {
+        Self::unsupported()
+    }
+
+    async fn get_location_shares<T: AsRef<str> + Sync>(
+        &self,
+        _user_ids: &[T],
+    ) -> db::Result<Vec<Option<db::LocationShare>>> {
+        Self::unsupported()
+    }
+
+    async fn list_location_shares(&self, _location_id: &str) -> db::Result<Vec<db::LocationShare>> {
+        Self::unsupported()
+    }
+
+    async fn put_location_share(&self, _share: &db::LocationShare) -> db::Result<()> {
+        Self::unsupported()
+    }
+
+    async fn update_location_share_position(
+        &self,
+        _user_id: &str,
+        _position: &db::SharedPosition,
+        _updated_at: u64,
+        _expires_at: u64,
+    ) -> db::Result<db::LocationShare> {
+        Self::unsupported()
+    }
+
+    async fn delete_location_share(&self, _user_id: &str) -> db::Result<Option<db::LocationShare>> {
+        Self::unsupported()
+    }
+
+    async fn put_notifications(&self, _records: Vec<db::NotificationRecord>) -> db::Result<()> {
+        Self::unsupported()
+    }
+
+    async fn list_notifications(
+        &self,
+        _person_id: &str,
+        _after_sk: Option<&str>,
+        _limit: usize,
+        _unread_only: bool,
+    ) -> db::Result<Vec<db::NotificationRecord>> {
+        Self::unsupported()
+    }
+
+    async fn count_unread_notifications(&self, _person_id: &str, _cap: usize) -> db::Result<usize> {
+        Self::unsupported()
+    }
+
+    async fn mark_notifications_read(
+        &self,
+        _person_id: &str,
+        _sks: &[String],
+        _read_at: u64,
+    ) -> db::Result<()> {
         Self::unsupported()
     }
 

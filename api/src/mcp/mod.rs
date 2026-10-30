@@ -92,7 +92,7 @@ use serde_json::{Value, json};
 
 use crate::app::{App, HasDb, HasMail, HasQueues, HasRealtime};
 use crate::auth::{self, AuthError, AuthInfo};
-use crate::base_url::api_base_url;
+use crate::base_url::{MCP_RESOURCE_PATH, api_base_url, api_resource};
 use crate::graphql::{self, ClientIp};
 use crate::oauth;
 use crate::oauth_http::HttpReply;
@@ -408,7 +408,7 @@ where
 {
     let request_start = Instant::now();
     let api_base = api_base_url(host);
-    let resource = format!("{api_base}/mcp");
+    let resource = api_resource(host, MCP_RESOURCE_PATH);
 
     let emit = |status: u16, operation_name: &str, auth_info: Option<&AuthInfo>| {
         let (caller_type, caller_id) = auth::caller_info(auth_info);
@@ -430,6 +430,14 @@ where
     };
 
     let auth_info = match oauth::verify_access_token(&**app, token, &resource).await {
+        // A Tally member's grant is never for `/mcp`, so this can't happen; refuse it
+        // rather than hand a member to tools written for users.
+        Ok(AuthInfo::Member { .. }) => {
+            tracing::info!("mcp: auth rejected: a member grant");
+            let reply = unauthorized(&api_base, true);
+            emit(reply.status, "mcp:auth", None);
+            return reply;
+        }
         Ok(info) => info,
         Err(AuthError::Permanent(msg)) => {
             tracing::info!("mcp: auth rejected: {msg}");

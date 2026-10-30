@@ -17,14 +17,27 @@ use crate::telemetry::{self, OperationKind};
 
 pub mod audit_log;
 pub mod auth;
+pub mod calendar;
 pub mod dataloader;
+pub mod equipment;
 pub mod error;
 #[cfg(debug_assertions)]
 pub mod error_injection;
+pub mod location_share;
+pub mod map;
 pub mod mutations;
+pub mod notes;
+pub mod notifications;
+pub mod on_call;
 pub mod pagination;
 pub mod query;
+pub mod reservations;
+pub mod self_sign_in;
 pub mod ses_details;
+pub mod tally;
+pub mod tally_sign_in;
+pub mod tasks;
+pub mod wifi;
 
 pub use self::mutations::MutationRoot;
 pub use self::query::{
@@ -80,6 +93,18 @@ pub struct PeriodId(pub ID);
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct LocationId(pub ID);
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct TaskListId(pub String);
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct NoteFolderId(pub String);
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct MapLayerId(pub String);
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct CalendarId(pub String);
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct SessionId(pub ID);

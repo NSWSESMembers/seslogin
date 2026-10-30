@@ -47,10 +47,18 @@ pub const REDACTED: &str = "[redacted]";
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Actor {
     /// A signed-in user. `via` says how they came in when it is not an ordinary web
-    /// session: `oauth_grant:<id>` (MCP), `user_token:<id>` (opaque token) or
+    /// session: `oauth_grant:<id>` (a connected app, over MCP or GraphQL),
+    /// `user_token:<id>` (opaque token) or
     /// `oauth_client:<client_id>` (the OAuth token endpoint acting for them).
     User {
         id: String,
+        via: Option<String>,
+    },
+    /// A member signed in to Tally. `via` is `oauth_grant:<id>`, or
+    /// `oauth_client:<client_id>` for the token endpoint acting for them. A user signed
+    /// in alongside is not recorded here: the grant names them.
+    Member {
+        person_id: String,
         via: Option<String>,
     },
     /// A kiosk.
@@ -79,6 +87,7 @@ impl Actor {
     pub fn kind(&self) -> &'static str {
         match self {
             Self::User { .. } => "user",
+            Self::Member { .. } => "member",
             Self::Session { .. } => "session",
             Self::ApiToken { .. } => "api_token",
             Self::PeriodLink { .. } => "period_link",
@@ -88,11 +97,12 @@ impl Actor {
         }
     }
 
-    /// Stored as `actor_id`: the user/session/token id, the period id for a period
-    /// link, or the job name for a system actor.
+    /// Stored as `actor_id`: the user/session/token id, the member (person) id, the
+    /// period id for a period link, or the job name for a system actor.
     pub fn id(&self) -> Option<&str> {
         match self {
             Self::User { id, .. } | Self::Session { id } | Self::ApiToken { id } => Some(id),
+            Self::Member { person_id, .. } => Some(person_id),
             Self::PeriodLink { period_id } => Some(period_id),
             Self::System { job } => Some(job),
             Self::Unauthenticated | Self::Unknown => None,
@@ -102,7 +112,7 @@ impl Actor {
     /// Stored as `actor_via`.
     pub fn via(&self) -> Option<&str> {
         match self {
-            Self::User { via, .. } => via.as_deref(),
+            Self::User { via, .. } | Self::Member { via, .. } => via.as_deref(),
             _ => None,
         }
     }
@@ -134,6 +144,14 @@ impl Actor {
             Some(AuthInfo::ApiToken { id, .. }) => Self::ApiToken { id: id.clone() },
             Some(AuthInfo::PeriodLink { period_id }) => Self::PeriodLink {
                 period_id: period_id.clone(),
+            },
+            Some(AuthInfo::Member {
+                person_id,
+                grant_id,
+                ..
+            }) => Self::Member {
+                person_id: person_id.clone(),
+                via: Some(format!("oauth_grant:{grant_id}")),
             },
         }
     }
@@ -188,6 +206,19 @@ pub fn current() -> AuditContext {
         warn!("audited write made with no AUDIT_CONTEXT in scope; recording the actor as unknown");
         AuditContext::new(Actor::Unknown, None)
     })
+}
+
+/// The person ID of the member acting in the context in scope, if a member is, without
+/// the warning [`current`] gives when there is no context. Used to keep members from
+/// being notified of their own actions.
+pub fn current_member_id() -> Option<String> {
+    AUDIT_CONTEXT
+        .try_with(|c| match &c.actor {
+            Actor::Member { person_id, .. } => Some(person_id.clone()),
+            _ => None,
+        })
+        .ok()
+        .flatten()
 }
 
 /// Just the client IP of the context in scope, without the warning [`current`] gives.
@@ -310,6 +341,7 @@ fn user_fields(u: &User) -> Fields {
             "location_read_only_grants",
             string_set(&u.location_read_only_grants),
         )
+        .with("person_id", u.person_id.as_deref().and_then(text))
         .with("email_config", {
             // An empty config is the default, not something worth listing.
             (!u.email_config.is_empty())
@@ -367,6 +399,9 @@ pub fn user_update_changes(
         }
         db::UserUpdateShape::DisaggregateVirtualPeriods { value } => {
             after.set("disaggregate_virtual_periods", flag(*value));
+        }
+        db::UserUpdateShape::Person { person_id } => {
+            after.set("person_id", person_id.and_then(text));
         }
     }
     diff(&before, &after)
@@ -612,6 +647,7 @@ pub fn period_update_changes(
             category_id,
             signed_out_session_id,
             comment,
+            ..
         } => {
             after.set("start_time", Some(json!(start_time)));
             after.set("end_time", Some(json!(end_time)));
@@ -929,12 +965,16 @@ fn category_fields(c: &Category) -> Fields {
             "nitc_participant_type",
             opt_text(c.nitc_participant_type.as_deref()),
         )
+        .with("group_name", opt_text(c.group_name.as_deref()))
+        .with("short_name", opt_text(c.short_name.as_deref()))
+        .with("icon", opt_text(c.icon.as_deref()))
 }
 
 pub fn category_create_changes(c: &Category) -> Vec<AuditFieldChange> {
     creation(&category_fields(c))
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn category_update_changes(
     before: Option<&Category>,
     name: &str,
@@ -942,6 +982,7 @@ pub fn category_update_changes(
     is_virtual: bool,
     nitc_group_id: Option<&str>,
     nitc_participant_type: Option<&str>,
+    display: &db::CategoryDisplay,
 ) -> Vec<AuditFieldChange> {
     let before = before.map(category_fields).unwrap_or_default();
     let after = before
@@ -950,7 +991,10 @@ pub fn category_update_changes(
         .with("enabled", flag(enabled))
         .with("is_virtual", flag(is_virtual))
         .with("nitc_group_id", opt_text(nitc_group_id))
-        .with("nitc_participant_type", opt_text(nitc_participant_type));
+        .with("nitc_participant_type", opt_text(nitc_participant_type))
+        .with("group_name", opt_text(display.group_name.as_deref()))
+        .with("short_name", opt_text(display.short_name.as_deref()))
+        .with("icon", opt_text(display.icon.as_deref()));
     diff(&before, &after)
 }
 
@@ -979,6 +1023,378 @@ fn nitc_tag_fields(t: &db::NitcTag) -> Fields {
         .with("primary_activity_name", text(&t.primary_activity_name))
 }
 
+// ── Tasks ────────────────────────────────────────────────────────────────────
+
+fn date(v: Option<chrono::NaiveDate>) -> Option<Value> {
+    v.map(|d| Value::String(d.format("%Y-%m-%d").to_string()))
+}
+
+/// Everything about a task a person decides. `version`, `open` and the timestamps are
+/// bookkeeping, and the completion fields say only what the entry's actor already does.
+fn task_fields(t: &db::Task) -> Fields {
+    Fields::default()
+        .with("title", text(&t.title))
+        .with("description", opt_text(t.description.as_deref()))
+        .with("list_id", opt_text(t.list_id.as_deref()))
+        .with("due_date", date(t.due_date))
+        .with("show_date", date(Some(t.show_date)))
+        .with(
+            "recurrence",
+            t.recurrence
+                .map(|r| json!({ "every": r.every, "unit": r.unit.as_str() })),
+        )
+        .with("completed_at", opt_num(t.completed_at))
+        .with("last_completed_at", opt_num(t.last_completed_at))
+}
+
+pub fn task_create_changes(t: &db::Task) -> Vec<AuditFieldChange> {
+    creation(&task_fields(t))
+}
+
+/// The diff of one task write, from the task as it was (if it could be read) to how
+/// the write left it.
+pub fn task_update_changes(before: Option<&db::Task>, after: &db::Task) -> Vec<AuditFieldChange> {
+    let before = before.map(task_fields).unwrap_or_default();
+    let after = if after.deleted.is_some() {
+        Fields::default()
+    } else {
+        task_fields(after)
+    };
+    diff(&before, &after)
+}
+
+fn task_list_fields(l: &db::TaskList) -> Fields {
+    Fields::default().with("name", text(&l.name))
+}
+
+pub fn task_list_update_changes(
+    before: Option<&db::TaskList>,
+    after: &db::TaskList,
+) -> Vec<AuditFieldChange> {
+    let before = before.map(task_list_fields).unwrap_or_default();
+    let after = if after.deleted.is_some() {
+        Fields::default()
+    } else {
+        task_list_fields(after)
+    };
+    diff(&before, &after)
+}
+
+// ── Notes ────────────────────────────────────────────────────────────────────
+
+/// Everything about a note a person decides. `version` and the timestamps are
+/// bookkeeping.
+fn note_fields(n: &db::Note) -> Fields {
+    Fields::default()
+        .with("title", text(&n.title))
+        .with(
+            "content",
+            opt_text(Some(n.content.as_str()).filter(|c| !c.is_empty())),
+        )
+        .with("folder_id", opt_text(n.folder_id.as_deref()))
+}
+
+pub fn note_create_changes(n: &db::Note) -> Vec<AuditFieldChange> {
+    creation(&note_fields(n))
+}
+
+/// The diff of one note write, from the note as it was (if it could be read) to how
+/// the write left it.
+pub fn note_update_changes(before: Option<&db::Note>, after: &db::Note) -> Vec<AuditFieldChange> {
+    let before = before.map(note_fields).unwrap_or_default();
+    let after = if after.deleted.is_some() {
+        Fields::default()
+    } else {
+        note_fields(after)
+    };
+    diff(&before, &after)
+}
+
+fn note_folder_fields(f: &db::NoteFolder) -> Fields {
+    Fields::default().with("name", text(&f.name))
+}
+
+pub fn note_folder_update_changes(
+    before: Option<&db::NoteFolder>,
+    after: &db::NoteFolder,
+) -> Vec<AuditFieldChange> {
+    let before = before.map(note_folder_fields).unwrap_or_default();
+    let after = if after.deleted.is_some() {
+        Fields::default()
+    } else {
+        note_folder_fields(after)
+    };
+    diff(&before, &after)
+}
+
+// ── Map ──────────────────────────────────────────────────────────────────────
+
+/// Everything about a map pin a person decides. `version` and the timestamps are
+/// bookkeeping.
+fn map_pin_fields(p: &db::MapPin) -> Fields {
+    Fields::default()
+        .with("title", text(&p.title))
+        .with("latitude", Some(json!(p.latitude)))
+        .with("longitude", Some(json!(p.longitude)))
+        .with(
+            "address",
+            opt_text(Some(p.address.as_str()).filter(|a| !a.is_empty())),
+        )
+        .with(
+            "note",
+            opt_text(Some(p.note.as_str()).filter(|n| !n.is_empty())),
+        )
+        .with("layer_id", opt_text(p.layer_id.as_deref()))
+        .with("pin_type", opt_text(p.pin_type.as_deref()))
+}
+
+pub fn map_pin_create_changes(p: &db::MapPin) -> Vec<AuditFieldChange> {
+    creation(&map_pin_fields(p))
+}
+
+/// The diff of one map pin write, from the pin as it was (if it could be read) to how
+/// the write left it.
+pub fn map_pin_update_changes(
+    before: Option<&db::MapPin>,
+    after: &db::MapPin,
+) -> Vec<AuditFieldChange> {
+    let before = before.map(map_pin_fields).unwrap_or_default();
+    let after = if after.deleted.is_some() {
+        Fields::default()
+    } else {
+        map_pin_fields(after)
+    };
+    diff(&before, &after)
+}
+
+fn map_layer_fields(l: &db::MapLayer) -> Fields {
+    Fields::default().with("name", text(&l.name))
+}
+
+pub fn map_layer_update_changes(
+    before: Option<&db::MapLayer>,
+    after: &db::MapLayer,
+) -> Vec<AuditFieldChange> {
+    let before = before.map(map_layer_fields).unwrap_or_default();
+    let after = if after.deleted.is_some() {
+        Fields::default()
+    } else {
+        map_layer_fields(after)
+    };
+    diff(&before, &after)
+}
+
+// ── Calendar ─────────────────────────────────────────────────────────────────
+
+fn calendar_fields(c: &db::Calendar) -> Fields {
+    Fields::default()
+        .with("name", text(&c.name))
+        .with("color", text(&c.color))
+}
+
+pub fn calendar_update_changes(
+    before: Option<&db::Calendar>,
+    after: &db::Calendar,
+) -> Vec<AuditFieldChange> {
+    let before = before.map(calendar_fields).unwrap_or_default();
+    let after = if after.deleted.is_some() {
+        Fields::default()
+    } else {
+        calendar_fields(after)
+    };
+    diff(&before, &after)
+}
+
+/// Everything about an event a person decides. `last_end`, `version` and the
+/// timestamps are bookkeeping.
+fn calendar_event_fields(e: &db::CalendarEvent) -> Fields {
+    use crate::calendar::{Timing, format_date};
+    let (start_time, end_time, start_date, end_date) = match e.timing {
+        Timing::Timed { start, end } => (Some(json!(start)), Some(json!(end)), None, None),
+        Timing::AllDay { start, end } => (
+            None,
+            None,
+            Some(json!(format_date(start))),
+            Some(json!(format_date(end))),
+        ),
+    };
+    Fields::default()
+        .with("title", text(&e.title))
+        .with(
+            "description",
+            opt_text(Some(e.description.as_str()).filter(|d| !d.is_empty())),
+        )
+        .with("calendar_id", opt_text(e.calendar_id.as_deref()))
+        .with("start_time", start_time)
+        .with("end_time", end_time)
+        .with("start_date", start_date)
+        .with("end_date", end_date)
+        .with("repeat", e.recurrence.map(|r| json!(r.repeat.as_str())))
+        .with(
+            "repeat_until",
+            e.recurrence
+                .and_then(|r| r.until)
+                .map(|d| json!(format_date(d))),
+        )
+}
+
+pub fn calendar_event_create_changes(e: &db::CalendarEvent) -> Vec<AuditFieldChange> {
+    creation(&calendar_event_fields(e))
+}
+
+pub fn calendar_event_update_changes(
+    before: Option<&db::CalendarEvent>,
+    after: &db::CalendarEvent,
+) -> Vec<AuditFieldChange> {
+    let before = before.map(calendar_event_fields).unwrap_or_default();
+    let after = if after.deleted.is_some() {
+        Fields::default()
+    } else {
+        calendar_event_fields(after)
+    };
+    diff(&before, &after)
+}
+
+// ── On Call ──────────────────────────────────────────────────────────────────
+
+/// Everything about an on-call role a person decides, including who is in it.
+fn on_call_role_fields(r: &db::OnCallRole) -> Fields {
+    Fields::default()
+        .with("name", text(&r.name))
+        .with(
+            "description",
+            opt_text(Some(r.description.as_str()).filter(|d| !d.is_empty())),
+        )
+        .with("phone", opt_text(r.phone.as_deref()))
+        .with(
+            "primary_person_id",
+            opt_text(r.primary_person_id.as_deref()),
+        )
+        .with("secondary_person_ids", string_set(&r.secondary_person_ids))
+}
+
+pub fn on_call_role_create_changes(r: &db::OnCallRole) -> Vec<AuditFieldChange> {
+    creation(&on_call_role_fields(r))
+}
+
+/// The diff of one on-call role write, from the role as it was (if it could be read)
+/// to how the write left it.
+pub fn on_call_role_update_changes(
+    before: Option<&db::OnCallRole>,
+    after: &db::OnCallRole,
+) -> Vec<AuditFieldChange> {
+    let before = before.map(on_call_role_fields).unwrap_or_default();
+    let after = if after.deleted.is_some() {
+        Fields::default()
+    } else {
+        on_call_role_fields(after)
+    };
+    diff(&before, &after)
+}
+
+// ── Equipment ────────────────────────────────────────────────────────────────
+
+/// Everything about a piece of equipment a person decides through an edit. Its status
+/// is set by log entries, which are audited as [`AuditEntityType::EquipmentLogEntry`].
+fn equipment_fields(e: &db::Equipment) -> Fields {
+    Fields::default()
+        .with("equipment_type", text(&e.equipment_type))
+        .with("name", text(&e.name))
+        .with(
+            "description",
+            opt_text(Some(e.description.as_str()).filter(|d| !d.is_empty())),
+        )
+}
+
+/// A new piece of equipment, with the status it was added in.
+pub fn equipment_create_changes(e: &db::Equipment) -> Vec<AuditFieldChange> {
+    creation(&equipment_fields(e).with("status", text(&e.status)))
+}
+
+pub fn equipment_update_changes(
+    before: Option<&db::Equipment>,
+    after: &db::Equipment,
+) -> Vec<AuditFieldChange> {
+    let before = before.map(equipment_fields).unwrap_or_default();
+    let after = if after.deleted.is_some() {
+        Fields::default()
+    } else {
+        equipment_fields(after)
+    };
+    diff(&before, &after)
+}
+
+/// Everything about a reservation a person decides. `version` and the timestamps are
+/// bookkeeping.
+fn equipment_reservation_fields(r: &db::EquipmentReservation) -> Fields {
+    Fields::default()
+        .with("equipment_ids", string_set(&r.equipment_ids))
+        .with("start_time", Some(json!(r.start_time)))
+        .with("end_time", Some(json!(r.end_time)))
+        .with(
+            "reserved_for_person_id",
+            opt_text(r.reserved_for_person_id.as_deref()),
+        )
+        .with(
+            "reserved_for_text",
+            opt_text(r.reserved_for_text.as_deref()),
+        )
+        .with(
+            "description",
+            opt_text(Some(r.description.as_str()).filter(|d| !d.is_empty())),
+        )
+}
+
+pub fn equipment_reservation_create_changes(r: &db::EquipmentReservation) -> Vec<AuditFieldChange> {
+    creation(&equipment_reservation_fields(r))
+}
+
+pub fn equipment_reservation_update_changes(
+    before: Option<&db::EquipmentReservation>,
+    after: &db::EquipmentReservation,
+) -> Vec<AuditFieldChange> {
+    let before = before.map(equipment_reservation_fields).unwrap_or_default();
+    let after = if after.deleted.is_some() {
+        Fields::default()
+    } else {
+        equipment_reservation_fields(after)
+    };
+    diff(&before, &after)
+}
+
+pub fn equipment_log_entry_changes(e: &db::EquipmentLogEntry) -> Vec<AuditFieldChange> {
+    creation(
+        &Fields::default()
+            .with("equipment_id", text(&e.equipment_id))
+            .with("kind", text(e.kind.as_str()))
+            .with("from_status", opt_text(e.from_status.as_deref()))
+            .with("status", text(&e.status))
+            .with(
+                "comment",
+                opt_text(Some(e.comment.as_str()).filter(|c| !c.is_empty())),
+            ),
+    )
+}
+
+// ── Locate ───────────────────────────────────────────────────────────────────
+
+/// What a person decided about a location share: how long, and how often. Positions
+/// are left out: they change every minute or so, and the audit log is kept forever.
+fn location_share_fields(s: &db::LocationShare) -> Fields {
+    Fields::default()
+        .with("started_at", num(s.started_at))
+        .with("ends_at", num(s.ends_at))
+        .with("interval_secs", num(s.interval_secs))
+}
+
+pub fn location_share_create_changes(s: &db::LocationShare) -> Vec<AuditFieldChange> {
+    creation(&location_share_fields(s))
+}
+
+pub fn location_share_delete_changes(s: &db::LocationShare) -> Vec<AuditFieldChange> {
+    removal(&location_share_fields(s))
+}
+
 // ── Credentials and grants ───────────────────────────────────────────────────
 
 /// Neither the token nor its hash is listed — just whose it is and when it lapses.
@@ -992,7 +1408,8 @@ pub fn user_token_create_changes(t: &db::UserToken) -> Vec<AuditFieldChange> {
 
 fn oauth_grant_fields(g: &OAuthGrant) -> Fields {
     Fields::default()
-        .with("user_id", text(&g.user_id))
+        .with("user_id", opt_text(g.user_id.as_deref()))
+        .with("person_id", opt_text(g.person_id.as_deref()))
         .with("client_id", text(&g.client_id))
         .with("client_name", text(&g.client_name))
         .with("redirect_uri", text(&g.redirect_uri))
@@ -1009,7 +1426,8 @@ pub fn oauth_grant_create_changes(g: &OAuthGrant) -> Vec<AuditFieldChange> {
 pub fn oauth_grant_delete_changes(g: &OAuthGrant) -> Vec<AuditFieldChange> {
     removal(
         &Fields::default()
-            .with("user_id", text(&g.user_id))
+            .with("user_id", opt_text(g.user_id.as_deref()))
+            .with("person_id", opt_text(g.person_id.as_deref()))
             .with("client_id", text(&g.client_id))
             .with("client_name", text(&g.client_name)),
     )
@@ -1561,10 +1979,18 @@ impl<D: db::Handler> db::Handler for AuditingHandler<D> {
         is_virtual: bool,
         nitc_group_id: Option<&str>,
         nitc_participant_type: Option<&str>,
+        display: &db::CategoryDisplay,
     ) -> db::Result<Category> {
         let category = self
             .inner
-            .create_category(id, name, is_virtual, nitc_group_id, nitc_participant_type)
+            .create_category(
+                id,
+                name,
+                is_virtual,
+                nitc_group_id,
+                nitc_participant_type,
+                display,
+            )
             .await?;
         self.record_create(
             AuditEntityType::Category,
@@ -1577,6 +2003,7 @@ impl<D: db::Handler> db::Handler for AuditingHandler<D> {
         Ok(category)
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn update_category(
         &self,
         id: &str,
@@ -1585,6 +2012,7 @@ impl<D: db::Handler> db::Handler for AuditingHandler<D> {
         is_virtual: bool,
         nitc_group_id: Option<&str>,
         nitc_participant_type: Option<&str>,
+        display: &db::CategoryDisplay,
     ) -> db::Result<()> {
         let before = self.before_category(id).await;
         let changes = category_update_changes(
@@ -1594,6 +2022,7 @@ impl<D: db::Handler> db::Handler for AuditingHandler<D> {
             is_virtual,
             nitc_group_id,
             nitc_participant_type,
+            display,
         );
         self.inner
             .update_category(
@@ -1603,6 +2032,7 @@ impl<D: db::Handler> db::Handler for AuditingHandler<D> {
                 is_virtual,
                 nitc_group_id,
                 nitc_participant_type,
+                display,
             )
             .await?;
         self.record(Recorded {
@@ -1867,6 +2297,513 @@ impl<D: db::Handler> db::Handler for AuditingHandler<D> {
         Ok(())
     }
 
+    async fn create_task(&self, task: db::NewTask<'_>) -> db::Result<db::Task> {
+        let task = self.inner.create_task(task).await?;
+        self.record_create(
+            AuditEntityType::Task,
+            &task.id,
+            Some(task.title.clone()),
+            vec![task.location_id.clone()],
+            task_create_changes(&task),
+        )
+        .await;
+        Ok(task)
+    }
+
+    async fn update_task(&self, id: &str, change: db::TaskUpdateShape<'_>) -> db::Result<db::Task> {
+        let action = match change {
+            db::TaskUpdateShape::Delete { .. } => AuditAction::Delete,
+            _ => AuditAction::Update,
+        };
+        let before = self.before("task", id, first(self.inner.get_tasks(&[id]).await));
+        let after = self.inner.update_task(id, change).await?;
+        self.record(Recorded {
+            entity_type: AuditEntityType::Task,
+            entity_id: id,
+            action,
+            label: Some(after.title.clone()),
+            location_ids: vec![after.location_id.clone()],
+            changes: task_update_changes(before.as_ref(), &after),
+        })
+        .await;
+        Ok(after)
+    }
+
+    async fn create_task_list(
+        &self,
+        location_id: &str,
+        name: &str,
+        created_by: Option<&str>,
+    ) -> db::Result<db::TaskList> {
+        let list = self
+            .inner
+            .create_task_list(location_id, name, created_by)
+            .await?;
+        self.record_create(
+            AuditEntityType::TaskList,
+            &list.id,
+            Some(list.name.clone()),
+            vec![list.location_id.clone()],
+            creation(&task_list_fields(&list)),
+        )
+        .await;
+        Ok(list)
+    }
+
+    async fn update_task_list(
+        &self,
+        id: &str,
+        change: db::TaskListUpdateShape<'_>,
+    ) -> db::Result<db::TaskList> {
+        let action = match change {
+            db::TaskListUpdateShape::Delete => AuditAction::Delete,
+            db::TaskListUpdateShape::Name { .. } => AuditAction::Update,
+        };
+        let before = self.before(
+            "task list",
+            id,
+            first(self.inner.get_task_lists(&[id]).await),
+        );
+        let after = self.inner.update_task_list(id, change).await?;
+        self.record(Recorded {
+            entity_type: AuditEntityType::TaskList,
+            entity_id: id,
+            action,
+            label: Some(after.name.clone()),
+            location_ids: vec![after.location_id.clone()],
+            changes: task_list_update_changes(before.as_ref(), &after),
+        })
+        .await;
+        Ok(after)
+    }
+
+    async fn create_note(&self, note: db::NewNote<'_>) -> db::Result<db::Note> {
+        let note = self.inner.create_note(note).await?;
+        self.record_create(
+            AuditEntityType::Note,
+            &note.id,
+            Some(note.title.clone()),
+            vec![note.location_id.clone()],
+            note_create_changes(&note),
+        )
+        .await;
+        Ok(note)
+    }
+
+    async fn update_note(&self, id: &str, change: db::NoteUpdateShape<'_>) -> db::Result<db::Note> {
+        let action = match change {
+            db::NoteUpdateShape::Delete { .. } => AuditAction::Delete,
+            db::NoteUpdateShape::Fields { .. } => AuditAction::Update,
+        };
+        let before = self.before("note", id, first(self.inner.get_notes(&[id]).await));
+        let after = self.inner.update_note(id, change).await?;
+        self.record(Recorded {
+            entity_type: AuditEntityType::Note,
+            entity_id: id,
+            action,
+            label: Some(after.title.clone()),
+            location_ids: vec![after.location_id.clone()],
+            changes: note_update_changes(before.as_ref(), &after),
+        })
+        .await;
+        Ok(after)
+    }
+
+    async fn create_note_folder(
+        &self,
+        location_id: &str,
+        name: &str,
+        created_by: Option<&str>,
+    ) -> db::Result<db::NoteFolder> {
+        let folder = self
+            .inner
+            .create_note_folder(location_id, name, created_by)
+            .await?;
+        self.record_create(
+            AuditEntityType::NoteFolder,
+            &folder.id,
+            Some(folder.name.clone()),
+            vec![folder.location_id.clone()],
+            creation(&note_folder_fields(&folder)),
+        )
+        .await;
+        Ok(folder)
+    }
+
+    async fn update_note_folder(
+        &self,
+        id: &str,
+        change: db::NoteFolderUpdateShape<'_>,
+    ) -> db::Result<db::NoteFolder> {
+        let action = match change {
+            db::NoteFolderUpdateShape::Delete => AuditAction::Delete,
+            db::NoteFolderUpdateShape::Name { .. } => AuditAction::Update,
+        };
+        let before = self.before(
+            "note folder",
+            id,
+            first(self.inner.get_note_folders(&[id]).await),
+        );
+        let after = self.inner.update_note_folder(id, change).await?;
+        self.record(Recorded {
+            entity_type: AuditEntityType::NoteFolder,
+            entity_id: id,
+            action,
+            label: Some(after.name.clone()),
+            location_ids: vec![after.location_id.clone()],
+            changes: note_folder_update_changes(before.as_ref(), &after),
+        })
+        .await;
+        Ok(after)
+    }
+
+    async fn create_map_pin(&self, pin: db::NewMapPin<'_>) -> db::Result<db::MapPin> {
+        let pin = self.inner.create_map_pin(pin).await?;
+        self.record_create(
+            AuditEntityType::MapPin,
+            &pin.id,
+            Some(pin.title.clone()),
+            vec![pin.location_id.clone()],
+            map_pin_create_changes(&pin),
+        )
+        .await;
+        Ok(pin)
+    }
+
+    async fn update_map_pin(
+        &self,
+        id: &str,
+        change: db::MapPinUpdateShape<'_>,
+    ) -> db::Result<db::MapPin> {
+        let action = match change {
+            db::MapPinUpdateShape::Delete { .. } => AuditAction::Delete,
+            db::MapPinUpdateShape::Fields { .. } => AuditAction::Update,
+        };
+        let before = self.before("map pin", id, first(self.inner.get_map_pins(&[id]).await));
+        let after = self.inner.update_map_pin(id, change).await?;
+        self.record(Recorded {
+            entity_type: AuditEntityType::MapPin,
+            entity_id: id,
+            action,
+            label: Some(after.title.clone()),
+            location_ids: vec![after.location_id.clone()],
+            changes: map_pin_update_changes(before.as_ref(), &after),
+        })
+        .await;
+        Ok(after)
+    }
+
+    async fn create_map_layer(
+        &self,
+        location_id: &str,
+        name: &str,
+        created_by: Option<&str>,
+    ) -> db::Result<db::MapLayer> {
+        let layer = self
+            .inner
+            .create_map_layer(location_id, name, created_by)
+            .await?;
+        self.record_create(
+            AuditEntityType::MapLayer,
+            &layer.id,
+            Some(layer.name.clone()),
+            vec![layer.location_id.clone()],
+            creation(&map_layer_fields(&layer)),
+        )
+        .await;
+        Ok(layer)
+    }
+
+    async fn update_map_layer(
+        &self,
+        id: &str,
+        change: db::MapLayerUpdateShape<'_>,
+    ) -> db::Result<db::MapLayer> {
+        let action = match change {
+            db::MapLayerUpdateShape::Delete => AuditAction::Delete,
+            db::MapLayerUpdateShape::Name { .. } => AuditAction::Update,
+        };
+        let before = self.before(
+            "map layer",
+            id,
+            first(self.inner.get_map_layers(&[id]).await),
+        );
+        let after = self.inner.update_map_layer(id, change).await?;
+        self.record(Recorded {
+            entity_type: AuditEntityType::MapLayer,
+            entity_id: id,
+            action,
+            label: Some(after.name.clone()),
+            location_ids: vec![after.location_id.clone()],
+            changes: map_layer_update_changes(before.as_ref(), &after),
+        })
+        .await;
+        Ok(after)
+    }
+
+    async fn create_on_call_role(&self, role: db::NewOnCallRole<'_>) -> db::Result<db::OnCallRole> {
+        let role = self.inner.create_on_call_role(role).await?;
+        self.record_create(
+            AuditEntityType::OnCallRole,
+            &role.id,
+            Some(role.name.clone()),
+            vec![role.location_id.clone()],
+            on_call_role_create_changes(&role),
+        )
+        .await;
+        Ok(role)
+    }
+
+    async fn update_on_call_role(
+        &self,
+        id: &str,
+        change: db::OnCallRoleUpdateShape<'_>,
+    ) -> db::Result<db::OnCallRole> {
+        let action = match change {
+            db::OnCallRoleUpdateShape::Delete { .. } => AuditAction::Delete,
+            db::OnCallRoleUpdateShape::Fields { .. } => AuditAction::Update,
+        };
+        let before = self.before(
+            "on-call role",
+            id,
+            first(self.inner.get_on_call_roles(&[id]).await),
+        );
+        let after = self.inner.update_on_call_role(id, change).await?;
+        self.record(Recorded {
+            entity_type: AuditEntityType::OnCallRole,
+            entity_id: id,
+            action,
+            label: Some(after.name.clone()),
+            location_ids: vec![after.location_id.clone()],
+            changes: on_call_role_update_changes(before.as_ref(), &after),
+        })
+        .await;
+        Ok(after)
+    }
+
+    async fn create_equipment(
+        &self,
+        equipment: db::NewEquipment<'_>,
+    ) -> db::Result<(db::Equipment, db::EquipmentLogEntry)> {
+        let (equipment, entry) = self.inner.create_equipment(equipment).await?;
+        // The first log entry is part of this one event, so it is not recorded apart.
+        self.record_create(
+            AuditEntityType::Equipment,
+            &equipment.id,
+            Some(equipment.name.clone()),
+            vec![equipment.location_id.clone()],
+            equipment_create_changes(&equipment),
+        )
+        .await;
+        Ok((equipment, entry))
+    }
+
+    async fn update_equipment(
+        &self,
+        id: &str,
+        change: db::EquipmentUpdateShape<'_>,
+    ) -> db::Result<db::Equipment> {
+        let action = match change {
+            db::EquipmentUpdateShape::Delete { .. } => AuditAction::Delete,
+            db::EquipmentUpdateShape::Fields { .. } => AuditAction::Update,
+        };
+        let before = self.before(
+            "equipment",
+            id,
+            first(self.inner.get_equipment(&[id]).await),
+        );
+        let after = self.inner.update_equipment(id, change).await?;
+        self.record(Recorded {
+            entity_type: AuditEntityType::Equipment,
+            entity_id: id,
+            action,
+            label: Some(after.name.clone()),
+            location_ids: vec![after.location_id.clone()],
+            changes: equipment_update_changes(before.as_ref(), &after),
+        })
+        .await;
+        Ok(after)
+    }
+
+    async fn add_equipment_log_entry(
+        &self,
+        entry: db::NewEquipmentLogEntry<'_>,
+    ) -> db::Result<(db::Equipment, db::EquipmentLogEntry)> {
+        let (equipment, entry) = self.inner.add_equipment_log_entry(entry).await?;
+        self.record_create(
+            AuditEntityType::EquipmentLogEntry,
+            &entry.id,
+            Some(equipment.name.clone()),
+            vec![entry.location_id.clone()],
+            equipment_log_entry_changes(&entry),
+        )
+        .await;
+        Ok((equipment, entry))
+    }
+
+    async fn create_equipment_reservation(
+        &self,
+        reservation: db::NewEquipmentReservation<'_>,
+    ) -> db::Result<db::EquipmentReservation> {
+        let reservation = self.inner.create_equipment_reservation(reservation).await?;
+        self.record_create(
+            AuditEntityType::EquipmentReservation,
+            &reservation.id,
+            reservation.reserved_for_text.clone(),
+            vec![reservation.location_id.clone()],
+            equipment_reservation_create_changes(&reservation),
+        )
+        .await;
+        Ok(reservation)
+    }
+
+    async fn update_equipment_reservation(
+        &self,
+        id: &str,
+        change: db::EquipmentReservationUpdateShape<'_>,
+    ) -> db::Result<db::EquipmentReservation> {
+        let action = match change {
+            db::EquipmentReservationUpdateShape::Delete { .. } => AuditAction::Delete,
+            db::EquipmentReservationUpdateShape::Fields { .. } => AuditAction::Update,
+        };
+        let before = self.before(
+            "equipment reservation",
+            id,
+            first(self.inner.get_equipment_reservations(&[id]).await),
+        );
+        let after = self.inner.update_equipment_reservation(id, change).await?;
+        self.record(Recorded {
+            entity_type: AuditEntityType::EquipmentReservation,
+            entity_id: id,
+            action,
+            label: after.reserved_for_text.clone(),
+            location_ids: vec![after.location_id.clone()],
+            changes: equipment_reservation_update_changes(before.as_ref(), &after),
+        })
+        .await;
+        Ok(after)
+    }
+
+    async fn create_calendar(
+        &self,
+        location_id: &str,
+        name: &str,
+        color: &str,
+        created_by: Option<&str>,
+    ) -> db::Result<db::Calendar> {
+        let calendar = self
+            .inner
+            .create_calendar(location_id, name, color, created_by)
+            .await?;
+        self.record_create(
+            AuditEntityType::Calendar,
+            &calendar.id,
+            Some(calendar.name.clone()),
+            vec![calendar.location_id.clone()],
+            creation(&calendar_fields(&calendar)),
+        )
+        .await;
+        Ok(calendar)
+    }
+
+    async fn update_calendar(
+        &self,
+        id: &str,
+        change: db::CalendarUpdateShape<'_>,
+    ) -> db::Result<db::Calendar> {
+        let action = match change {
+            db::CalendarUpdateShape::Delete => AuditAction::Delete,
+            db::CalendarUpdateShape::Fields { .. } => AuditAction::Update,
+        };
+        let before = self.before("calendar", id, first(self.inner.get_calendars(&[id]).await));
+        let after = self.inner.update_calendar(id, change).await?;
+        self.record(Recorded {
+            entity_type: AuditEntityType::Calendar,
+            entity_id: id,
+            action,
+            label: Some(after.name.clone()),
+            location_ids: vec![after.location_id.clone()],
+            changes: calendar_update_changes(before.as_ref(), &after),
+        })
+        .await;
+        Ok(after)
+    }
+
+    async fn create_calendar_event(
+        &self,
+        event: db::NewCalendarEvent<'_>,
+    ) -> db::Result<db::CalendarEvent> {
+        let event = self.inner.create_calendar_event(event).await?;
+        self.record_create(
+            AuditEntityType::CalendarEvent,
+            &event.id,
+            Some(event.title.clone()),
+            vec![event.location_id.clone()],
+            calendar_event_create_changes(&event),
+        )
+        .await;
+        Ok(event)
+    }
+
+    async fn update_calendar_event(
+        &self,
+        id: &str,
+        change: db::CalendarEventUpdateShape<'_>,
+    ) -> db::Result<db::CalendarEvent> {
+        let action = match change {
+            db::CalendarEventUpdateShape::Delete { .. } => AuditAction::Delete,
+            db::CalendarEventUpdateShape::Fields { .. } => AuditAction::Update,
+        };
+        let before = self.before(
+            "calendar event",
+            id,
+            first(self.inner.get_calendar_events(&[id]).await),
+        );
+        let after = self.inner.update_calendar_event(id, change).await?;
+        self.record(Recorded {
+            entity_type: AuditEntityType::CalendarEvent,
+            entity_id: id,
+            action,
+            label: Some(after.title.clone()),
+            location_ids: vec![after.location_id.clone()],
+            changes: calendar_event_update_changes(before.as_ref(), &after),
+        })
+        .await;
+        Ok(after)
+    }
+
+    async fn put_location_share(&self, share: &db::LocationShare) -> db::Result<()> {
+        self.inner.put_location_share(share).await?;
+        self.record_create(
+            AuditEntityType::LocationShare,
+            &share.person_id,
+            None,
+            vec![share.location_id.clone()],
+            location_share_create_changes(share),
+        )
+        .await;
+        Ok(())
+    }
+
+    async fn delete_location_share(
+        &self,
+        person_id: &str,
+    ) -> db::Result<Option<db::LocationShare>> {
+        let removed = self.inner.delete_location_share(person_id).await?;
+        if let Some(share) = &removed {
+            self.record(Recorded {
+                entity_type: AuditEntityType::LocationShare,
+                entity_id: person_id,
+                action: AuditAction::Delete,
+                label: None,
+                location_ids: vec![share.location_id.clone()],
+                changes: location_share_delete_changes(share),
+            })
+            .await;
+        }
+        Ok(removed)
+    }
+
     // ── Deliberately not audited ─────────────────────────────────────────────
     //
     // Bookkeeping that is not a business change, or that is high-volume plumbing:
@@ -1878,12 +2815,100 @@ impl<D: db::Handler> db::Handler for AuditingHandler<D> {
     //     `bump_*_version`, `set_*`, `*_synced`, `update_period_nitc_exported`,
     //     `clear_period_nitc_participant`): written by the export worker, not by a
     //     person, and replayed on every export.
+    //   * `stamp_person_contact`: re-orders a person in the contacts feed without
+    //     changing any field; the change that prompted it is audited where it is made.
+    //   * `update_location_share_position`: a phone reporting where it is every minute
+    //     or so while sharing. Starting and stopping a share are audited.
+    //   * the notification methods (`put_notifications`, `mark_notifications_read`):
+    //     a user's inbox is plumbing. The business write that caused a notification is
+    //     audited where it is made, and read state is a personal marker like
+    //     `TouchLastUsed`. Reads pass through.
     // The excluded *shapes* of audited methods (`AccessTime`, session `Info`,
     // `TouchLastUsed`, `LastSyncTime`) are handled inside those methods above.
     // `put_audit_entry` itself must of course not recurse into auditing.
 
+    async fn stamp_person_contact(&self, id: &str) -> db::Result<()> {
+        self.inner.stamp_person_contact(id).await
+    }
+
+    // Not audited: the key is derived from the email, which is audited when it is set.
+    async fn stamp_person_email_key(&self, id: &str, email: &str) -> db::Result<()> {
+        self.inner.stamp_person_email_key(id, email).await
+    }
+
+    async fn update_location_share_position(
+        &self,
+        person_id: &str,
+        position: &db::SharedPosition,
+        updated_at: u64,
+        expires_at: u64,
+    ) -> db::Result<db::LocationShare> {
+        self.inner
+            .update_location_share_position(person_id, position, updated_at, expires_at)
+            .await
+    }
+
+    async fn get_location_shares<T: AsRef<str> + Sync>(
+        &self,
+        person_ids: &[T],
+    ) -> db::Result<Vec<Option<db::LocationShare>>> {
+        self.inner.get_location_shares(person_ids).await
+    }
+
+    async fn list_location_shares(&self, location_id: &str) -> db::Result<Vec<db::LocationShare>> {
+        self.inner.list_location_shares(location_id).await
+    }
+
+    async fn put_notifications(&self, records: Vec<db::NotificationRecord>) -> db::Result<()> {
+        self.inner.put_notifications(records).await
+    }
+
+    async fn list_notifications(
+        &self,
+        person_id: &str,
+        after_sk: Option<&str>,
+        limit: usize,
+        unread_only: bool,
+    ) -> db::Result<Vec<db::NotificationRecord>> {
+        self.inner
+            .list_notifications(person_id, after_sk, limit, unread_only)
+            .await
+    }
+
+    async fn count_unread_notifications(&self, person_id: &str, cap: usize) -> db::Result<usize> {
+        self.inner.count_unread_notifications(person_id, cap).await
+    }
+
+    async fn mark_notifications_read(
+        &self,
+        person_id: &str,
+        sks: &[String],
+        read_at: u64,
+    ) -> db::Result<()> {
+        self.inner
+            .mark_notifications_read(person_id, sks, read_at)
+            .await
+    }
+
     async fn put_audit_entry(&self, entry: &AuditEntry) -> db::Result<()> {
         self.inner.put_audit_entry(entry).await
+    }
+
+    // Reads: nothing to audit.
+    async fn list_contact_changes(
+        &self,
+        after: Option<&str>,
+        before: &str,
+        include_deleted: bool,
+        limit: usize,
+    ) -> db::Result<db::ContactPage> {
+        self.inner
+            .list_contact_changes(after, before, include_deleted, limit)
+            .await
+    }
+
+    async fn count_contacts(&self, before: &str) -> db::Result<u64> {
+        self.inner.count_contacts(before).await
     }
 
     // A read: nothing to audit.
@@ -1931,6 +2956,10 @@ impl<D: db::Handler> db::Handler for AuditingHandler<D> {
         self.inner
             .get_person_id_by_ses_api_person_id(ses_api_person_id)
             .await
+    }
+
+    async fn get_person_ids_by_email(&self, email: &str) -> db::Result<Vec<String>> {
+        self.inner.get_person_ids_by_email(email).await
     }
 
     async fn get_sessions<T: AsRef<str> + Sync>(
@@ -2160,6 +3189,146 @@ impl<D: db::Handler> db::Handler for AuditingHandler<D> {
 
     async fn list_nitc_groups(&self) -> db::Result<Vec<db::NitcGroup>> {
         self.inner.list_nitc_groups().await
+    }
+
+    async fn get_tasks<T: AsRef<str> + Sync>(
+        &self,
+        ids: &[T],
+    ) -> db::Result<Vec<Option<db::Task>>> {
+        self.inner.get_tasks(ids).await
+    }
+
+    async fn list_tasks(&self, query: db::ListTasksQuery) -> db::Result<Vec<db::Task>> {
+        self.inner.list_tasks(query).await
+    }
+
+    async fn get_task_lists<T: AsRef<str> + Sync>(
+        &self,
+        ids: &[T],
+    ) -> db::Result<Vec<Option<db::TaskList>>> {
+        self.inner.get_task_lists(ids).await
+    }
+
+    async fn list_task_lists(&self, location_id: &str) -> db::Result<Vec<db::TaskList>> {
+        self.inner.list_task_lists(location_id).await
+    }
+
+    async fn get_notes<T: AsRef<str> + Sync>(
+        &self,
+        ids: &[T],
+    ) -> db::Result<Vec<Option<db::Note>>> {
+        self.inner.get_notes(ids).await
+    }
+
+    async fn list_notes(&self, location_id: &str) -> db::Result<Vec<db::Note>> {
+        self.inner.list_notes(location_id).await
+    }
+
+    async fn get_note_folders<T: AsRef<str> + Sync>(
+        &self,
+        ids: &[T],
+    ) -> db::Result<Vec<Option<db::NoteFolder>>> {
+        self.inner.get_note_folders(ids).await
+    }
+
+    async fn list_note_folders(&self, location_id: &str) -> db::Result<Vec<db::NoteFolder>> {
+        self.inner.list_note_folders(location_id).await
+    }
+
+    async fn get_equipment<T: AsRef<str> + Sync>(
+        &self,
+        ids: &[T],
+    ) -> db::Result<Vec<Option<db::Equipment>>> {
+        self.inner.get_equipment(ids).await
+    }
+
+    async fn list_equipment(&self, location_id: &str) -> db::Result<Vec<db::Equipment>> {
+        self.inner.list_equipment(location_id).await
+    }
+
+    async fn list_equipment_log(
+        &self,
+        equipment_id: &str,
+    ) -> db::Result<Vec<db::EquipmentLogEntry>> {
+        self.inner.list_equipment_log(equipment_id).await
+    }
+
+    async fn get_equipment_reservations<T: AsRef<str> + Sync>(
+        &self,
+        ids: &[T],
+    ) -> db::Result<Vec<Option<db::EquipmentReservation>>> {
+        self.inner.get_equipment_reservations(ids).await
+    }
+
+    async fn list_equipment_reservations(
+        &self,
+        location_id: &str,
+        ending_after: u64,
+    ) -> db::Result<Vec<db::EquipmentReservation>> {
+        self.inner
+            .list_equipment_reservations(location_id, ending_after)
+            .await
+    }
+
+    async fn get_map_pins<T: AsRef<str> + Sync>(
+        &self,
+        ids: &[T],
+    ) -> db::Result<Vec<Option<db::MapPin>>> {
+        self.inner.get_map_pins(ids).await
+    }
+
+    async fn list_map_pins(&self, location_id: &str) -> db::Result<Vec<db::MapPin>> {
+        self.inner.list_map_pins(location_id).await
+    }
+
+    async fn get_map_layers<T: AsRef<str> + Sync>(
+        &self,
+        ids: &[T],
+    ) -> db::Result<Vec<Option<db::MapLayer>>> {
+        self.inner.get_map_layers(ids).await
+    }
+
+    async fn list_map_layers(&self, location_id: &str) -> db::Result<Vec<db::MapLayer>> {
+        self.inner.list_map_layers(location_id).await
+    }
+
+    async fn get_calendars<T: AsRef<str> + Sync>(
+        &self,
+        ids: &[T],
+    ) -> db::Result<Vec<Option<db::Calendar>>> {
+        self.inner.get_calendars(ids).await
+    }
+
+    async fn list_calendars(&self, location_id: &str) -> db::Result<Vec<db::Calendar>> {
+        self.inner.list_calendars(location_id).await
+    }
+
+    async fn get_calendar_events<T: AsRef<str> + Sync>(
+        &self,
+        ids: &[T],
+    ) -> db::Result<Vec<Option<db::CalendarEvent>>> {
+        self.inner.get_calendar_events(ids).await
+    }
+
+    async fn list_calendar_events(
+        &self,
+        location_id: &str,
+        ending_after: u64,
+    ) -> db::Result<Vec<db::CalendarEvent>> {
+        self.inner
+            .list_calendar_events(location_id, ending_after)
+            .await
+    }
+
+    async fn get_on_call_roles<T: AsRef<str> + Sync>(
+        &self,
+        ids: &[T],
+    ) -> db::Result<Vec<Option<db::OnCallRole>>> {
+        self.inner.get_on_call_roles(ids).await
+    }
+
+    async fn list_on_call_roles(&self, location_id: &str) -> db::Result<Vec<db::OnCallRole>> {
+        self.inner.list_on_call_roles(location_id).await
     }
 
     async fn bump_period_version(&self, period_id: &str) -> db::Result<u64> {
@@ -2429,6 +3598,7 @@ mod tests {
             enabled: true,
             location_grants: vec!["loc-b".to_string(), "loc-a".to_string()],
             location_read_only_grants: vec![],
+            person_id: None,
             access_time: Some(9),
             email_config: serde_json::Map::new(),
             disaggregate_virtual_periods: false,
@@ -2470,6 +3640,14 @@ mod tests {
                 "period_link",
                 Some("per"),
             ),
+            (
+                Actor::Member {
+                    person_id: "p".into(),
+                    via: None,
+                },
+                "member",
+                Some("p"),
+            ),
             (Actor::system("cli"), "system", Some("cli")),
             (Actor::Unauthenticated, "unauthenticated", None),
             (Actor::Unknown, "unknown", None),
@@ -2478,6 +3656,25 @@ mod tests {
             assert_eq!(actor.kind(), kind);
             assert_eq!(actor.id(), id);
         }
+    }
+
+    #[test]
+    fn actor_from_auth_info_records_a_member_by_person_and_grant() {
+        let member = AuthInfo::Member {
+            person_id: "p1".to_string(),
+            location_id: "loc".to_string(),
+            user_id: Some("u1".to_string()),
+            is_super: false,
+            user_location_ids: vec![],
+            grant_id: "g1".to_string(),
+        };
+        assert_eq!(
+            Actor::from_auth_info(Some(&member)),
+            Actor::Member {
+                person_id: "p1".into(),
+                via: Some("oauth_grant:g1".into()),
+            }
+        );
     }
 
     #[test]
@@ -2781,6 +3978,7 @@ mod tests {
             category_id: "cat1",
             signed_out_session_id: None,
             comment,
+            expected_version: None,
         };
 
         // `None` leaves the comment alone.
@@ -2873,6 +4071,29 @@ mod tests {
             change(&changes, "location_grants").before,
             Some(json!(["loc-a", "loc-b"]))
         );
+    }
+
+    #[test]
+    fn user_member_link_is_diffed_as_person_id() {
+        let set = db::UserUpdateShape::Person {
+            person_id: Some("p1"),
+        };
+        assert!(user_shape_is_audited(&set));
+        let changes = user_update_changes(Some(&user()), &set);
+        assert_eq!(fields(&changes), vec!["person_id"]);
+        assert_eq!(change(&changes, "person_id").before, None);
+        assert_eq!(change(&changes, "person_id").after, Some(json!("p1")));
+
+        let linked = User {
+            person_id: Some("p1".to_string()),
+            ..user()
+        };
+        let changes = user_update_changes(
+            Some(&linked),
+            &db::UserUpdateShape::Person { person_id: None },
+        );
+        assert_eq!(change(&changes, "person_id").before, Some(json!("p1")));
+        assert_eq!(change(&changes, "person_id").after, None);
     }
 
     #[test]
@@ -3258,12 +4479,42 @@ mod tests {
             is_virtual: false,
             nitc_participant_type: None,
             nitc_group_id: None,
+            group_name: Some("Training".into()),
+            short_name: None,
+            icon: None,
             created_at: 1,
             updated_at: 1,
         };
-        let changes =
-            category_update_changes(Some(&category), "Training", false, false, Some("g1"), None);
+        let same = category.display();
+        let changes = category_update_changes(
+            Some(&category),
+            "Training",
+            false,
+            false,
+            Some("g1"),
+            None,
+            &same,
+        );
         assert_eq!(fields(&changes), vec!["enabled", "nitc_group_id"]);
+
+        // The display metadata is part of the diff: set, changed and cleared.
+        let display = db::CategoryDisplay {
+            group_name: None,
+            short_name: Some("AIIMS".into()),
+            icon: Some("aiims".into()),
+        };
+        let changes = category_update_changes(
+            Some(&category),
+            "Training",
+            true,
+            false,
+            None,
+            None,
+            &display,
+        );
+        assert_eq!(fields(&changes), vec!["group_name", "short_name", "icon"]);
+        assert_eq!(change(&changes, "group_name").after, None);
+        assert_eq!(change(&changes, "short_name").after, Some(json!("AIIMS")));
 
         let group = db::NitcGroup {
             id: "g1".into(),
@@ -3295,7 +4546,8 @@ mod tests {
         };
         let grant = OAuthGrant {
             id: "g1".into(),
-            user_id: "u1".into(),
+            user_id: Some("u1".into()),
+            person_id: None,
             client_id: "client".into(),
             client_name: "Claude".into(),
             redirect_uri: "https://claude.ai/cb".into(),
@@ -3374,9 +4626,26 @@ mod tests {
             (AuditEntityType::UserToken, "user_token"),
             (AuditEntityType::OAuthGrant, "oauth_grant"),
             (AuditEntityType::WebauthnCredential, "webauthn_credential"),
+            (AuditEntityType::Task, "task"),
+            (AuditEntityType::TaskList, "task_list"),
+            (AuditEntityType::Note, "note"),
+            (AuditEntityType::NoteFolder, "note_folder"),
+            (AuditEntityType::Equipment, "equipment"),
+            (AuditEntityType::EquipmentLogEntry, "equipment_log_entry"),
+            (
+                AuditEntityType::EquipmentReservation,
+                "equipment_reservation",
+            ),
+            (AuditEntityType::OnCallRole, "on_call_role"),
+            (AuditEntityType::MapPin, "map_pin"),
+            (AuditEntityType::MapLayer, "map_layer"),
+            (AuditEntityType::Calendar, "calendar"),
+            (AuditEntityType::CalendarEvent, "calendar_event"),
+            (AuditEntityType::LocationShare, "location_share"),
         ];
         for (entity, name) in entity_types {
             assert_eq!(entity.as_str(), name);
+            assert_eq!(AuditEntityType::parse(name), Some(entity));
         }
     }
 }

@@ -31,8 +31,20 @@ use crate::ses_api;
 
 use super::audit_log::{self, AuditEntityType, AuditEntryConnection};
 use super::auth::{AuthGuard, AuthRequirement, can_write_location, require_location_access};
+use super::calendar::{self, CalendarEvent};
 use super::dataloader::DatabaseLoader;
+use super::equipment::{self, Equipment};
+use super::location_share::{self, LocationShare};
+use super::map::{self, MapPin};
+use super::notes::{self, Note};
+use super::notifications::{self, NotificationConnection};
+use super::on_call::{self, OnCallRole};
+use super::reservations::{self, EquipmentReservation};
+use super::self_sign_in::{self, SelfSignInStatus};
 use super::ses_details;
+use super::tally;
+use super::tasks::{self, Task};
+use super::wifi::{self, WifiNetworks};
 use super::{CategoryId, LocationId, NitcEventId, PersonId, SessionId, UserId};
 
 async fn location_name_by_id_for_badges<A: App + HasDb + Send + Sync>(
@@ -152,6 +164,24 @@ impl<A: App + HasDb + Send + Sync + 'static> User<A> {
             .iter()
             .map(|id| ID(id.clone()))
             .collect()
+    }
+
+    /// The member this user acts as when signing in or out from the mobile app.
+    async fn person_id(&self) -> Option<ID> {
+        self.rec.person_id.clone().map(ID)
+    }
+
+    /// The member this user acts as, or null if none is set or it no longer exists.
+    async fn person(&self, ctx: &Context<'_>) -> Result<Option<Person<A>>> {
+        let Some(person_id) = self.rec.person_id.clone() else {
+            return Ok(None);
+        };
+        let loader = ctx.data_unchecked::<DataLoader<DatabaseLoader<A>>>();
+        Ok(loader
+            .load_one(PersonId(ID(person_id)))
+            .await
+            .map_err(|e| anyhow!("Failed to load person via DataLoader: {}", e))?
+            .flatten())
     }
 
     async fn locations(&self, ctx: &Context<'_>) -> Result<Vec<Location<A>>> {
@@ -325,13 +355,23 @@ pub struct Environment {
 }
 
 /// What the OAuth consent screen needs to show before a user approves or denies
-/// an authorization request: the client's self-claimed name, and — the one
-/// value that actually matters, since DCR is unauthenticated — the host it will
-/// redirect back to.
+/// an authorization request: the client's name, and — the one value that
+/// actually matters for a dynamically registered client, whose name is
+/// self-claimed — the host it will redirect back to.
 #[derive(SimpleObject, Clone, Debug)]
 pub struct OAuthAuthorizationRequest {
     pub client_name: String,
+    /// Host of the redirect URI. Meaningless for a first-party app's custom
+    /// scheme (`tally://oauth/callback` gives `oauth`), so show
+    /// `isFirstParty` instead when it's true.
     pub redirect_host: String,
+    /// One of SESLogin's own apps (`oauth_clients::STATIC_CLIENTS`), whose name
+    /// and redirect are fixed in code, rather than a self-registered client.
+    pub is_first_party: bool,
+    /// A development build of a first-party app, redirecting to the Expo server
+    /// on a developer's machine (`redirectHost`, with its port). Only a developer
+    /// account gets this far; anyone else is refused.
+    pub is_development_build: bool,
 }
 
 #[derive(SimpleObject, Clone, Debug)]
@@ -524,6 +564,18 @@ impl<A: App + HasDb + Send + Sync + 'static> Category<A> {
     }
     async fn nitc_participant_type(&self) -> Option<&String> {
         self.rec.nitc_participant_type.as_ref()
+    }
+    /// The kiosk group the category appears under, e.g. "Training".
+    async fn group_name(&self) -> Option<&String> {
+        self.rec.group_name.as_ref()
+    }
+    /// The short name the kiosk shows, e.g. "AIIMS".
+    async fn short_name(&self) -> Option<&String> {
+        self.rec.short_name.as_ref()
+    }
+    /// The kiosk icon's name, e.g. "aiims". Only the name: no image is served.
+    async fn icon(&self) -> Option<&String> {
+        self.rec.icon.as_ref()
     }
     async fn nitc_group(&self, ctx: &Context<'_>) -> Result<Option<NitcGroup<A>>> {
         let Some(ref gid) = self.rec.nitc_group_id else {
@@ -2255,7 +2307,7 @@ fn decode_period_cursor(cursor: &str) -> Result<db::PeriodCursor> {
 #[derive(Debug, PartialEq)]
 pub struct Location<A: App + HasDb + 'static> {
     _marker: std::marker::PhantomData<A>,
-    rec: db::Location,
+    pub(super) rec: db::Location,
 }
 
 impl<A: App + HasDb + Send + Sync> Location<A> {
@@ -3625,12 +3677,19 @@ impl OAuthGrant {
     }
     /// Host the client's tokens redirect back to. Shown instead of the
     /// (unauthenticated, self-claimed) client name alone, same as on the
-    /// consent screen.
+    /// consent screen. Meaningless when `isFirstParty`, so show that instead.
     async fn redirect_host(&self) -> String {
         url::Url::parse(&self.rec.redirect_uri)
             .ok()
             .and_then(|u| u.host_str().map(str::to_string))
             .unwrap_or_else(|| self.rec.redirect_uri.clone())
+    }
+    /// Granted to one of SESLogin's own apps (`oauth_clients::STATIC_CLIENTS`)
+    /// at one of its registered redirects. False for a self-registered client,
+    /// and for a development build's grant, which shows its address instead.
+    async fn is_first_party(&self) -> bool {
+        crate::oauth_clients::static_client(&self.rec.client_id)
+            .is_some_and(|c| c.redirect_uris.contains(&self.rec.redirect_uri.as_str()))
     }
     async fn scope(&self) -> &str {
         &self.rec.scope
@@ -3903,7 +3962,8 @@ impl<A: App + HasDb + HasRealtime + Send + Sync + 'static> QueryRoot<A> {
                 Some(AuthInfo::User { id, .. }) => id.to_string(),
                 Some(AuthInfo::Session { .. })
                 | Some(AuthInfo::ApiToken { .. })
-                | Some(AuthInfo::PeriodLink { .. }) => {
+                | Some(AuthInfo::PeriodLink { .. })
+                | Some(AuthInfo::Member { .. }) => {
                     return Err(anyhow!("Sessions cannot query without user ID"));
                 }
                 None => {
@@ -3926,7 +3986,8 @@ impl<A: App + HasDb + HasRealtime + Send + Sync + 'static> QueryRoot<A> {
             }
             Some(AuthInfo::Session { .. })
             | Some(AuthInfo::ApiToken { .. })
-            | Some(AuthInfo::PeriodLink { .. }) => {
+            | Some(AuthInfo::PeriodLink { .. })
+            | Some(AuthInfo::Member { .. }) => {
                 return Err(anyhow!("Not authorized to query users"));
             }
             None => return Err(anyhow!("Cannot query users if not logged in")),
@@ -4079,6 +4140,119 @@ impl<A: App + HasDb + HasRealtime + Send + Sync + 'static> QueryRoot<A> {
             .map(Period::new)
     }
 
+    /// The member signed in to Tally, and the units they can use there. Tally members
+    /// only; see `graphql::tally`.
+    async fn tally_viewer(&self, ctx: &Context<'_>) -> Result<tally::TallyViewer<A>> {
+        tally::viewer(ctx).await
+    }
+
+    /// One unit's shared Tally tools — tasks, notes, map, calendar, equipment, on call
+    /// and who is sharing their position. Tally members only, at a unit they can use.
+    async fn tally_location(&self, ctx: &Context<'_>, id: ID) -> Result<tally::TallyLocation<A>> {
+        tally::location(ctx, &id).await
+    }
+
+    /// The signed-in member's own sign-in state at a unit, for the Tally app: their home
+    /// unit, or `locationId` when given, which must be a unit they can use in Tally
+    /// (`FORBIDDEN` otherwise). Null when the member has since been deleted. Tally
+    /// members only. No location grant is needed at home — being the member is the
+    /// authority (see `graphql::self_sign_in`).
+    async fn self_sign_in_status(
+        &self,
+        ctx: &Context<'_>,
+        location_id: Option<ID>,
+    ) -> Result<Option<SelfSignInStatus<A>>> {
+        let app = ctx.data_unchecked::<Arc<A>>();
+        self_sign_in::status(
+            ctx,
+            app.as_ref(),
+            location_id.as_ref().map(|id| id.as_str()),
+        )
+        .await
+    }
+
+    /// One task, open or completed; null if it does not exist or was deleted.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn task(&self, ctx: &Context<'_>, id: ID) -> Result<Option<Task<A>>> {
+        tasks::task(ctx, &id).await
+    }
+
+    /// One note; null if it does not exist or was deleted.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn note(&self, ctx: &Context<'_>, id: ID) -> Result<Option<Note<A>>> {
+        notes::note(ctx, &id).await
+    }
+
+    /// One piece of equipment; null if it does not exist or was deleted.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn equipment(&self, ctx: &Context<'_>, id: ID) -> Result<Option<Equipment<A>>> {
+        equipment::equipment(ctx, &id).await
+    }
+
+    /// One equipment reservation; null if it does not exist or was deleted.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn equipment_reservation(
+        &self,
+        ctx: &Context<'_>,
+        id: ID,
+    ) -> Result<Option<EquipmentReservation<A>>> {
+        reservations::reservation(ctx, &id).await
+    }
+
+    /// One map pin; null if it does not exist or was deleted.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn map_pin(&self, ctx: &Context<'_>, id: ID) -> Result<Option<MapPin<A>>> {
+        map::map_pin(ctx, &id).await
+    }
+
+    /// One calendar event; null if it does not exist or was deleted.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn calendar_event(&self, ctx: &Context<'_>, id: ID) -> Result<Option<CalendarEvent<A>>> {
+        calendar::calendar_event(ctx, &id).await
+    }
+
+    /// The caller's own location share while it still shows (until 7 minutes after its
+    /// latest position); null otherwise.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn my_location_share(&self, ctx: &Context<'_>) -> Result<Option<LocationShare<A>>> {
+        location_share::my_location_share(ctx).await
+    }
+
+    /// The caller's in-app notifications, newest first. `unreadOnly` lists just the ones
+    /// not yet read. At most 200 per page, 50 by default; a notification about a location
+    /// the caller can no longer access is left out.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn my_notifications(
+        &self,
+        ctx: &Context<'_>,
+        first: Option<i32>,
+        after: Option<String>,
+        unread_only: Option<bool>,
+    ) -> Result<NotificationConnection> {
+        notifications::my_notifications::<A>(ctx, first, after, unread_only).await
+    }
+
+    /// How many notifications the caller has unread, counting no further than 100 (show
+    /// "99+" above 99).
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn my_unread_notification_count(&self, ctx: &Context<'_>) -> Result<i32> {
+        notifications::my_unread_notification_count::<A>(ctx).await
+    }
+
+    /// The WiFi networks, with their passwords, for members signed in to Tally (its
+    /// WiFi app). Never for users on their own, kiosks or API tokens. `networks` is null when `knownVersion` is
+    /// already current.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn wifi_networks(&self, known_version: Option<String>) -> Result<WifiNetworks> {
+        wifi::wifi_networks(known_version.as_deref())
+    }
+
+    /// One on-call role; null if it does not exist or was deleted.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn on_call_role(&self, ctx: &Context<'_>, id: ID) -> Result<Option<OnCallRole<A>>> {
+        on_call::on_call_role(ctx, &id).await
+    }
+
     #[graphql(guard = "AuthGuard::new(AuthRequirement::Authenticated)")]
     async fn session(
         &self,
@@ -4092,7 +4266,8 @@ impl<A: App + HasDb + HasRealtime + Send + Sync + 'static> QueryRoot<A> {
                 Some(AuthInfo::Session { id, .. }) => id.to_string(),
                 Some(AuthInfo::User { .. })
                 | Some(AuthInfo::ApiToken { .. })
-                | Some(AuthInfo::PeriodLink { .. }) => {
+                | Some(AuthInfo::PeriodLink { .. })
+                | Some(AuthInfo::Member { .. }) => {
                     return Err(anyhow!("Cannot query without session ID"));
                 }
                 None => {
@@ -4295,7 +4470,7 @@ impl<A: App + HasDb + HasRealtime + Send + Sync + 'static> QueryRoot<A> {
     // about the period, the member, or their unit. Ordered `PeriodLink` first only
     // so an unauthenticated caller gets the clearer "Must be authenticated".
     #[graphql(
-        guard = "AuthGuard::new(AuthRequirement::PeriodLink).or(AuthGuard::new(AuthRequirement::Authenticated))"
+        guard = "AuthGuard::new(AuthRequirement::PeriodLink).or(AuthGuard::new(AuthRequirement::Authenticated)).or(AuthGuard::new(AuthRequirement::Member))"
     )]
     async fn categories(&self, ctx: &Context<'_>) -> Result<Vec<Category<A>>> {
         let app = ctx.data_unchecked::<Arc<A>>();
@@ -4403,6 +4578,18 @@ impl<A: App + HasDb + HasRealtime + Send + Sync + 'static> QueryRoot<A> {
         Ok((*types).clone())
     }
 
+    /// Check the link the Tally sign-in page was opened with: a member sign-in client
+    /// and one of its redirects. Needs no sign-in.
+    async fn tally_sign_in_request(
+        &self,
+        ctx: &Context<'_>,
+        client_id: String,
+        redirect_uri: String,
+    ) -> Result<super::tally_sign_in::TallySignInRequest> {
+        let app = ctx.data_unchecked::<Arc<A>>();
+        super::tally_sign_in::sign_in_request(&**app, &client_id, &redirect_uri)
+    }
+
     /// Look up an OAuth client + redirect URI before showing the consent
     /// screen. Deliberately returns nothing about the client beyond its
     /// (self-claimed, DCR is unauthenticated) name and the redirect host — the
@@ -4416,22 +4603,30 @@ impl<A: App + HasDb + HasRealtime + Send + Sync + 'static> QueryRoot<A> {
         redirect_uri: String,
     ) -> Result<OAuthAuthorizationRequest> {
         let app = ctx.data_unchecked::<Arc<A>>();
-        let registration =
-            crate::oauth::decode_client_id(&app.server_secret().oauth_client_id_key(), &client_id)
-                .ok_or_else(|| anyhow!("Unknown or invalid client"))?;
-        if !registration
-            .redirect_uris
-            .iter()
-            .any(|u| u == &redirect_uri)
-        {
-            return Err(anyhow!("redirect_uri is not registered for this client"));
+        let client = crate::oauth_clients::resolve_client(
+            &app.server_secret().oauth_client_id_key(),
+            &client_id,
+        )
+        .ok_or_else(|| anyhow!("Unknown or invalid client"))?;
+        if client.member_sign_in {
+            return Err(super::tally_sign_in::member_sign_in_client(&client));
         }
-        let redirect_host = url::Url::parse(&redirect_uri)
-            .ok()
-            .and_then(|u| u.host_str().map(str::to_string))
+        let is_development_build =
+            super::auth::check_oauth_redirect(ctx, &**app, &client, &redirect_uri).await?;
+        let url = url::Url::parse(&redirect_uri)
+            .map_err(|_| anyhow!("redirect_uri is not a valid URL"))?;
+        let host = url
+            .host_str()
             .ok_or_else(|| anyhow!("redirect_uri has no host"))?;
+        // A development build is identified by the machine serving it, port and all.
+        let redirect_host = match url.port() {
+            Some(port) if is_development_build => format!("{host}:{port}"),
+            _ => host.to_string(),
+        };
         Ok(OAuthAuthorizationRequest {
-            client_name: registration.client_name,
+            is_first_party: client.is_first_party(),
+            is_development_build,
+            client_name: client.client_name,
             redirect_host,
         })
     }

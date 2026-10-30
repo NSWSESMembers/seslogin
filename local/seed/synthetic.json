@@ -55,8 +55,12 @@
         "first_name": { "S": "Alice" },
         "last_name": { "S": "Anderson" },
         "registration_number": { "S": "10000001" },
+        "email": { "S": "alice@seslogin.test" },
+        "email_key": { "S": "alice@seslogin.test" },
         "created_at": { "N": "1767225600" },
-        "updated_at": { "N": "1767225600" }
+        "updated_at": { "N": "1767225600" },
+        "contact_feed": { "S": "all" },
+        "contact_key": { "S": "00001767225600000000#TestAMember1" }
       },
       {
         "_comment": "Sync-owned: ses_api_person_id is set, so the admin UI hides Edit and Delete and shows the green synced bullet. Paired with Alice so both halves of that rule are on screen at once.",
@@ -65,10 +69,11 @@
         "first_name": { "S": "Bob" },
         "last_name": { "S": "Brown" },
         "registration_number": { "S": "10000002" },
+        "email": { "S": "bob@seslogin.test" },
+        "email_key": { "S": "bob@seslogin.test" },
         "ses_api_person_id": { "S": "10000002" },
         "created_at": { "N": "1767225600" },
         "updated_at": { "N": "1767225600" },
-        "email": { "S": "bob.brown@example.com" },
         "mobile": { "S": "+61400000123" },
         "phones": {
           "S": "[{\"number\":\"+61400000123\",\"types\":[\"Primary Telephone\",\"SMS\"]},{\"number\":\"+61255500142\",\"types\":[\"Home Telephone\"]}]"
@@ -76,7 +81,9 @@
         "preferred_name": { "S": "Bobby" },
         "capability_tags": {
           "S": "[{\"id\":101,\"name\":\"Chainsaw Operator\",\"description\":\"Operate a chainsaw on storm damage\"},{\"id\":102,\"name\":\"Flood Rescue Operator\",\"description\":\"Operate in flood water rescue\"},{\"id\":103,\"name\":\"First Aid\"}]"
-        }
+        },
+        "contact_feed": { "S": "all" },
+        "contact_key": { "S": "00001767225600000000#TestAMember2" }
       },
       {
         "_comment": "For testing a sign-in at Test A Unit's kiosk by someone who belongs to Test B Unit. registration_number is what a scan resolves against (get_person_id_by_registration_number); ses_api_person_id is the separate sync identity.",
@@ -85,9 +92,13 @@
         "first_name": { "S": "Crossunit" },
         "last_name": { "S": "Tester" },
         "registration_number": { "S": "20000001" },
+        "email": { "S": "crossunit@seslogin.test" },
+        "email_key": { "S": "crossunit@seslogin.test" },
         "ses_api_person_id": { "S": "20000001" },
         "created_at": { "N": "1767225600" },
-        "updated_at": { "N": "1767225600" }
+        "updated_at": { "N": "1767225600" },
+        "contact_feed": { "S": "all" },
+        "contact_key": { "S": "00001767225600000000#TestBMember1" }
       }
     ],
     "user": [

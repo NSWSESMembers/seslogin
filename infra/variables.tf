@@ -92,6 +92,20 @@ variable "toolbox_api_token" {
   default     = ""
 }
 
+variable "wifi_networks" {
+  description = "The WiFi networks Tally shows signed-in users (`Query.wifiNetworks`), as a JSON array: `[{\"title\": \"Shed\", \"ssid\": \"SES-Shed\", \"password\": \"...\"}]`, with optional `security` (`WPA`, `WEP` or `nopass`) and `hidden`. Holds passwords, so it is only ever set in the git-ignored terraform.tfvars, never committed. Shared by prod, preprod, qa and the test API. Counts toward each Lambda's 4 KB environment limit. Empty means no networks."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "tally_review_sign_in_test" {
+  description = "The App Store review account's fixed Tally sign-in code on the test API, as `<email>:<6 digits>` (see api/README.md, \"Tally sign-in\"). Set only in the git-ignored terraform.tfvars, never committed: the repository is public. Empty means every code is random."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
 variable "db_prefix" {
   description = "DynamoDB table name prefix for the production environment (e.g. seslogin_prod_)"
   type        = string

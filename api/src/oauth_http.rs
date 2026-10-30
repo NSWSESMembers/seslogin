@@ -18,12 +18,13 @@ use serde::{Deserialize, Serialize};
 use tracing::warn;
 
 use crate::app::{App, HasDb};
-use crate::auth::{AuthError, fetch_update_user_auth_info, hash_token};
+use crate::auth::{AuthError, hash_token};
 use crate::base_url::{api_base_url, web_base_url};
 use crate::clock::now_sec;
 use crate::db;
 use crate::db::Handler;
 use crate::oauth::{self, ACCESS_TOKEN_LIFETIME_S, DEFAULT_SCOPE};
+use crate::oauth_clients::resolve_client;
 
 /// A framework-agnostic HTTP response: enough for the three plain-JSON endpoints
 /// here, nothing more (no streaming, no multi-value headers beyond what a
@@ -296,7 +297,13 @@ pub fn oauth_code_state_id(code_hash: &str) -> String {
 /// `authorization_code` grant below.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AuthCodePayload {
-    pub user_id: String,
+    /// The user who approved it, or who signed in alongside the member on a Tally
+    /// sign-in code. Absent only on a Tally sign-in code for a member with no user.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub user_id: Option<String>,
+    /// Set only by Tally sign-in: the member the grant acts for.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub person_id: Option<String>,
     pub client_id: String,
     pub client_name: String,
     pub redirect_uri: String,
@@ -307,17 +314,13 @@ pub struct AuthCodePayload {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub scope: Option<String>,
     /// RFC 8707 `resource`, as given at the authorization request (or `None` if
-    /// the client didn't send one). `None` here means "default to `<api base>/mcp`
-    /// at token time" — the authorization endpoint has no reliable API base URL
-    /// of its own to fill this in with (see `graphql::mutations::approve_oauth_authorization`).
+    /// the client didn't send one). `None` here means "default to the client's
+    /// first allowed resource at token time" (`<api base>/mcp` for a dynamic
+    /// client; see [`crate::oauth_clients::Client::default_resource`]) — the
+    /// authorization endpoint has no reliable API base URL of its own to fill
+    /// this in with (see `graphql::mutations::approve_oauth_authorization`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub resource: Option<String>,
-}
-
-/// The resource (audience) a grant is minted for when the client never asked for
-/// one explicitly, at either the authorization request or the token request.
-fn default_resource(host: Option<&str>) -> String {
-    format!("{}/mcp", api_base_url(host))
 }
 
 // ── RFC 6749 §3.2: token endpoint ───────────────────────────────────────────
@@ -397,10 +400,9 @@ async fn token_authorization_code<A: App + HasDb>(
         return error_reply(400, "invalid_grant", "Malformed authorization code");
     };
 
-    let key = app.server_secret().oauth_client_id_key();
-    if oauth::decode_client_id(&key, client_id).is_none() {
+    let Some(client) = resolve_client(&app.server_secret().oauth_client_id_key(), client_id) else {
         return error_reply(401, "invalid_client", "Unknown client");
-    }
+    };
     if payload.client_id != *client_id {
         return error_reply(
             400,
@@ -423,10 +425,11 @@ async fn token_authorization_code<A: App + HasDb>(
         );
     }
 
+    let api_base = api_base_url(host);
     let resource = payload
         .resource
         .clone()
-        .unwrap_or_else(|| default_resource(host));
+        .unwrap_or_else(|| client.default_resource(&api_base));
     if let Some(requested) = params.get("resource")
         && requested != &resource
     {
@@ -436,13 +439,40 @@ async fn token_authorization_code<A: App + HasDb>(
             "resource does not match the authorization request",
         );
     }
+    // Dynamic clients get `<base>/mcp` only; a static client gets only the
+    // resources listed for it (`oauth_clients::STATIC_CLIENTS`).
+    if !client.allows_resource(&api_base, &resource) {
+        return error_reply(
+            400,
+            "invalid_target",
+            "resource is not available to this client",
+        );
+    }
     let scope = payload
         .scope
         .clone()
         .unwrap_or_else(|| DEFAULT_SCOPE.to_string());
 
+    // A member sign-in client's grants always name a member, and no other client's do.
+    if client.member_sign_in != payload.person_id.is_some() {
+        return error_reply(
+            400,
+            "invalid_grant",
+            "Authorization code does not match this client",
+        );
+    }
+    let subject = match (&payload.person_id, &payload.user_id) {
+        (Some(person_id), user_id) => oauth::GrantSubject::Member {
+            person_id: person_id.clone(),
+            user_id: user_id.clone(),
+        },
+        (None, Some(user_id)) => oauth::GrantSubject::User(user_id.clone()),
+        (None, None) => {
+            return error_reply(400, "invalid_grant", "Malformed authorization code");
+        }
+    };
     let (grant, access_token, refresh_token) = oauth::mint_grant(
-        &payload.user_id,
+        &subject,
         &payload.client_id,
         &payload.client_name,
         &payload.redirect_uri,
@@ -450,15 +480,21 @@ async fn token_authorization_code<A: App + HasDb>(
         &scope,
         now_sec(),
     );
-    // The user authorized this client at the consent screen; the grant is theirs.
+    // The user authorized this client at the consent screen, or the member signed in
+    // to Tally; the grant is theirs.
+    let via = Some(format!("oauth_client:{}", grant.client_id));
+    let actor = match &subject {
+        oauth::GrantSubject::User(id) => crate::audit::Actor::User {
+            id: id.clone(),
+            via,
+        },
+        oauth::GrantSubject::Member { person_id, .. } => crate::audit::Actor::Member {
+            person_id: person_id.clone(),
+            via,
+        },
+    };
     let created = crate::audit::scope(
-        crate::audit::AuditContext::new(
-            crate::audit::Actor::User {
-                id: grant.user_id.clone(),
-                via: Some(format!("oauth_client:{}", grant.client_id)),
-            },
-            None,
-        ),
+        crate::audit::AuditContext::new(actor, None),
         app.db().create_oauth_grant(&grant),
     )
     .await;
@@ -524,7 +560,7 @@ async fn token_refresh<A: App + HasDb>(app: &A, params: &HashMap<String, String>
         return error_reply(400, "invalid_target", "resource does not match this grant");
     }
 
-    match fetch_update_user_auth_info(app, grant.user_id.clone()).await {
+    match oauth::grant_auth_info(app, &grant).await {
         Ok(_) => {}
         Err(AuthError::Permanent(_)) => {
             return error_reply(400, "invalid_grant", "User account is no longer available");

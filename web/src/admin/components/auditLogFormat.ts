@@ -17,6 +17,19 @@ export const ENTITY_TYPE_LABELS = {
   USER_TOKEN: "Login token",
   OAUTH_GRANT: "Connected app",
   WEBAUTHN_CREDENTIAL: "Passkey",
+  TASK: "Task",
+  TASK_LIST: "Task list",
+  NOTE: "Note",
+  NOTE_FOLDER: "Note folder",
+  EQUIPMENT: "Equipment",
+  EQUIPMENT_LOG_ENTRY: "Equipment log entry",
+  EQUIPMENT_RESERVATION: "Equipment reservation",
+  ON_CALL_ROLE: "On-call role",
+  MAP_PIN: "Map pin",
+  MAP_LAYER: "Map layer",
+  CALENDAR: "Calendar",
+  CALENDAR_EVENT: "Calendar event",
+  LOCATION_SHARE: "Location share",
 } as const;
 
 export type EntityTypeKey = keyof typeof ENTITY_TYPE_LABELS;
@@ -50,6 +63,8 @@ export function actorText(actor: {
   switch (actor.kind) {
     case "USER":
       return "Unknown user";
+    case "MEMBER":
+      return "Unknown member";
     case "SESSION":
       return "Kiosk";
     case "API_TOKEN":
@@ -69,6 +84,8 @@ export function actorText(actor: {
 // alone would not say (a kiosk called "Front desk", an API token).
 export function actorKindHint(kind: string): string | null {
   switch (kind) {
+    case "MEMBER":
+      return "Member, in Tally";
     case "SESSION":
       return "Kiosk";
     case "API_TOKEN":

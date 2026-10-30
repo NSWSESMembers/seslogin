@@ -53,7 +53,7 @@ const RESOURCE: &str = "https://api.seslogin.com/mcp";
 async fn access_token_for(app: &App, user_id: &str) -> String {
     use seslogin::db::Handler as _;
     let (grant, access_token, _refresh) = oauth::mint_grant(
-        user_id,
+        &oauth::GrantSubject::User(user_id.to_string()),
         "test-client-id",
         "Test Client",
         "https://claude.ai/callback",
@@ -70,7 +70,7 @@ async fn access_token_for(app: &App, user_id: &str) -> String {
 async fn access_token_for_other_resource(app: &App, user_id: &str) -> String {
     use seslogin::db::Handler as _;
     let (grant, access_token, _refresh) = oauth::mint_grant(
-        user_id,
+        &oauth::GrantSubject::User(user_id.to_string()),
         "test-client-id",
         "Test Client",
         "https://claude.ai/callback",
@@ -208,6 +208,31 @@ async fn a_token_minted_for_a_different_resource_is_rejected() {
             .unwrap()
             .contains("invalid_token")
     );
+}
+
+#[tokio::test]
+async fn a_graphql_bound_token_is_rejected() {
+    use seslogin::db::Handler as _;
+    let (app, schema) = setup();
+    seed_user(&app, "user-1", true);
+    let (grant, token, _refresh) = oauth::mint_grant(
+        &oauth::GrantSubject::User("user-1".to_string()),
+        "tally",
+        "Tally",
+        "tally://oauth/callback",
+        "https://api.seslogin.com/graphql",
+        oauth::DEFAULT_SCOPE,
+        seslogin::clock::now_sec(),
+    );
+    app.db.create_oauth_grant(&grant).await.unwrap();
+    let reply = post(
+        &app,
+        &schema,
+        Some(&format!("Bearer {token}")),
+        rpc("ping", json!({})),
+    )
+    .await;
+    assert_eq!(reply.status, 401);
 }
 
 #[tokio::test]
@@ -355,6 +380,7 @@ async fn tools_list_lists_every_tool() {
         "update_user",
         "disable_user",
         "enable_user",
+        "set_user_member",
         "get_location",
         "list_members",
         "get_member",
@@ -598,6 +624,47 @@ async fn super_user_can_list_create_and_update_users() {
     .await;
     assert_eq!(reply.json["result"]["isError"], false, "{:?}", reply.json);
     assert!(app.db.users.lock().unwrap().get(&new_id).unwrap().enabled);
+
+    // set_user_member links a member, and null clears it.
+    seed_person(&app, "p-1", "loc-1", "Alice", "Anderson", "10000001", None);
+    let reply = post(
+        &app,
+        &schema,
+        Some(&format!("Bearer {token}")),
+        tool_call(
+            "set_user_member",
+            json!({ "userId": new_id, "personId": "p-1" }),
+        ),
+    )
+    .await;
+    assert_eq!(reply.json["result"]["isError"], false, "{:?}", reply.json);
+    assert_eq!(
+        reply.json["result"]["structuredContent"]["user"]["personId"],
+        "p-1"
+    );
+    let reply = post(
+        &app,
+        &schema,
+        Some(&format!("Bearer {token}")),
+        tool_call("set_user_member", json!({ "userId": new_id })),
+    )
+    .await;
+    assert_eq!(reply.json["result"]["isError"], true, "{:?}", reply.json);
+    let reply = post(
+        &app,
+        &schema,
+        Some(&format!("Bearer {token}")),
+        tool_call(
+            "set_user_member",
+            json!({ "userId": new_id, "personId": null }),
+        ),
+    )
+    .await;
+    assert_eq!(reply.json["result"]["isError"], false, "{:?}", reply.json);
+    assert_eq!(
+        app.db.users.lock().unwrap().get(&new_id).unwrap().person_id,
+        None
+    );
 }
 
 #[tokio::test]
@@ -2859,6 +2926,62 @@ async fn a_super_user_can_create_and_partially_update_categories() {
     .await;
     assert_eq!(result["isError"], true, "{result:?}");
     assert_eq!(app.db.categories.lock().unwrap()[&id].name, "Rescue ops");
+}
+
+#[tokio::test]
+async fn category_display_metadata_is_set_kept_and_cleared() {
+    let (app, schema) = setup();
+    let bearer = super_bearer(&app).await;
+
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "create_category",
+        json!({
+            "name": "Training - AIIMS",
+            "groupName": "Training",
+            "shortName": "AIIMS",
+            "icon": "aiims",
+        }),
+    )
+    .await;
+    assert_eq!(result["isError"], false, "{result:?}");
+    let created = &result["structuredContent"]["category"];
+    assert_eq!(created["groupName"], "Training");
+    assert_eq!(created["shortName"], "AIIMS");
+    assert_eq!(created["icon"], "aiims");
+    let id = created["id"].as_str().unwrap().to_string();
+
+    // An update that does not mention them leaves them alone.
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "update_category",
+        json!({ "id": id, "name": "Training - AIIMS 2" }),
+    )
+    .await;
+    assert_eq!(result["isError"], false, "{result:?}");
+    let stored = app.db.categories.lock().unwrap()[&id].clone();
+    assert_eq!(stored.group_name.as_deref(), Some("Training"));
+    assert_eq!(stored.short_name.as_deref(), Some("AIIMS"));
+    assert_eq!(stored.icon.as_deref(), Some("aiims"));
+
+    // One is changed, one cleared with null, one untouched.
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "update_category",
+        json!({ "id": id, "shortName": "AIIMS!", "icon": null }),
+    )
+    .await;
+    assert_eq!(result["isError"], false, "{result:?}");
+    let stored = app.db.categories.lock().unwrap()[&id].clone();
+    assert_eq!(stored.group_name.as_deref(), Some("Training"));
+    assert_eq!(stored.short_name.as_deref(), Some("AIIMS!"));
+    assert_eq!(stored.icon, None);
 }
 
 #[tokio::test]

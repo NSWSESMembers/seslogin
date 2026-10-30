@@ -63,6 +63,7 @@ describe("SettingsConnectedApps", () => {
             id: "grant-1",
             clientName: "Claude Code",
             redirectHost: "claude.ai",
+            isFirstParty: false,
             createdAt: 1_700_000_000,
             lastUsedAt: 1_700_100_000,
             refreshExpiresAt: 1_800_000_000,
@@ -105,5 +106,30 @@ describe("SettingsConnectedApps", () => {
     ).toBeInTheDocument();
 
     confirmSpy.mockRestore();
+  });
+
+  it("labels a first-party app's grant instead of showing its redirect host", async () => {
+    const environment = createMockEnvironment();
+    const screen = renderAt(environment);
+
+    act(() => {
+      environment.mock.resolveMostRecentOperation((op) =>
+        MockPayloadGenerator.generate(op, {
+          OauthGrant: () => ({
+            id: "grant-tally",
+            clientName: "Tally",
+            redirectHost: "oauth",
+            isFirstParty: true,
+            createdAt: 1_700_000_000,
+            lastUsedAt: null,
+            refreshExpiresAt: 1_800_000_000,
+          }),
+        }),
+      );
+    });
+
+    expect(await screen.findByText("Tally")).toBeInTheDocument();
+    expect(screen.getByText("SESLogin app")).toBeInTheDocument();
+    expect(screen.queryByText("oauth")).not.toBeInTheDocument();
   });
 });

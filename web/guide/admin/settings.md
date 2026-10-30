@@ -32,7 +32,13 @@ separately in the dashboard and activity views, then press **Save**.
 
 ## Connected apps
 
-If you connect an AI tool (such as Claude) to SESLogin, it appears under
-**Settings → Connected Apps** once you approve it. A connected app can act as
-you, with your permissions. Disconnect anything you no longer use or don't
-recognise.
+When an app or AI tool (such as Claude) asks to connect to your SESLogin
+account, SESLogin shows you a page asking whether to approve it. For an AI
+tool, the page names the website it will send you back to. For one of
+SESLogin's own apps, it says so instead. Only approve a request you started
+yourself.
+
+Once approved, the app appears under **Settings → Connected Apps**. The
+**Redirects to** column shows the website it sends you back to, or **SESLogin
+app** for one of SESLogin's own apps. A connected app can act as you, with
+your permissions. Disconnect anything you no longer use or don't recognise.

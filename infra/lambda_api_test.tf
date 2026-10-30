@@ -27,8 +27,12 @@ resource "aws_lambda_function" "test_api" {
       ABLY_API_KEY         = var.ably_api_key
       TOOLBOX_GRAPHQL_URL  = var.toolbox_graphql_url
       TOOLBOX_API_TOKEN    = var.toolbox_api_token
-      WEBAUTHN_RP_ID       = "seslogin.com"
-      WEBAUTHN_RP_ORIGIN   = "https://test.seslogin.com"
+      WIFI_NETWORKS        = var.wifi_networks
+      TALLY_REVIEW_SIGN_IN = var.tally_review_sign_in_test
+      # Emailed on each sign-in as the review account, so a leaked code is noticed.
+      TALLY_REVIEW_NOTIFY_TO = "me@sdunster.com"
+      WEBAUTHN_RP_ID         = "seslogin.com"
+      WEBAUTHN_RP_ORIGIN     = "https://test.seslogin.com"
       # Member-facing period edit links stay on the test frontend so the edit page
       # can be exercised there. Matches the WEBAUTHN_RP_ORIGIN fallback; set explicitly.
       WEB_BASE_URL = "https://test.seslogin.com"

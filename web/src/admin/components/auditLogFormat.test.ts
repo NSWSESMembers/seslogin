@@ -35,6 +35,9 @@ describe("actorText", () => {
 
   it("falls back to kind-specific text", () => {
     expect(actorText({ kind: "SESSION", id: "s", label: null })).toBe("Kiosk");
+    expect(actorText({ kind: "MEMBER", id: "p", label: null })).toBe(
+      "Unknown member",
+    );
     expect(actorText({ kind: "SYSTEM", id: "member-sync", label: null })).toBe(
       "System: member-sync",
     );

@@ -36,11 +36,21 @@ use hex;
 
 use super::auth::{
     AuthGuard, AuthRequirement, require_location_access, require_location_write_access,
-    require_period_write_access, require_writable,
+    require_not_oauth_grant, require_period_write_access, require_writable,
 };
+use super::calendar::{self, Calendar, CalendarColor, CalendarEvent, EventRepeat};
 use super::dataloader::DatabaseLoader;
+use super::equipment::{self, Equipment, EquipmentStatus, EquipmentType};
 use super::error::{ApiError, ErrorCode};
+use super::location_share::{self, LocationShare, LocationSharePositionInput};
+use super::map::{self, MapLayer, MapPin, MapPinType};
+use super::notes::{self, Note, NoteFolder};
+use super::notifications::{self, MarkNotificationsReadPayload};
+use super::on_call::{self, OnCallRole};
 use super::query::{QuickPick, build_quick_pick};
+use super::reservations::{self, EquipmentReservation};
+use super::self_sign_in::{open_period_at, require_linked_person, sign_in_location_id};
+use super::tasks::{self, Task, TaskList, TaskRecurrenceInput};
 use super::{
     ApiToken, Category, Location, NitcGroup, PasskeyInfo, Period, Person, PersonId, Session, User,
 };
@@ -48,6 +58,10 @@ use super::{
 /// Longest entry a member-facing edit link may set. The admin form only *warns*
 /// past 24h, but an admin can be trusted to mean it; a link holder correcting
 /// their own attendance cannot plausibly need longer, so this is a hard stop.
+/// How far past the server's clock a self sign-out's end time may be: a little slack
+/// for a phone whose clock runs ahead, no more.
+const SELF_SIGN_OUT_FUTURE_SLACK_SECS: i64 = 60;
+
 const LINK_EDIT_MAX_DURATION_S: i64 = 24 * 60 * 60;
 
 /// Bound the span an edit link may set. Callers check `start_time < end_time`
@@ -389,6 +403,27 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         Ok(Some(person))
     }
 
+    /// How far `location` is from the member's home unit, for the distance badges, or
+    /// `None` when either has no coordinates.
+    async fn away_distance_km(
+        &self,
+        person: &db::Person,
+        location: &db::Location,
+    ) -> Result<Option<f64>> {
+        let coordinates = |location: &db::Location| {
+            let details = &location.ses_details;
+            details.latitude.zip(details.longitude)
+        };
+        let Some(here) = coordinates(location) else {
+            return Ok(None);
+        };
+        let home = self.location_by_id(&person.location_id).await?;
+        Ok(home
+            .as_ref()
+            .and_then(coordinates)
+            .map(|home| badges::distance_km(home, here)))
+    }
+
     async fn category_is_virtual(&self, category_id: &str) -> Result<bool> {
         Ok(self
             .app
@@ -494,6 +529,11 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
             }
 
             let visiting = person.location_id != location.id;
+            let away_distance_km = if visiting && !category.is_virtual {
+                self.away_distance_km(person, location).await?
+            } else {
+                None
+            };
             badge_store::update(self.app.db(), person, |_, state| {
                 let sign_out = if category.is_virtual {
                     badges::BadgeEvent::VirtualSignOut
@@ -507,6 +547,9 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
                         None,
                         None,
                     );
+                    if let Some(km) = away_distance_km {
+                        let _ = badges::apply_away_distance(state, &location.id, km, start_time);
+                    }
                     badges::BadgeEvent::SignOut
                 };
                 let _ = badges::apply_event(
@@ -544,6 +587,11 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
     ) -> Result<Vec<BadgeAward>> {
         let now = crate::clock::now_sec();
         let visiting = person.location_id != location.id;
+        let away_distance_km = if visiting && matches!(event, badges::BadgeEvent::CheckIn) {
+            self.away_distance_km(person, location).await?
+        } else {
+            None
+        };
         // `None` when the member's badge state is unreadable: nothing was saved, so there
         // is nothing to celebrate.
         let awards_to_display = badge_store::update(self.app.db(), person, |_, state| {
@@ -556,6 +604,9 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
                 sign_out_category_id,
                 sign_out_times,
             );
+            if let Some(km) = away_distance_km {
+                let _ = badges::apply_away_distance(state, &location.id, km, now);
+            }
             if !display {
                 return Some(vec![]);
             }
@@ -668,6 +719,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
                     signed_out_session_id: Some(&session_id),
                     // Kiosk sign-out: leave any existing comment untouched.
                     comment: None,
+                    expected_version: None,
                 },
             )
             .await?;
@@ -1036,6 +1088,30 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         Ok(fingerprint)
     }
 
+    /// Email a Tally sign-in code, if that email can sign in to Tally (see
+    /// `tally_sign_in`). Always returns true to avoid email enumeration. Requires a
+    /// valid Cloudflare Turnstile token.
+    async fn request_tally_sign_in_code(
+        &self,
+        ctx: &Context<'_>,
+        email: String,
+        turnstile_token: String,
+    ) -> bool {
+        super::tally_sign_in::request_code(ctx, &*self.app, &email, &turnstile_token).await
+    }
+
+    /// Redeem a Tally sign-in code and authorize the app that opened the sign-in page,
+    /// returning the URL (its redirect, with `code` and `state`) to send the browser
+    /// to. Fails the same way for any wrong, expired or used-up code.
+    async fn complete_tally_sign_in(
+        &self,
+        email: String,
+        code: String,
+        request: crate::tally_sign_in::AuthorizationRequest,
+    ) -> Result<String> {
+        super::tally_sign_in::complete(&*self.app, &email, &code, request).await
+    }
+
     /// Request an email login code. Always returns true to avoid email enumeration.
     /// Requires a valid Cloudflare Turnstile token.
     async fn request_auth_code(
@@ -1344,6 +1420,50 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
                 .flatten()
                 .ok_or_else(|| anyhow!("User with ID {:?} missing", id))?,
         ))
+    }
+
+    /// Set the member a user acts as when signing in or out from the mobile app, or
+    /// clear it with a null `personId`. Any user may be given any member, the super
+    /// user themselves included, and several users may share one member.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::SuperUser)")]
+    async fn set_user_member(
+        &self,
+        user_id: ID,
+        #[graphql(desc = "The member to act as; null clears the link.")] person_id: Option<ID>,
+    ) -> Result<User<A>> {
+        self.app
+            .db()
+            .get_users(&[&user_id])
+            .await?
+            .into_iter()
+            .next()
+            .flatten()
+            .ok_or_else(|| anyhow!("User {:?} not found", user_id))?;
+        if let Some(person_id) = &person_id {
+            self.app
+                .db()
+                .get_persons(&[person_id])
+                .await?
+                .into_iter()
+                .next()
+                .flatten()
+                .filter(|p| p.deleted.is_none())
+                .ok_or_else(|| anyhow!("Member {:?} not found", person_id))?;
+        }
+        self.app
+            .db()
+            .update_user(
+                &user_id,
+                db::UserUpdateShape::Person {
+                    person_id: person_id.as_ref().map(|id| id.as_str()),
+                },
+            )
+            .await?;
+
+        let rec = self.app.db().get_users(&[&user_id]).await?;
+        Ok(User::new(rec.into_iter().next().flatten().ok_or_else(
+            || anyhow!("User with ID {:?} missing", user_id),
+        )?))
     }
 
     #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
@@ -1696,6 +1816,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
                     // Admin edit, not a kiosk sign-out: leave the session reference untouched.
                     signed_out_session_id: None,
                     comment,
+                    expected_version: None,
                 },
             )
             .await?;
@@ -1978,6 +2099,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         key_fingerprint: String,
     ) -> Result<Session<A>> {
         require_writable(ctx)?;
+        require_not_oauth_grant(ctx, "Adding a kiosk")?;
         require_location_write_access(ctx, &location_id)?;
         self.app
             .db()
@@ -2138,6 +2260,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         expires_at: Option<i64>,
     ) -> Result<CreateApiTokenResult> {
         require_writable(ctx)?;
+        require_not_oauth_grant(ctx, "Creating an API token")?;
         let user_id = match ctx.data_opt::<AuthInfo>() {
             Some(AuthInfo::User { id, .. }) => id.clone(),
             _ => return Err(anyhow!("Super user auth required")),
@@ -2291,6 +2414,699 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         )?))
     }
 
+    /// Add a task to a location's shared to-do list. Any member who can use the
+    /// unit in Tally may. `dueDate` (`YYYY-MM-DD`, Sydney) hides the
+    /// task until that day; a recurring task with no date is due today.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn create_task(
+        &self,
+        ctx: &Context<'_>,
+        location_id: ID,
+        title: String,
+        description: Option<String>,
+        list_id: Option<ID>,
+        due_date: Option<String>,
+        recurrence: Option<TaskRecurrenceInput>,
+    ) -> Result<Task<A>> {
+        tasks::create_task(
+            ctx,
+            self.app.as_ref(),
+            tasks::CreateTaskArgs {
+                location_id,
+                title,
+                description,
+                list_id,
+                due_date,
+                recurrence,
+            },
+        )
+        .await
+    }
+
+    /// Change an open task. Omitted arguments are left as they are; `null` clears
+    /// `description`, `listId`, `dueDate` or `recurrence`. Fails with `CONFLICT` if
+    /// the task is no longer at `expectedVersion`.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn update_task(
+        &self,
+        ctx: &Context<'_>,
+        id: ID,
+        expected_version: i32,
+        title: Option<String>,
+        description: MaybeUndefined<String>,
+        list_id: MaybeUndefined<ID>,
+        due_date: MaybeUndefined<String>,
+        recurrence: MaybeUndefined<TaskRecurrenceInput>,
+    ) -> Result<Task<A>> {
+        tasks::update_task(
+            ctx,
+            self.app.as_ref(),
+            tasks::UpdateTaskArgs {
+                id,
+                expected_version,
+                title,
+                description,
+                list_id,
+                due_date,
+                recurrence,
+            },
+        )
+        .await
+    }
+
+    /// Complete a task. A recurring task stays open, due again its interval after
+    /// today; any other task is done. Fails with `CONFLICT` if someone else completed
+    /// or changed it since `expectedVersion` was read.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn complete_task(
+        &self,
+        ctx: &Context<'_>,
+        id: ID,
+        expected_version: i32,
+    ) -> Result<Task<A>> {
+        tasks::complete_task(ctx, self.app.as_ref(), &id, expected_version).await
+    }
+
+    /// Delete a task. Returns its ID.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn delete_task(&self, ctx: &Context<'_>, id: ID) -> Result<ID> {
+        tasks::delete_task(ctx, self.app.as_ref(), &id).await
+    }
+
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn create_task_list(
+        &self,
+        ctx: &Context<'_>,
+        location_id: ID,
+        name: String,
+    ) -> Result<TaskList<A>> {
+        tasks::create_task_list(ctx, self.app.as_ref(), &location_id, &name).await
+    }
+
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn rename_task_list(
+        &self,
+        ctx: &Context<'_>,
+        id: ID,
+        name: String,
+    ) -> Result<TaskList<A>> {
+        tasks::rename_task_list(ctx, self.app.as_ref(), &id, &name).await
+    }
+
+    /// Delete a task list. Its tasks stay on the location. Returns its ID.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn delete_task_list(&self, ctx: &Context<'_>, id: ID) -> Result<ID> {
+        tasks::delete_task_list(ctx, self.app.as_ref(), &id).await
+    }
+
+    /// Add a note to a location's shared notebook. Any member who can use the
+    /// unit in Tally may.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn create_note(
+        &self,
+        ctx: &Context<'_>,
+        location_id: ID,
+        title: String,
+        content: Option<String>,
+        folder_id: Option<ID>,
+    ) -> Result<Note<A>> {
+        notes::create_note(
+            ctx,
+            self.app.as_ref(),
+            notes::CreateNoteArgs {
+                location_id,
+                title,
+                content,
+                folder_id,
+            },
+        )
+        .await
+    }
+
+    /// Change a note. Omitted arguments are left as they are; `null` takes it out of
+    /// its folder. Fails with `CONFLICT` if the note is no longer at
+    /// `expectedVersion`.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn update_note(
+        &self,
+        ctx: &Context<'_>,
+        id: ID,
+        expected_version: i32,
+        title: Option<String>,
+        content: Option<String>,
+        folder_id: MaybeUndefined<ID>,
+    ) -> Result<Note<A>> {
+        notes::update_note(
+            ctx,
+            self.app.as_ref(),
+            notes::UpdateNoteArgs {
+                id,
+                expected_version,
+                title,
+                content,
+                folder_id,
+            },
+        )
+        .await
+    }
+
+    /// Delete a note. Returns its ID.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn delete_note(&self, ctx: &Context<'_>, id: ID) -> Result<ID> {
+        notes::delete_note(ctx, self.app.as_ref(), &id).await
+    }
+
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn create_note_folder(
+        &self,
+        ctx: &Context<'_>,
+        location_id: ID,
+        name: String,
+    ) -> Result<NoteFolder<A>> {
+        notes::create_note_folder(ctx, self.app.as_ref(), &location_id, &name).await
+    }
+
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn rename_note_folder(
+        &self,
+        ctx: &Context<'_>,
+        id: ID,
+        name: String,
+    ) -> Result<NoteFolder<A>> {
+        notes::rename_note_folder(ctx, self.app.as_ref(), &id, &name).await
+    }
+
+    /// Delete a note folder. Its notes stay on the location. Returns its ID.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn delete_note_folder(&self, ctx: &Context<'_>, id: ID) -> Result<ID> {
+        notes::delete_note_folder(ctx, self.app.as_ref(), &id).await
+    }
+
+    /// Add a piece of equipment to a location's register, logged in `status` (in
+    /// service unless given) with an optional `comment`. Any member who can use the
+    /// unit in Tally may.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn create_equipment(
+        &self,
+        ctx: &Context<'_>,
+        location_id: ID,
+        #[graphql(name = "type")] equipment_type: EquipmentType,
+        name: String,
+        description: Option<String>,
+        #[graphql(default_with = "EquipmentStatus::InService")] status: EquipmentStatus,
+        comment: Option<String>,
+    ) -> Result<Equipment<A>> {
+        equipment::create_equipment(
+            ctx,
+            self.app.as_ref(),
+            equipment::CreateEquipmentArgs {
+                location_id,
+                equipment_type,
+                name,
+                description,
+                status,
+                comment,
+            },
+        )
+        .await
+    }
+
+    /// Edit a piece of equipment's type, name or description; omitted arguments are
+    /// left as they are. The status is changed with `changeEquipmentStatus`. Fails with
+    /// `CONFLICT` if it is no longer at `expectedVersion`.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn update_equipment(
+        &self,
+        ctx: &Context<'_>,
+        id: ID,
+        expected_version: i32,
+        #[graphql(name = "type")] equipment_type: Option<EquipmentType>,
+        name: Option<String>,
+        description: Option<String>,
+    ) -> Result<Equipment<A>> {
+        equipment::update_equipment(
+            ctx,
+            self.app.as_ref(),
+            equipment::UpdateEquipmentArgs {
+                id,
+                expected_version,
+                equipment_type,
+                name,
+                description,
+            },
+        )
+        .await
+    }
+
+    /// Delete a piece of equipment. Returns its ID.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn delete_equipment(&self, ctx: &Context<'_>, id: ID) -> Result<ID> {
+        equipment::delete_equipment(ctx, self.app.as_ref(), &id).await
+    }
+
+    /// Change a piece of equipment's status, logging it with `comment` saying why
+    /// (required). Fails with `CONFLICT` if someone else changed it at the same moment.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn change_equipment_status(
+        &self,
+        ctx: &Context<'_>,
+        id: ID,
+        status: EquipmentStatus,
+        comment: String,
+    ) -> Result<Equipment<A>> {
+        equipment::change_equipment_status(ctx, self.app.as_ref(), &id, status, &comment).await
+    }
+
+    /// Log that you have checked a piece of equipment, with an optional comment. The
+    /// status is unchanged.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn check_equipment(
+        &self,
+        ctx: &Context<'_>,
+        id: ID,
+        comment: Option<String>,
+    ) -> Result<Equipment<A>> {
+        equipment::check_equipment(ctx, self.app.as_ref(), &id, comment.as_deref()).await
+    }
+
+    /// Reserve one or more pieces of a location's equipment from `startTime` to
+    /// `endTime` (Unix seconds; the end must be in the future). It is for the caller
+    /// unless `reservedFor` names someone or something else. Overlapping another
+    /// reservation is allowed: read `conflicts` on the result to warn about it. Any member
+    /// who can use the unit in Tally may.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn create_equipment_reservation(
+        &self,
+        ctx: &Context<'_>,
+        location_id: ID,
+        equipment_ids: Vec<ID>,
+        start_time: i64,
+        end_time: i64,
+        reserved_for: Option<String>,
+        description: Option<String>,
+    ) -> Result<EquipmentReservation<A>> {
+        reservations::create_reservation(
+            ctx,
+            self.app.as_ref(),
+            reservations::CreateReservationArgs {
+                location_id,
+                equipment_ids,
+                start_time,
+                end_time,
+                reserved_for,
+                description,
+            },
+        )
+        .await
+    }
+
+    /// Change a reservation; omitted arguments are left as they are. `reservedFor`
+    /// null or blank makes it for the caller. A changed time range must end in the
+    /// future. Fails with `CONFLICT` if it is no longer at `expectedVersion`.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn update_equipment_reservation(
+        &self,
+        ctx: &Context<'_>,
+        id: ID,
+        expected_version: i32,
+        equipment_ids: Option<Vec<ID>>,
+        start_time: Option<i64>,
+        end_time: Option<i64>,
+        reserved_for: MaybeUndefined<String>,
+        description: Option<String>,
+    ) -> Result<EquipmentReservation<A>> {
+        reservations::update_reservation(
+            ctx,
+            self.app.as_ref(),
+            reservations::UpdateReservationArgs {
+                id,
+                expected_version,
+                equipment_ids,
+                start_time,
+                end_time,
+                reserved_for,
+                description,
+            },
+        )
+        .await
+    }
+
+    /// Cancel (delete) a reservation. Returns its ID.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn delete_equipment_reservation(&self, ctx: &Context<'_>, id: ID) -> Result<ID> {
+        reservations::delete_reservation(ctx, self.app.as_ref(), &id).await
+    }
+
+    /// Add a pin to a location's shared map, optionally of a `type` (a plain pin
+    /// without). Any member who can use the unit in Tally may.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn create_map_pin(
+        &self,
+        ctx: &Context<'_>,
+        location_id: ID,
+        title: String,
+        latitude: f64,
+        longitude: f64,
+        address: Option<String>,
+        note: Option<String>,
+        layer_id: Option<ID>,
+        #[graphql(name = "type")] pin_type: Option<MapPinType>,
+    ) -> Result<MapPin<A>> {
+        map::create_map_pin(
+            ctx,
+            self.app.as_ref(),
+            map::CreateMapPinArgs {
+                location_id,
+                title,
+                latitude,
+                longitude,
+                address,
+                note,
+                layer_id,
+                pin_type,
+            },
+        )
+        .await
+    }
+
+    /// Change a map pin. Omitted arguments are left as they are; `layerId: null` takes
+    /// it off its layer and `type: null` makes it a plain pin. Fails with `CONFLICT` if the pin is no longer at
+    /// `expectedVersion`.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn update_map_pin(
+        &self,
+        ctx: &Context<'_>,
+        id: ID,
+        expected_version: i32,
+        title: Option<String>,
+        latitude: Option<f64>,
+        longitude: Option<f64>,
+        address: Option<String>,
+        note: Option<String>,
+        layer_id: MaybeUndefined<ID>,
+        #[graphql(name = "type")] pin_type: MaybeUndefined<MapPinType>,
+    ) -> Result<MapPin<A>> {
+        map::update_map_pin(
+            ctx,
+            self.app.as_ref(),
+            map::UpdateMapPinArgs {
+                id,
+                expected_version,
+                title,
+                latitude,
+                longitude,
+                address,
+                note,
+                layer_id,
+                pin_type,
+            },
+        )
+        .await
+    }
+
+    /// Delete a map pin. Returns its ID.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn delete_map_pin(&self, ctx: &Context<'_>, id: ID) -> Result<ID> {
+        map::delete_map_pin(ctx, self.app.as_ref(), &id).await
+    }
+
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn create_map_layer(
+        &self,
+        ctx: &Context<'_>,
+        location_id: ID,
+        name: String,
+    ) -> Result<MapLayer<A>> {
+        map::create_map_layer(ctx, self.app.as_ref(), &location_id, &name).await
+    }
+
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn rename_map_layer(
+        &self,
+        ctx: &Context<'_>,
+        id: ID,
+        name: String,
+    ) -> Result<MapLayer<A>> {
+        map::rename_map_layer(ctx, self.app.as_ref(), &id, &name).await
+    }
+
+    /// Delete a map layer. Its pins stay on the location's map. Returns its ID.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn delete_map_layer(&self, ctx: &Context<'_>, id: ID) -> Result<ID> {
+        map::delete_map_layer(ctx, self.app.as_ref(), &id).await
+    }
+
+    /// Add an event to a location's calendar, optionally in one of its calendars.
+    /// Timed events take `startTime` and `endTime` (Unix seconds); all-day ones take
+    /// `startDate` and optionally `endDate` (`YYYY-MM-DD`, inclusive; default one day).
+    /// `repeat` makes it repeat daily or weekly, through `repeatUntil` or forever. Any
+    /// member who can use the unit in Tally may.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn create_calendar_event(
+        &self,
+        ctx: &Context<'_>,
+        location_id: ID,
+        calendar_id: Option<ID>,
+        title: String,
+        description: Option<String>,
+        all_day: bool,
+        start_time: Option<i64>,
+        end_time: Option<i64>,
+        start_date: Option<String>,
+        end_date: Option<String>,
+        repeat: Option<EventRepeat>,
+        repeat_until: Option<String>,
+    ) -> Result<CalendarEvent<A>> {
+        calendar::create_event(
+            ctx,
+            self.app.as_ref(),
+            calendar::CreateEventArgs {
+                location_id,
+                calendar_id,
+                title,
+                description,
+                all_day,
+                start_time,
+                end_time,
+                start_date,
+                end_date,
+                repeat,
+                repeat_until,
+            },
+        )
+        .await
+    }
+
+    /// Change an event, every occurrence of it. Omitted arguments are left as they are:
+    /// `calendarId: null` takes it out of its calendar, `repeat: null` stops it
+    /// repeating and `repeatUntil: null` makes it repeat forever. Giving a new start
+    /// without an end keeps its length; changing `allDay` needs the new start. Fails
+    /// with `CONFLICT` if it is no longer at `expectedVersion`.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn update_calendar_event(
+        &self,
+        ctx: &Context<'_>,
+        id: ID,
+        expected_version: i32,
+        calendar_id: MaybeUndefined<ID>,
+        title: Option<String>,
+        description: Option<String>,
+        all_day: Option<bool>,
+        start_time: Option<i64>,
+        end_time: Option<i64>,
+        start_date: Option<String>,
+        end_date: Option<String>,
+        repeat: MaybeUndefined<EventRepeat>,
+        repeat_until: MaybeUndefined<String>,
+    ) -> Result<CalendarEvent<A>> {
+        calendar::update_event(
+            ctx,
+            self.app.as_ref(),
+            calendar::UpdateEventArgs {
+                id,
+                expected_version,
+                calendar_id,
+                title,
+                description,
+                all_day,
+                start_time,
+                end_time,
+                start_date,
+                end_date,
+                repeat,
+                repeat_until,
+            },
+        )
+        .await
+    }
+
+    /// Delete an event, every occurrence of it. Returns its ID.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn delete_calendar_event(&self, ctx: &Context<'_>, id: ID) -> Result<ID> {
+        calendar::delete_event(ctx, self.app.as_ref(), &id).await
+    }
+
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn create_calendar(
+        &self,
+        ctx: &Context<'_>,
+        location_id: ID,
+        name: String,
+        color: CalendarColor,
+    ) -> Result<Calendar<A>> {
+        calendar::create_calendar(ctx, self.app.as_ref(), &location_id, &name, color).await
+    }
+
+    /// Rename a calendar or change its colour; omitted arguments are left as they are.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn update_calendar(
+        &self,
+        ctx: &Context<'_>,
+        id: ID,
+        name: Option<String>,
+        color: Option<CalendarColor>,
+    ) -> Result<Calendar<A>> {
+        calendar::update_calendar(ctx, self.app.as_ref(), &id, name.as_deref(), color).await
+    }
+
+    /// Delete a calendar. Its events stay, in no calendar. Returns its ID.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn delete_calendar(&self, ctx: &Context<'_>, id: ID) -> Result<ID> {
+        calendar::delete_calendar(ctx, self.app.as_ref(), &id).await
+    }
+
+    /// Share your position with a location's members for `durationMinutes` (5, 15, 30
+    /// or 60), saying how often you will send it (`intervalSeconds`, 60 to 300).
+    /// Replaces any share you already have. Any member who can use the unit in
+    /// Tally may.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn start_location_share(
+        &self,
+        ctx: &Context<'_>,
+        location_id: ID,
+        duration_minutes: i32,
+        interval_seconds: i32,
+        position: LocationSharePositionInput,
+    ) -> Result<LocationShare<A>> {
+        location_share::start_location_share(
+            ctx,
+            self.app.as_ref(),
+            location_share::StartLocationShareArgs {
+                location_id,
+                duration_minutes,
+                interval_seconds,
+                position,
+            },
+        )
+        .await
+    }
+
+    /// Send your latest position for your share. Fails with `NOT_FOUND` once it has
+    /// ended or been stopped: stop sending then.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn update_location_share(
+        &self,
+        ctx: &Context<'_>,
+        position: LocationSharePositionInput,
+    ) -> Result<LocationShare<A>> {
+        location_share::update_location_share(ctx, self.app.as_ref(), position).await
+    }
+
+    /// Stop sharing your position; it stops showing straight away. False if you
+    /// weren't sharing.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn stop_location_share(&self, ctx: &Context<'_>) -> Result<bool> {
+        location_share::stop_location_share(ctx, self.app.as_ref()).await
+    }
+
+    /// Mark some of your notifications read (at most 200 IDs). One that is already read,
+    /// or is not yours, is ignored. Returns how many you still have unread.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn mark_notifications_read(
+        &self,
+        ctx: &Context<'_>,
+        ids: Vec<ID>,
+    ) -> Result<MarkNotificationsReadPayload> {
+        notifications::mark_notifications_read(ctx, self.app.as_ref(), ids).await
+    }
+
+    /// Mark all your notifications read. Returns how many you still have unread (usually
+    /// none).
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn mark_all_notifications_read(
+        &self,
+        ctx: &Context<'_>,
+    ) -> Result<MarkNotificationsReadPayload> {
+        notifications::mark_all_notifications_read(ctx, self.app.as_ref()).await
+    }
+
+    /// Add an on-call role (e.g. Duty Officer) to a location, optionally with the people
+    /// in it. Anyone in it needs a primary. Any member who can use the unit in
+    /// Tally may.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn create_on_call_role(
+        &self,
+        ctx: &Context<'_>,
+        location_id: ID,
+        name: String,
+        description: Option<String>,
+        phone: Option<String>,
+        primary_person_id: Option<ID>,
+        secondary_person_ids: Option<Vec<ID>>,
+    ) -> Result<OnCallRole<A>> {
+        on_call::create_on_call_role(
+            ctx,
+            self.app.as_ref(),
+            on_call::CreateOnCallRoleArgs {
+                location_id,
+                name,
+                description,
+                phone,
+                primary_person_id,
+                secondary_person_ids,
+            },
+        )
+        .await
+    }
+
+    /// Change an on-call role, or who is in it. Omitted arguments are left as they are;
+    /// `phone: null` removes the number and `primaryPersonId: null` (with
+    /// `secondaryPersonIds: []`) empties the role. Fails with `CONFLICT` if the role is
+    /// no longer at `expectedVersion`.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn update_on_call_role(
+        &self,
+        ctx: &Context<'_>,
+        id: ID,
+        expected_version: i32,
+        name: Option<String>,
+        description: Option<String>,
+        phone: MaybeUndefined<String>,
+        primary_person_id: MaybeUndefined<ID>,
+        secondary_person_ids: Option<Vec<ID>>,
+    ) -> Result<OnCallRole<A>> {
+        on_call::update_on_call_role(
+            ctx,
+            self.app.as_ref(),
+            on_call::UpdateOnCallRoleArgs {
+                id,
+                expected_version,
+                name,
+                description,
+                phone,
+                primary_person_id,
+                secondary_person_ids,
+            },
+        )
+        .await
+    }
+
+    /// Delete an on-call role. Returns its ID.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn delete_on_call_role(&self, ctx: &Context<'_>, id: ID) -> Result<ID> {
+        on_call::delete_on_call_role(ctx, self.app.as_ref(), &id).await
+    }
+
     #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
     async fn delete_session(&self, ctx: &Context<'_>, id: ID) -> Result<bool> {
         require_writable(ctx)?;
@@ -2330,6 +3146,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
     #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
     async fn reactivate_session(&self, ctx: &Context<'_>, id: ID) -> Result<Session<A>> {
         require_writable(ctx)?;
+        require_not_oauth_grant(ctx, "Reactivating a kiosk")?;
         let existing = self
             .app
             .db()
@@ -2461,9 +3278,18 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         is_virtual: bool,
         nitc_group_id: Option<String>,
         nitc_participant_type: Option<String>,
+        #[graphql(desc = "Kiosk group the category appears under, e.g. \"Training\".")]
+        group_name: Option<String>,
+        #[graphql(desc = "Short name the kiosk shows, e.g. \"AIIMS\".")] short_name: Option<String>,
+        #[graphql(desc = "Kiosk icon name, e.g. \"aiims\".")] icon: Option<String>,
     ) -> Result<Category<A>> {
         let nitc_group_id = nitc_group_id.as_deref().filter(|s| !s.is_empty());
         let nitc_participant_type = nitc_participant_type.as_deref().filter(|s| !s.is_empty());
+        let display = db::CategoryDisplay {
+            group_name: group_name.filter(|s| !s.is_empty()),
+            short_name: short_name.filter(|s| !s.is_empty()),
+            icon: icon.filter(|s| !s.is_empty()),
+        };
         let item = self
             .app
             .db()
@@ -2473,6 +3299,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
                 is_virtual,
                 nitc_group_id,
                 nitc_participant_type,
+                &display,
             )
             .await?;
         Ok(Category::new(item))
@@ -2487,9 +3314,37 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         is_virtual: bool,
         nitc_group_id: Option<String>,
         nitc_participant_type: Option<String>,
+        #[graphql(
+            desc = "Kiosk group name. Omit to leave unchanged, null (or empty) to clear, or a string to set."
+        )]
+        group_name: MaybeUndefined<String>,
+        #[graphql(
+            desc = "Short display name. Omit to leave unchanged, null (or empty) to clear, or a string to set."
+        )]
+        short_name: MaybeUndefined<String>,
+        #[graphql(
+            desc = "Icon name. Omit to leave unchanged, null (or empty) to clear, or a string to set."
+        )]
+        icon: MaybeUndefined<String>,
     ) -> Result<Category<A>> {
         let nitc_group_id = nitc_group_id.as_deref().filter(|s| !s.is_empty());
         let nitc_participant_type = nitc_participant_type.as_deref().filter(|s| !s.is_empty());
+        // The display fields are three-state, so an omitted one keeps what is stored.
+        // The storage layer replaces all three, hence the read-back.
+        let current = self
+            .app
+            .db()
+            .get_categories(&[&id])
+            .await?
+            .into_iter()
+            .next()
+            .flatten()
+            .ok_or_else(|| anyhow!("Category with ID {:?} missing", id))?;
+        let display = db::CategoryDisplay {
+            group_name: merge_display(group_name, current.group_name),
+            short_name: merge_display(short_name, current.short_name),
+            icon: merge_display(icon, current.icon),
+        };
         self.app
             .db()
             .update_category(
@@ -2499,6 +3354,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
                 is_virtual,
                 nitc_group_id,
                 nitc_participant_type,
+                &display,
             )
             .await?;
 
@@ -2772,6 +3628,142 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
             period: Period::new(rec),
             awarded_badges,
         })
+    }
+
+    /// Sign the member signed in to Tally in at a unit, as typing their member number at
+    /// a kiosk there would: their home unit, or `locationId` when given, which must be a
+    /// unit they can use in Tally (`FORBIDDEN` otherwise). Idempotent: if the member is
+    /// already signed in at that unit, that period is returned unchanged, so a double tap
+    /// never opens two. A period open at another unit is ignored. Tally members only,
+    /// and no location grant is needed at home (being the member is the authority).
+    async fn self_sign_in(&self, ctx: &Context<'_>, location_id: Option<ID>) -> Result<Period<A>> {
+        require_writable(ctx)?;
+        let person = require_linked_person(ctx, self.app.as_ref()).await?;
+        let location_id =
+            sign_in_location_id(ctx, &person, location_id.as_ref().map(|id| id.as_str()))?;
+        if let Some(open) = open_period_at(self.app.db(), &person, &location_id).await? {
+            return Ok(Period::new(open));
+        }
+        if location_id != person.location_id {
+            // The home unit always exists; a chosen one may have gone.
+            self.app
+                .db()
+                .get_locations(&[&location_id])
+                .await?
+                .into_iter()
+                .next()
+                .flatten()
+                .ok_or_else(|| ApiError::not_found("Location", &location_id))?;
+        }
+        let rec = self
+            .app
+            .db()
+            .start_period_for_person_location(&person.id, &location_id, None, None)
+            .await?;
+        self.publish_period_opened(ctx, &location_id, &rec).await;
+        Ok(Period::new(rec))
+    }
+
+    /// Sign the member out of one of their own open periods, at whichever unit, as
+    /// `scanSignOut` does at a kiosk. `expectedVersion` is the period's `version` as
+    /// the app last saw it; if it, or the sign-in, has changed since (e.g. a kiosk
+    /// signed them out first) the write is refused with `CONFLICT` and nothing changes.
+    /// The end cannot be more than a minute in the future, and the category must exist
+    /// and be enabled. Times are Unix seconds.
+    async fn self_sign_out(
+        &self,
+        ctx: &Context<'_>,
+        id: ID,
+        expected_version: i32,
+        start_time: i64,
+        end_time: i64,
+        category_id: ID,
+    ) -> Result<Period<A>> {
+        require_writable(ctx)?;
+        let person = require_linked_person(ctx, self.app.as_ref()).await?;
+
+        // Surfaced to the member in the app, so the messages are written to be read.
+        let mut rec = self
+            .app
+            .db()
+            .get_periods(&[&id])
+            .await?
+            .into_iter()
+            .next()
+            .flatten()
+            .filter(|p| p.deleted.is_none())
+            .ok_or_else(|| ApiError::new(ErrorCode::NotFound, "That sign-in no longer exists"))?;
+        if rec.guest_name.is_some() || rec.person_id.is_none() {
+            return Err(ApiError::bad_request("Not a member sign-in").into());
+        }
+        if rec.person_id.as_deref() != Some(person.id.as_str()) {
+            return Err(ApiError::forbidden("You can only sign yourself out").into());
+        }
+        if rec.end_time.is_some() {
+            return Err(ApiError::new(ErrorCode::Conflict, "Already signed out").into());
+        }
+        let stale = || {
+            ApiError::new(
+                ErrorCode::Conflict,
+                "This sign-in was changed elsewhere; refresh and try again",
+            )
+        };
+        if u64::try_from(expected_version).ok() != Some(rec.version) {
+            return Err(stale().into());
+        }
+        if start_time < 0 || start_time >= end_time {
+            return Err(ApiError::bad_request("Start time must be before end time").into());
+        }
+        if end_time
+            > (crate::clock::now_sec() as i64).saturating_add(SELF_SIGN_OUT_FUTURE_SLACK_SECS)
+        {
+            return Err(ApiError::bad_request("End time can't be in the future").into());
+        }
+        self.app
+            .db()
+            .get_categories(&[&category_id])
+            .await?
+            .into_iter()
+            .next()
+            .flatten()
+            .filter(|c| c.enabled)
+            .ok_or_else(|| ApiError::bad_request("That activity isn't available"))?;
+
+        let new_version = self
+            .app
+            .db()
+            .update_period(
+                &rec.id,
+                db::PeriodUpdateShape::TimeCategory {
+                    start_time,
+                    end_time,
+                    category_id: &category_id,
+                    // Not a kiosk, so there is no session to record.
+                    signed_out_session_id: None,
+                    comment: None,
+                    // Lose cleanly to a kiosk sign-out or an admin edit that raced us.
+                    expected_version: Some(rec.version),
+                },
+            )
+            .await
+            .map_err(|e| match e {
+                db::Error::Conflict(_) => anyhow::Error::from(stale()),
+                db::Error::NotFound(_) => {
+                    ApiError::new(ErrorCode::NotFound, "That sign-in no longer exists").into()
+                }
+                e => e.into(),
+            })?;
+        let old_nitc_event_id = rec.nitc_event_id.clone();
+        rec.start_time = start_time as u64;
+        rec.end_time = Some(end_time as u64);
+        rec.category_id = Some(category_id.to_string());
+        rec.version = new_version;
+
+        self.enqueue_nitc_export(&rec.id, old_nitc_event_id.as_deref())
+            .await?;
+        self.publish_period_closed(ctx, &rec.location_id, &rec, false)
+            .await;
+        Ok(Period::new(rec))
     }
 
     /// Sign in a guest (non-member) at the kiosk. Creates an open period with no
@@ -3091,6 +4083,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
     async fn begin_passkey_registration(&self, ctx: &Context<'_>) -> Result<PasskeyChallenge> {
         use webauthn_rs::prelude::*;
 
+        require_not_oauth_grant(ctx, "Adding a passkey")?;
         let user_id = match ctx.data_opt::<AuthInfo>() {
             Some(AuthInfo::User { id, .. }) => id.clone(),
             _ => return Err(anyhow!("Not authenticated")),
@@ -3206,6 +4199,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
     ) -> Result<PasskeyInfo> {
         use webauthn_rs::prelude::*;
 
+        require_not_oauth_grant(ctx, "Adding a passkey")?;
         let user_id = match ctx.data_opt::<AuthInfo>() {
             Some(AuthInfo::User { id, .. }) => id.clone(),
             _ => return Err(anyhow!("Not authenticated")),
@@ -3512,20 +4506,27 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         state: Option<String>,
     ) -> Result<String> {
         require_writable(ctx)?;
+        require_not_oauth_grant(ctx, "Connecting an app")?;
         let user_id = match ctx.data_opt::<AuthInfo>() {
             Some(AuthInfo::User { id, .. }) => id.clone(),
             _ => return Err(anyhow!("Must provide user token")),
         };
 
-        let registration =
-            oauth::decode_client_id(&self.app.server_secret().oauth_client_id_key(), &client_id)
-                .ok_or_else(|| anyhow!("Unknown or invalid client"))?;
-        if !registration
-            .redirect_uris
-            .iter()
-            .any(|u| u == &redirect_uri)
+        let client = crate::oauth_clients::resolve_client(
+            &self.app.server_secret().oauth_client_id_key(),
+            &client_id,
+        )
+        .ok_or_else(|| anyhow!("Unknown or invalid client"))?;
+        if client.member_sign_in {
+            return Err(super::tally_sign_in::member_sign_in_client(&client));
+        }
+        super::auth::check_oauth_redirect(ctx, &*self.app, &client, &redirect_uri).await?;
+        // Path only: there's no reliable API base URL here. The token endpoint
+        // checks the full URL; this just refuses early, before a code is minted.
+        if let Some(resource) = &resource
+            && !client.allows_resource_path(resource)
         {
-            return Err(anyhow!("redirect_uri is not registered for this client"));
+            return Err(anyhow!("resource is not available to this client"));
         }
         if code_challenge_method != "S256" {
             return Err(anyhow!("code_challenge_method must be S256"));
@@ -3550,9 +4551,10 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         let now = crate::clock::now_sec();
         let code = crate::nonce::generate_nonce(32);
         let payload = crate::oauth_http::AuthCodePayload {
-            user_id,
+            user_id: Some(user_id),
+            person_id: None,
             client_id: client_id.clone(),
-            client_name: registration.client_name,
+            client_name: client.client_name,
             redirect_uri: redirect_uri.clone(),
             code_challenge,
             scope,
@@ -3597,7 +4599,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
             .get_oauth_grant(&id)
             .await?
             .ok_or_else(|| anyhow!("OAuth grant not found"))?;
-        if !is_super && grant.user_id != caller_id {
+        if !is_super && grant.user_id.as_deref() != Some(caller_id.as_str()) {
             return Err(anyhow!("OAuth grant not found"));
         }
 
@@ -3792,5 +4794,35 @@ mod tests {
         fn omits_the_activity_line_when_uncategorised() {
             assert!(!body("Sam", None).contains("Activity:"));
         }
+    }
+}
+
+/// Apply a three-state argument to a stored optional value: omitted keeps it, null or
+/// an empty string clears it, anything else replaces it.
+fn merge_display(arg: MaybeUndefined<String>, current: Option<String>) -> Option<String> {
+    match arg {
+        MaybeUndefined::Undefined => current,
+        MaybeUndefined::Null => None,
+        MaybeUndefined::Value(v) => Some(v).filter(|s| !s.is_empty()),
+    }
+}
+
+#[cfg(test)]
+mod category_display_tests {
+    use super::*;
+
+    #[test]
+    fn merge_display_is_three_state() {
+        let cur = || Some("old".to_string());
+        assert_eq!(merge_display(MaybeUndefined::Undefined, cur()), cur());
+        assert_eq!(merge_display(MaybeUndefined::Null, cur()), None);
+        assert_eq!(
+            merge_display(MaybeUndefined::Value(String::new()), cur()),
+            None
+        );
+        assert_eq!(
+            merge_display(MaybeUndefined::Value("new".into()), cur()),
+            Some("new".to_string())
+        );
     }
 }

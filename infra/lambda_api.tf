@@ -21,6 +21,7 @@ resource "aws_lambda_function" "api" {
       ABLY_API_KEY          = var.ably_api_key
       TOOLBOX_GRAPHQL_URL   = var.toolbox_graphql_url
       TOOLBOX_API_TOKEN     = var.toolbox_api_token
+      WIFI_NETWORKS         = var.wifi_networks
       WEBAUTHN_RP_ID        = "seslogin.com"
       WEBAUTHN_RP_ORIGIN    = "https://new.seslogin.com,https://seslogin.com"
       # Member-facing period edit links. Set explicitly so the bare apex is used

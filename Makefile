@@ -128,7 +128,7 @@ lint:	gha-lint
 
 gha-lint:
 	@command -v actionlint >/dev/null 2>&1 || { echo "actionlint not found. Install with: brew install actionlint"; exit 1; }
-	@actionlint
+	@actionlint .github/workflows/*.yml
 
 format:
 	(cd api && cargo fmt)
