@@ -18,6 +18,24 @@ pub enum AuthError {
     /// Infrastructure failure during verification — DB down, network error, etc.
     #[error("{0}")]
     Transient(String),
+    /// A kiosk signature refused only for its timestamp: its clock is wrong (eg after a reboot), not its key. The 401
+    /// carries server time ([`clock_skew_error`]) so the kiosk re-signs instead of dropping to enrolment as a new kiosk.
+    #[error("kiosk signed at {client_time}, server time {server_time}")]
+    ClockSkew { client_time: u64, server_time: u64 },
+}
+
+/// `extensions.code` on the 401 for [`AuthError::ClockSkew`]; the kiosk matches it (web/src/lib/graphql.ts).
+pub const CLOCK_SKEW_CODE: &str = "CLOCK_SKEW";
+
+/// The 401 error for [`AuthError::ClockSkew`], carrying the server's clock (`serverTime`, unix seconds).
+pub fn clock_skew_error(server_time: u64) -> async_graphql::ServerError {
+    let mut extensions = async_graphql::ErrorExtensionValues::default();
+    extensions.set("code", CLOCK_SKEW_CODE);
+    extensions.set("serverTime", server_time);
+    async_graphql::ServerError {
+        extensions: Some(extensions),
+        ..async_graphql::ServerError::new("Kiosk clock is out of sync with the server", None)
+    }
 }
 
 pub(crate) fn classify_db_err(msg: &str, e: db::Error) -> AuthError {
@@ -290,8 +308,12 @@ pub async fn verify_signed_key<A: App + HasDb + HasQueues>(
         .map_err(|e| AuthError::Permanent(format!("Invalid signed key header: {e:#}")))?;
 
     let now = crate::clock::now_sec();
-    crate::session_key::check_timestamp_window(header.timestamp, now)
-        .map_err(|e| AuthError::Permanent(format!("{e:#}")))?;
+    crate::session_key::check_timestamp_window(header.timestamp, now).map_err(|_| {
+        AuthError::ClockSkew {
+            client_time: header.timestamp,
+            server_time: now,
+        }
+    })?;
 
     let ids = app
         .db()
@@ -604,6 +626,28 @@ mod verify_token_tests {
         let app = app();
         let result = verify_token(&app, "eyJhbGciOiJIUzI1NiJ9.eyJzZXNzaW9uX2lkIjoiUyJ9.c2ln").await;
         assert!(matches!(result, Err(AuthError::Permanent(_))));
+    }
+
+    /// A signature dated outside the window is told apart from a bad key, before any DB read (mockdb would be `Transient`).
+    #[tokio::test]
+    async fn refuses_a_skewed_signature_as_clock_skew() {
+        let app = app();
+        let result = verify_signed_key(&app, "abcd.1.c2ln", "hash", &ClientReport::default()).await;
+        assert!(matches!(
+            result,
+            Err(AuthError::ClockSkew { client_time: 1, server_time }) if server_time > 1
+        ));
+    }
+
+    #[test]
+    fn clock_skew_error_carries_code_and_server_time() {
+        let body = serde_json::to_value(async_graphql::Response::from_errors(vec![
+            clock_skew_error(1_793_000_000),
+        ]))
+        .unwrap();
+        let extensions = &body["errors"][0]["extensions"];
+        assert_eq!(extensions["code"], CLOCK_SKEW_CODE);
+        assert_eq!(extensions["serverTime"], 1_793_000_000u64);
     }
 
     #[tokio::test]

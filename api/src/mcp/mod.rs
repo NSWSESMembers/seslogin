@@ -431,8 +431,8 @@ where
 
     let auth_info = match oauth::verify_access_token(&**app, token, &resource).await {
         Ok(info) => info,
-        Err(AuthError::Permanent(msg)) => {
-            tracing::info!("mcp: auth rejected: {msg}");
+        Err(e @ (AuthError::Permanent(_) | AuthError::ClockSkew { .. })) => {
+            tracing::info!("mcp: auth rejected: {e}");
             let reply = unauthorized(&api_base, true);
             emit(reply.status, "mcp:auth", None);
             return reply;

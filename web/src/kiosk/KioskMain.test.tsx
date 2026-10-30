@@ -19,6 +19,7 @@ vi.mock("./lib/kioskKey", () => ({
       fingerprint: "abc123",
     }),
   buildSignedAuthHeader: () => Promise.resolve("SLKey abc123.0.sig"),
+  adoptServerClock: () => {},
 }));
 
 const FOUND_USER = "40050107";

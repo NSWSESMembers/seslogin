@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { buildSignedAuthHeader, keyInfoFromKeyPair } from "./kioskKey";
+import {
+  adoptServerClock,
+  buildSignedAuthHeader,
+  keyInfoFromKeyPair,
+} from "./kioskKey";
 
 function base64ToBytes(b64: string): ArrayBuffer {
   const binary = atob(b64);
@@ -72,5 +76,26 @@ describe("buildSignedAuthHeader", () => {
       enc(payload),
     );
     expect(ok).toBe(false);
+  });
+});
+
+describe("adoptServerClock", () => {
+  it("signs on the server's clock once told it, so a kiosk whose clock is out keeps working", async () => {
+    const keyPair = await crypto.subtle.generateKey(
+      { name: "ECDSA", namedCurve: "P-256" },
+      true,
+      ["sign", "verify"],
+    );
+    const info = await keyInfoFromKeyPair(keyPair);
+    const serverTime = Math.floor(Date.now() / 1000) + 3600;
+
+    adoptServerClock(serverTime);
+    try {
+      const [, rest] = (await buildSignedAuthHeader(info, "body")).split(" ");
+      const ts = Number(rest.split(".")[1]);
+      expect(Math.abs(ts - serverTime)).toBeLessThanOrEqual(1);
+    } finally {
+      adoptServerClock(Math.floor(Date.now() / 1000));
+    }
   });
 });

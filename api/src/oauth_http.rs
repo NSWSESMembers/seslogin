@@ -526,7 +526,7 @@ async fn token_refresh<A: App + HasDb>(app: &A, params: &HashMap<String, String>
 
     match fetch_update_user_auth_info(app, grant.user_id.clone()).await {
         Ok(_) => {}
-        Err(AuthError::Permanent(_)) => {
+        Err(AuthError::Permanent(_) | AuthError::ClockSkew { .. }) => {
             return error_reply(400, "invalid_grant", "User account is no longer available");
         }
         Err(AuthError::Transient(msg)) => return server_error("checking user before refresh", msg),

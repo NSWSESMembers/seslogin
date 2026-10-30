@@ -108,6 +108,17 @@ export async function getOrCreateKioskKey(
   return keyInfoFromKeyPair(keyPair);
 }
 
+/** The server's clock minus this device's, once a clock-skew refusal has told us; 0 until then. */
+let clockOffsetMs = 0;
+
+/**
+ * Sign on the server's clock from now on. A computer can boot with its clock minutes out, and a
+ * signature dated outside the server's window is refused, which would drop the kiosk to enrolment.
+ */
+export function adoptServerClock(serverTimeSec: number): void {
+  clockOffsetMs = serverTimeSec * 1000 - Date.now();
+}
+
 /**
  * Produce the `SLKey <fp>.<ts>.<b64sig>` Authorization header for a request, signing
  * over the canonical payload that binds the key fingerprint, current time, and the hash
@@ -117,7 +128,7 @@ export async function buildSignedAuthHeader(
   info: KioskKeyInfo,
   body: string,
 ): Promise<string> {
-  const timestamp = Math.floor(Date.now() / 1000);
+  const timestamp = Math.floor((Date.now() + clockOffsetMs) / 1000);
   const bodyHashHex = await sha256Hex(new TextEncoder().encode(body));
   const payload = `${PAYLOAD_VERSION}:${info.fingerprint}:${timestamp}:${bodyHashHex}`;
   const sig = await crypto.subtle.sign(
