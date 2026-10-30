@@ -588,6 +588,44 @@ query { selfSignInStatus { person { firstName } openPeriod { id version startTim
 mutation { selfSignIn { id version } }
 ```
 
+## Equipment
+
+A location's equipment register, used by the Tally app (`src/graphql/equipment.rs`, rules in
+`src/equipment.rs`, storage in SCHEMA.md's `equipment` and `equipment_log` sections).
+
+- **Who:** the same as Tasks and Notes — any *user* with Admin **or** Read only access to the
+  location, and super users, may read, add, edit and delete equipment and log status changes
+  and checks (`graphql::auth::require_equipment_access`). Kiosk sessions, API tokens and edit
+  links are refused.
+- **Reading:** `Location.equipment(search)` lists the location's equipment by name, as one flat
+  list. `search` keeps items whose name or description contains it, ignoring case.
+  `Query.equipment(id)` reads one; `Equipment.log` is its log, newest first.
+- **Fields:** `type` is `VEHICLE`, `TRAILER`, `VESSEL`, `RADIO`, `DEVICE`, `BAG`, `BOX` or `TOOL`
+  (more will come, so clients should cope with one they don't know). `name` is one trimmed
+  line (max 200 characters); `description` is trimmed plain text (max 5,000). `status` is
+  `IN_SERVICE`, `OUT_OF_SERVICE`, `MISSING` or `BORROWED`.
+- **The log:** the status is never edited directly. `changeEquipmentStatus(id, status,
+  comment)` changes it and logs the change with a comment saying why (required, max 1,000);
+  `checkEquipment(id, comment)` logs that the caller checked it, comment optional, and leaves
+  the status alone (it stamps `lastCheckedAt`). Each entry and its effect on the equipment are
+  written in one DynamoDB transaction, conditional on the status it starts from, so the log
+  always agrees with the status; a change that loses a race fails with `CONFLICT`.
+  `createEquipment` (status `IN_SERVICE` unless given, optional `comment`) writes the first
+  entry, with no `previousStatus`.
+- **Edits:** `updateEquipment` (type, name and description; omitted arguments unchanged) takes
+  `expectedVersion` and fails with `CONFLICT` if someone else edited it since it was read. Log
+  entries don't bump the version. `deleteEquipment` hides the item; its log is kept.
+- **Tables:** only the test tables (`seslogin_test_equipment`, `seslogin_test_equipment_log`)
+  exist so far, so a deployed API on the prod tables fails Equipment calls, and nothing else.
+
+```graphql
+mutation {
+  changeEquipmentStatus(id: "…", status: OUT_OF_SERVICE, comment: "Flat tyre") {
+    status log { kind previousStatus status comment createdBy createdAt }
+  }
+}
+```
+
 ## Map
 
 A location's shared map of pins, used by the Tally app (`src/graphql/map.rs`, rules in

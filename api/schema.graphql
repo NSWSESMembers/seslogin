@@ -115,6 +115,8 @@ enum AuditEntityType {
 	TASK_LIST
 	NOTE
 	NOTE_FOLDER
+	EQUIPMENT
+	EQUIPMENT_LOG_ENTRY
 	ON_CALL_ROLE
 	MAP_PIN
 	MAP_LAYER
@@ -326,6 +328,106 @@ type Environment {
 	isProdDb: Boolean!
 }
 
+type Equipment {
+	id: ID!
+	type: EquipmentType!
+	"""
+	One line of plain text.
+	"""
+	name: String!
+	"""
+	Plain text; empty when there is none.
+	"""
+	description: String!
+	status: EquipmentStatus!
+	"""
+	When the status last changed, or the equipment was added.
+	"""
+	statusChangedAt: Int!
+	"""
+	When someone last logged a check of it; null if nobody has.
+	"""
+	lastCheckedAt: Int
+	"""
+	Its status changes and checks, newest first. Every status change has a comment
+	saying why.
+	"""
+	log: [EquipmentLogEntry!]!
+	locationId: ID!
+	location: Location!
+	"""
+	Bumped by every edit (not by log entries); pass it back to `updateEquipment`.
+	"""
+	version: Int!
+	createdAt: Int!
+	"""
+	Email of the user who added it.
+	"""
+	createdBy: String
+	updatedAt: Int!
+	"""
+	Email of the user who last edited it.
+	"""
+	updatedBy: String
+}
+
+type EquipmentLogEntry {
+	id: ID!
+	kind: EquipmentLogKind!
+	"""
+	The status before a change. Null for checks, and for the entry written when the
+	equipment was added.
+	"""
+	previousStatus: EquipmentStatus
+	"""
+	The status after a change, or the status it was in when checked.
+	"""
+	status: EquipmentStatus!
+	"""
+	Why, in the words of whoever made the entry. May be empty for a check, or for
+	the entry written when the equipment was added.
+	"""
+	comment: String!
+	createdAt: Int!
+	"""
+	Email of the user who made the entry.
+	"""
+	createdBy: String
+}
+
+enum EquipmentLogKind {
+	"""
+	The status changed (or, with no `previousStatus`, the equipment was added).
+	"""
+	STATUS_CHANGE
+	"""
+	Someone checked the equipment; the status did not change.
+	"""
+	CHECK
+}
+
+enum EquipmentStatus {
+	IN_SERVICE
+	OUT_OF_SERVICE
+	MISSING
+	BORROWED
+}
+
+"""
+What kind of thing a piece of equipment is. More types are expected, so clients
+should cope with a value they don't know.
+"""
+enum EquipmentType {
+	VEHICLE
+	TRAILER
+	VESSEL
+	RADIO
+	DEVICE
+	BAG
+	BOX
+	TOOL
+}
+
 """
 A scalar that can represent any JSON value.
 """
@@ -467,6 +569,12 @@ type Location {
 	The location's note folders, by name.
 	"""
 	noteFolders: [NoteFolder!]!
+	"""
+	The location's equipment register, by name. `search` keeps equipment whose name
+	or description contains it, ignoring case. Users only (Admin or Read only); see
+	`graphql::equipment`.
+	"""
+	equipment(search: String): [Equipment!]!
 	"""
 	The pins on the location's shared map, by title. `layerId` narrows to one of its
 	map layers; without it every pin at the location is listed, whichever layer it is
@@ -784,6 +892,32 @@ type MutationRoot {
 	Delete a note folder. Its notes stay on the location. Returns its ID.
 	"""
 	deleteNoteFolder(id: ID!): ID!
+	"""
+	Add a piece of equipment to a location's register, logged in `status` (in
+	service unless given) with an optional `comment`. Any user with access to the
+	location may, Read only included.
+	"""
+	createEquipment(locationId: ID!, type: EquipmentType!, name: String!, description: String, status: EquipmentStatus! = IN_SERVICE, comment: String): Equipment!
+	"""
+	Edit a piece of equipment's type, name or description; omitted arguments are
+	left as they are. The status is changed with `changeEquipmentStatus`. Fails with
+	`CONFLICT` if it is no longer at `expectedVersion`.
+	"""
+	updateEquipment(id: ID!, expectedVersion: Int!, type: EquipmentType, name: String, description: String): Equipment!
+	"""
+	Delete a piece of equipment. Returns its ID.
+	"""
+	deleteEquipment(id: ID!): ID!
+	"""
+	Change a piece of equipment's status, logging it with `comment` saying why
+	(required). Fails with `CONFLICT` if someone else changed it at the same moment.
+	"""
+	changeEquipmentStatus(id: ID!, status: EquipmentStatus!, comment: String!): Equipment!
+	"""
+	Log that you have checked a piece of equipment, with an optional comment. The
+	status is unchanged.
+	"""
+	checkEquipment(id: ID!, comment: String): Equipment!
 	"""
 	Add a pin to a location's shared map. Any user with access to the location may,
 	Read only included.
@@ -1496,6 +1630,10 @@ type QueryRoot {
 	One note; null if it does not exist or was deleted.
 	"""
 	note(id: ID!): Note
+	"""
+	One piece of equipment; null if it does not exist or was deleted.
+	"""
+	equipment(id: ID!): Equipment
 	"""
 	One map pin; null if it does not exist or was deleted.
 	"""

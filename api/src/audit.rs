@@ -1190,6 +1190,52 @@ pub fn on_call_role_update_changes(
     diff(&before, &after)
 }
 
+// ── Equipment ────────────────────────────────────────────────────────────────
+
+/// Everything about a piece of equipment a person decides through an edit. Its status
+/// is set by log entries, which are audited as [`AuditEntityType::EquipmentLogEntry`].
+fn equipment_fields(e: &db::Equipment) -> Fields {
+    Fields::default()
+        .with("equipment_type", text(&e.equipment_type))
+        .with("name", text(&e.name))
+        .with(
+            "description",
+            opt_text(Some(e.description.as_str()).filter(|d| !d.is_empty())),
+        )
+}
+
+/// A new piece of equipment, with the status it was added in.
+pub fn equipment_create_changes(e: &db::Equipment) -> Vec<AuditFieldChange> {
+    creation(&equipment_fields(e).with("status", text(&e.status)))
+}
+
+pub fn equipment_update_changes(
+    before: Option<&db::Equipment>,
+    after: &db::Equipment,
+) -> Vec<AuditFieldChange> {
+    let before = before.map(equipment_fields).unwrap_or_default();
+    let after = if after.deleted.is_some() {
+        Fields::default()
+    } else {
+        equipment_fields(after)
+    };
+    diff(&before, &after)
+}
+
+pub fn equipment_log_entry_changes(e: &db::EquipmentLogEntry) -> Vec<AuditFieldChange> {
+    creation(
+        &Fields::default()
+            .with("equipment_id", text(&e.equipment_id))
+            .with("kind", text(e.kind.as_str()))
+            .with("from_status", opt_text(e.from_status.as_deref()))
+            .with("status", text(&e.status))
+            .with(
+                "comment",
+                opt_text(Some(e.comment.as_str()).filter(|c| !c.is_empty())),
+            ),
+    )
+}
+
 // ── Credentials and grants ───────────────────────────────────────────────────
 
 /// Neither the token nor its hash is listed — just whose it is and when it lapses.
@@ -2374,6 +2420,66 @@ impl<D: db::Handler> db::Handler for AuditingHandler<D> {
         Ok(after)
     }
 
+    async fn create_equipment(
+        &self,
+        equipment: db::NewEquipment<'_>,
+    ) -> db::Result<(db::Equipment, db::EquipmentLogEntry)> {
+        let (equipment, entry) = self.inner.create_equipment(equipment).await?;
+        // The first log entry is part of this one event, so it is not recorded apart.
+        self.record_create(
+            AuditEntityType::Equipment,
+            &equipment.id,
+            Some(equipment.name.clone()),
+            vec![equipment.location_id.clone()],
+            equipment_create_changes(&equipment),
+        )
+        .await;
+        Ok((equipment, entry))
+    }
+
+    async fn update_equipment(
+        &self,
+        id: &str,
+        change: db::EquipmentUpdateShape<'_>,
+    ) -> db::Result<db::Equipment> {
+        let action = match change {
+            db::EquipmentUpdateShape::Delete { .. } => AuditAction::Delete,
+            db::EquipmentUpdateShape::Fields { .. } => AuditAction::Update,
+        };
+        let before = self.before(
+            "equipment",
+            id,
+            first(self.inner.get_equipment(&[id]).await),
+        );
+        let after = self.inner.update_equipment(id, change).await?;
+        self.record(Recorded {
+            entity_type: AuditEntityType::Equipment,
+            entity_id: id,
+            action,
+            label: Some(after.name.clone()),
+            location_ids: vec![after.location_id.clone()],
+            changes: equipment_update_changes(before.as_ref(), &after),
+        })
+        .await;
+        Ok(after)
+    }
+
+    async fn add_equipment_log_entry(
+        &self,
+        entry: db::NewEquipmentLogEntry<'_>,
+    ) -> db::Result<(db::Equipment, db::EquipmentLogEntry)> {
+        let (equipment, entry) = self.inner.add_equipment_log_entry(entry).await?;
+        self.record_create(
+            AuditEntityType::EquipmentLogEntry,
+            &entry.id,
+            Some(equipment.name.clone()),
+            vec![entry.location_id.clone()],
+            equipment_log_entry_changes(&entry),
+        )
+        .await;
+        Ok((equipment, entry))
+    }
+
     // ── Deliberately not audited ─────────────────────────────────────────────
     //
     // Bookkeeping that is not a business change, or that is high-volume plumbing:
@@ -2734,6 +2840,24 @@ impl<D: db::Handler> db::Handler for AuditingHandler<D> {
 
     async fn list_note_folders(&self, location_id: &str) -> db::Result<Vec<db::NoteFolder>> {
         self.inner.list_note_folders(location_id).await
+    }
+
+    async fn get_equipment<T: AsRef<str> + Sync>(
+        &self,
+        ids: &[T],
+    ) -> db::Result<Vec<Option<db::Equipment>>> {
+        self.inner.get_equipment(ids).await
+    }
+
+    async fn list_equipment(&self, location_id: &str) -> db::Result<Vec<db::Equipment>> {
+        self.inner.list_equipment(location_id).await
+    }
+
+    async fn list_equipment_log(
+        &self,
+        equipment_id: &str,
+    ) -> db::Result<Vec<db::EquipmentLogEntry>> {
+        self.inner.list_equipment_log(equipment_id).await
     }
 
     async fn get_map_pins<T: AsRef<str> + Sync>(
@@ -4040,6 +4164,8 @@ mod tests {
             (AuditEntityType::TaskList, "task_list"),
             (AuditEntityType::Note, "note"),
             (AuditEntityType::NoteFolder, "note_folder"),
+            (AuditEntityType::Equipment, "equipment"),
+            (AuditEntityType::EquipmentLogEntry, "equipment_log_entry"),
             (AuditEntityType::OnCallRole, "on_call_role"),
             (AuditEntityType::MapPin, "map_pin"),
             (AuditEntityType::MapLayer, "map_layer"),

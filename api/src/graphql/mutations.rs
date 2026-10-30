@@ -39,6 +39,7 @@ use super::auth::{
     require_not_oauth_grant, require_period_write_access, require_writable,
 };
 use super::dataloader::DatabaseLoader;
+use super::equipment::{self, Equipment, EquipmentStatus, EquipmentType};
 use super::error::{ApiError, ErrorCode};
 use super::map::{self, MapLayer, MapPin};
 use super::notes::{self, Note, NoteFolder};
@@ -2571,6 +2572,93 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
     #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
     async fn delete_note_folder(&self, ctx: &Context<'_>, id: ID) -> Result<ID> {
         notes::delete_note_folder(ctx, self.app.as_ref(), &id).await
+    }
+
+    /// Add a piece of equipment to a location's register, logged in `status` (in
+    /// service unless given) with an optional `comment`. Any user with access to the
+    /// location may, Read only included.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    async fn create_equipment(
+        &self,
+        ctx: &Context<'_>,
+        location_id: ID,
+        #[graphql(name = "type")] equipment_type: EquipmentType,
+        name: String,
+        description: Option<String>,
+        #[graphql(default_with = "EquipmentStatus::InService")] status: EquipmentStatus,
+        comment: Option<String>,
+    ) -> Result<Equipment<A>> {
+        equipment::create_equipment(
+            ctx,
+            self.app.as_ref(),
+            equipment::CreateEquipmentArgs {
+                location_id,
+                equipment_type,
+                name,
+                description,
+                status,
+                comment,
+            },
+        )
+        .await
+    }
+
+    /// Edit a piece of equipment's type, name or description; omitted arguments are
+    /// left as they are. The status is changed with `changeEquipmentStatus`. Fails with
+    /// `CONFLICT` if it is no longer at `expectedVersion`.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    async fn update_equipment(
+        &self,
+        ctx: &Context<'_>,
+        id: ID,
+        expected_version: i32,
+        #[graphql(name = "type")] equipment_type: Option<EquipmentType>,
+        name: Option<String>,
+        description: Option<String>,
+    ) -> Result<Equipment<A>> {
+        equipment::update_equipment(
+            ctx,
+            self.app.as_ref(),
+            equipment::UpdateEquipmentArgs {
+                id,
+                expected_version,
+                equipment_type,
+                name,
+                description,
+            },
+        )
+        .await
+    }
+
+    /// Delete a piece of equipment. Returns its ID.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    async fn delete_equipment(&self, ctx: &Context<'_>, id: ID) -> Result<ID> {
+        equipment::delete_equipment(ctx, self.app.as_ref(), &id).await
+    }
+
+    /// Change a piece of equipment's status, logging it with `comment` saying why
+    /// (required). Fails with `CONFLICT` if someone else changed it at the same moment.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    async fn change_equipment_status(
+        &self,
+        ctx: &Context<'_>,
+        id: ID,
+        status: EquipmentStatus,
+        comment: String,
+    ) -> Result<Equipment<A>> {
+        equipment::change_equipment_status(ctx, self.app.as_ref(), &id, status, &comment).await
+    }
+
+    /// Log that you have checked a piece of equipment, with an optional comment. The
+    /// status is unchanged.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    async fn check_equipment(
+        &self,
+        ctx: &Context<'_>,
+        id: ID,
+        comment: Option<String>,
+    ) -> Result<Equipment<A>> {
+        equipment::check_equipment(ctx, self.app.as_ref(), &id, comment.as_deref()).await
     }
 
     /// Add a pin to a location's shared map. Any user with access to the location may,

@@ -18,6 +18,7 @@ use crate::telemetry::{self, OperationKind};
 pub mod audit_log;
 pub mod auth;
 pub mod dataloader;
+pub mod equipment;
 pub mod error;
 #[cfg(debug_assertions)]
 pub mod error_injection;

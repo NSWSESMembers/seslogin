@@ -344,6 +344,22 @@ const TABLES: &[Table] = &[
         ttl: None,
     },
     Table {
+        name: "equipment",
+        hash: "id",
+        range: None,
+        attrs: &[Attr("id", S), Attr("location_id", S)],
+        gsis: &[all("location_id-index", "location_id", None)],
+        ttl: None,
+    },
+    Table {
+        name: "equipment_log",
+        hash: "id",
+        range: None,
+        attrs: &[Attr("id", S), Attr("equipment_id", S)],
+        gsis: &[all("equipment_id-index", "equipment_id", None)],
+        ttl: None,
+    },
+    Table {
         name: "test_pagination",
         hash: "id",
         range: None,

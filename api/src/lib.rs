@@ -14,6 +14,7 @@ pub mod db;
 pub mod directory_sync;
 pub mod dynamodb;
 pub mod environment;
+pub mod equipment;
 pub mod expire;
 pub mod graphql;
 pub mod healthcheck;

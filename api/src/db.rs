@@ -863,6 +863,138 @@ pub enum NoteFolderUpdateShape<'a> {
     Delete,
 }
 
+/// A piece of equipment in a location's register ("Equipment"). See SCHEMA.md's
+/// `equipment` section and [`crate::equipment`] for the rules.
+///
+/// `equipment_type` and `status` hold [`crate::equipment::EquipmentType::as_str`] and
+/// [`crate::equipment::EquipmentStatus::as_str`] values. The status is only changed by
+/// [`Handler::add_equipment_log_entry`], so every change is in the log.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Equipment {
+    pub id: String,
+    pub location_id: String,
+    pub equipment_type: String,
+    pub name: String,
+    pub description: String,
+    pub status: String,
+    /// When the status last changed (or the equipment was added).
+    pub status_changed_at: u64,
+    /// When someone last logged that they checked it.
+    pub last_checked_at: Option<u64>,
+    pub created_by: Option<String>,
+    pub updated_by: Option<String>,
+    /// Bumped by every [`EquipmentUpdateShape`] write, not by log entries.
+    pub version: u64,
+    pub deleted: Option<u64>,
+    pub created_at: u64,
+    pub updated_at: u64,
+}
+
+impl HasID for Equipment {
+    fn id(&self) -> &str {
+        &self.id
+    }
+}
+
+/// A piece of equipment being added. Its first log entry, a status change from nothing
+/// to `status` with `comment`, is written with it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct NewEquipment<'a> {
+    pub location_id: &'a str,
+    pub equipment_type: &'a str,
+    pub name: &'a str,
+    pub description: &'a str,
+    pub status: &'a str,
+    pub comment: &'a str,
+    pub created_by: Option<&'a str>,
+}
+
+/// Every write to a piece of equipment other than a log entry. Each fails with
+/// [`Error::NotFound`] when it does not exist, is deleted or — for `Fields` — is no
+/// longer at `expected_version`. Each returns the equipment as it is after the write.
+#[derive(Clone, Debug, PartialEq)]
+pub enum EquipmentUpdateShape<'a> {
+    /// Replace the editable fields. Empty description is removed.
+    Fields {
+        equipment_type: &'a str,
+        name: &'a str,
+        description: &'a str,
+        by: Option<&'a str>,
+        expected_version: u64,
+    },
+    /// Soft-delete the equipment. Its log is kept.
+    Delete { by: Option<&'a str> },
+}
+
+/// One line of a piece of equipment's log.
+#[derive(Clone, Debug, PartialEq)]
+pub struct EquipmentLogEntry {
+    pub id: String,
+    pub equipment_id: String,
+    pub location_id: String,
+    pub kind: EquipmentLogKind,
+    /// The status before a status change; `None` for the entry written when the
+    /// equipment was added, and for checks.
+    pub from_status: Option<String>,
+    /// The status after a status change, or the status it was checked in.
+    pub status: String,
+    /// Why, in the words of whoever made the entry; may be empty for a check.
+    pub comment: String,
+    pub created_by: Option<String>,
+    pub created_at: u64,
+    /// When it was written, in Unix microseconds: orders entries made within the same
+    /// second.
+    pub created_us: u64,
+}
+
+impl HasID for EquipmentLogEntry {
+    fn id(&self) -> &str {
+        &self.id
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum EquipmentLogKind {
+    StatusChange,
+    Check,
+}
+
+impl EquipmentLogKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::StatusChange => "status_change",
+            Self::Check => "check",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "status_change" => Some(Self::StatusChange),
+            "check" => Some(Self::Check),
+            _ => None,
+        }
+    }
+}
+
+/// What a new log entry records.
+#[derive(Clone, Debug, PartialEq)]
+pub enum EquipmentLogChange<'a> {
+    /// The status changed from `from` to `to`.
+    Status { from: &'a str, to: &'a str },
+    /// Someone checked it, in `status`; the status is unchanged.
+    Check { status: &'a str },
+}
+
+/// A log entry being added to a piece of equipment.
+#[derive(Clone, Debug, PartialEq)]
+pub struct NewEquipmentLogEntry<'a> {
+    pub equipment_id: &'a str,
+    pub location_id: &'a str,
+    pub change: EquipmentLogChange<'a>,
+    pub comment: &'a str,
+    pub by: Option<&'a str>,
+}
+
 /// A pin on a location's shared map ("Map"). See SCHEMA.md's `map_pin` section.
 ///
 /// Every pin belongs to its location; `layer_id` optionally puts it on one of the
@@ -1353,6 +1485,8 @@ pub enum AuditEntityType {
     TaskList,
     Note,
     NoteFolder,
+    Equipment,
+    EquipmentLogEntry,
     OnCallRole,
     MapPin,
     MapLayer,
@@ -1379,6 +1513,8 @@ impl AuditEntityType {
             "on_call_role" => Self::OnCallRole,
             "note" => Self::Note,
             "note_folder" => Self::NoteFolder,
+            "equipment" => Self::Equipment,
+            "equipment_log_entry" => Self::EquipmentLogEntry,
             "map_pin" => Self::MapPin,
             "map_layer" => Self::MapLayer,
             _ => return None,
@@ -1405,6 +1541,8 @@ impl AuditEntityType {
             Self::TaskList => "task_list",
             Self::Note => "note",
             Self::NoteFolder => "note_folder",
+            Self::Equipment => "equipment",
+            Self::EquipmentLogEntry => "equipment_log_entry",
             Self::MapPin => "map_pin",
             Self::MapLayer => "map_layer",
         }
@@ -2158,6 +2296,45 @@ pub trait Handler: Sync {
         id: &str,
         change: NoteFolderUpdateShape<'_>,
     ) -> impl Future<Output = Result<NoteFolder>> + Send;
+
+    // ── Equipment ─────────────────────────────────────────────────────────────
+
+    fn get_equipment<T: AsRef<str> + Sync>(
+        &self,
+        ids: &[T],
+    ) -> impl Future<Output = Result<Vec<Option<Equipment>>>> + Send;
+    /// A location's equipment, deleted ones left out, in no particular order. Reads a
+    /// GSI, so a write may take a moment to show up.
+    fn list_equipment(
+        &self,
+        location_id: &str,
+    ) -> impl Future<Output = Result<Vec<Equipment>>> + Send;
+    /// Add a piece of equipment together with its first log entry, atomically.
+    fn create_equipment(
+        &self,
+        equipment: NewEquipment<'_>,
+    ) -> impl Future<Output = Result<(Equipment, EquipmentLogEntry)>> + Send;
+    fn update_equipment(
+        &self,
+        id: &str,
+        change: EquipmentUpdateShape<'_>,
+    ) -> impl Future<Output = Result<Equipment>> + Send;
+    /// Append a log entry and, atomically with it, apply it to the equipment: a status
+    /// change sets the status, a check stamps `last_checked_at`. Fails with
+    /// [`Error::NotFound`] when the equipment does not exist, is deleted or is no longer
+    /// in the status the entry starts from (`from`, or a check's `status`), so the log
+    /// never records a change from a status it was not in. Returns the equipment after
+    /// the write and the new entry.
+    fn add_equipment_log_entry(
+        &self,
+        entry: NewEquipmentLogEntry<'_>,
+    ) -> impl Future<Output = Result<(Equipment, EquipmentLogEntry)>> + Send;
+    /// A piece of equipment's log, in no particular order. Kept when the equipment is
+    /// deleted.
+    fn list_equipment_log(
+        &self,
+        equipment_id: &str,
+    ) -> impl Future<Output = Result<Vec<EquipmentLogEntry>>> + Send;
 
     // ── Map ───────────────────────────────────────────────────────────────────
 

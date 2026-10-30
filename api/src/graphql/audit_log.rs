@@ -71,6 +71,8 @@ pub enum AuditEntityType {
     TaskList,
     Note,
     NoteFolder,
+    Equipment,
+    EquipmentLogEntry,
     OnCallRole,
     MapPin,
     MapLayer,
@@ -96,6 +98,8 @@ impl From<db::AuditEntityType> for AuditEntityType {
             db::AuditEntityType::OnCallRole => Self::OnCallRole,
             db::AuditEntityType::Note => Self::Note,
             db::AuditEntityType::NoteFolder => Self::NoteFolder,
+            db::AuditEntityType::Equipment => Self::Equipment,
+            db::AuditEntityType::EquipmentLogEntry => Self::EquipmentLogEntry,
             db::AuditEntityType::MapPin => Self::MapPin,
             db::AuditEntityType::MapLayer => Self::MapLayer,
         }
@@ -122,6 +126,8 @@ impl From<AuditEntityType> for db::AuditEntityType {
             AuditEntityType::TaskList => Self::TaskList,
             AuditEntityType::Note => Self::Note,
             AuditEntityType::NoteFolder => Self::NoteFolder,
+            AuditEntityType::Equipment => Self::Equipment,
+            AuditEntityType::EquipmentLogEntry => Self::EquipmentLogEntry,
             AuditEntityType::MapPin => Self::MapPin,
             AuditEntityType::MapLayer => Self::MapLayer,
         }

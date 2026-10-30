@@ -837,6 +837,46 @@ impl db::Handler for Handler {
         Self::unsupported()
     }
 
+    async fn get_equipment<T: AsRef<str> + Sync>(
+        &self,
+        _ids: &[T],
+    ) -> db::Result<Vec<Option<db::Equipment>>> {
+        Self::unsupported()
+    }
+
+    async fn list_equipment(&self, _location_id: &str) -> db::Result<Vec<db::Equipment>> {
+        Self::unsupported()
+    }
+
+    async fn create_equipment(
+        &self,
+        _equipment: db::NewEquipment<'_>,
+    ) -> db::Result<(db::Equipment, db::EquipmentLogEntry)> {
+        Self::unsupported()
+    }
+
+    async fn update_equipment(
+        &self,
+        _id: &str,
+        _change: db::EquipmentUpdateShape<'_>,
+    ) -> db::Result<db::Equipment> {
+        Self::unsupported()
+    }
+
+    async fn add_equipment_log_entry(
+        &self,
+        _entry: db::NewEquipmentLogEntry<'_>,
+    ) -> db::Result<(db::Equipment, db::EquipmentLogEntry)> {
+        Self::unsupported()
+    }
+
+    async fn list_equipment_log(
+        &self,
+        _equipment_id: &str,
+    ) -> db::Result<Vec<db::EquipmentLogEntry>> {
+        Self::unsupported()
+    }
+
     async fn put_audit_entry(&self, _entry: &db::AuditEntry) -> db::Result<()> {
         Self::unsupported()
     }
