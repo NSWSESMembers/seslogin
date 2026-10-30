@@ -130,7 +130,9 @@ export default function ReportsBadges() {
               >
                 <Td>{idx + 1}</Td>
                 <Td nowrap>
-                  {person.firstName} {person.lastName}
+                  <Link to={`/admin/members/badges/${person.id}`}>
+                    {person.firstName} {person.lastName}
+                  </Link>
                 </Td>
                 <Td>{person.memberNumber || "-"}</Td>
                 <Td>
