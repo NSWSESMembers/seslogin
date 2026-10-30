@@ -1420,15 +1420,16 @@ type MutationRoot {
 	"""
 	scanSignOutWithBadges(id: ID!, startTime: Int!, endTime: Int!, categoryId: ID!): ScanSignOutResult!
 	"""
-	Sign the member signed in to Tally in at their home unit, as typing their member
-	number at a kiosk there would. Idempotent: if the member is already signed in at
-	home, that period is returned unchanged, so a double tap never opens two. A
-	period open at another unit is ignored. Tally members only, and no location
-	grant is needed (being the member is the authority).
+	Sign the member signed in to Tally in at a unit, as typing their member number at
+	a kiosk there would: their home unit, or `locationId` when given, which must be a
+	unit they can use in Tally (`FORBIDDEN` otherwise). Idempotent: if the member is
+	already signed in at that unit, that period is returned unchanged, so a double tap
+	never opens two. A period open at another unit is ignored. Tally members only,
+	and no location grant is needed at home (being the member is the authority).
 	"""
-	selfSignIn: Period!
+	selfSignIn(locationId: ID): Period!
 	"""
-	Sign the member out of one of their own open home-unit periods, as
+	Sign the member out of one of their own open periods, at whichever unit, as
 	`scanSignOut` does at a kiosk. `expectedVersion` is the period's `version` as
 	the app last saw it; if it, or the sign-in, has changed since (e.g. a kiosk
 	signed them out first) the write is refused with `CONFLICT` and nothing changes.
@@ -2078,12 +2079,13 @@ type QueryRoot {
 	"""
 	tallyLocation(id: ID!): TallyLocation!
 	"""
-	The signed-in member's own sign-in state at their home unit, for the Tally app;
-	null when the member has since been deleted. Tally members only. No location
-	grant is needed — being the member is the authority (see
-	`graphql::self_sign_in`).
+	The signed-in member's own sign-in state at a unit, for the Tally app: their home
+	unit, or `locationId` when given, which must be a unit they can use in Tally
+	(`FORBIDDEN` otherwise). Null when the member has since been deleted. Tally
+	members only. No location grant is needed at home — being the member is the
+	authority (see `graphql::self_sign_in`).
 	"""
-	selfSignInStatus: SelfSignInStatus
+	selfSignInStatus(locationId: ID): SelfSignInStatus
 	"""
 	One task, open or completed; null if it does not exist or was deleted.
 	"""
@@ -2301,7 +2303,7 @@ type ScanSignOutResult {
 }
 
 """
-A member's own sign-in state at their home unit.
+A member's own sign-in state at one unit: their home unit, or the one asked for.
 """
 type SelfSignInStatus {
 	"""
@@ -2309,11 +2311,12 @@ type SelfSignInStatus {
 	"""
 	person: Person!
 	"""
-	The member's home unit; sign-ins happen here.
+	The unit this status is for, where `selfSignIn` with the same `locationId`
+	signs in: the member's home unit unless another was asked for.
 	"""
 	location: Location!
 	"""
-	The member's newest open period at the home unit; null when signed out. A
+	The member's newest open period at this unit; null when signed out here. A
 	period open at another unit is not shown.
 	"""
 	openPeriod: Period
@@ -2323,8 +2326,8 @@ type SelfSignInStatus {
 	"""
 	quickPick: QuickPick
 	"""
-	Everyone currently signed in at the member's home unit (open, not deleted
-	periods, members and guests), oldest sign-in first. Computed only when selected.
+	Everyone currently signed in at this unit (open, not deleted periods, members
+	and guests), oldest sign-in first. Computed only when selected.
 	"""
 	whosHere: [WhosHereEntry!]!
 }

@@ -1,7 +1,8 @@
 //! `selfSignInStatus`, `selfSignIn` and `selfSignOut`: a member signed in to Tally signs
-//! themselves in and out at their home unit, as a kiosk there would.
+//! themselves in and out at their home unit, or another unit they can use in Tally, as a
+//! kiosk there would.
 //!
-//! Authority is being the member, not a location grant, so the callers below hold no
+//! Authority is being the member, not a location grant, so most callers below hold no
 //! units beyond their home. Uses the shared `FakeDb` (`tests/common/mod.rs`) and runs real
 //! GraphQL documents through `graphql::build_schema`.
 
@@ -424,6 +425,137 @@ async fn sign_in_ignores_a_period_open_at_another_unit() {
     assert_ne!(data["selfSignIn"]["id"], "away");
     assert_eq!(period_count(&app), 2);
     assert_eq!(stored(&app, "away").end_time, None);
+}
+
+// ---- at another unit ----
+
+/// Alice through Tally, with the user signed in alongside her holding `units` (either
+/// role), or every unit when `is_super`.
+fn alice_with(units: &[&str], is_super: bool) -> AuthInfo {
+    let AuthInfo::Member {
+        person_id,
+        location_id,
+        user_id,
+        grant_id,
+        ..
+    } = user("alice-user")
+    else {
+        unreachable!()
+    };
+    AuthInfo::Member {
+        person_id,
+        location_id,
+        user_id,
+        is_super,
+        user_location_ids: units.iter().map(|u| u.to_string()).collect(),
+        grant_id,
+    }
+}
+
+fn status_at(location_id: &str) -> String {
+    format!(
+        r#"{{ selfSignInStatus(locationId: "{location_id}") {{ person {{ id }} location {{ id }}
+            openPeriod {{ id }} whosHere {{ id isMe }} }} }}"#
+    )
+}
+
+fn sign_in_at(location_id: &str) -> String {
+    format!(r#"mutation {{ selfSignIn(locationId: "{location_id}") {{ id locationId }} }}"#)
+}
+
+#[tokio::test]
+async fn sign_in_at_another_unit_the_member_can_use() {
+    let app = app();
+    // Open at home already: a sign-in elsewhere opens alongside it, as at that unit's kiosk.
+    seed_period(&app, period("home", "p-alice", "loc-a", None));
+    seed_period(&app, period("bob-away", "p-bob", "loc-b", None));
+    let auth = alice_with(&["loc-b"], false);
+
+    let data = json(&run(&app, auth.clone(), &status_at("loc-b")).await);
+    let s = &data["selfSignInStatus"];
+    assert_eq!(s["person"]["id"], "p-alice");
+    assert_eq!(s["location"]["id"], "loc-b");
+    assert_eq!(s["openPeriod"], serde_json::Value::Null);
+    assert_eq!(
+        s["whosHere"],
+        serde_json::json!([{ "id": "bob-away", "isMe": false }])
+    );
+
+    let data = json(&run(&app, auth.clone(), &sign_in_at("loc-b")).await);
+    let id = data["selfSignIn"]["id"].as_str().unwrap().to_string();
+    assert_eq!(data["selfSignIn"]["locationId"], "loc-b");
+    assert_eq!(stored(&app, "home").end_time, None);
+    assert!(
+        app.realtime
+            .published()
+            .iter()
+            .any(|e| matches!(e, Event::Opened { channel, .. } if channel.ends_with("loc-b")))
+    );
+
+    // Idempotent at that unit, and the status there now shows it.
+    let again = json(&run(&app, auth.clone(), &sign_in_at("loc-b")).await);
+    assert_eq!(again["selfSignIn"]["id"], id.as_str());
+    assert_eq!(period_count(&app), 3);
+    let data = json(&run(&app, auth.clone(), &status_at("loc-b")).await);
+    assert_eq!(data["selfSignInStatus"]["openPeriod"]["id"], id.as_str());
+
+    // Home is unchanged, and asking for it by id is the same as not asking.
+    let data = json(&run(&app, auth.clone(), &status_at("loc-a")).await);
+    assert_eq!(data["selfSignInStatus"]["openPeriod"]["id"], "home");
+    let data = json(&run(&app, auth.clone(), &sign_in_at("loc-a")).await);
+    assert_eq!(data["selfSignIn"]["id"], "home");
+
+    // And signing out there works like any of their own periods.
+    let end = now_sec();
+    let rec = stored(&app, &id);
+    let out = sign_out(&id, rec.version as i64, end - 600, end, "cat-ok");
+    let data = json(&run(&app, auth, &out).await);
+    assert_eq!(data["selfSignOut"]["endTime"], end);
+}
+
+#[tokio::test]
+async fn sign_in_at_a_unit_the_member_cannot_use_is_forbidden() {
+    let app = app();
+    // Bob is at loc-b, but Alice holds no unit there.
+    seed_period(&app, period("bob-away", "p-bob", "loc-b", None));
+    for auth in [user("alice-user"), alice_with(&["loc-c"], false)] {
+        for q in [status_at("loc-b"), sign_in_at("loc-b")] {
+            let response = run(&app, auth.clone(), &q).await;
+            assert_eq!(code_of(&response).as_deref(), Some("FORBIDDEN"), "{q}");
+        }
+    }
+    assert_eq!(period_count(&app), 1);
+}
+
+#[tokio::test]
+async fn super_member_may_sign_in_anywhere_that_exists() {
+    let app = app();
+    let auth = alice_with(&[], true);
+    let data = json(&run(&app, auth.clone(), &sign_in_at("loc-b")).await);
+    assert_eq!(data["selfSignIn"]["locationId"], "loc-b");
+
+    for q in [status_at("loc-gone"), sign_in_at("loc-gone")] {
+        let response = run(&app, auth.clone(), &q).await;
+        assert_eq!(code_of(&response).as_deref(), Some("NOT_FOUND"), "{q}");
+    }
+    assert_eq!(period_count(&app), 1);
+}
+
+#[tokio::test]
+async fn a_deleted_member_has_no_status_at_another_unit_either() {
+    let app = app();
+    let mut auth = user("gone-user");
+    if let AuthInfo::Member {
+        user_location_ids, ..
+    } = &mut auth
+    {
+        *user_location_ids = vec!["loc-b".to_string()];
+    }
+    let data = json(&run(&app, auth.clone(), &status_at("loc-b")).await);
+    assert_eq!(data["selfSignInStatus"], serde_json::Value::Null);
+    let response = run(&app, auth, &sign_in_at("loc-b")).await;
+    assert_eq!(code_of(&response).as_deref(), Some("BAD_REQUEST"));
+    assert_eq!(period_count(&app), 0);
 }
 
 // ---- sign out ----

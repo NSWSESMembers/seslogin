@@ -1,13 +1,16 @@
-//! Self sign-in: a member signed in to Tally signs themselves in and out at their home
-//! unit, exactly as they would by typing their member number at a kiosk there.
+//! Self sign-in: a member signed in to Tally signs themselves in and out at a unit,
+//! exactly as they would by typing their member number at a kiosk there. The unit is
+//! their home unit unless they pick another they can use in Tally (see
+//! [`sign_in_location_id`]), as a member may sign in at another unit's kiosk.
 //!
 //! The authority is being that member (an [`AuthInfo::Member`]), **not** a location
-//! grant: a member needs no role anywhere to sign themselves in. So this deliberately
-//! uses neither `require_location_access` nor `require_location_write_access`;
-//! [`linked_person`] is the whole check. Only Tally members qualify — users on their
-//! own, kiosk sessions, API tokens and period links are refused — and only the home
-//! unit's periods are ever considered, as at a kiosk, which scopes by location. See
-//! `mutations.rs` for `selfSignIn` / `selfSignOut`.
+//! grant: a member needs no role anywhere to sign themselves in at home. So this
+//! deliberately uses neither `require_location_access` nor
+//! `require_location_write_access`; [`linked_person`] is the check, plus
+//! `require_member_location` for a unit other than home. Only Tally members qualify —
+//! users on their own, kiosk sessions, API tokens and period links are refused — and
+//! only the chosen unit's periods are ever considered, as at a kiosk, which scopes by
+//! location. See `mutations.rs` for `selfSignIn` / `selfSignOut`.
 
 use anyhow::{Result, anyhow};
 use async_graphql::{Context, ID, Object, SimpleObject};
@@ -15,6 +18,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tracing::warn;
 
+use super::auth::require_member_location;
 use super::error::ApiError;
 use super::query::{Location, Period, Person, QuickPick, build_quick_pick};
 use crate::app::{App, HasDb};
@@ -68,16 +72,34 @@ pub(super) async fn require_linked_person<A: App + HasDb + Send + Sync + 'static
         .ok_or_else(|| ApiError::bad_request(NO_MEMBER).into())
 }
 
-/// The member's newest open period at their home unit, as `scanRegister2` looks it
-/// up. A period open at any other unit is ignored.
-pub(super) async fn open_home_period(
+/// The unit to sign `person` in at: `location_id` when given, which must be a unit the
+/// member may use in Tally (their home unit, or one the user signed in alongside them
+/// holds either role at; see [`require_member_location`]), else their home unit.
+pub(super) fn sign_in_location_id(
+    ctx: &Context<'_>,
+    person: &db::Person,
+    location_id: Option<&str>,
+) -> Result<String> {
+    match location_id {
+        Some(id) if id != person.location_id => {
+            require_member_location(ctx, id, "Only a member signed in to Tally can sign in")?;
+            Ok(id.to_string())
+        }
+        _ => Ok(person.location_id.clone()),
+    }
+}
+
+/// The member's newest open period at `location_id`, as `scanRegister2` looks it up
+/// at that unit's kiosk. A period open at any other unit is ignored.
+pub(super) async fn open_period_at(
     db: &impl Handler,
     person: &db::Person,
+    location_id: &str,
 ) -> Result<Option<db::Period>> {
     Ok(db
         .list_periods_for_person(
             &person.id,
-            Some(&person.location_id),
+            Some(location_id),
             Some(true),
             None,
             db::ListPeriodsPage {
@@ -111,12 +133,16 @@ pub struct WhosHereEntry {
     is_me: bool,
 }
 
-/// Everyone signed in at `person`'s home unit, oldest sign-in first. The location is
-/// always the member's own, never caller-supplied.
-async fn whos_here(db: &impl Handler, person: &db::Person) -> Result<Vec<WhosHereEntry>> {
+/// Everyone signed in at `location_id`, oldest sign-in first, marking `person`'s own
+/// periods. The location is one [`sign_in_location_id`] allowed.
+async fn whos_here(
+    db: &impl Handler,
+    location_id: &str,
+    person: &db::Person,
+) -> Result<Vec<WhosHereEntry>> {
     let mut periods: Vec<db::Period> = db
         .list_periods_for_location(
-            &person.location_id,
+            location_id,
             true,
             None,
             None,
@@ -180,7 +206,7 @@ async fn whos_here(db: &impl Handler, person: &db::Person) -> Result<Vec<WhosHer
         .collect())
 }
 
-/// A member's own sign-in state at their home unit.
+/// A member's own sign-in state at one unit.
 pub struct SelfSignInStatus<A: App + HasDb + 'static> {
     _marker: std::marker::PhantomData<A>,
     pub(super) person: db::Person,
@@ -188,7 +214,7 @@ pub struct SelfSignInStatus<A: App + HasDb + 'static> {
     pub(super) open_period: Option<db::Period>,
 }
 
-/// A member's own sign-in state at their home unit.
+/// A member's own sign-in state at one unit: their home unit, or the one asked for.
 #[Object]
 impl<A: App + HasDb + Send + Sync + 'static> SelfSignInStatus<A> {
     /// The member.
@@ -196,12 +222,13 @@ impl<A: App + HasDb + Send + Sync + 'static> SelfSignInStatus<A> {
         Person::new(self.person.clone())
     }
 
-    /// The member's home unit; sign-ins happen here.
+    /// The unit this status is for, where `selfSignIn` with the same `locationId`
+    /// signs in: the member's home unit unless another was asked for.
     async fn location(&self) -> Location<A> {
         Location::new_db(self.location.clone())
     }
 
-    /// The member's newest open period at the home unit; null when signed out. A
+    /// The member's newest open period at this unit; null when signed out here. A
     /// period open at another unit is not shown.
     async fn open_period(&self) -> Option<Period<A>> {
         self.open_period.clone().map(Period::new)
@@ -223,11 +250,11 @@ impl<A: App + HasDb + Send + Sync + 'static> SelfSignInStatus<A> {
         }
     }
 
-    /// Everyone currently signed in at the member's home unit (open, not deleted
-    /// periods, members and guests), oldest sign-in first. Computed only when selected.
+    /// Everyone currently signed in at this unit (open, not deleted periods, members
+    /// and guests), oldest sign-in first. Computed only when selected.
     async fn whos_here(&self, ctx: &Context<'_>) -> Result<Vec<WhosHereEntry>> {
         let app = ctx.data_unchecked::<Arc<A>>();
-        whos_here(app.db(), &self.person).await
+        whos_here(app.db(), &self.location.id, &self.person).await
     }
 }
 
@@ -235,19 +262,27 @@ impl<A: App + HasDb + Send + Sync + 'static> SelfSignInStatus<A> {
 pub(super) async fn status<A: App + HasDb + Send + Sync + 'static>(
     ctx: &Context<'_>,
     app: &A,
+    location_id: Option<&str>,
 ) -> Result<Option<SelfSignInStatus<A>>> {
     let Some(person) = linked_person(ctx, app).await? else {
         return Ok(None);
     };
+    let location_id = sign_in_location_id(ctx, &person, location_id)?;
     let location = app
         .db()
-        .get_locations(&[&person.location_id])
+        .get_locations(&[&location_id])
         .await?
         .into_iter()
         .next()
         .flatten()
-        .ok_or_else(|| anyhow!("Location with ID {} missing", person.location_id))?;
-    let open_period = open_home_period(app.db(), &person).await?;
+        .ok_or_else(|| -> anyhow::Error {
+            if location_id == person.location_id {
+                anyhow!("Location with ID {location_id} missing")
+            } else {
+                ApiError::not_found("Location", &location_id).into()
+            }
+        })?;
+    let open_period = open_period_at(app.db(), &person, &location.id).await?;
     Ok(Some(SelfSignInStatus {
         _marker: Default::default(),
         person,

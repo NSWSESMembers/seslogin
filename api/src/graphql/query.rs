@@ -4152,13 +4152,23 @@ impl<A: App + HasDb + HasRealtime + Send + Sync + 'static> QueryRoot<A> {
         tally::location(ctx, &id).await
     }
 
-    /// The signed-in member's own sign-in state at their home unit, for the Tally app;
-    /// null when the member has since been deleted. Tally members only. No location
-    /// grant is needed — being the member is the authority (see
-    /// `graphql::self_sign_in`).
-    async fn self_sign_in_status(&self, ctx: &Context<'_>) -> Result<Option<SelfSignInStatus<A>>> {
+    /// The signed-in member's own sign-in state at a unit, for the Tally app: their home
+    /// unit, or `locationId` when given, which must be a unit they can use in Tally
+    /// (`FORBIDDEN` otherwise). Null when the member has since been deleted. Tally
+    /// members only. No location grant is needed at home — being the member is the
+    /// authority (see `graphql::self_sign_in`).
+    async fn self_sign_in_status(
+        &self,
+        ctx: &Context<'_>,
+        location_id: Option<ID>,
+    ) -> Result<Option<SelfSignInStatus<A>>> {
         let app = ctx.data_unchecked::<Arc<A>>();
-        self_sign_in::status(ctx, app.as_ref()).await
+        self_sign_in::status(
+            ctx,
+            app.as_ref(),
+            location_id.as_ref().map(|id| id.as_str()),
+        )
+        .await
     }
 
     /// One task, open or completed; null if it does not exist or was deleted.
