@@ -25,6 +25,7 @@ pub mod mutations;
 pub mod pagination;
 pub mod query;
 pub mod ses_details;
+pub mod tasks;
 
 pub use self::mutations::MutationRoot;
 pub use self::query::{
@@ -80,6 +81,9 @@ pub struct PeriodId(pub ID);
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct LocationId(pub ID);
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct TaskListId(pub String);
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct SessionId(pub ID);

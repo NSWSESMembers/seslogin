@@ -42,6 +42,7 @@ pub mod sesmail;
 pub mod session_key;
 pub mod session_retire;
 pub mod sqs;
+pub mod tasks;
 pub mod telemetry;
 pub mod text_table;
 pub mod toolbox;

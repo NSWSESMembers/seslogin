@@ -41,6 +41,7 @@ use super::auth::{
 use super::dataloader::DatabaseLoader;
 use super::error::{ApiError, ErrorCode};
 use super::query::{QuickPick, build_quick_pick};
+use super::tasks::{self, Task, TaskList, TaskRecurrenceInput};
 use super::{
     ApiToken, Category, Location, NitcGroup, PasskeyInfo, Period, Person, PersonId, Session, User,
 };
@@ -2328,6 +2329,111 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         Ok(Session::new(rec.into_iter().next().flatten().ok_or_else(
             || anyhow!("Session with ID {:?} missing", id),
         )?))
+    }
+
+    /// Add a task to a location's shared to-do list. Any user with access to the
+    /// location may, Read only included. `dueDate` (`YYYY-MM-DD`, Sydney) hides the
+    /// task until that day; a recurring task with no date is due today.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    async fn create_task(
+        &self,
+        ctx: &Context<'_>,
+        location_id: ID,
+        title: String,
+        description: Option<String>,
+        list_id: Option<ID>,
+        due_date: Option<String>,
+        recurrence: Option<TaskRecurrenceInput>,
+    ) -> Result<Task<A>> {
+        tasks::create_task(
+            ctx,
+            self.app.as_ref(),
+            tasks::CreateTaskArgs {
+                location_id,
+                title,
+                description,
+                list_id,
+                due_date,
+                recurrence,
+            },
+        )
+        .await
+    }
+
+    /// Change an open task. Omitted arguments are left as they are; `null` clears
+    /// `description`, `listId`, `dueDate` or `recurrence`. Fails with `CONFLICT` if
+    /// the task is no longer at `expectedVersion`.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    async fn update_task(
+        &self,
+        ctx: &Context<'_>,
+        id: ID,
+        expected_version: i32,
+        title: Option<String>,
+        description: MaybeUndefined<String>,
+        list_id: MaybeUndefined<ID>,
+        due_date: MaybeUndefined<String>,
+        recurrence: MaybeUndefined<TaskRecurrenceInput>,
+    ) -> Result<Task<A>> {
+        tasks::update_task(
+            ctx,
+            self.app.as_ref(),
+            tasks::UpdateTaskArgs {
+                id,
+                expected_version,
+                title,
+                description,
+                list_id,
+                due_date,
+                recurrence,
+            },
+        )
+        .await
+    }
+
+    /// Complete a task. A recurring task stays open, due again its interval after
+    /// today; any other task is done. Fails with `CONFLICT` if someone else completed
+    /// or changed it since `expectedVersion` was read.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    async fn complete_task(
+        &self,
+        ctx: &Context<'_>,
+        id: ID,
+        expected_version: i32,
+    ) -> Result<Task<A>> {
+        tasks::complete_task(ctx, self.app.as_ref(), &id, expected_version).await
+    }
+
+    /// Delete a task. Returns its ID.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    async fn delete_task(&self, ctx: &Context<'_>, id: ID) -> Result<ID> {
+        tasks::delete_task(ctx, self.app.as_ref(), &id).await
+    }
+
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    async fn create_task_list(
+        &self,
+        ctx: &Context<'_>,
+        location_id: ID,
+        name: String,
+    ) -> Result<TaskList<A>> {
+        tasks::create_task_list(ctx, self.app.as_ref(), &location_id, &name).await
+    }
+
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    async fn rename_task_list(
+        &self,
+        ctx: &Context<'_>,
+        id: ID,
+        name: String,
+    ) -> Result<TaskList<A>> {
+        tasks::rename_task_list(ctx, self.app.as_ref(), &id, &name).await
+    }
+
+    /// Delete a task list. Its tasks stay on the location. Returns its ID.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    async fn delete_task_list(&self, ctx: &Context<'_>, id: ID) -> Result<ID> {
+        tasks::delete_task_list(ctx, self.app.as_ref(), &id).await
     }
 
     #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]

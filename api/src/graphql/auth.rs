@@ -193,6 +193,21 @@ pub(crate) fn require_location_write_access(ctx: &Context<'_>, location_id: &str
     }
 }
 
+/// Check the caller may use a location's Tasks (its shared to-do list): read them,
+/// and also create, edit, complete and delete them and manage its task lists.
+///
+/// Unlike every other location-scoped write this deliberately lets **Read only**
+/// users write: tasks are a shared unit tool, not admin data. Only people do — a
+/// super user or a user holding either role at the location. Kiosk sessions, API
+/// tokens and edit links are refused. Members are expected to sign in with their own
+/// accounts later; this is the one place to change when they do.
+pub(crate) fn require_task_access(ctx: &Context<'_>, location_id: &str) -> Result<()> {
+    match ctx.data_opt::<AuthInfo>() {
+        Some(AuthInfo::User { .. }) => require_location_access(ctx, location_id),
+        _ => Err(ApiError::forbidden("Tasks are only available to signed-in users").into()),
+    }
+}
+
 /// Whether the caller may make changes at the location — the boolean form of
 /// [`require_location_write_access`] plus [`require_writable`], for resolvers that
 /// report capability (e.g. `Location.viewerCanEdit`) rather than enforce it.

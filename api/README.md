@@ -394,6 +394,38 @@ requests to CORS — production intentionally doesn't allow arbitrary
 browser-origin JS to hit its OAuth endpoints; use `claude mcp add` or a
 claude.ai connector there instead.
 
+## Tasks
+
+A location's shared to-do list, used by the Tally app (`src/graphql/tasks.rs`, rules in
+`src/tasks.rs`, storage in SCHEMA.md's `task` and `task_list` sections).
+
+- **Who:** any *user* with Admin **or** Read only access to the location, and super users,
+  may read, create, edit, complete and delete tasks and manage task lists
+  (`graphql::auth::require_task_access`). This is the one location-scoped write a Read only
+  user may make: tasks are a shared unit tool, not admin data. Kiosk sessions, API tokens and
+  edit links are refused.
+- **Reading:** `Location.tasks(view: DUE | SCHEDULED, listId)` lists open tasks. `DUE` (the
+  default) is everything showing today or earlier, overdue first; `SCHEDULED` is everything
+  showing from a later day. Without `listId` every task at the location is listed, whatever
+  list it is on. `Location.taskLists` and `Query.task(id)` complete the reads.
+- **Dates** are Sydney-local days, `YYYY-MM-DD` in and out. A task shows from its `dueDate`,
+  or from the day it was created when it has none. It is `overdue` from the day after its due
+  date; a task that repeats in **weeks** gets a full week of showing first.
+- **Recurring tasks** (`recurrence: { every, unit: DAYS | WEEKS }`) always have a due date
+  (today if none was given). Completing one moves it to `every` days/weeks after the day it
+  was completed, and it stays open; completing any other task closes it.
+- **Concurrency:** `updateTask` and `completeTask` take `expectedVersion`; if the task was
+  changed or completed since (say, two people tapping Complete at once), the second gets a
+  `CONFLICT` error rather than skipping an occurrence.
+- Deleting a list leaves its tasks on the location (`Task.list` becomes null).
+
+```graphql
+mutation {
+  createTask(locationId: "TestAUnit001", title: "Wash the truck",
+             recurrence: { every: 1, unit: WEEKS }) { id version dueDate }
+}
+```
+
 ## Audit log
 
 Every business write (people, periods, kiosk sessions, users, locations, categories, API tokens, passkeys, OAuth grants, …) is recorded in the `{DB_PREFIX}_audit_log` DynamoDB table: who did it, which location(s) it touched, and which fields changed from what to what. The table is defined in `infra/dynamodb*.tf` and documented in `SCHEMA.md`; it must exist (`terraform apply`) for entries to land. It is read through GraphQL (below); there is no UI for it yet.
