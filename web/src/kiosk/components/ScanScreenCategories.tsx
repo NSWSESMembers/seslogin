@@ -28,7 +28,7 @@ export function CategoryButton(props: {
     <li className="inline-block list-none align-bottom">
       <button
         onClick={onSelect}
-        className="m-[calc(12px*var(--cat-scale,1))] box-content flex h-[calc(115px*var(--cat-scale,1))] w-[calc(150px*var(--cat-scale,1))] cursor-pointer flex-col content-start items-stretch rounded-lg border-2 border-line-strong bg-surface-raised p-[calc(10px*var(--cat-scale,1))] text-[calc(18px*var(--cat-scale,1))] leading-[calc(28px*var(--cat-scale,1))] wrap-break-word text-ink active:bg-menu"
+        className="m-[calc(12px*var(--cat-scale,1))] box-content flex h-[calc(115px*var(--cat-scale,1))] w-[calc(150px*var(--cat-scale,1))] cursor-pointer flex-col content-start items-stretch rounded-lg border-2 border-line-strong bg-surface-raised p-[calc(10px*var(--cat-scale,1))] text-[calc(18px*var(--cat-scale,1))] leading-[calc(28px*var(--cat-scale,1))] wrap-break-word text-ink transition-transform duration-150 ease-out focus-visible:z-10 focus-visible:scale-110 focus-visible:bg-menu focus-visible:ring-4 focus-visible:ring-line-strong focus-visible:outline-none active:bg-menu motion-reduce:transition-none motion-reduce:focus-visible:scale-100"
       >
         <CategoryIcon
           icon={icon}
