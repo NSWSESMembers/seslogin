@@ -32,6 +32,7 @@ use crate::ses_api;
 use super::audit_log::{self, AuditEntityType, AuditEntryConnection};
 use super::auth::{AuthGuard, AuthRequirement, can_write_location, require_location_access};
 use super::dataloader::DatabaseLoader;
+use super::map::{self, MapLayer, MapPin};
 use super::notes::{self, Note, NoteFolder};
 use super::self_sign_in::{self, SelfSignInStatus};
 use super::ses_details;
@@ -3048,6 +3049,18 @@ impl<A: App + HasDb + Send + Sync> Location<A> {
         notes::location_note_folders(ctx, &self.rec.id).await
     }
 
+    /// The pins on the location's shared map, by title. `layerId` narrows to one of its
+    /// map layers; without it every pin at the location is listed, whichever layer it is
+    /// on. Users only (Admin or Read only); see `graphql::map`.
+    async fn map_pins(&self, ctx: &Context<'_>, layer_id: Option<ID>) -> Result<Vec<MapPin<A>>> {
+        map::location_map_pins(ctx, &self.rec.id, layer_id).await
+    }
+
+    /// The location's map layers, by name.
+    async fn map_layers(&self, ctx: &Context<'_>) -> Result<Vec<MapLayer<A>>> {
+        map::location_map_layers(ctx, &self.rec.id).await
+    }
+
     async fn sessions(&self, ctx: &Context<'_>) -> Result<Vec<Session<A>>> {
         require_location_access(ctx, &self.rec.id)?;
         let app = ctx.data_unchecked::<Arc<A>>();
@@ -4185,6 +4198,12 @@ impl<A: App + HasDb + HasRealtime + Send + Sync + 'static> QueryRoot<A> {
     #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
     async fn note(&self, ctx: &Context<'_>, id: ID) -> Result<Option<Note<A>>> {
         notes::note(ctx, &id).await
+    }
+
+    /// One map pin; null if it does not exist or was deleted.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    async fn map_pin(&self, ctx: &Context<'_>, id: ID) -> Result<Option<MapPin<A>>> {
+        map::map_pin(ctx, &id).await
     }
 
     #[graphql(guard = "AuthGuard::new(AuthRequirement::Authenticated)")]

@@ -20,6 +20,7 @@ pub mod healthcheck;
 pub mod local_dev;
 pub mod location_sync;
 pub mod mail;
+pub mod map;
 pub mod mcp;
 pub mod member_sync;
 pub mod mockdb;

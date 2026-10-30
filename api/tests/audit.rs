@@ -585,3 +585,116 @@ async fn note_folder_writes_are_recorded_against_their_location() {
     }
     assert_eq!(entries[2].entity_label.as_deref(), Some("Trucks"));
 }
+
+#[tokio::test]
+async fn map_pin_writes_are_recorded_against_their_location() {
+    let app = app();
+    let pin = app
+        .db
+        .create_map_pin(db::NewMapPin {
+            location_id: "loc-a",
+            layer_id: None,
+            title: "Staging area",
+            latitude: -33.5,
+            longitude: 151.25,
+            address: "",
+            note: "",
+            created_by: Some("caller"),
+        })
+        .await
+        .unwrap();
+    app.db
+        .update_map_pin(
+            &pin.id,
+            db::MapPinUpdateShape::Fields {
+                layer_id: None,
+                title: "Staging area",
+                latitude: -33.6,
+                longitude: 151.25,
+                address: "1 Example St",
+                note: "",
+                by: Some("caller"),
+                expected_version: pin.version,
+            },
+        )
+        .await
+        .unwrap();
+    // A save that lost a race records nothing.
+    app.db
+        .update_map_pin(
+            &pin.id,
+            db::MapPinUpdateShape::Fields {
+                layer_id: None,
+                title: "Stale",
+                latitude: 0.0,
+                longitude: 0.0,
+                address: "",
+                note: "",
+                by: Some("caller"),
+                expected_version: pin.version,
+            },
+        )
+        .await
+        .unwrap_err();
+    app.db
+        .update_map_pin(
+            &pin.id,
+            db::MapPinUpdateShape::Delete { by: Some("caller") },
+        )
+        .await
+        .unwrap();
+    let entries = app.db.inner().audit_entries();
+    assert_eq!(entries.len(), 3);
+    for entry in &entries {
+        assert_eq!(entry.entity_type, AuditEntityType::MapPin);
+        assert_eq!(entry.entity_id, pin.id);
+        assert_eq!(entry.entity_label.as_deref(), Some("Staging area"));
+        assert_eq!(entry.location_ids, vec!["loc-a".to_string()]);
+    }
+    assert_eq!(entries[0].action, AuditAction::Create);
+    assert_eq!(
+        changed_fields(&entries[0]),
+        vec!["title", "latitude", "longitude"]
+    );
+    assert_eq!(entries[1].action, AuditAction::Update);
+    assert_eq!(changed_fields(&entries[1]), vec!["latitude", "address"]);
+    assert_eq!(entries[2].action, AuditAction::Delete);
+    assert_eq!(
+        changed_fields(&entries[2]),
+        vec!["title", "latitude", "longitude", "address"]
+    );
+}
+
+#[tokio::test]
+async fn map_layer_writes_are_recorded_against_their_location() {
+    let app = app();
+    let layer = app
+        .db
+        .create_map_layer("loc-a", "Hazards", Some("caller"))
+        .await
+        .unwrap();
+    app.db
+        .update_map_layer(&layer.id, db::MapLayerUpdateShape::Name { name: "Risks" })
+        .await
+        .unwrap();
+    app.db
+        .update_map_layer(&layer.id, db::MapLayerUpdateShape::Delete)
+        .await
+        .unwrap();
+    let entries = app.db.inner().audit_entries();
+    let actions: Vec<_> = entries.iter().map(|e| e.action).collect();
+    assert_eq!(
+        actions,
+        vec![
+            AuditAction::Create,
+            AuditAction::Update,
+            AuditAction::Delete
+        ]
+    );
+    for entry in &entries {
+        assert_eq!(entry.entity_type, AuditEntityType::MapLayer);
+        assert_eq!(entry.location_ids, vec!["loc-a".to_string()]);
+        assert_eq!(changed_fields(entry), vec!["name"]);
+    }
+    assert_eq!(entries[2].entity_label.as_deref(), Some("Risks"));
+}

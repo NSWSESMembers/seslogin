@@ -588,6 +588,39 @@ query { selfSignInStatus { person { firstName } openPeriod { id version startTim
 mutation { selfSignIn { id version } }
 ```
 
+## Map
+
+A location's shared map of pins, used by the Tally app (`src/graphql/map.rs`, rules in
+`src/map.rs`, storage in SCHEMA.md's `map_pin` and `map_layer` sections).
+
+- **Who:** the same as Tasks and Notes — any *user* with Admin **or** Read only access to the
+  location, and super users, may see, add, edit and delete pins and manage map layers
+  (`graphql::auth::require_map_access`). Kiosk sessions, API tokens and edit links are
+  refused.
+- **Reading:** `Location.mapPins(layerId)` lists the location's pins by title. Without
+  `layerId` every pin at the location is listed, whatever layer it is on.
+  `Location.mapLayers` (by name) and `Query.mapPin(id)` complete the reads.
+- **Fields:** `latitude` / `longitude` are WGS 84 degrees (within ±90 / ±180). `title` is one
+  trimmed line (max 200 characters). `address` is free text, trimmed, not geocoded (max 500).
+  `note` is plain text, kept exactly as written (max 20,000; only-whitespace counts as empty).
+  An absent address or note reads as `""`.
+- **Writes:** `createMapPin`, `updateMapPin` (omitted arguments unchanged, `layerId: null`
+  takes the pin off its layer), `deleteMapPin`, `createMapLayer`, `renameMapLayer`,
+  `deleteMapLayer`. Deleting a layer leaves its pins on the location's map (`MapPin.layer`
+  becomes null).
+- **Concurrency:** `updateMapPin` takes `expectedVersion`; if someone else saved the pin since
+  it was read, the save fails with `CONFLICT` rather than overwriting their change.
+- **Tables:** only the test tables (`seslogin_test_map_pin`, `seslogin_test_map_layer`) exist
+  so far, so a deployed API on the prod tables fails Map calls, and nothing else.
+
+```graphql
+mutation {
+  createMapPin(locationId: "TestAUnit001", title: "Staging area",
+               latitude: -33.8688, longitude: 151.2093,
+               address: "1 Example St", note: "Gate code at the shed") { id version }
+}
+```
+
 ## Audit log
 
 Every business write (people, periods, kiosk sessions, users, locations, categories, API tokens, passkeys, OAuth grants, …) is recorded in the `{DB_PREFIX}_audit_log` DynamoDB table: who did it, which location(s) it touched, and which fields changed from what to what. The table is defined in `infra/dynamodb*.tf` and documented in `SCHEMA.md`; it must exist (`terraform apply`) for entries to land. It is read through GraphQL (below); there is no UI for it yet.
