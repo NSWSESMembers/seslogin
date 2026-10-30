@@ -12,6 +12,11 @@
 //!   ([`oauth::encode_client_id`]). They only ever get [`DYNAMIC_CLIENT_RESOURCES`]
 //!   — the MCP endpoint.
 //!
+//! A static client may be a **member sign-in** client
+//! ([`StaticClient::member_sign_in`]): people sign in to it as members, through
+//! [`crate::tally_sign_in`], and never at the consent screen. Its grants name a
+//! member, so its tokens are [`crate::auth::AuthInfo::Member`].
+//!
 //! A static client may also list Expo Go development redirects
 //! ([`StaticClient::dev_expo_redirect_paths`]). Only a user flagged as a developer
 //! (`User.is_dev`) may approve one; see [`is_dev_expo_redirect`].
@@ -38,6 +43,9 @@ pub struct StaticClient {
     /// Resource paths, relative to the API base URL, that this client may be
     /// granted. The first is the default when the client doesn't name one.
     pub resources: &'static [&'static str],
+    /// People sign in to it as members ([`crate::tally_sign_in`]), not at the consent
+    /// screen, and its grants always name a member. See the module docs.
+    pub member_sign_in: bool,
 }
 
 /// SESLogin's own OAuth clients.
@@ -47,6 +55,7 @@ pub const STATIC_CLIENTS: &[StaticClient] = &[StaticClient {
     redirect_uris: &["tally://oauth/callback"],
     dev_expo_redirect_paths: &["/--/oauth/callback"],
     resources: &[GRAPHQL_RESOURCE_PATH],
+    member_sign_in: true,
 }];
 
 /// The only resource a dynamically registered client may be granted.
@@ -66,6 +75,8 @@ pub struct Client {
     pub redirect_uris: Vec<String>,
     pub dev_expo_redirect_paths: &'static [&'static str],
     pub resources: &'static [&'static str],
+    /// See [`StaticClient::member_sign_in`]. Never true for a dynamic client.
+    pub member_sign_in: bool,
 }
 
 impl Client {
@@ -170,6 +181,7 @@ pub fn resolve_client(key: &[u8], client_id: &str) -> Option<Client> {
             redirect_uris: c.redirect_uris.iter().map(|u| u.to_string()).collect(),
             dev_expo_redirect_paths: c.dev_expo_redirect_paths,
             resources: c.resources,
+            member_sign_in: c.member_sign_in,
         });
     }
     let registration = oauth::decode_client_id(key, client_id)?;
@@ -179,6 +191,7 @@ pub fn resolve_client(key: &[u8], client_id: &str) -> Option<Client> {
         redirect_uris: registration.redirect_uris,
         dev_expo_redirect_paths: &[],
         resources: DYNAMIC_CLIENT_RESOURCES,
+        member_sign_in: false,
     })
 }
 

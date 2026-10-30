@@ -168,6 +168,12 @@ grant is bound to depends on which:
   why the consent page still tells the user to approve only a sign-in they
   started.
 
+  **Member sign-in clients.** A static client with `member_sign_in` (Tally)
+  never uses the consent screen — `oauthAuthorizationRequest` and
+  `approveOauthAuthorization` refuse it — and its grants always name a member;
+  see "Tally sign-in" below. The token endpoint refuses a code naming a member
+  for any other client, and one naming none for a member sign-in client.
+
 `oauthAuthorizationRequest.isFirstParty` and `OAuthGrant.isFirstParty` say
 whether the client is static; the consent page and Connected apps name such
 an app as SESLogin's own instead of showing its custom scheme's meaningless
@@ -208,6 +214,46 @@ deriving them from the request's `Host` header — set it if the server sits
 behind something that changes the host a client sees. `WEB_BASE_URL` (see
 CLAUDE.md) doubles as the origin the `authorization_endpoint` metadata points
 the browser at, via the shared `base_url::web_base_url()` helper.
+
+### Tally sign-in
+
+Members sign in to Tally without a user record (`tally_sign_in.rs`). It is its
+own flow, so it can never yield an admin session: the app opens
+`<WEB_BASE_URL>/tally/sign-in` with an ordinary authorization request
+(`client_id`, `redirect_uri`, PKCE `code_challenge`, `state`), the page asks
+for an email, and the emailed 6-digit code is redeemed straight for an OAuth
+authorization code — no `slu_` token is ever issued. Three unauthenticated
+GraphQL fields back it:
+
+- `tallySignInRequest(clientId, redirectUri)` checks the link: a member sign-in
+  client and one of its exact redirects (or an Expo Go development redirect,
+  flagged `isDevelopmentBuild`).
+- `requestTallySignInCode(email, turnstileToken)` emails a code (Turnstile
+  required, at most one per 30 seconds, valid 10 minutes, five guesses), but
+  only if the email can sign in. It answers `true` either way.
+- `completeTallySignIn(email, code, request)` redeems the code and returns the
+  app's redirect URL with `code` and `state`. A wrong, expired or used-up code
+  fails the same way. A development build needs the user signing in alongside
+  to be a developer (`isDev`).
+
+Who an email signs in as (`tally_sign_in::identify`): an enabled user linked to
+a live member is that user and member; otherwise exactly one live member with
+that email (compared trimmed and lowercased, through the person table's
+`email_key-index`), plus the enabled user with that email if there is one;
+otherwise nobody — a user with no member, or an email several members share.
+A disabled user counts as no user. The grant names the member and that user,
+and resolves fresh on every use to `AuthInfo::Member` (see CLAUDE.md), so the
+member's unit is their home unit plus that user's units.
+
+Codes share the admin login's `login_code` table. That is safe: a code proves
+the inbox is theirs whichever flow sent it, and redeeming one here yields only
+a Tally grant. A Tally request does replace a pending admin code for the same
+email, and the 30-second limit is shared.
+
+Locally (`make dev-local`) the seeded members have emails
+(`alice@seslogin.test`, `bob@seslogin.test`, `crossunit@seslogin.test`), Turnstile is off (`local/local.env`), and the
+code is in the API log (and in `MOCK_MAIL_DIR`, if you set it).
+`testunit@seslogin.test` is a user with no member, so it is refused.
 
 ### Connected apps (list + revoke)
 

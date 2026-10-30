@@ -1,6 +1,7 @@
-//! The consent step for static (first-party) and dynamic OAuth clients:
-//! `oauthAuthorizationRequest` and `approveOauthAuthorization`, run through the
-//! real schema against the shared `FakeDb` (`tests/common/mod.rs`).
+//! The consent step for OAuth clients: `oauthAuthorizationRequest` and
+//! `approveOauthAuthorization`, run through the real schema against the shared
+//! `FakeDb` (`tests/common/mod.rs`). Tally, the one static client today, is a member
+//! sign-in client and so is refused here; its sign-in is `tests/tally_sign_in.rs`.
 
 mod common;
 
@@ -13,8 +14,6 @@ use seslogin::auth::AuthInfo;
 use seslogin::graphql;
 use seslogin::oauth;
 use seslogin::oauth_http::{self, AuthCodePayload};
-
-const CHALLENGE: &str = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM";
 
 fn user_auth(id: &str) -> AuthInfo {
     AuthInfo::User {
@@ -99,19 +98,26 @@ fn only_code_payload(app: &App) -> AuthCodePayload {
 }
 
 #[tokio::test]
-async fn consent_request_marks_tally_as_first_party() {
+async fn consent_refuses_a_member_sign_in_client() {
+    // Tally signs people in as members through its own sign-in (`tally_sign_in`),
+    // never here.
     let app = Arc::new(fake_app());
     seed_user(&app, "user-1", true);
-    let response = run(
-        &app,
-        REQUEST_QUERY,
-        serde_json::json!({ "clientId": "tally", "redirectUri": "tally://oauth/callback" }),
-    )
-    .await;
-    assert_eq!(
-        data_json(&response)["oauthAuthorizationRequest"],
-        serde_json::json!({ "clientName": "Tally", "redirectHost": "oauth", "isFirstParty": true })
-    );
+    for query in [REQUEST_QUERY, APPROVE] {
+        let response = run(
+            &app,
+            query,
+            serde_json::json!({ "clientId": "tally", "redirectUri": "tally://oauth/callback" }),
+        )
+        .await;
+        assert_eq!(response.errors.len(), 1, "{:?}", response.data);
+        assert!(
+            response.errors[0].message.contains("its own sign-in"),
+            "{}",
+            response.errors[0].message
+        );
+    }
+    assert!(app.db.ephemeral_state.lock().unwrap().is_empty());
 }
 
 #[tokio::test]
@@ -132,83 +138,15 @@ async fn consent_request_keeps_dynamic_clients_third_party() {
 }
 
 #[tokio::test]
-async fn approve_tally_with_its_registered_redirect() {
-    let app = Arc::new(fake_app());
-    seed_user(&app, "user-1", true);
-    let response = run(
-        &app,
-        APPROVE,
-        serde_json::json!({
-            "clientId": "tally",
-            "redirectUri": "tally://oauth/callback",
-            "resource": "http://localhost:8000/graphql",
-        }),
-    )
-    .await;
-    let url = data_json(&response)["approveOauthAuthorization"]
-        .as_str()
-        .unwrap()
-        .to_string();
-    assert!(url.starts_with("tally://oauth/callback?code="), "{url}");
-    assert!(url.ends_with("&state=xyz"), "{url}");
-
-    let payload = only_code_payload(&app);
-    assert_eq!(payload.client_id, "tally");
-    assert_eq!(payload.client_name, "Tally");
-    assert_eq!(payload.redirect_uri, "tally://oauth/callback");
-    assert_eq!(payload.code_challenge, CHALLENGE);
-    assert_eq!(
-        payload.resource.as_deref(),
-        Some("http://localhost:8000/graphql")
-    );
-}
-
-#[tokio::test]
-async fn approve_tally_refuses_any_other_redirect() {
-    for redirect in [
-        "tally://oauth/callback/",
-        "tally://oauth/other",
-        "tally://evil/callback",
-        "https://claude.ai/callback",
-        "http://localhost:8000/callback",
-    ] {
-        let app = Arc::new(fake_app());
-        seed_user(&app, "user-1", true);
-        for query in [REQUEST_QUERY, APPROVE] {
-            let response = run(
-                &app,
-                query,
-                serde_json::json!({ "clientId": "tally", "redirectUri": redirect }),
-            )
-            .await;
-            assert_eq!(response.errors.len(), 1, "{redirect}: {:?}", response.data);
-            assert!(
-                response.errors[0].message.contains("redirect_uri"),
-                "{redirect}: {}",
-                response.errors[0].message
-            );
-        }
-        assert!(app.db.ephemeral_state.lock().unwrap().is_empty());
-    }
-}
-
-#[tokio::test]
 async fn approve_refuses_a_resource_outside_the_clients_list() {
     let app = Arc::new(fake_app());
     seed_user(&app, "user-1", true);
     let dynamic = dynamic_client_id(&app);
-    for (client_id, redirect, resource) in [
-        (
-            "tally",
-            "tally://oauth/callback",
-            "http://localhost:8000/mcp",
-        ),
-        (
-            dynamic.as_str(),
-            "https://claude.ai/callback",
-            "http://localhost:8000/graphql",
-        ),
-    ] {
+    for (client_id, redirect, resource) in [(
+        dynamic.as_str(),
+        "https://claude.ai/callback",
+        "http://localhost:8000/graphql",
+    )] {
         let response = run(
             &app,
             APPROVE,
@@ -270,90 +208,19 @@ async fn connected_apps_mark_static_client_grants_as_first_party() {
 
 const DEV_REDIRECT: &str = "exp://192.168.1.20:8081/--/oauth/callback";
 
-const DEV_REQUEST_QUERY: &str = r#"
-    query($clientId: String!, $redirectUri: String!) {
-        oauthAuthorizationRequest(clientId: $clientId, redirectUri: $redirectUri) {
-            clientName redirectHost isFirstParty isDevelopmentBuild
-        }
-    }"#;
-
-fn make_dev(app: &App, id: &str) {
-    app.db.users.lock().unwrap().get_mut(id).unwrap().is_dev = true;
-}
-
 #[tokio::test]
-async fn a_developer_can_approve_a_dev_build_redirect() {
+async fn even_a_developer_cannot_use_a_dev_redirect_for_a_dynamic_client() {
+    // Development redirects belong to a static client (and Tally's are checked by
+    // its own sign-in, `tests/tally_sign_in.rs`); a dynamic client has none.
     let app = Arc::new(fake_app());
     seed_user(&app, "user-1", true);
-    make_dev(&app, "user-1");
-
-    let vars = serde_json::json!({ "clientId": "tally", "redirectUri": DEV_REDIRECT });
-    let response = run(&app, DEV_REQUEST_QUERY, vars.clone()).await;
-    assert_eq!(
-        data_json(&response)["oauthAuthorizationRequest"],
-        serde_json::json!({
-            "clientName": "Tally",
-            "redirectHost": "192.168.1.20:8081",
-            "isFirstParty": true,
-            "isDevelopmentBuild": true,
-        })
-    );
-
-    let response = run(&app, APPROVE, vars).await;
-    let url = data_json(&response)["approveOauthAuthorization"]
-        .as_str()
+    app.db
+        .users
+        .lock()
         .unwrap()
-        .to_string();
-    assert!(
-        url.starts_with("exp://192.168.1.20:8081/--/oauth/callback?code="),
-        "{url}"
-    );
-    assert_eq!(only_code_payload(&app).redirect_uri, DEV_REDIRECT);
-}
-
-#[tokio::test]
-async fn a_registered_redirect_is_not_a_dev_build() {
-    let app = Arc::new(fake_app());
-    seed_user(&app, "user-1", true);
-    make_dev(&app, "user-1");
-    let response = run(
-        &app,
-        DEV_REQUEST_QUERY,
-        serde_json::json!({ "clientId": "tally", "redirectUri": "tally://oauth/callback" }),
-    )
-    .await;
-    assert_eq!(
-        data_json(&response)["oauthAuthorizationRequest"]["isDevelopmentBuild"],
-        serde_json::json!(false)
-    );
-}
-
-#[tokio::test]
-async fn a_non_developer_cannot_approve_a_dev_build_redirect() {
-    let app = Arc::new(fake_app());
-    seed_user(&app, "user-1", true);
-    for query in [DEV_REQUEST_QUERY, APPROVE] {
-        let response = run(
-            &app,
-            query,
-            serde_json::json!({ "clientId": "tally", "redirectUri": DEV_REDIRECT }),
-        )
-        .await;
-        assert_eq!(response.errors.len(), 1, "{:?}", response.data);
-        assert!(
-            response.errors[0].message.contains("developer account"),
-            "{}",
-            response.errors[0].message
-        );
-    }
-    assert!(app.db.ephemeral_state.lock().unwrap().is_empty());
-}
-
-#[tokio::test]
-async fn even_a_developer_cannot_use_a_public_or_dynamic_dev_redirect() {
-    let app = Arc::new(fake_app());
-    seed_user(&app, "user-1", true);
-    make_dev(&app, "user-1");
+        .get_mut("user-1")
+        .unwrap()
+        .is_dev = true;
     let dynamic = oauth::encode_client_id(
         &app.server_secret.oauth_client_id_key(),
         &oauth::ClientRegistration {
@@ -362,12 +229,7 @@ async fn even_a_developer_cannot_use_a_public_or_dynamic_dev_redirect() {
             iat: 1_000_000,
         },
     );
-    for (client_id, redirect) in [
-        ("tally", "exp://8.8.8.8:8081/--/oauth/callback"),
-        ("tally", "exp://abc-anon-8081.exp.direct/--/oauth/callback"),
-        ("tally", "exp://192.168.1.20:8081/--/other"),
-        (dynamic.as_str(), DEV_REDIRECT),
-    ] {
+    for (client_id, redirect) in [(dynamic.as_str(), DEV_REDIRECT)] {
         let response = run(
             &app,
             APPROVE,
