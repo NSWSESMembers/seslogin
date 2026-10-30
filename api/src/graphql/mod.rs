@@ -25,6 +25,7 @@ pub mod mutations;
 pub mod notes;
 pub mod pagination;
 pub mod query;
+pub mod self_sign_in;
 pub mod ses_details;
 pub mod tasks;
 

@@ -30,6 +30,12 @@
         "enabled": {
           "BOOL": true
         },
+        "group_name": {
+          "S": "Trainer"
+        },
+        "icon": {
+          "S": "beacon"
+        },
         "id": {
           "S": "V3cOiC45Oist"
         },
@@ -45,6 +51,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "Beacon"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -55,6 +64,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Trainer"
+        },
+        "icon": {
+          "S": "aiims"
         },
         "id": {
           "S": "frU0zHKQm84n"
@@ -71,6 +86,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "AIIMS"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -81,6 +99,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Trainer"
+        },
+        "icon": {
+          "S": "field_core_skills"
         },
         "id": {
           "S": "k1ZvM6M1Y793"
@@ -97,6 +121,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "Field Core Skills"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -107,6 +134,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Trainer"
+        },
+        "icon": {
+          "S": "traffic_safety"
         },
         "id": {
           "S": "7H2Dou6jMtrs"
@@ -123,6 +156,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "Traffic Safety"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -133,6 +169,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Workshop - Trainer"
+        },
+        "icon": {
+          "S": "dov"
         },
         "id": {
           "S": "9D5082BTEu6I"
@@ -149,6 +191,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "Drive Operational Vehicles"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -159,6 +204,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Trainer"
+        },
+        "icon": {
+          "S": "land_search"
         },
         "id": {
           "S": "ICKlc0A7MjB8"
@@ -175,6 +226,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "Land Search"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -185,6 +239,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Assessor"
+        },
+        "icon": {
+          "S": "flood_boat"
         },
         "id": {
           "S": "5deKL3XPdfgN"
@@ -201,6 +261,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "Flood Rescue: On Water"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -211,6 +274,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Workshop - Participant"
+        },
+        "icon": {
+          "S": "vr"
         },
         "id": {
           "S": "HuvLjJxpFfdQ"
@@ -227,6 +296,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "VR"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -237,6 +309,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Training"
+        },
+        "icon": {
+          "S": "vr"
         },
         "id": {
           "S": "ttkcxzz4zoSb"
@@ -253,6 +331,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "VR"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -263,6 +344,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Assessor"
+        },
+        "icon": {
+          "S": "map_navigation"
         },
         "id": {
           "S": "6QFlxZROgoQl"
@@ -279,6 +366,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "Map & Navigation"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -289,6 +379,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Workshop - Participant"
+        },
+        "icon": {
+          "S": "field_core_skills"
         },
         "id": {
           "S": "9QAT5P6XUtNm"
@@ -305,6 +401,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "Field Core Skills"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -315,6 +414,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Assessor"
+        },
+        "icon": {
+          "S": "aiims"
         },
         "id": {
           "S": "FzHtdFLZy3Nl"
@@ -331,6 +436,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "AIIMS"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -341,6 +449,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Other"
+        },
+        "icon": {
+          "S": "meeting"
         },
         "id": {
           "S": "6uFM5NP8o1x8"
@@ -356,6 +470,9 @@
         },
         "order": {
           "N": "0"
+        },
+        "short_name": {
+          "S": "Unit Meeting/Muster"
         },
         "updated_at": {
           "N": "1767225600"
@@ -434,6 +551,12 @@
         "enabled": {
           "BOOL": true
         },
+        "group_name": {
+          "S": "Workshop - Trainer"
+        },
+        "icon": {
+          "S": "flood_rescue_in_water"
+        },
         "id": {
           "S": "oG2K4hfdXDWQ"
         },
@@ -448,6 +571,9 @@
         },
         "order": {
           "N": "0"
+        },
+        "short_name": {
+          "S": "Flood Rescue: In Water"
         },
         "updated_at": {
           "N": "1767225600"
@@ -480,6 +606,12 @@
         "enabled": {
           "BOOL": true
         },
+        "group_name": {
+          "S": "Other"
+        },
+        "icon": {
+          "S": "attend_other_unit_not_ooaa"
+        },
         "id": {
           "S": "A7moBvkbsfm2"
         },
@@ -495,6 +627,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "Attend Other Unit (not OOAA)"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -505,6 +640,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Assessor"
+        },
+        "icon": {
+          "S": "usar"
         },
         "id": {
           "S": "TiruXst14mbp"
@@ -521,6 +662,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "USAR"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -531,6 +675,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Workshop - Participant"
+        },
+        "icon": {
+          "S": "land_search"
         },
         "id": {
           "S": "9aa2PtkuBFvn"
@@ -546,6 +696,9 @@
         },
         "order": {
           "N": "0"
+        },
+        "short_name": {
+          "S": "Land Search"
         },
         "updated_at": {
           "N": "1767225600"
@@ -578,6 +731,12 @@
         "enabled": {
           "BOOL": true
         },
+        "group_name": {
+          "S": "Other"
+        },
+        "icon": {
+          "S": "attend_exercise_non_ses"
+        },
         "id": {
           "S": "xaEjOvTUdZ5a"
         },
@@ -592,6 +751,9 @@
         },
         "order": {
           "N": "0"
+        },
+        "short_name": {
+          "S": "Attend Exercise - Non SES"
         },
         "updated_at": {
           "N": "1767225600"
@@ -624,6 +786,12 @@
         "enabled": {
           "BOOL": true
         },
+        "group_name": {
+          "S": "Trainer"
+        },
+        "icon": {
+          "S": "industrial_domestic_rescue"
+        },
         "id": {
           "S": "kFn9u1x04Mfp"
         },
@@ -639,6 +807,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "Industrial & Domestic Rescue"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -649,6 +820,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Training"
+        },
+        "icon": {
+          "S": "critical_incident_support"
         },
         "id": {
           "S": "ShqXWGVX0v5X"
@@ -665,6 +842,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "Critical Incident Support"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -675,6 +855,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Workshop - Participant"
+        },
+        "icon": {
+          "S": "map_navigation"
         },
         "id": {
           "S": "XIHxrXjIYrng"
@@ -691,6 +877,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "Map & Navigation"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -701,6 +890,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Workshop - Trainer"
+        },
+        "icon": {
+          "S": "chain_saw"
         },
         "id": {
           "S": "xIJbGAJvzkUF"
@@ -717,6 +912,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "Chain Saw"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -727,6 +925,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Accredited Rescue Role"
+        },
+        "icon": {
+          "S": "vr"
         },
         "id": {
           "S": "Oc8kSgyTtWaW"
@@ -737,6 +941,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "VR"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -747,6 +954,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Other"
+        },
+        "icon": {
+          "S": "maintenance_building_land"
         },
         "id": {
           "S": "MBaJJzYArrxi"
@@ -763,6 +976,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "Maintenance - Building/Land"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -773,6 +989,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Workshop - Trainer"
+        },
+        "icon": {
+          "S": "critical_incident_support"
         },
         "id": {
           "S": "piYtp3ePWdPO"
@@ -789,6 +1011,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "Critical Incident Support"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -799,6 +1024,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Assessor"
+        },
+        "icon": {
+          "S": "flood_rescue_land"
         },
         "id": {
           "S": "hj9KzuwFbM13"
@@ -814,6 +1045,9 @@
         },
         "order": {
           "N": "0"
+        },
+        "short_name": {
+          "S": "Flood Rescue: Land Based"
         },
         "updated_at": {
           "N": "1767225600"
@@ -866,6 +1100,12 @@
         "enabled": {
           "BOOL": true
         },
+        "group_name": {
+          "S": "Assessor"
+        },
+        "icon": {
+          "S": "field_core_skills"
+        },
         "id": {
           "S": "lO7YmMpXj3Xu"
         },
@@ -877,6 +1117,9 @@
         },
         "nitc_participant_type": {
           "S": "Assessor"
+        },
+        "short_name": {
+          "S": "Field Core Skills"
         },
         "updated_at": {
           "N": "1767225600"
@@ -909,6 +1152,12 @@
         "enabled": {
           "BOOL": true
         },
+        "group_name": {
+          "S": "Training"
+        },
+        "icon": {
+          "S": "land_search"
+        },
         "id": {
           "S": "yvw0CgIIwxcv"
         },
@@ -923,6 +1172,9 @@
         },
         "order": {
           "N": "0"
+        },
+        "short_name": {
+          "S": "Land Search"
         },
         "updated_at": {
           "N": "1767225600"
@@ -955,6 +1207,12 @@
         "enabled": {
           "BOOL": true
         },
+        "group_name": {
+          "S": "Workshop - Trainer"
+        },
+        "icon": {
+          "S": "operate_comms_equip"
+        },
         "id": {
           "S": "hFQ3A4o2qFPq"
         },
@@ -970,6 +1228,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "Operate Comms. Equip."
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -980,6 +1241,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Assessor"
+        },
+        "icon": {
+          "S": "traffic_safety"
         },
         "id": {
           "S": "5iKzI7fMcnCl"
@@ -996,6 +1263,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "Traffic Safety"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -1006,6 +1276,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Workshop - Trainer"
+        },
+        "icon": {
+          "S": "field_core_skills"
         },
         "id": {
           "S": "LxphpIZFAXnF"
@@ -1022,6 +1298,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "Field Core Skills"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -1032,6 +1311,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Training"
+        },
+        "icon": {
+          "S": "fit_for_role"
         },
         "id": {
           "S": "V4dyh0T2vjfd"
@@ -1047,6 +1332,9 @@
         },
         "order": {
           "N": "0"
+        },
+        "short_name": {
+          "S": "Fit for Role"
         },
         "updated_at": {
           "N": "1767225600"
@@ -1079,6 +1367,12 @@
         "enabled": {
           "BOOL": true
         },
+        "group_name": {
+          "S": "Assessor"
+        },
+        "icon": {
+          "S": "operate_comms_equip"
+        },
         "id": {
           "S": "Y5U7nkss3YAR"
         },
@@ -1094,6 +1388,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "Operate Comms. Equip."
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -1104,6 +1401,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Other"
+        },
+        "icon": {
+          "S": "attend_other"
         },
         "id": {
           "S": "Kq2XrSXS31RA"
@@ -1120,6 +1423,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "Attend Other"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -1130,6 +1436,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Training"
+        },
+        "icon": {
+          "S": "beacon"
         },
         "id": {
           "S": "LEnc4hCVnidW"
@@ -1146,6 +1458,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "Beacon"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -1156,6 +1471,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Workshop - Trainer"
+        },
+        "icon": {
+          "S": "vr"
         },
         "id": {
           "S": "851qu7WSFxxI"
@@ -1171,6 +1492,9 @@
         },
         "order": {
           "N": "0"
+        },
+        "short_name": {
+          "S": "VR"
         },
         "updated_at": {
           "N": "1767225600"
@@ -1229,6 +1553,12 @@
         "enabled": {
           "BOOL": true
         },
+        "group_name": {
+          "S": "Training"
+        },
+        "icon": {
+          "S": "rcr"
+        },
         "id": {
           "S": "HLdLk5jkxtns"
         },
@@ -1243,6 +1573,9 @@
         },
         "order": {
           "N": "0"
+        },
+        "short_name": {
+          "S": "RCR"
         },
         "updated_at": {
           "N": "1767225600"
@@ -1321,6 +1654,12 @@
         "enabled": {
           "BOOL": true
         },
+        "group_name": {
+          "S": "Training"
+        },
+        "icon": {
+          "S": "flood_rescue_in_water"
+        },
         "id": {
           "S": "Sam5VHGJHiK9"
         },
@@ -1336,6 +1675,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "Flood Rescue: In Water"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -1346,6 +1688,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Trainer"
+        },
+        "icon": {
+          "S": "critical_incident_support"
         },
         "id": {
           "S": "1VRot6gzgW7c"
@@ -1361,6 +1709,9 @@
         },
         "order": {
           "N": "0"
+        },
+        "short_name": {
+          "S": "Critical Incident Support"
         },
         "updated_at": {
           "N": "1767225600"
@@ -1399,6 +1750,12 @@
         "enabled": {
           "BOOL": true
         },
+        "group_name": {
+          "S": "Trainer"
+        },
+        "icon": {
+          "S": "fit_for_role"
+        },
         "id": {
           "S": "EXhm0fqWJCiF"
         },
@@ -1414,6 +1771,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "Fit for Role"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -1424,6 +1784,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Accredited Rescue Role"
+        },
+        "icon": {
+          "S": "flood_boat"
         },
         "id": {
           "S": "o3tOhfsOgFmY"
@@ -1434,6 +1800,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "Flood Boat"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -1444,6 +1813,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Other"
+        },
+        "icon": {
+          "S": "maintenance_equipment"
         },
         "id": {
           "S": "ly9uPGjoundF"
@@ -1459,6 +1834,9 @@
         },
         "order": {
           "N": "0"
+        },
+        "short_name": {
+          "S": "Maintenance - Equipment"
         },
         "updated_at": {
           "N": "1767225600"
@@ -1491,6 +1869,12 @@
         "enabled": {
           "BOOL": true
         },
+        "group_name": {
+          "S": "Assessor"
+        },
+        "icon": {
+          "S": "land_search"
+        },
         "id": {
           "S": "YcW1zHz3dD79"
         },
@@ -1505,6 +1889,9 @@
         },
         "order": {
           "N": "0"
+        },
+        "short_name": {
+          "S": "Remote Search"
         },
         "updated_at": {
           "N": "1767225600"
@@ -1537,6 +1924,12 @@
         "enabled": {
           "BOOL": true
         },
+        "group_name": {
+          "S": "Workshop - Trainer"
+        },
+        "icon": {
+          "S": "traffic_safety"
+        },
         "id": {
           "S": "2TgPkvR7rc7s"
         },
@@ -1551,6 +1944,9 @@
         },
         "order": {
           "N": "0"
+        },
+        "short_name": {
+          "S": "Traffic Safety"
         },
         "updated_at": {
           "N": "1767225600"
@@ -1589,6 +1985,12 @@
         "enabled": {
           "BOOL": true
         },
+        "group_name": {
+          "S": "Accredited Rescue Role"
+        },
+        "icon": {
+          "S": "star"
+        },
         "id": {
           "S": "kRVkibutOxMf"
         },
@@ -1597,6 +1999,9 @@
         },
         "order": {
           "N": "0"
+        },
+        "short_name": {
+          "S": "General"
         },
         "updated_at": {
           "N": "1767225600"
@@ -1608,6 +2013,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Accredited Rescue Role"
+        },
+        "icon": {
+          "S": "swift_water_rescue"
         },
         "id": {
           "S": "3Qnl53IQTywx"
@@ -1618,6 +2029,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "Swift Water Rescue"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -1628,6 +2042,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Workshop - Trainer"
+        },
+        "icon": {
+          "S": "rcr"
         },
         "id": {
           "S": "F7qbkbbWPQF7"
@@ -1644,6 +2064,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "RCR"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -1654,6 +2077,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Assessor"
+        },
+        "icon": {
+          "S": "vr"
         },
         "id": {
           "S": "Bsp6gvf5OMpL"
@@ -1670,6 +2099,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "VR"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -1680,6 +2112,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Assessor"
+        },
+        "icon": {
+          "S": "job_ready"
         },
         "id": {
           "S": "NEh5XLQptyUU"
@@ -1696,6 +2134,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "Job Ready"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -1706,6 +2147,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Workshop - Participant"
+        },
+        "icon": {
+          "S": "other_dots"
         },
         "id": {
           "S": "nzB9BL6H2i4J"
@@ -1722,6 +2169,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "Other"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -1732,6 +2182,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Training"
+        },
+        "icon": {
+          "S": "usar"
         },
         "id": {
           "S": "YNAcvH3HtjdU"
@@ -1748,6 +2204,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "USAR"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -1758,6 +2217,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Support Roles"
+        },
+        "icon": {
+          "S": "assist_rfs"
         },
         "id": {
           "S": "9GMIshTceGQT"
@@ -1768,6 +2233,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "Assist RFS"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -1778,6 +2246,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Training"
+        },
+        "icon": {
+          "S": "piaro"
         },
         "id": {
           "S": "OB9oatj3InVH"
@@ -1794,6 +2268,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "PIARO"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -1804,6 +2281,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Trainer"
+        },
+        "icon": {
+          "S": "operate_comms_equip"
         },
         "id": {
           "S": "2hPheSGKMo0A"
@@ -1819,6 +2302,9 @@
         },
         "order": {
           "N": "0"
+        },
+        "short_name": {
+          "S": "Operate Comms. Equip."
         },
         "updated_at": {
           "N": "1767225600"
@@ -1851,6 +2337,12 @@
         "enabled": {
           "BOOL": true
         },
+        "group_name": {
+          "S": "Combat Roles"
+        },
+        "icon": {
+          "S": "flood_boat"
+        },
         "id": {
           "S": "CsaTqfcTq2Bg"
         },
@@ -1859,6 +2351,9 @@
         },
         "order": {
           "N": "0"
+        },
+        "short_name": {
+          "S": "Flood Boat Rescue"
         },
         "updated_at": {
           "N": "1767225600"
@@ -1891,6 +2386,12 @@
         "enabled": {
           "BOOL": true
         },
+        "group_name": {
+          "S": "Other"
+        },
+        "icon": {
+          "S": "driver_reviver"
+        },
         "id": {
           "S": "zn9RlBpyS1Ln"
         },
@@ -1906,6 +2407,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "Driver Reviver"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -1916,6 +2420,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Combat Roles"
+        },
+        "icon": {
+          "S": "flood_ops_non_rescue"
         },
         "id": {
           "S": "efo7JlKhA1XE"
@@ -1926,6 +2436,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "Flood Ops. (Non Rescue)"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -1936,6 +2449,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Trainer"
+        },
+        "icon": {
+          "S": "dov"
         },
         "id": {
           "S": "XPzg5TODlRd6"
@@ -1952,6 +2471,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "Drive Operational Vehicles"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -1962,6 +2484,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Workshop - Participant"
+        },
+        "icon": {
+          "S": "dov"
         },
         "id": {
           "S": "U0gcnQnyiswr"
@@ -1978,6 +2506,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "Drive Operational Vehicles"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -1988,6 +2519,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Workshop - Trainer"
+        },
+        "icon": {
+          "S": "land_search"
         },
         "id": {
           "S": "jpFAvdc0oWhp"
@@ -2003,6 +2540,9 @@
         },
         "order": {
           "N": "0"
+        },
+        "short_name": {
+          "S": "Land Search"
         },
         "updated_at": {
           "N": "1767225600"
@@ -2035,6 +2575,12 @@
         "enabled": {
           "BOOL": true
         },
+        "group_name": {
+          "S": "Workshop - Trainer"
+        },
+        "icon": {
+          "S": "large_animal_rescue"
+        },
         "id": {
           "S": "SYalliqM4bVy"
         },
@@ -2049,6 +2595,9 @@
         },
         "order": {
           "N": "0"
+        },
+        "short_name": {
+          "S": "Large Animal Rescue"
         },
         "updated_at": {
           "N": "1767225600"
@@ -2133,6 +2682,12 @@
         "enabled": {
           "BOOL": true
         },
+        "group_name": {
+          "S": "Trainer"
+        },
+        "icon": {
+          "S": "piaro"
+        },
         "id": {
           "S": "qgs9Xs1hSTDL"
         },
@@ -2147,6 +2702,9 @@
         },
         "order": {
           "N": "0"
+        },
+        "short_name": {
+          "S": "PIARO"
         },
         "updated_at": {
           "N": "1767225600"
@@ -2179,6 +2737,12 @@
         "enabled": {
           "BOOL": true
         },
+        "group_name": {
+          "S": "Workshop - Trainer"
+        },
+        "icon": {
+          "S": "aiims"
+        },
         "id": {
           "S": "odLkV3XCPOu0"
         },
@@ -2194,6 +2758,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "AIIMS"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -2204,6 +2771,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Workshop - Participant"
+        },
+        "icon": {
+          "S": "job_ready"
         },
         "id": {
           "S": "k3x1DxFKkyud"
@@ -2220,6 +2793,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "Job Ready"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -2230,6 +2806,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Workshop - Trainer"
+        },
+        "icon": {
+          "S": "piaro"
         },
         "id": {
           "S": "mjz48eIkDO3X"
@@ -2246,6 +2828,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "PIARO"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -2257,6 +2842,12 @@
         "enabled": {
           "BOOL": true
         },
+        "group_name": {
+          "S": "Combat Roles"
+        },
+        "icon": {
+          "S": "coastal_erosion"
+        },
         "id": {
           "S": "INAO3KzDT9vA"
         },
@@ -2265,6 +2856,9 @@
         },
         "order": {
           "N": "0"
+        },
+        "short_name": {
+          "S": "Coastal Erosion"
         },
         "updated_at": {
           "N": "1767225600"
@@ -2337,6 +2931,12 @@
         "enabled": {
           "BOOL": true
         },
+        "group_name": {
+          "S": "Workshop - Participant"
+        },
+        "icon": {
+          "S": "chain_saw"
+        },
         "id": {
           "S": "Fu6jyPNi47VY"
         },
@@ -2352,6 +2952,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "Chain Saw"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -2362,6 +2965,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Community Ed. & Media"
+        },
+        "icon": {
+          "S": "star"
         },
         "id": {
           "S": "Ppuzi8VftNLX"
@@ -2378,6 +2987,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "SES Role"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -2388,6 +3000,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Other"
+        },
+        "icon": {
+          "S": "other_dots"
         },
         "id": {
           "S": "KfSya4BaVcN5"
@@ -2404,6 +3022,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "Other"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -2414,6 +3035,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Workshop - Trainer"
+        },
+        "icon": {
+          "S": "flood_boat"
         },
         "id": {
           "S": "DQR24Sl5Zs25"
@@ -2430,6 +3057,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "Flood Rescue: On Water"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -2440,6 +3070,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Support Roles"
+        },
+        "icon": {
+          "S": "usar"
         },
         "id": {
           "S": "CUyTMZhXshDS"
@@ -2450,6 +3086,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "USAR"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -2460,6 +3099,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Community Ed. & Media"
+        },
+        "icon": {
+          "S": "tsunami"
         },
         "id": {
           "S": "KXtlOo98bObA"
@@ -2475,6 +3120,9 @@
         },
         "order": {
           "N": "0"
+        },
+        "short_name": {
+          "S": "Tsunami"
         },
         "updated_at": {
           "N": "1767225600"
@@ -2507,6 +3155,12 @@
         "enabled": {
           "BOOL": true
         },
+        "group_name": {
+          "S": "Trainer"
+        },
+        "icon": {
+          "S": "flood_rescue_in_water"
+        },
         "id": {
           "S": "EnXtbYiMUD3g"
         },
@@ -2522,6 +3176,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "Flood Rescue: In Water"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -2532,6 +3189,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Assessor"
+        },
+        "icon": {
+          "S": "critical_incident_support"
         },
         "id": {
           "S": "YjgiQmgP7IAx"
@@ -2548,6 +3211,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "Critical Incident Support"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -2558,6 +3224,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Training"
+        },
+        "icon": {
+          "S": "flood_boat"
         },
         "id": {
           "S": "aMNwgsYk8hwA"
@@ -2574,6 +3246,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "Flood Rescue: On Water"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -2584,6 +3259,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Assessor"
+        },
+        "icon": {
+          "S": "large_animal_rescue"
         },
         "id": {
           "S": "MLj55OZs9zZQ"
@@ -2600,6 +3281,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "Large Animal Rescue"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -2610,6 +3294,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Training"
+        },
+        "icon": {
+          "S": "other_dots"
         },
         "id": {
           "S": "rohwW8dkppNz"
@@ -2625,6 +3315,9 @@
         },
         "order": {
           "N": "0"
+        },
+        "short_name": {
+          "S": "Other"
         },
         "updated_at": {
           "N": "1767225600"
@@ -2657,6 +3350,12 @@
         "enabled": {
           "BOOL": true
         },
+        "group_name": {
+          "S": "Community Ed. & Media"
+        },
+        "icon": {
+          "S": "public_relations"
+        },
         "id": {
           "S": "m61kz8bUD3Rp"
         },
@@ -2672,6 +3371,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "Public Relations"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -2682,6 +3384,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Other"
+        },
+        "icon": {
+          "S": "administration"
         },
         "id": {
           "S": "iP1cxp6Oygoc"
@@ -2698,6 +3406,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "Administration"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -2708,6 +3419,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Assessor"
+        },
+        "icon": {
+          "S": "flood_rescue_in_water"
         },
         "id": {
           "S": "KoF18gOkiFM3"
@@ -2724,6 +3441,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "Flood Rescue: In Water"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -2734,6 +3454,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Trainer"
+        },
+        "icon": {
+          "S": "job_ready"
         },
         "id": {
           "S": "Nk5azjGAsk0R"
@@ -2750,6 +3476,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "Job Ready"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -2760,6 +3489,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Trainer"
+        },
+        "icon": {
+          "S": "large_animal_rescue"
         },
         "id": {
           "S": "baSX02PJul3U"
@@ -2776,6 +3511,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "Large Animal Rescue"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -2786,6 +3524,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Training"
+        },
+        "icon": {
+          "S": "first_aid"
         },
         "id": {
           "S": "mbkLfxuoDyzT"
@@ -2801,6 +3545,9 @@
         },
         "order": {
           "N": "0"
+        },
+        "short_name": {
+          "S": "First Aid"
         },
         "updated_at": {
           "N": "1767225600"
@@ -2833,6 +3580,12 @@
         "enabled": {
           "BOOL": true
         },
+        "group_name": {
+          "S": "Assessor"
+        },
+        "icon": {
+          "S": "beacon"
+        },
         "id": {
           "S": "sM3Qi8VtInuL"
         },
@@ -2848,6 +3601,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "Beacon"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -2858,6 +3614,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Community Ed. & Media"
+        },
+        "icon": {
+          "S": "rcr"
         },
         "id": {
           "S": "rGYuRYgXQzRV"
@@ -2874,6 +3636,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "Road Crash Rescue"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -2884,6 +3649,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Workshop - Trainer"
+        },
+        "icon": {
+          "S": "other_dots"
         },
         "id": {
           "S": "p0vRqFeoQ5uP"
@@ -2900,6 +3671,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "Other"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -2910,6 +3684,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Combat Roles"
+        },
+        "icon": {
+          "S": "tsunami"
         },
         "id": {
           "S": "xjJxcDFUQtRM"
@@ -2920,6 +3700,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "Tsunami"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -2930,6 +3713,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Workshop - Trainer"
+        },
+        "icon": {
+          "S": "job_ready"
         },
         "id": {
           "S": "TD0Jx573gvu4"
@@ -2946,6 +3735,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "Job Ready"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -2956,6 +3748,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Training"
+        },
+        "icon": {
+          "S": "map_navigation"
         },
         "id": {
           "S": "62ps1a9wv19I"
@@ -2972,6 +3770,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "Map & Navigation"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -2982,6 +3783,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Training"
+        },
+        "icon": {
+          "S": "large_animal_rescue"
         },
         "id": {
           "S": "0iTKaUHjMxi2"
@@ -2997,6 +3804,9 @@
         },
         "order": {
           "N": "0"
+        },
+        "short_name": {
+          "S": "Large Animal Rescue"
         },
         "updated_at": {
           "N": "1767225600"
@@ -3029,6 +3839,12 @@
         "enabled": {
           "BOOL": true
         },
+        "group_name": {
+          "S": "Workshop - Participant"
+        },
+        "icon": {
+          "S": "beacon"
+        },
         "id": {
           "S": "JezbhsjjyGnn"
         },
@@ -3044,6 +3860,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "Beacon"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -3054,6 +3873,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Workshop - Participant"
+        },
+        "icon": {
+          "S": "large_animal_rescue"
         },
         "id": {
           "S": "CUgFJ4ptVKXH"
@@ -3070,6 +3895,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "Large Animal Rescue"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -3080,6 +3908,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Assessor"
+        },
+        "icon": {
+          "S": "land_search"
         },
         "id": {
           "S": "KWU2BCxSXms0"
@@ -3093,6 +3927,9 @@
         "nitc_participant_type": {
           "S": "Assessor"
         },
+        "short_name": {
+          "S": "Land Search"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -3103,6 +3940,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Workshop - Participant"
+        },
+        "icon": {
+          "S": "flood_rescue_land"
         },
         "id": {
           "S": "lrBgqf7hQxK4"
@@ -3118,6 +3961,9 @@
         },
         "order": {
           "N": "0"
+        },
+        "short_name": {
+          "S": "Flood Rescue: Land Based"
         },
         "updated_at": {
           "N": "1767225600"
@@ -3150,6 +3996,12 @@
         "enabled": {
           "BOOL": true
         },
+        "group_name": {
+          "S": "Other"
+        },
+        "icon": {
+          "S": "attend_other_unit_ooaa"
+        },
         "id": {
           "S": "cgHuCKzitD03"
         },
@@ -3165,6 +4017,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "Attend Other Unit OOAA"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -3175,6 +4030,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Workshop - Participant"
+        },
+        "icon": {
+          "S": "aiims"
         },
         "id": {
           "S": "BsNMfg0H1ehM"
@@ -3191,6 +4052,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "AIIMS"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -3201,6 +4065,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Assessor"
+        },
+        "icon": {
+          "S": "dov"
         },
         "id": {
           "S": "PpugLj0p7EGr"
@@ -3216,6 +4086,9 @@
         },
         "order": {
           "N": "0"
+        },
+        "short_name": {
+          "S": "Drive Operational Vehicles"
         },
         "updated_at": {
           "N": "1767225600"
@@ -3268,6 +4141,12 @@
         "enabled": {
           "BOOL": true
         },
+        "group_name": {
+          "S": "Support Roles"
+        },
+        "icon": {
+          "S": "search_evidence"
+        },
         "id": {
           "S": "rjrngI122qrh"
         },
@@ -3276,6 +4155,9 @@
         },
         "order": {
           "N": "0"
+        },
+        "short_name": {
+          "S": "Search - Evidence"
         },
         "updated_at": {
           "N": "1767225600"
@@ -3287,6 +4169,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Combat Roles"
+        },
+        "icon": {
+          "S": "operations"
         },
         "id": {
           "S": "lWQYWv8QkZ2P"
@@ -3297,6 +4185,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "Operations"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -3307,6 +4198,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Workshop - Participant"
+        },
+        "icon": {
+          "S": "rcr"
         },
         "id": {
           "S": "MLe9eJfdpdu8"
@@ -3323,6 +4220,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "RCR"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -3333,6 +4233,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Workshop - Trainer"
+        },
+        "icon": {
+          "S": "beacon"
         },
         "id": {
           "S": "3YGnFoZX0WaH"
@@ -3349,6 +4255,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "Beacon"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -3359,6 +4268,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Assessor"
+        },
+        "icon": {
+          "S": "rcr"
         },
         "id": {
           "S": "8kJBD0LHgqFr"
@@ -3375,6 +4290,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "RCR"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -3385,6 +4303,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Support Roles"
+        },
+        "icon": {
+          "S": "search"
         },
         "id": {
           "S": "3hhECO26czRF"
@@ -3395,6 +4319,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "Search"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -3405,6 +4332,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Trainer"
+        },
+        "icon": {
+          "S": "chain_saw"
         },
         "id": {
           "S": "2K3cfNuoTBYB"
@@ -3421,6 +4354,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "Chain Saw"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -3431,6 +4367,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Support Roles"
+        },
+        "icon": {
+          "S": "first_responder"
         },
         "id": {
           "S": "zQRd0ST1pHnp"
@@ -3441,6 +4383,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "First Responder"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -3452,6 +4397,12 @@
         "enabled": {
           "BOOL": true
         },
+        "group_name": {
+          "S": "Support Roles"
+        },
+        "icon": {
+          "S": "land_search"
+        },
         "id": {
           "S": "XFpiD4vS7fNi"
         },
@@ -3460,6 +4411,9 @@
         },
         "order": {
           "N": "0"
+        },
+        "short_name": {
+          "S": "Land Search"
         },
         "updated_at": {
           "N": "1767225600"
@@ -3512,6 +4466,12 @@
         "enabled": {
           "BOOL": true
         },
+        "group_name": {
+          "S": "Trainer"
+        },
+        "icon": {
+          "S": "other_dots"
+        },
         "id": {
           "S": "LooCgpp67kFc"
         },
@@ -3527,6 +4487,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "Other"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -3537,6 +4500,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Workshop - Participant"
+        },
+        "icon": {
+          "S": "piaro"
         },
         "id": {
           "S": "Mhs2RTTkKN2E"
@@ -3552,6 +4521,9 @@
         },
         "order": {
           "N": "0"
+        },
+        "short_name": {
+          "S": "PIARO"
         },
         "updated_at": {
           "N": "1767225600"
@@ -3604,6 +4576,12 @@
         "enabled": {
           "BOOL": true
         },
+        "group_name": {
+          "S": "Training"
+        },
+        "icon": {
+          "S": "aiims"
+        },
         "id": {
           "S": "RX2bfpU6ppvV"
         },
@@ -3618,6 +4596,9 @@
         },
         "order": {
           "N": "0"
+        },
+        "short_name": {
+          "S": "AIIMS"
         },
         "updated_at": {
           "N": "1767225600"
@@ -3656,6 +4637,12 @@
         "enabled": {
           "BOOL": true
         },
+        "group_name": {
+          "S": "Community Ed. & Media"
+        },
+        "icon": {
+          "S": "other_dots"
+        },
         "id": {
           "S": "hMmClDnyg0dv"
         },
@@ -3671,6 +4658,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "Other"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -3681,6 +4671,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Workshop - Participant"
+        },
+        "icon": {
+          "S": "operate_comms_equip"
         },
         "id": {
           "S": "uG7rv8C5n5Uj"
@@ -3696,6 +4692,9 @@
         },
         "order": {
           "N": "0"
+        },
+        "short_name": {
+          "S": "Operate Comms. Equip."
         },
         "updated_at": {
           "N": "1767225600"
@@ -3728,6 +4727,12 @@
         "enabled": {
           "BOOL": true
         },
+        "group_name": {
+          "S": "Combat Roles"
+        },
+        "icon": {
+          "S": "storm"
+        },
         "id": {
           "S": "Xu7e3YQO2L91"
         },
@@ -3736,6 +4741,9 @@
         },
         "order": {
           "N": "0"
+        },
+        "short_name": {
+          "S": "Storm"
         },
         "updated_at": {
           "N": "1767225600"
@@ -3747,6 +4755,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Training"
+        },
+        "icon": {
+          "S": "dov"
         },
         "id": {
           "S": "zBlDlNOZ82zS"
@@ -3763,6 +4777,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "Drive Operational Vehicles"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -3773,6 +4790,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Workshop - Participant"
+        },
+        "icon": {
+          "S": "usar"
         },
         "id": {
           "S": "Zge0zDSL33hg"
@@ -3788,6 +4811,9 @@
         },
         "order": {
           "N": "0"
+        },
+        "short_name": {
+          "S": "USAR"
         },
         "updated_at": {
           "N": "1767225600"
@@ -3840,6 +4866,12 @@
         "enabled": {
           "BOOL": true
         },
+        "group_name": {
+          "S": "Accredited Rescue Role"
+        },
+        "icon": {
+          "S": "rcr"
+        },
         "id": {
           "S": "cf9AnZsuMLxg"
         },
@@ -3848,6 +4880,9 @@
         },
         "order": {
           "N": "0"
+        },
+        "short_name": {
+          "S": "RCR"
         },
         "updated_at": {
           "N": "1767225600"
@@ -3912,6 +4947,12 @@
         "enabled": {
           "BOOL": true
         },
+        "group_name": {
+          "S": "Community Ed. & Media"
+        },
+        "icon": {
+          "S": "media"
+        },
         "id": {
           "S": "CcrrFs5F3Wiu"
         },
@@ -3927,6 +4968,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "Media"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -3937,6 +4981,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Assessor"
+        },
+        "icon": {
+          "S": "chain_saw"
         },
         "id": {
           "S": "1RwtdwX3JGc6"
@@ -3953,6 +5003,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "Chain Saw"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -3963,6 +5016,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Other"
+        },
+        "icon": {
+          "S": "attend_hq"
         },
         "id": {
           "S": "rLhaRTEmL8ZD"
@@ -3979,6 +5038,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "Attend RHQ"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -3989,6 +5051,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Assessor"
+        },
+        "icon": {
+          "S": "first_aid"
         },
         "id": {
           "S": "obMaRo09LtmW"
@@ -4004,6 +5072,9 @@
         },
         "order": {
           "N": "0"
+        },
+        "short_name": {
+          "S": "First Aid"
         },
         "updated_at": {
           "N": "1767225600"
@@ -4036,6 +5107,12 @@
         "enabled": {
           "BOOL": true
         },
+        "group_name": {
+          "S": "Other"
+        },
+        "icon": {
+          "S": "duty_officer"
+        },
         "id": {
           "S": "lwMe5QZSCF7B"
         },
@@ -4051,6 +5128,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "Duty Officer"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -4061,6 +5141,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Training"
+        },
+        "icon": {
+          "S": "flood_rescue_land"
         },
         "id": {
           "S": "Na5anfu2SjxY"
@@ -4077,6 +5163,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "Flood Rescue: Land Based"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -4087,6 +5176,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Training"
+        },
+        "icon": {
+          "S": "job_ready"
         },
         "id": {
           "S": "JxJaXiWKdJOs"
@@ -4102,6 +5197,9 @@
         },
         "order": {
           "N": "0"
+        },
+        "short_name": {
+          "S": "Job Ready"
         },
         "updated_at": {
           "N": "1767225600"
@@ -4134,6 +5232,12 @@
         "enabled": {
           "BOOL": true
         },
+        "group_name": {
+          "S": "Trainer"
+        },
+        "icon": {
+          "S": "flood_rescue_land"
+        },
         "id": {
           "S": "AKinZhtlbvL1"
         },
@@ -4148,6 +5252,9 @@
         },
         "order": {
           "N": "0"
+        },
+        "short_name": {
+          "S": "Flood Rescue: Land Based"
         },
         "updated_at": {
           "N": "1767225600"
@@ -4180,6 +5287,12 @@
         "enabled": {
           "BOOL": true
         },
+        "group_name": {
+          "S": "Workshop - Participant"
+        },
+        "icon": {
+          "S": "industrial_domestic_rescue"
+        },
         "id": {
           "S": "21SBuA68LrOo"
         },
@@ -4195,6 +5308,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "Industrial & Domestic Rescue"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -4205,6 +5321,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Trainer"
+        },
+        "icon": {
+          "S": "map_navigation"
         },
         "id": {
           "S": "xfqtWeU35pxp"
@@ -4221,6 +5343,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "Map & Navigation"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -4231,6 +5356,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Workshop - Trainer"
+        },
+        "icon": {
+          "S": "industrial_domestic_rescue"
         },
         "id": {
           "S": "DZWgLGSX8MqH"
@@ -4247,6 +5378,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "Industrial & Domestic Rescue"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -4257,6 +5391,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Other"
+        },
+        "icon": {
+          "S": "attend_hq"
         },
         "id": {
           "S": "5HfFvjuoxb7v"
@@ -4273,6 +5413,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "Attend SHQ"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -4283,6 +5426,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Workshop - Participant"
+        },
+        "icon": {
+          "S": "first_aid"
         },
         "id": {
           "S": "4g7eGWgLgIZq"
@@ -4298,6 +5447,9 @@
         },
         "order": {
           "N": "0"
+        },
+        "short_name": {
+          "S": "First Aid"
         },
         "updated_at": {
           "N": "1767225600"
@@ -4330,6 +5482,12 @@
         "enabled": {
           "BOOL": true
         },
+        "group_name": {
+          "S": "Assessor"
+        },
+        "icon": {
+          "S": "industrial_domestic_rescue"
+        },
         "id": {
           "S": "NcjHY3oJ3O7R"
         },
@@ -4344,6 +5502,9 @@
         },
         "order": {
           "N": "0"
+        },
+        "short_name": {
+          "S": "Industrial & Domestic Rescue"
         },
         "updated_at": {
           "N": "1767225600"
@@ -4382,6 +5543,12 @@
         "enabled": {
           "BOOL": true
         },
+        "group_name": {
+          "S": "Workshop - Participant"
+        },
+        "icon": {
+          "S": "flood_boat"
+        },
         "id": {
           "S": "y16O40k72vyn"
         },
@@ -4397,6 +5564,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "Flood Rescue: On Water"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -4407,6 +5577,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Workshop - Trainer"
+        },
+        "icon": {
+          "S": "usar"
         },
         "id": {
           "S": "WlyrCxgloooJ"
@@ -4423,6 +5599,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "USAR"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -4433,6 +5612,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Assessor"
+        },
+        "icon": {
+          "S": "piaro"
         },
         "id": {
           "S": "UOEIfufGm0CW"
@@ -4449,6 +5634,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "PIARO"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -4459,6 +5647,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Combat Roles"
+        },
+        "icon": {
+          "S": "flood_rescue_swr"
         },
         "id": {
           "S": "EncbZIFXI7E4"
@@ -4469,6 +5663,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "Flood Rescue (SWR)"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -4479,6 +5676,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Support Roles"
+        },
+        "icon": {
+          "S": "earthquake"
         },
         "id": {
           "S": "CyQwwbwOqSVs"
@@ -4489,6 +5692,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "Earthquake"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -4499,6 +5705,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Assessor"
+        },
+        "icon": {
+          "S": "fit_for_role"
         },
         "id": {
           "S": "Iki2svFjFU48"
@@ -4515,6 +5727,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "Fit for Role"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -4525,6 +5740,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Training"
+        },
+        "icon": {
+          "S": "chain_saw"
         },
         "id": {
           "S": "aW7d1yFParRV"
@@ -4541,6 +5762,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "Chain Saw"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -4551,6 +5775,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Workshop - Participant"
+        },
+        "icon": {
+          "S": "flood_rescue_in_water"
         },
         "id": {
           "S": "0hXmBudbE3O5"
@@ -4567,6 +5797,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "Flood Rescue: In Water"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -4577,6 +5810,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Workshop - Participant"
+        },
+        "icon": {
+          "S": "critical_incident_support"
         },
         "id": {
           "S": "vfVK5zphDjom"
@@ -4593,6 +5832,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "Critical Incident Support"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -4603,6 +5845,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Workshop - Trainer"
+        },
+        "icon": {
+          "S": "map_navigation"
         },
         "id": {
           "S": "ZLRHFadlZ56G"
@@ -4619,6 +5867,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "Map & Navigation"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -4629,6 +5880,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Workshop - Trainer"
+        },
+        "icon": {
+          "S": "first_aid"
         },
         "id": {
           "S": "dEfSFXJ3JZ8x"
@@ -4645,6 +5902,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "First Aid"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -4655,6 +5915,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Workshop - Participant"
+        },
+        "icon": {
+          "S": "traffic_safety"
         },
         "id": {
           "S": "U0MLm7gDswuw"
@@ -4671,6 +5937,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "Traffic Safety"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -4682,6 +5951,12 @@
         "enabled": {
           "BOOL": true
         },
+        "group_name": {
+          "S": "Support Roles"
+        },
+        "icon": {
+          "S": "assist_police"
+        },
         "id": {
           "S": "mvpBB7QcroPB"
         },
@@ -4690,6 +5965,9 @@
         },
         "order": {
           "N": "0"
+        },
+        "short_name": {
+          "S": "Assist Police"
         },
         "updated_at": {
           "N": "1767225600"
@@ -4722,6 +6000,12 @@
         "enabled": {
           "BOOL": true
         },
+        "group_name": {
+          "S": "Training"
+        },
+        "icon": {
+          "S": "traffic_safety"
+        },
         "id": {
           "S": "IZHsBlJsip7y"
         },
@@ -4737,6 +6021,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "Traffic Safety"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -4747,6 +6034,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Trainer"
+        },
+        "icon": {
+          "S": "flood_boat"
         },
         "id": {
           "S": "z4HrmoDyzpfh"
@@ -4762,6 +6055,9 @@
         },
         "order": {
           "N": "0"
+        },
+        "short_name": {
+          "S": "Flood Rescue: On Water"
         },
         "updated_at": {
           "N": "1767225600"
@@ -4794,6 +6090,12 @@
         "enabled": {
           "BOOL": true
         },
+        "group_name": {
+          "S": "Accredited Rescue Role"
+        },
+        "icon": {
+          "S": "animal"
+        },
         "id": {
           "S": "bi3X5omY9NS5"
         },
@@ -4802,6 +6104,9 @@
         },
         "order": {
           "N": "0"
+        },
+        "short_name": {
+          "S": "Animal"
         },
         "updated_at": {
           "N": "1767225600"
@@ -4813,6 +6118,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Trainer"
+        },
+        "icon": {
+          "S": "usar"
         },
         "id": {
           "S": "B2nP2FfkxfIg"
@@ -4829,6 +6140,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "USAR"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -4839,6 +6153,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Other"
+        },
+        "icon": {
+          "S": "attend_workshop"
         },
         "id": {
           "S": "tbOiiUjRMoPt"
@@ -4855,6 +6175,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "Attend Workshop"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -4865,6 +6188,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Trainer"
+        },
+        "icon": {
+          "S": "first_aid"
         },
         "id": {
           "S": "7gmFiRLfnB9k"
@@ -4880,6 +6209,9 @@
         },
         "order": {
           "N": "0"
+        },
+        "short_name": {
+          "S": "First Aid"
         },
         "updated_at": {
           "N": "1767225600"
@@ -4932,6 +6264,12 @@
         "enabled": {
           "BOOL": true
         },
+        "group_name": {
+          "S": "Training"
+        },
+        "icon": {
+          "S": "industrial_domestic_rescue"
+        },
         "id": {
           "S": "NruR2qQJBBmP"
         },
@@ -4947,6 +6285,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "Industrial & Domestic Rescue"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -4957,6 +6298,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Other"
+        },
+        "icon": {
+          "S": "star"
         },
         "id": {
           "S": "ifc9uKYAb0ZS"
@@ -4973,6 +6320,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "Attend Exercise - SES"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -4983,6 +6333,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Training"
+        },
+        "icon": {
+          "S": "operate_comms_equip"
         },
         "id": {
           "S": "FTxxoiet5j42"
@@ -4999,6 +6355,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "Operate Comms. Equip."
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -5009,6 +6368,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Training"
+        },
+        "icon": {
+          "S": "field_core_skills"
         },
         "id": {
           "S": "u6kQTDAj4BbU"
@@ -5025,6 +6390,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "Field Core Skills"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -5035,6 +6403,12 @@
         },
         "enabled": {
           "BOOL": true
+        },
+        "group_name": {
+          "S": "Trainer"
+        },
+        "icon": {
+          "S": "vr"
         },
         "id": {
           "S": "MiJ9l7SqCDr4"
@@ -5050,6 +6424,9 @@
         },
         "order": {
           "N": "0"
+        },
+        "short_name": {
+          "S": "VR"
         },
         "updated_at": {
           "N": "1767225600"
@@ -5082,6 +6459,12 @@
         "enabled": {
           "BOOL": true
         },
+        "group_name": {
+          "S": "Other"
+        },
+        "icon": {
+          "S": "meeting"
+        },
         "id": {
           "S": "RSyHEeWqjimc"
         },
@@ -5096,6 +6479,9 @@
         },
         "order": {
           "N": "0"
+        },
+        "short_name": {
+          "S": "LEMC/Interagency meetings"
         },
         "updated_at": {
           "N": "1767225600"
@@ -5128,6 +6514,12 @@
         "enabled": {
           "BOOL": true
         },
+        "group_name": {
+          "S": "Trainer"
+        },
+        "icon": {
+          "S": "rcr"
+        },
         "id": {
           "S": "SOiIjTV9Jmow"
         },
@@ -5143,6 +6535,9 @@
         "order": {
           "N": "0"
         },
+        "short_name": {
+          "S": "RCR"
+        },
         "updated_at": {
           "N": "1767225600"
         }
@@ -5154,6 +6549,12 @@
         "enabled": {
           "BOOL": true
         },
+        "group_name": {
+          "S": "Support Roles"
+        },
+        "icon": {
+          "S": "assist_ambulance"
+        },
         "id": {
           "S": "7H8xiXLBw7MQ"
         },
@@ -5162,6 +6563,9 @@
         },
         "order": {
           "N": "0"
+        },
+        "short_name": {
+          "S": "Assist Ambulance"
         },
         "updated_at": {
           "N": "1767225600"
@@ -5214,6 +6618,12 @@
         "enabled": {
           "BOOL": true
         },
+        "group_name": {
+          "S": "Workshop - Trainer"
+        },
+        "icon": {
+          "S": "flood_rescue_land"
+        },
         "id": {
           "S": "d51eXzmfIuXm"
         },
@@ -5228,6 +6638,9 @@
         },
         "order": {
           "N": "0"
+        },
+        "short_name": {
+          "S": "Flood Rescue: Land Based"
         },
         "updated_at": {
           "N": "1767225600"
@@ -5260,6 +6673,12 @@
         "enabled": {
           "BOOL": true
         },
+        "group_name": {
+          "S": "Other"
+        },
+        "icon": {
+          "S": "assessment_supervision"
+        },
         "id": {
           "S": "538VdyE6WRbU"
         },
@@ -5274,6 +6693,9 @@
         },
         "order": {
           "N": "0"
+        },
+        "short_name": {
+          "S": "Assessment Supervision"
         },
         "updated_at": {
           "N": "1767225600"

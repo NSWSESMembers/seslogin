@@ -56,6 +56,9 @@ All IDs are exposed to the API layer as opaque UUID strings. Conversion happens 
 **Non-obvious attributes:**
 
 - `parent_name` (S) — the parent category's display name, denormalized into each item during data import. No join is needed to build the full display name; the item already contains `"{parent_name} - {name}"` or equivalent.
+- `group_name` (S, optional) — the kiosk group the category sits under (`"Training"`). Display metadata duplicated from the kiosk's hard-coded tree (`web/src/lib/categories.ts`) for the mobile app; backfilled by `load-category-display` from `api/assets/category-display.json`. Omitted, never `Null`, when unset.
+- `short_name` (S, optional) — the short name the kiosk shows (`"AIIMS"`). Same provenance as `group_name`.
+- `icon` (S, optional) — the kiosk icon's file stem in `web/src/assets/categories/` (`"aiims"`). Only the name is stored; no image is served. Same provenance as `group_name`.
 - `nitc_enabled` (Bool)
 - `nitc_type` (S) — `'Training'`, `'Other'`, or `'Community Engagement'`
 - `nitc_participant_type` (S) — `'Attendee'`, `'Trainer'`, or `'Assessor'`

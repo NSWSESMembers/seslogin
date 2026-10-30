@@ -647,8 +647,14 @@ impl db::Handler for FakeDb {
                 end_time,
                 category_id,
                 comment,
+                expected_version,
                 ..
             } => {
+                if let Some(expected) = expected_version
+                    && (period.version != expected || period.end_time.is_some())
+                {
+                    return Err(db::Error::Conflict(id.to_string()));
+                }
                 period.start_time = start_time as u64;
                 period.end_time = Some(end_time as u64);
                 period.category_id = Some(category_id.to_string());
@@ -945,6 +951,7 @@ impl db::Handler for FakeDb {
         is_virtual: bool,
         nitc_group_id: Option<&str>,
         nitc_participant_type: Option<&str>,
+        display: &db::CategoryDisplay,
     ) -> db::Result<db::Category> {
         let id = id
             .map(str::to_string)
@@ -956,12 +963,16 @@ impl db::Handler for FakeDb {
             is_virtual,
             nitc_participant_type: nitc_participant_type.map(str::to_string),
             nitc_group_id: nitc_group_id.map(str::to_string),
+            group_name: display.group_name.clone(),
+            short_name: display.short_name.clone(),
+            icon: display.icon.clone(),
             created_at: seslogin::clock::now_sec(),
             updated_at: seslogin::clock::now_sec(),
         };
         self.categories.lock().unwrap().insert(id, category.clone());
         Ok(category)
     }
+    #[allow(clippy::too_many_arguments)]
     async fn update_category(
         &self,
         id: &str,
@@ -970,6 +981,7 @@ impl db::Handler for FakeDb {
         is_virtual: bool,
         nitc_group_id: Option<&str>,
         nitc_participant_type: Option<&str>,
+        display: &db::CategoryDisplay,
     ) -> db::Result<()> {
         let mut categories = self.categories.lock().unwrap();
         let category = categories
@@ -980,6 +992,9 @@ impl db::Handler for FakeDb {
         category.is_virtual = is_virtual;
         category.nitc_group_id = nitc_group_id.map(str::to_string);
         category.nitc_participant_type = nitc_participant_type.map(str::to_string);
+        category.group_name = display.group_name.clone();
+        category.short_name = display.short_name.clone();
+        category.icon = display.icon.clone();
         Ok(())
     }
     async fn list_nitc_events_for_day(
@@ -1887,6 +1902,9 @@ pub(crate) fn seed_category(
             is_virtual: false,
             nitc_participant_type: None,
             nitc_group_id: None,
+            group_name: None,
+            short_name: None,
+            icon: None,
             created_at: 0,
             updated_at: 0,
         },

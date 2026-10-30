@@ -617,6 +617,7 @@ pub fn period_update_changes(
             category_id,
             signed_out_session_id,
             comment,
+            ..
         } => {
             after.set("start_time", Some(json!(start_time)));
             after.set("end_time", Some(json!(end_time)));
@@ -934,12 +935,16 @@ fn category_fields(c: &Category) -> Fields {
             "nitc_participant_type",
             opt_text(c.nitc_participant_type.as_deref()),
         )
+        .with("group_name", opt_text(c.group_name.as_deref()))
+        .with("short_name", opt_text(c.short_name.as_deref()))
+        .with("icon", opt_text(c.icon.as_deref()))
 }
 
 pub fn category_create_changes(c: &Category) -> Vec<AuditFieldChange> {
     creation(&category_fields(c))
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn category_update_changes(
     before: Option<&Category>,
     name: &str,
@@ -947,6 +952,7 @@ pub fn category_update_changes(
     is_virtual: bool,
     nitc_group_id: Option<&str>,
     nitc_participant_type: Option<&str>,
+    display: &db::CategoryDisplay,
 ) -> Vec<AuditFieldChange> {
     let before = before.map(category_fields).unwrap_or_default();
     let after = before
@@ -955,7 +961,10 @@ pub fn category_update_changes(
         .with("enabled", flag(enabled))
         .with("is_virtual", flag(is_virtual))
         .with("nitc_group_id", opt_text(nitc_group_id))
-        .with("nitc_participant_type", opt_text(nitc_participant_type));
+        .with("nitc_participant_type", opt_text(nitc_participant_type))
+        .with("group_name", opt_text(display.group_name.as_deref()))
+        .with("short_name", opt_text(display.short_name.as_deref()))
+        .with("icon", opt_text(display.icon.as_deref()));
     diff(&before, &after)
 }
 
@@ -1670,10 +1679,18 @@ impl<D: db::Handler> db::Handler for AuditingHandler<D> {
         is_virtual: bool,
         nitc_group_id: Option<&str>,
         nitc_participant_type: Option<&str>,
+        display: &db::CategoryDisplay,
     ) -> db::Result<Category> {
         let category = self
             .inner
-            .create_category(id, name, is_virtual, nitc_group_id, nitc_participant_type)
+            .create_category(
+                id,
+                name,
+                is_virtual,
+                nitc_group_id,
+                nitc_participant_type,
+                display,
+            )
             .await?;
         self.record_create(
             AuditEntityType::Category,
@@ -1686,6 +1703,7 @@ impl<D: db::Handler> db::Handler for AuditingHandler<D> {
         Ok(category)
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn update_category(
         &self,
         id: &str,
@@ -1694,6 +1712,7 @@ impl<D: db::Handler> db::Handler for AuditingHandler<D> {
         is_virtual: bool,
         nitc_group_id: Option<&str>,
         nitc_participant_type: Option<&str>,
+        display: &db::CategoryDisplay,
     ) -> db::Result<()> {
         let before = self.before_category(id).await;
         let changes = category_update_changes(
@@ -1703,6 +1722,7 @@ impl<D: db::Handler> db::Handler for AuditingHandler<D> {
             is_virtual,
             nitc_group_id,
             nitc_participant_type,
+            display,
         );
         self.inner
             .update_category(
@@ -1712,6 +1732,7 @@ impl<D: db::Handler> db::Handler for AuditingHandler<D> {
                 is_virtual,
                 nitc_group_id,
                 nitc_participant_type,
+                display,
             )
             .await?;
         self.record(Recorded {
@@ -3118,6 +3139,7 @@ mod tests {
             category_id: "cat1",
             signed_out_session_id: None,
             comment,
+            expected_version: None,
         };
 
         // `None` leaves the comment alone.
@@ -3618,12 +3640,42 @@ mod tests {
             is_virtual: false,
             nitc_participant_type: None,
             nitc_group_id: None,
+            group_name: Some("Training".into()),
+            short_name: None,
+            icon: None,
             created_at: 1,
             updated_at: 1,
         };
-        let changes =
-            category_update_changes(Some(&category), "Training", false, false, Some("g1"), None);
+        let same = category.display();
+        let changes = category_update_changes(
+            Some(&category),
+            "Training",
+            false,
+            false,
+            Some("g1"),
+            None,
+            &same,
+        );
         assert_eq!(fields(&changes), vec!["enabled", "nitc_group_id"]);
+
+        // The display metadata is part of the diff: set, changed and cleared.
+        let display = db::CategoryDisplay {
+            group_name: None,
+            short_name: Some("AIIMS".into()),
+            icon: Some("aiims".into()),
+        };
+        let changes = category_update_changes(
+            Some(&category),
+            "Training",
+            true,
+            false,
+            None,
+            None,
+            &display,
+        );
+        assert_eq!(fields(&changes), vec!["group_name", "short_name", "icon"]);
+        assert_eq!(change(&changes, "group_name").after, None);
+        assert_eq!(change(&changes, "short_name").after, Some(json!("AIIMS")));
 
         let group = db::NitcGroup {
             id: "g1".into(),

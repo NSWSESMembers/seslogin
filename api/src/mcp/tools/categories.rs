@@ -21,7 +21,7 @@ use crate::app::{App, HasDb, HasMail, HasQueues, HasRealtime};
 
 /// A `Category`'s fields, as the Categories page shows them.
 const CATEGORY_SELECTION: &str = "id name enabled isVirtual nitcGroupId nitcParticipantType \
-     nitcGroup { id nitcType sesTags { id name } } createdAt updatedAt";
+     groupName shortName icon nitcGroup { id nitcType sesTags { id name } } createdAt updatedAt";
 
 const NITC_GROUP_HELP: &str = "The NITC group the category exports as, from `list_nitc_groups`.";
 const NITC_GROUP_HELP_NULLABLE: &str = "The NITC group the category exports as, from \
@@ -29,6 +29,9 @@ const NITC_GROUP_HELP_NULLABLE: &str = "The NITC group the category exports as, 
 const PARTICIPANT_HELP: &str = "The NITC participant type, from `list_ses_reference_data`.";
 const PARTICIPANT_HELP_NULLABLE: &str =
     "The NITC participant type, from `list_ses_reference_data`; null clears it.";
+const GROUP_NAME_HELP: &str = "The kiosk group the category appears under, e.g. \"Training\".";
+const SHORT_NAME_HELP: &str = "The short name the kiosk shows, e.g. \"AIIMS\".";
+const ICON_HELP: &str = "The kiosk icon's name, e.g. \"aiims\".";
 
 pub(super) fn catalogue() -> Vec<Value> {
     vec![
@@ -37,7 +40,8 @@ pub(super) fn catalogue() -> Vec<Value> {
             "List categories",
             "List the activity categories a period can be filed under: id, name, `enabled`, \
              `isVirtual` (virtual activity, not at the unit), and the NITC group and \
-             participant type the category exports as. Disabled categories are left out \
+             participant type the category exports as, plus its kiosk display metadata \
+             (`groupName`, `shortName`, `icon` name). Disabled categories are left out \
              unless `includeDisabled` is true; they still appear on old periods. Categories \
              are shared by every location, so any signed-in user may call this. Use the ids \
              with `create_period`, `update_period` and the `categoryIds` filters.",
@@ -70,7 +74,8 @@ pub(super) fn catalogue() -> Vec<Value> {
              (default false) marks virtual activity not done at the unit. `nitcGroupId` (an \
              id from `list_nitc_groups`) and `nitcParticipantType` (a value from \
              `list_ses_reference_data`'s `participantTypes`) set how the category exports \
-             to NITC; leave both out for a category that is not exported. New categories \
+             to NITC; leave both out for a category that is not exported. `groupName`, \
+             `shortName` and `icon` are optional kiosk display metadata. New categories \
              are enabled.",
             input_schema(
                 json!({
@@ -84,6 +89,9 @@ pub(super) fn catalogue() -> Vec<Value> {
                         "type": "string",
                         "description": PARTICIPANT_HELP,
                     },
+                    "groupName": { "type": "string", "description": GROUP_NAME_HELP },
+                    "shortName": { "type": "string", "description": SHORT_NAME_HELP },
+                    "icon": { "type": "string", "description": ICON_HELP },
                 }),
                 &["name"],
             ),
@@ -95,8 +103,8 @@ pub(super) fn catalogue() -> Vec<Value> {
             "Change a category (super user only). Only the fields you pass change; anything \
              omitted keeps its current value. `enabled: false` hides it from the pick lists \
              (it stays on old periods) and `true` brings it back. `nitcGroupId` and \
-             `nitcParticipantType` can be cleared by passing `null`; leaving them out \
-             keeps them. Get ids from `list_categories` (use `includeDisabled` to find a \
+             `nitcParticipantType`, `groupName`, `shortName` and `icon` can be cleared by \
+             passing `null`; leaving them out keeps them. Get ids from `list_categories` (use `includeDisabled` to find a \
              disabled one).",
             input_schema(
                 json!({
@@ -112,6 +120,15 @@ pub(super) fn catalogue() -> Vec<Value> {
                         "type": ["string", "null"],
                         "description": PARTICIPANT_HELP_NULLABLE,
                     },
+                    "groupName": {
+                        "type": ["string", "null"],
+                        "description": GROUP_NAME_HELP,
+                    },
+                    "shortName": {
+                        "type": ["string", "null"],
+                        "description": SHORT_NAME_HELP,
+                    },
+                    "icon": { "type": ["string", "null"], "description": ICON_HELP },
                 }),
                 &["id"],
             ),
@@ -182,12 +199,17 @@ where
         "isVirtual": args::opt_bool_arg(a, "isVirtual")?.unwrap_or(false),
         "nitcGroupId": args::opt_str_arg(a, "nitcGroupId")?,
         "nitcParticipantType": args::opt_str_arg(a, "nitcParticipantType")?,
+        "groupName": args::opt_str_arg(a, "groupName")?,
+        "shortName": args::opt_str_arg(a, "shortName")?,
+        "icon": args::opt_str_arg(a, "icon")?,
     });
     let doc = format!(
         "mutation McpCreateCategory($name: String!, $isVirtual: Boolean!, \
-         $nitcGroupId: String, $nitcParticipantType: String) {{ \
+         $nitcGroupId: String, $nitcParticipantType: String, $groupName: String, \
+         $shortName: String, $icon: String) {{ \
          createCategory(name: $name, isVirtual: $isVirtual, nitcGroupId: $nitcGroupId, \
-         nitcParticipantType: $nitcParticipantType) {{ {CATEGORY_SELECTION} }} }}"
+         nitcParticipantType: $nitcParticipantType, groupName: $groupName, \
+         shortName: $shortName, icon: $icon) {{ {CATEGORY_SELECTION} }} }}"
     );
     rename_root(ctx.graphql(&doc, vars).await, "createCategory", "category")
 }
@@ -212,14 +234,19 @@ where
             Field::new("isVirtual", Kind::Bool),
             Field::new("nitcGroupId", Kind::Str).nullable(),
             Field::new("nitcParticipantType", Kind::Str).nullable(),
+            Field::new("groupName", Kind::Str).nullable(),
+            Field::new("shortName", Kind::Str).nullable(),
+            Field::new("icon", Kind::Str).nullable(),
         ],
     )?;
     vars.insert("id".into(), json!(id));
     let doc = format!(
         "mutation McpUpdateCategory($id: ID!, $name: String!, $enabled: Boolean!, \
-         $isVirtual: Boolean!, $nitcGroupId: String, $nitcParticipantType: String) {{ \
+         $isVirtual: Boolean!, $nitcGroupId: String, $nitcParticipantType: String, \
+         $groupName: String, $shortName: String, $icon: String) {{ \
          updateCategory(id: $id, name: $name, enabled: $enabled, isVirtual: $isVirtual, \
-         nitcGroupId: $nitcGroupId, nitcParticipantType: $nitcParticipantType) \
+         nitcGroupId: $nitcGroupId, nitcParticipantType: $nitcParticipantType, \
+         groupName: $groupName, shortName: $shortName, icon: $icon) \
          {{ {CATEGORY_SELECTION} }} }}"
     );
     rename_root(

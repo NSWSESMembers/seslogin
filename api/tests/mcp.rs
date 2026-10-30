@@ -2929,6 +2929,62 @@ async fn a_super_user_can_create_and_partially_update_categories() {
 }
 
 #[tokio::test]
+async fn category_display_metadata_is_set_kept_and_cleared() {
+    let (app, schema) = setup();
+    let bearer = super_bearer(&app).await;
+
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "create_category",
+        json!({
+            "name": "Training - AIIMS",
+            "groupName": "Training",
+            "shortName": "AIIMS",
+            "icon": "aiims",
+        }),
+    )
+    .await;
+    assert_eq!(result["isError"], false, "{result:?}");
+    let created = &result["structuredContent"]["category"];
+    assert_eq!(created["groupName"], "Training");
+    assert_eq!(created["shortName"], "AIIMS");
+    assert_eq!(created["icon"], "aiims");
+    let id = created["id"].as_str().unwrap().to_string();
+
+    // An update that does not mention them leaves them alone.
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "update_category",
+        json!({ "id": id, "name": "Training - AIIMS 2" }),
+    )
+    .await;
+    assert_eq!(result["isError"], false, "{result:?}");
+    let stored = app.db.categories.lock().unwrap()[&id].clone();
+    assert_eq!(stored.group_name.as_deref(), Some("Training"));
+    assert_eq!(stored.short_name.as_deref(), Some("AIIMS"));
+    assert_eq!(stored.icon.as_deref(), Some("aiims"));
+
+    // One is changed, one cleared with null, one untouched.
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "update_category",
+        json!({ "id": id, "shortName": "AIIMS!", "icon": null }),
+    )
+    .await;
+    assert_eq!(result["isError"], false, "{result:?}");
+    let stored = app.db.categories.lock().unwrap()[&id].clone();
+    assert_eq!(stored.group_name.as_deref(), Some("Training"));
+    assert_eq!(stored.short_name.as_deref(), Some("AIIMS!"));
+    assert_eq!(stored.icon, None);
+}
+
+#[tokio::test]
 async fn a_super_user_can_manage_nitc_groups_and_read_the_reference_data() {
     let (app, schema) = setup();
     seed_nitc(&app);

@@ -11,9 +11,9 @@ use clap::{Parser, Subcommand};
 use seslogin::audit::{self, AuditContext, AuditingHandler};
 use seslogin::badges;
 use seslogin::db::{
-    self, ApiToken, Category, Handler, ListApiTokensFilter, ListLocationsFilter, ListPeriodsPage,
-    ListSessionsQuery, Location, NitcEvent, NitcGroup, Period, PeriodCursor, Person,
-    PersonUpdateShape, ScanCursor, Session, SessionUpdateShape, User,
+    self, ApiToken, Category, CategoryDisplay, Handler, ListApiTokensFilter, ListLocationsFilter,
+    ListPeriodsPage, ListSessionsQuery, Location, NitcEvent, NitcGroup, Period, PeriodCursor,
+    Person, PersonUpdateShape, ScanCursor, Session, SessionUpdateShape, User,
 };
 use seslogin::dynamodb;
 use seslogin::request_metrics::{self, RequestMetrics};
@@ -1140,6 +1140,9 @@ async fn show_categories(db: &impl Handler, cats: &[Category]) {
             is_virtual,
             nitc_participant_type,
             nitc_group_id,
+            group_name,
+            short_name,
+            icon,
             created_at,
             updated_at,
         } = c;
@@ -1154,6 +1157,9 @@ async fn show_categories(db: &impl Handler, cats: &[Category]) {
             ("is_virtual", bool_str(*is_virtual)),
             ("nitc_group_id", group),
             ("nitc_participant_type", opt_str(nitc_participant_type)),
+            ("group_name", opt_str(group_name)),
+            ("short_name", opt_str(short_name)),
+            ("icon", opt_str(icon)),
             ("created_at", fmt_ts(*created_at)),
             ("updated_at", fmt_ts(*updated_at)),
         ]);
@@ -2296,7 +2302,14 @@ async fn run_category_create(
     }
 
     let category = db
-        .create_category(id, name, is_virtual, nitc_group_id, nitc_participant_type)
+        .create_category(
+            id,
+            name,
+            is_virtual,
+            nitc_group_id,
+            nitc_participant_type,
+            &CategoryDisplay::default(),
+        )
         .await?;
     println!("created category {}", category.id);
     Ok(())
@@ -2390,6 +2403,8 @@ async fn run_category_edit(
         new_is_virtual,
         new_nitc_group_id.as_deref(),
         new_nitc_participant_type.as_deref(),
+        // The display metadata has no flags here, so it keeps what is stored.
+        &current.display(),
     )
     .await?;
     println!("updated category {id}");

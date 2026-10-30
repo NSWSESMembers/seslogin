@@ -30,6 +30,10 @@ fn sdk_err_msg<E: ProvideErrorMetadata>(e: SdkError<E>) -> String {
     }
 }
 
+fn is_conditional_check_failed(e: &SdkError<UpdateItemError>) -> bool {
+    matches!(e, SdkError::ServiceError(se) if se.err().is_conditional_check_failed_exception())
+}
+
 fn map_update_err(e: SdkError<UpdateItemError>, not_found_msg: String) -> db::Error {
     if let SdkError::ServiceError(ref se) = e
         && se.err().is_conditional_check_failed_exception()
@@ -302,6 +306,9 @@ impl TryInto<Category> for Item {
             is_virtual: self.bool_field("virtual")?.unwrap_or(false),
             nitc_participant_type: self.string_field("nitc_participant_type")?,
             nitc_group_id: self.string_field("nitc_group_id")?,
+            group_name: self.string_field("group_name")?,
+            short_name: self.string_field("short_name")?,
+            icon: self.string_field("icon")?,
             created_at: self
                 .i64_field("created_at")?
                 .ok_or_else(|| anyhow!("Category missing created_at"))?
@@ -3203,6 +3210,7 @@ impl db::Handler for Handler {
                 category_id,
                 signed_out_session_id,
                 comment,
+                expected_version,
             } => {
                 // Build the SET/REMOVE clauses dynamically since both the session
                 // reference and the three-state comment are optional. `comment` is
@@ -3233,7 +3241,13 @@ impl db::Handler for Handler {
                     .update_item()
                     .table_name(self.table_name("period"))
                     .key("id", AttributeValue::S(id.to_string()))
-                    .condition_expression("attribute_exists(id)")
+                    .condition_expression(if expected_version.is_some() {
+                        // Optimistic: lose cleanly to a concurrent edit or sign-out
+                        // (a kiosk, another device) instead of overwriting it.
+                        "attribute_exists(id) AND v = :expected_version AND attribute_not_exists(end_time)"
+                    } else {
+                        "attribute_exists(id)"
+                    })
                     .update_expression(update_expr)
                     .expression_attribute_values(
                         ":start_time",
@@ -3252,6 +3266,12 @@ impl db::Handler for Handler {
                         ":updated_at",
                         AttributeValue::N(crate::clock::now_sec().to_string()),
                     );
+                if let Some(expected) = expected_version {
+                    update = update.expression_attribute_values(
+                        ":expected_version",
+                        AttributeValue::N(expected.to_string()),
+                    );
+                }
                 if let Some(session_id) = signed_out_session_id {
                     update = update.expression_attribute_values(
                         ":signed_out_session_id",
@@ -3272,7 +3292,13 @@ impl db::Handler for Handler {
                     .return_consumed_capacity(ReturnConsumedCapacity::Total)
                     .send()
                     .await
-                    .map_err(|e| map_update_err(e, format!("Period {}", id)))?;
+                    .map_err(|e| {
+                        if expected_version.is_some() && is_conditional_check_failed(&e) {
+                            db::Error::Conflict(format!("Period {} changed or already ended", id))
+                        } else {
+                            map_update_err(e, format!("Period {}", id))
+                        }
+                    })?;
                 record_capacity("update_period", resp.consumed_capacity(), CapKind::Write);
                 parse_new_version(&resp)?
             }
@@ -4217,6 +4243,7 @@ impl db::Handler for Handler {
         is_virtual: bool,
         nitc_group_id: Option<&str>,
         nitc_participant_type: Option<&str>,
+        display: &db::CategoryDisplay,
     ) -> db::Result<Category> {
         if self.read_only {
             return Err(db::Error::MutationDisabled);
@@ -4253,6 +4280,16 @@ impl db::Handler for Handler {
         if let Some(pt) = nitc_participant_type {
             put = put.item("nitc_participant_type", AttributeValue::S(pt.to_string()));
         }
+        // Same for the display metadata: absent means the attribute is left off.
+        if let Some(v) = &display.group_name {
+            put = put.item("group_name", AttributeValue::S(v.clone()));
+        }
+        if let Some(v) = &display.short_name {
+            put = put.item("short_name", AttributeValue::S(v.clone()));
+        }
+        if let Some(v) = &display.icon {
+            put = put.item("icon", AttributeValue::S(v.clone()));
+        }
 
         let resp = put
             .send()
@@ -4267,11 +4304,15 @@ impl db::Handler for Handler {
             is_virtual,
             nitc_participant_type: nitc_participant_type.map(str::to_string),
             nitc_group_id: nitc_group_id.map(str::to_string),
+            group_name: display.group_name.clone(),
+            short_name: display.short_name.clone(),
+            icon: display.icon.clone(),
             created_at: now,
             updated_at: now,
         })
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn update_category(
         &self,
         id: &str,
@@ -4280,6 +4321,7 @@ impl db::Handler for Handler {
         is_virtual: bool,
         nitc_group_id: Option<&str>,
         nitc_participant_type: Option<&str>,
+        display: &db::CategoryDisplay,
     ) -> db::Result<()> {
         if self.read_only {
             return Err(db::Error::MutationDisabled);
@@ -4326,6 +4368,21 @@ impl db::Handler for Handler {
                     builder.expression_attribute_values(":npt", AttributeValue::S(pt.to_string()));
             }
             None => remove_clauses.push("nitc_participant_type"),
+        }
+        // Display metadata: SET when present, REMOVE when cleared.
+        for (attr, clause, placeholder, value) in [
+            ("group_name", "group_name = :gn", ":gn", &display.group_name),
+            ("short_name", "short_name = :sn", ":sn", &display.short_name),
+            ("icon", "icon = :icon", ":icon", &display.icon),
+        ] {
+            match value {
+                Some(v) => {
+                    set_clauses.push(clause);
+                    builder = builder
+                        .expression_attribute_values(placeholder, AttributeValue::S(v.clone()));
+                }
+                None => remove_clauses.push(attr),
+            }
         }
 
         let mut update_expr = format!("SET {}", set_clauses.join(", "));
