@@ -17,6 +17,7 @@ use crate::telemetry::{self, OperationKind};
 
 pub mod audit_log;
 pub mod auth;
+pub mod calendar;
 pub mod dataloader;
 pub mod equipment;
 pub mod error;
@@ -96,6 +97,9 @@ pub struct NoteFolderId(pub String);
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct MapLayerId(pub String);
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct CalendarId(pub String);
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct SessionId(pub ID);

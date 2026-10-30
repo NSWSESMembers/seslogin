@@ -805,6 +805,66 @@ resource "aws_dynamodb_table" "test_equipment_reservation" {
   }
 }
 
+# Calendar: optional named, coloured calendars a location's events can be put in.
+resource "aws_dynamodb_table" "test_calendar" {
+  name         = "${var.db_prefix_test}_calendar"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "id"
+
+  attribute {
+    name = "id"
+    type = "S"
+  }
+  attribute {
+    name = "location_id"
+    type = "S"
+  }
+
+  global_secondary_index {
+    name = "location_id-index"
+    key_schema {
+      attribute_name = "location_id"
+      key_type       = "HASH"
+    }
+    projection_type = "ALL"
+  }
+}
+
+# A location's calendar events. last_end bounds when an event's last occurrence
+# ends (far in the future for one repeating forever), so reading a window skips
+# events that finished before it.
+resource "aws_dynamodb_table" "test_calendar_event" {
+  name         = "${var.db_prefix_test}_calendar_event"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "id"
+
+  attribute {
+    name = "id"
+    type = "S"
+  }
+  attribute {
+    name = "location_id"
+    type = "S"
+  }
+  attribute {
+    name = "last_end"
+    type = "N"
+  }
+
+  global_secondary_index {
+    name = "location_id-last_end-index"
+    key_schema {
+      attribute_name = "location_id"
+      key_type       = "HASH"
+    }
+    key_schema {
+      attribute_name = "last_end"
+      key_type       = "RANGE"
+    }
+    projection_type = "ALL"
+  }
+}
+
 # ── Test API access to the test tables ────────────────────────────────────────
 # seslogin-test-api's DB_PREFIX is var.db_prefix_test, and its dynamodb-access
 # policy in dynamodb.tf is scoped to ${var.db_prefix_test}* only, so the test

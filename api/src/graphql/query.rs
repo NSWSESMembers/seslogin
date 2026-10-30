@@ -31,6 +31,7 @@ use crate::ses_api;
 
 use super::audit_log::{self, AuditEntityType, AuditEntryConnection};
 use super::auth::{AuthGuard, AuthRequirement, can_write_location, require_location_access};
+use super::calendar::{self, Calendar, CalendarEvent, CalendarEventOccurrence};
 use super::dataloader::DatabaseLoader;
 use super::equipment::{self, Equipment};
 use super::map::{self, MapLayer, MapPin};
@@ -3110,6 +3111,27 @@ impl<A: App + HasDb + Send + Sync> Location<A> {
         map::location_map_layers(ctx, &self.rec.id).await
     }
 
+    /// The location's calendars, by name. Users only (Admin or Read only); see
+    /// `graphql::calendar`.
+    async fn calendars(&self, ctx: &Context<'_>) -> Result<Vec<Calendar<A>>> {
+        calendar::location_calendars(ctx, &self.rec.id).await
+    }
+
+    /// Every occurrence of the location's events that overlaps `from`–`to` (Unix
+    /// seconds, at most 400 days apart), repeats expanded, by start; at most 5,000.
+    /// All-day occurrences are included when one of their dates overlaps the window in
+    /// any time zone, so a client should check them against its own days. Events in
+    /// every calendar, and in none, are listed: a client picking calendars filters on
+    /// `event.calendarId`. Users only (Admin or Read only).
+    async fn calendar_events(
+        &self,
+        ctx: &Context<'_>,
+        from: i64,
+        to: i64,
+    ) -> Result<Vec<CalendarEventOccurrence<A>>> {
+        calendar::location_calendar_events(ctx, &self.rec.id, from, to).await
+    }
+
     /// The location's on-call roles (Duty Officer, …) and who holds each now, by name.
     /// Users only (Admin or Read only); see `graphql::on_call`.
     async fn on_call_roles(&self, ctx: &Context<'_>) -> Result<Vec<OnCallRole<A>>> {
@@ -4275,6 +4297,12 @@ impl<A: App + HasDb + HasRealtime + Send + Sync + 'static> QueryRoot<A> {
     #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
     async fn map_pin(&self, ctx: &Context<'_>, id: ID) -> Result<Option<MapPin<A>>> {
         map::map_pin(ctx, &id).await
+    }
+
+    /// One calendar event; null if it does not exist or was deleted.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    async fn calendar_event(&self, ctx: &Context<'_>, id: ID) -> Result<Option<CalendarEvent<A>>> {
+        calendar::calendar_event(ctx, &id).await
     }
 
     /// One on-call role; null if it does not exist or was deleted.

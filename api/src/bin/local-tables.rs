@@ -336,6 +336,26 @@ const TABLES: &[Table] = &[
         ttl: None,
     },
     Table {
+        name: "calendar",
+        hash: "id",
+        range: None,
+        attrs: &[Attr("id", S), Attr("location_id", S)],
+        gsis: &[all("location_id-index", "location_id", None)],
+        ttl: None,
+    },
+    Table {
+        name: "calendar_event",
+        hash: "id",
+        range: None,
+        attrs: &[Attr("id", S), Attr("location_id", S), Attr("last_end", N)],
+        gsis: &[all(
+            "location_id-last_end-index",
+            "location_id",
+            Some("last_end"),
+        )],
+        ttl: None,
+    },
+    Table {
         name: "on_call_role",
         hash: "id",
         range: None,

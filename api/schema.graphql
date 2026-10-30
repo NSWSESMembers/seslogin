@@ -121,6 +121,8 @@ enum AuditEntityType {
 	ON_CALL_ROLE
 	MAP_PIN
 	MAP_LAYER
+	CALENDAR
+	CALENDAR_EVENT
 }
 
 type AuditEntry {
@@ -226,6 +228,121 @@ type BadgeAward {
 type BadgeTierCount {
 	tier: String!
 	count: Int!
+}
+
+type Calendar {
+	id: ID!
+	name: String!
+	color: CalendarColor!
+	locationId: ID!
+	location: Location!
+	createdAt: Int!
+}
+
+"""
+The palette a calendar's colour is picked from. Clients decide how each looks.
+"""
+enum CalendarColor {
+	RED
+	ORANGE
+	YELLOW
+	GREEN
+	TEAL
+	BLUE
+	INDIGO
+	PURPLE
+	PINK
+	GREY
+}
+
+type CalendarEvent {
+	id: ID!
+	"""
+	One line of plain text.
+	"""
+	title: String!
+	"""
+	Plain text; empty when there is none.
+	"""
+	description: String!
+	"""
+	Whether it lasts whole days (`startDate`–`endDate`) rather than from `startTime`
+	to `endTime`.
+	"""
+	allDay: Boolean!
+	"""
+	When the first occurrence starts, Unix seconds; null for an all-day event.
+	"""
+	startTime: Int
+	"""
+	When the first occurrence ends, Unix seconds, after `startTime`; null for an
+	all-day event.
+	"""
+	endTime: Int
+	"""
+	An all-day event's first date, `YYYY-MM-DD`; null for a timed event. Dates have
+	no time zone: an event on the 5th is on the 5th wherever it is read.
+	"""
+	startDate: String
+	"""
+	An all-day event's last date, inclusive (the same as `startDate` for one day);
+	null for a timed event.
+	"""
+	endDate: String
+	"""
+	How often it repeats; null for a one-off event.
+	"""
+	repeat: EventRepeat
+	"""
+	The last date an occurrence may start on, `YYYY-MM-DD` (Sydney time for a timed
+	event), inclusive; null when it repeats forever or does not repeat.
+	"""
+	repeatUntil: String
+	"""
+	The calendar it is in. Null when it is in none, or that calendar has been
+	deleted: either way it shows only when no calendar is picked.
+	"""
+	calendar: Calendar
+	"""
+	The ID of `calendar`; null exactly when it is.
+	"""
+	calendarId: ID
+	locationId: ID!
+	location: Location!
+	"""
+	Bumped by every change; pass it back to `updateCalendarEvent`.
+	"""
+	version: Int!
+	createdAt: Int!
+	"""
+	Email of the user who added the event.
+	"""
+	createdBy: String
+	updatedAt: Int!
+	"""
+	Email of the user who last changed the event.
+	"""
+	updatedBy: String
+}
+
+type CalendarEventOccurrence {
+	event: CalendarEvent!
+	"""
+	Unix seconds; null when all day.
+	"""
+	startTime: Int
+	"""
+	Unix seconds; null when all day.
+	"""
+	endTime: Int
+	"""
+	`YYYY-MM-DD`; null unless all day.
+	"""
+	startDate: String
+	"""
+	`YYYY-MM-DD`, inclusive; null unless all day.
+	"""
+	endDate: String
 }
 
 """
@@ -495,6 +612,20 @@ enum EquipmentType {
 }
 
 """
+How often an event repeats.
+"""
+enum EventRepeat {
+	"""
+	Every day.
+	"""
+	DAILY
+	"""
+	Every week, on the weekday it starts.
+	"""
+	WEEKLY
+}
+
+"""
 A scalar that can represent any JSON value.
 """
 scalar JSON
@@ -664,6 +795,20 @@ type Location {
 	The location's map layers, by name.
 	"""
 	mapLayers: [MapLayer!]!
+	"""
+	The location's calendars, by name. Users only (Admin or Read only); see
+	`graphql::calendar`.
+	"""
+	calendars: [Calendar!]!
+	"""
+	Every occurrence of the location's events that overlaps `from`–`to` (Unix
+	seconds, at most 400 days apart), repeats expanded, by start; at most 5,000.
+	All-day occurrences are included when one of their dates overlaps the window in
+	any time zone, so a client should check them against its own days. Events in
+	every calendar, and in none, are listed: a client picking calendars filters on
+	`event.calendarId`. Users only (Admin or Read only).
+	"""
+	calendarEvents(from: Int!, to: Int!): [CalendarEventOccurrence!]!
 	"""
 	The location's on-call roles (Duty Officer, …) and who holds each now, by name.
 	Users only (Admin or Read only); see `graphql::on_call`.
@@ -1058,6 +1203,35 @@ type MutationRoot {
 	Delete a map layer. Its pins stay on the location's map. Returns its ID.
 	"""
 	deleteMapLayer(id: ID!): ID!
+	"""
+	Add an event to a location's calendar, optionally in one of its calendars.
+	Timed events take `startTime` and `endTime` (Unix seconds); all-day ones take
+	`startDate` and optionally `endDate` (`YYYY-MM-DD`, inclusive; default one day).
+	`repeat` makes it repeat daily or weekly, through `repeatUntil` or forever. Any
+	user with access to the location may, Read only included.
+	"""
+	createCalendarEvent(locationId: ID!, calendarId: ID, title: String!, description: String, allDay: Boolean!, startTime: Int, endTime: Int, startDate: String, endDate: String, repeat: EventRepeat, repeatUntil: String): CalendarEvent!
+	"""
+	Change an event, every occurrence of it. Omitted arguments are left as they are:
+	`calendarId: null` takes it out of its calendar, `repeat: null` stops it
+	repeating and `repeatUntil: null` makes it repeat forever. Giving a new start
+	without an end keeps its length; changing `allDay` needs the new start. Fails
+	with `CONFLICT` if it is no longer at `expectedVersion`.
+	"""
+	updateCalendarEvent(id: ID!, expectedVersion: Int!, calendarId: ID, title: String, description: String, allDay: Boolean, startTime: Int, endTime: Int, startDate: String, endDate: String, repeat: EventRepeat, repeatUntil: String): CalendarEvent!
+	"""
+	Delete an event, every occurrence of it. Returns its ID.
+	"""
+	deleteCalendarEvent(id: ID!): ID!
+	createCalendar(locationId: ID!, name: String!, color: CalendarColor!): Calendar!
+	"""
+	Rename a calendar or change its colour; omitted arguments are left as they are.
+	"""
+	updateCalendar(id: ID!, name: String, color: CalendarColor): Calendar!
+	"""
+	Delete a calendar. Its events stay, in no calendar. Returns its ID.
+	"""
+	deleteCalendar(id: ID!): ID!
 	"""
 	Add an on-call role (e.g. Duty Officer) to a location, optionally with the people
 	in it. Anyone in it needs a primary. Any user with access to the location may,
@@ -1761,6 +1935,10 @@ type QueryRoot {
 	One map pin; null if it does not exist or was deleted.
 	"""
 	mapPin(id: ID!): MapPin
+	"""
+	One calendar event; null if it does not exist or was deleted.
+	"""
+	calendarEvent(id: ID!): CalendarEvent
 	"""
 	One on-call role; null if it does not exist or was deleted.
 	"""

@@ -676,6 +676,66 @@ mutation {
 }
 ```
 
+## Calendar
+
+A location's shared calendar of events, used by the Tally app (`src/graphql/calendar.rs`,
+rules in `src/calendar.rs`, storage in SCHEMA.md's `calendar` and `calendar_event` sections).
+
+- **Who:** the same as Tasks and the Map — any *user* with Admin **or** Read only access to the
+  location, and super users, may see, add, edit and delete events and manage its calendars
+  (`graphql::auth::require_calendar_access`). Kiosk sessions, API tokens and edit links are
+  refused.
+- **Calendars:** `Location.calendars` (by name), `createCalendar(locationId, name, color)`,
+  `updateCalendar(id, name, color)` (omitted arguments unchanged) and `deleteCalendar`. A colour
+  is one of ten `CalendarColor`s (`RED`, `ORANGE`, `YELLOW`, `GREEN`, `TEAL`, `BLUE`, `INDIGO`,
+  `PURPLE`, `PINK`, `GREY`); clients decide how each looks. An event is in one calendar or none.
+  Deleting a calendar leaves its events, in no calendar (`calendar` and `calendarId` read null).
+- **Timing:** an event is either **timed** — `startTime` / `endTime`, Unix seconds, end after
+  start — or **all day** (`allDay: true`) — `startDate` / `endDate`, `YYYY-MM-DD`, the end
+  inclusive and defaulting to the start. Dates have no time zone: an all-day event on the 5th is
+  on the 5th wherever it is read. One occurrence lasts at most 366 days.
+- **Repeats:** `repeat: DAILY` or `WEEKLY` (on the weekday it starts), through `repeatUntil`
+  (`YYYY-MM-DD`, inclusive: the last date an occurrence may start on) or forever when that is
+  null. A timed event repeats at the same Sydney wall-clock time, so a weekly 7:30pm meeting stays
+  at 7:30pm across daylight saving (a time skipped when daylight saving starts moves an hour
+  later). An occurrence is at most one repeat long (a day for daily, a week for weekly), so an
+  event never overlaps its own next occurrence. Editing changes every occurrence: there are no
+  per-occurrence exceptions.
+- **Reading:** `Location.calendarEvents(from, to)` (Unix seconds, `to` after `from`, at most 400
+  days) lists every occurrence that overlaps the window, repeats expanded, by start, at most
+  5,000. Each `CalendarEventOccurrence` has its own `startTime` / `endTime` (timed) or
+  `startDate` / `endDate` (all day) and the `event`. All-day occurrences are included when one of
+  their dates overlaps the window in **any** time zone, so a client should check them against its
+  own days. Every event is listed whatever calendar it is in; a client showing only some
+  calendars filters on `event.calendarId`. Events are indexed on when their last occurrence
+  ends, so finished ones cost nothing to skip. `Query.calendarEvent(id)` reads one.
+- **Writes:** `createCalendarEvent`, `updateCalendarEvent` and `deleteCalendarEvent`. Update
+  changes only the arguments given: `calendarId: null` takes it out of its calendar, `repeat:
+  null` stops it repeating, `repeatUntil: null` makes it repeat forever; a new start with no end
+  keeps the event's length, and switching `allDay` needs the new start (and end, for timed).
+- **Concurrency:** `updateCalendarEvent` takes `expectedVersion`; if someone else saved the
+  event since it was read, the save fails with `CONFLICT` rather than overwriting their change.
+- **Tables:** only the test tables (`seslogin_test_calendar`, `seslogin_test_calendar_event`)
+  exist so far, so a deployed API on the prod tables fails Calendar calls, and nothing else.
+- **Equipment reservations** are not calendar events: Tally shows them in its calendar as a
+  virtual "Reservations" calendar, read from `Location.equipmentReservations`.
+
+```graphql
+mutation {
+  createCalendarEvent(locationId: "TestAUnit001", title: "Training night",
+                      allDay: false, startTime: 1793000000, endTime: 1793007200,
+                      repeat: WEEKLY, repeatUntil: "2027-06-30") { id version }
+}
+{
+  location(id: "TestAUnit001") {
+    calendarEvents(from: 1793000000, to: 1795600000) {
+      startTime endTime startDate endDate
+      event { id title allDay calendarId calendar { name color } }
+    }
+  }
+}
+```
+
 ## Map
 
 A location's shared map of pins, used by the Tally app (`src/graphql/map.rs`, rules in
