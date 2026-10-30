@@ -16,6 +16,7 @@ import NotFound from "./components/NotFound";
 // Home is the landing page — keep it eager for fast first paint.
 import HomeLayout from "./home/Layout";
 import Home from "./home/Home";
+import Support from "./home/Support";
 
 // Admin and kiosk are mutually-exclusive areas, lazily loaded as separate chunks.
 const AdminApp = lazyWithReload("admin", () => import("./admin/AdminApp"));
@@ -57,6 +58,8 @@ export default function Router() {
             {/* Home routes - no auth required */}
             <Route path="/" element={<HomeLayout />}>
               <Route index element={<Home />} />
+              {/* The Support URL listed on the app stores for Tally. */}
+              <Route path="support" element={<Support />} />
             </Route>
 
             {/* User guides - public, static pages compiled from web/guide/ */}
