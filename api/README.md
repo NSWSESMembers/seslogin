@@ -626,8 +626,6 @@ A location's shared notebook, used by the Tally app (`src/graphql/notes.rs`, rul
   becomes null).
 - **Concurrency:** `updateNote` takes `expectedVersion`; if someone else saved the note since
   it was read, the save fails with `CONFLICT` rather than overwriting their change.
-- **Tables:** only the test tables (`seslogin_test_note`, `seslogin_test_note_folder`) exist
-  so far, so a deployed API on the prod tables fails Notes calls, and nothing else.
 
 ```graphql
 mutation {
@@ -717,8 +715,6 @@ A location's equipment register, used by the Tally app (`src/graphql/equipment.r
 - **Edits:** `updateEquipment` (type, name and description; omitted arguments unchanged) takes
   `expectedVersion` and fails with `CONFLICT` if someone else edited it since it was read. Log
   entries don't bump the version. `deleteEquipment` hides the item; its log is kept.
-- **Tables:** only the test tables (`seslogin_test_equipment`, `seslogin_test_equipment_log`)
-  exist so far, so a deployed API on the prod tables fails Equipment calls, and nothing else.
 
 ```graphql
 mutation {
@@ -762,8 +758,6 @@ storage in SCHEMA.md's `equipment_reservation` section).
   `CONFLICT` if someone else changed it since it was read; only a changed time range has to end
   in the future, so a finished one's description can still be fixed.
   `deleteEquipmentReservation` cancels it.
-- **Tables:** only the test table (`seslogin_test_equipment_reservation`) exists so far, so a
-  deployed API on the prod tables fails reservation calls, and nothing else.
 
 ```graphql
 mutation {
@@ -812,8 +806,6 @@ rules in `src/calendar.rs`, storage in SCHEMA.md's `calendar` and `calendar_even
   keeps the event's length, and switching `allDay` needs the new start (and end, for timed).
 - **Concurrency:** `updateCalendarEvent` takes `expectedVersion`; if someone else saved the
   event since it was read, the save fails with `CONFLICT` rather than overwriting their change.
-- **Tables:** only the test tables (`seslogin_test_calendar`, `seslogin_test_calendar_event`)
-  exist so far, so a deployed API on the prod tables fails Calendar calls, and nothing else.
 - **Equipment reservations** are not calendar events: Tally shows them in its calendar as a
   virtual "Reservations" calendar, read from `TallyLocation.equipmentReservations`.
 
@@ -854,8 +846,6 @@ A location's shared map of pins, used by the Tally app (`src/graphql/map.rs`, ru
   becomes null).
 - **Concurrency:** `updateMapPin` takes `expectedVersion`; if someone else saved the pin since
   it was read, the save fails with `CONFLICT` rather than overwriting their change.
-- **Tables:** only the test tables (`seslogin_test_map_pin`, `seslogin_test_map_layer`) exist
-  so far, so a deployed API on the prod tables fails Map calls, and nothing else.
 
 ```graphql
 mutation {
@@ -891,8 +881,6 @@ later; for now a role just has the people in it now.
   `deleteOnCallRole`.
 - **Concurrency:** `updateOnCallRole` takes `expectedVersion`; if someone else saved the role
   since it was read, the save fails with `CONFLICT`.
-- **Tables:** only the test table (`seslogin_test_on_call_role`) exists so far, so a deployed
-  API on the prod tables fails On Call calls, and nothing else.
 
 ```graphql
 mutation {
@@ -926,8 +914,6 @@ in SCHEMA.md's `location_share` section).
   `intervalSeconds`, `startedAt`, `endsAt`, `updatedAt` and `recordedAt`.
 - **Audit:** starting and stopping are audited against the location (start, end and
   interval, never the position); position updates are not.
-- **Tables:** only the test table (`seslogin_test_location_share`) exists so far, so a
-  deployed API on the prod tables fails Locate calls, and nothing else.
 
 ```graphql
 mutation {
@@ -990,9 +976,6 @@ producers' API in `src/notifications.rs`, storage in SCHEMA.md's `notification` 
   is left out of `myNotifications`, so stored text does not
   reach someone who lost access. `myUnreadNotificationCount` reads an index without the rows
   and so can still count such a notification, and the count can lag a write by a moment.
-- **Tables:** only the test table (`seslogin_test_notification`) exists so far, so a deployed
-  API on the prod tables fails these calls, and nothing else (a failed `notify` is only
-  logged).
 
 ```graphql
 {

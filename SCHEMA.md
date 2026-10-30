@@ -215,8 +215,7 @@ The `start_time` sort key across the location/person GSIs means DynamoDB returns
   `email` is. Written and removed with `email` by `update_person`'s `Email` shape. Several
   people may share one, and soft-deleted rows keep theirs, so a lookup returns every match
   and the caller filters. Rows whose email was set before the index existed have no key
-  until `cli person stamp-email-keys` backfills them. Only the `seslogin_test` table has
-  this index so far; it is only used by Tally sign-in.
+  until `cli person stamp-email-keys` backfills them. It is only used by Tally sign-in.
 
 ---
 
