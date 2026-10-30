@@ -273,6 +273,21 @@ pub(crate) fn require_calendar_access(ctx: &Context<'_>, location_id: &str) -> R
     }
 }
 
+/// Check the caller may use location sharing ("Locate") at a location: share their own
+/// position with it, and see who is sharing there.
+///
+/// The same rule as [`require_task_access`]: any user with either role, **Read only**
+/// included, and super users. Kiosk sessions, API tokens and edit links are refused, as
+/// a share is always a person's own.
+pub(crate) fn require_location_share_access(ctx: &Context<'_>, location_id: &str) -> Result<()> {
+    match ctx.data_opt::<AuthInfo>() {
+        Some(AuthInfo::User { .. }) => require_location_access(ctx, location_id),
+        _ => {
+            Err(ApiError::forbidden("Location sharing is only available to signed-in users").into())
+        }
+    }
+}
+
 /// Whether the caller may make changes at the location — the boolean form of
 /// [`require_location_write_access`] plus [`require_writable`], for resolvers that
 /// report capability (e.g. `Location.viewerCanEdit`) rather than enforce it.

@@ -811,6 +811,45 @@ mutation {
 }
 ```
 
+## Locate
+
+Members sharing their phone's position with a location's members, for the Tally app's Locate
+tool and Unit Map (`src/graphql/location_share.rs`, rules in `src/location_share.rs`, storage
+in SCHEMA.md's `location_share` section).
+
+- **Who:** the same as Tasks and the Map — any *user* with Admin **or** Read only access to the
+  location, and super users, may share with it and see who is sharing there
+  (`graphql::auth::require_location_share_access`). Kiosk sessions, API tokens and edit links
+  are refused. A share is always the caller's own: there is one per user, and only they can
+  update or stop it.
+- **Sharing:** `startLocationShare(locationId, durationMinutes, intervalSeconds, position)`
+  shares for 5, 15, 30 or 60 minutes, with the phone promising a position every
+  `intervalSeconds` (60 to 300). It replaces any share the caller already has, at any
+  location. `updateLocationShare(position)` sends a newer position, and fails with
+  `NOT_FOUND` once the share has ended (`endsAt`) or been stopped, which is the phone's cue
+  to stop. `stopLocationShare` removes it at once (false if there was none).
+- **Positions:** WGS 84 `latitude`/`longitude`, plus optional `accuracy` (metres, at most
+  100 km), `altitude`, `altitudeAccuracy`, `heading` and `speed`. Negative heading and speed
+  mean unknown, as phones report them, and are dropped. `recordedAt` (the fix time, Unix
+  seconds) defaults to now and is never later than now. Only the latest position is kept.
+- **Showing:** `Location.locationShares` lists every share still showing, most recently
+  updated first; `Query.myLocationShare` is the caller's own. A share shows until
+  `visibleUntil`, 7 minutes after its latest position, even once it has ended (`active` is
+  then false), so a phone that loses signal fades out rather than vanishing at once. Each
+  carries `name` (the linked member's name, else the user's email), `person`, `isMine`,
+  `intervalSeconds`, `startedAt`, `endsAt`, `updatedAt` and `recordedAt`.
+- **Audit:** starting and stopping are audited against the location (start, end and
+  interval, never the position); position updates are not.
+- **Tables:** only the test table (`seslogin_test_location_share`) exists so far, so a
+  deployed API on the prod tables fails Locate calls, and nothing else.
+
+```graphql
+mutation {
+  startLocationShare(locationId: "TestAUnit001", durationMinutes: 15, intervalSeconds: 120,
+                     position: { latitude: -33.70, longitude: 151.10, accuracy: 8 }) { endsAt }
+}
+```
+
 ## Audit log
 
 Every business write (people, periods, kiosk sessions, users, locations, categories, API tokens, passkeys, OAuth grants, …) is recorded in the `{DB_PREFIX}_audit_log` DynamoDB table: who did it, which location(s) it touched, and which fields changed from what to what. The table is defined in `infra/dynamodb*.tf` and documented in `SCHEMA.md`; it must exist (`terraform apply`) for entries to land. It is read through GraphQL (below); there is no UI for it yet.

@@ -633,6 +633,35 @@ The events in a location's shared calendar ("Calendar"). An event is timed (inst
 
 ---
 
+### `{prefix}location_share`
+
+Users sharing their phone's position with a location's members ("Locate"), for a fixed time. One row per user: starting another share replaces it, and stopping deletes it. Only the latest position is kept; there is no history.
+
+| Attribute     | Type | Role                                  |
+| ------------- | ---- | ------------------------------------- |
+| `id`          | S    | Hash key (PK) — the sharing user's ID |
+| `location_id` | S    | GSI hash key (`location_id-index`)    |
+
+**GSIs:**
+
+| GSI                 | Hash key      | Sort key | Projection | Purpose                  |
+| ------------------- | ------------- | -------- | ---------- | ------------------------ |
+| `location_id-index` | `location_id` | —        | ALL        | Who is sharing with a location; lapsed rows the TTL hasn't removed yet are filtered out on read |
+
+**TTL:** `expires_at`.
+
+**Non-obvious attributes (not in table definition):**
+
+- `latitude` / `longitude` (N) — WGS 84 degrees, the latest position
+- `accuracy`, `altitude`, `altitude_accuracy`, `heading`, `speed` (N, optional) — metres, degrees from north and metres per second, as the phone reported them; absent when it didn't
+- `recorded_at` (N) — Unix seconds when the phone took the latest fix, never later than `updated_at`
+- `updated_at` (N) — Unix seconds when the latest position arrived
+- `interval_secs` (N) — how often the phone said it would report in, 60 to 300
+- `started_at` / `ends_at` (N) — Unix seconds; positions after `ends_at` are refused
+- `expires_at` (N) — `updated_at` + 7 minutes: the share stops showing then, ended or not
+
+---
+
 ### `{prefix}audit_log`
 
 An append-only record of business database writes, shown in the admin UI. Entries are kept forever (no TTL). One item is written **per affected location** for each audited event, so a write touching two locations produces two items sharing an `event_id`.
@@ -662,7 +691,7 @@ Access patterns: per-location newest-first (`Query` on `location_id-sk-index`) a
 - `ts` (N) — Unix seconds when the event happened
 - `event_id` (S) — shared by every item written for the same event
 - `action` (S) — `create`, `update`, `delete` or `restore`
-- `entity_type` (S) — `user`, `person`, `period`, `session`, `api_token`, `location`, `category`, `nitc_group`, `nitc_tag`, `user_token`, `oauth_grant`, `webauthn_credential`, `task`, `task_list`, `note`, `note_folder`, `map_pin`, `map_layer`, `on_call_role`, `equipment`, `equipment_log_entry`, `equipment_reservation`, `calendar` or `calendar_event`
+- `entity_type` (S) — `user`, `person`, `period`, `session`, `api_token`, `location`, `category`, `nitc_group`, `nitc_tag`, `user_token`, `oauth_grant`, `webauthn_credential`, `task`, `task_list`, `note`, `note_folder`, `map_pin`, `map_layer`, `on_call_role`, `equipment`, `equipment_log_entry`, `equipment_reservation`, `calendar`, `calendar_event` or `location_share`
 - `entity_id` (S) — ID of the entity changed
 - `entity_label` (S) — human-readable name of the entity at the time; omitted when unknown
 - `actor_kind` (S) — `user`, `session` (kiosk), `api_token`, `period_link`, `system` (a job or the CLI), `unauthenticated` or `unknown`

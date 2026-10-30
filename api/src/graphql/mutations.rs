@@ -42,6 +42,7 @@ use super::calendar::{self, Calendar, CalendarColor, CalendarEvent, EventRepeat}
 use super::dataloader::DatabaseLoader;
 use super::equipment::{self, Equipment, EquipmentStatus, EquipmentType};
 use super::error::{ApiError, ErrorCode};
+use super::location_share::{self, LocationShare, LocationSharePositionInput};
 use super::map::{self, MapLayer, MapPin, MapPinType};
 use super::notes::{self, Note, NoteFolder};
 use super::on_call::{self, OnCallRole};
@@ -2947,6 +2948,50 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
     #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
     async fn delete_calendar(&self, ctx: &Context<'_>, id: ID) -> Result<ID> {
         calendar::delete_calendar(ctx, self.app.as_ref(), &id).await
+    }
+
+    /// Share your position with a location's members for `durationMinutes` (5, 15, 30
+    /// or 60), saying how often you will send it (`intervalSeconds`, 60 to 300).
+    /// Replaces any share you already have. Any user with access to the location may,
+    /// Read only included.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    async fn start_location_share(
+        &self,
+        ctx: &Context<'_>,
+        location_id: ID,
+        duration_minutes: i32,
+        interval_seconds: i32,
+        position: LocationSharePositionInput,
+    ) -> Result<LocationShare<A>> {
+        location_share::start_location_share(
+            ctx,
+            self.app.as_ref(),
+            location_share::StartLocationShareArgs {
+                location_id,
+                duration_minutes,
+                interval_seconds,
+                position,
+            },
+        )
+        .await
+    }
+
+    /// Send your latest position for your share. Fails with `NOT_FOUND` once it has
+    /// ended or been stopped: stop sending then.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    async fn update_location_share(
+        &self,
+        ctx: &Context<'_>,
+        position: LocationSharePositionInput,
+    ) -> Result<LocationShare<A>> {
+        location_share::update_location_share(ctx, self.app.as_ref(), position).await
+    }
+
+    /// Stop sharing your position; it stops showing straight away. False if you
+    /// weren't sharing.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    async fn stop_location_share(&self, ctx: &Context<'_>) -> Result<bool> {
+        location_share::stop_location_share(ctx, self.app.as_ref()).await
     }
 
     /// Add an on-call role (e.g. Duty Officer) to a location, optionally with the people

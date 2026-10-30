@@ -1346,6 +1346,25 @@ pub fn equipment_log_entry_changes(e: &db::EquipmentLogEntry) -> Vec<AuditFieldC
     )
 }
 
+// ── Locate ───────────────────────────────────────────────────────────────────
+
+/// What a person decided about a location share: how long, and how often. Positions
+/// are left out: they change every minute or so, and the audit log is kept forever.
+fn location_share_fields(s: &db::LocationShare) -> Fields {
+    Fields::default()
+        .with("started_at", num(s.started_at))
+        .with("ends_at", num(s.ends_at))
+        .with("interval_secs", num(s.interval_secs))
+}
+
+pub fn location_share_create_changes(s: &db::LocationShare) -> Vec<AuditFieldChange> {
+    creation(&location_share_fields(s))
+}
+
+pub fn location_share_delete_changes(s: &db::LocationShare) -> Vec<AuditFieldChange> {
+    removal(&location_share_fields(s))
+}
+
 // ── Credentials and grants ───────────────────────────────────────────────────
 
 /// Neither the token nor its hash is listed — just whose it is and when it lapses.
@@ -2721,6 +2740,35 @@ impl<D: db::Handler> db::Handler for AuditingHandler<D> {
         Ok(after)
     }
 
+    async fn put_location_share(&self, share: &db::LocationShare) -> db::Result<()> {
+        self.inner.put_location_share(share).await?;
+        self.record_create(
+            AuditEntityType::LocationShare,
+            &share.user_id,
+            None,
+            vec![share.location_id.clone()],
+            location_share_create_changes(share),
+        )
+        .await;
+        Ok(())
+    }
+
+    async fn delete_location_share(&self, user_id: &str) -> db::Result<Option<db::LocationShare>> {
+        let removed = self.inner.delete_location_share(user_id).await?;
+        if let Some(share) = &removed {
+            self.record(Recorded {
+                entity_type: AuditEntityType::LocationShare,
+                entity_id: user_id,
+                action: AuditAction::Delete,
+                label: None,
+                location_ids: vec![share.location_id.clone()],
+                changes: location_share_delete_changes(share),
+            })
+            .await;
+        }
+        Ok(removed)
+    }
+
     // ── Deliberately not audited ─────────────────────────────────────────────
     //
     // Bookkeeping that is not a business change, or that is high-volume plumbing:
@@ -2734,12 +2782,37 @@ impl<D: db::Handler> db::Handler for AuditingHandler<D> {
     //     person, and replayed on every export.
     //   * `stamp_person_contact`: re-orders a person in the contacts feed without
     //     changing any field; the change that prompted it is audited where it is made.
+    //   * `update_location_share_position`: a phone reporting where it is every minute
+    //     or so while sharing. Starting and stopping a share are audited.
     // The excluded *shapes* of audited methods (`AccessTime`, session `Info`,
     // `TouchLastUsed`, `LastSyncTime`) are handled inside those methods above.
     // `put_audit_entry` itself must of course not recurse into auditing.
 
     async fn stamp_person_contact(&self, id: &str) -> db::Result<()> {
         self.inner.stamp_person_contact(id).await
+    }
+
+    async fn update_location_share_position(
+        &self,
+        user_id: &str,
+        position: &db::SharedPosition,
+        updated_at: u64,
+        expires_at: u64,
+    ) -> db::Result<db::LocationShare> {
+        self.inner
+            .update_location_share_position(user_id, position, updated_at, expires_at)
+            .await
+    }
+
+    async fn get_location_shares<T: AsRef<str> + Sync>(
+        &self,
+        user_ids: &[T],
+    ) -> db::Result<Vec<Option<db::LocationShare>>> {
+        self.inner.get_location_shares(user_ids).await
+    }
+
+    async fn list_location_shares(&self, location_id: &str) -> db::Result<Vec<db::LocationShare>> {
+        self.inner.list_location_shares(location_id).await
     }
 
     async fn put_audit_entry(&self, entry: &AuditEntry) -> db::Result<()> {
@@ -4461,6 +4534,7 @@ mod tests {
             (AuditEntityType::MapLayer, "map_layer"),
             (AuditEntityType::Calendar, "calendar"),
             (AuditEntityType::CalendarEvent, "calendar_event"),
+            (AuditEntityType::LocationShare, "location_share"),
         ];
         for (entity, name) in entity_types {
             assert_eq!(entity.as_str(), name);

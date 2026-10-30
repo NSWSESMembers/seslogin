@@ -356,6 +356,14 @@ const TABLES: &[Table] = &[
         ttl: None,
     },
     Table {
+        name: "location_share",
+        hash: "id",
+        range: None,
+        attrs: &[Attr("id", S), Attr("location_id", S)],
+        gsis: &[all("location_id-index", "location_id", None)],
+        ttl: Some("expires_at"),
+    },
+    Table {
         name: "on_call_role",
         hash: "id",
         range: None,

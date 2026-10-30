@@ -57,6 +57,7 @@ pub(crate) struct FakeDb {
     pub(crate) equipment_log: Mutex<HashMap<String, db::EquipmentLogEntry>>,
     pub(crate) equipment_reservations: Mutex<HashMap<String, db::EquipmentReservation>>,
     pub(crate) on_call_roles: Mutex<HashMap<String, db::OnCallRole>>,
+    pub(crate) location_shares: Mutex<HashMap<String, db::LocationShare>>,
     pub(crate) map_pins: Mutex<HashMap<String, db::MapPin>>,
     pub(crate) map_layers: Mutex<HashMap<String, db::MapLayer>>,
     pub(crate) calendars: Mutex<HashMap<String, db::Calendar>>,
@@ -2333,6 +2334,56 @@ impl db::Handler for FakeDb {
         r.version += 1;
         r.updated_at = now;
         Ok(r.clone())
+    }
+    async fn get_location_shares<T: AsRef<str> + Sync>(
+        &self,
+        user_ids: &[T],
+    ) -> db::Result<Vec<Option<db::LocationShare>>> {
+        let shares = self.location_shares.lock().unwrap();
+        Ok(user_ids
+            .iter()
+            .map(|id| shares.get(id.as_ref()).cloned())
+            .collect())
+    }
+    async fn list_location_shares(&self, location_id: &str) -> db::Result<Vec<db::LocationShare>> {
+        Ok(self
+            .location_shares
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|s| s.location_id == location_id)
+            .cloned()
+            .collect())
+    }
+    async fn put_location_share(&self, share: &db::LocationShare) -> db::Result<()> {
+        self.location_shares
+            .lock()
+            .unwrap()
+            .insert(share.user_id.clone(), share.clone());
+        Ok(())
+    }
+    async fn update_location_share_position(
+        &self,
+        user_id: &str,
+        position: &db::SharedPosition,
+        updated_at: u64,
+        expires_at: u64,
+    ) -> db::Result<db::LocationShare> {
+        let mut shares = self.location_shares.lock().unwrap();
+        // The same condition as the DynamoDB `ConditionExpression`.
+        let s = shares
+            .get_mut(user_id)
+            .filter(|s| s.ends_at > updated_at)
+            .ok_or_else(|| {
+                db::Error::NotFound(format!("No location share for {user_id}, or it ended"))
+            })?;
+        s.position = *position;
+        s.updated_at = updated_at;
+        s.expires_at = expires_at;
+        Ok(s.clone())
+    }
+    async fn delete_location_share(&self, user_id: &str) -> db::Result<Option<db::LocationShare>> {
+        Ok(self.location_shares.lock().unwrap().remove(user_id))
     }
     async fn put_audit_entry(&self, entry: &db::AuditEntry) -> db::Result<()> {
         if self.fail_audit_writes.load(Ordering::SeqCst) {
