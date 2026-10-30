@@ -247,10 +247,11 @@ member's unit is their home unit plus that user's units.
 
 **App Store review.** `TALLY_REVIEW_SIGN_IN=<email>:<6 digits>` makes that one
 email always be sent that code instead of a random one, so a reviewer can sign
-in without the inbox. It is set only on the test API (`var.tally_review_sign_in_test`
-in the git-ignored `terraform.tfvars`), whose database alone holds the review
-account; the code still expires, is used up and allows five guesses like any
-other, and a request still has to send it first. It is a secret, never
+in without the inbox. It is set on the prod and test APIs, to the same value
+(`var.tally_review_sign_in` in the git-ignored `terraform.tfvars`), and both
+databases hold the review account; preprod and qa leave it unset. The code
+still expires, is used up and allows five guesses like any other, and a
+request still has to send it first. It is a secret, never
 committed, because the repository is public. Each successful sign-in as that
 email is reported by email (member, time and client IP, never the code) to
 `TALLY_REVIEW_NOTIFY_TO`, so a leaked code is noticed; unset or blank sends none.

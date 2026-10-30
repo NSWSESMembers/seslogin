@@ -22,8 +22,11 @@ resource "aws_lambda_function" "api" {
       TOOLBOX_GRAPHQL_URL   = var.toolbox_graphql_url
       TOOLBOX_API_TOKEN     = var.toolbox_api_token
       WIFI_NETWORKS         = var.wifi_networks
-      WEBAUTHN_RP_ID        = "seslogin.com"
-      WEBAUTHN_RP_ORIGIN    = "https://new.seslogin.com,https://seslogin.com"
+      TALLY_REVIEW_SIGN_IN  = var.tally_review_sign_in
+      # Emailed on each sign-in as the review account, so a leaked code is noticed.
+      TALLY_REVIEW_NOTIFY_TO = "me@sdunster.com"
+      WEBAUTHN_RP_ID         = "seslogin.com"
+      WEBAUTHN_RP_ORIGIN     = "https://new.seslogin.com,https://seslogin.com"
       # Member-facing period edit links. Set explicitly so the bare apex is used
       # rather than the first WEBAUTHN_RP_ORIGIN entry (new.seslogin.com).
       WEB_BASE_URL = "https://seslogin.com"
