@@ -591,6 +591,10 @@ type EquipmentReservation {
 
 enum EquipmentStatus {
 	IN_SERVICE
+	"""
+	Can still be used, but has an issue that needs fixing.
+	"""
+	HAS_ISSUE
 	OUT_OF_SERVICE
 	MISSING
 	BORROWED

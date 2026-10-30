@@ -57,14 +57,17 @@ impl EquipmentType {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum EquipmentStatus {
     InService,
+    /// Can still be used, but has an issue that needs fixing.
+    HasIssue,
     OutOfService,
     Missing,
     Borrowed,
 }
 
 impl EquipmentStatus {
-    pub const ALL: [Self; 4] = [
+    pub const ALL: [Self; 5] = [
         Self::InService,
+        Self::HasIssue,
         Self::OutOfService,
         Self::Missing,
         Self::Borrowed,
@@ -73,6 +76,7 @@ impl EquipmentStatus {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::InService => "in_service",
+            Self::HasIssue => "has_issue",
             Self::OutOfService => "out_of_service",
             Self::Missing => "missing",
             Self::Borrowed => "borrowed",
