@@ -115,6 +115,7 @@ enum AuditEntityType {
 	TASK_LIST
 	NOTE
 	NOTE_FOLDER
+	ON_CALL_ROLE
 	MAP_PIN
 	MAP_LAYER
 }
@@ -476,6 +477,11 @@ type Location {
 	The location's map layers, by name.
 	"""
 	mapLayers: [MapLayer!]!
+	"""
+	The location's on-call roles (Duty Officer, …) and who holds each now, by name.
+	Users only (Admin or Read only); see `graphql::on_call`.
+	"""
+	onCallRoles: [OnCallRole!]!
 	sessions: [Session!]!
 	dashboardSummary(asOf: Int): LocationDashboardSummary!
 	badgeLeaderboard(limit: Int): [LocationBadgeLeaderboardEntry!]!
@@ -799,6 +805,23 @@ type MutationRoot {
 	Delete a map layer. Its pins stay on the location's map. Returns its ID.
 	"""
 	deleteMapLayer(id: ID!): ID!
+	"""
+	Add an on-call role (e.g. Duty Officer) to a location, optionally with the people
+	in it. Anyone in it needs a primary. Any user with access to the location may,
+	Read only included.
+	"""
+	createOnCallRole(locationId: ID!, name: String!, description: String, phone: String, primaryPersonId: ID, secondaryPersonIds: [ID!]): OnCallRole!
+	"""
+	Change an on-call role, or who is in it. Omitted arguments are left as they are;
+	`phone: null` removes the number and `primaryPersonId: null` (with
+	`secondaryPersonIds: []`) empties the role. Fails with `CONFLICT` if the role is
+	no longer at `expectedVersion`.
+	"""
+	updateOnCallRole(id: ID!, expectedVersion: Int!, name: String, description: String, phone: String, primaryPersonId: ID, secondaryPersonIds: [ID!]): OnCallRole!
+	"""
+	Delete an on-call role. Returns its ID.
+	"""
+	deleteOnCallRole(id: ID!): ID!
 	deleteSession(id: ID!): Boolean!
 	"""
 	Bring back a QR-enrolled kiosk that expired after two weeks offline, without
@@ -1068,6 +1091,53 @@ type OauthGrant {
 	signal to show — a grant in active use never approaches it).
 	"""
 	refreshExpiresAt: Int!
+}
+
+type OnCallRole {
+	id: ID!
+	"""
+	One line, e.g. "Duty Officer".
+	"""
+	name: String!
+	"""
+	What the role is for, plain text; empty when there is none.
+	"""
+	description: String!
+	"""
+	A number that reaches whoever holds the role, e.g. a duty phone that diverts to
+	them; null when there is none. Kept as the unit wrote it.
+	"""
+	phone: String
+	locationId: ID!
+	location: Location!
+	"""
+	Who is on call in the role now; null when nobody is, or when the primary has
+	since been deleted.
+	"""
+	primary: Person
+	"""
+	Everyone else in the role now, by name. Deleted people are left out.
+	"""
+	secondaries: [Person!]!
+	"""
+	When the people in the role last changed (Unix seconds); null while nobody is
+	in it.
+	"""
+	membersChangedAt: Int
+	"""
+	Bumped by every change; pass it back to `updateOnCallRole`.
+	"""
+	version: Int!
+	createdAt: Int!
+	"""
+	Email of the user who created the role.
+	"""
+	createdBy: String
+	updatedAt: Int!
+	"""
+	Email of the user who last changed the role.
+	"""
+	updatedBy: String
 }
 
 """
@@ -1430,6 +1500,10 @@ type QueryRoot {
 	One map pin; null if it does not exist or was deleted.
 	"""
 	mapPin(id: ID!): MapPin
+	"""
+	One on-call role; null if it does not exist or was deleted.
+	"""
+	onCallRole(id: ID!): OnCallRole
 	session(
 		"""
 		ID for the session to look up

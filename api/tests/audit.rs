@@ -698,3 +698,64 @@ async fn map_layer_writes_are_recorded_against_their_location() {
     }
     assert_eq!(entries[2].entity_label.as_deref(), Some("Risks"));
 }
+
+#[tokio::test]
+async fn on_call_role_writes_are_recorded_against_their_location() {
+    let app = app();
+    let role = app
+        .db
+        .create_on_call_role(db::NewOnCallRole {
+            location_id: "loc-a",
+            name: "Duty Officer",
+            description: "",
+            phone: Some("0400 000 000"),
+            primary_person_id: Some("alice"),
+            secondary_person_ids: &[],
+            created_by: Some("caller"),
+        })
+        .await
+        .unwrap();
+    let secondaries = vec!["bob".to_string()];
+    app.db
+        .update_on_call_role(
+            &role.id,
+            db::OnCallRoleUpdateShape::Fields {
+                name: "Duty Officer",
+                description: "",
+                phone: Some("0400 000 000"),
+                primary_person_id: Some("carol"),
+                secondary_person_ids: &secondaries,
+                members_changed_at: Some(1),
+                by: Some("caller"),
+                expected_version: role.version,
+            },
+        )
+        .await
+        .unwrap();
+    app.db
+        .update_on_call_role(
+            &role.id,
+            db::OnCallRoleUpdateShape::Delete { by: Some("caller") },
+        )
+        .await
+        .unwrap();
+    let entries = app.db.inner().audit_entries();
+    assert_eq!(entries.len(), 3);
+    for entry in &entries {
+        assert_eq!(entry.entity_type, AuditEntityType::OnCallRole);
+        assert_eq!(entry.entity_id, role.id);
+        assert_eq!(entry.entity_label.as_deref(), Some("Duty Officer"));
+        assert_eq!(entry.location_ids, vec!["loc-a".to_string()]);
+    }
+    assert_eq!(entries[0].action, AuditAction::Create);
+    assert_eq!(
+        changed_fields(&entries[0]),
+        vec!["name", "phone", "primary_person_id"]
+    );
+    assert_eq!(entries[1].action, AuditAction::Update);
+    assert_eq!(
+        changed_fields(&entries[1]),
+        vec!["primary_person_id", "secondary_person_ids"]
+    );
+    assert_eq!(entries[2].action, AuditAction::Delete);
+}

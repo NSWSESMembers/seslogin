@@ -621,6 +621,45 @@ mutation {
 }
 ```
 
+## On Call
+
+A location's on-call roles (Duty Officer, Duty Incident Controller, …) and who holds each one
+now, used by the Tally app (`src/graphql/on_call.rs`, rules in `src/on_call.rs`, storage in
+SCHEMA.md's `on_call_role` section). Scheduling (who holds a role in a given week) will come
+later; for now a role just has the people in it now.
+
+- **Who:** the same as Tasks and Notes — any *user* with Admin **or** Read only access to the
+  location, and super users, may see, create, edit and delete roles and change who is in them
+  (`graphql::auth::require_on_call_access`). Kiosk sessions, API tokens and edit links are
+  refused.
+- **Reading:** `Location.onCallRoles` lists the location's roles by name; `Query.onCallRole(id)`
+  reads one. Each has `primary` (who is on call, or null) and `secondaries` (anyone else in it,
+  by name), both `Person`s, and `membersChangedAt`, when the people last changed.
+- **Fields:** `name` is one trimmed line (max 100 characters). `description` is plain text kept
+  as written (max 2,000; only-whitespace counts as empty). `phone` is optional, for a number
+  that reaches whoever holds the role (e.g. a duty phone that diverts to them): digits,
+  spaces, `()-` and a leading `+`, 3–15 digits, kept as written.
+- **People:** anyone in a role is its one primary or a secondary; secondaries need a primary
+  (`BAD_REQUEST` otherwise). Duplicates, and the primary, are dropped from the secondaries
+  (at most 20). People may be members of any location, so a neighbouring unit's member can
+  cover a duty. Newly added people must exist and not be deleted (`NOT_FOUND`); someone
+  deleted after being put in a role drops out of `primary`/`secondaries` but doesn't stop the
+  role being edited.
+- **Writes:** `createOnCallRole`, `updateOnCallRole` (omitted arguments unchanged, `phone: null`
+  removes the number, `primaryPersonId: null, secondaryPersonIds: []` empties the role),
+  `deleteOnCallRole`.
+- **Concurrency:** `updateOnCallRole` takes `expectedVersion`; if someone else saved the role
+  since it was read, the save fails with `CONFLICT`.
+- **Tables:** only the test table (`seslogin_test_on_call_role`) exists so far, so a deployed
+  API on the prod tables fails On Call calls, and nothing else.
+
+```graphql
+mutation {
+  createOnCallRole(locationId: "TestAUnit001", name: "Duty Officer",
+                   phone: "0400 000 000", primaryPersonId: "TestAMember1") { id version }
+}
+```
+
 ## Audit log
 
 Every business write (people, periods, kiosk sessions, users, locations, categories, API tokens, passkeys, OAuth grants, …) is recorded in the `{DB_PREFIX}_audit_log` DynamoDB table: who did it, which location(s) it touched, and which fields changed from what to what. The table is defined in `infra/dynamodb*.tf` and documented in `SCHEMA.md`; it must exist (`terraform apply`) for entries to land. It is read through GraphQL (below); there is no UI for it yet.

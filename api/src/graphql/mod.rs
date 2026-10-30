@@ -24,6 +24,7 @@ pub mod error_injection;
 pub mod map;
 pub mod mutations;
 pub mod notes;
+pub mod on_call;
 pub mod pagination;
 pub mod query;
 pub mod self_sign_in;

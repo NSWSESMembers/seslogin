@@ -71,6 +71,7 @@ pub enum AuditEntityType {
     TaskList,
     Note,
     NoteFolder,
+    OnCallRole,
     MapPin,
     MapLayer,
 }
@@ -92,6 +93,7 @@ impl From<db::AuditEntityType> for AuditEntityType {
             db::AuditEntityType::WebauthnCredential => Self::WebauthnCredential,
             db::AuditEntityType::Task => Self::Task,
             db::AuditEntityType::TaskList => Self::TaskList,
+            db::AuditEntityType::OnCallRole => Self::OnCallRole,
             db::AuditEntityType::Note => Self::Note,
             db::AuditEntityType::NoteFolder => Self::NoteFolder,
             db::AuditEntityType::MapPin => Self::MapPin,
@@ -115,6 +117,7 @@ impl From<AuditEntityType> for db::AuditEntityType {
             AuditEntityType::UserToken => Self::UserToken,
             AuditEntityType::OAuthGrant => Self::OAuthGrant,
             AuditEntityType::WebauthnCredential => Self::WebauthnCredential,
+            AuditEntityType::OnCallRole => Self::OnCallRole,
             AuditEntityType::Task => Self::Task,
             AuditEntityType::TaskList => Self::TaskList,
             AuditEntityType::Note => Self::Note,

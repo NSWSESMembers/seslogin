@@ -463,6 +463,36 @@ Optional named layers a location's map pins can be put on.
 
 ---
 
+### `{prefix}on_call_role`
+
+A location's on-call roles ("On Call"), such as Duty Officer, and who holds each one now.
+
+| Attribute     | Type | Role                                  |
+| ------------- | ---- | ------------------------------------- |
+| `id`          | S    | Hash key (PK)                         |
+| `location_id` | S    | GSI hash key (`location_id-index`)    |
+
+**GSIs:**
+
+| GSI                 | Hash key      | Sort key | Projection | Purpose                  |
+| ------------------- | ------------- | -------- | ---------- | ------------------------ |
+| `location_id-index` | `location_id` | —        | ALL        | A location's roles; deleted ones are filtered out on read, and the API sorts them by name |
+
+**Non-obvious attributes (not in table definition):**
+
+- `name` (S) — one line of plain text
+- `description` (S, optional) — plain text; absent when empty
+- `phone` (S, optional) — a number that reaches whoever holds the role, kept as written
+- `primary_person_id` (S, optional) — the `person` on call; absent while the role is empty
+- `secondary_person_ids` (SS, optional) — everyone else in the role; absent when there is nobody else, and never present without a primary. People may be from any location, and may since have been deleted (the API leaves them out)
+- `members_changed_at` (N, optional) — Unix seconds when the people in the role last changed; absent while it is empty
+- `v` (N) — version, bumped by every write; saves are conditional on it
+- `created_by` / `updated_by` (S) — user IDs
+- `deleted` (N) — Unix seconds when soft-deleted; absent otherwise
+- `created_at` / `updated_at` (N)
+
+---
+
 ### `{prefix}audit_log`
 
 An append-only record of business database writes, shown in the admin UI. Entries are kept forever (no TTL). One item is written **per affected location** for each audited event, so a write touching two locations produces two items sharing an `event_id`.
@@ -492,7 +522,7 @@ Access patterns: per-location newest-first (`Query` on `location_id-sk-index`) a
 - `ts` (N) — Unix seconds when the event happened
 - `event_id` (S) — shared by every item written for the same event
 - `action` (S) — `create`, `update`, `delete` or `restore`
-- `entity_type` (S) — `user`, `person`, `period`, `session`, `api_token`, `location`, `category`, `nitc_group`, `nitc_tag`, `user_token`, `oauth_grant`, `webauthn_credential`, `task`, `task_list`, `note`, `note_folder`, `map_pin` or `map_layer`
+- `entity_type` (S) — `user`, `person`, `period`, `session`, `api_token`, `location`, `category`, `nitc_group`, `nitc_tag`, `user_token`, `oauth_grant`, `webauthn_credential`, `task`, `task_list`, `note`, `note_folder`, `map_pin`, `map_layer` or `on_call_role`
 - `entity_id` (S) — ID of the entity changed
 - `entity_label` (S) — human-readable name of the entity at the time; omitted when unknown
 - `actor_kind` (S) — `user`, `session` (kiosk), `api_token`, `period_link`, `system` (a job or the CLI), `unauthenticated` or `unknown`
