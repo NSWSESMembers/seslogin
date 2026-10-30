@@ -55,6 +55,7 @@ pub(crate) struct FakeDb {
     pub(crate) note_folders: Mutex<HashMap<String, db::NoteFolder>>,
     pub(crate) equipment: Mutex<HashMap<String, db::Equipment>>,
     pub(crate) equipment_log: Mutex<HashMap<String, db::EquipmentLogEntry>>,
+    pub(crate) equipment_reservations: Mutex<HashMap<String, db::EquipmentReservation>>,
     pub(crate) on_call_roles: Mutex<HashMap<String, db::OnCallRole>>,
     pub(crate) map_pins: Mutex<HashMap<String, db::MapPin>>,
     pub(crate) map_layers: Mutex<HashMap<String, db::MapLayer>>,
@@ -1830,6 +1831,104 @@ impl db::Handler for FakeDb {
             .filter(|l| l.equipment_id == equipment_id)
             .cloned()
             .collect())
+    }
+    async fn get_equipment_reservations<T: AsRef<str> + Sync>(
+        &self,
+        ids: &[T],
+    ) -> db::Result<Vec<Option<db::EquipmentReservation>>> {
+        let rows = self.equipment_reservations.lock().unwrap();
+        Ok(ids
+            .iter()
+            .map(|id| rows.get(id.as_ref()).cloned())
+            .collect())
+    }
+    async fn list_equipment_reservations(
+        &self,
+        location_id: &str,
+        ending_after: u64,
+    ) -> db::Result<Vec<db::EquipmentReservation>> {
+        Ok(self
+            .equipment_reservations
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|r| {
+                r.location_id == location_id && r.end_time > ending_after && r.deleted.is_none()
+            })
+            .cloned()
+            .collect())
+    }
+    async fn create_equipment_reservation(
+        &self,
+        r: db::NewEquipmentReservation<'_>,
+    ) -> db::Result<db::EquipmentReservation> {
+        let now = seslogin::clock::now_sec();
+        let row = db::EquipmentReservation {
+            id: db::new_id(),
+            location_id: r.location_id.to_string(),
+            equipment_ids: r.equipment_ids.to_vec(),
+            start_time: r.start_time,
+            end_time: r.end_time,
+            reserved_for_user_id: r.reserved_for_user_id.map(str::to_string),
+            reserved_for_text: r.reserved_for_text.map(str::to_string),
+            description: r.description.to_string(),
+            created_by: r.created_by.map(str::to_string),
+            updated_by: None,
+            version: 1,
+            deleted: None,
+            created_at: now,
+            updated_at: now,
+        };
+        self.equipment_reservations
+            .lock()
+            .unwrap()
+            .insert(row.id.clone(), row.clone());
+        Ok(row)
+    }
+    async fn update_equipment_reservation(
+        &self,
+        id: &str,
+        change: db::EquipmentReservationUpdateShape<'_>,
+    ) -> db::Result<db::EquipmentReservation> {
+        let now = seslogin::clock::now_sec();
+        let mut rows = self.equipment_reservations.lock().unwrap();
+        let not_found =
+            || db::Error::NotFound(format!("Equipment reservation {id} not found, or changed"));
+        // The same conditions as the DynamoDB `ConditionExpression`s.
+        let r = rows
+            .get_mut(id)
+            .filter(|r| r.deleted.is_none())
+            .ok_or_else(not_found)?;
+        match change {
+            db::EquipmentReservationUpdateShape::Fields {
+                equipment_ids,
+                start_time,
+                end_time,
+                reserved_for_user_id,
+                reserved_for_text,
+                description,
+                by,
+                expected_version,
+            } => {
+                if r.version != expected_version {
+                    return Err(not_found());
+                }
+                r.equipment_ids = equipment_ids.to_vec();
+                r.start_time = start_time;
+                r.end_time = end_time;
+                r.reserved_for_user_id = reserved_for_user_id.map(str::to_string);
+                r.reserved_for_text = reserved_for_text.map(str::to_string);
+                r.description = description.to_string();
+                r.updated_by = by.map(str::to_string);
+            }
+            db::EquipmentReservationUpdateShape::Delete { by } => {
+                r.deleted = Some(now);
+                r.updated_by = by.map(str::to_string);
+            }
+        }
+        r.version += 1;
+        r.updated_at = now;
+        Ok(r.clone())
     }
     async fn get_map_pins<T: AsRef<str> + Sync>(
         &self,

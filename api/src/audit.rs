@@ -1222,6 +1222,44 @@ pub fn equipment_update_changes(
     diff(&before, &after)
 }
 
+/// Everything about a reservation a person decides. `version` and the timestamps are
+/// bookkeeping.
+fn equipment_reservation_fields(r: &db::EquipmentReservation) -> Fields {
+    Fields::default()
+        .with("equipment_ids", string_set(&r.equipment_ids))
+        .with("start_time", Some(json!(r.start_time)))
+        .with("end_time", Some(json!(r.end_time)))
+        .with(
+            "reserved_for_user_id",
+            opt_text(r.reserved_for_user_id.as_deref()),
+        )
+        .with(
+            "reserved_for_text",
+            opt_text(r.reserved_for_text.as_deref()),
+        )
+        .with(
+            "description",
+            opt_text(Some(r.description.as_str()).filter(|d| !d.is_empty())),
+        )
+}
+
+pub fn equipment_reservation_create_changes(r: &db::EquipmentReservation) -> Vec<AuditFieldChange> {
+    creation(&equipment_reservation_fields(r))
+}
+
+pub fn equipment_reservation_update_changes(
+    before: Option<&db::EquipmentReservation>,
+    after: &db::EquipmentReservation,
+) -> Vec<AuditFieldChange> {
+    let before = before.map(equipment_reservation_fields).unwrap_or_default();
+    let after = if after.deleted.is_some() {
+        Fields::default()
+    } else {
+        equipment_reservation_fields(after)
+    };
+    diff(&before, &after)
+}
+
 pub fn equipment_log_entry_changes(e: &db::EquipmentLogEntry) -> Vec<AuditFieldChange> {
     creation(
         &Fields::default()
@@ -2480,6 +2518,49 @@ impl<D: db::Handler> db::Handler for AuditingHandler<D> {
         Ok((equipment, entry))
     }
 
+    async fn create_equipment_reservation(
+        &self,
+        reservation: db::NewEquipmentReservation<'_>,
+    ) -> db::Result<db::EquipmentReservation> {
+        let reservation = self.inner.create_equipment_reservation(reservation).await?;
+        self.record_create(
+            AuditEntityType::EquipmentReservation,
+            &reservation.id,
+            reservation.reserved_for_text.clone(),
+            vec![reservation.location_id.clone()],
+            equipment_reservation_create_changes(&reservation),
+        )
+        .await;
+        Ok(reservation)
+    }
+
+    async fn update_equipment_reservation(
+        &self,
+        id: &str,
+        change: db::EquipmentReservationUpdateShape<'_>,
+    ) -> db::Result<db::EquipmentReservation> {
+        let action = match change {
+            db::EquipmentReservationUpdateShape::Delete { .. } => AuditAction::Delete,
+            db::EquipmentReservationUpdateShape::Fields { .. } => AuditAction::Update,
+        };
+        let before = self.before(
+            "equipment reservation",
+            id,
+            first(self.inner.get_equipment_reservations(&[id]).await),
+        );
+        let after = self.inner.update_equipment_reservation(id, change).await?;
+        self.record(Recorded {
+            entity_type: AuditEntityType::EquipmentReservation,
+            entity_id: id,
+            action,
+            label: after.reserved_for_text.clone(),
+            location_ids: vec![after.location_id.clone()],
+            changes: equipment_reservation_update_changes(before.as_ref(), &after),
+        })
+        .await;
+        Ok(after)
+    }
+
     // ── Deliberately not audited ─────────────────────────────────────────────
     //
     // Bookkeeping that is not a business change, or that is high-volume plumbing:
@@ -2858,6 +2939,23 @@ impl<D: db::Handler> db::Handler for AuditingHandler<D> {
         equipment_id: &str,
     ) -> db::Result<Vec<db::EquipmentLogEntry>> {
         self.inner.list_equipment_log(equipment_id).await
+    }
+
+    async fn get_equipment_reservations<T: AsRef<str> + Sync>(
+        &self,
+        ids: &[T],
+    ) -> db::Result<Vec<Option<db::EquipmentReservation>>> {
+        self.inner.get_equipment_reservations(ids).await
+    }
+
+    async fn list_equipment_reservations(
+        &self,
+        location_id: &str,
+        ending_after: u64,
+    ) -> db::Result<Vec<db::EquipmentReservation>> {
+        self.inner
+            .list_equipment_reservations(location_id, ending_after)
+            .await
     }
 
     async fn get_map_pins<T: AsRef<str> + Sync>(
@@ -4166,6 +4264,10 @@ mod tests {
             (AuditEntityType::NoteFolder, "note_folder"),
             (AuditEntityType::Equipment, "equipment"),
             (AuditEntityType::EquipmentLogEntry, "equipment_log_entry"),
+            (
+                AuditEntityType::EquipmentReservation,
+                "equipment_reservation",
+            ),
             (AuditEntityType::OnCallRole, "on_call_role"),
             (AuditEntityType::MapPin, "map_pin"),
             (AuditEntityType::MapLayer, "map_layer"),

@@ -877,6 +877,36 @@ impl db::Handler for Handler {
         Self::unsupported()
     }
 
+    async fn get_equipment_reservations<T: AsRef<str> + Sync>(
+        &self,
+        _ids: &[T],
+    ) -> db::Result<Vec<Option<db::EquipmentReservation>>> {
+        Self::unsupported()
+    }
+
+    async fn list_equipment_reservations(
+        &self,
+        _location_id: &str,
+        _ending_after: u64,
+    ) -> db::Result<Vec<db::EquipmentReservation>> {
+        Self::unsupported()
+    }
+
+    async fn create_equipment_reservation(
+        &self,
+        _reservation: db::NewEquipmentReservation<'_>,
+    ) -> db::Result<db::EquipmentReservation> {
+        Self::unsupported()
+    }
+
+    async fn update_equipment_reservation(
+        &self,
+        _id: &str,
+        _change: db::EquipmentReservationUpdateShape<'_>,
+    ) -> db::Result<db::EquipmentReservation> {
+        Self::unsupported()
+    }
+
     async fn put_audit_entry(&self, _entry: &db::AuditEntry) -> db::Result<()> {
         Self::unsupported()
     }

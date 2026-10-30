@@ -626,6 +626,56 @@ mutation {
 }
 ```
 
+## Equipment reservations
+
+Bookings of one or more pieces of a location's equipment (usually a vehicle) for a time
+range, used by the Tally app (`src/graphql/reservations.rs`, rules in `src/reservations.rs`,
+storage in SCHEMA.md's `equipment_reservation` section).
+
+- **Who:** the same as Equipment (`require_equipment_access`): any *user* with Admin **or**
+  Read only access to the location, and super users, may read, make, change and cancel
+  reservations, anyone's. Kiosk sessions, API tokens and edit links are refused.
+- **Reading:** `Location.equipmentReservations(endingAfter, equipmentId)` lists the
+  reservations that end after `endingAfter` (Unix seconds, default now) — upcoming and under
+  way — by start time; `equipmentId` narrows to one piece of equipment. The index is keyed on
+  the end time, so past reservations cost nothing to skip. `Query.equipmentReservation(id)`
+  reads one.
+- **Fields:** `equipmentIds` (at least one, max 20, repeats dropped; equipment deleted since
+  stays) and `equipment` (the live ones, by name); `startTime` / `endTime` (Unix seconds; the
+  end is after the start, at most 366 days later, and must be in the future when the range
+  is set, though it may already have started); `description`, trimmed plain text (max 5,000).
+- **Who it is for:** the caller, unless `reservedFor` names someone or something else —
+  another person, an organisation, "Detailing / clean" — as one trimmed line (max 200; blank
+  means the caller). Read back as `reservedFor` (the text, or the user's linked member's name,
+  else their email), `reservedForUserId` / `reservedForText` (exactly one is set) and
+  `reservedForViewer` (whether it is the caller's).
+- **Overlaps are allowed, and reported.** `EquipmentReservation.conflicts` lists the
+  location's other reservations that overlap it in time and share a piece of equipment with
+  it (times are half-open, so back-to-back reservations don't clash). It costs a query per
+  reservation, so a client listing many should compare them itself.
+  `Location.equipmentReservationConflicts(equipmentIds, startTime, endTime, excludeId)` asks
+  the same question about a reservation not yet saved, so a client can warn before saving;
+  `excludeId` leaves out the one being edited.
+- **Writes:** `createEquipmentReservation(locationId, equipmentIds, startTime, endTime,
+  reservedFor, description)`. `updateEquipmentReservation` changes only the arguments given
+  (`reservedFor: null` makes it the caller's) and takes `expectedVersion`, failing with
+  `CONFLICT` if someone else changed it since it was read; only a changed time range has to end
+  in the future, so a finished one's description can still be fixed.
+  `deleteEquipmentReservation` cancels it.
+- **Tables:** only the test table (`seslogin_test_equipment_reservation`) exists so far, so a
+  deployed API on the prod tables fails reservation calls, and nothing else.
+
+```graphql
+mutation {
+  createEquipmentReservation(
+    locationId: "…", equipmentIds: ["…"], startTime: 1793000000, endTime: 1793010800,
+    reservedFor: "Detailing / clean"
+  ) {
+    id reservedFor conflicts { id reservedFor startTime endTime }
+  }
+}
+```
+
 ## Map
 
 A location's shared map of pins, used by the Tally app (`src/graphql/map.rs`, rules in

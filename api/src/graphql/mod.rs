@@ -28,6 +28,7 @@ pub mod notes;
 pub mod on_call;
 pub mod pagination;
 pub mod query;
+pub mod reservations;
 pub mod self_sign_in;
 pub mod ses_details;
 pub mod tasks;

@@ -45,6 +45,7 @@ use super::map::{self, MapLayer, MapPin};
 use super::notes::{self, Note, NoteFolder};
 use super::on_call::{self, OnCallRole};
 use super::query::{QuickPick, build_quick_pick};
+use super::reservations::{self, EquipmentReservation};
 use super::self_sign_in::{open_home_period, require_linked_person};
 use super::tasks::{self, Task, TaskList, TaskRecurrenceInput};
 use super::{
@@ -2659,6 +2660,74 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         comment: Option<String>,
     ) -> Result<Equipment<A>> {
         equipment::check_equipment(ctx, self.app.as_ref(), &id, comment.as_deref()).await
+    }
+
+    /// Reserve one or more pieces of a location's equipment from `startTime` to
+    /// `endTime` (Unix seconds; the end must be in the future). It is for the caller
+    /// unless `reservedFor` names someone or something else. Overlapping another
+    /// reservation is allowed: read `conflicts` on the result to warn about it. Any user
+    /// with access to the location may, Read only included.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    async fn create_equipment_reservation(
+        &self,
+        ctx: &Context<'_>,
+        location_id: ID,
+        equipment_ids: Vec<ID>,
+        start_time: i64,
+        end_time: i64,
+        reserved_for: Option<String>,
+        description: Option<String>,
+    ) -> Result<EquipmentReservation<A>> {
+        reservations::create_reservation(
+            ctx,
+            self.app.as_ref(),
+            reservations::CreateReservationArgs {
+                location_id,
+                equipment_ids,
+                start_time,
+                end_time,
+                reserved_for,
+                description,
+            },
+        )
+        .await
+    }
+
+    /// Change a reservation; omitted arguments are left as they are. `reservedFor`
+    /// null or blank makes it for the caller. A changed time range must end in the
+    /// future. Fails with `CONFLICT` if it is no longer at `expectedVersion`.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    async fn update_equipment_reservation(
+        &self,
+        ctx: &Context<'_>,
+        id: ID,
+        expected_version: i32,
+        equipment_ids: Option<Vec<ID>>,
+        start_time: Option<i64>,
+        end_time: Option<i64>,
+        reserved_for: MaybeUndefined<String>,
+        description: Option<String>,
+    ) -> Result<EquipmentReservation<A>> {
+        reservations::update_reservation(
+            ctx,
+            self.app.as_ref(),
+            reservations::UpdateReservationArgs {
+                id,
+                expected_version,
+                equipment_ids,
+                start_time,
+                end_time,
+                reserved_for,
+                description,
+            },
+        )
+        .await
+    }
+
+    /// Cancel (delete) a reservation. Returns its ID.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    async fn delete_equipment_reservation(&self, ctx: &Context<'_>, id: ID) -> Result<ID> {
+        reservations::delete_reservation(ctx, self.app.as_ref(), &id).await
     }
 
     /// Add a pin to a location's shared map. Any user with access to the location may,

@@ -681,6 +681,82 @@ async fn equipment_writes_and_log_entries_are_recorded_against_their_location() 
 }
 
 #[tokio::test]
+async fn equipment_reservation_writes_are_recorded_against_their_location() {
+    let app = app();
+    let ids = vec!["truck-1".to_string()];
+    let reservation = app
+        .db
+        .create_equipment_reservation(db::NewEquipmentReservation {
+            location_id: "loc-a",
+            equipment_ids: &ids,
+            start_time: 2_000_000_000,
+            end_time: 2_000_003_600,
+            reserved_for_user_id: Some("caller"),
+            reserved_for_text: None,
+            description: "",
+            created_by: Some("caller"),
+        })
+        .await
+        .unwrap();
+    app.db
+        .update_equipment_reservation(
+            &reservation.id,
+            db::EquipmentReservationUpdateShape::Fields {
+                equipment_ids: &ids,
+                start_time: 2_000_000_000,
+                end_time: 2_000_007_200,
+                reserved_for_user_id: None,
+                reserved_for_text: Some("Detailing / clean"),
+                description: "",
+                by: Some("caller"),
+                expected_version: reservation.version,
+            },
+        )
+        .await
+        .unwrap();
+    app.db
+        .update_equipment_reservation(
+            &reservation.id,
+            db::EquipmentReservationUpdateShape::Delete { by: Some("caller") },
+        )
+        .await
+        .unwrap();
+
+    let entries = app.db.inner().audit_entries();
+    let actions: Vec<_> = entries.iter().map(|e| e.action).collect();
+    assert_eq!(
+        actions,
+        vec![
+            AuditAction::Create,
+            AuditAction::Update,
+            AuditAction::Delete
+        ]
+    );
+    for entry in &entries {
+        assert_eq!(entry.entity_type, AuditEntityType::EquipmentReservation);
+        assert_eq!(entry.entity_id, reservation.id);
+        assert_eq!(entry.location_ids, vec!["loc-a".to_string()]);
+    }
+    assert_eq!(
+        changed_fields(&entries[0]),
+        vec![
+            "equipment_ids",
+            "start_time",
+            "end_time",
+            "reserved_for_user_id"
+        ]
+    );
+    assert_eq!(
+        changed_fields(&entries[1]),
+        vec!["end_time", "reserved_for_user_id", "reserved_for_text"]
+    );
+    assert_eq!(
+        entries[2].entity_label.as_deref(),
+        Some("Detailing / clean")
+    );
+}
+
+#[tokio::test]
 async fn map_pin_writes_are_recorded_against_their_location() {
     let app = app();
     let pin = app
