@@ -919,6 +919,34 @@ producers' API in `src/notifications.rs`, storage in SCHEMA.md's `notification` 
 }
 ```
 
+## WiFi networks
+
+The WiFi networks Tally's WiFi app shows signed-in users, with their passwords
+(`src/wifi.rs`, `src/graphql/wifi.rs`).
+
+- **Never committed or stored:** they come from the `WIFI_NETWORKS` environment variable, a
+  JSON array. Deployed, it is `var.wifi_networks`, set only in the git-ignored
+  `infra/terraform.tfvars` and shared by prod, preprod, qa and the test API; `jsonencode` saves
+  escaping there: `wifi_networks = jsonencode([{ title = "Shed", ssid = "SES-Shed", password =
+  "..." }])`. Locally, put it in the git-ignored `.env.secret`. Unset or blank means no
+  networks.
+- **Format:** `[{"title": "Shed", "ssid": "SES-Shed", "password": "..."}]`. `title` defaults to
+  the SSID; `security` is `WPA` (WPA/WPA2/WPA3 personal; the default with a password), `WEP` or
+  `nopass` (open; the default without one); `hidden` defaults to false. An entry with no SSID,
+  no password when it needs one, or an unknown field makes the whole value invalid: the query
+  then fails rather than quietly showing fewer networks, and the error is logged without
+  quoting the value.
+- **API:** `Query.wifiNetworks(knownVersion)` returns `{ version, networks }`, each network
+  `{ title, ssid, password, security (WPA | WEP | NONE), hidden }`. `version` is a hash of
+  the list, so it changes whenever any network does without anyone bumping it. When
+  `knownVersion` is already current, `networks` is null and the passwords are not sent again.
+- **Who:** any enabled *user*, including a connected app acting for one (Tally); kiosk
+  sessions, API tokens and edit links are refused.
+
+```graphql
+{ wifiNetworks(knownVersion: "3f2a9c0d1b7e4a65") { version networks { title ssid password security hidden } } }
+```
+
 ## Audit log
 
 Every business write (people, periods, kiosk sessions, users, locations, categories, API tokens, passkeys, OAuth grants, …) is recorded in the `{DB_PREFIX}_audit_log` DynamoDB table: who did it, which location(s) it touched, and which fields changed from what to what. The table is defined in `infra/dynamodb*.tf` and documented in `SCHEMA.md`; it must exist (`terraform apply`) for entries to land. It is read through GraphQL (below); there is no UI for it yet.

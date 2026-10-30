@@ -2178,6 +2178,12 @@ type QueryRoot {
 	"""
 	myUnreadNotificationCount: Int!
 	"""
+	The WiFi networks, with their passwords, for signed-in users (Tally's WiFi app).
+	Never for kiosks or API tokens. `networks` is null when `knownVersion` is
+	already current.
+	"""
+	wifiNetworks(knownVersion: String): WifiNetworks!
+	"""
 	One on-call role; null if it does not exist or was deleted.
 	"""
 	onCallRole(id: ID!): OnCallRole
@@ -2693,6 +2699,44 @@ type WhosHereEntry {
 	This is the caller's linked member's own period.
 	"""
 	isMe: Boolean!
+}
+
+type WifiNetwork {
+	"""
+	What the list shows, such as "Shed".
+	"""
+	title: String!
+	ssid: String!
+	"""
+	Empty for an open network.
+	"""
+	password: String!
+	security: WifiSecurity!
+	hidden: Boolean!
+}
+
+type WifiNetworks {
+	"""
+	Changes whenever any network does. Pass it back as `knownVersion` next time.
+	"""
+	version: String!
+	"""
+	Null when `knownVersion` is already the current version, so a client that has
+	the list isn't sent the passwords again.
+	"""
+	networks: [WifiNetwork!]
+}
+
+enum WifiSecurity {
+	"""
+	WPA, WPA2 or WPA3 personal.
+	"""
+	WPA
+	WEP
+	"""
+	An open network, with no password.
+	"""
+	NONE
 }
 
 """

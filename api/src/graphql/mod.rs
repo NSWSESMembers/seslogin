@@ -35,6 +35,7 @@ pub mod reservations;
 pub mod self_sign_in;
 pub mod ses_details;
 pub mod tasks;
+pub mod wifi;
 
 pub use self::mutations::MutationRoot;
 pub use self::query::{

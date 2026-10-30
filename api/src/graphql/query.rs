@@ -43,6 +43,7 @@ use super::reservations::{self, EquipmentReservation};
 use super::self_sign_in::{self, SelfSignInStatus};
 use super::ses_details;
 use super::tasks::{self, Task, TaskList, TaskView};
+use super::wifi::{self, WifiNetworks};
 use super::{CategoryId, LocationId, NitcEventId, PersonId, SessionId, UserId};
 
 async fn location_name_by_id_for_badges<A: App + HasDb + Send + Sync>(
@@ -4341,6 +4342,14 @@ impl<A: App + HasDb + HasRealtime + Send + Sync + 'static> QueryRoot<A> {
     #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
     async fn my_unread_notification_count(&self, ctx: &Context<'_>) -> Result<i32> {
         notifications::my_unread_notification_count::<A>(ctx).await
+    }
+
+    /// The WiFi networks, with their passwords, for signed-in users (Tally's WiFi app).
+    /// Never for kiosks or API tokens. `networks` is null when `knownVersion` is
+    /// already current.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    async fn wifi_networks(&self, known_version: Option<String>) -> Result<WifiNetworks> {
+        wifi::wifi_networks(known_version.as_deref())
     }
 
     /// One on-call role; null if it does not exist or was deleted.
