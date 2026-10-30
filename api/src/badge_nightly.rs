@@ -8,6 +8,11 @@ use crate::badge_store;
 use crate::badges;
 use crate::db;
 
+/// How far back the streak rules look. It has to hold the longest streak awarded
+/// here, the 12-week one, plus the current part-week; at 28 days that streak could
+/// never be seen, and nobody could earn it.
+const STREAK_WINDOW_DAYS: i64 = 13 * 7;
+
 pub struct NightlyArgs {
     pub dry_run: bool,
 }
@@ -15,9 +20,9 @@ pub struct NightlyArgs {
 pub async fn run(db: &impl db::Handler, args: NightlyArgs) -> Result<()> {
     let now = Utc::now();
     let now_ts = now.timestamp() as u64;
-    let streak_window_start_ts = (now - Duration::days(28)).timestamp() as u64;
+    let streak_window_start_ts = (now - Duration::days(STREAK_WINDOW_DAYS)).timestamp() as u64;
     // Fetch a wider range so week-boundary calculations in Sydney have enough context.
-    let fetch_start_ts = (now - Duration::days(42)).timestamp() as u64;
+    let fetch_start_ts = (now - Duration::days(STREAK_WINDOW_DAYS + 14)).timestamp() as u64;
 
     let locations = db
         .list_locations(db::ListLocationsFilter::EnabledOnly)
@@ -254,9 +259,20 @@ async fn fetch_recent_periods_for_location(
 
 #[cfg(test)]
 mod tests {
-    use super::{has_consecutive_days, has_consecutive_weeks};
-    use chrono::NaiveDate;
+    use super::{STREAK_WINDOW_DAYS, has_consecutive_days, has_consecutive_weeks};
+    use chrono::{Datelike, NaiveDate};
     use std::collections::HashSet;
+
+    #[test]
+    fn streak_window_holds_a_twelve_week_streak() {
+        // A 12-week streak ending in the current, part-finished week starts on the
+        // Monday 11 weeks before it. Sunday is the day that Monday is furthest away.
+        let sunday = NaiveDate::from_ymd_opt(2026, 11, 1).unwrap();
+        let eleven_weeks_ago = sunday - chrono::Duration::weeks(11);
+        let streak_start = eleven_weeks_ago
+            - chrono::Duration::days(eleven_weeks_ago.weekday().num_days_from_monday().into());
+        assert!(sunday - chrono::Duration::days(STREAK_WINDOW_DAYS) <= streak_start);
+    }
 
     #[test]
     fn consecutive_weeks_true() {
