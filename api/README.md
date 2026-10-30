@@ -871,6 +871,22 @@ producers' API in `src/notifications.rs`, storage in SCHEMA.md's `notification` 
   audit-context actor, if it is a user) is left out, and nobody is notified twice. `Person` and
   `Location` read every user, there being no index from either to its users, which is fine at
   the current number of users.
+- **Producers:** each fires after its write succeeds, in the GraphQL resolver (so the MCP
+  tools, which run the same documents, are covered; no other path makes these writes), always
+  with `locationId` set. Tally maps `source`/`kind`/`targetType` to icons and screens, so the
+  strings are fixed:
+
+  | source | kind | targetType | When | Audience | Title / body |
+  |---|---|---|---|---|---|
+  | `reservations` | `reservation.for_you` | `reservation` | `createEquipmentReservation`, or `updateEquipmentReservation`, leaves `reserved_for_user_id` a user who is not the actor and was not the previous one | that user | "Equipment reserved for you" / "<equipment names, sorted> · <Sun 25 Oct 09:00–11:00, Sydney time>" ("Equipment" if the names can't be read) |
+  | `oncall` | `oncall.assigned` | `on_call_role` | `createOnCallRole`, or `updateOnCallRole`, makes a person the primary when they were not, or adds them to the secondaries when they were not already there (moving primary to secondary counts; removals and reorderings do not) | `Person(id)`, once per newly assigned member | "You're now primary for <role>" / "You're now a secondary for <role>" |
+  | `equipment` | `equipment.status` | `equipment` | `changeEquipmentStatus` moves equipment into HAS_ISSUE, OUT_OF_SERVICE or MISSING (it always changes from another status, so going from one of these to another notifies; going to IN_SERVICE or BORROWED does not), or `createEquipment` registers it in one of those statuses. Checks, edits and deletes do not | `Location { include_read_only: true }` | "<name> has an issue" / "is out of service" / "is missing"; body is the comment, if any |
+
+  The acting user is never told (so a reservation you make for yourself, or an on-call role you
+  put yourself in, sends nothing). Today `reservation.for_you` cannot fire through the API: a
+  reservation is for the caller or for free text, never another user, so the user it is for is
+  always the actor. The producer is in place (`reservations::notify_reserved_for`) for when
+  reserving for someone else is added.
 - **Best-effort:** like the audit log, `notify` returns `()`: a failure is logged at `error!`
   and swallowed, because the thing it announces has already happened. The notification methods
   of `db::Handler` pass through `AuditingHandler` unaudited: the business write is audited where
