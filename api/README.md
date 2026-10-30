@@ -466,7 +466,8 @@ The apps start from two queries (`graphql/tally.rs`):
 
 - `tallyViewer` — the member (`member`, `name`, `homeLocationId`), the email of
   the user signed in alongside if any (`userEmail`), whether that user is a super
-  user (`isSuper`), and every unit they can use (`locations`, by name).
+  user (`isSuper`) or a developer (`isDev`, which shows Tally's environment
+  picker), and every unit they can use (`locations`, by name).
 - `tallyLocation(id)` — one unit's tools: `tasks`, `taskLists`, `notes`,
   `noteFolders`, `equipment`, `equipmentReservations`,
   `equipmentReservationConflicts`, `mapPins`, `mapLayers`, `calendars`,
