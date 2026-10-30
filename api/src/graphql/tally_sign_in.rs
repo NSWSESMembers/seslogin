@@ -74,7 +74,7 @@ pub(super) async fn request_code<A: HasDb + HasMail>(
     true
 }
 
-pub(super) async fn complete<A: App + HasDb>(
+pub(super) async fn complete<A: App + HasDb + HasMail>(
     app: &A,
     email: &str,
     code: &str,

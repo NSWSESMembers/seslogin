@@ -26,7 +26,8 @@
 //! One email can be given a fixed code instead of a random one, through
 //! [`REVIEW_SIGN_IN_VAR`], so App Store reviewers can sign in without the inbox. It
 //! is set only on the test API, whose database is the only one holding that account,
-//! and it is a secret: the repository is public.
+//! and it is a secret: the repository is public. Each sign-in with it is emailed to
+//! [`REVIEW_NOTIFY_VAR`], so a leaked code is noticed.
 
 use anyhow::{Context, Result, anyhow};
 use sha2::{Digest, Sha256};
@@ -50,6 +51,9 @@ const MAX_ATTEMPTS: u64 = 5;
 /// `<email>:<6 digits>`: that email is always sent that code. Unset or blank on every
 /// environment but test.
 pub const REVIEW_SIGN_IN_VAR: &str = "TALLY_REVIEW_SIGN_IN";
+/// Where to email a notice of each sign-in as the [`REVIEW_SIGN_IN_VAR`] email. Unset or
+/// blank sends none.
+pub const REVIEW_NOTIFY_VAR: &str = "TALLY_REVIEW_NOTIFY_TO";
 
 /// Who an email signs in as. See the module docs.
 #[derive(Clone, Debug, PartialEq)]
@@ -142,6 +146,64 @@ pub fn review_code(config: &str, email: &str) -> Option<String> {
         return None;
     };
     (db::email_key(review_email) == db::email_key(email)).then(|| code.to_string())
+}
+
+/// The notice of a sign-in as the review account, `(to, subject, body)`, when `email`
+/// is the one `config` (a [`REVIEW_SIGN_IN_VAR`] value) names and `notify_to` (a
+/// [`REVIEW_NOTIFY_VAR`] value) is set.
+pub fn review_sign_in_notice(
+    config: &str,
+    notify_to: &str,
+    email: &str,
+    identity: &Identity,
+    at: u64,
+    ip: Option<&str>,
+) -> Option<(String, String, String)> {
+    let notify_to = notify_to.trim();
+    if notify_to.is_empty() {
+        return None;
+    }
+    review_code(config, email)?;
+    let at = chrono::DateTime::from_timestamp(at as i64, 0)
+        .unwrap_or_default()
+        .with_timezone(&chrono_tz::Australia::Sydney)
+        .format("%d %b %Y %H:%M:%S %Z");
+    let person = &identity.person;
+    let body = format!(
+        "The App Store review account just signed in to Tally.\n\nEmail: {}\nMember: {} {} ({})\nTime: {at}\nIP: {}\n\nIf this wasn't a review, change {REVIEW_SIGN_IN_VAR}.",
+        db::email_key(email),
+        person.first_name,
+        person.last_name,
+        person.id,
+        ip.unwrap_or("unknown"),
+    );
+    Some((
+        notify_to.to_string(),
+        "Tally review account signed in".to_string(),
+        body,
+    ))
+}
+
+/// Email [`REVIEW_NOTIFY_VAR`] if `email` is the review account's. Best-effort: a
+/// failure is logged and the sign-in goes ahead.
+async fn notify_review_sign_in<A: HasMail>(app: &A, email: &str, identity: &Identity) {
+    let config = std::env::var(REVIEW_SIGN_IN_VAR).unwrap_or_default();
+    let notify_to = std::env::var(REVIEW_NOTIFY_VAR).unwrap_or_default();
+    let ip = crate::audit::current_ip();
+    let Some((to, subject, body)) = review_sign_in_notice(
+        &config,
+        &notify_to,
+        email,
+        identity,
+        crate::clock::now_sec(),
+        ip.as_deref(),
+    ) else {
+        return;
+    };
+    info!("tally sign-in: review account signed in, notifying");
+    if let Err(e) = app.mail().send_plain_text(&to, &subject, &body).await {
+        warn!("Failed to send Tally review sign-in notice: {e:#}");
+    }
 }
 
 fn code_hash(code: &str) -> String {
@@ -260,7 +322,7 @@ pub fn check_client<A: App>(
 
 /// Redeem `code` for `email` and mint an authorization code for `request`, returning
 /// the URL to send the browser to (the client's redirect, with `code` and `state`).
-pub async fn complete<A: App + HasDb>(
+pub async fn complete<A: App + HasDb + HasMail>(
     app: &A,
     email: &str,
     code: &str,
@@ -302,6 +364,7 @@ pub async fn complete<A: App + HasDb>(
         )
         .into());
     }
+    notify_review_sign_in(app, email, &identity).await;
 
     let authorization_code = crate::nonce::generate_nonce(32);
     let payload = AuthCodePayload {
@@ -345,6 +408,65 @@ mod tests {
             Some("012345")
         );
         assert_eq!(review_code(config, "someone@example.com"), None);
+    }
+
+    fn identity() -> Identity {
+        Identity {
+            user: None,
+            person: db::Person {
+                id: "p1".into(),
+                location_id: "loc".into(),
+                first_name: "Rev".into(),
+                last_name: "Iewer".into(),
+                registration_number: None,
+                ses_api_person_id: None,
+                email: None,
+                mobile: None,
+                phones: None,
+                preferred_name: None,
+                badge_state: None,
+                capability_tags: None,
+                deleted: None,
+                missing_since: None,
+                created_at: None,
+                updated_at: None,
+            },
+        }
+    }
+
+    #[test]
+    fn review_sign_in_notice_only_for_the_review_email() {
+        let config = "review@example.com:012345";
+        let (to, _, body) = review_sign_in_notice(
+            config,
+            " me@example.com ",
+            "Review@Example.com",
+            &identity(),
+            0,
+            Some("203.0.113.9"),
+        )
+        .unwrap();
+        assert_eq!(to, "me@example.com");
+        assert!(body.contains("review@example.com"), "{body}");
+        assert!(body.contains("Rev Iewer (p1)"), "{body}");
+        assert!(body.contains("203.0.113.9"), "{body}");
+        assert!(
+            !body.contains("012345"),
+            "the code must not be mailed: {body}"
+        );
+
+        let other = "someone@example.com";
+        assert!(
+            review_sign_in_notice(config, "me@example.com", other, &identity(), 0, None).is_none()
+        );
+    }
+
+    #[test]
+    fn review_sign_in_notice_needs_both_vars() {
+        let email = "review@example.com";
+        let config = "review@example.com:012345";
+        assert!(review_sign_in_notice(config, " ", email, &identity(), 0, None).is_none());
+        assert!(review_sign_in_notice("", "me@example.com", email, &identity(), 0, None).is_none());
     }
 
     #[test]

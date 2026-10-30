@@ -251,7 +251,9 @@ in without the inbox. It is set only on the test API (`var.tally_review_sign_in_
 in the git-ignored `terraform.tfvars`), whose database alone holds the review
 account; the code still expires, is used up and allows five guesses like any
 other, and a request still has to send it first. It is a secret, never
-committed, because the repository is public.
+committed, because the repository is public. Each successful sign-in as that
+email is reported by email (member, time and client IP, never the code) to
+`TALLY_REVIEW_NOTIFY_TO`, so a leaked code is noticed; unset or blank sends none.
 
 Codes share the admin login's `login_code` table. That is safe: a code proves
 the inbox is theirs whichever flow sent it, and redeeming one here yields only
