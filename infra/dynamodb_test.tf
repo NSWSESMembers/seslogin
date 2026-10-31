@@ -399,11 +399,26 @@ resource "aws_dynamodb_table" "test_webauthn_credential" {
     name = "user_id"
     type = "S"
   }
+  attribute {
+    name = "person_id"
+    type = "S"
+  }
 
   global_secondary_index {
     name = "user_id-index"
     key_schema {
       attribute_name = "user_id"
+      key_type       = "HASH"
+    }
+    projection_type = "ALL"
+  }
+
+  # Used to list / count a member's passkeys (Tally). A row has exactly one of
+  # user_id and person_id, so each index only holds its own kind of passkey.
+  global_secondary_index {
+    name = "person_id-index"
+    key_schema {
+      attribute_name = "person_id"
       key_type       = "HASH"
     }
     projection_type = "ALL"

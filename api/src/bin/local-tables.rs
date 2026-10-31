@@ -242,8 +242,11 @@ const TABLES: &[Table] = &[
         name: "webauthn_credential",
         hash: "id",
         range: None,
-        attrs: &[Attr("id", S), Attr("user_id", S)],
-        gsis: &[all("user_id-index", "user_id", None)],
+        attrs: &[Attr("id", S), Attr("user_id", S), Attr("person_id", S)],
+        gsis: &[
+            all("user_id-index", "user_id", None),
+            all("person_id-index", "person_id", None),
+        ],
         ttl: None,
     },
     Table {
