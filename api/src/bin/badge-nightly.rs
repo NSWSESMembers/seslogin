@@ -10,6 +10,10 @@ struct Cli {
     /// would make instead of writing them.
     #[arg(long)]
     apply: bool,
+    /// Instead of evaluating badges, re-date the nightly awards already made to the
+    /// sign-in that earned each one, rather than the time the job ran.
+    #[arg(long)]
+    backfill_earned_times: bool,
 }
 
 #[tokio::main]
@@ -22,10 +26,14 @@ async fn main() -> anyhow::Result<()> {
     let db = dynamodb::Handler::new(&db_prefix, dry_run).await;
     let metrics = Arc::new(RequestMetrics::default());
     request_metrics::METRICS
-        .scope(
-            metrics.clone(),
-            badge_nightly::run(&db, badge_nightly::NightlyArgs { dry_run }),
-        )
+        .scope(metrics.clone(), async {
+            if args.backfill_earned_times {
+                badge_nightly::backfill_earned_times(&db, badge_nightly::BackfillArgs { dry_run })
+                    .await
+            } else {
+                badge_nightly::run(&db, badge_nightly::NightlyArgs { dry_run }).await
+            }
+        })
         .await?;
 
     tracing::info!(
