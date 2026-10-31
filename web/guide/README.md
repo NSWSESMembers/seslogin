@@ -87,6 +87,11 @@ lightly — people bookmark and share these links. Each guide starts with a
   someone who can't see it. The quoted title becomes the caption. See
   [Screenshots](#screenshots) below for making them.
 
+- A badge's picture, inline (for example in a table cell), from the app's own
+  badge artwork: `![First Steps badge](/image/badges/by-id/first-steps.svg)`.
+  Alt text is required, and the build fails if there's no such badge in
+  `web/public/image/badges/by-id/`.
+
 - Callouts:
 
   ```markdown
@@ -97,7 +102,7 @@ lightly — people bookmark and share these links. Each guide starts with a
   `NOTE`, `TIP`, `IMPORTANT` and `WARNING` are available.
 
 Not supported, and rejected by the build: raw HTML, and images anywhere but
-`../screenshots/`.
+`../screenshots/` (or a badge picture, above).
 
 ## Screenshots
 

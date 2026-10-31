@@ -174,6 +174,38 @@ describe("compileGuides", () => {
     );
   });
 
+  it("shows a badge icon inline, even in a table or on its own line", () => {
+    const badge = "![First Steps badge](/image/badges/by-id/first-steps.svg)";
+    const [p] = compileGuide(
+      [page("a.md", `| | Badge |\n|---|---|\n| ${badge} | x |\n\n${badge}\n`)],
+      undefined,
+      { badgeIcons: new Set(["first-steps"]) },
+    );
+    const img =
+      '<img class="guide-badge" src="/image/badges/by-id/first-steps.svg" alt="First Steps badge" width="40" height="40" loading="lazy">';
+    expect(p.html).toContain(`<td>${img}</td>`);
+    expect(p.html).toContain(`<p>${img}</p>`);
+    expect(p.html).not.toContain("guide-figure");
+  });
+
+  it("rejects a badge icon with no artwork or no alt text", () => {
+    const badgeIcons = new Set(["first-steps"]);
+    expect(() =>
+      compileGuide(
+        [page("a.md", "See ![Nope](/image/badges/by-id/nope.svg).")],
+        undefined,
+        { badgeIcons },
+      ),
+    ).toThrow(/no such badge/);
+    expect(() =>
+      compileGuide(
+        [page("a.md", "See ![](/image/badges/by-id/first-steps.svg).")],
+        undefined,
+        { badgeIcons },
+      ),
+    ).toThrow(/needs alt text/);
+  });
+
   it("wraps tables so they can scroll", () => {
     const [p] = compileGuide([
       page("a.md", "| a | b |\n|---|---|\n| 1 | 2 |\n"),
