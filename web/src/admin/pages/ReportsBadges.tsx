@@ -3,6 +3,7 @@ import { Link } from "react-router";
 import { useRetryableLazyLoadQuery } from "../../components/useRetryableLazyLoadQuery";
 import useSelectedLocation from "../components/useSelectedLocation";
 import { formatFullDateTime } from "../../lib/time";
+import { competitionRanks } from "../../lib/competitionRank";
 import type { ReportsBadgesQuery } from "./__generated__/ReportsBadgesQuery.graphql";
 import { AdminTable, Th, Td } from "../../components/ui/Table";
 
@@ -74,6 +75,10 @@ export default function ReportsBadges() {
       return b.badges[0].awardedAt - a.badges[0].awardedAt;
     });
 
+  // Members with the same badge count share a place (1, 1, 3), as on the
+  // dashboard and kiosk leaderboards; latest award only orders rows in a tie.
+  const ranks = competitionRanks(people, (entry) => entry.badges.length);
+
   const totalAwards = people.reduce(
     (sum, entry) => sum + entry.badges.length,
     0,
@@ -128,7 +133,7 @@ export default function ReportsBadges() {
                 key={person.id}
                 className={idx % 2 === 0 ? "bg-surface-raised" : undefined}
               >
-                <Td>{idx + 1}</Td>
+                <Td>{ranks[idx]}</Td>
                 <Td nowrap>
                   <Link to={`/admin/members/badges/${person.id}`}>
                     {person.firstName} {person.lastName}
