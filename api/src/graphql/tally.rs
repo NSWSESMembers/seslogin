@@ -24,6 +24,7 @@ use super::notes::{self, Note, NoteFolder};
 use super::on_call::{self, OnCallRole};
 use super::query::Person;
 use super::reservations::{self, EquipmentReservation};
+use super::shared_contacts::{self, SharedContact};
 use super::tasks::{self, Task, TaskList, TaskView};
 use super::{LocationId, PersonId};
 use crate::app::{App, HasDb};
@@ -364,6 +365,12 @@ impl<A: App + HasDb + Send + Sync + 'static> TallyLocation<A> {
     /// `graphql::on_call`.
     async fn on_call_roles(&self, ctx: &Context<'_>) -> Result<Vec<OnCallRole<A>>> {
         on_call::location_on_call_roles(ctx, &self.rec.id).await
+    }
+
+    /// The contacts added by hand to the unit (its Duty Officer phone, …), by name. The
+    /// statewide ones are `Query.stateContacts`. See `graphql::shared_contacts`.
+    async fn shared_contacts(&self, ctx: &Context<'_>) -> Result<Vec<SharedContact<A>>> {
+        shared_contacts::location_shared_contacts(ctx, &self.rec.id).await
     }
 }
 

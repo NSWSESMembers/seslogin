@@ -22,6 +22,14 @@
 //! (code, zone, coordinates, addresses, phone, email, accreditations), any of which may be
 //! missing.
 //!
+//! Shared contacts (`sharedContacts`, see SCHEMA.md's `shared_contact`) work the same
+//! way as units: the whole list, whenever it differs from the one the cursor last
+//! delivered. It is the caller's own, not statewide: every statewide contact, plus the
+//! contacts of each location the caller may use in Tally (their home unit and their
+//! user's units, or every location for a super user), the same set GraphQL lets them
+//! read. So the list, and the hash the cursor keeps of it, differ between members, and
+//! a member who gains or loses a unit gets the new list on their next sync.
+//!
 //! Ordering comes from the person table's `contact_key` (see SCHEMA.md), restamped by
 //! every write that changes a field returned here. The cursor is the last key sent,
 //! HMAC-signed so a client can't forge one. A read never serves keys from the last
@@ -86,6 +94,10 @@ struct Cursor {
     /// The [`units_version`] of the units list already delivered, if any.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     u: Option<String>,
+    /// The [`list_version`] of the shared contacts already delivered, if any. Cursors
+    /// from before shared contacts were synced have none, so get the list once.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    s: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -234,6 +246,24 @@ struct Accreditation {
     note: Option<String>,
 }
 
+/// A contact added by hand: a location's (`locationId`) or statewide (no `locationId`).
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SharedContact<'a> {
+    id: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    location_id: Option<&'a str>,
+    name: &'a str,
+    #[serde(skip_serializing_if = "str::is_empty")]
+    description: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    phone: Option<&'a str>,
+    phone_can_sms: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    email: Option<&'a str>,
+    updated_at: u64,
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct SyncResponse<'a> {
@@ -241,6 +271,10 @@ struct SyncResponse<'a> {
     /// Every unit, when the list differs from the one the cursor last delivered.
     #[serde(skip_serializing_if = "Option::is_none")]
     units: Option<&'a [Unit<'a>]>,
+    /// The caller's shared contacts, when they differ from those the cursor last
+    /// delivered.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    shared_contacts: Option<&'a [SharedContact<'a>]>,
     next_cursor: String,
     has_more: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -259,8 +293,22 @@ pub async fn sync<A: App + HasDb + HasQueues>(
     let Some(token) = authorization.and_then(|h| h.strip_prefix("Bearer ")) else {
         return unauthorized();
     };
-    let person_id = match auth::verify_token(app, token, host).await {
-        Ok(AuthInfo::Member { person_id, .. }) => person_id,
+    let (person_id, scope) = match auth::verify_token(app, token, host).await {
+        Ok(AuthInfo::Member {
+            person_id,
+            location_id,
+            is_super,
+            user_location_ids,
+            ..
+        }) => {
+            let scope = ContactScope {
+                is_super,
+                locations: std::iter::once(location_id)
+                    .chain(user_location_ids)
+                    .collect(),
+            };
+            (person_id, scope)
+        }
         // 401, not the 403 the Tally brief suggests: CloudFront rewrites every 403
         // on the site's distribution to the SPA's index.html (see web_*.tf). Tally
         // only ever presents its own members' tokens, so it never sees this.
@@ -290,9 +338,9 @@ pub async fn sync<A: App + HasDb + HasQueues>(
             _ => return error_reply(410, "cursor_expired"),
         },
     };
-    let (after, units_delivered) = match after {
-        Some(c) => (Some(c.k), c.u),
-        None => (None, None),
+    let (after, units_delivered, contacts_delivered) = match after {
+        Some(c) => (Some(c.k), c.u, c.s),
+        None => (None, None, None),
     };
     let full_sync = after.is_none();
     let before = format!("{:020}", crate::clock::now_us().saturating_sub(SETTLE_US));
@@ -315,6 +363,35 @@ pub async fn sync<A: App + HasDb + HasQueues>(
     let directory_units: Vec<Unit> = directory.iter().map(unit).collect();
     let version = units_version(&directory_units);
     let send_units = units_delivered.as_deref() != Some(version.as_str());
+
+    // Shared contacts are a newer, smaller part of the feed: failing to read them (the
+    // table not created yet, say) must not stop the member directory syncing. The
+    // response then leaves them out and the cursor keeps the hash it came with, so the
+    // next sync tries again.
+    let shared = match db.list_all_shared_contacts().await {
+        Ok(mut rows) => {
+            rows.retain(|c| scope.allows(c.location_id.as_deref()));
+            rows.sort_by(|a, b| {
+                a.name
+                    .to_lowercase()
+                    .cmp(&b.name.to_lowercase())
+                    .then_with(|| a.id.cmp(&b.id))
+            });
+            Some(rows)
+        }
+        Err(e) => {
+            error!("sync: list shared contacts failed, leaving them out: {e}");
+            None
+        }
+    };
+    let shared_contacts: Option<Vec<SharedContact>> = shared
+        .as_ref()
+        .map(|rows| rows.iter().map(shared_contact).collect());
+    let contacts_version = match &shared_contacts {
+        Some(list) => Some(list_version(list)),
+        None => contacts_delivered.clone(),
+    };
+    let send_contacts = shared_contacts.is_some() && contacts_delivered != contacts_version;
 
     // A full sync skips tombstones: the client removes whatever it didn't receive.
     let page = match db
@@ -419,6 +496,7 @@ pub async fn sync<A: App + HasDb + HasQueues>(
             k: next_key,
             e: env,
             u: Some(version),
+            s: contacts_version,
         },
     );
 
@@ -434,6 +512,7 @@ pub async fn sync<A: App + HasDb + HasQueues>(
     let body = serde_json::to_vec(&SyncResponse {
         contacts,
         units: send_units.then_some(&directory_units[..]),
+        shared_contacts: shared_contacts.as_deref().filter(|_| send_contacts),
         next_cursor,
         has_more: page.has_more,
         total,
@@ -534,10 +613,45 @@ fn unit(l: &db::Location) -> Unit<'_> {
     }
 }
 
+/// Whose shared contacts a member is sent: the same as `require_shared_contact_access`
+/// lets them read.
+struct ContactScope {
+    is_super: bool,
+    /// Their home unit and their user's units, either role.
+    locations: HashSet<String>,
+}
+
+impl ContactScope {
+    fn allows(&self, location_id: Option<&str>) -> bool {
+        match location_id {
+            None => true,
+            Some(id) => self.is_super || self.locations.contains(id),
+        }
+    }
+}
+
+fn shared_contact(c: &db::SharedContact) -> SharedContact<'_> {
+    SharedContact {
+        id: &c.id,
+        location_id: c.location_id.as_deref(),
+        name: &c.name,
+        description: &c.description,
+        phone: c.phone.as_deref(),
+        phone_can_sms: c.phone_can_sms,
+        email: c.email.as_deref(),
+        updated_at: c.updated_at,
+    }
+}
+
 /// A short hash of the units list as it is serialized: equal exactly when the list is.
 fn units_version(units: &[Unit]) -> String {
+    list_version(units)
+}
+
+/// A short hash of a list as it is serialized: equal exactly when the list is.
+fn list_version<T: Serialize>(items: &[T]) -> String {
     use sha2::Digest;
-    let json = serde_json::to_vec(units).expect("units are plain serde structs");
+    let json = serde_json::to_vec(items).expect("sync lists are plain serde structs");
     BASE64_URL_SAFE_NO_PAD.encode(&Sha256::digest(&json)[..12])
 }
 
@@ -642,6 +756,7 @@ mod tests {
             k: "00000000000000000001#abc".into(),
             e: "seslogin_test".into(),
             u: Some("abc".into()),
+            s: Some("def".into()),
         };
         let raw = encode_cursor(&key, &cursor);
         assert_eq!(decode_cursor(&key, &raw), Some(cursor));

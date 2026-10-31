@@ -876,6 +876,82 @@ async fn map_layer_writes_are_recorded_against_their_location() {
 }
 
 #[tokio::test]
+async fn shared_contact_writes_are_recorded_against_their_location_or_none() {
+    let app = app();
+    let unit = app
+        .db
+        .create_shared_contact(db::NewSharedContact {
+            scope: db::SharedContactScope::Location("loc-a"),
+            name: "Duty Officer",
+            description: "",
+            phone: Some("0400 000 000"),
+            phone_can_sms: true,
+            email: None,
+            created_by: Some("caller"),
+        })
+        .await
+        .unwrap();
+    app.db
+        .update_shared_contact(
+            &unit.id,
+            db::SharedContactUpdateShape::Fields {
+                name: "Duty Officer",
+                description: "",
+                phone: Some("0400 000 000"),
+                phone_can_sms: false,
+                email: Some("do@example.org"),
+                by: Some("caller"),
+                expected_version: unit.version,
+            },
+        )
+        .await
+        .unwrap();
+    app.db
+        .update_shared_contact(
+            &unit.id,
+            db::SharedContactUpdateShape::Delete { by: Some("caller") },
+        )
+        .await
+        .unwrap();
+    let state = app
+        .db
+        .create_shared_contact(db::NewSharedContact {
+            scope: db::SharedContactScope::State,
+            name: "SOC",
+            description: "State Operations Centre",
+            phone: None,
+            phone_can_sms: false,
+            email: None,
+            created_by: Some("caller"),
+        })
+        .await
+        .unwrap();
+    let entries = app.db.inner().audit_entries();
+    assert_eq!(entries.len(), 4);
+    for entry in &entries[..3] {
+        assert_eq!(entry.entity_type, AuditEntityType::SharedContact);
+        assert_eq!(entry.entity_id, unit.id);
+        assert_eq!(entry.entity_label.as_deref(), Some("Duty Officer"));
+        assert_eq!(entry.location_ids, vec!["loc-a".to_string()]);
+    }
+    assert_eq!(entries[0].action, AuditAction::Create);
+    assert_eq!(
+        changed_fields(&entries[0]),
+        vec!["name", "phone", "phone_can_sms"]
+    );
+    assert_eq!(entries[1].action, AuditAction::Update);
+    assert_eq!(changed_fields(&entries[1]), vec!["phone_can_sms", "email"]);
+    assert_eq!(entries[2].action, AuditAction::Delete);
+    // A statewide contact belongs to no location, so it is only in the root log.
+    assert_eq!(entries[3].entity_id, state.id);
+    assert!(entries[3].location_ids.is_empty());
+    assert_eq!(
+        changed_fields(&entries[3]),
+        vec!["name", "description", "phone_can_sms"]
+    );
+}
+
+#[tokio::test]
 async fn on_call_role_writes_are_recorded_against_their_location() {
     let app = app();
     let role = app
