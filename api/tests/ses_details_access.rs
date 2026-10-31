@@ -102,6 +102,7 @@ fn app() -> Arc<TestApp> {
             code: Some("TST-A".into()),
             latitude: Some(-33.5),
             longitude: Some(151.25),
+            ..Default::default()
         };
         a.directory_details = db::LocationDirectoryDetails {
             entity_id: Some("70001".into()),

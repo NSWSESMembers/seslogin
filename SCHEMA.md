@@ -86,6 +86,7 @@ No GSIs. Locations are always fetched by ID or via a full-table Scan (the table 
 Written only by location sync (`api/src/location_sync.rs`), each omitted when SES has no value:
 
 - `code` (S), `latitude` / `longitude` (N) — from the SES API's headquarters record. 29 units have no coordinates
+- `zone_location_id` (S) — the location of the unit's zone: the headquarters record's `zone`, resolved through that zone's `ses_api_headquarters_id`. Units only (zones and State Headquarters have none); absent until the zone has a location
 - `ses_directory_entity_id` (S) — the SES intranet directory `Entity` this location resolved to, by `code` and then by name (codes are shared across entity kinds, e.g. `CFS`, `COR`, `SEZ`). Absent for State Headquarters, two units missing from the directory, and a few pseudo-units
 - `address` / `postal_address` (M) — the entity's "Main address" / "Postal Address": `line1`, `line2`, `suburb`, `state`, `postcode`, `formatted`, each present only when set
 - `email` (S) — the entity's "Internet Mail"; `phone` (S) — its "Phone", else its "Mobile"

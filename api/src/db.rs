@@ -1408,6 +1408,9 @@ pub struct LocationSesDetails {
     pub code: Option<String>,
     pub latitude: Option<f64>,
     pub longitude: Option<f64>,
+    /// Our location for the unit's zone, the headquarters' `zone` resolved through its
+    /// `ses_api_headquarters_id`. Units only; absent while the zone has no location.
+    pub zone_location_id: Option<String>,
 }
 
 /// What location sync copies from the location's entity in the SES intranet directory.

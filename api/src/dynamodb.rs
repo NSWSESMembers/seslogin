@@ -429,6 +429,7 @@ impl TryInto<Location> for Item {
                 code: self.string_field("code")?,
                 latitude: self.f64_field("latitude")?,
                 longitude: self.f64_field("longitude")?,
+                zone_location_id: self.string_field("zone_location_id")?,
             },
             directory_details: db::LocationDirectoryDetails {
                 entity_id: self.string_field("ses_directory_entity_id")?,
@@ -4744,6 +4745,10 @@ impl db::Handler for Handler {
                     (
                         "longitude",
                         details.longitude.map(|v| AttributeValue::N(v.to_string())),
+                    ),
+                    (
+                        "zone_location_id",
+                        details.zone_location_id.clone().map(AttributeValue::S),
                     ),
                 ];
                 if let Some(directory) = directory {
