@@ -10,6 +10,11 @@ import startKioskSessionFetcher, {
   LIVE_SESSION_REFRESH_INTERVAL_MS,
   SESSION_REFRESH_INTERVAL_MS,
 } from "./KioskSessionFetcher";
+import {
+  CLOCK_SKEW_RETRY_MS,
+  clearClockSkew,
+  reportClockSkew,
+} from "../lib/clockSkew";
 
 const response = {
   session: {
@@ -114,6 +119,33 @@ describe("startKioskSessionFetcher", () => {
     await settle();
     fetcher.refreshNow();
     expect(fetchQuery).toHaveBeenCalledTimes(3);
+    fetcher.stop();
+  });
+});
+
+describe("startKioskSessionFetcher with a wrong clock", () => {
+  afterEach(() => clearClockSkew());
+
+  it("retries soon after a refusal for the clock, not at the next ordinary poll", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.mocked(fetchQuery).mockImplementationOnce(
+      () =>
+        ({
+          toPromise: () => {
+            reportClockSkew(Math.floor(Date.now() / 1000) + 600);
+            return Promise.reject(new Error("This device's clock is wrong"));
+          },
+        }) as unknown as ReturnType<typeof fetchQuery>,
+    );
+    const fetcher = start();
+    await settle();
+    expect(fetchQuery).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(CLOCK_SKEW_RETRY_MS - 1);
+    expect(fetchQuery).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(fetchQuery).toHaveBeenCalledTimes(2);
     fetcher.stop();
   });
 });

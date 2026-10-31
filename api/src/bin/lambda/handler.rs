@@ -175,6 +175,14 @@ impl<
                     graphql_error(format!("Authentication error: {}", msg)),
                 );
             }
+            Err(ref e @ auth::AuthError::ClockSkew { server_time, .. }) => {
+                emit_auth_failure_telemetry(401, request_start, &e.to_string());
+                let body = serde_json::to_string(&GraphQlResponse::from_errors(vec![
+                    auth::clock_skew_error(server_time),
+                ]))
+                .expect("Valid response should never fail to serialize");
+                return error_response(StatusCode::UNAUTHORIZED, body);
+            }
             Err(auth::AuthError::Transient(ref msg)) => {
                 tracing::error!("Transient auth error: {}", msg);
                 emit_auth_failure_telemetry(503, request_start, msg);

@@ -143,6 +143,21 @@ and the computer has to be [set up again](#setting-up-a-kiosk). Very old kiosks
 set up with a six-digit setup code (rather than a QR code) can't be reactivated
 at all — set them up again instead.
 
+### If the kiosk says its clock is wrong
+
+Every kiosk checks in using the computer's clock, so a computer whose date or time
+is more than five minutes out can't sign anyone in or out. This can happen just
+after a restart, before the computer has set its time. The kiosk then shows **This
+computer's clock is wrong**, with the computer's time and the correct time.
+
+The kiosk is still set up, so don't scan its QR code or set it up again. Open the
+computer's date and time settings and turn on **Set time automatically** (on
+Windows, also press **Sync now**), or set the correct time by hand. The kiosk
+carries on by itself within a minute.
+
+If the clock is wrong again after every restart, the computer's clock battery may
+need replacing.
+
 ### Replaced kiosks
 
 A kiosk marked **Replaced** belongs to a computer that has since been set up
@@ -154,6 +169,9 @@ don't need it, or leave it: it's removed automatically after two weeks.
 
 - Set the computer not to sleep, lock or log out when idle, and to switch back on
   after a power cut.
+- Set the computer to set its time automatically. A kiosk whose clock is more
+  than five minutes out can't sign anyone in or out (see
+  [If the kiosk says its clock is wrong](#if-the-kiosk-says-its-clock-is-wrong)).
 - Make the browser open the SESLogin kiosk page when the computer starts.
 - On Windows, Chrome has a kiosk mode that runs full-screen with no browser
   controls — [this guide](https://superuser.com/a/1363172) explains how.

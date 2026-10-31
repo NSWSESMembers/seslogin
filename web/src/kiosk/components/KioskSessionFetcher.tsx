@@ -8,6 +8,7 @@ import {
   recordServerContactFailure,
   recordServerContactSuccess,
 } from "../lib/kioskServerStatus";
+import { CLOCK_SKEW_RETRY_MS, getClockSkew } from "../lib/clockSkew";
 
 const DEV = import.meta.env.MODE === "development";
 
@@ -157,6 +158,13 @@ export default function startKioskSessionFetcher({
           return;
         }
 
+        if (getClockSkew() !== null) {
+          // Refused for the device's clock: try again soon, so the kiosk is back in
+          // use shortly after someone fixes it rather than at the next ordinary poll.
+          refreshAgain = false;
+          scheduleIn(CLOCK_SKEW_RETRY_MS);
+          return;
+        }
         scheduleNext();
       });
   };

@@ -262,8 +262,9 @@ pub async fn sync<A: App + HasDb + HasQueues>(
         // on the site's distribution to the SPA's index.html (see web_*.tf). Tally
         // only ever presents its own members' tokens, so it never sees this.
         Ok(_) => return unauthorized(),
-        Err(AuthError::Permanent(msg)) => {
-            info!("sync: auth rejected: {msg}");
+        // ClockSkew is only for kiosk signatures, which never reach here.
+        Err(e @ (AuthError::Permanent(_) | AuthError::ClockSkew { .. })) => {
+            info!("sync: auth rejected: {e}");
             return unauthorized();
         }
         Err(AuthError::Transient(msg)) => {
