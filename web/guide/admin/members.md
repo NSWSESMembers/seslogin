@@ -63,8 +63,8 @@ and qualifications come with the daily member update.
 ## Your unit's details
 
 Next to **Last successful member sync** at the top of the list, press **Unit
-details** to see what SES holds about your unit: its SES code and ID,
-location on a map, street and postal addresses, contact email and phone, and
+details** to see what SES holds about your unit: its SES code and ID, its
+zone, location on a map, street and postal addresses, contact email and phone, and
 rescue accreditations with their status. Like the member panel it is read-only,
 and it is refreshed once a day.
 

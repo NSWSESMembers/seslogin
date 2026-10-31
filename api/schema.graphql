@@ -709,6 +709,11 @@ type Location {
 	"""
 	longitude: Float
 	"""
+	The SES zone this unit is in, itself a location. Units only. Same access as
+	`code`; the zone's own fields keep their own checks.
+	"""
+	zone: Location
+	"""
 	The SES intranet directory entity this unit resolved to. Same access as `code`.
 	"""
 	sesDirectoryEntityId: String

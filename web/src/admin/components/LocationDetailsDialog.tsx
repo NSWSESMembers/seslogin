@@ -31,6 +31,9 @@ function LocationDetails({ locationId }: { locationId: string }) {
           name
           sesApiHeadquartersId
           code
+          zone {
+            name
+          }
           latitude
           longitude
           sesDirectoryEntityId
@@ -73,6 +76,7 @@ function LocationDetails({ locationId }: { locationId: string }) {
         <Field label="Name">{location.name}</Field>
         <Field label="SES HQ ID">{location.sesApiHeadquartersId ?? NONE}</Field>
         <Field label="Code">{location.code ?? NONE}</Field>
+        <Field label="Zone">{location.zone?.name ?? NONE}</Field>
         <Field label="Coordinates">
           {hasCoordinates ? (
             <a
