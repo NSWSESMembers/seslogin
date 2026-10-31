@@ -267,22 +267,22 @@ sign-ins, hours, streaks or any other badge.
 
 ## Wildcard badges
 
-Surprises for unusual moments, all in the **Wildcard** tier. Earned once at each
-unit, except All-Rounder, which counts across every unit.
+Surprises for unusual moments, all in the **Wildcard** tier. What earns them is
+a secret: keep signing in and out to find out.
 
-|                                                                                | Badge              | How to earn it                                                                                                                                                                                                           |
-| ------------------------------------------------------------------------------ | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| ![Just Five Minutes badge](/image/badges/by-id/easter-just-five-minutes.svg)   | Just Five Minutes  | Sign out less than 5 minutes after signing in.                                                                                                                                                                           |
-| ![Iron Shift badge](/image/badges/by-id/easter-iron-shift.svg)                 | Iron Shift         | Stay signed in for between 12 and 24 hours in one go.                                                                                                                                                                    |
-| ![Midnight Oil badge](/image/badges/by-id/easter-midnight-oil.svg)             | Midnight Oil       | Sign out after midnight, on a later day than you signed in.                                                                                                                                                              |
-| ![Forgot My Password badge](/image/badges/by-id/easter-forgot-my-password.svg) | Forgot My Password | Sign in at a unit 6 months (180 days) or more after your last sign-in there.                                                                                                                                             |
-| ![Coffee Powered badge](/image/badges/by-id/easter-coffee-powered.svg)         | Coffee Powered     | Sign in before 7am on 3 days in a row. Checked overnight.                                                                                                                                                                |
-| ![Habit Formed badge](/image/badges/by-id/easter-habit-formed.svg)             | Habit Formed       | Sign in at least once a week for 12 weeks in a row. Checked overnight.                                                                                                                                                   |
-| ![Lights On badge](/image/badges/by-id/easter-lights-on.svg)                   | Lights On          | Be the first to sign in on 10 busy days (4 or more members signed in) within a year. Checked overnight.                                                                                                                  |
-| ![Lights Off badge](/image/badges/by-id/easter-lights-off.svg)                 | Lights Off         | Be the last to sign out on 10 busy days (4 or more members signed in) within a year. Checked overnight.                                                                                                                  |
-| ![Full House badge](/image/badges/by-id/easter-full-house.svg)                 | Full House         | Sign in on a day when 30 or more members signed in at the unit. Checked overnight.                                                                                                                                       |
-| ![Spooky Shift badge](/image/badges/by-id/easter-spooky-shift.svg)             | Spooky Shift       | Sign out on Halloween, 31 October.                                                                                                                                                                                       |
-| ![Countdown Crew badge](/image/badges/by-id/easter-countdown-crew.svg)         | Countdown Crew     | Sign out on New Year's Eve, 31 December.                                                                                                                                                                                 |
-| ![Leap of Faith badge](/image/badges/by-id/easter-leap-of-faith.svg)           | Leap of Faith      | Sign out on 29 February.                                                                                                                                                                                                 |
-| ![Unlucky for Some badge](/image/badges/by-id/easter-unlucky-for-some.svg)     | Unlucky for Some   | Sign out on a Friday the 13th.                                                                                                                                                                                           |
-| ![All-Rounder badge](/image/badges/by-id/easter-all-rounder.svg)               | All-Rounder        | Sign out to a Training category, an operational role (Accredited Rescue Role, Combat Roles or Support Roles), a Community Ed. & Media category, and an administration or maintenance category. Counts across every unit. |
+|                                                                                | Badge              |
+| ------------------------------------------------------------------------------ | ------------------ |
+| ![Just Five Minutes badge](/image/badges/by-id/easter-just-five-minutes.svg)   | Just Five Minutes  |
+| ![Iron Shift badge](/image/badges/by-id/easter-iron-shift.svg)                 | Iron Shift         |
+| ![Midnight Oil badge](/image/badges/by-id/easter-midnight-oil.svg)             | Midnight Oil       |
+| ![Forgot My Password badge](/image/badges/by-id/easter-forgot-my-password.svg) | Forgot My Password |
+| ![Coffee Powered badge](/image/badges/by-id/easter-coffee-powered.svg)         | Coffee Powered     |
+| ![Habit Formed badge](/image/badges/by-id/easter-habit-formed.svg)             | Habit Formed       |
+| ![Lights On badge](/image/badges/by-id/easter-lights-on.svg)                   | Lights On          |
+| ![Lights Off badge](/image/badges/by-id/easter-lights-off.svg)                 | Lights Off         |
+| ![Full House badge](/image/badges/by-id/easter-full-house.svg)                 | Full House         |
+| ![Spooky Shift badge](/image/badges/by-id/easter-spooky-shift.svg)             | Spooky Shift       |
+| ![Countdown Crew badge](/image/badges/by-id/easter-countdown-crew.svg)         | Countdown Crew     |
+| ![Leap of Faith badge](/image/badges/by-id/easter-leap-of-faith.svg)           | Leap of Faith      |
+| ![Unlucky for Some badge](/image/badges/by-id/easter-unlucky-for-some.svg)     | Unlucky for Some   |
+| ![All-Rounder badge](/image/badges/by-id/easter-all-rounder.svg)               | All-Rounder        |
