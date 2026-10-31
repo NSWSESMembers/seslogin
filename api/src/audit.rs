@@ -857,6 +857,7 @@ impl Fields {
         self.set("code", opt_text(d.code.as_deref()));
         self.set("latitude", d.latitude.map(|v| json!(v)));
         self.set("longitude", d.longitude.map(|v| json!(v)));
+        self.set("zone_location_id", opt_text(d.zone_location_id.as_deref()));
         self
     }
 
@@ -4419,6 +4420,7 @@ mod tests {
             code: Some("ABD".into()),
             latitude: Some(-32.17),
             longitude: None,
+            ..Default::default()
         };
         let directory = db::LocationDirectoryDetails {
             entity_id: Some("70000047".into()),

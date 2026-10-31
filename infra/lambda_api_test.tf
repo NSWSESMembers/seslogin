@@ -28,7 +28,7 @@ resource "aws_lambda_function" "test_api" {
       TOOLBOX_GRAPHQL_URL  = var.toolbox_graphql_url
       TOOLBOX_API_TOKEN    = var.toolbox_api_token
       WIFI_NETWORKS        = var.wifi_networks
-      TALLY_REVIEW_SIGN_IN = var.tally_review_sign_in_test
+      TALLY_REVIEW_SIGN_IN = var.tally_review_sign_in
       # Emailed on each sign-in as the review account, so a leaked code is noticed.
       TALLY_REVIEW_NOTIFY_TO = "me@sdunster.com"
       WEBAUTHN_RP_ID         = "seslogin.com"

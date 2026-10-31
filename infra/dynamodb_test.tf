@@ -878,8 +878,8 @@ resource "aws_dynamodb_table" "test_calendar_event" {
   }
 }
 
-# Locate: one row per user sharing their position with a location's members, keyed
-# by user ID. Listed per location; the TTL removes a share 7 minutes after its
+# Locate: one row per member sharing their position with a location's members,
+# keyed by person ID. Listed per location; the TTL removes a share 7 minutes after its
 # latest position, and reads skip any the TTL hasn't reached yet.
 resource "aws_dynamodb_table" "test_location_share" {
   name         = "${var.db_prefix_test}_location_share"
@@ -910,9 +910,9 @@ resource "aws_dynamodb_table" "test_location_share" {
   }
 }
 
-# Notifications: each user's in-app inbox, one full copy of a notification per
-# recipient (user_id, newest first by sk). unread-index is sparse: rows carry
-# unread_user_id only while unread, so counting and listing unread is a small
+# Notifications: each member's in-app inbox, one full copy of a notification per
+# recipient (person_id, newest first by sk). unread-index is sparse: rows carry
+# unread_person_id only while unread, so counting and listing unread is a small
 # query. Rows are removed by the TTL 90 days after they were created.
 resource "aws_dynamodb_table" "test_notification" {
   name         = "${var.db_prefix_test}_notification"

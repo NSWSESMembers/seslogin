@@ -68,11 +68,27 @@ fn non_blank(v: Option<&str>) -> Option<String> {
         .map(str::to_string)
 }
 
-fn ses_details_for(hq: &SesHeadquarters) -> db::LocationSesDetails {
+/// `location_ids_by_hq` maps an SES headquarters id to our location for it, which is how
+/// a unit's zone is resolved: zones are imported as locations too. A zone created by this
+/// same run has no location yet, so its units pick it up on the next run.
+fn ses_details_for(
+    hq: &SesHeadquarters,
+    location_ids_by_hq: &HashMap<String, String>,
+) -> db::LocationSesDetails {
+    let zone_location_id = match hq.headquarters_type.as_deref() {
+        Some("Unit") => hq
+            .zone
+            .as_ref()
+            .and_then(|zone| zone.id)
+            .and_then(|zone_id| location_ids_by_hq.get(&zone_id.to_string()))
+            .cloned(),
+        _ => None,
+    };
     db::LocationSesDetails {
         code: non_blank(hq.code.as_deref()),
         latitude: hq.latitude,
         longitude: hq.longitude,
+        zone_location_id,
     }
 }
 
@@ -245,6 +261,12 @@ fn details_diff(
         debug(&before_ses.longitude),
         debug(&after_ses.longitude),
     );
+    cmp(
+        "zone_location_id",
+        before_ses.zone_location_id != after_ses.zone_location_id,
+        debug(&before_ses.zone_location_id),
+        debug(&after_ses.zone_location_id),
+    );
     if let Some(after_dir) = after_dir {
         // An address is compared in full but shown in its one-line form.
         let formatted =
@@ -398,6 +420,10 @@ async fn run_inner(config: SyncConfig) -> Result<RunStats> {
                 .map(|hq_id| (hq_id, loc))
         })
         .collect();
+    let location_ids_by_hq: HashMap<String, String> = existing
+        .iter()
+        .map(|(hq_id, loc)| (hq_id.clone(), loc.id.clone()))
+        .collect();
 
     let mut stats = RunStats {
         ses_units_seen: units.len(),
@@ -411,7 +437,7 @@ async fn run_inner(config: SyncConfig) -> Result<RunStats> {
         let hq_id_str = hq_id.to_string();
         let hq_name = location_name_for_hq(hq);
 
-        let details = ses_details_for(hq);
+        let details = ses_details_for(hq, &location_ids_by_hq);
         let directory = entities.as_ref().map(|_| {
             let entity = match resolve_entity(hq.code.as_deref(), &hq_name, &entities_by_code) {
                 EntityMatch::Found(entity) => Some(entity),
@@ -870,6 +896,35 @@ mod tests {
         assert_eq!(accreditations_json(&[]), None);
     }
 
+    fn hq(id: i64, hq_type: &str, zone_id: Option<i64>) -> SesHeadquarters {
+        SesHeadquarters {
+            id: Some(id),
+            name: Some(format!("HQ {id}")),
+            code: None,
+            latitude: None,
+            longitude: None,
+            headquarters_type: Some(hq_type.to_string()),
+            status: None,
+            zone: zone_id.map(|z| Box::new(hq(z, "Zone", None))),
+        }
+    }
+
+    #[test]
+    fn a_units_zone_resolves_to_the_zones_location() {
+        let by_hq = HashMap::from([("285".to_string(), "loc-sez".to_string())]);
+        let zone = |h| ses_details_for(&h, &by_hq).zone_location_id;
+        assert_eq!(zone(hq(149, "Unit", Some(285))).as_deref(), Some("loc-sez"));
+        // A zone not yet a location, and a unit with no zone, have none.
+        assert_eq!(zone(hq(150, "Unit", Some(999))), None);
+        assert_eq!(zone(hq(151, "Unit", None)), None);
+        // A zone's own `zone` is State Headquarters, which is not its zone.
+        let by_hq = HashMap::from([("1".to_string(), "loc-shq".to_string())]);
+        assert_eq!(
+            ses_details_for(&hq(285, "Zone", Some(1)), &by_hq).zone_location_id,
+            None
+        );
+    }
+
     #[test]
     fn details_diff_ignores_directory_fields_without_a_directory() {
         let before_ses = db::LocationSesDetails::default();
@@ -877,6 +932,7 @@ mod tests {
             code: Some("ABD".to_string()),
             latitude: Some(-32.17),
             longitude: Some(150.88),
+            ..Default::default()
         };
         let before_dir = db::LocationDirectoryDetails {
             email: Some("old@example.test".to_string()),

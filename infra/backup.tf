@@ -15,7 +15,9 @@
 # Durable business + auth data only. The two short-lived TTL'd tables
 # (prod_login_code, prod_ephemeral_state) are intentionally excluded — they hold
 # only ephemeral challenge/code state, so backing them up adds cost with no
-# value. They keep PITR regardless.
+# value. They keep PITR regardless. So do Tally's two TTL'd tables,
+# prod_location_share (positions that expire within minutes) and
+# prod_notification (an inbox the TTL clears after 90 days), excluded likewise.
 
 locals {
   backup_tables = [
@@ -33,6 +35,18 @@ locals {
     aws_dynamodb_table.prod_webauthn_credential,
     aws_dynamodb_table.prod_audit_log,
     aws_dynamodb_table.prod_person_unit,
+    aws_dynamodb_table.prod_task,
+    aws_dynamodb_table.prod_task_list,
+    aws_dynamodb_table.prod_note,
+    aws_dynamodb_table.prod_note_folder,
+    aws_dynamodb_table.prod_map_pin,
+    aws_dynamodb_table.prod_map_layer,
+    aws_dynamodb_table.prod_on_call_role,
+    aws_dynamodb_table.prod_equipment,
+    aws_dynamodb_table.prod_equipment_log,
+    aws_dynamodb_table.prod_equipment_reservation,
+    aws_dynamodb_table.prod_calendar,
+    aws_dynamodb_table.prod_calendar_event,
   ]
 }
 

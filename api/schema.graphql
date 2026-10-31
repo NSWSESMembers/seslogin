@@ -2612,6 +2612,11 @@ type TallyViewer {
 	"""
 	isSuper: Boolean!
 	"""
+	Whether the user signed in alongside the member is a developer (`User.isDev`), so
+	Tally offers them its environment picker. False when no user signed in alongside them.
+	"""
+	isDev: Boolean!
+	"""
 	Every unit the member can use in Tally, by name: their home unit, plus the units
 	the user signed in alongside them holds either role at (every enabled unit for a
 	super user). Disabled units are left out, except a member's own home unit.

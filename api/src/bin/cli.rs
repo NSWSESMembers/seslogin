@@ -926,6 +926,7 @@ async fn show_locations(_db: &impl Handler, locs: &[Location]) {
                 opt_ts(*last_successful_member_sync),
             ),
             ("code", opt_str(&ses_details.code)),
+            ("zone_location_id", opt_str(&ses_details.zone_location_id)),
             (
                 "lat/long",
                 match (ses_details.latitude, ses_details.longitude) {

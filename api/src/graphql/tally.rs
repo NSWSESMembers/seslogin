@@ -75,6 +75,7 @@ pub struct TallyViewer<A: App + HasDb + 'static> {
     person: db::Person,
     user_email: Option<String>,
     is_super: bool,
+    is_dev: bool,
     user_location_ids: Vec<String>,
 }
 
@@ -105,6 +106,12 @@ impl<A: App + HasDb + Send + Sync + 'static> TallyViewer<A> {
     /// every unit. False when no user signed in alongside them.
     async fn is_super(&self) -> bool {
         self.is_super
+    }
+
+    /// Whether the user signed in alongside the member is a developer (`User.isDev`), so
+    /// Tally offers them its environment picker. False when no user signed in alongside them.
+    async fn is_dev(&self) -> bool {
+        self.is_dev
     }
 
     /// Every unit the member can use in Tally, by name: their home unit, plus the units
@@ -168,22 +175,24 @@ pub(super) async fn viewer<A: App + HasDb + Send + Sync + 'static>(
         .next()
         .flatten()
         .ok_or_else(|| ApiError::not_found("Member", person_id))?;
-    let user_email = match user_id {
+    let user = match user_id {
         Some(id) => app
             .db()
             .get_users(&[id])
             .await?
             .into_iter()
             .next()
-            .flatten()
-            .map(|u| u.email),
+            .flatten(),
         None => None,
     };
+    let is_dev = user.as_ref().is_some_and(|u| u.is_dev);
+    let user_email = user.map(|u| u.email);
     Ok(TallyViewer {
         _marker: Default::default(),
         person,
         user_email,
         is_super: *is_super,
+        is_dev,
         user_location_ids: user_location_ids.clone(),
     })
 }

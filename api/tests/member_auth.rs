@@ -396,8 +396,7 @@ fn data(response: &async_graphql::Response) -> serde_json::Value {
     response.data.clone().into_json().unwrap()
 }
 
-const VIEWER: &str =
-    "{ tallyViewer { name homeLocationId userEmail isSuper member { id } locations { id name } } }";
+const VIEWER: &str = "{ tallyViewer { name homeLocationId userEmail isSuper isDev member { id } locations { id name } } }";
 
 #[tokio::test]
 async fn the_viewer_is_the_member_with_their_home_unit_and_their_users_units() {
@@ -412,6 +411,7 @@ async fn the_viewer_is_the_member_with_their_home_unit_and_their_users_units() {
             "homeLocationId": "loc-a",
             "userEmail": "u1@example.com",
             "isSuper": false,
+            "isDev": false,
             "member": { "id": "alice" },
             "locations": [
                 { "id": "loc-a", "name": "Unit A" },
@@ -427,6 +427,11 @@ async fn the_viewer_is_the_member_with_their_home_unit_and_their_users_units() {
         viewer["tallyViewer"]["locations"].as_array().unwrap().len(),
         3
     );
+
+    // A developer's member is flagged, for Tally's environment picker.
+    app.db.users.lock().unwrap().get_mut("u1").unwrap().is_dev = true;
+    let viewer = data(&run(&app, member_at("loc-a", &[], false), VIEWER).await);
+    assert_eq!(viewer["tallyViewer"]["isDev"], true);
 }
 
 #[tokio::test]

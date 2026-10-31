@@ -99,8 +99,8 @@ variable "wifi_networks" {
   default     = ""
 }
 
-variable "tally_review_sign_in_test" {
-  description = "The App Store review account's fixed Tally sign-in code on the test API, as `<email>:<6 digits>` (see api/README.md, \"Tally sign-in\"). Set only in the git-ignored terraform.tfvars, never committed: the repository is public. Empty means every code is random."
+variable "tally_review_sign_in" {
+  description = "The App Store review account's fixed Tally sign-in code on the prod and test APIs, as `<email>:<6 digits>` (see api/README.md, \"Tally sign-in\"). Set only in the git-ignored terraform.tfvars, never committed: the repository is public. Empty means every code is random."
   type        = string
   sensitive   = true
   default     = ""
