@@ -88,7 +88,24 @@ async function rawGraphQL(
 export type PasskeyLoginResult =
   | { status: "ok"; token: string }
   | { status: "cancelled" }
-  | { status: "failed" };
+  | { status: "failed"; message?: string };
+
+/**
+ * The message of a `FORBIDDEN` GraphQL error, which the server words for people
+ * (e.g. a Tally passkey used on the admin login). Other errors stay generic.
+ */
+function forbiddenMessage(errors: unknown[] | undefined): string | undefined {
+  for (const e of errors ?? []) {
+    const err = e as { message?: unknown; extensions?: { code?: unknown } };
+    if (
+      err.extensions?.code === "FORBIDDEN" &&
+      typeof err.message === "string"
+    ) {
+      return err.message;
+    }
+  }
+  return undefined;
+}
 
 /**
  * Attempt a discoverable (usernameless) passkey login. With `useAutofill`,
@@ -142,7 +159,10 @@ export async function loginWithPasskey(opts?: {
       challengeId: challenge.challengeId,
       credentialJson: JSON.stringify(authResponse),
     },
-  )) as { data?: { finishPasskeyLogin?: string | null } };
+  )) as {
+    data?: { finishPasskeyLogin?: string | null };
+    errors?: unknown[];
+  };
 
   const token = finishResp?.data?.finishPasskeyLogin ?? null;
   if (token) {
@@ -155,5 +175,5 @@ export async function loginWithPasskey(opts?: {
     "[passkey] finishPasskeyLogin returned no token (verification failed or unknown credential)",
     finishResp,
   );
-  return { status: "failed" };
+  return { status: "failed", message: forbiddenMessage(finishResp?.errors) };
 }

@@ -1335,7 +1335,7 @@ impl db::Handler for FakeDb {
     async fn create_webauthn_credential(
         &self,
         _id: &str,
-        _user_id: &str,
+        _owner: &db::PasskeyOwner,
         _name: &str,
         _passkey_json: &str,
     ) -> db::Result<db::WebauthnCredential> {
@@ -1347,22 +1347,25 @@ impl db::Handler for FakeDb {
     ) -> db::Result<Option<db::WebauthnCredential>> {
         Ok(self.webauthn_credentials.lock().unwrap().get(id).cloned())
     }
-    async fn list_webauthn_credentials_by_user(
+    async fn list_webauthn_credentials_by_owner(
         &self,
-        user_id: &str,
+        owner: &db::PasskeyOwner,
     ) -> db::Result<Vec<db::WebauthnCredential>> {
         let mut creds: Vec<_> = self
             .webauthn_credentials
             .lock()
             .unwrap()
             .values()
-            .filter(|c| c.user_id == user_id)
+            .filter(|c| &c.owner == owner)
             .cloned()
             .collect();
         creds.sort_by(|a, b| a.id.cmp(&b.id));
         Ok(creds)
     }
-    async fn count_webauthn_credentials_by_user(&self, _user_id: &str) -> db::Result<usize> {
+    async fn count_webauthn_credentials_by_owner(
+        &self,
+        _owner: &db::PasskeyOwner,
+    ) -> db::Result<usize> {
         unsupported()
     }
     async fn update_webauthn_credential(

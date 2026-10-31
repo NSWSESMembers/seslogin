@@ -64,6 +64,11 @@ const SELF_SIGN_OUT_FUTURE_SLACK_SECS: i64 = 60;
 
 const LINK_EDIT_MAX_DURATION_S: i64 = 24 * 60 * 60;
 
+/// `finishPasskeyLogin`'s answer to a member's passkey, which signs in to Tally only.
+/// A `FORBIDDEN` error, so the admin login page shows it as written.
+pub(crate) const TALLY_PASSKEY_ON_ADMIN_LOGIN: &str =
+    "That passkey is for signing in to Tally, not SESLogin. Sign in with your email instead.";
+
 /// Bound the span an edit link may set. Callers check `start_time < end_time`
 /// first, so this only has to catch the upper end.
 fn validate_link_edit_duration(start_time: i64, end_time: i64) -> Result<()> {
@@ -4096,10 +4101,11 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
             _ => return Err(anyhow!("Not authenticated")),
         };
 
+        let owner = db::PasskeyOwner::User(user_id.clone());
         let count = self
             .app
             .db()
-            .count_webauthn_credentials_by_user(&user_id)
+            .count_webauthn_credentials_by_owner(&owner)
             .await?;
         if count >= 10 {
             return Err(anyhow!("Maximum of 10 passkeys allowed"));
@@ -4108,7 +4114,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         let existing = self
             .app
             .db()
-            .list_webauthn_credentials_by_user(&user_id)
+            .list_webauthn_credentials_by_owner(&owner)
             .await?;
 
         let webauthn = ctx.data_unchecked::<Arc<Webauthn>>();
@@ -4247,10 +4253,11 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
             .map_err(|e| anyhow!("Passkey registration failed: {}", e))?;
 
         // Re-check cap to guard against races
+        let owner = db::PasskeyOwner::User(user_id.clone());
         let count = self
             .app
             .db()
-            .count_webauthn_credentials_by_user(&user_id)
+            .count_webauthn_credentials_by_owner(&owner)
             .await?;
         if count >= 10 {
             let _ = self.app.db().delete_webauthn_state(&challenge_id).await;
@@ -4264,7 +4271,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         let cred = self
             .app
             .db()
-            .create_webauthn_credential(&cred_id, &user_id, &name, &passkey_json)
+            .create_webauthn_credential(&cred_id, &owner, &name, &passkey_json)
             .await?;
 
         let _ = self.app.db().delete_webauthn_state(&challenge_id).await;
@@ -4376,6 +4383,19 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
             )
             .map_err(|e| anyhow!("Passkey authentication failed: {}", e))?;
 
+        // A member's passkey is for Tally only. It shares this site's relying party,
+        // so the browser offers it here too: say what it is rather than "failed".
+        // Checked after verifying, so the answer says nothing about a credential the
+        // caller can't sign with.
+        let user_id = match &stored.owner {
+            db::PasskeyOwner::User(id) => id.clone(),
+            db::PasskeyOwner::Member(_) => {
+                info!("finish_passkey_login: member passkey {}", cred_id_str);
+                let _ = self.app.db().delete_webauthn_state(&challenge_id).await;
+                return Err(ApiError::forbidden(TALLY_PASSKEY_ON_ADMIN_LOGIN).into());
+            }
+        };
+
         // Always record last_used_at on a successful login. The counter bump is
         // conditional (needs_update() only fires when the signature counter
         // advanced), but most platform/synced passkeys keep the counter at 0 and
@@ -4402,7 +4422,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         match self
             .app
             .db()
-            .get_users(&[&stored.user_id])
+            .get_users(&[&user_id])
             .await?
             .into_iter()
             .next()
@@ -4412,16 +4432,16 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
             _ => {
                 info!(
                     "finish_passkey_login: user disabled or missing id={}",
-                    stored.user_id
+                    user_id
                 );
                 return Ok(None);
             }
         }
 
-        let token = auth::issue_user_token(&*self.app, &stored.user_id).await?;
+        let token = auth::issue_user_token(&*self.app, &user_id).await?;
         info!(
             "Passkey login for user_id={} cred_id={}",
-            stored.user_id, cred_id_str
+            user_id, cred_id_str
         );
         Ok(Some(token))
     }
@@ -4446,7 +4466,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
             .await?
             .ok_or_else(|| anyhow!("Passkey not found"))?;
 
-        if cred.user_id != user_id {
+        if cred.owner != db::PasskeyOwner::User(user_id) {
             return Err(anyhow!("Passkey not found"));
         }
 
@@ -4483,7 +4503,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
             .await?
             .ok_or_else(|| anyhow!("Passkey not found"))?;
 
-        if cred.user_id != user_id {
+        if cred.owner != db::PasskeyOwner::User(user_id) {
             return Err(anyhow!("Passkey not found"));
         }
 
