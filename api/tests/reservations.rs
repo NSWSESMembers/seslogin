@@ -125,7 +125,7 @@ fn assert_code(response: &async_graphql::Response, code: &str) {
     );
 }
 
-const FIELDS: &str = "id startTime endTime equipmentIds equipment { name } reservedFor reservedForMemberId reservedForText reservedForViewer description version createdBy updatedBy conflicts { id }";
+const FIELDS: &str = "id startTime endTime equipmentIds equipment { name } reservedFor reservedForMemberIds reservedForMembers { id firstName } reservedForText reservedForViewer description version createdBy updatedBy conflicts { id }";
 
 /// Add a vehicle at `location`, returning its id.
 async fn equipment(app: &Arc<TestApp>, location: &str, name: &str) -> String {
@@ -306,7 +306,7 @@ async fn a_reservation_is_for_the_caller_unless_someone_else_is_named() {
     )
     .await;
     assert_eq!(mine["reservedFor"], "Casey Caller");
-    assert_eq!(mine["reservedForMemberId"], "caller");
+    assert_eq!(mine["reservedForMemberIds"], serde_json::json!(["caller"]));
     assert_eq!(mine["reservedForText"], serde_json::Value::Null);
     assert_eq!(mine["reservedForViewer"], true);
     assert_eq!(mine["description"], "Towing the boat");
@@ -315,7 +315,7 @@ async fn a_reservation_is_for_the_caller_unless_someone_else_is_named() {
 
     // A blank name counts as none.
     let blank = reserve(&app, &[&truck], 3, 4, r#", reservedFor: "  ""#).await;
-    assert_eq!(blank["reservedForMemberId"], "caller");
+    assert_eq!(blank["reservedForMemberIds"], serde_json::json!(["caller"]));
 
     // Someone else's view of it.
     let response = run(
@@ -343,7 +343,8 @@ async fn a_reservation_is_for_the_caller_unless_someone_else_is_named() {
     .await;
     assert_eq!(clean["reservedFor"], "Detailing / clean");
     assert_eq!(clean["reservedForText"], "Detailing / clean");
-    assert_eq!(clean["reservedForMemberId"], serde_json::Value::Null);
+    assert_eq!(clean["reservedForMemberIds"], serde_json::json!([]));
+    assert_eq!(clean["reservedForMembers"], serde_json::json!([]));
     assert_eq!(clean["reservedForViewer"], false);
     assert_eq!(clean["createdBy"], "Casey Caller");
 }
@@ -537,6 +538,115 @@ async fn reservations_are_validated() {
 }
 
 #[tokio::test]
+async fn a_reservation_can_be_for_several_members() {
+    let app = app();
+    // A member of another unit can be chosen, as for an on-call role.
+    seed_person(&app, "third", "loc-b", "Alex", "Third", "99999997", None);
+    let truck = equipment(&app, "loc-a", "Truck 1").await;
+
+    // Repeats count once; the members are listed by name, the caller among them or not.
+    let r = reserve(
+        &app,
+        &[&truck],
+        1,
+        2,
+        r#", reservedForMemberIds: ["other", "third", "other", "caller"]"#,
+    )
+    .await;
+    assert_eq!(
+        r["reservedForMemberIds"],
+        serde_json::json!(["other", "third", "caller"])
+    );
+    assert_eq!(r["reservedFor"], "Alex Third, Casey Caller, Olive Other");
+    assert_eq!(
+        r["reservedForMembers"],
+        serde_json::json!([
+            { "id": "third", "firstName": "Alex" },
+            { "id": "caller", "firstName": "Casey" },
+            { "id": "other", "firstName": "Olive" },
+        ])
+    );
+    assert_eq!(r["reservedForText"], serde_json::Value::Null);
+    assert_eq!(r["reservedForViewer"], true);
+    let id = r["id"].as_str().unwrap();
+
+    // Without the caller it isn't theirs; an empty list means the caller.
+    let others = reserve(
+        &app,
+        &[&truck],
+        3,
+        4,
+        r#", reservedForMemberIds: ["other"]"#,
+    )
+    .await;
+    assert_eq!(others["reservedForViewer"], false);
+    let empty = reserve(&app, &[&truck], 5, 6, r#", reservedForMemberIds: []"#).await;
+    assert_eq!(empty["reservedForMemberIds"], serde_json::json!(["caller"]));
+
+    // Members and text together, an unknown member, or too many are refused.
+    for (what, args) in [
+        (
+            "both",
+            r#", reservedForMemberIds: ["other"], reservedFor: "RFS""#.to_string(),
+        ),
+        (
+            "unknown",
+            r#", reservedForMemberIds: ["nobody"]"#.to_string(),
+        ),
+        (
+            "too many",
+            format!(
+                ", reservedForMemberIds: {:?}",
+                (0..=seslogin::reservations::MAX_RESERVED_FOR_MEMBERS)
+                    .map(|i| format!("p{i}"))
+                    .collect::<Vec<_>>()
+            ),
+        ),
+    ] {
+        let response = reserve_as(&app, admin(), &[&truck], 7, 8, &args).await;
+        assert!(code_of(&response).is_some(), "{what} was accepted");
+    }
+
+    // An edit to something else keeps the members; giving members replaces them, and
+    // text replaces members.
+    let response = run(
+        &app,
+        user_as("other", &[], &["loc-a"]),
+        &format!(
+            r#"mutation {{ updateEquipmentReservation(id: "{id}", expectedVersion: 1, description: "Exercise") {{ reservedForMemberIds updatedBy }} }}"#
+        ),
+    )
+    .await;
+    let updated = json(&response)["updateEquipmentReservation"].clone();
+    assert_eq!(
+        updated["reservedForMemberIds"],
+        serde_json::json!(["other", "third", "caller"])
+    );
+    let response = run(
+        &app,
+        admin(),
+        &format!(
+            r#"mutation {{ updateEquipmentReservation(id: "{id}", expectedVersion: 2, reservedForMemberIds: ["third"]) {{ reservedFor reservedForViewer }} }}"#
+        ),
+    )
+    .await;
+    let updated = json(&response)["updateEquipmentReservation"].clone();
+    assert_eq!(updated["reservedFor"], "Alex Third");
+    assert_eq!(updated["reservedForViewer"], false);
+    let response = run(
+        &app,
+        admin(),
+        &format!(
+            r#"mutation {{ updateEquipmentReservation(id: "{id}", expectedVersion: 3, reservedFor: "Visiting RFS crew") {{ reservedFor reservedForMemberIds }} }}"#
+        ),
+    )
+    .await;
+    let updated = json(&response)["updateEquipmentReservation"].clone();
+    assert_eq!(updated["reservedFor"], "Visiting RFS crew");
+    assert_eq!(updated["reservedForMemberIds"], serde_json::json!([]));
+}
+
+#[tokio::test]
 async fn updates_change_only_what_is_given_and_need_the_current_version() {
     let app = app();
     let truck = equipment(&app, "loc-a", "Truck 1").await;
@@ -587,12 +697,15 @@ async fn updates_change_only_what_is_given_and_need_the_current_version() {
         &app,
         read_only(),
         &format!(
-            r#"mutation {{ updateEquipmentReservation(id: "{id}", expectedVersion: 2, reservedFor: null) {{ reservedForMemberId reservedForText }} }}"#
+            r#"mutation {{ updateEquipmentReservation(id: "{id}", expectedVersion: 2, reservedFor: null) {{ reservedForMemberIds reservedForText }} }}"#
         ),
     )
     .await;
     let updated = json(&response)["updateEquipmentReservation"].clone();
-    assert_eq!(updated["reservedForMemberId"], "caller");
+    assert_eq!(
+        updated["reservedForMemberIds"],
+        serde_json::json!(["caller"])
+    );
     assert_eq!(updated["reservedForText"], serde_json::Value::Null);
 
     // Equipment deleted since stays on the reservation through an unrelated edit, but

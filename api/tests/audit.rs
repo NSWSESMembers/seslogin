@@ -691,7 +691,7 @@ async fn equipment_reservation_writes_are_recorded_against_their_location() {
             equipment_ids: &ids,
             start_time: 2_000_000_000,
             end_time: 2_000_003_600,
-            reserved_for_person_id: Some("caller"),
+            reserved_for_person_ids: &["caller".to_string()],
             reserved_for_text: None,
             description: "",
             created_by: Some("caller"),
@@ -705,7 +705,7 @@ async fn equipment_reservation_writes_are_recorded_against_their_location() {
                 equipment_ids: &ids,
                 start_time: 2_000_000_000,
                 end_time: 2_000_007_200,
-                reserved_for_person_id: None,
+                reserved_for_person_ids: &[],
                 reserved_for_text: Some("Detailing / clean"),
                 description: "",
                 by: Some("caller"),
@@ -743,12 +743,12 @@ async fn equipment_reservation_writes_are_recorded_against_their_location() {
             "equipment_ids",
             "start_time",
             "end_time",
-            "reserved_for_person_id"
+            "reserved_for_person_ids"
         ]
     );
     assert_eq!(
         changed_fields(&entries[1]),
-        vec!["end_time", "reserved_for_person_id", "reserved_for_text"]
+        vec!["end_time", "reserved_for_person_ids", "reserved_for_text"]
     );
     assert_eq!(
         entries[2].entity_label.as_deref(),

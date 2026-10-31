@@ -550,20 +550,27 @@ type EquipmentReservation {
 	"""
 	equipment: [Equipment!]!
 	"""
-	Who it is for, to show: `reservedForText` when set, otherwise the member's name.
+	Who it is for, to show: `reservedForText` when set, otherwise the members' names,
+	by name and comma-separated.
 	"""
 	reservedFor: String!
 	"""
-	The member it is for; null when it is for someone named in `reservedForText`.
+	The members it is for, by person ID, deleted ones included; empty when it is for
+	someone named in `reservedForText`.
 	"""
-	reservedForMemberId: ID
+	reservedForMemberIds: [ID!]!
 	"""
-	Free text naming who it is for: someone else, an organisation, or something
-	like "Detailing / clean". Null when it is for a member.
+	The members it is for, by name. Members deleted since are left out, so this can
+	be empty even when `reservedForText` is null.
+	"""
+	reservedForMembers: [Person!]!
+	"""
+	Free text naming who it is for: someone outside the organisation, an
+	organisation, or something like "Detailing / clean". Null when it is for members.
 	"""
 	reservedForText: String
 	"""
-	Whether it is for the member asking.
+	Whether the member asking is one of those it is for.
 	"""
 	reservedForViewer: Boolean!
 	"""
@@ -1236,18 +1243,21 @@ type MutationRoot {
 	checkEquipment(id: ID!, comment: String): Equipment!
 	"""
 	Reserve one or more pieces of a location's equipment from `startTime` to
-	`endTime` (Unix seconds; the end must be in the future). It is for the caller
-	unless `reservedFor` names someone or something else. Overlapping another
+	`endTime` (Unix seconds; the end must be in the future). It is for the members in
+	`reservedForMemberIds` (any unit's, the caller among them or not), or for whoever
+	`reservedFor` names, such as someone outside the organisation; with neither, the
+	caller. Members and text together are refused. Overlapping another
 	reservation is allowed: read `conflicts` on the result to warn about it. Any member
 	who can use the unit in Tally may.
 	"""
-	createEquipmentReservation(locationId: ID!, equipmentIds: [ID!]!, startTime: Int!, endTime: Int!, reservedFor: String, description: String): EquipmentReservation!
+	createEquipmentReservation(locationId: ID!, equipmentIds: [ID!]!, startTime: Int!, endTime: Int!, reservedFor: String, reservedForMemberIds: [ID!], description: String): EquipmentReservation!
 	"""
-	Change a reservation; omitted arguments are left as they are. `reservedFor`
-	null or blank makes it for the caller. A changed time range must end in the
-	future. Fails with `CONFLICT` if it is no longer at `expectedVersion`.
+	Change a reservation; omitted arguments are left as they are. Who it is for
+	changes when `reservedFor` or `reservedForMemberIds` is given, decided by the two
+	as on create, so `reservedFor: null` or blank with no members makes it the
+	caller's. A changed time range must end in the future. Fails with `CONFLICT` if it is no longer at `expectedVersion`.
 	"""
-	updateEquipmentReservation(id: ID!, expectedVersion: Int!, equipmentIds: [ID!], startTime: Int, endTime: Int, reservedFor: String, description: String): EquipmentReservation!
+	updateEquipmentReservation(id: ID!, expectedVersion: Int!, equipmentIds: [ID!], startTime: Int, endTime: Int, reservedFor: String, reservedForMemberIds: [ID!], description: String): EquipmentReservation!
 	"""
 	Cancel (delete) a reservation. Returns its ID.
 	"""

@@ -475,7 +475,7 @@ The apps start from two queries (`graphql/tally.rs`):
   carries none of them.
 
 Everything a member writes records their **person ID** — `created_by`,
-`updated_by`, `completed_by`, `reserved_for_person_id`, the location share's key
+`updated_by`, `completed_by`, `reserved_for_person_ids`, the location share's key
 and the notification inbox's key — and `createdBy`/`updatedBy`/`reservedFor` and
 the like show the member's name. Audited writes record `actor_kind: member`.
 
@@ -742,11 +742,16 @@ storage in SCHEMA.md's `equipment_reservation` section).
   stays) and `equipment` (the live ones, by name); `startTime` / `endTime` (Unix seconds; the
   end is after the start, at most 366 days later, and must be in the future when the range
   is set, though it may already have started); `description`, trimmed plain text (max 5,000).
-- **Who it is for:** the caller, unless `reservedFor` names someone or something else —
-  another person, an organisation, "Detailing / clean" — as one trimmed line (max 200; blank
-  means the caller). Read back as `reservedFor` (the text, or the member's name),
-  `reservedForMemberId` / `reservedForText` (exactly one is set) and
-  `reservedForViewer` (whether it is the caller's).
+- **Who it is for:** one or more members, or free text — never both, which is refused.
+  `reservedForMemberIds` names the members by person ID (max 20, repeats dropped; any unit's,
+  as for an on-call role, the caller among them or not; each must exist and not be deleted,
+  though one already on the reservation may stay after they are). Otherwise `reservedFor`
+  names someone or something else — someone outside the organisation, an organisation,
+  "Detailing / clean" — as one trimmed line (max 200). With neither (blank text, no members)
+  it is the caller's. Read back as `reservedFor` (the text, or the members' names by name,
+  comma-separated), `reservedForMemberIds` / `reservedForMembers` (the `Person`s, live ones by
+  name) or `reservedForText` (members and text are never both set) and `reservedForViewer`
+  (whether the caller is among the members).
 - **Overlaps are allowed, and reported.** `EquipmentReservation.conflicts` lists the
   location's other reservations that overlap it in time and share a piece of equipment with
   it (times are half-open, so back-to-back reservations don't clash). It costs a query per
@@ -755,8 +760,10 @@ storage in SCHEMA.md's `equipment_reservation` section).
   the same question about a reservation not yet saved, so a client can warn before saving;
   `excludeId` leaves out the one being edited.
 - **Writes:** `createEquipmentReservation(locationId, equipmentIds, startTime, endTime,
-  reservedFor, description)`. `updateEquipmentReservation` changes only the arguments given
-  (`reservedFor: null` makes it the caller's) and takes `expectedVersion`, failing with
+  reservedFor, reservedForMemberIds, description)`. `updateEquipmentReservation` changes only
+  the arguments given — who it is for changes when `reservedFor` or `reservedForMemberIds` is
+  given, decided by the two as on create, so `reservedFor: null` makes it the caller's — and
+  takes `expectedVersion`, failing with
   `CONFLICT` if someone else changed it since it was read; only a changed time range has to end
   in the future, so a finished one's description can still be fixed.
   `deleteEquipmentReservation` cancels it.
@@ -948,7 +955,7 @@ producers' API in `src/notifications.rs`, storage in SCHEMA.md's `notification` 
 
   | source | kind | targetType | When | Audience | Title / body |
   |---|---|---|---|---|---|
-  | `reservations` | `reservation.for_you` | `reservation` | `createEquipmentReservation`, or `updateEquipmentReservation`, leaves `reserved_for_person_id` a member who is not the actor and was not the previous one | that member | "Equipment reserved for you" / "<equipment names, sorted> · <Sun 25 Oct 09:00–11:00, Sydney time>" ("Equipment" if the names can't be read) |
+  | `reservations` | `reservation.for_you` | `reservation` | `createEquipmentReservation`, or `updateEquipmentReservation`, adds members to `reserved_for_person_ids` (every member it is for, on create) | each added member other than the actor | "Equipment reserved for you" / "<equipment names, sorted> · <Sun 25 Oct 09:00–11:00, Sydney time>" ("Equipment" if the names can't be read) |
   | `oncall` | `oncall.assigned` | `on_call_role` | `createOnCallRole`, or `updateOnCallRole`, makes a person the primary when they were not, or adds them to the secondaries when they were not already there (moving primary to secondary counts; removals and reorderings do not) | that member, once per newly assigned member | "You're now primary for <role>" / "You're now a secondary for <role>" |
 
   Equipment going into HAS_ISSUE, OUT_OF_SERVICE or MISSING used to tell the unit's users; it
@@ -956,10 +963,7 @@ producers' API in `src/notifications.rs`, storage in SCHEMA.md's `notification` 
   (`EquipmentStatus::attention_title` still holds the titles).
 
   The acting member is never told (so a reservation you make for yourself, or an on-call role you
-  put yourself in, sends nothing). Today `reservation.for_you` cannot fire through the API: a
-  reservation is for the caller or for free text, never another member, so the member it is for is
-  always the actor. The producer is in place (`reservations::notify_reserved_for`) for when
-  reserving for someone else is added.
+  put yourself in, sends nothing).
 - **Best-effort:** like the audit log, `notify` returns `()`: a failure is logged at `error!`
   and swallowed, because the thing it announces has already happened. The notification methods
   of `db::Handler` pass through `AuditingHandler` unaudited: the business write is audited where
