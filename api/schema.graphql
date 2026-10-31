@@ -2506,6 +2506,11 @@ type TallyLocation {
 	id: ID!
 	name: String!
 	"""
+	The SES zone this unit is in, itself a location: its `id` and `name` are for
+	anyone who can see this unit, and its tools keep their own checks. Units only.
+	"""
+	zone: TallyLocation
+	"""
 	The unit's open tasks (its shared to-do list): by default those due now,
 	overdue first. `listId` narrows to one of its task lists; without it every
 	task at the unit is listed, whichever list it is on. See `graphql::tasks`.
