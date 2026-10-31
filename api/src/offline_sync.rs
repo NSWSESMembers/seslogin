@@ -19,7 +19,7 @@
 //! the cursor last delivered, and leaves `units` out otherwise. The cursor records a
 //! hash of the list it was issued with, so a full sync's first page always has them and
 //! the pages after it don't. Each unit is what location sync stored for the location
-//! (code, coordinates, addresses, phone, email, accreditations), any of which may be
+//! (code, zone, coordinates, addresses, phone, email, accreditations), any of which may be
 //! missing.
 //!
 //! Ordering comes from the person table's `contact_key` (see SCHEMA.md), restamped by
@@ -183,6 +183,9 @@ struct Unit<'a> {
     /// The SES code, e.g. `HOR`.
     #[serde(skip_serializing_if = "Option::is_none")]
     code: Option<&'a str>,
+    /// The `id` of the unit's zone, itself in the list. Units only.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    zone_id: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     address: Option<Address<'a>>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -512,6 +515,7 @@ fn unit(l: &db::Location) -> Unit<'_> {
         id: &l.id,
         name: &l.name,
         code: l.ses_details.code.as_deref(),
+        zone_id: l.ses_details.zone_location_id.as_deref(),
         address: l.directory_details.address.as_ref().map(address),
         postal_address: l.directory_details.postal_address.as_ref().map(address),
         latitude: l.ses_details.latitude,

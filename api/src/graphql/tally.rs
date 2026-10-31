@@ -225,6 +225,21 @@ impl<A: App + HasDb + Send + Sync + 'static> TallyLocation<A> {
         &self.rec.name
     }
 
+    /// The SES zone this unit is in, itself a location: its `id` and `name` are for
+    /// anyone who can see this unit, and its tools keep their own checks. Units only.
+    async fn zone(&self, ctx: &Context<'_>) -> Result<Option<TallyLocation<A>>> {
+        let Some(zone_id) = &self.rec.ses_details.zone_location_id else {
+            return Ok(None);
+        };
+        let loader = ctx.data_unchecked::<DataLoader<DatabaseLoader<A>>>();
+        Ok(loader
+            .load_one(LocationId(ID(zone_id.clone())))
+            .await
+            .map_err(|e| anyhow!("Failed to load location via DataLoader: {}", e))?
+            .flatten()
+            .map(|zone| TallyLocation::new(zone.rec)))
+    }
+
     /// The unit's open tasks (its shared to-do list): by default those due now,
     /// overdue first. `listId` narrows to one of its task lists; without it every
     /// task at the unit is listed, whichever list it is on. See `graphql::tasks`.
