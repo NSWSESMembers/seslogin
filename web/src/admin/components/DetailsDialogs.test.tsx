@@ -171,12 +171,17 @@ describe("LocationDetailsDialog", () => {
         locationName="Test A Unit"
         onClose={onClose}
       />,
-      { Location: () => location },
+      {
+        // The zone is a Location too, so the path tells it apart from the unit.
+        Location: ({ path }) =>
+          path?.at(-1) === "zone" ? { name: "Test Zone" } : location,
+      },
     );
     expect(
       await screen.findByText("1 Example Street, Exampleville NSW 2000"),
     ).toBeInTheDocument();
     expect(screen.getByText("TST-A")).toBeInTheDocument();
+    expect(screen.getByText("Test Zone")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "-33.5, 151.25" })).toHaveAttribute(
       "href",
       "https://www.google.com/maps?q=-33.5,151.25",
@@ -199,6 +204,7 @@ describe("LocationDetailsDialog", () => {
         Location: () => ({
           ...location,
           code: null,
+          zone: null,
           latitude: null,
           longitude: null,
           address: null,

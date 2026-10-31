@@ -2424,6 +2424,22 @@ impl<A: App + HasDb + Send + Sync> Location<A> {
         Ok(self.rec.ses_details.longitude)
     }
 
+    /// The SES zone this unit is in, itself a location. Units only. Same access as
+    /// `code`; the zone's own fields keep their own checks.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::UserOrApiToken)")]
+    async fn zone(&self, ctx: &Context<'_>) -> Result<Option<Location<A>>> {
+        require_location_access(ctx, &self.rec.id)?;
+        let Some(zone_id) = &self.rec.ses_details.zone_location_id else {
+            return Ok(None);
+        };
+        let loader = ctx.data_unchecked::<DataLoader<DatabaseLoader<A>>>();
+        Ok(loader
+            .load_one(LocationId(ID(zone_id.clone())))
+            .await
+            .map_err(|e| anyhow!("Failed to load location via DataLoader: {}", e))?
+            .flatten())
+    }
+
     /// The SES intranet directory entity this unit resolved to. Same access as `code`.
     #[graphql(guard = "AuthGuard::new(AuthRequirement::UserOrApiToken)")]
     async fn ses_directory_entity_id(&self, ctx: &Context<'_>) -> Result<Option<String>> {

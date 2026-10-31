@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<725b14b86179136411691a6b206ba186>>
+ * @generated SignedSource<<2a5b7c9d7269d1c971e75230e27e3d89>>
  * @lightSyntaxTransform
  */
 
@@ -43,6 +43,9 @@ export type LocationDetailsDialogQuery$data = {
     } | null | undefined;
     readonly sesApiHeadquartersId: string | null | undefined;
     readonly sesDirectoryEntityId: string | null | undefined;
+    readonly zone: {
+      readonly name: string;
+    } | null | undefined;
   };
 };
 export type LocationDetailsDialogQuery = {
@@ -223,6 +226,13 @@ v13 = {
     }
   ],
   "storageKey": null
+},
+v14 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
+  "name": "id",
+  "storageKey": null
 };
 return {
   "fragment": {
@@ -244,6 +254,18 @@ return {
           (v2/*:: as any*/),
           (v3/*:: as any*/),
           (v4/*:: as any*/),
+          {
+            "alias": null,
+            "args": null,
+            "concreteType": "Location",
+            "kind": "LinkedField",
+            "name": "zone",
+            "plural": false,
+            "selections": [
+              (v2/*:: as any*/)
+            ],
+            "storageKey": null
+          },
           (v5/*:: as any*/),
           (v6/*:: as any*/),
           (v7/*:: as any*/),
@@ -276,6 +298,19 @@ return {
           (v2/*:: as any*/),
           (v3/*:: as any*/),
           (v4/*:: as any*/),
+          {
+            "alias": null,
+            "args": null,
+            "concreteType": "Location",
+            "kind": "LinkedField",
+            "name": "zone",
+            "plural": false,
+            "selections": [
+              (v2/*:: as any*/),
+              (v14/*:: as any*/)
+            ],
+            "storageKey": null
+          },
           (v5/*:: as any*/),
           (v6/*:: as any*/),
           (v7/*:: as any*/),
@@ -284,29 +319,23 @@ return {
           (v11/*:: as any*/),
           (v12/*:: as any*/),
           (v13/*:: as any*/),
-          {
-            "alias": null,
-            "args": null,
-            "kind": "ScalarField",
-            "name": "id",
-            "storageKey": null
-          }
+          (v14/*:: as any*/)
         ],
         "storageKey": null
       }
     ]
   },
   "params": {
-    "cacheID": "3e94864540dfd98680055a19712d53ba",
+    "cacheID": "a9036a4ef838c204f7443c1d918e741f",
     "id": null,
     "metadata": {},
     "name": "LocationDetailsDialogQuery",
     "operationKind": "query",
-    "text": "query LocationDetailsDialogQuery(\n  $id: ID!\n) {\n  location(id: $id) {\n    name\n    sesApiHeadquartersId\n    code\n    latitude\n    longitude\n    sesDirectoryEntityId\n    address {\n      line1\n      line2\n      suburb\n      state\n      postcode\n      formatted\n    }\n    postalAddress {\n      line1\n      line2\n      suburb\n      state\n      postcode\n      formatted\n    }\n    email\n    phone\n    accreditations {\n      type\n      status\n      number\n      note\n    }\n    id\n  }\n}\n"
+    "text": "query LocationDetailsDialogQuery(\n  $id: ID!\n) {\n  location(id: $id) {\n    name\n    sesApiHeadquartersId\n    code\n    zone {\n      name\n      id\n    }\n    latitude\n    longitude\n    sesDirectoryEntityId\n    address {\n      line1\n      line2\n      suburb\n      state\n      postcode\n      formatted\n    }\n    postalAddress {\n      line1\n      line2\n      suburb\n      state\n      postcode\n      formatted\n    }\n    email\n    phone\n    accreditations {\n      type\n      status\n      number\n      note\n    }\n    id\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "7f2f8778c3d80f029894d6fa0c9c2cd4";
+(node as any).hash = "ef97af3fb92d620ed4f79f33b9963df5";
 
 export default node;
