@@ -1,7 +1,7 @@
 use anyhow::Result;
-use chrono::{Datelike, Duration, NaiveDate, Timelike, Utc, Weekday};
+use chrono::{Datelike, Duration, NaiveDate, Timelike, Utc};
 use chrono_tz::Australia::Sydney;
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use tracing::info;
 
 use crate::badge_store;
@@ -12,8 +12,10 @@ use crate::db;
 /// here, the 52-week one, plus the current part-week, which also covers the whole of
 /// last calendar year on 1 January for the every-month badge.
 const STREAK_WINDOW_DAYS: i64 = 53 * 7;
-/// Members with a sign-in this recent are checked for the service badges.
-const SERVICE_RECENT_SECONDS: u64 = 2 * 24 * 60 * 60;
+/// Members with a sign-in this recent are checked for the service badges. It is also
+/// how far back an award is dated: a badge earned within it is stamped with the
+/// sign-in that earned it, rather than with the time the job ran.
+const RECENT_SECONDS: u64 = 2 * 24 * 60 * 60;
 /// A day with at least this many members on site counts for first in and last out.
 const BUSY_DAY_MEMBERS: usize = 4;
 /// Times first in, or last out, within the window for Lights On / Lights Off.
@@ -54,7 +56,17 @@ pub async fn run(db: &impl db::Handler, args: NightlyArgs) -> Result<()> {
         .map(|category| category.id)
         .collect();
 
-    let recent_start_ts = now_ts.saturating_sub(SERVICE_RECENT_SECONDS);
+    let recent_start_ts = now_ts.saturating_sub(RECENT_SECONDS);
+    // Anything older is a catch-up (a new badge, gamification just switched on, a
+    // missed run): dating it back would put it before digests that have already been
+    // sent, so it is dated now instead.
+    let earned_at = |completed_at: u64| {
+        if completed_at >= recent_start_ts && completed_at <= now_ts {
+            completed_at
+        } else {
+            now_ts
+        }
+    };
     for location in locations {
         if !location.gamification_enabled {
             continue;
@@ -90,12 +102,14 @@ pub async fn run(db: &impl db::Handler, args: NightlyArgs) -> Result<()> {
         let mut qualifying = qualifying_badges(&periods);
         // Members signed in here lately are checked for the service badges, which
         // need their first sign-in anywhere, not just within the window.
-        let mut latest_start: HashMap<&str, u64> = HashMap::new();
+        let mut recent_starts: HashMap<&str, Vec<u64>> = HashMap::new();
         for period in periods.iter().filter(|p| p.start_time >= recent_start_ts) {
-            let latest = latest_start.entry(period.person_id.as_str()).or_default();
-            *latest = (*latest).max(period.start_time);
+            recent_starts
+                .entry(period.person_id.as_str())
+                .or_default()
+                .push(period.start_time);
         }
-        for (person_id, latest) in latest_start {
+        for (person_id, starts) in recent_starts {
             let first = db
                 .list_periods_for_person(
                     person_id,
@@ -115,12 +129,8 @@ pub async fn run(db: &impl db::Handler, args: NightlyArgs) -> Result<()> {
             let Some(first) = first else {
                 continue;
             };
-            let badges = service_badges(first.start_time, latest);
-            if !badges.is_empty() {
-                qualifying
-                    .entry(person_id.to_string())
-                    .or_default()
-                    .extend(badges);
+            for (badge_id, completed_at) in service_badges(first.start_time, &starts) {
+                earn(&mut qualifying, person_id, badge_id, completed_at);
             }
         }
 
@@ -142,8 +152,13 @@ pub async fn run(db: &impl db::Handler, args: NightlyArgs) -> Result<()> {
             let award = |state: &mut badges::BadgeState| -> Vec<String> {
                 badge_ids
                     .iter()
-                    .filter_map(|badge_id| {
-                        badges::award_if_missing(state, location_id, badge_id, now_ts)
+                    .filter_map(|(badge_id, completed_at)| {
+                        badges::award_if_missing(
+                            state,
+                            location_id,
+                            badge_id,
+                            earned_at(*completed_at),
+                        )
                     })
                     .map(|award| award.id)
                     .collect()
@@ -188,14 +203,39 @@ pub struct NightlyPeriod {
     pub end_time: Option<u64>,
 }
 
+/// Each badge a member qualifies for, keyed by person then badge, with when they
+/// earned it.
+pub type Qualifying = HashMap<String, BTreeMap<&'static str, u64>>;
+
+/// Record that `person` earned `badge_id` at `at`, keeping the earliest time if they
+/// earned it more than once.
+fn earn(qualifying: &mut Qualifying, person: &str, badge_id: &'static str, at: u64) {
+    qualifying
+        .entry(person.to_string())
+        .or_default()
+        .entry(badge_id)
+        .and_modify(|earliest| *earliest = (*earliest).min(at))
+        .or_insert(at);
+}
+
+/// Keep the earliest of `at` and whatever is already in `key`'s slot.
+fn first_at<K: Ord>(map: &mut BTreeMap<K, u64>, key: K, at: u64) {
+    map.entry(key)
+        .and_modify(|earliest| *earliest = (*earliest).min(at))
+        .or_insert(at);
+}
+
 /// The badges each member qualifies for from one location's periods in the window,
-/// keyed by person. Says nothing about whether they already hold them.
-pub fn qualifying_badges(periods: &[NightlyPeriod]) -> HashMap<String, BTreeSet<&'static str>> {
-    let mut person_weeks: HashMap<&str, HashSet<(i32, u32)>> = HashMap::new();
-    let mut person_days: HashMap<&str, HashSet<NaiveDate>> = HashMap::new();
-    let mut person_early_days: HashMap<&str, HashSet<NaiveDate>> = HashMap::new();
-    let mut person_months: HashMap<&str, HashMap<i32, HashSet<u32>>> = HashMap::new();
-    let mut days: HashMap<NaiveDate, Vec<&NightlyPeriod>> = HashMap::new();
+/// each with the moment it was earned: the sign-in (or, for Lights Off, the sign-out)
+/// that completed it. Says nothing about whether they already hold them.
+pub fn qualifying_badges(periods: &[NightlyPeriod]) -> Qualifying {
+    // Each member's first sign-in of each week (keyed by its Monday), day, early day
+    // and month.
+    let mut person_weeks: HashMap<&str, BTreeMap<NaiveDate, u64>> = HashMap::new();
+    let mut person_days: HashMap<&str, BTreeMap<NaiveDate, u64>> = HashMap::new();
+    let mut person_early_days: HashMap<&str, BTreeMap<NaiveDate, u64>> = HashMap::new();
+    let mut person_months: HashMap<&str, HashMap<i32, BTreeMap<u32, u64>>> = HashMap::new();
+    let mut days: BTreeMap<NaiveDate, Vec<&NightlyPeriod>> = BTreeMap::new();
 
     for period in periods {
         let Some(dt) = chrono::DateTime::from_timestamp(period.start_time as i64, 0) else {
@@ -204,31 +244,26 @@ pub fn qualifying_badges(periods: &[NightlyPeriod]) -> HashMap<String, BTreeSet<
         let local = dt.with_timezone(&Sydney);
         let date = local.date_naive();
         let person = period.person_id.as_str();
-        let iso = local.iso_week();
-        person_weeks
-            .entry(person)
-            .or_default()
-            .insert((iso.year(), iso.week()));
-        person_days.entry(person).or_default().insert(date);
+        let start = period.start_time;
+        let monday = date - Duration::days(date.weekday().num_days_from_monday().into());
+        first_at(person_weeks.entry(person).or_default(), monday, start);
+        first_at(person_days.entry(person).or_default(), date, start);
         if local.hour() < 7 {
-            person_early_days.entry(person).or_default().insert(date);
+            first_at(person_early_days.entry(person).or_default(), date, start);
         }
-        person_months
-            .entry(person)
-            .or_default()
-            .entry(date.year())
-            .or_default()
-            .insert(date.month());
+        first_at(
+            person_months
+                .entry(person)
+                .or_default()
+                .entry(date.year())
+                .or_default(),
+            date.month(),
+            start,
+        );
         days.entry(date).or_default().push(period);
     }
 
-    let mut qualifying: HashMap<String, BTreeSet<&'static str>> = HashMap::new();
-    let mut give = |person: &str, badge_id: &'static str| {
-        qualifying
-            .entry(person.to_string())
-            .or_default()
-            .insert(badge_id);
-    };
+    let mut qualifying = Qualifying::new();
 
     for (person, weeks) in &person_weeks {
         for (needed, badge_id) in [
@@ -237,8 +272,8 @@ pub fn qualifying_badges(periods: &[NightlyPeriod]) -> HashMap<String, BTreeSet<
             (26, "habit-half-year"),
             (52, "habit-year-round"),
         ] {
-            if has_consecutive_weeks(weeks, needed) {
-                give(person, badge_id);
+            if let Some(at) = streak_completed_at(weeks, 7, needed) {
+                earn(&mut qualifying, person, badge_id, at);
             }
         }
     }
@@ -247,71 +282,97 @@ pub fn qualifying_badges(periods: &[NightlyPeriod]) -> HashMap<String, BTreeSet<
             (5, "deployment-back-to-back"),
             (7, "deployment-full-deployment"),
         ] {
-            if has_consecutive_days(dates, needed) {
-                give(person, badge_id);
+            if let Some(at) = streak_completed_at(dates, 1, needed) {
+                earn(&mut qualifying, person, badge_id, at);
             }
         }
     }
     for (person, dates) in &person_early_days {
-        if has_consecutive_days(dates, 3) {
-            give(person, "easter-coffee-powered");
+        if let Some(at) = streak_completed_at(dates, 1, 3) {
+            earn(&mut qualifying, person, "easter-coffee-powered", at);
         }
     }
     for (person, years) in &person_months {
-        if years.values().any(|months| months.len() == 12) {
-            give(person, "habit-twelve-for-twelve");
+        // Earned on the first sign-in of the last month of the year to be filled.
+        for months in years.values().filter(|months| months.len() == 12) {
+            if let Some(&at) = months.values().max() {
+                earn(&mut qualifying, person, "habit-twelve-for-twelve", at);
+            }
         }
     }
 
     let mut first_in: HashMap<&str, usize> = HashMap::new();
     let mut last_out: HashMap<&str, usize> = HashMap::new();
     for day_periods in days.values() {
-        let people: HashSet<&str> = day_periods.iter().map(|p| p.person_id.as_str()).collect();
-        if people.len() >= FULL_HOUSE_MEMBERS {
-            for person in &people {
-                give(person, "easter-full-house");
+        // Each member's arrival that day, earliest first.
+        let mut arrivals: BTreeMap<&str, u64> = BTreeMap::new();
+        for period in day_periods {
+            first_at(&mut arrivals, period.person_id.as_str(), period.start_time);
+        }
+        let mut arrival_times: Vec<u64> = arrivals.values().copied().collect();
+        arrival_times.sort_unstable();
+        // Members already there earn Full House when the thirtieth arrives; anyone
+        // after that, on arrival.
+        if let Some(&full_at) = arrival_times.get(FULL_HOUSE_MEMBERS - 1) {
+            for (person, &arrived) in &arrivals {
+                earn(
+                    &mut qualifying,
+                    person,
+                    "easter-full-house",
+                    arrived.max(full_at),
+                );
             }
         }
-        if people.len() < BUSY_DAY_MEMBERS {
+        // A day counts as busy from the moment its fourth member arrives.
+        let Some(&busy_at) = arrival_times.get(BUSY_DAY_MEMBERS - 1) else {
             continue;
-        }
+        };
         // Ties go to the lower person id, so a rerun picks the same member.
         if let Some(first) = day_periods
             .iter()
             .min_by_key(|p| (p.start_time, p.person_id.as_str()))
         {
-            *first_in.entry(first.person_id.as_str()).or_default() += 1;
+            let count = first_in.entry(first.person_id.as_str()).or_default();
+            *count += 1;
+            if *count == FIRST_OR_LAST_TIMES {
+                earn(
+                    &mut qualifying,
+                    &first.person_id,
+                    "easter-lights-on",
+                    busy_at,
+                );
+            }
         }
-        if let Some(last) = day_periods
+        if let Some((end, std::cmp::Reverse(person))) = day_periods
             .iter()
             .filter_map(|p| Some((p.end_time?, std::cmp::Reverse(p.person_id.as_str()))))
             .max()
         {
-            *last_out.entry(last.1.0).or_default() += 1;
-        }
-    }
-    for (person, count) in first_in {
-        if count >= FIRST_OR_LAST_TIMES {
-            give(person, "easter-lights-on");
-        }
-    }
-    for (person, count) in last_out {
-        if count >= FIRST_OR_LAST_TIMES {
-            give(person, "easter-lights-off");
+            let count = last_out.entry(person).or_default();
+            *count += 1;
+            if *count == FIRST_OR_LAST_TIMES {
+                earn(
+                    &mut qualifying,
+                    person,
+                    "easter-lights-off",
+                    end.max(busy_at),
+                );
+            }
         }
     }
 
     qualifying
 }
 
-/// The service badges for a member whose first sign-in anywhere began at `first_start`
-/// and who has signed in again at `latest_start`.
-pub fn service_badges(first_start: u64, latest_start: u64) -> Vec<&'static str> {
+/// The service badges for a member whose first sign-in anywhere began at `first_start`,
+/// given their recent sign-ins, each with the first of those on or after the
+/// anniversary it marks.
+pub fn service_badges(first_start: u64, recent_starts: &[u64]) -> Vec<(&'static str, u64)> {
     let date = |ts: u64| {
         chrono::DateTime::from_timestamp(ts as i64, 0)
             .map(|dt| dt.with_timezone(&Sydney).date_naive())
     };
-    let (Some(first), Some(latest)) = (date(first_start), date(latest_start)) else {
+    let Some(first) = date(first_start) else {
         return vec![];
     };
     [
@@ -320,66 +381,40 @@ pub fn service_badges(first_start: u64, latest_start: u64) -> Vec<&'static str> 
         (10, "service-decade-of-duty"),
     ]
     .into_iter()
-    .filter(|(years, _)| {
-        first
-            .checked_add_months(chrono::Months::new(12 * years))
-            .is_some_and(|anniversary| anniversary <= latest)
+    .filter_map(|(years, badge_id)| {
+        let anniversary = first.checked_add_months(chrono::Months::new(12 * years))?;
+        let at = recent_starts
+            .iter()
+            .copied()
+            .filter(|&start| date(start).is_some_and(|d| d >= anniversary))
+            .min()?;
+        Some((badge_id, at))
     })
-    .map(|(_, badge_id)| badge_id)
     .collect()
 }
 
-fn has_consecutive_days(days: &HashSet<NaiveDate>, needed: usize) -> bool {
-    if days.len() < needed {
-        return false;
-    }
-
-    let mut sorted_days: Vec<NaiveDate> = days.iter().copied().collect();
-    sorted_days.sort_unstable();
-    sorted_days.dedup();
-
-    let mut streak = 1_usize;
-    for pair in sorted_days.windows(2) {
-        let [prev, next] = [pair[0], pair[1]];
-        if next.signed_duration_since(prev).num_days() == 1 {
-            streak = streak.saturating_add(1);
-            if streak >= needed {
-                return true;
+/// When a run of `needed` consecutive keys, each `step_days` after the last, is first
+/// completed: the value (a first sign-in) of the key that completes it.
+fn streak_completed_at(
+    firsts: &BTreeMap<NaiveDate, u64>,
+    step_days: i64,
+    needed: usize,
+) -> Option<u64> {
+    let mut streak = 0_usize;
+    let mut previous: Option<NaiveDate> = None;
+    for (&key, &first) in firsts {
+        streak = match previous {
+            Some(previous) if key.signed_duration_since(previous).num_days() == step_days => {
+                streak.saturating_add(1)
             }
-        } else {
-            streak = 1;
+            _ => 1,
+        };
+        if streak >= needed {
+            return Some(first);
         }
+        previous = Some(key);
     }
-
-    false
-}
-
-fn has_consecutive_weeks(weeks: &HashSet<(i32, u32)>, needed: usize) -> bool {
-    if weeks.len() < needed {
-        return false;
-    }
-
-    let mut starts: Vec<NaiveDate> = weeks
-        .iter()
-        .filter_map(|(year, week)| NaiveDate::from_isoywd_opt(*year, *week, Weekday::Mon))
-        .collect();
-    starts.sort_unstable();
-    starts.dedup();
-
-    let mut streak = 1_usize;
-    for pair in starts.windows(2) {
-        let [prev, next] = [pair[0], pair[1]];
-        if next.signed_duration_since(prev).num_days() == 7 {
-            streak = streak.saturating_add(1);
-            if streak >= needed {
-                return true;
-            }
-        } else {
-            streak = 1;
-        }
-    }
-
-    false
+    None
 }
 
 async fn fetch_recent_periods_for_location(
@@ -423,12 +458,12 @@ async fn fetch_recent_periods_for_location(
 #[cfg(test)]
 mod tests {
     use super::{
-        NightlyPeriod, STREAK_WINDOW_DAYS, has_consecutive_days, has_consecutive_weeks,
-        qualifying_badges, service_badges,
+        NightlyPeriod, Qualifying, STREAK_WINDOW_DAYS, qualifying_badges, service_badges,
+        streak_completed_at,
     };
     use chrono::{Datelike, NaiveDate, TimeZone};
     use chrono_tz::Australia::Sydney;
-    use std::collections::{BTreeSet, HashMap, HashSet};
+    use std::collections::{BTreeMap, BTreeSet};
 
     #[test]
     fn streak_window_holds_a_fifty_two_week_streak_and_last_calendar_year() {
@@ -463,8 +498,12 @@ mod tests {
         }
     }
 
-    fn has(qualifying: &HashMap<String, BTreeSet<&'static str>>, person: &str, id: &str) -> bool {
-        qualifying.get(person).is_some_and(|ids| ids.contains(id))
+    fn has(qualifying: &Qualifying, person: &str, id: &str) -> bool {
+        earned(qualifying, person, id).is_some()
+    }
+
+    fn earned(qualifying: &Qualifying, person: &str, id: &str) -> Option<u64> {
+        qualifying.get(person)?.get(id).copied()
     }
 
     #[test]
@@ -478,11 +517,33 @@ mod tests {
         let seven: Vec<NightlyPeriod> = (1..=7)
             .map(|d| p("a", at(2026, 3, d, 9, 0), None))
             .collect();
-        assert!(has(
-            &qualifying_badges(&seven),
-            "a",
-            "deployment-full-deployment"
-        ));
+        let q = qualifying_badges(&seven);
+        // Earned by the sign-in that completed the run, not when the job next runs.
+        assert_eq!(
+            earned(&q, "a", "deployment-full-deployment"),
+            Some(at(2026, 3, 7, 9, 0))
+        );
+        assert_eq!(
+            earned(&q, "a", "deployment-back-to-back"),
+            Some(at(2026, 3, 5, 9, 0))
+        );
+    }
+
+    #[test]
+    fn a_streak_is_earned_by_the_first_sign_in_of_its_last_week() {
+        let periods: Vec<NightlyPeriod> = (0..4)
+            .flat_map(|w| {
+                let monday = at(2026, 3, 2, 18, 0) + w * 7 * 24 * 60 * 60;
+                [
+                    p("a", monday + 2 * 24 * 60 * 60, None),
+                    p("a", monday + 24 * 60 * 60, None),
+                ]
+            })
+            .collect();
+        assert_eq!(
+            earned(&qualifying_badges(&periods), "a", "four-week-rhythm"),
+            Some(at(2026, 3, 24, 18, 0))
+        );
     }
 
     #[test]
@@ -490,11 +551,10 @@ mod tests {
         let year: Vec<NightlyPeriod> = (1..=12)
             .map(|m| p("a", at(2026, m, 10, 19, 0), None))
             .collect();
-        assert!(has(
-            &qualifying_badges(&year),
-            "a",
-            "habit-twelve-for-twelve"
-        ));
+        assert_eq!(
+            earned(&qualifying_badges(&year), "a", "habit-twelve-for-twelve"),
+            Some(at(2026, 12, 10, 19, 0))
+        );
         // Twelve months in a row, but across two calendar years.
         let straddling: Vec<NightlyPeriod> = (6..=12)
             .map(|m| p("a", at(2025, m, 10, 19, 0), None))
@@ -542,18 +602,32 @@ mod tests {
         ));
         periods.push(p("cat", at(2026, 5, 12, 18, 30), None));
         let q = qualifying_badges(&periods);
-        assert!(has(&q, "alice", "easter-lights-on"));
-        assert!(has(&q, "bob", "easter-lights-off"));
+        // Lights On once the tenth day is busy, at its fourth arrival; Lights Off
+        // at the tenth lock-up.
+        assert_eq!(
+            earned(&q, "alice", "easter-lights-on"),
+            Some(at(2026, 5, 12, 18, 30))
+        );
+        assert_eq!(
+            earned(&q, "bob", "easter-lights-off"),
+            Some(at(2026, 5, 12, 22, 0))
+        );
         assert!(!has(&q, "cat", "easter-lights-on") && !has(&q, "cat", "easter-lights-off"));
     }
 
     #[test]
     fn full_house_goes_to_everyone_on_a_thirty_member_day() {
-        let crowd: Vec<NightlyPeriod> = (0..30)
-            .map(|i| p(&format!("m{i}"), at(2026, 3, 3, 18, 0), None))
+        let crowd: Vec<NightlyPeriod> = (0..31)
+            .map(|i| p(&format!("m{i}"), at(2026, 3, 3, 18, 0) + i * 60, None))
             .collect();
         let q = qualifying_badges(&crowd);
-        assert!((0..30).all(|i| has(&q, &format!("m{i}"), "easter-full-house")));
+        // Everyone there when the thirtieth arrived earns it then; a later arrival
+        // on arrival.
+        let thirtieth = at(2026, 3, 3, 18, 29);
+        assert!(
+            (0..30).all(|i| earned(&q, &format!("m{i}"), "easter-full-house") == Some(thirtieth))
+        );
+        assert_eq!(earned(&q, "m30", "easter-full-house"), Some(thirtieth + 60));
         assert!(!has(
             &qualifying_badges(&crowd[..29]),
             "m0",
@@ -564,13 +638,26 @@ mod tests {
     #[test]
     fn service_badges_count_whole_years_from_the_first_sign_in() {
         let first = at(2016, 2, 29, 19, 0);
-        assert!(service_badges(first, at(2017, 2, 27, 19, 0)).is_empty());
+        assert!(service_badges(first, &[at(2017, 2, 27, 19, 0)]).is_empty());
+        // Earned by the first recent sign-in on or after the anniversary, which for
+        // a 29 February start falls on 28 February.
         assert_eq!(
-            service_badges(first, at(2017, 3, 1, 19, 0)),
-            ["service-one-year-in"]
+            service_badges(
+                first,
+                &[
+                    at(2017, 3, 2, 9, 0),
+                    at(2017, 2, 28, 19, 0),
+                    at(2017, 3, 1, 19, 0)
+                ]
+            ),
+            [("service-one-year-in", at(2017, 2, 28, 19, 0))]
         );
+        let ids: Vec<&str> = service_badges(first, &[at(2026, 3, 1, 19, 0)])
+            .into_iter()
+            .map(|(id, _)| id)
+            .collect();
         assert_eq!(
-            service_badges(first, at(2026, 3, 1, 19, 0)),
+            ids,
             [
                 "service-one-year-in",
                 "service-five-seasons",
@@ -595,9 +682,13 @@ mod tests {
             })
             .collect();
         for badges in qualifying_badges(&crowd).values() {
-            ids.extend(badges);
+            ids.extend(badges.keys());
         }
-        ids.extend(service_badges(at(2010, 1, 1, 9, 0), at(2026, 1, 1, 9, 0)));
+        ids.extend(
+            service_badges(at(2010, 1, 1, 9, 0), &[at(2026, 1, 1, 9, 0)])
+                .into_iter()
+                .map(|(id, _)| id),
+        );
         // The three badges it awarded before, and eleven more.
         assert_eq!(ids.len(), 14, "{ids:?}");
         for id in ids {
@@ -609,51 +700,43 @@ mod tests {
         }
     }
 
+    fn firsts(dates: &[(i32, u32, u32)]) -> BTreeMap<NaiveDate, u64> {
+        dates
+            .iter()
+            .map(|&(y, m, d)| (NaiveDate::from_ymd_opt(y, m, d).unwrap(), at(y, m, d, 9, 0)))
+            .collect()
+    }
+
     #[test]
-    fn consecutive_weeks_true() {
-        let weeks: HashSet<(i32, u32)> = [(2026, 10), (2026, 11), (2026, 12), (2026, 13)]
-            .into_iter()
-            .collect();
-        assert!(has_consecutive_weeks(&weeks, 4));
+    fn consecutive_weeks_complete_on_the_last_week() {
+        let weeks = firsts(&[(2026, 3, 2), (2026, 3, 9), (2026, 3, 16), (2026, 3, 23)]);
+        assert_eq!(
+            streak_completed_at(&weeks, 7, 4),
+            Some(at(2026, 3, 23, 9, 0))
+        );
     }
 
     #[test]
     fn non_consecutive_weeks_false() {
-        let weeks: HashSet<(i32, u32)> = [(2026, 10), (2026, 11), (2026, 13), (2026, 14)]
-            .into_iter()
-            .collect();
-        assert!(!has_consecutive_weeks(&weeks, 4));
+        let weeks = firsts(&[(2026, 3, 2), (2026, 3, 9), (2026, 3, 23), (2026, 3, 30)]);
+        assert_eq!(streak_completed_at(&weeks, 7, 4), None);
     }
 
     #[test]
     fn year_boundary_consecutive_true() {
-        let weeks: HashSet<(i32, u32)> = [(2025, 51), (2025, 52), (2026, 1), (2026, 2)]
-            .into_iter()
-            .collect();
-        assert!(has_consecutive_weeks(&weeks, 4));
+        let weeks = firsts(&[(2025, 12, 15), (2025, 12, 22), (2025, 12, 29), (2026, 1, 5)]);
+        assert!(streak_completed_at(&weeks, 7, 4).is_some());
     }
 
     #[test]
-    fn consecutive_days_true() {
-        let days: HashSet<NaiveDate> = [
-            NaiveDate::from_ymd_opt(2026, 6, 1).unwrap(),
-            NaiveDate::from_ymd_opt(2026, 6, 2).unwrap(),
-            NaiveDate::from_ymd_opt(2026, 6, 3).unwrap(),
-        ]
-        .into_iter()
-        .collect();
-        assert!(has_consecutive_days(&days, 3));
+    fn consecutive_days_complete_on_the_last_day() {
+        let days = firsts(&[(2026, 6, 1), (2026, 6, 2), (2026, 6, 3), (2026, 6, 4)]);
+        assert_eq!(streak_completed_at(&days, 1, 3), Some(at(2026, 6, 3, 9, 0)));
     }
 
     #[test]
     fn non_consecutive_days_false() {
-        let days: HashSet<NaiveDate> = [
-            NaiveDate::from_ymd_opt(2026, 6, 1).unwrap(),
-            NaiveDate::from_ymd_opt(2026, 6, 3).unwrap(),
-            NaiveDate::from_ymd_opt(2026, 6, 4).unwrap(),
-        ]
-        .into_iter()
-        .collect();
-        assert!(!has_consecutive_days(&days, 3));
+        let days = firsts(&[(2026, 6, 1), (2026, 6, 3), (2026, 6, 4)]);
+        assert_eq!(streak_completed_at(&days, 1, 3), None);
     }
 }
