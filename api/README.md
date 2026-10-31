@@ -472,7 +472,9 @@ The apps start from two queries (`graphql/tally.rs`):
   `noteFolders`, `equipment`, `equipmentReservations`,
   `equipmentReservationConflicts`, `mapPins`, `mapLayers`, `calendars`,
   `calendarEvents`, `locationShares` and `onCallRoles`. The core `Location` type
-  carries none of them.
+  carries none of them. Its `zone` is the unit's SES zone, another
+  `TallyLocation` whose `id` and `name` anyone who sees the unit may read; its
+  tools keep their own checks.
 
 Everything a member writes records their **person ID** — `created_by`,
 `updated_by`, `completed_by`, `reserved_for_person_ids`, the location share's key
@@ -532,7 +534,7 @@ fields:
     { "id": "…", "deleted": true }
   ],
   "units": [
-    { "id": "…", "name": "Hornsby Unit", "code": "HOR",
+    { "id": "…", "name": "Hornsby Unit", "code": "HOR", "zoneId": "…",
       "address": { "line1": "…", "line2": "…", "suburb": "Hornsby", "state": "NSW",
                    "postcode": "2077", "formatted": "…" },
       "postalAddress": { "formatted": "…" },
@@ -557,8 +559,9 @@ response carries the whole list, every enabled location by name, whenever it dif
 from the list the cursor last delivered, and leaves `units` out otherwise. The cursor
 records a hash of the list, so a full sync's first page always has it and its later
 pages don't. When `units` is present the client replaces its whole list (a unit missing
-from it has closed). Each unit is what location sync stored: the code and coordinates
-from the SES API's headquarters record, the addresses, phone and email from the
+from it has closed). Each unit is what location sync stored: the code, coordinates and
+zone from the SES API's headquarters record (`zoneId` is the zone's own `id` in the
+list, and only units have one), the addresses, phone and email from the
 location's SES intranet directory entity, and the accreditations (sorted by type,
 "Not Applicable" rows kept) from the SES API. Any of those may be missing: 29 units have
 no coordinates, and State Headquarters and a few pseudo-units have no directory entity.

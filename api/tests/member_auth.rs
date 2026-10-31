@@ -465,6 +465,35 @@ async fn tally_location_is_only_for_a_unit_the_member_can_use() {
 }
 
 #[tokio::test]
+async fn a_units_zone_is_named_but_its_tools_stay_closed() {
+    let app = app();
+    seed_location(&app, "loc-z", "Zone Z");
+    app.db
+        .locations
+        .lock()
+        .unwrap()
+        .get_mut("loc-a")
+        .unwrap()
+        .ses_details
+        .zone_location_id = Some("loc-z".to_string());
+    let alice = member_at("loc-a", &[], false);
+
+    let doc = |id: &str| format!(r#"{{ tallyLocation(id: "{id}") {{ zone {{ id name }} }} }}"#);
+    let unit = data(&run(&app, alice.clone(), &doc("loc-a")).await);
+    assert_eq!(
+        unit["tallyLocation"]["zone"],
+        json!({ "id": "loc-z", "name": "Zone Z" })
+    );
+    // A unit with no zone (and a zone itself) has none.
+    let other = data(&run(&app, member_at("loc-b", &[], false), &doc("loc-b")).await);
+    assert!(other["tallyLocation"]["zone"].is_null());
+
+    // Being in the zone's unit doesn't open the zone's own tools.
+    let tools = r#"{ tallyLocation(id: "loc-a") { zone { tasks { id } } } }"#;
+    assert!(!run(&app, alice, tools).await.errors.is_empty());
+}
+
+#[tokio::test]
 async fn core_fields_reachable_from_tally_still_refuse_a_member() {
     let app = app();
     let alice = member_at("loc-a", &[], false);
