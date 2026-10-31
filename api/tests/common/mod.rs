@@ -1924,7 +1924,7 @@ impl db::Handler for FakeDb {
             equipment_ids: r.equipment_ids.to_vec(),
             start_time: r.start_time,
             end_time: r.end_time,
-            reserved_for_person_id: r.reserved_for_person_id.map(str::to_string),
+            reserved_for_person_ids: r.reserved_for_person_ids.to_vec(),
             reserved_for_text: r.reserved_for_text.map(str::to_string),
             description: r.description.to_string(),
             created_by: r.created_by.map(str::to_string),
@@ -1959,7 +1959,7 @@ impl db::Handler for FakeDb {
                 equipment_ids,
                 start_time,
                 end_time,
-                reserved_for_person_id,
+                reserved_for_person_ids,
                 reserved_for_text,
                 description,
                 by,
@@ -1971,7 +1971,7 @@ impl db::Handler for FakeDb {
                 r.equipment_ids = equipment_ids.to_vec();
                 r.start_time = start_time;
                 r.end_time = end_time;
-                r.reserved_for_person_id = reserved_for_person_id.map(str::to_string);
+                r.reserved_for_person_ids = reserved_for_person_ids.to_vec();
                 r.reserved_for_text = reserved_for_text.map(str::to_string);
                 r.description = description.to_string();
                 r.updated_by = by.map(str::to_string);

@@ -231,7 +231,7 @@ fn reservation(for_member: Option<&str>, equipment_ids: &[&str]) -> db::Equipmen
         // Sunday 25 October 2026, 09:00 to 11:00 Sydney time.
         start_time: 1_792_879_200,
         end_time: 1_792_879_200 + 7200,
-        reserved_for_person_id: for_member.map(str::to_string),
+        reserved_for_person_ids: for_member.iter().map(|s| s.to_string()).collect(),
         reserved_for_text: None,
         description: String::new(),
         created_by: Some("alice".to_string()),
@@ -252,7 +252,7 @@ async fn a_reservation_for_another_member_tells_them_with_the_equipment_and_time
     seslogin::reservations::notify_reserved_for(
         app.as_ref(),
         &reservation(Some("bob"), &[&a, &b]),
-        "bob",
+        &["bob"],
     )
     .await;
 
@@ -275,7 +275,7 @@ async fn a_reservation_for_another_member_tells_them_with_the_equipment_and_time
     seslogin::reservations::notify_reserved_for(
         app.as_ref(),
         &reservation(Some("bob"), &["gone"]),
-        "bob",
+        &["bob"],
     )
     .await;
     let bodies: Vec<_> = inbox(&app, "bob").into_iter().map(|n| n.body).collect();
@@ -283,19 +283,41 @@ async fn a_reservation_for_another_member_tells_them_with_the_equipment_and_time
 }
 
 #[tokio::test]
-async fn reservations_made_or_edited_through_graphql_tell_nobody_today() {
-    // The API only reserves for the caller or for free text, so the member it is "for"
-    // is always the one acting, who is never told.
+async fn reservations_tell_the_members_newly_named_other_than_the_actor() {
     let app = app();
     let eq = create_equipment(&app, "alice", "Van 2", "IN_SERVICE").await;
     let start = seslogin::clock::now_sec() + 3600;
+    let end = start + 3600;
+
+    // For yourself, or for free text: nobody is told.
+    run(
+        &app,
+        "alice",
+        &format!(
+            r#"mutation {{ createEquipmentReservation(locationId: "loc-a", equipmentIds: ["{eq}"],
+                startTime: {start}, endTime: {end}) {{ id }} }}"#
+        ),
+    )
+    .await;
+    run(
+        &app,
+        "alice",
+        &format!(
+            r#"mutation {{ createEquipmentReservation(locationId: "loc-a", equipmentIds: ["{eq}"],
+                startTime: {start}, endTime: {end}, reservedFor: "Crew training") {{ id }} }}"#
+        ),
+    )
+    .await;
+    assert_eq!(total(&app), 0);
+
+    // For several members, the actor among them: everyone else is told once.
     let data = run(
         &app,
         "alice",
         &format!(
             r#"mutation {{ createEquipmentReservation(locationId: "loc-a", equipmentIds: ["{eq}"],
-                startTime: {start}, endTime: {end}) {{ id }} }}"#,
-            end = start + 3600
+                startTime: {start}, endTime: {end},
+                reservedForMemberIds: ["alice", "bob", "carol"]) {{ id }} }}"#
         ),
     )
     .await;
@@ -303,15 +325,29 @@ async fn reservations_made_or_edited_through_graphql_tell_nobody_today() {
         .as_str()
         .unwrap()
         .to_string();
+    assert_eq!(titles(&app, "bob"), vec!["Equipment reserved for you"]);
+    assert_eq!(titles(&app, "carol"), vec!["Equipment reserved for you"]);
+    assert_eq!(total(&app), 2);
+    assert_eq!(
+        inbox(&app, "bob")[0].target_id.as_deref(),
+        Some(id.as_str())
+    );
+
+    // An edit tells only those it adds, and never the actor.
     run(
         &app,
         "erin",
         &format!(
             r#"mutation {{ updateEquipmentReservation(id: "{id}", expectedVersion: 1,
-                reservedFor: "Crew training") {{ id }} }}"#
+                reservedForMemberIds: ["bob", "erin", "boss"]) {{ id }} }}"#
         ),
     )
     .await;
+    assert_eq!(titles(&app, "boss"), vec!["Equipment reserved for you"]);
+    assert!(inbox(&app, "erin").is_empty());
+    assert_eq!(total(&app), 3);
+
+    // Back to the actor, or to text: nobody.
     run(
         &app,
         "erin",
@@ -321,5 +357,5 @@ async fn reservations_made_or_edited_through_graphql_tell_nobody_today() {
         ),
     )
     .await;
-    assert_eq!(total(&app), 0);
+    assert_eq!(total(&app), 3);
 }

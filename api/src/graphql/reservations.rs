@@ -7,8 +7,8 @@
 //!
 //! Access is [`require_equipment_access`] on the reservation's location throughout:
 //! reservations are part of the Equipment tool, so any member who can use the unit
-//! in Tally. A reservation is for a member (by person ID) or for whoever free text
-//! names.
+//! in Tally. A reservation is for one or more members (by person ID, from any unit,
+//! like an on-call role) or for whoever free text names, never both.
 //!
 //! Overlapping reservations of the same equipment are allowed. They are reported, by
 //! `EquipmentReservation.conflicts` and `Location.equipmentReservationConflicts`, so a
@@ -24,7 +24,8 @@ use super::auth::require_equipment_access;
 use super::dataloader::DatabaseLoader;
 use super::equipment::Equipment;
 use super::error::{ApiError, ErrorCode};
-use super::query::Location;
+use super::on_call::{check_people, load_people};
+use super::query::{Location, Person};
 use crate::app::{App, HasDb};
 use crate::db::{self, Handler};
 use crate::reservations as rules;
@@ -80,32 +81,52 @@ impl<A: App + HasDb + Send + Sync + 'static> EquipmentReservation<A> {
         Ok(rows.into_iter().map(Equipment::new).collect())
     }
 
-    /// Who it is for, to show: `reservedForText` when set, otherwise the member's name.
+    /// Who it is for, to show: `reservedForText` when set, otherwise the members' names,
+    /// by name and comma-separated.
     async fn reserved_for(&self, ctx: &Context<'_>) -> Result<String> {
         if let Some(text) = &self.rec.reserved_for_text {
             return Ok(text.clone());
         }
-        Ok(
-            super::tally::member_name::<A>(ctx, self.rec.reserved_for_person_id.as_deref())
-                .await?
-                .unwrap_or_else(|| "Unknown member".to_string()),
-        )
+        let names: Vec<String> = self
+            .members(ctx)
+            .await?
+            .iter()
+            .map(|p| super::tally::full_name(&p.rec))
+            .filter(|name| !name.is_empty())
+            .collect();
+        Ok(if names.is_empty() {
+            "Unknown member".to_string()
+        } else {
+            names.join(", ")
+        })
     }
 
-    /// The member it is for; null when it is for someone named in `reservedForText`.
-    async fn reserved_for_member_id(&self) -> Option<ID> {
-        self.rec.reserved_for_person_id.clone().map(ID)
+    /// The members it is for, by person ID, deleted ones included; empty when it is for
+    /// someone named in `reservedForText`.
+    async fn reserved_for_member_ids(&self) -> Vec<ID> {
+        self.rec
+            .reserved_for_person_ids
+            .iter()
+            .cloned()
+            .map(ID)
+            .collect()
     }
 
-    /// Free text naming who it is for: someone else, an organisation, or something
-    /// like "Detailing / clean". Null when it is for a member.
+    /// The members it is for, by name. Members deleted since are left out, so this can
+    /// be empty even when `reservedForText` is null.
+    async fn reserved_for_members(&self, ctx: &Context<'_>) -> Result<Vec<Person<A>>> {
+        self.members(ctx).await
+    }
+
+    /// Free text naming who it is for: someone outside the organisation, an
+    /// organisation, or something like "Detailing / clean". Null when it is for members.
     async fn reserved_for_text(&self) -> Option<&str> {
         self.rec.reserved_for_text.as_deref()
     }
 
-    /// Whether it is for the member asking.
+    /// Whether the member asking is one of those it is for.
     async fn reserved_for_viewer(&self, ctx: &Context<'_>) -> bool {
-        caller_id(ctx).is_some_and(|me| self.rec.reserved_for_person_id.as_deref() == Some(me))
+        caller_id(ctx).is_some_and(|me| self.rec.reserved_for_person_ids.iter().any(|p| p == me))
     }
 
     /// Plain text; empty when there is none.
@@ -167,6 +188,21 @@ impl<A: App + HasDb + Send + Sync + 'static> EquipmentReservation<A> {
     /// Name of the member who last changed it.
     async fn updated_by(&self, ctx: &Context<'_>) -> Result<Option<String>> {
         super::tally::member_name::<A>(ctx, self.rec.updated_by.as_deref()).await
+    }
+}
+
+impl<A: App + HasDb + Send + Sync + 'static> EquipmentReservation<A> {
+    /// The live members it is for, by name.
+    async fn members(&self, ctx: &Context<'_>) -> Result<Vec<Person<A>>> {
+        let mut people = load_people(ctx, &self.rec.reserved_for_person_ids).await?;
+        people.sort_by_cached_key(|p| {
+            (
+                p.rec.first_name.to_lowercase(),
+                p.rec.last_name.to_lowercase(),
+                p.rec.id.clone(),
+            )
+        });
+        Ok(people)
     }
 }
 
@@ -310,15 +346,35 @@ async fn check_equipment(
     Ok(())
 }
 
-/// Who a reservation is for, from the `reservedFor` argument: the caller when it is
-/// blank, otherwise the text.
-fn reserved_for<'a>(
-    ctx: &'a Context<'_>,
+/// Who a reservation is for, from the `reservedFor` and `reservedForMemberIds`
+/// arguments: the members when any are given, otherwise the text, otherwise the caller.
+/// Naming both members and text is refused. Members not in `already` (those it is for
+/// before this write, who may stay after they are deleted) must exist and be live.
+async fn reserved_for(
+    ctx: &Context<'_>,
+    db: &impl Handler,
     text: Option<&str>,
-) -> Result<(Option<&'a str>, Option<String>)> {
-    match rules::validate_reserved_for(text.unwrap_or("")).map_err(bad_request)? {
-        Some(text) => Ok((None, Some(text))),
-        None => Ok((caller_id(ctx), None)),
+    member_ids: Option<&[ID]>,
+    already: &[String],
+) -> Result<(Vec<String>, Option<String>)> {
+    let members =
+        rules::validate_reserved_for_members(member_ids.unwrap_or(&[])).map_err(bad_request)?;
+    let text = rules::validate_reserved_for(text.unwrap_or("")).map_err(bad_request)?;
+    match (members.is_empty(), text) {
+        (false, Some(_)) => Err(bad_request(
+            "A reservation is for members or for someone named in text, not both".to_string(),
+        )),
+        (false, None) => {
+            let ids: Vec<&str> = members.iter().map(String::as_str).collect();
+            let already: Vec<&str> = already.iter().map(String::as_str).collect();
+            check_people(db, &ids, &already).await?;
+            Ok((members, None))
+        }
+        (true, Some(text)) => Ok((vec![], Some(text))),
+        (true, None) => Ok((
+            caller_id(ctx).map(str::to_string).into_iter().collect(),
+            None,
+        )),
     }
 }
 
@@ -337,6 +393,7 @@ pub(super) struct CreateReservationArgs {
     pub start_time: i64,
     pub end_time: i64,
     pub reserved_for: Option<String>,
+    pub reserved_for_member_ids: Option<Vec<ID>>,
     pub description: Option<String>,
 }
 
@@ -355,7 +412,14 @@ pub(super) async fn create_reservation<A: App + HasDb + Send + Sync + 'static>(
         Some(crate::clock::now_sec()),
     )
     .map_err(bad_request)?;
-    let (person_id, text) = reserved_for(ctx, args.reserved_for.as_deref())?;
+    let (person_ids, text) = reserved_for(
+        ctx,
+        app.db(),
+        args.reserved_for.as_deref(),
+        args.reserved_for_member_ids.as_deref(),
+        &[],
+    )
+    .await?;
     let description = rules::validate_description(args.description.as_deref().unwrap_or(""))
         .map_err(bad_request)?;
     check_equipment(app.db(), &args.location_id, &equipment_ids, &[]).await?;
@@ -366,15 +430,14 @@ pub(super) async fn create_reservation<A: App + HasDb + Send + Sync + 'static>(
             equipment_ids: &equipment_ids,
             start_time,
             end_time,
-            reserved_for_person_id: person_id,
+            reserved_for_person_ids: &person_ids,
             reserved_for_text: text.as_deref(),
             description: &description,
             created_by: caller_id(ctx),
         })
         .await?;
-    if let Some(person_id) = rules::newly_reserved_for(None, person_id, caller_id(ctx)) {
-        rules::notify_reserved_for(app, &rec, person_id).await;
-    }
+    let told = rules::newly_reserved_for(&[], &rec.reserved_for_person_ids, caller_id(ctx));
+    rules::notify_reserved_for(app, &rec, &told).await;
     Ok(EquipmentReservation::new(rec))
 }
 
@@ -385,6 +448,7 @@ pub(super) struct UpdateReservationArgs {
     pub start_time: Option<i64>,
     pub end_time: Option<i64>,
     pub reserved_for: MaybeUndefined<String>,
+    pub reserved_for_member_ids: Option<Vec<ID>>,
     pub description: Option<String>,
 }
 
@@ -414,19 +478,29 @@ pub(super) async fn update_reservation<A: App + HasDb + Send + Sync + 'static>(
     let (start_time, end_time) =
         rules::validate_times(start, end, times_changed.then(crate::clock::now_sec))
             .map_err(bad_request)?;
-    let (person_id, text) = match &args.reserved_for {
-        MaybeUndefined::Undefined => (
-            rec.reserved_for_person_id.as_deref(),
+    // Who it is for stays as it was unless either argument is given; then the two
+    // decide it together, as on create (`reservedFor: null` reads as blank).
+    let (person_ids, text) = match (&args.reserved_for, &args.reserved_for_member_ids) {
+        (MaybeUndefined::Undefined, None) => (
+            rec.reserved_for_person_ids.clone(),
             rec.reserved_for_text.clone(),
         ),
-        MaybeUndefined::Null => (caller_id(ctx), None),
-        MaybeUndefined::Value(t) => reserved_for(ctx, Some(t))?,
+        (t, members) => {
+            reserved_for(
+                ctx,
+                app.db(),
+                t.value().map(String::as_str),
+                members.as_deref(),
+                &rec.reserved_for_person_ids,
+            )
+            .await?
+        }
     };
     let description = match &args.description {
         Some(d) => rules::validate_description(d).map_err(bad_request)?,
         None => rec.description.clone(),
     };
-    let previous = rec.reserved_for_person_id.clone();
+    let previous = rec.reserved_for_person_ids.clone();
     let rec = app
         .db()
         .update_equipment_reservation(
@@ -435,7 +509,7 @@ pub(super) async fn update_reservation<A: App + HasDb + Send + Sync + 'static>(
                 equipment_ids: &equipment_ids,
                 start_time,
                 end_time,
-                reserved_for_person_id: person_id,
+                reserved_for_person_ids: &person_ids,
                 reserved_for_text: text.as_deref(),
                 description: &description,
                 by: caller_id(ctx),
@@ -447,11 +521,8 @@ pub(super) async fn update_reservation<A: App + HasDb + Send + Sync + 'static>(
             db::Error::NotFound(_) => conflict(),
             e => e.into(),
         })?;
-    if let Some(person_id) =
-        rules::newly_reserved_for(previous.as_deref(), person_id, caller_id(ctx))
-    {
-        rules::notify_reserved_for(app, &rec, person_id).await;
-    }
+    let told = rules::newly_reserved_for(&previous, &rec.reserved_for_person_ids, caller_id(ctx));
+    rules::notify_reserved_for(app, &rec, &told).await;
     Ok(EquipmentReservation::new(rec))
 }
 

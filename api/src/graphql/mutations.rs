@@ -2690,8 +2690,10 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
     }
 
     /// Reserve one or more pieces of a location's equipment from `startTime` to
-    /// `endTime` (Unix seconds; the end must be in the future). It is for the caller
-    /// unless `reservedFor` names someone or something else. Overlapping another
+    /// `endTime` (Unix seconds; the end must be in the future). It is for the members in
+    /// `reservedForMemberIds` (any unit's, the caller among them or not), or for whoever
+    /// `reservedFor` names, such as someone outside the organisation; with neither, the
+    /// caller. Members and text together are refused. Overlapping another
     /// reservation is allowed: read `conflicts` on the result to warn about it. Any member
     /// who can use the unit in Tally may.
     #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
@@ -2703,6 +2705,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         start_time: i64,
         end_time: i64,
         reserved_for: Option<String>,
+        reserved_for_member_ids: Option<Vec<ID>>,
         description: Option<String>,
     ) -> Result<EquipmentReservation<A>> {
         reservations::create_reservation(
@@ -2714,15 +2717,17 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
                 start_time,
                 end_time,
                 reserved_for,
+                reserved_for_member_ids,
                 description,
             },
         )
         .await
     }
 
-    /// Change a reservation; omitted arguments are left as they are. `reservedFor`
-    /// null or blank makes it for the caller. A changed time range must end in the
-    /// future. Fails with `CONFLICT` if it is no longer at `expectedVersion`.
+    /// Change a reservation; omitted arguments are left as they are. Who it is for
+    /// changes when `reservedFor` or `reservedForMemberIds` is given, decided by the two
+    /// as on create, so `reservedFor: null` or blank with no members makes it the
+    /// caller's. A changed time range must end in the future. Fails with `CONFLICT` if it is no longer at `expectedVersion`.
     #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn update_equipment_reservation(
         &self,
@@ -2733,6 +2738,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         start_time: Option<i64>,
         end_time: Option<i64>,
         reserved_for: MaybeUndefined<String>,
+        reserved_for_member_ids: Option<Vec<ID>>,
         description: Option<String>,
     ) -> Result<EquipmentReservation<A>> {
         reservations::update_reservation(
@@ -2745,6 +2751,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
                 start_time,
                 end_time,
                 reserved_for,
+                reserved_for_member_ids,
                 description,
             },
         )

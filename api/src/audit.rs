@@ -1332,8 +1332,8 @@ fn equipment_reservation_fields(r: &db::EquipmentReservation) -> Fields {
         .with("start_time", Some(json!(r.start_time)))
         .with("end_time", Some(json!(r.end_time)))
         .with(
-            "reserved_for_person_id",
-            opt_text(r.reserved_for_person_id.as_deref()),
+            "reserved_for_person_ids",
+            string_set(&r.reserved_for_person_ids),
         )
         .with(
             "reserved_for_text",

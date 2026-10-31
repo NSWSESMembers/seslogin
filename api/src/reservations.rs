@@ -4,8 +4,8 @@
 //! `graphql::reservations` for the API.
 //!
 //! A reservation books one or more pieces of a location's equipment for a time range,
-//! for the user who made it or for whoever a line of free text names (someone else, an
-//! organisation, "detailing/clean"). Reservations may overlap: an overlap is reported
+//! for one or more members (by default the member who made it) or for whoever a line of
+//! free text names (someone outside the organisation, an organisation, "detailing/clean"). Reservations may overlap: an overlap is reported
 //! as a warning, never refused, because the people at the unit sort it out between
 //! themselves.
 
@@ -15,6 +15,7 @@ use crate::notifications::{Audience, NewNotification, notify};
 
 pub const MAX_EQUIPMENT: usize = 20;
 pub const MAX_RESERVED_FOR_CHARS: usize = 200;
+pub const MAX_RESERVED_FOR_MEMBERS: usize = 20;
 pub const MAX_DESCRIPTION_CHARS: usize = 5_000;
 /// The longest a reservation may last: a year and a day.
 pub const MAX_DURATION_SECS: u64 = 366 * 24 * 60 * 60;
@@ -40,26 +41,49 @@ pub fn validate_equipment_ids<T: AsRef<str>>(ids: &[T]) -> Result<Vec<String>, S
     Ok(out)
 }
 
-/// Who, if anyone, a reservation's save should tell it is for them: `new` (the member it
-/// is now for) when that is a different member from `previous` and is not `actor`. A
-/// reservation you make for yourself, or an edit that leaves who it is for alone, tells
-/// nobody.
-pub fn newly_reserved_for<'a>(
-    previous: Option<&str>,
-    new: Option<&'a str>,
-    actor: Option<&str>,
-) -> Option<&'a str> {
-    new.filter(|u| previous != Some(*u) && actor != Some(*u))
+/// The members a reservation is for, by person ID: at most [`MAX_RESERVED_FOR_MEMBERS`],
+/// with repeats dropped and the order otherwise kept. Empty means nobody was chosen.
+pub fn validate_reserved_for_members<T: AsRef<str>>(ids: &[T]) -> Result<Vec<String>, String> {
+    let mut out: Vec<String> = Vec::new();
+    for id in ids {
+        let id = id.as_ref();
+        if !out.iter().any(|o| o == id) {
+            out.push(id.to_string());
+        }
+    }
+    if out.len() > MAX_RESERVED_FOR_MEMBERS {
+        return Err(format!(
+            "A reservation can be for at most {MAX_RESERVED_FOR_MEMBERS} members"
+        ));
+    }
+    Ok(out)
 }
 
-/// Tell member `person_id` a reservation of `rec`'s equipment was made for them.
+/// Who a reservation's save should tell it is for them: the members in `new` who were
+/// not in `previous` and are not `actor`. A reservation you make for yourself, or an
+/// edit that leaves who it is for alone, tells nobody.
+pub fn newly_reserved_for<'a>(
+    previous: &[String],
+    new: &'a [String],
+    actor: Option<&str>,
+) -> Vec<&'a str> {
+    new.iter()
+        .map(String::as_str)
+        .filter(|u| !previous.iter().any(|p| p == u) && actor != Some(*u))
+        .collect()
+}
+
+/// Tell members `person_ids` a reservation of `rec`'s equipment was made for them.
 /// Best-effort, like every notification: equipment names that can't be read fall back
 /// to a generic word.
 pub async fn notify_reserved_for(
     app: &(impl HasDb + Sync),
     rec: &db::EquipmentReservation,
-    person_id: &str,
+    person_ids: &[&str],
 ) {
+    if person_ids.is_empty() {
+        return;
+    }
     let mut names: Vec<String> = match app.db().get_equipment(&rec.equipment_ids).await {
         Ok(rows) => rows.into_iter().flatten().map(|e| e.name).collect(),
         Err(_) => Vec::new(),
@@ -81,7 +105,7 @@ pub async fn notify_reserved_for(
         .location(&rec.location_id)
         .body(&body)
         .target("reservation", &rec.id),
-        Audience::Members(vec![person_id.to_string()]),
+        Audience::Members(person_ids.iter().map(|p| p.to_string()).collect()),
     )
     .await;
 }
@@ -136,8 +160,7 @@ pub fn validate_times(
     Ok((start, end))
 }
 
-/// Who the reservation is for, as free text: one trimmed line, or `None` when blank,
-/// meaning the user who made it.
+/// Who the reservation is for, as free text: one trimmed line, or `None` when blank.
 pub fn validate_reserved_for(text: &str) -> Result<Option<String>, String> {
     let text = text.trim();
     if text.is_empty() {
@@ -187,12 +210,38 @@ pub fn clashes<A: AsRef<str>, B: AsRef<str>>(
 #[cfg(test)]
 mod tests {
     #[test]
-    fn only_a_new_user_other_than_the_actor_is_told() {
-        assert_eq!(newly_reserved_for(None, Some("a"), Some("b")), Some("a"));
-        assert_eq!(newly_reserved_for(Some("c"), Some("a"), None), Some("a"));
-        assert_eq!(newly_reserved_for(Some("a"), Some("a"), Some("b")), None);
-        assert_eq!(newly_reserved_for(None, Some("a"), Some("a")), None);
-        assert_eq!(newly_reserved_for(Some("a"), None, Some("b")), None);
+    fn only_new_members_other_than_the_actor_are_told() {
+        let ids = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert_eq!(newly_reserved_for(&[], &ids(&["a"]), Some("b")), vec!["a"]);
+        assert_eq!(
+            newly_reserved_for(&ids(&["c"]), &ids(&["a"]), None),
+            vec!["a"]
+        );
+        assert!(newly_reserved_for(&ids(&["a"]), &ids(&["a"]), Some("b")).is_empty());
+        assert!(newly_reserved_for(&[], &ids(&["a"]), Some("a")).is_empty());
+        assert!(newly_reserved_for(&ids(&["a"]), &[], Some("b")).is_empty());
+        assert_eq!(
+            newly_reserved_for(&ids(&["a"]), &ids(&["a", "b", "me", "c"]), Some("me")),
+            vec!["b", "c"]
+        );
+    }
+
+    #[test]
+    fn members_are_deduplicated_in_order_and_bounded() {
+        assert_eq!(
+            validate_reserved_for_members(&["b", "a", "b"]).unwrap(),
+            vec!["b", "a"]
+        );
+        assert!(
+            validate_reserved_for_members::<&str>(&[])
+                .unwrap()
+                .is_empty()
+        );
+        let many: Vec<String> = (0..=MAX_RESERVED_FOR_MEMBERS)
+            .map(|i| i.to_string())
+            .collect();
+        assert!(validate_reserved_for_members(&many[..MAX_RESERVED_FOR_MEMBERS]).is_ok());
+        assert!(validate_reserved_for_members(&many).is_err());
     }
 
     #[test]
