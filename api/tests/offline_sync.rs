@@ -449,7 +449,7 @@ async fn units_come_with_a_full_sync_and_again_only_when_they_change() {
             code: Some("HOR".to_string()),
             latitude: Some(-33.7),
             longitude: Some(151.1),
-            ..Default::default()
+            zone_location_id: Some("loc-a".to_string()),
         };
         hornsby.directory_details = db::LocationDirectoryDetails {
             entity_id: Some("ent-h".to_string()),
@@ -491,6 +491,7 @@ async fn units_come_with_a_full_sync_and_again_only_when_they_change() {
             "id": "loc-h",
             "name": "Hornsby Unit",
             "code": "HOR",
+            "zoneId": "loc-a",
             "address": {
                 "line1": "1 Example Street", "suburb": "Hornsby", "state": "NSW",
                 "postcode": "2077", "formatted": "1 Example Street, Hornsby NSW 2077",
