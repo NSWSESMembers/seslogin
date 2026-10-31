@@ -42,6 +42,7 @@ locals {
     aws_dynamodb_table.prod_map_pin,
     aws_dynamodb_table.prod_map_layer,
     aws_dynamodb_table.prod_on_call_role,
+    aws_dynamodb_table.prod_shared_contact,
     aws_dynamodb_table.prod_equipment,
     aws_dynamodb_table.prod_equipment_log,
     aws_dynamodb_table.prod_equipment_reservation,

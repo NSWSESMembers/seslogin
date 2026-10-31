@@ -891,6 +891,42 @@ mutation {
 }
 ```
 
+## Shared contacts
+
+Contacts added by hand to the Tally app's Contacts, beside the synced member directory: a
+location's own (its Duty Officer phone, a shed landline, …) or statewide ones (the SOC, the EAP,
+peer support, …) (`src/graphql/shared_contacts.rs`, rules in `src/shared_contact.rs`, storage in
+SCHEMA.md's `shared_contact` section).
+
+- **Who:** a location's contacts are like its other shared tools: any member signed in to Tally
+  who can use the unit may read, add, change and delete them — see "Tally (members)" above.
+  Statewide contacts can be read by every member signed in to Tally, but only added, changed or
+  deleted when the user signed in alongside them is a super user (`FORBIDDEN` otherwise).
+  `SharedContact.viewerCanEdit` says which. Users on their own, kiosk sessions, API tokens and
+  edit links are refused.
+- **Reading:** `TallyLocation.sharedContacts` lists a location's contacts by name;
+  `Query.stateContacts` lists the statewide ones by name; `Query.sharedContact(id)` reads one.
+  `statewide` and `locationId` (null for statewide) say which list a contact is on.
+- **Fields:** `name` is one trimmed line (max 100 characters). `description` is plain text kept
+  as written (max 2,000; only-whitespace counts as empty). `phone` is optional, with the same
+  rule as an on-call role's (digits, spaces, `()-` and a leading `+`, 3–15 digits, kept as
+  written). `phoneCanSms` says whether the phone takes text messages, and is always false
+  without a phone. `email` is optional, trimmed, and only checked for a basic `name@domain.tld`
+  shape (max 254).
+- **Writes:** `createSharedContact` (with `locationId` for a location's contact, without it for
+  a statewide one), `updateSharedContact` (omitted arguments unchanged, `phone: null` and
+  `email: null` remove them, and removing the phone turns `phoneCanSms` off), and
+  `deleteSharedContact`. A contact never moves between a location and statewide.
+- **Concurrency:** `updateSharedContact` takes `expectedVersion`; if someone else saved the
+  contact since it was read, the save fails with `CONFLICT`.
+
+```graphql
+mutation {
+  createSharedContact(locationId: "TestAUnit001", name: "Duty Officer",
+                      phone: "0400 000 000", phoneCanSms: true) { id version }
+}
+```
+
 ## Locate
 
 Members sharing their phone's position with a location's members, for the Tally app's Locate

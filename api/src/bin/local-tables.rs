@@ -395,6 +395,14 @@ const TABLES: &[Table] = &[
         ttl: None,
     },
     Table {
+        name: "shared_contact",
+        hash: "id",
+        range: None,
+        attrs: &[Attr("id", S), Attr("scope", S)],
+        gsis: &[all("scope-index", "scope", None)],
+        ttl: None,
+    },
+    Table {
         name: "equipment",
         hash: "id",
         range: None,
