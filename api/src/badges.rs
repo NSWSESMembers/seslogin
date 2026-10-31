@@ -1024,7 +1024,7 @@ const BADGE_DEFINITIONS: &[BadgeDefinition] = &[
         id: "four-week-rhythm",
         name: "Four-Week Rhythm",
         description: "4-week sign-in streak completed.",
-        tier: "gold",
+        tier: "starter",
         rule: BadgeRule::Manual,
     },
     BadgeDefinition {
@@ -1045,7 +1045,7 @@ const BADGE_DEFINITIONS: &[BadgeDefinition] = &[
         id: "habit-twelve-for-twelve",
         name: "Twelve for Twelve",
         description: "Signed in during every month of a calendar year.",
-        tier: "silver",
+        tier: "bronze",
         rule: BadgeRule::Manual,
     },
     BadgeDefinition {
@@ -1148,7 +1148,7 @@ const BADGE_DEFINITIONS: &[BadgeDefinition] = &[
         id: "combat-roles-storm-storm-trooper-streak",
         name: "Storm Trooper",
         description: "4-day Storm sign-out streak completed.",
-        tier: "gold",
+        tier: "silver",
         rule: BadgeRule::CategorySignOutConsecutiveDays {
             category_id: "Xu7e3YQO2L91",
             days: 4,
@@ -2039,7 +2039,7 @@ const BADGE_DEFINITIONS: &[BadgeDefinition] = &[
         id: "easter-habit-formed",
         name: "Habit Formed",
         description: "12-week sign-in streak completed.",
-        tier: "wildcard",
+        tier: "bronze",
         rule: BadgeRule::Manual,
     },
     BadgeDefinition {
@@ -4761,5 +4761,20 @@ mod tests {
             .unwrap();
         assert_eq!(xmas.current, None);
         assert_eq!(xmas.target, None);
+    }
+
+    #[test]
+    fn weekly_sign_in_streak_badges_climb_one_tier_per_rung() {
+        // 4, 12, 26 and 52 weeks, in the order badge_nightly checks them.
+        let tiers: Vec<&str> = [
+            "four-week-rhythm",
+            "easter-habit-formed",
+            "habit-half-year",
+            "habit-year-round",
+        ]
+        .into_iter()
+        .map(|id| badge_definition_by_id(id).unwrap().tier)
+        .collect();
+        assert_eq!(tiers, ["starter", "bronze", "silver", "gold"]);
     }
 }

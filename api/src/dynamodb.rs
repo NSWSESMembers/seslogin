@@ -1082,7 +1082,18 @@ impl TryInto<db::EquipmentReservation> for Item {
                 .i64_field("end_time")?
                 .ok_or_else(|| anyhow!("EquipmentReservation missing end_time"))?
                 as u64,
-            reserved_for_person_id: self.string_field("reserved_for_person_id")?,
+            // Reservations made before they could be for several members hold one
+            // person ID in `reserved_for_person_id`; the next edit moves it to the set.
+            reserved_for_person_ids: {
+                let ids = self.string_set_field("reserved_for_person_ids")?;
+                if ids.is_empty() {
+                    self.string_field("reserved_for_person_id")?
+                        .into_iter()
+                        .collect()
+                } else {
+                    ids
+                }
+            },
             reserved_for_text: self.string_field("reserved_for_text")?,
             description: self.string_field("description")?.unwrap_or_default(),
             created_by: self.string_field("created_by")?,
@@ -8028,10 +8039,10 @@ impl db::Handler for Handler {
             .item("updated_at", AttributeValue::N(now.to_string()))
             .condition_expression("attribute_not_exists(id)")
             .return_consumed_capacity(ReturnConsumedCapacity::Total);
-        if let Some(person_id) = r.reserved_for_person_id {
+        if !r.reserved_for_person_ids.is_empty() {
             put = put.item(
-                "reserved_for_person_id",
-                AttributeValue::S(person_id.to_string()),
+                "reserved_for_person_ids",
+                AttributeValue::Ss(r.reserved_for_person_ids.to_vec()),
             );
         }
         if let Some(text) = r.reserved_for_text {
@@ -8059,7 +8070,7 @@ impl db::Handler for Handler {
             equipment_ids: r.equipment_ids.to_vec(),
             start_time: r.start_time,
             end_time: r.end_time,
-            reserved_for_person_id: r.reserved_for_person_id.map(str::to_string),
+            reserved_for_person_ids: r.reserved_for_person_ids.to_vec(),
             reserved_for_text: r.reserved_for_text.map(str::to_string),
             description: r.description.to_string(),
             created_by: r.created_by.map(str::to_string),
@@ -8088,7 +8099,7 @@ impl db::Handler for Handler {
                 equipment_ids,
                 start_time,
                 end_time,
-                reserved_for_person_id,
+                reserved_for_person_ids,
                 reserved_for_text,
                 description,
                 by,
@@ -8103,9 +8114,12 @@ impl db::Handler for Handler {
                 update.set("start_time", AttributeValue::N(start_time.to_string()));
                 update.set("end_time", AttributeValue::N(end_time.to_string()));
                 update.set_or_remove(
-                    "reserved_for_person_id",
-                    reserved_for_person_id.map(|u| AttributeValue::S(u.to_string())),
+                    "reserved_for_person_ids",
+                    (!reserved_for_person_ids.is_empty())
+                        .then(|| AttributeValue::Ss(reserved_for_person_ids.to_vec())),
                 );
+                // The single-member attribute older reservations have; see hydration.
+                update.remove("reserved_for_person_id");
                 update.set_or_remove(
                     "reserved_for_text",
                     reserved_for_text.map(|t| AttributeValue::S(t.to_string())),

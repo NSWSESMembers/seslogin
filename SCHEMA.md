@@ -579,7 +579,8 @@ Bookings of a location's equipment for a time range ("Reservations"). Overlaps a
 
 - `equipment_ids` (SS) — the equipment reserved, at least one; may name equipment deleted since
 - `start_time` (N) — Unix seconds; `end_time` is after it, by at most 366 days
-- `reserved_for_person_id` (S, optional) — person ID of the member it is for; absent when `reserved_for_text` is set
+- `reserved_for_person_ids` (SS, optional) — person IDs of the members it is for; absent when `reserved_for_text` is set
+- `reserved_for_person_id` (S, optional) — legacy: the one member a reservation made before `reserved_for_person_ids` is for, read when that set is absent and removed by the next edit
 - `reserved_for_text` (S, optional) — one line naming who or what it is for instead of a member
 - `description` (S, optional) — plain text; absent when empty
 - `v` (N) — version, bumped by every write; edits are conditional on it

@@ -39,7 +39,7 @@ impl<A: App + HasDb + Send + Sync + 'static> OnCallRole<A> {
 }
 
 /// The people with these IDs who still exist, in the order given.
-async fn load_people<A: App + HasDb + Send + Sync + 'static>(
+pub(super) async fn load_people<A: App + HasDb + Send + Sync + 'static>(
     ctx: &Context<'_>,
     ids: &[String],
 ) -> Result<Vec<Person<A>>> {
@@ -200,7 +200,7 @@ async fn load_role(ctx: &Context<'_>, db: &impl Handler, id: &str) -> Result<db:
 /// Check that everyone being put in a role exists and has not been deleted. `already`
 /// are the people in it before this write: they may stay even if they have since been
 /// deleted, so a role can still be edited after its primary leaves.
-async fn check_people(db: &impl Handler, ids: &[&str], already: &[&str]) -> Result<()> {
+pub(super) async fn check_people(db: &impl Handler, ids: &[&str], already: &[&str]) -> Result<()> {
     let new: Vec<&str> = ids
         .iter()
         .copied()

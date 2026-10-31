@@ -1006,9 +1006,9 @@ pub struct NewEquipmentLogEntry<'a> {
 /// ("Reservations"). See SCHEMA.md's `equipment_reservation` section and
 /// [`crate::reservations`] for the rules.
 ///
-/// It is for `reserved_for_person_id` (the user who made it, unless changed) or, when
-/// `reserved_for_text` is set, for whoever that names. Overlapping reservations are
-/// allowed; the API reports them as a warning.
+/// It is for the members in `reserved_for_person_ids` (the member who made it, unless
+/// changed) or, when `reserved_for_text` is set, for whoever that names; never both.
+/// Overlapping reservations are allowed; the API reports them as a warning.
 #[derive(Clone, Debug, PartialEq)]
 pub struct EquipmentReservation {
     pub id: String,
@@ -1017,7 +1017,9 @@ pub struct EquipmentReservation {
     pub equipment_ids: Vec<String>,
     pub start_time: u64,
     pub end_time: u64,
-    pub reserved_for_person_id: Option<String>,
+    /// Person IDs, with no repeats; empty when `reserved_for_text` is set. Stored as a
+    /// set, so in no particular order.
+    pub reserved_for_person_ids: Vec<String>,
     pub reserved_for_text: Option<String>,
     pub description: String,
     pub created_by: Option<String>,
@@ -1041,7 +1043,7 @@ pub struct NewEquipmentReservation<'a> {
     pub equipment_ids: &'a [String],
     pub start_time: u64,
     pub end_time: u64,
-    pub reserved_for_person_id: Option<&'a str>,
+    pub reserved_for_person_ids: &'a [String],
     pub reserved_for_text: Option<&'a str>,
     pub description: &'a str,
     pub created_by: Option<&'a str>,
@@ -1052,13 +1054,13 @@ pub struct NewEquipmentReservation<'a> {
 /// returns the reservation as it is after the write.
 #[derive(Clone, Debug, PartialEq)]
 pub enum EquipmentReservationUpdateShape<'a> {
-    /// Replace the editable fields. An absent `reserved_for_*` or empty description is
-    /// removed.
+    /// Replace the editable fields. Empty `reserved_for_person_ids`, an absent
+    /// `reserved_for_text` or an empty description is removed.
     Fields {
         equipment_ids: &'a [String],
         start_time: u64,
         end_time: u64,
-        reserved_for_person_id: Option<&'a str>,
+        reserved_for_person_ids: &'a [String],
         reserved_for_text: Option<&'a str>,
         description: &'a str,
         by: Option<&'a str>,

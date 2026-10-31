@@ -102,3 +102,52 @@ async fn service_badges_count_from_a_first_sign_in_outside_the_window() {
     assert!(state.contains("service-five-seasons"), "{state}");
     assert!(!state.contains("service-decade-of-duty"), "{state}");
 }
+
+#[tokio::test]
+async fn backfill_moves_a_run_time_award_back_to_the_sign_in_that_earned_it() {
+    let app = fake_app();
+    seed_location(&app, "loc-a", "Unit A");
+    seed_person(&app, "alice", "loc-a", "Alice", "Anderson", "1001", None);
+    let now = seslogin::clock::now_sec();
+    let starts: Vec<u64> = (0..4).map(|week| now - 60 * DAY + week * 7 * DAY).collect();
+    for (week, start) in starts.iter().enumerate() {
+        seed_period(&app, period(&format!("alice-{week}"), "alice", *start));
+    }
+    // Awarded by a run long after the fourth week, and stamped with the run's time;
+    // the Lights On award has nothing in the periods to date it by.
+    let mut state = seslogin::badges::BadgeState::default();
+    seslogin::badges::award_if_missing(&mut state, "loc-a", "four-week-rhythm", now - DAY);
+    seslogin::badges::award_if_missing(&mut state, "loc-a", "easter-lights-on", now - DAY);
+    app.db
+        .persons
+        .lock()
+        .unwrap()
+        .get_mut("alice")
+        .unwrap()
+        .badge_state = seslogin::badges::write_state(&state);
+
+    let times = |db: &common::FakeDb| {
+        let stored = db.persons.lock().unwrap()["alice"].badge_state.clone();
+        seslogin::badges::read_state("alice", stored.as_deref())
+            .unwrap()
+            .locations["loc-a"]
+            .awarded_badge_times
+            .clone()
+    };
+    badge_nightly::backfill_earned_times(&app.db, badge_nightly::BackfillArgs { dry_run: true })
+        .await
+        .unwrap();
+    assert_eq!(times(&app.db)["four-week-rhythm"], now - DAY);
+
+    for _ in 0..2 {
+        badge_nightly::backfill_earned_times(
+            &app.db,
+            badge_nightly::BackfillArgs { dry_run: false },
+        )
+        .await
+        .unwrap();
+        let times = times(&app.db);
+        assert_eq!(times["four-week-rhythm"], starts[3]);
+        assert_eq!(times["easter-lights-on"], now - DAY);
+    }
+}
