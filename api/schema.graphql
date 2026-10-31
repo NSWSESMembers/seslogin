@@ -124,6 +124,7 @@ enum AuditEntityType {
 	EQUIPMENT_LOG_ENTRY
 	EQUIPMENT_RESERVATION
 	ON_CALL_ROLE
+	SHARED_CONTACT
 	MAP_PIN
 	MAP_LAYER
 	CALENDAR
@@ -1341,6 +1342,23 @@ type MutationRoot {
 	Delete an on-call role. Returns its ID.
 	"""
 	deleteOnCallRole(id: ID!): ID!
+	"""
+	Add a contact by hand: to a location's contacts (its Duty Officer phone, …), or,
+	without `locationId`, to the statewide ones (the SOC, the EAP, …). Any member who
+	can use the unit in Tally may add a unit's; only super users a statewide one.
+	`phoneCanSms` is ignored without a phone.
+	"""
+	createSharedContact(locationId: ID, name: String!, description: String, phone: String, phoneCanSms: Boolean, email: String): SharedContact!
+	"""
+	Change a shared contact. Omitted arguments are left as they are; `phone: null`
+	and `email: null` remove them, and removing the phone turns `phoneCanSms` off.
+	Fails with `CONFLICT` if the contact is no longer at `expectedVersion`.
+	"""
+	updateSharedContact(id: ID!, expectedVersion: Int!, name: String, description: String, phone: String, phoneCanSms: Boolean, email: String): SharedContact!
+	"""
+	Delete a shared contact. Returns its ID.
+	"""
+	deleteSharedContact(id: ID!): ID!
 	deleteSession(id: ID!): Boolean!
 	"""
 	Bring back a QR-enrolled kiosk that expired after two weeks offline, without
@@ -2136,6 +2154,17 @@ type QueryRoot {
 	One on-call role; null if it does not exist or was deleted.
 	"""
 	onCallRole(id: ID!): OnCallRole
+	"""
+	The statewide contacts added by hand (the SOC, the EAP, peer support, …), by name.
+	Every member signed in to Tally may read them; only super users change them. A
+	unit's own are `TallyLocation.sharedContacts`.
+	"""
+	stateContacts: [SharedContact!]!
+	"""
+	One shared contact, a unit's or statewide; null if it does not exist or was
+	deleted.
+	"""
+	sharedContact(id: ID!): SharedContact
 	session(
 		"""
 		ID for the session to look up
@@ -2468,6 +2497,58 @@ type SessionClientInfo {
 	updatedAt: Int
 }
 
+type SharedContact {
+	id: ID!
+	"""
+	One line, e.g. "Duty Officer" or "Peer Support".
+	"""
+	name: String!
+	"""
+	What the contact is for, or when to use it, plain text; empty when there is none.
+	"""
+	description: String!
+	"""
+	Null when there is none. Kept as written.
+	"""
+	phone: String
+	"""
+	Whether `phone` takes text messages. Always false without a phone.
+	"""
+	phoneCanSms: Boolean!
+	"""
+	Null when there is none.
+	"""
+	email: String
+	"""
+	Whether this is a statewide contact rather than one location's.
+	"""
+	statewide: Boolean!
+	"""
+	The location the contact belongs to; null for a statewide one.
+	"""
+	locationId: ID
+	location: Location
+	"""
+	Whether the caller may change or delete the contact: always for a location's,
+	only for super users for a statewide one.
+	"""
+	viewerCanEdit: Boolean!
+	"""
+	Bumped by every change; pass it back to `updateSharedContact`.
+	"""
+	version: Int!
+	createdAt: Int!
+	"""
+	Name of the member who added the contact.
+	"""
+	createdBy: String
+	updatedAt: Int!
+	"""
+	Name of the member who last changed the contact.
+	"""
+	updatedBy: String
+}
+
 """
 `submitFeedback`'s result: the Toolbox ticket the feedback became.
 """
@@ -2574,6 +2655,11 @@ type TallyLocation {
 	`graphql::on_call`.
 	"""
 	onCallRoles: [OnCallRole!]!
+	"""
+	The contacts added by hand to the unit (its Duty Officer phone, …), by name. The
+	statewide ones are `Query.stateContacts`. See `graphql::shared_contacts`.
+	"""
+	sharedContacts: [SharedContact!]!
 }
 
 """

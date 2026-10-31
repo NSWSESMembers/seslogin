@@ -42,6 +42,7 @@ use super::on_call::{self, OnCallRole};
 use super::reservations::{self, EquipmentReservation};
 use super::self_sign_in::{self, SelfSignInStatus};
 use super::ses_details;
+use super::shared_contacts::{self, SharedContact};
 use super::tally;
 use super::tasks::{self, Task};
 use super::wifi::{self, WifiNetworks};
@@ -4251,6 +4252,21 @@ impl<A: App + HasDb + HasRealtime + Send + Sync + 'static> QueryRoot<A> {
     #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn on_call_role(&self, ctx: &Context<'_>, id: ID) -> Result<Option<OnCallRole<A>>> {
         on_call::on_call_role(ctx, &id).await
+    }
+
+    /// The statewide contacts added by hand (the SOC, the EAP, peer support, …), by name.
+    /// Every member signed in to Tally may read them; only super users change them. A
+    /// unit's own are `TallyLocation.sharedContacts`.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn state_contacts(&self, ctx: &Context<'_>) -> Result<Vec<SharedContact<A>>> {
+        shared_contacts::state_contacts(ctx).await
+    }
+
+    /// One shared contact, a unit's or statewide; null if it does not exist or was
+    /// deleted.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn shared_contact(&self, ctx: &Context<'_>, id: ID) -> Result<Option<SharedContact<A>>> {
+        shared_contacts::shared_contact(ctx, &id).await
     }
 
     #[graphql(guard = "AuthGuard::new(AuthRequirement::Authenticated)")]

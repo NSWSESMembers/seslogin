@@ -901,6 +901,41 @@ resource "aws_dynamodb_table" "prod_on_call_role" {
   }
 }
 
+# Shared contacts: phone numbers and emails added by hand, either a location's (its Duty
+# Officer phone, …) or statewide (SOC, EAP, peer support). `scope` is the location ID,
+# or "state" for statewide ones, so each list is one query; deleted ones are filtered
+# out on read.
+resource "aws_dynamodb_table" "prod_shared_contact" {
+  name         = "${var.db_prefix}_shared_contact"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "id"
+
+  deletion_protection_enabled = true
+
+  point_in_time_recovery {
+    enabled                 = true
+    recovery_period_in_days = 35
+  }
+
+  attribute {
+    name = "id"
+    type = "S"
+  }
+  attribute {
+    name = "scope"
+    type = "S"
+  }
+
+  global_secondary_index {
+    name = "scope-index"
+    key_schema {
+      attribute_name = "scope"
+      key_type       = "HASH"
+    }
+    projection_type = "ALL"
+  }
+}
+
 # Equipment: a location's equipment register, listed per location; deleted ones are
 # filtered out on read.
 resource "aws_dynamodb_table" "prod_equipment" {
