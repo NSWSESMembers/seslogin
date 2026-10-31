@@ -1,5 +1,5 @@
 //! Coverage for the SES details exposed on `Person` (contact details, qualifications,
-//! unit assignments) and `Location` (code, coordinates, addresses, accreditations).
+//! unit assignments) and `Location` (code, zone, coordinates, addresses, accreditations).
 //!
 //! These are personal and unit contact details, so they need access to the person's
 //! *home* location and are never served to a kiosk — unlike `Person`'s identity fields,
@@ -57,6 +57,7 @@ fn app() -> Arc<TestApp> {
     let app = fake_app();
     seed_location(&app, "loc-a", "Unit A");
     seed_location(&app, "loc-b", "Unit B");
+    seed_location(&app, "loc-z", "Zone Z");
     seed_person(&app, "bob", "loc-a", "Bob", "Brown", "10000002", Some("9"));
     {
         let mut persons = app.db.persons.lock().unwrap();
@@ -102,7 +103,7 @@ fn app() -> Arc<TestApp> {
             code: Some("TST-A".into()),
             latitude: Some(-33.5),
             longitude: Some(151.25),
-            ..Default::default()
+            zone_location_id: Some("loc-z".into()),
         };
         a.directory_details = db::LocationDirectoryDetails {
             entity_id: Some("70001".into()),
@@ -153,6 +154,7 @@ const PERSON: &str = r#"{ person(id: "bob") {
 
 const LOCATION: &str = r#"{ location(id: "loc-a") {
     code latitude longitude sesDirectoryEntityId
+    zone { id name }
     address { formatted line1 } postalAddress { formatted }
     email phone
     accreditations { type status number note }
@@ -264,6 +266,9 @@ async fn read_only_user_reads_the_location_details() {
     assert_eq!(l["latitude"], -33.5);
     assert_eq!(l["longitude"], 151.25);
     assert_eq!(l["sesDirectoryEntityId"], "70001");
+    // The zone's name, though the caller has no access to the zone itself.
+    assert_eq!(l["zone"]["id"], "loc-z");
+    assert_eq!(l["zone"]["name"], "Zone Z");
     assert_eq!(
         l["address"]["formatted"],
         "1 Example Street, Exampleville NSW 2000"
