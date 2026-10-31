@@ -449,6 +449,7 @@ async fn units_come_with_a_full_sync_and_again_only_when_they_change() {
             code: Some("HOR".to_string()),
             latitude: Some(-33.7),
             longitude: Some(151.1),
+            ..Default::default()
         };
         hornsby.directory_details = db::LocationDirectoryDetails {
             entity_id: Some("ent-h".to_string()),
