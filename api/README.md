@@ -511,8 +511,8 @@ mutation {
 
 `GET /api/v1/sync?cursor=<opaque>&limit=<n>` is the Tally app's offline sync
 (`src/offline_sync.rs`): one cursor-based change feed for the data the app keeps on the
-device, so there is a single sync to maintain: the member directory (`contacts`) and
-the unit directory (`units`). Contacts are every member, statewide, with only these
+device, so there is a single sync to maintain: the member directory (`contacts`), the
+unit directory (`units`) and the caller's shared contacts (`sharedContacts`). Contacts are every member, statewide, with only these
 fields:
 
 ```json
@@ -540,6 +540,11 @@ fields:
       "accreditations": [{ "type": "Flood Rescue", "status": "Accredited", "number": "…",
                            "note": "…" }] }
   ],
+  "sharedContacts": [
+    { "id": "…", "locationId": "…", "name": "Duty Officer phone", "description": "…",
+      "phone": "0400 000 000", "phoneCanSms": true, "email": "…", "updatedAt": 1783655893 },
+    { "id": "…", "name": "SOC", "phoneCanSms": false, "updatedAt": 1783655893 }
+  ],
   "nextCursor": "…",
   "hasMore": false,
   "total": 12034
@@ -564,6 +569,19 @@ location's SES intranet directory entity, and the accreditations (sorted by type
 no coordinates, and State Headquarters and a few pseudo-units have no directory entity.
 Zones and State Headquarters are locations too, so they are listed. Each response reads
 the location table (a Scan of ~280 rows) to compute the hash.
+
+**Shared contacts** (see "Shared contacts" below) work the same way as units: the whole
+list, by name, whenever it differs from the one the cursor last delivered, and nothing
+otherwise; the client replaces what it holds, so a contact missing from it was deleted.
+Unlike units, the list is the **caller's own**: every statewide contact (no
+`locationId`), plus the contacts of each location they may use in Tally (their home unit
+and their user's units, either role, or every location for a super user) — exactly what
+GraphQL lets them read. So a member who gains or loses a unit gets the new list on their
+next sync. `description` and `email`, and `phone` when absent, are left out; whether the
+caller may *edit* one isn't sent (a location's always, a statewide one only for a super
+user, which `tallyViewer.isSuper` says). Each response scans the `shared_contact` table
+(a few rows per location) to compute the hash. A cursor from before shared contacts were
+synced has no hash for them, so its next response carries the list.
 
 - **No cursor** is a full sync: every live member, page by page, with `total` on the
   first page. Tombstones are left out; the client drops anything it didn't receive.
@@ -888,6 +906,44 @@ later; for now a role just has the people in it now.
 mutation {
   createOnCallRole(locationId: "TestAUnit001", name: "Duty Officer",
                    phone: "0400 000 000", primaryPersonId: "TestAMember1") { id version }
+}
+```
+
+## Shared contacts
+
+Contacts added by hand to the Tally app's Contacts, beside the synced member directory: a
+location's own (its Duty Officer phone, a shed landline, …) or statewide ones (the SOC, the EAP,
+peer support, …) (`src/graphql/shared_contacts.rs`, rules in `src/shared_contact.rs`, storage in
+SCHEMA.md's `shared_contact` section).
+
+- **Who:** a location's contacts are like its other shared tools: any member signed in to Tally
+  who can use the unit may read, add, change and delete them — see "Tally (members)" above.
+  Statewide contacts can be read by every member signed in to Tally, but only added, changed or
+  deleted when the user signed in alongside them is a super user (`FORBIDDEN` otherwise).
+  `SharedContact.viewerCanEdit` says which. Users on their own, kiosk sessions, API tokens and
+  edit links are refused.
+- **Reading:** `TallyLocation.sharedContacts` lists a location's contacts by name;
+  `Query.stateContacts` lists the statewide ones by name; `Query.sharedContact(id)` reads one.
+  `statewide` and `locationId` (null for statewide) say which list a contact is on.
+- **Fields:** `name` is one trimmed line (max 100 characters). `description` is plain text kept
+  as written (max 2,000; only-whitespace counts as empty). `phone` is optional, with the same
+  rule as an on-call role's (digits, spaces, `()-` and a leading `+`, 3–15 digits, kept as
+  written). `phoneCanSms` says whether the phone takes text messages, and is always false
+  without a phone. `email` is optional, trimmed, and only checked for a basic `name@domain.tld`
+  shape (max 254).
+- **Writes:** `createSharedContact` (with `locationId` for a location's contact, without it for
+  a statewide one), `updateSharedContact` (omitted arguments unchanged, `phone: null` and
+  `email: null` remove them, and removing the phone turns `phoneCanSms` off), and
+  `deleteSharedContact`. A contact never moves between a location and statewide.
+- **Concurrency:** `updateSharedContact` takes `expectedVersion`; if someone else saved the
+  contact since it was read, the save fails with `CONFLICT`.
+- **Offline:** the offline sync API (above) also sends each member their shared contacts, so
+  Tally can show them without a connection. Writes still go through GraphQL.
+
+```graphql
+mutation {
+  createSharedContact(locationId: "TestAUnit001", name: "Duty Officer",
+                      phone: "0400 000 000", phoneCanSms: true) { id version }
 }
 ```
 

@@ -544,6 +544,150 @@ async fn units_come_with_a_full_sync_and_again_only_when_they_change() {
     assert_eq!(unit_names(&closed), ["Alpha Unit"]);
 }
 
+fn shared_contact_names(body: &Value) -> Vec<String> {
+    body["sharedContacts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| c["name"].as_str().unwrap().to_string())
+        .collect()
+}
+
+async fn add_shared_contact(app: &App, location_id: Option<&str>, name: &str) -> db::SharedContact {
+    app.db
+        .create_shared_contact(db::NewSharedContact {
+            scope: db::SharedContactScope::of(location_id),
+            name,
+            description: "",
+            phone: Some("0400 000 000"),
+            phone_can_sms: true,
+            email: None,
+            created_by: None,
+        })
+        .await
+        .unwrap()
+}
+
+#[tokio::test]
+async fn shared_contacts_are_the_callers_own_and_come_again_only_when_they_change() {
+    let (app, auth) = setup().await;
+    seed_location(&app, "loc-b", "Bravo Unit");
+    seed_location(&app, "loc-c", "Charlie Unit");
+    // The caller's user is Read only at loc-b; loc-c is nobody's.
+    app.db
+        .users
+        .lock()
+        .unwrap()
+        .get_mut("user-1")
+        .unwrap()
+        .location_read_only_grants = vec!["loc-b".to_string()];
+    let home = add_shared_contact(&app, Some("loc-a"), "Alpha DO").await;
+    add_shared_contact(&app, Some("loc-b"), "bravo shed").await;
+    add_shared_contact(&app, Some("loc-c"), "Charlie DO").await;
+    let soc = add_shared_contact(&app, None, "SOC").await;
+    add_person(&app, "Ann", "10000000").await;
+    add_person(&app, "Ben", "10000001").await;
+    app.db.age_contacts(60);
+
+    // A full sync's first page has the statewide contacts and those of the caller's
+    // units, by name; the next page and an unchanged delta don't.
+    let (_, page1) = get(&app, Some(&auth), "limit=1").await;
+    assert_eq!(
+        shared_contact_names(&page1),
+        ["Alpha DO", "bravo shed", "SOC"]
+    );
+    let entry = page1["sharedContacts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|c| c["id"] == soc.id.as_str())
+        .unwrap()
+        .clone();
+    assert_eq!(
+        entry,
+        serde_json::json!({
+            "id": soc.id,
+            "name": "SOC",
+            "phone": "0400 000 000",
+            "phoneCanSms": true,
+            "updatedAt": soc.updated_at,
+        })
+    );
+    let (_, page2) = get(
+        &app,
+        Some(&auth),
+        &format!("limit=1&{}", cursor_query(&page1)),
+    )
+    .await;
+    assert!(page2.get("sharedContacts").is_none());
+    let (_, delta) = get(&app, Some(&auth), &cursor_query(&page2)).await;
+    assert!(delta.get("sharedContacts").is_none());
+
+    // An edit or a delete sends the whole list again, once.
+    app.db
+        .update_shared_contact(&home.id, db::SharedContactUpdateShape::Delete { by: None })
+        .await
+        .unwrap();
+    let (_, changed) = get(&app, Some(&auth), &cursor_query(&delta)).await;
+    assert_eq!(shared_contact_names(&changed), ["bravo shed", "SOC"]);
+    let (_, after) = get(&app, Some(&auth), &cursor_query(&changed)).await;
+    assert!(after.get("sharedContacts").is_none());
+
+    // Losing a unit takes its contacts away on the next sync; a contact elsewhere
+    // never shows.
+    app.db
+        .users
+        .lock()
+        .unwrap()
+        .get_mut("user-1")
+        .unwrap()
+        .location_read_only_grants = vec![];
+    let (_, lost) = get(&app, Some(&auth), &cursor_query(&after)).await;
+    assert_eq!(shared_contact_names(&lost), ["SOC"]);
+}
+
+#[tokio::test]
+async fn unreadable_shared_contacts_leave_the_rest_of_the_sync_working() {
+    let (app, auth) = setup().await;
+    add_shared_contact(&app, None, "SOC").await;
+    add_person(&app, "Ann", "10000000").await;
+    app.db.age_contacts(60);
+    app.db
+        .fail_shared_contact_reads
+        .store(true, std::sync::atomic::Ordering::SeqCst);
+
+    // Members and units still sync; shared contacts are left out, not sent empty.
+    let (status, body) = get(&app, Some(&auth), "").await;
+    assert_eq!(status, 200);
+    assert_eq!(ids(&body).len(), 1);
+    assert!(body.get("units").is_some());
+    assert!(body.get("sharedContacts").is_none());
+
+    // Once they can be read, the next sync carries them.
+    app.db
+        .fail_shared_contact_reads
+        .store(false, std::sync::atomic::Ordering::SeqCst);
+    let (_, next) = get(&app, Some(&auth), &cursor_query(&body)).await;
+    assert_eq!(shared_contact_names(&next), ["SOC"]);
+}
+
+#[tokio::test]
+async fn a_super_user_gets_every_units_shared_contacts() {
+    let (app, auth) = setup().await;
+    app.db
+        .users
+        .lock()
+        .unwrap()
+        .get_mut("user-1")
+        .unwrap()
+        .is_super = true;
+    seed_location(&app, "loc-c", "Charlie Unit");
+    add_shared_contact(&app, Some("loc-c"), "Charlie DO").await;
+    add_shared_contact(&app, None, "SOC").await;
+    let (_, body) = get(&app, Some(&auth), "").await;
+    assert_eq!(shared_contact_names(&body), ["Charlie DO", "SOC"]);
+}
+
 #[tokio::test]
 async fn limit_is_clamped() {
     let (app, auth) = setup().await;
