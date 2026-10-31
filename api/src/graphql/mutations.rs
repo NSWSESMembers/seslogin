@@ -50,6 +50,7 @@ use super::on_call::{self, OnCallRole};
 use super::query::{QuickPick, build_quick_pick};
 use super::reservations::{self, EquipmentReservation};
 use super::self_sign_in::{open_period_at, require_linked_person, sign_in_location_id};
+use super::shared_contacts::{self, SharedContact};
 use super::tasks::{self, Task, TaskList, TaskRecurrenceInput};
 use super::{
     ApiToken, Category, Location, NitcGroup, PasskeyInfo, Period, Person, PersonId, Session, User,
@@ -3112,6 +3113,73 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
     #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn delete_on_call_role(&self, ctx: &Context<'_>, id: ID) -> Result<ID> {
         on_call::delete_on_call_role(ctx, self.app.as_ref(), &id).await
+    }
+
+    /// Add a contact by hand: to a location's contacts (its Duty Officer phone, …), or,
+    /// without `locationId`, to the statewide ones (the SOC, the EAP, …). Any member who
+    /// can use the unit in Tally may add a unit's; only super users a statewide one.
+    /// `phoneCanSms` is ignored without a phone.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn create_shared_contact(
+        &self,
+        ctx: &Context<'_>,
+        location_id: Option<ID>,
+        name: String,
+        description: Option<String>,
+        phone: Option<String>,
+        phone_can_sms: Option<bool>,
+        email: Option<String>,
+    ) -> Result<SharedContact<A>> {
+        shared_contacts::create_shared_contact(
+            ctx,
+            self.app.as_ref(),
+            shared_contacts::CreateSharedContactArgs {
+                location_id,
+                name,
+                description,
+                phone,
+                phone_can_sms,
+                email,
+            },
+        )
+        .await
+    }
+
+    /// Change a shared contact. Omitted arguments are left as they are; `phone: null`
+    /// and `email: null` remove them, and removing the phone turns `phoneCanSms` off.
+    /// Fails with `CONFLICT` if the contact is no longer at `expectedVersion`.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn update_shared_contact(
+        &self,
+        ctx: &Context<'_>,
+        id: ID,
+        expected_version: i32,
+        name: Option<String>,
+        description: Option<String>,
+        phone: MaybeUndefined<String>,
+        phone_can_sms: Option<bool>,
+        email: MaybeUndefined<String>,
+    ) -> Result<SharedContact<A>> {
+        shared_contacts::update_shared_contact(
+            ctx,
+            self.app.as_ref(),
+            shared_contacts::UpdateSharedContactArgs {
+                id,
+                expected_version,
+                name,
+                description,
+                phone,
+                phone_can_sms,
+                email,
+            },
+        )
+        .await
+    }
+
+    /// Delete a shared contact. Returns its ID.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn delete_shared_contact(&self, ctx: &Context<'_>, id: ID) -> Result<ID> {
+        shared_contacts::delete_shared_contact(ctx, self.app.as_ref(), &id).await
     }
 
     #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]

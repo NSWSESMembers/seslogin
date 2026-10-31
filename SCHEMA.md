@@ -502,6 +502,38 @@ A location's on-call roles ("On Call"), such as Duty Officer, and who holds each
 
 ---
 
+### `{prefix}shared_contact`
+
+Contacts added by hand to Tally's Contacts ("shared contacts"): a location's own, such as its
+Duty Officer phone, or statewide ones, such as the SOC, the EAP or peer support.
+
+| Attribute | Type | Role                           |
+| --------- | ---- | ------------------------------ |
+| `id`      | S    | Hash key (PK)                  |
+| `scope`   | S    | GSI hash key (`scope-index`)   |
+
+**GSIs:**
+
+| GSI           | Hash key | Sort key | Projection | Purpose                  |
+| ------------- | -------- | -------- | ---------- | ------------------------ |
+| `scope-index` | `scope`  | —        | ALL        | A location's contacts, or the statewide ones; deleted ones are filtered out on read, and the API sorts them by name |
+
+**Non-obvious attributes (not in table definition):**
+
+- `scope` — the `location_id` of a location's contact, or `state` for a statewide one (no location ID is `state`). It never changes
+- `location_id` (S, optional) — the location, for a location's contact; absent for a statewide one
+- `name` (S) — one line of plain text
+- `description` (S, optional) — plain text; absent when empty
+- `phone` (S, optional) — kept as written
+- `phone_can_sms` (BOOL) — whether `phone` takes text messages; always false without a phone
+- `email` (S, optional)
+- `v` (N) — version, bumped by every write; saves are conditional on it
+- `created_by` / `updated_by` (S) — person IDs of the members who made and last changed it
+- `deleted` (N) — Unix seconds when soft-deleted; absent otherwise
+- `created_at` / `updated_at` (N)
+
+---
+
 ### `{prefix}equipment`
 
 A location's equipment register ("Equipment").
@@ -733,7 +765,7 @@ Access patterns: per-location newest-first (`Query` on `location_id-sk-index`) a
 - `ts` (N) — Unix seconds when the event happened
 - `event_id` (S) — shared by every item written for the same event
 - `action` (S) — `create`, `update`, `delete` or `restore`
-- `entity_type` (S) — `user`, `person`, `period`, `session`, `api_token`, `location`, `category`, `nitc_group`, `nitc_tag`, `user_token`, `oauth_grant`, `webauthn_credential`, `task`, `task_list`, `note`, `note_folder`, `map_pin`, `map_layer`, `on_call_role`, `equipment`, `equipment_log_entry`, `equipment_reservation`, `calendar`, `calendar_event` or `location_share`
+- `entity_type` (S) — `user`, `person`, `period`, `session`, `api_token`, `location`, `category`, `nitc_group`, `nitc_tag`, `user_token`, `oauth_grant`, `webauthn_credential`, `task`, `task_list`, `note`, `note_folder`, `map_pin`, `map_layer`, `on_call_role`, `shared_contact`, `equipment`, `equipment_log_entry`, `equipment_reservation`, `calendar`, `calendar_event` or `location_share`
 - `entity_id` (S) — ID of the entity changed
 - `entity_label` (S) — human-readable name of the entity at the time; omitted when unknown
 - `actor_kind` (S) — `user`, `member` (a member signed in to Tally), `session` (kiosk), `api_token`, `period_link`, `system` (a job or the CLI), `unauthenticated` or `unknown`

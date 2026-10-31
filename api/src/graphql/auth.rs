@@ -282,6 +282,34 @@ pub(crate) fn require_calendar_access(ctx: &Context<'_>, location_id: &str) -> R
     require_member_location(ctx, location_id, "The calendar is only available in Tally")
 }
 
+/// Check the caller may use the shared contacts in `scope`. A location's contacts are
+/// like its other shared tools (see [`require_member_location`]). Statewide contacts can
+/// be read by every member signed in to Tally, but only changed (`write`) when the user
+/// signed in alongside them is a super user.
+pub(crate) fn require_shared_contact_access(
+    ctx: &Context<'_>,
+    scope: db::SharedContactScope<'_>,
+    write: bool,
+) -> Result<()> {
+    const REFUSAL: &str = "Contacts are only available in Tally";
+    match scope {
+        db::SharedContactScope::Location(id) => require_member_location(ctx, id, REFUSAL),
+        db::SharedContactScope::State => match ctx.data_opt::<AuthInfo>() {
+            Some(AuthInfo::Member { is_super, .. }) => {
+                if *is_super || !write {
+                    Ok(())
+                } else {
+                    Err(
+                        ApiError::forbidden("Only a super user can change statewide contacts")
+                            .into(),
+                    )
+                }
+            }
+            _ => Err(ApiError::forbidden(REFUSAL).into()),
+        },
+    }
+}
+
 /// Check the caller may use location sharing ("Locate") at a location: share their own
 /// position with it, and see who is sharing there. See [`require_member_location`].
 pub(crate) fn require_location_share_access(ctx: &Context<'_>, location_id: &str) -> Result<()> {
