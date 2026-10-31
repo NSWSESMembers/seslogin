@@ -195,6 +195,193 @@ pub async fn run(db: &impl db::Handler, args: NightlyArgs) -> Result<()> {
     Ok(())
 }
 
+/// Every badge the nightly job awards.
+pub const NIGHTLY_BADGE_IDS: &[&str] = &[
+    "deployment-back-to-back",
+    "deployment-full-deployment",
+    "easter-coffee-powered",
+    "easter-full-house",
+    "easter-habit-formed",
+    "easter-lights-off",
+    "easter-lights-on",
+    "four-week-rhythm",
+    "habit-half-year",
+    "habit-twelve-for-twelve",
+    "habit-year-round",
+    "service-decade-of-duty",
+    "service-five-seasons",
+    "service-one-year-in",
+];
+
+pub struct BackfillArgs {
+    pub dry_run: bool,
+}
+
+/// Re-date nightly awards to the sign-in that earned them. Until the job learned to
+/// date its awards, it stamped each with the time it ran (01:15 Sydney); this works out
+/// when each held badge was really earned, from the whole of the location's history,
+/// and moves the award back to then. Each award is only ever moved earlier, and only
+/// if it still has the time it was read with, so running it again changes nothing.
+pub async fn backfill_earned_times(db: &impl db::Handler, args: BackfillArgs) -> Result<()> {
+    let now_ts = Utc::now().timestamp() as u64;
+    let locations = db
+        .list_locations(db::ListLocationsFilter::EnabledOnly)
+        .await?;
+    let virtual_category_ids: HashSet<String> = db
+        .list_categories()
+        .await?
+        .into_iter()
+        .filter(|category| category.is_virtual)
+        .map(|category| category.id)
+        .collect();
+    let mut total = 0_u64;
+
+    for location in locations {
+        let periods: Vec<NightlyPeriod> =
+            fetch_recent_periods_for_location(db, &location.id, 0, now_ts)
+                .await?
+                .into_iter()
+                .filter(|period| {
+                    !period
+                        .category_id
+                        .as_ref()
+                        .is_some_and(|id| virtual_category_ids.contains(id))
+                })
+                .filter_map(|period| {
+                    Some(NightlyPeriod {
+                        person_id: period.person_id?,
+                        start_time: period.start_time,
+                        end_time: period.end_time,
+                    })
+                })
+                .collect();
+        if periods.is_empty() {
+            continue;
+        }
+        let qualifying = qualifying_badges(&periods);
+        let mut starts: HashMap<&str, Vec<u64>> = HashMap::new();
+        for period in &periods {
+            starts
+                .entry(period.person_id.as_str())
+                .or_default()
+                .push(period.start_time);
+        }
+
+        for (person_id, person_starts) in starts {
+            let Some(person) = db
+                .get_persons(&[person_id])
+                .await?
+                .into_iter()
+                .next()
+                .flatten()
+            else {
+                continue;
+            };
+            let Some(state) = badges::read_state(&person.id, person.badge_state.as_deref()) else {
+                continue;
+            };
+            let Some(held) = state.locations.get(&location.id) else {
+                continue;
+            };
+            let held: Vec<(&'static str, u64)> = NIGHTLY_BADGE_IDS
+                .iter()
+                .filter_map(|&id| Some((id, *held.awarded_badge_times.get(id)?)))
+                .collect();
+            if held.is_empty() {
+                continue;
+            }
+
+            let mut earned: BTreeMap<&'static str, u64> =
+                qualifying.get(person_id).cloned().unwrap_or_default();
+            if held.iter().any(|(id, _)| id.starts_with("service-")) {
+                let first = db
+                    .list_periods_for_person(
+                        person_id,
+                        None,
+                        None,
+                        None,
+                        db::ListPeriodsPage {
+                            after: None,
+                            before: None,
+                            limit: 1,
+                            descending: false,
+                        },
+                    )
+                    .await?
+                    .into_iter()
+                    .next();
+                if let Some(first) = first {
+                    earned.extend(service_badges(first.start_time, &person_starts));
+                }
+            }
+
+            // Badge, the time it holds now, and the time it was earned.
+            let moves: Vec<(&'static str, u64, u64)> = held
+                .into_iter()
+                .filter_map(|(id, awarded_at)| {
+                    let at = *earned.get(id)?;
+                    (at < awarded_at).then_some((id, awarded_at, at))
+                })
+                .collect();
+            if moves.is_empty() {
+                continue;
+            }
+            for (id, awarded_at, at) in &moves {
+                info!(
+                    "{}re-date {} for person {} in location {}: {} -> {}",
+                    if args.dry_run { "Dry run: would " } else { "" },
+                    id,
+                    person.id,
+                    location.id,
+                    format_sydney(*awarded_at),
+                    format_sydney(*at),
+                );
+            }
+            if args.dry_run {
+                total = total.saturating_add(moves.len() as u64);
+                continue;
+            }
+
+            let location_id = location.id.as_str();
+            let moved = badge_store::update(db, &person, |_, state| {
+                let times = &mut state.locations.get_mut(location_id)?.awarded_badge_times;
+                let moved = moves
+                    .iter()
+                    .filter(|(id, awarded_at, at)| match times.get_mut(*id) {
+                        Some(time) if time == awarded_at => {
+                            *time = *at;
+                            true
+                        }
+                        _ => false,
+                    })
+                    .count();
+                (moved > 0).then_some(moved)
+            })
+            .await?;
+            total = total.saturating_add(moved.unwrap_or(0) as u64);
+        }
+    }
+
+    info!(
+        "Badge earned-time backfill complete; {} {} awards",
+        if args.dry_run {
+            "would re-date"
+        } else {
+            "re-dated"
+        },
+        total
+    );
+    Ok(())
+}
+
+fn format_sydney(ts: u64) -> String {
+    chrono::DateTime::from_timestamp(ts as i64, 0)
+        .unwrap_or_default()
+        .with_timezone(&Sydney)
+        .format("%Y-%m-%d %H:%M")
+        .to_string()
+}
+
 /// A sign-in at one location, as the nightly rules see it.
 #[derive(Clone, Debug)]
 pub struct NightlyPeriod {
@@ -301,9 +488,11 @@ pub fn qualifying_badges(periods: &[NightlyPeriod]) -> Qualifying {
         }
     }
 
-    let mut first_in: HashMap<&str, usize> = HashMap::new();
-    let mut last_out: HashMap<&str, usize> = HashMap::new();
-    for day_periods in days.values() {
+    // The busy days each member was first in, or last out, oldest first, each with
+    // the moment it counted.
+    let mut first_in: HashMap<&str, Vec<(NaiveDate, u64)>> = HashMap::new();
+    let mut last_out: HashMap<&str, Vec<(NaiveDate, u64)>> = HashMap::new();
+    for (&date, day_periods) in &days {
         // Each member's arrival that day, earliest first.
         let mut arrivals: BTreeMap<&str, u64> = BTreeMap::new();
         for period in day_periods {
@@ -332,36 +521,50 @@ pub fn qualifying_badges(periods: &[NightlyPeriod]) -> Qualifying {
             .iter()
             .min_by_key(|p| (p.start_time, p.person_id.as_str()))
         {
-            let count = first_in.entry(first.person_id.as_str()).or_default();
-            *count += 1;
-            if *count == FIRST_OR_LAST_TIMES {
-                earn(
-                    &mut qualifying,
-                    &first.person_id,
-                    "easter-lights-on",
-                    busy_at,
-                );
-            }
+            first_in
+                .entry(first.person_id.as_str())
+                .or_default()
+                .push((date, busy_at));
         }
         if let Some((end, std::cmp::Reverse(person))) = day_periods
             .iter()
             .filter_map(|p| Some((p.end_time?, std::cmp::Reverse(p.person_id.as_str()))))
             .max()
         {
-            let count = last_out.entry(person).or_default();
-            *count += 1;
-            if *count == FIRST_OR_LAST_TIMES {
-                earn(
-                    &mut qualifying,
-                    person,
-                    "easter-lights-off",
-                    end.max(busy_at),
-                );
+            last_out
+                .entry(person)
+                .or_default()
+                .push((date, end.max(busy_at)));
+        }
+    }
+    for (badge_id, times) in [
+        ("easter-lights-on", &first_in),
+        ("easter-lights-off", &last_out),
+    ] {
+        for (person, days) in times {
+            if let Some(at) = times_within_window_completed_at(days) {
+                earn(&mut qualifying, person, badge_id, at);
             }
         }
     }
 
     qualifying
+}
+
+/// When `days` (oldest first) first holds [`FIRST_OR_LAST_TIMES`] of them within one
+/// streak window: the moment the last of those counted. The nightly job only ever
+/// passes a window's worth, where that is simply the tenth; the backfill passes the
+/// whole history.
+fn times_within_window_completed_at(days: &[(NaiveDate, u64)]) -> Option<u64> {
+    days.windows(FIRST_OR_LAST_TIMES)
+        .find(|run| {
+            run[FIRST_OR_LAST_TIMES - 1]
+                .0
+                .signed_duration_since(run[0].0)
+                .num_days()
+                <= STREAK_WINDOW_DAYS
+        })
+        .map(|run| run[FIRST_OR_LAST_TIMES - 1].1)
 }
 
 /// The service badges for a member whose first sign-in anywhere began at `first_start`,
@@ -459,7 +662,7 @@ async fn fetch_recent_periods_for_location(
 mod tests {
     use super::{
         NightlyPeriod, Qualifying, STREAK_WINDOW_DAYS, qualifying_badges, service_badges,
-        streak_completed_at,
+        streak_completed_at, times_within_window_completed_at,
     };
     use chrono::{Datelike, NaiveDate, TimeZone};
     use chrono_tz::Australia::Sydney;
@@ -616,6 +819,33 @@ mod tests {
     }
 
     #[test]
+    fn lights_on_and_off_need_their_ten_times_inside_one_window() {
+        // Ten busy days a month apart, then one more: the first ten span 270 days and
+        // fit; spaced 60 days apart they span 540 and don't, until the window slides.
+        let monthly: Vec<(NaiveDate, u64)> = (0..10)
+            .map(|i| {
+                let date =
+                    NaiveDate::from_ymd_opt(2025, 1, 1).unwrap() + chrono::Duration::days(i * 30);
+                (date, i as u64)
+            })
+            .collect();
+        assert_eq!(times_within_window_completed_at(&monthly), Some(9));
+        let sparse: Vec<(NaiveDate, u64)> = (0..10)
+            .map(|i| {
+                let date =
+                    NaiveDate::from_ymd_opt(2025, 1, 1).unwrap() + chrono::Duration::days(i * 60);
+                (date, i as u64)
+            })
+            .collect();
+        assert_eq!(times_within_window_completed_at(&sparse), None);
+        let mut slid = sparse.clone();
+        // Weekly days late on: the fourth makes ten from day 240 on, inside 371 days.
+        let last = sparse[9].0;
+        slid.extend((1..=9).map(|i| (last + chrono::Duration::days(i * 7), 100 + i as u64)));
+        assert_eq!(times_within_window_completed_at(&slid), Some(104));
+    }
+
+    #[test]
     fn full_house_goes_to_everyone_on_a_thirty_member_day() {
         let crowd: Vec<NightlyPeriod> = (0..31)
             .map(|i| p(&format!("m{i}"), at(2026, 3, 3, 18, 0) + i * 60, None))
@@ -689,8 +919,13 @@ mod tests {
                 .into_iter()
                 .map(|(id, _)| id),
         );
-        // The three badges it awarded before, and eleven more.
-        assert_eq!(ids.len(), 14, "{ids:?}");
+        assert_eq!(
+            ids,
+            super::NIGHTLY_BADGE_IDS
+                .iter()
+                .copied()
+                .collect::<BTreeSet<_>>()
+        );
         for id in ids {
             let mut state = crate::badges::BadgeState::default();
             assert!(
