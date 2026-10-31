@@ -14,6 +14,9 @@
 #
 # Ports are deliberately not 8000: that's the API itself.
 
+# Project name; defaults to this directory's name ("local") otherwise.
+name: seslogin
+
 services:
   dynamodb:
     image: amazon/dynamodb-local:latest
@@ -23,6 +26,8 @@ services:
     command:
       ["-jar", "DynamoDBLocal.jar", "-sharedDb", "-dbPath", "/home/dynamodblocal/data"]
     working_dir: /home/dynamodblocal
+    # Image runs as uid 1000; a fresh named volume is root-owned. Root works on any host, a bind mount only on uid 1000.
+    user: root
     ports:
       - "8100:8000"
     volumes:
