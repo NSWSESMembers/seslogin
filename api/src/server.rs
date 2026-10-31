@@ -213,6 +213,15 @@ where
                     .with_status(StatusCode::UNAUTHORIZED)
                     .into_response();
             }
+            Err(ref e @ auth::AuthError::ClockSkew { server_time, .. }) => {
+                info!("Auth clock skew: {e}");
+                let response = GraphQLResponse(async_graphql::Response::from_errors(vec![
+                    auth::clock_skew_error(server_time),
+                ]));
+                return response
+                    .with_status(StatusCode::UNAUTHORIZED)
+                    .into_response();
+            }
             Err(auth::AuthError::Transient(ref msg)) => {
                 tracing::error!("Transient auth error: {}", msg);
                 let response = GraphQLResponse(async_graphql::Response::from_errors(vec![

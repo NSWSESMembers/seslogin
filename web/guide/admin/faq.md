@@ -63,6 +63,10 @@ If it shows a QR code, it has expired, usually after two weeks switched off.
 Press **Reactivate** next to it on the **Kiosks** page — within two weeks, or it
 has to be set up again. See [When a kiosk expires](kiosks.md#when-a-kiosk-expires).
 
+If it says **This computer's clock is wrong**, the kiosk is still set up — don't
+scan anything. Fix the computer's date and time and the kiosk carries on by
+itself within a minute. See [If the kiosk says its clock is wrong](kiosks.md#if-the-kiosk-says-its-clock-is-wrong).
+
 ## I didn't get my sign-in code
 
 Check your junk mail and that you used the address your account was set up with,

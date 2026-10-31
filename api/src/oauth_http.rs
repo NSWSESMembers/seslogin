@@ -562,7 +562,8 @@ async fn token_refresh<A: App + HasDb>(app: &A, params: &HashMap<String, String>
 
     match oauth::grant_auth_info(app, &grant).await {
         Ok(_) => {}
-        Err(AuthError::Permanent(_)) => {
+        // ClockSkew is only for kiosk signatures, which never reach here.
+        Err(AuthError::Permanent(_) | AuthError::ClockSkew { .. }) => {
             return error_reply(400, "invalid_grant", "User account is no longer available");
         }
         Err(AuthError::Transient(msg)) => return server_error("checking user before refresh", msg),

@@ -18,6 +18,30 @@ pub enum AuthError {
     /// Infrastructure failure during verification — DB down, network error, etc.
     #[error("{0}")]
     Transient(String),
+    /// A kiosk signature refused only because its timestamp is outside the window: the
+    /// device's clock is wrong (often just after a restart), not its key. Kept apart from
+    /// [`AuthError::Permanent`] so the kiosk can tell its user to fix the clock instead of
+    /// dropping to the enrollment screen, where an admin would enroll it as a new kiosk.
+    #[error("kiosk signed at {client_time}, server time {server_time}")]
+    ClockSkew { client_time: u64, server_time: u64 },
+}
+
+/// `extensions.code` on the 401 for [`AuthError::ClockSkew`]. The kiosk matches it in
+/// `web/src/lib/graphql.ts` and `web/src/kiosk/lib/enrollmentKey.ts`.
+pub const CLOCK_SKEW_CODE: &str = "CLOCK_SKEW";
+
+/// The GraphQL error for [`AuthError::ClockSkew`]: `extensions.code` is
+/// [`CLOCK_SKEW_CODE`] and `extensions.serverTime` the server's clock (Unix seconds), so
+/// the kiosk can show how far out its own clock is. Telling a caller the server's time
+/// reveals nothing: the timestamp is checked before the key is looked up.
+pub fn clock_skew_error(server_time: u64) -> async_graphql::ServerError {
+    let mut extensions = async_graphql::ErrorExtensionValues::default();
+    extensions.set("code", CLOCK_SKEW_CODE);
+    extensions.set("serverTime", server_time);
+    async_graphql::ServerError {
+        extensions: Some(extensions),
+        ..async_graphql::ServerError::new("This device's clock is wrong", None)
+    }
 }
 
 pub(crate) fn classify_db_err(msg: &str, e: db::Error) -> AuthError {
@@ -301,7 +325,9 @@ async fn touch_session<A: App + HasDb + HasQueues>(
 ///
 /// Every failure here is [`AuthError::Permanent`] (→ 401), so a kiosk whose session was
 /// disabled, whose key expired, or whose fingerprint no longer resolves falls back to
-/// the enrollment screen on its next request.
+/// the enrollment screen on its next request — except a timestamp outside the window,
+/// which is [`AuthError::ClockSkew`] (also a 401, but the kiosk keeps its session and
+/// asks for its clock to be fixed). The window itself is unchanged.
 pub async fn verify_signed_key<A: App + HasDb + HasQueues>(
     app: &A,
     header_rest: &str,
@@ -312,8 +338,12 @@ pub async fn verify_signed_key<A: App + HasDb + HasQueues>(
         .map_err(|e| AuthError::Permanent(format!("Invalid signed key header: {e:#}")))?;
 
     let now = crate::clock::now_sec();
-    crate::session_key::check_timestamp_window(header.timestamp, now)
-        .map_err(|e| AuthError::Permanent(format!("{e:#}")))?;
+    crate::session_key::check_timestamp_window(header.timestamp, now).map_err(|_| {
+        AuthError::ClockSkew {
+            client_time: header.timestamp,
+            server_time: now,
+        }
+    })?;
 
     let ids = app
         .db()
@@ -648,6 +678,39 @@ mod verify_token_tests {
         )
         .await;
         assert!(matches!(result, Err(AuthError::Permanent(_))));
+    }
+
+    /// A kiosk signature dated outside the window is refused as `ClockSkew`, carrying
+    /// both clocks, before any DB read (mockdb would make that `Transient`).
+    #[tokio::test]
+    async fn refuses_a_signature_outside_the_window_as_clock_skew() {
+        let app = app();
+        let result = verify_signed_key(&app, "abcd.1.c2ln", "hash", &ClientReport::default()).await;
+        assert!(matches!(
+            result,
+            Err(AuthError::ClockSkew { client_time: 1, server_time }) if server_time > 1
+        ));
+    }
+
+    /// Inside the window the timestamp is not what's wrong, so verification carries on
+    /// to the key lookup (`Transient` here, from mockdb) rather than reporting skew.
+    #[tokio::test]
+    async fn a_signature_inside_the_window_is_not_clock_skew() {
+        let app = app();
+        let header = format!("abcd.{}.c2ln", crate::clock::now_sec());
+        let result = verify_signed_key(&app, &header, "hash", &ClientReport::default()).await;
+        assert!(matches!(result, Err(AuthError::Transient(_))));
+    }
+
+    #[test]
+    fn clock_skew_error_carries_its_code_and_the_server_time() {
+        let body = serde_json::to_value(async_graphql::Response::from_errors(vec![
+            clock_skew_error(1_793_000_000),
+        ]))
+        .unwrap();
+        let extensions = &body["errors"][0]["extensions"];
+        assert_eq!(extensions["code"], CLOCK_SKEW_CODE);
+        assert_eq!(extensions["serverTime"], 1_793_000_000u64);
     }
 
     /// Refresh tokens are only ever spent at `/oauth/token`: `verify_token` has no

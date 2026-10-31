@@ -44,18 +44,29 @@ export function createAdminGraphQLEnvironment(
   return environment;
 }
 
+/** How a kiosk environment reports what the server said about the device's clock. */
+export interface KioskClockCallbacks {
+  /** A request was refused only because the device's clock is wrong (`CLOCK_SKEW`). */
+  onClockSkew: (serverTimeSec: number) => void;
+  /** A signed request was accepted, so the clock is within the server's window. */
+  onSignedRequestAccepted: () => void;
+}
+
 /**
  * Creates a Relay environment for a kiosk enrolled via public key. Each request is
  * signed: `getAuthHeader` is called with the serialized body and returns a full
  * `SLKey <fp>.<ts>.<sig>` Authorization header. A 401 (session disabled / key expired)
- * triggers onUnauthorized, which reverts the kiosk to the enrollment screen.
+ * triggers onUnauthorized, which reverts the kiosk to the enrollment screen — except a
+ * 401 for the device's clock being wrong, which goes to `clock.onClockSkew` instead and
+ * leaves the kiosk enrolled.
  */
 export function createKioskKeyGraphQLEnvironment(
   getAuthHeader: (body: string) => Promise<string>,
   onUnauthorized: () => void,
+  clock?: KioskClockCallbacks,
 ): Environment {
   const _fetchGraphQL: FetchFunction = async (request, variables) => {
-    return await fetchGraphQL(
+    const response = await fetchGraphQL(
       async (body) => {
         try {
           return await getAuthHeader(body);
@@ -72,7 +83,10 @@ export function createKioskKeyGraphQLEnvironment(
         onUnauthorized();
         throw new Error("Unauthorized from server");
       },
+      clock?.onClockSkew,
     );
+    clock?.onSignedRequestAccepted();
+    return response;
   };
 
   const environment = new Environment({

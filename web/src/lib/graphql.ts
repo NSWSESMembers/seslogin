@@ -59,11 +59,55 @@ function nextRequestLeaseId(): string {
 export type AuthHeaderProvider =
   string | null | ((body: string) => Promise<string | null>);
 
+/**
+ * `serverTime` (Unix seconds) from the body of a 401 that refused a kiosk signature
+ * only because its timestamp was outside the server's window (`code: CLOCK_SKEW`, see
+ * `clock_skew_error` in api/src/auth.rs); null for any other body.
+ */
+export function clockSkewServerTime(body: unknown): number | null {
+  const errors = (body as { errors?: unknown } | null)?.errors;
+  if (!Array.isArray(errors)) {
+    return null;
+  }
+  for (const error of errors) {
+    const extensions = (
+      error as { extensions?: Record<string, unknown> } | null
+    )?.extensions;
+    if (
+      extensions?.code === "CLOCK_SKEW" &&
+      typeof extensions.serverTime === "number"
+    ) {
+      return extensions.serverTime;
+    }
+  }
+  return null;
+}
+
+/**
+ * A signed kiosk request refused because the device's clock is wrong. Its key and
+ * session are fine, so this is not an "unauthorized": the kiosk stays enrolled and asks
+ * for the clock to be fixed (see kiosk/lib/clockSkew.ts).
+ */
+export class ClockSkewError extends Error {
+  readonly serverTimeSec: number;
+
+  constructor(serverTimeSec: number) {
+    super("This device's clock is wrong");
+    this.name = "ClockSkewError";
+    this.serverTimeSec = serverTimeSec;
+  }
+}
+
 export async function fetchGraphQL(
   authHeader: AuthHeaderProvider,
   request: RequestParameters,
   variables: Variables,
   onUnauthorized: () => void,
+  /**
+   * For signed kiosk requests: called, instead of `onUnauthorized`, when a 401 says the
+   * device's clock is wrong; the request then rejects with a {@link ClockSkewError}.
+   */
+  onClockSkew?: (serverTimeSec: number) => void,
 ) {
   console.log(
     "fetchGraphQL for request ",
@@ -105,6 +149,15 @@ export async function fetchGraphQL(
     clearBlockClientUpdates(leaseId);
   }
   if (resp.status === 401) {
+    if (onClockSkew) {
+      const serverTime = clockSkewServerTime(
+        await resp.json().catch(() => null),
+      );
+      if (serverTime !== null) {
+        onClockSkew(serverTime);
+        throw new ClockSkewError(serverTime);
+      }
+    }
     onUnauthorized();
     throw new Error("Unauthorized");
   }

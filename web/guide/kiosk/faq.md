@@ -20,6 +20,13 @@ The kiosk needs setting up again, usually because it's been switched off for a
 while. Let your unit's administrators know. They can bring it back in a minute
 (see [When a kiosk expires](../admin/kiosks.md#when-a-kiosk-expires)).
 
+## The kiosk says its clock is wrong
+
+The computer's date or time is wrong, so the kiosk can't sign anyone in or out.
+If you can, open the computer's date and time settings and turn on **Set time
+automatically**; otherwise let your unit's administrators know. The kiosk carries
+on by itself once the clock is right — don't scan its QR code or set it up again.
+
 ## Can I use another unit's kiosk?
 
 Yes. See [Signing in at another unit](signing-in.md#signing-in-at-another-unit).

@@ -6,12 +6,15 @@ import {
   getOrCreateKioskKey,
   type KioskKeyInfo,
 } from "../lib/kioskKey";
+import { clearClockSkew, reportClockSkew } from "../lib/clockSkew";
 import LoadingIndicator from "../../components/LoadingIndicator";
 
 /**
  * Relay environment provider for a kiosk enrolled via public key. Loads the persisted
  * signing key, then signs every request with it. A 401 (session disabled / key expired)
- * calls onUnauthorized, which reverts the kiosk to the enrollment screen.
+ * calls onUnauthorized, which reverts the kiosk to the enrollment screen. A 401 for the
+ * device's clock being wrong doesn't: it's recorded in clockSkew.ts, which shows a
+ * notice until a request gets through again.
  */
 export default function KioskKeyRelayEnvironment({
   profile,
@@ -46,6 +49,10 @@ export default function KioskKeyRelayEnvironment({
     return createKioskKeyGraphQLEnvironment(
       (body) => buildSignedAuthHeader(keyInfo, body),
       onUnauthorized,
+      {
+        onClockSkew: reportClockSkew,
+        onSignedRequestAccepted: clearClockSkew,
+      },
     );
   }, [keyInfo, onUnauthorized]);
 

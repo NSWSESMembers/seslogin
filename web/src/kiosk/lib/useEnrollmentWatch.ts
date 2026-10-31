@@ -6,6 +6,7 @@ import {
   fetchKeySessionId,
 } from "./enrollmentKey";
 import { pollDelayMs } from "./enrollPolling";
+import { CLOCK_SKEW_RETRY_MS, getClockSkew } from "./clockSkew";
 import { createRealtimeClient, type RealtimeClient } from "./realtimeClient";
 
 /**
@@ -32,6 +33,10 @@ import { createRealtimeClient, type RealtimeClient } from "./realtimeClient";
  * - Close the race. A channel attach that is not a resume (including the first
  *   attach) triggers one check, covering enrollment that happened between the
  *   initial check and the subscription going live.
+ * - Recover from a wrong clock. While the server refuses checks because the
+ *   device's clock is wrong (see clockSkew.ts), a push can't be confirmed and no
+ *   further signal will come, so we check again every `CLOCK_SKEW_RETRY_MS` until
+ *   one gets through.
  *
  * `onEnrolled` is called at most once. Set `enabled` only once the key has been
  * published (see `useEnrollmentQr().published`).
@@ -71,6 +76,7 @@ export function useEnrollmentWatch({
     let confirmRunning = false;
     let confirmRetry = false;
     let confirmAttempt = 0;
+    let skewTimeout: number | null = null;
     const startedAt = Date.now();
 
     function finish() {
@@ -78,16 +84,37 @@ export function useEnrollmentWatch({
       done = true;
       stopPolling();
       clearConfirmTimer();
+      clearSkewTimer();
       onEnrolledRef.current();
     }
 
     async function check(logLabel: string): Promise<boolean> {
+      let enrolled = false;
       try {
-        return (await fetchKeySessionId(info!)) != null;
+        enrolled = (await fetchKeySessionId(info!)) != null;
       } catch (err) {
         console.error(`${logLabel} failed:`, err);
-        return false;
       }
+      if (!enrolled && !cancelled && !done && getClockSkew() !== null) {
+        scheduleSkewRetry();
+      }
+      return enrolled;
+    }
+
+    function clearSkewTimer() {
+      if (skewTimeout !== null) {
+        window.clearTimeout(skewTimeout);
+        skewTimeout = null;
+      }
+    }
+
+    function scheduleSkewRetry() {
+      if (skewTimeout !== null) return;
+      skewTimeout = window.setTimeout(async () => {
+        skewTimeout = null;
+        if (cancelled || done) return;
+        if (await check("Enrollment check after a clock refusal")) finish();
+      }, CLOCK_SKEW_RETRY_MS);
     }
 
     function stopPolling() {
@@ -245,6 +272,7 @@ export function useEnrollmentWatch({
       closing = true;
       stopPolling();
       clearConfirmTimer();
+      clearSkewTimer();
       client?.close();
     };
   }, [info, enabled]);

@@ -3,6 +3,7 @@ import KioskKeyRelayEnvironment from "./KioskKeyRelayEnvironment";
 import { KioskEnvironmentContext } from "./KioskEnvironmentContext";
 import { KioskSessionProvider } from "./KioskSessionProvider";
 import KioskEnrollment from "./KioskEnrollment";
+import KioskClockSkewNotice from "./KioskClockSkewNotice";
 import { markKeyEnrolled, readAppSettings } from "../lib/kioskSettings";
 
 /**
@@ -57,6 +58,8 @@ export default function KioskEnvironment({
   return (
     <KioskEnvironmentContext.Provider value={contextValue}>
       {body}
+      {/* Over either screen: a wrong clock refuses the enrollment check too. */}
+      <KioskClockSkewNotice />
     </KioskEnvironmentContext.Provider>
   );
 }
