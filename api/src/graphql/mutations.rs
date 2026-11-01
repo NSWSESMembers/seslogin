@@ -225,7 +225,7 @@ enum RegisterState {
     NotFound,
     SignedIn,
     SignOutPending,
-    /// The member belongs to another unit and would have been signed in here, but
+    /// The member is not a member of this unit (home or otherwise) and would have been signed in here, but
     /// the kiosk asked to confirm that first (`confirmVisitor`). Nothing was
     /// written; `person` says who the number belongs to.
     ConfirmVisitor,
@@ -247,8 +247,9 @@ struct RegisterResult<A: App + HasDb + Send + Sync + 'static> {
     /// `CONFIRM_VISITOR`; otherwise read it from `period.person`.
     person: Option<Person<A>>,
     /// Badges to celebrate on this sign-in: everything the member has earned and not
-    /// yet seen. Empty unless the kiosk, its location and the member's home location
-    /// all have gamification on, and always empty for a sign-out pending.
+    /// yet seen. Empty unless the kiosk, its location and at least one of the member's
+    /// units (home or secondary) all have gamification on, and always empty for a
+    /// sign-out pending.
     awarded_badges: Vec<BadgeAward>,
 }
 
@@ -366,8 +367,8 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
 
     /// The member a kiosk scan should credit with badges, or `None` when the scan
     /// doesn't count: badges are only worked out when the kiosk's location, the kiosk
-    /// itself (its `gamification` config key) and the member's home location all have
-    /// gamification switched on. Checked cheapest-first, so a kiosk at a location that
+    /// itself (its `gamification` config key) and at least one of the member's units (home
+    /// or secondary) all have gamification switched on. Checked cheapest-first, so a kiosk at a location that
     /// is not taking part costs one location read and nothing else.
     async fn kiosk_badge_member(
         &self,
@@ -400,19 +401,36 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         else {
             return Ok(None);
         };
-        if person.location_id != location.id
-            && !self
-                .location_by_id(&person.location_id)
-                .await?
-                .is_some_and(|home| home.gamification_enabled)
-        {
+        if !self.member_gamification_enabled(&person, location).await? {
             return Ok(None);
         }
         Ok(Some(person))
     }
 
-    /// How far `location` is from the member's home unit, for the distance badges, or
-    /// `None` when either has no coordinates.
+    /// Whether badge work applies to `person` at `location`: gamification is on at any of
+    /// the member's units (home or secondary), or `location` itself is one of them. A
+    /// visitor from a unit that is not taking part is not counted.
+    async fn member_gamification_enabled(
+        &self,
+        person: &db::Person,
+        location: &db::Location,
+    ) -> Result<bool> {
+        if person.is_member_of(&location.id) {
+            // At one of their own units; `location.gamification_enabled` is checked by
+            // the caller, and that unit being on is enough.
+            return Ok(location.gamification_enabled);
+        }
+        let ids = person.member_location_ids();
+        let locations = self.app.db().get_locations(&ids).await?;
+        Ok(locations
+            .into_iter()
+            .flatten()
+            .any(|unit| unit.gamification_enabled))
+    }
+
+    /// How far `location` is from the nearest of the member's units that has
+    /// coordinates, for the distance badges, or `None` when `location` or all of those
+    /// units have none.
     async fn away_distance_km(
         &self,
         person: &db::Person,
@@ -425,11 +443,14 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         let Some(here) = coordinates(location) else {
             return Ok(None);
         };
-        let home = self.location_by_id(&person.location_id).await?;
-        Ok(home
-            .as_ref()
-            .and_then(coordinates)
-            .map(|home| badges::distance_km(home, here)))
+        let ids = person.member_location_ids();
+        let units = self.app.db().get_locations(&ids).await?;
+        Ok(units
+            .iter()
+            .flatten()
+            .filter_map(coordinates)
+            .map(|unit| badges::distance_km(unit, here))
+            .min_by(f64::total_cmp))
     }
 
     async fn category_is_virtual(&self, category_id: &str) -> Result<bool> {
@@ -506,8 +527,8 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
     /// counters, streaks and easter eggs that kiosk check-in/sign-out feed into stay in
     /// step for API-created periods too.
     ///
-    /// Only when both the period's location and the member's home location have
-    /// gamification on; a location that is not taking part does no badge work at all,
+    /// Only when both the period's location and at least one of the member's units (home
+    /// or secondary) have gamification on; a location that is not taking part does no badge work at all,
     /// and is backfilled when it is switched on. Any award earned this way stays
     /// undisplayed until the member's next scan at a kiosk that celebrates badges, as
     /// there is no kiosk screen here. Best-effort, like `award_kiosk_badges`: the period
@@ -527,16 +548,11 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
             if !location.gamification_enabled {
                 return Ok(());
             }
-            if person.location_id != location.id
-                && !self
-                    .location_by_id(&person.location_id)
-                    .await?
-                    .is_some_and(|home| home.gamification_enabled)
-            {
+            if !self.member_gamification_enabled(person, location).await? {
                 return Ok(());
             }
 
-            let visiting = person.location_id != location.id;
+            let visiting = !person.is_member_of(&location.id);
             let away_distance_km = if visiting && !category.is_virtual {
                 self.away_distance_km(person, location).await?
             } else {
@@ -594,7 +610,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         display: bool,
     ) -> Result<Vec<BadgeAward>> {
         let now = crate::clock::now_sec();
-        let visiting = person.location_id != location.id;
+        let visiting = !person.is_member_of(&location.id);
         let away_distance_km = if visiting && matches!(event, badges::BadgeEvent::CheckIn) {
             self.away_distance_km(person, location).await?
         } else {
@@ -3586,8 +3602,8 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         )]
         quick_pick: Option<bool>,
         #[graphql(
-            desc = "Before signing in a member whose home unit isn't this kiosk's location, \
-                    return `CONFIRM_VISITOR` instead and write nothing, so the kiosk can \
+            desc = "Before signing in a member who doesn't belong to this kiosk's location (not \
+                    their home unit or one of their other units), return `CONFIRM_VISITOR` instead and write nothing, so the kiosk can \
                     check a mistyped number isn't about to sign in the wrong person. The \
                     kiosk repeats the call without it once they confirm. Has no effect on \
                     a sign-out, which shows the member's name before anything is written."
@@ -3661,7 +3677,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
                     .map_err(|e| anyhow!("Failed to load person via DataLoader: {}", e))?
                     .flatten()
                     .ok_or_else(|| anyhow!("Person with ID {person_id} missing"))?;
-                if person.rec.location_id != *location_id {
+                if !person.rec.is_member_of(location_id) {
                     return Ok(RegisterResult {
                         state: RegisterState::ConfirmVisitor,
                         period: None,
@@ -3777,7 +3793,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
 
     /// `scanSignOut` for a kiosk that celebrates badges: the same sign-out, plus the
     /// badges the member has earned and not yet seen. Empty unless the kiosk, its
-    /// location and the member's home location all have gamification on.
+    /// location and at least one of the member's units all have gamification on.
     #[graphql(guard = "AuthGuard::new(AuthRequirement::Session)")]
     async fn scan_sign_out_with_badges(
         &self,

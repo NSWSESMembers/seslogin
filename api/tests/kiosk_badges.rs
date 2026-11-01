@@ -1,5 +1,5 @@
 //! Kiosk scans earn badges only when the kiosk's location, the kiosk itself (its
-//! `gamification` config key) and the member's home location all have gamification on;
+//! `gamification` config key) and at least one of the member's units (home or secondary) have gamification on;
 //! otherwise a scan does no badge work at all. `scanSignOut` keeps its pre-badge
 //! `Period` result, and a kiosk that celebrates badges signs out with
 //! `scanSignOutWithBadges` instead.
@@ -295,4 +295,97 @@ async fn no_distance_badges_without_coordinates_for_both_units() {
             .iter()
             .any(|id| id.starts_with("away-over") || id == "away-long-haul")
     );
+}
+
+/// Give Bob (home Unit B) a secondary unit, and a third unit C to hang switches off.
+fn give_bob_secondary(app: &TestApp, secondary: &str) {
+    seed_location(app, "loc-c", "Unit C");
+    app.db
+        .persons
+        .lock()
+        .unwrap()
+        .get_mut("bob")
+        .unwrap()
+        .secondary_location_ids = vec![secondary.to_string()];
+}
+
+fn set_coordinates(app: &TestApp, id: &str, latitude: f64, longitude: f64) {
+    let mut locations = app.db.locations.lock().unwrap();
+    let details = &mut locations.get_mut(id).unwrap().ses_details;
+    details.latitude = Some(latitude);
+    details.longitude = Some(longitude);
+}
+
+fn away_check_ins(app: &TestApp, location_id: &str) -> u64 {
+    let state = seslogin::badges::read_state("bob", badge_state(app).as_deref()).unwrap();
+    state.locations[location_id].away_check_in_count
+}
+
+#[tokio::test]
+async fn a_secondary_unit_earns_even_when_the_home_unit_is_not_taking_part() {
+    let app = app(Switches {
+        home_location: false,
+        ..ALL_ON
+    });
+    give_bob_secondary(&app, "loc-a");
+    let (_, awarded) = sign_in(&app, true).await;
+    assert!(awarded.unwrap().contains(&"first-steps".to_string()));
+}
+
+#[tokio::test]
+async fn a_secondary_unit_is_not_a_visit_so_no_distance_or_away_credit() {
+    let app = app(ALL_ON);
+    give_bob_secondary(&app, "loc-a");
+    // Home is ~370 km from the kiosk's Unit A, which would earn the distance badges for a
+    // visitor.
+    set_coordinates(&app, "loc-b", -33.8679, 151.2073);
+    set_coordinates(&app, "loc-a", -35.1082, 147.3598);
+    let (_, awarded) = sign_in(&app, true).await;
+    let awarded = awarded.unwrap();
+    assert!(
+        !awarded
+            .iter()
+            .any(|id| id.starts_with("away-over") || id == "away-long-haul"),
+        "{awarded:?}"
+    );
+    assert_eq!(away_check_ins(&app, "loc-a"), 0);
+}
+
+#[tokio::test]
+async fn an_unrelated_unit_is_still_a_visit_and_measures_from_the_nearest_unit() {
+    // Unit A is neither of Bob's units. Home B is ~370 km away but secondary C is near.
+    let app = app(ALL_ON);
+    give_bob_secondary(&app, "loc-c");
+    set_coordinates(&app, "loc-b", -33.8679, 151.2073);
+    set_coordinates(&app, "loc-a", -35.1082, 147.3598);
+    set_coordinates(&app, "loc-c", -35.0, 147.5);
+    let (_, awarded) = sign_in(&app, true).await;
+    let awarded = awarded.unwrap();
+    assert!(awarded.contains(&"first-steps".to_string()));
+    assert_eq!(away_check_ins(&app, "loc-a"), 1);
+    assert!(
+        !awarded
+            .iter()
+            .any(|id| id.starts_with("away-over") || id == "away-long-haul"),
+        "{awarded:?}"
+    );
+}
+
+#[tokio::test]
+async fn a_visitor_whose_only_participating_unit_is_secondary_still_earns() {
+    let app = app(Switches {
+        home_location: false,
+        ..ALL_ON
+    });
+    give_bob_secondary(&app, "loc-c");
+    app.db
+        .locations
+        .lock()
+        .unwrap()
+        .get_mut("loc-c")
+        .unwrap()
+        .gamification_enabled = true;
+    let (_, awarded) = sign_in(&app, true).await;
+    assert!(awarded.unwrap().contains(&"first-steps".to_string()));
+    assert_eq!(away_check_ins(&app, "loc-a"), 1);
 }

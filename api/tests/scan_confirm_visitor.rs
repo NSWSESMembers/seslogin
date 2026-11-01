@@ -1,5 +1,5 @@
 //! `scanRegister2(confirmVisitor: true)` asks the kiosk to confirm before signing
-//! in a member from another unit — a mistyped member number most often belongs to
+//! in a member who isn't a member of this unit — a mistyped member number most often belongs to
 //! someone elsewhere. It must write nothing when it asks, and must not get in the
 //! way of a home-unit sign-in, a sign-out, or a kiosk that didn't opt in.
 //!
@@ -43,6 +43,15 @@ fn app() -> Arc<TestApp> {
     seed_location(&app, "loc-b", "Unit B");
     seed_person(&app, "alice", "loc-a", "Alice", "Anderson", "1001", None);
     seed_person(&app, "bob", "loc-b", "Bob", "Brown", "2001", None);
+    // Dana is at home in Unit B with Unit A as a secondary unit: a member of A, not a visitor.
+    seed_person(&app, "dana", "loc-b", "Dana", "Dualunit", "2002", None);
+    app.db
+        .persons
+        .lock()
+        .unwrap()
+        .get_mut("dana")
+        .unwrap()
+        .secondary_location_ids = vec!["loc-a".to_string()];
     Arc::new(app)
 }
 
@@ -120,6 +129,19 @@ async fn signs_in_a_home_unit_member_straight_away() {
     let result = scan(&app, "1001", Some(true)).await;
     assert_eq!(result["state"], "SIGNED_IN");
     assert_eq!(open_periods(&app).len(), 1);
+}
+
+#[tokio::test]
+async fn signs_in_a_secondary_unit_member_straight_away() {
+    let app = app();
+    let result = scan(&app, "2002", Some(true)).await;
+    assert_eq!(result["state"], "SIGNED_IN");
+    let open = open_periods(&app);
+    assert_eq!(open.len(), 1);
+    assert_eq!(open[0].person_id.as_deref(), Some("dana"));
+    // Bob, who belongs to Unit B only, is still a visitor at Unit A.
+    let result = scan(&app, "2001", Some(true)).await;
+    assert_eq!(result["state"], "CONFIRM_VISITOR");
 }
 
 #[tokio::test]

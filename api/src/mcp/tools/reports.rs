@@ -25,7 +25,7 @@ use crate::app::{App, HasDb, HasMail, HasQueues, HasRealtime};
 
 /// The fields of a `Person` a report row shows: enough to read the report without
 /// another lookup. The home unit matters because a location's activity includes
-/// members visiting from other units. Never their email.
+/// visitors, members who belong to none of its units. Never their email.
 const PERSON: &str = "person { id firstName lastName memberNumber location { id name } }";
 const CATEGORY: &str = "category { id name isVirtual }";
 
@@ -159,8 +159,8 @@ pub(super) fn catalogue() -> Vec<Value> {
              `day_member`). Periods are summed whole, so one that crosses midnight counts \
              entirely on the day it started. A day's `date` is a `YYYY-MM-DD` string in \
              Australia/Sydney (not a timestamp). Guests are left out of the member \
-             groupings, and members visiting from other units are included (`person.location` \
-             is their home unit). Only `member` and `day_member` take `categoryIds`; for any \
+             groupings, and visitors (members who do not belong to the location, home or otherwise) are \
+             included (`person.location` is the member's home unit). Only `member` and `day_member` take `categoryIds`; for any \
              other grouping passing it is an error. Needs an Admin, Read only or super-user \
              grant for the location. For the individual periods behind a report (the Reports \
              page export) use `list_periods`.",

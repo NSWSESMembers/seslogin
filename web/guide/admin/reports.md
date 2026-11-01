@@ -68,7 +68,7 @@ with in Excel or another spreadsheet.
 
 Each row is one entry: the member, category, start and end times, how long it
 was, any comment, and the kiosks they signed in and out at. The download includes
-members visiting from other units, but doesn't say which unit they're from.
+visitors (members who don't belong to your unit), but doesn't say which unit they're from.
 
 ## Daily email
 

@@ -12,7 +12,9 @@ A member can belong to more than one unit: they have a home unit in SESLogin and
 may volunteer at others. If your unit is one of those other units, they are listed
 here like any other member, with their home unit shown under their name, and you
 can open their details and activity, including their contact details. They count
-as your members on the dashboard and in the badge leaderboard and weekly digest.
+as your members on the dashboard and in the badge leaderboard and weekly digest,
+and are not treated as visitors at your kiosks: there is no "Are you …?" check,
+and they earn badges at your unit as they would at home.
 Only their home unit can edit or delete them, so they have no **Edit** or
 **Delete** buttons on your list.
 

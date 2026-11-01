@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<8547eab54e6b300a819b628993419069>>
+ * @generated SignedSource<<53a8d92efd3c070790722468819d5db8>>
  * @lightSyntaxTransform
  */
 
@@ -227,6 +227,19 @@ v19 = {
       "plural": false,
       "selections": (v14/*:: as any*/),
       "storageKey": null
+    },
+    {
+      "alias": null,
+      "args": [
+        {
+          "kind": "Variable",
+          "name": "locationId",
+          "variableName": "location"
+        }
+      ],
+      "kind": "ScalarField",
+      "name": "isMemberOf",
+      "storageKey": null
     }
   ],
   "storageKey": null
@@ -343,7 +356,12 @@ return {
                           }
                         ],
                         "args": null,
-                        "argumentDefinitions": []
+                        "argumentDefinitions": [
+                          {
+                            "kind": "RootArgument",
+                            "name": "location"
+                          }
+                        ]
                       }
                     ],
                     "storageKey": null
@@ -434,12 +452,12 @@ return {
     ]
   },
   "params": {
-    "cacheID": "fb650927bd5e3a054040ebff43b20771",
+    "cacheID": "009f4c921c8e264bc518152e9c7f43ba",
     "id": null,
     "metadata": {},
     "name": "ActivityListLoadMoreQuery",
     "operationKind": "query",
-    "text": "query ActivityListLoadMoreQuery(\n  $location: ID!\n  $first: Int!\n  $after: String\n  $categories: [ID!]\n) {\n  location(id: $location) {\n    id\n    periods(first: $first, after: $after, categories: $categories) {\n      edges {\n        node {\n          ...ActivityListTable_period\n          ...ActivityList_periodName\n          id\n        }\n      }\n      pageInfo {\n        hasNextPage\n        endCursor\n      }\n    }\n  }\n}\n\nfragment ActivityListTable_period on Period {\n  id\n  personId\n  startTime\n  endTime\n  comment\n  nitcExportStatus\n  nitcEventId\n  signedInSession {\n    id\n    name\n  }\n  signedOutSession {\n    id\n    name\n  }\n  category {\n    id\n    name\n    isVirtual\n  }\n}\n\nfragment ActivityList_periodName on Period {\n  guestName\n  person {\n    id\n    firstName\n    lastName\n    memberNumber\n    location {\n      id\n      name\n    }\n  }\n}\n"
+    "text": "query ActivityListLoadMoreQuery(\n  $location: ID!\n  $first: Int!\n  $after: String\n  $categories: [ID!]\n) {\n  location(id: $location) {\n    id\n    periods(first: $first, after: $after, categories: $categories) {\n      edges {\n        node {\n          ...ActivityListTable_period\n          ...ActivityList_periodName\n          id\n        }\n      }\n      pageInfo {\n        hasNextPage\n        endCursor\n      }\n    }\n  }\n}\n\nfragment ActivityListTable_period on Period {\n  id\n  personId\n  startTime\n  endTime\n  comment\n  nitcExportStatus\n  nitcEventId\n  signedInSession {\n    id\n    name\n  }\n  signedOutSession {\n    id\n    name\n  }\n  category {\n    id\n    name\n    isVirtual\n  }\n}\n\nfragment ActivityList_periodName on Period {\n  guestName\n  person {\n    id\n    firstName\n    lastName\n    memberNumber\n    location {\n      id\n      name\n    }\n    isMemberOf(locationId: $location)\n  }\n}\n"
   }
 };
 })();

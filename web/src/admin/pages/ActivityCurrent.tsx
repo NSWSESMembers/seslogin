@@ -13,6 +13,7 @@ import ActivityListTable from "../components/ActivityListTable";
 import ActivityCategorySelector from "../components/ActivityCategorySelector";
 import LoadingIndicator from "../../components/LoadingIndicator";
 import TextInput from "../../components/ui/TextInput";
+import { memberUnitLabel } from "../components/memberUnitLabel";
 
 const ACTIVITY_CURRENT_PAGE_SIZE = 100;
 
@@ -41,6 +42,7 @@ const activityCurrentPeriodName = graphql`
         id
         name
       }
+      isMemberOf(locationId: $location)
     }
   }
 `;
@@ -53,8 +55,9 @@ export default function ActivityCurrent() {
     <>
       <p className="my-4">
         This list shows members currently signed in at this location, including
-        members visiting from other units (their home unit is shown under their
-        name).
+        visitors from other units. Under a name, a visitor shows as
+        &quot;Visiting from&quot; their unit, and a member whose home is another
+        unit shows as &quot;Home:&quot; that unit.
       </p>
       <div className="mb-3 flex flex-wrap items-center gap-3">
         <TextInput
@@ -190,9 +193,13 @@ function ActivityCurrentContent({
       periodRef,
     );
     const personValue = unwrapCatch(person);
-    const location = personValue?.location;
-    return location && location.id !== settings?.locationId
-      ? location.name
+    return personValue
+      ? memberUnitLabel(
+          personValue.isMemberOf,
+          personValue.location.id,
+          personValue.location.name,
+          settings?.locationId,
+        )
       : null;
   }
 

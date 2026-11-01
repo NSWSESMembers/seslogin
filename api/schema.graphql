@@ -1454,7 +1454,7 @@ type MutationRoot {
 		"""
 		quickPick: Boolean,
 		"""
-		Before signing in a member whose home unit isn't this kiosk's location, return `CONFIRM_VISITOR` instead and write nothing, so the kiosk can check a mistyped number isn't about to sign in the wrong person. The kiosk repeats the call without it once they confirm. Has no effect on a sign-out, which shows the member's name before anything is written.
+		Before signing in a member who doesn't belong to this kiosk's location (not their home unit or one of their other units), return `CONFIRM_VISITOR` instead and write nothing, so the kiosk can check a mistyped number isn't about to sign in the wrong person. The kiosk repeats the call without it once they confirm. Has no effect on a sign-out, which shows the member's name before anything is written.
 		"""
 		confirmVisitor: Boolean
 	): RegisterResult!
@@ -1480,7 +1480,7 @@ type MutationRoot {
 	"""
 	`scanSignOut` for a kiosk that celebrates badges: the same sign-out, plus the
 	badges the member has earned and not yet seen. Empty unless the kiosk, its
-	location and the member's home location all have gamification on.
+	location and at least one of the member's units all have gamification on.
 	"""
 	scanSignOutWithBadges(id: ID!, startTime: Int!, endTime: Int!, categoryId: ID!): ScanSignOutResult!
 	"""
@@ -2369,8 +2369,9 @@ type RegisterResult {
 	person: Person
 	"""
 	Badges to celebrate on this sign-in: everything the member has earned and not
-	yet seen. Empty unless the kiosk, its location and the member's home location
-	all have gamification on, and always empty for a sign-out pending.
+	yet seen. Empty unless the kiosk, its location and at least one of the member's
+	units (home or secondary) all have gamification on, and always empty for a
+	sign-out pending.
 	"""
 	awardedBadges: [BadgeAward!]!
 }
@@ -2380,7 +2381,7 @@ enum RegisterState {
 	SIGNED_IN
 	SIGN_OUT_PENDING
 	"""
-	The member belongs to another unit and would have been signed in here, but
+	The member is not a member of this unit (home or otherwise) and would have been signed in here, but
 	the kiosk asked to confirm that first (`confirmVisitor`). Nothing was
 	written; `person` says who the number belongs to.
 	"""

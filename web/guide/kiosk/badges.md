@@ -10,8 +10,8 @@ badge and what earns it.
 
 ## How badges work
 
-- **Your unit has to take part.** Badges count when your own unit, the unit you
-  sign in at and that unit's kiosk all have badges turned on. If you don't see
+- **Your unit has to take part.** Badges count when a unit you belong to, the unit
+  you sign in at and that unit's kiosk all have badges turned on. If you don't see
   any badges, ask your unit's administrators.
 - **Most badges are earned at each unit.** Counts are kept separately for each
   unit you sign in at. So 25 sign-ins means 25 at one unit, and you can earn the
@@ -90,19 +90,20 @@ Your first sign-in is the first one recorded anywhere in SESLogin.
 
 ## Visiting other units
 
-Signing in at a unit that isn't your own home unit is an **away** sign-in.
+Signing in at a unit you don't belong to is an **away** sign-in. A unit you also
+volunteer at counts as your own, so signing in there isn't one.
 
-|                                                                                    | Badge             | How to earn it                                                                                      | Tier            |
-| ---------------------------------------------------------------------------------- | ----------------- | --------------------------------------------------------------------------------------------------- | --------------- |
-| ![New Ground badge](/image/badges/by-id/first-signin-location-template.svg)        | New Ground        | Sign in at a unit for the first time. You get one for each unit, stamped with its name.             | Passport Stamps |
-| ![Hat Trick badge](/image/badges/by-id/away-hat-trick.svg)                         | Hat Trick         | Sign in at 3 different units. Counts across every unit.                                             | Passport Stamps |
-| ![Unit Hopper badge](/image/badges/by-id/away-unit-hopper.svg)                     | Unit Hopper       | Sign in at 5 different units. Counts across every unit.                                             | Passport Stamps |
-| ![Suitcase Stowaway badge](/image/badges/by-id/away-checkin-suitcase-stowaway.svg) | Suitcase Stowaway | Make your first away sign-in at a unit.                                                             | Starter         |
-| ![Map Goblin badge](/image/badges/by-id/away-checkin-map-goblin.svg)               | Map Goblin        | Make 5 away sign-ins at the same unit.                                                              | Bronze          |
-| ![Road Comedian badge](/image/badges/by-id/away-checkin-road-comedian.svg)         | Road Comedian     | Make 15 away sign-ins at the same unit.                                                             | Silver          |
-| ![Interstate Icon badge](/image/badges/by-id/away-checkin-interstate-icon.svg)     | Interstate Icon   | Make 40 away sign-ins at the same unit.                                                             | Gold            |
-| ![Over the Range badge](/image/badges/by-id/away-over-the-range.svg)               | Over the Range    | Sign in at a unit 100 km or more from your home unit, in a straight line. Counts across every unit. | Bronze          |
-| ![Long Haul badge](/image/badges/by-id/away-long-haul.svg)                         | Long Haul         | Sign in at a unit 250 km or more from your home unit, in a straight line. Counts across every unit. | Silver          |
+|                                                                                    | Badge             | How to earn it                                                                                                      | Tier            |
+| ---------------------------------------------------------------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------- | --------------- |
+| ![New Ground badge](/image/badges/by-id/first-signin-location-template.svg)        | New Ground        | Sign in at a unit for the first time. You get one for each unit, stamped with its name.                             | Passport Stamps |
+| ![Hat Trick badge](/image/badges/by-id/away-hat-trick.svg)                         | Hat Trick         | Sign in at 3 different units. Counts across every unit.                                                             | Passport Stamps |
+| ![Unit Hopper badge](/image/badges/by-id/away-unit-hopper.svg)                     | Unit Hopper       | Sign in at 5 different units. Counts across every unit.                                                             | Passport Stamps |
+| ![Suitcase Stowaway badge](/image/badges/by-id/away-checkin-suitcase-stowaway.svg) | Suitcase Stowaway | Make your first away sign-in at a unit.                                                                             | Starter         |
+| ![Map Goblin badge](/image/badges/by-id/away-checkin-map-goblin.svg)               | Map Goblin        | Make 5 away sign-ins at the same unit.                                                                              | Bronze          |
+| ![Road Comedian badge](/image/badges/by-id/away-checkin-road-comedian.svg)         | Road Comedian     | Make 15 away sign-ins at the same unit.                                                                             | Silver          |
+| ![Interstate Icon badge](/image/badges/by-id/away-checkin-interstate-icon.svg)     | Interstate Icon   | Make 40 away sign-ins at the same unit.                                                                             | Gold            |
+| ![Over the Range badge](/image/badges/by-id/away-over-the-range.svg)               | Over the Range    | Sign in at a unit 100 km or more from the nearest unit you belong to, in a straight line. Counts across every unit. | Bronze          |
+| ![Long Haul badge](/image/badges/by-id/away-long-haul.svg)                         | Long Haul         | Sign in at a unit 250 km or more from the nearest unit you belong to, in a straight line. Counts across every unit. | Silver          |
 
 Units only count towards Hat Trick and Unit Hopper if they have badges turned on.
 

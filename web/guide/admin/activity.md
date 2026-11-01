@@ -13,8 +13,9 @@ chose. The **Activity** menu is where you check and correct them.
 **Activity** opens on **Previous Periods**: every entry at your unit, newest
 first, grouped by day with a count of entries and members.
 
-- It includes members visiting from other units — their home unit is shown under
-  their name.
+- It includes visitors, members who don't belong to your unit. A visitor shows
+  as "Visiting from" their unit under their name. A member of your unit whose
+  home is elsewhere shows as "Home:" that unit, and is not a visitor.
 - Filter by name or SES ID with the box at the top, or by category with
   **Categories**.
 - Scroll down to load older entries.
