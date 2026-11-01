@@ -6,7 +6,8 @@ order: 70
 
 The **Audit log** records every change made at your unit: entries added, edited
 or deleted, members added or changed, kiosks set up or removed, and so on —
-newest first. Admin and Read only users can both see it.
+newest first. Admin and Read only users can both see it. Changes to a member
+appear in the log of every unit they belong to, not just their home unit.
 
 ## Reading the log
 

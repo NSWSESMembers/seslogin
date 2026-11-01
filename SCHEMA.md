@@ -782,7 +782,7 @@ An append-only record of business database writes, shown in the admin UI. Entrie
 
 `sk` is `ts` (Unix seconds) zero-padded to 10 digits, then `#`, then the item `id`, so lexical order equals time order and two events in the same second never collide.
 
-Both indexes are **sparse** by design. Items for global entities (no location) carry no `location_id` and so are absent from the per-location index. `scope = "all"` is set on only one of the items written for an event, so the super-user view lists each event once even when the event was written to several locations.
+Both indexes are **sparse** by design. Items for global entities (no location) carry no `location_id` and so are absent from the per-location index. `scope = "all"` is set on only one of the items written for an event, so the super-user view lists each event once even when the event was written to several locations. A `person` event is written to every unit the member belongs to (home and `secondary_location_ids`, before and after the write; a move or directory change includes both the old and the new units).
 
 Access patterns: per-location newest-first (`Query` on `location_id-sk-index`) and all-locations newest-first for super users (`Query` on `scope-sk-index` with `scope = "all"`), both paginated on `sk`. The base table is only read by `id`.
 

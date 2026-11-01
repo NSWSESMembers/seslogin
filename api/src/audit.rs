@@ -556,15 +556,35 @@ pub fn person_units_changes(
     )
 }
 
-/// The locations a person update affects: the person's current one, plus the new one
-/// when the update moves them.
+/// The locations a person update affects: every unit the member belongs to, home first
+/// (`Person::member_location_ids`), before and after the write. So a move records both
+/// the old and the new home, and a directory write that adds or drops a secondary unit
+/// reaches the units gained and the units lost. The after-state is derived from the
+/// shape, so no extra read is needed.
 pub fn person_update_locations(
     before: Option<&Person>,
     shape: &db::PersonUpdateShape<'_>,
 ) -> Vec<String> {
-    let mut locations: Vec<String> = before.map(|p| p.location_id.clone()).into_iter().collect();
-    if let db::PersonUpdateShape::Location { location_id } = shape {
-        locations.push(location_id.to_string());
+    let mut locations: Vec<String> = before
+        .map(|p| {
+            p.member_location_ids()
+                .into_iter()
+                .map(String::from)
+                .collect()
+        })
+        .unwrap_or_default();
+    let mut add = |id: &str| {
+        if !id.is_empty() && !locations.iter().any(|l| l == id) {
+            locations.push(id.to_string());
+        }
+    };
+    match shape {
+        db::PersonUpdateShape::Location { location_id } => add(location_id),
+        db::PersonUpdateShape::Directory {
+            secondary_location_ids,
+            ..
+        } => secondary_location_ids.iter().for_each(|id| add(id)),
+        _ => {}
     }
     locations
 }
@@ -1725,7 +1745,11 @@ impl<D: db::Handler> db::Handler for AuditingHandler<D> {
             AuditEntityType::Person,
             &person.id,
             Some(full_name(&person.first_name, &person.last_name)),
-            vec![person.location_id.clone()],
+            person
+                .member_location_ids()
+                .into_iter()
+                .map(String::from)
+                .collect(),
             person_create_changes(&person),
         )
         .await;
@@ -3265,7 +3289,15 @@ impl<D: db::Handler> db::Handler for AuditingHandler<D> {
             label: before
                 .as_ref()
                 .map(|p| full_name(&p.first_name, &p.last_name)),
-            location_ids: before.map(|p| p.location_id).into_iter().collect(),
+            location_ids: before
+                .as_ref()
+                .map(|p| {
+                    p.member_location_ids()
+                        .into_iter()
+                        .map(String::from)
+                        .collect()
+                })
+                .unwrap_or_default(),
             changes: person_units_changes(&before_units, units),
         })
         .await;
@@ -4073,6 +4105,56 @@ mod tests {
             vec!["loc-b".to_string()]
         );
         // Anything else stays where it is.
+        assert_eq!(
+            person_update_locations(Some(&person()), &db::PersonUpdateShape::Delete),
+            vec!["loc-a".to_string()]
+        );
+    }
+
+    #[test]
+    fn a_person_entry_is_filed_at_every_unit_the_member_belongs_to() {
+        let mut p = person();
+        p.secondary_location_ids = vec!["loc-b".into(), "loc-a".into()];
+        let ids = |shape: &db::PersonUpdateShape<'_>| person_update_locations(Some(&p), shape);
+        let both = vec!["loc-a".to_string(), "loc-b".to_string()];
+        // Home first, secondaries after, deduped.
+        assert_eq!(ids(&db::PersonUpdateShape::Delete), both);
+        assert_eq!(ids(&db::PersonUpdateShape::Undelete), both);
+        // A move adds the new home to the existing units.
+        assert_eq!(
+            ids(&db::PersonUpdateShape::Location {
+                location_id: "loc-c"
+            }),
+            vec![
+                "loc-a".to_string(),
+                "loc-b".to_string(),
+                "loc-c".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn a_directory_write_reaches_units_gained_and_lost() {
+        let mut p = person();
+        p.secondary_location_ids = vec!["loc-b".into()];
+        let gained = ["loc-c".to_string()];
+        let shape = db::PersonUpdateShape::Directory {
+            email: None,
+            mobile: None,
+            phones: None,
+            preferred_name: None,
+            secondary_location_ids: &gained,
+        };
+        // loc-b is lost, loc-c gained: both are in the entry, as is the home.
+        assert_eq!(
+            person_update_locations(Some(&p), &shape),
+            vec![
+                "loc-a".to_string(),
+                "loc-b".to_string(),
+                "loc-c".to_string()
+            ]
+        );
+        // A member with no secondary units is filed at home only.
         assert_eq!(
             person_update_locations(Some(&person()), &db::PersonUpdateShape::Delete),
             vec!["loc-a".to_string()]
