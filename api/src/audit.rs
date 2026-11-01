@@ -1472,7 +1472,8 @@ pub fn oauth_grant_delete_changes(g: &OAuthGrant) -> Vec<AuditFieldChange> {
 fn webauthn_fields(c: &db::WebauthnCredential) -> Fields {
     // `passkey_json` holds the public key and signature counter: never listed.
     Fields::default()
-        .with("user_id", text(&c.user_id))
+        .with("user_id", opt_text(c.owner.user_id()))
+        .with("person_id", opt_text(c.owner.person_id()))
         .with("name", text(&c.name))
 }
 
@@ -2264,13 +2265,13 @@ impl<D: db::Handler> db::Handler for AuditingHandler<D> {
     async fn create_webauthn_credential(
         &self,
         id: &str,
-        user_id: &str,
+        owner: &db::PasskeyOwner,
         name: &str,
         passkey_json: &str,
     ) -> db::Result<db::WebauthnCredential> {
         let credential = self
             .inner
-            .create_webauthn_credential(id, user_id, name, passkey_json)
+            .create_webauthn_credential(id, owner, name, passkey_json)
             .await?;
         self.record_create(
             AuditEntityType::WebauthnCredential,
@@ -3559,15 +3560,18 @@ impl<D: db::Handler> db::Handler for AuditingHandler<D> {
         self.inner.get_webauthn_credential(id).await
     }
 
-    async fn list_webauthn_credentials_by_user(
+    async fn list_webauthn_credentials_by_owner(
         &self,
-        user_id: &str,
+        owner: &db::PasskeyOwner,
     ) -> db::Result<Vec<db::WebauthnCredential>> {
-        self.inner.list_webauthn_credentials_by_user(user_id).await
+        self.inner.list_webauthn_credentials_by_owner(owner).await
     }
 
-    async fn count_webauthn_credentials_by_user(&self, user_id: &str) -> db::Result<usize> {
-        self.inner.count_webauthn_credentials_by_user(user_id).await
+    async fn count_webauthn_credentials_by_owner(
+        &self,
+        owner: &db::PasskeyOwner,
+    ) -> db::Result<usize> {
+        self.inner.count_webauthn_credentials_by_owner(owner).await
     }
 
     async fn put_webauthn_state(
@@ -4661,7 +4665,7 @@ mod tests {
         };
         let credential = db::WebauthnCredential {
             id: "cred".into(),
-            user_id: "u1".into(),
+            owner: db::PasskeyOwner::User("u1".into()),
             name: "MacBook".into(),
             passkey_json: "{\"cred\":\"passkey-secret\"}".into(),
             created_at: 1,

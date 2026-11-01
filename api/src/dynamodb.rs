@@ -811,14 +811,35 @@ impl TryInto<OAuthGrant> for Item {
     }
 }
 
+/// The attribute a passkey's owner is stored under (its GSI is `<attribute>-index`),
+/// and the owner's ID.
+fn passkey_owner_key(owner: &db::PasskeyOwner) -> (&'static str, &str) {
+    match owner {
+        db::PasskeyOwner::User(id) => ("user_id", id),
+        db::PasskeyOwner::Member(id) => ("person_id", id),
+    }
+}
+
 impl TryInto<WebauthnCredential> for Item {
     type Error = HydrationError;
     fn try_into(self) -> Result<WebauthnCredential, Self::Error> {
         Ok(WebauthnCredential {
+            owner: match (
+                self.string_field("user_id")?,
+                self.string_field("person_id")?,
+            ) {
+                (Some(user_id), None) => db::PasskeyOwner::User(user_id),
+                (None, Some(person_id)) => db::PasskeyOwner::Member(person_id),
+                (Some(_), Some(_)) => {
+                    return Err(anyhow!("WebauthnCredential has both user_id and person_id").into());
+                }
+                (None, None) => {
+                    return Err(
+                        anyhow!("WebauthnCredential has neither user_id nor person_id").into(),
+                    );
+                }
+            },
             id: self.id()?,
-            user_id: self
-                .string_field("user_id")?
-                .ok_or_else(|| anyhow!("WebauthnCredential missing user_id"))?,
             name: self
                 .string_field("name")?
                 .ok_or_else(|| anyhow!("WebauthnCredential missing name"))?,
@@ -6164,7 +6185,7 @@ impl db::Handler for Handler {
     async fn create_webauthn_credential(
         &self,
         id: &str,
-        user_id: &str,
+        owner: &db::PasskeyOwner,
         name: &str,
         passkey_json: &str,
     ) -> db::Result<WebauthnCredential> {
@@ -6172,11 +6193,12 @@ impl db::Handler for Handler {
             return Err(db::Error::MutationDisabled);
         }
         let now = crate::clock::now_sec();
+        let (owner_attr, owner_id) = passkey_owner_key(owner);
         self.client
             .put_item()
             .table_name(self.table_name("webauthn_credential"))
             .item("id", AttributeValue::S(id.to_string()))
-            .item("user_id", AttributeValue::S(user_id.to_string()))
+            .item(owner_attr, AttributeValue::S(owner_id.to_string()))
             .item("name", AttributeValue::S(name.to_string()))
             .item("passkey_json", AttributeValue::S(passkey_json.to_string()))
             .item("created_at", AttributeValue::N(now.to_string()))
@@ -6185,7 +6207,7 @@ impl db::Handler for Handler {
             .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
         Ok(WebauthnCredential {
             id: id.to_string(),
-            user_id: user_id.to_string(),
+            owner: owner.clone(),
             name: name.to_string(),
             passkey_json: passkey_json.to_string(),
             created_at: now,
@@ -6214,22 +6236,27 @@ impl db::Handler for Handler {
         }
     }
 
-    async fn list_webauthn_credentials_by_user(
+    async fn list_webauthn_credentials_by_owner(
         &self,
-        user_id: &str,
+        owner: &db::PasskeyOwner,
     ) -> db::Result<Vec<WebauthnCredential>> {
-        query_all("list_webauthn_credentials_by_user", || {
+        let (attr, owner_id) = passkey_owner_key(owner);
+        query_all("list_webauthn_credentials_by_owner", || {
             self.client
                 .query()
                 .table_name(self.table_name("webauthn_credential"))
-                .index_name("user_id-index")
-                .key_condition_expression("user_id = :user_id")
-                .expression_attribute_values(":user_id", AttributeValue::S(user_id.to_string()))
+                .index_name(format!("{attr}-index"))
+                .key_condition_expression(format!("{attr} = :owner"))
+                .expression_attribute_values(":owner", AttributeValue::S(owner_id.to_string()))
         })
         .await
     }
 
-    async fn count_webauthn_credentials_by_user(&self, user_id: &str) -> db::Result<usize> {
+    async fn count_webauthn_credentials_by_owner(
+        &self,
+        owner: &db::PasskeyOwner,
+    ) -> db::Result<usize> {
+        let (attr, owner_id) = passkey_owner_key(owner);
         // `Select::Count` still reports a per-page count alongside a continuation key, so
         // sum across pages rather than trusting the first response.
         let mut total: usize = 0;
@@ -6240,9 +6267,9 @@ impl db::Handler for Handler {
                 .client
                 .query()
                 .table_name(self.table_name("webauthn_credential"))
-                .index_name("user_id-index")
-                .key_condition_expression("user_id = :user_id")
-                .expression_attribute_values(":user_id", AttributeValue::S(user_id.to_string()))
+                .index_name(format!("{attr}-index"))
+                .key_condition_expression(format!("{attr} = :owner"))
+                .expression_attribute_values(":owner", AttributeValue::S(owner_id.to_string()))
                 .select(aws_sdk_dynamodb::types::Select::Count)
                 .return_consumed_capacity(ReturnConsumedCapacity::Total);
             if let Some(esk) = exclusive_start_key.take() {
@@ -6254,7 +6281,7 @@ impl db::Handler for Handler {
                 .await
                 .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
             record_capacity(
-                "count_webauthn_credentials_by_user",
+                "count_webauthn_credentials_by_owner",
                 resp.consumed_capacity(),
                 CapKind::Read,
             );
@@ -8906,6 +8933,36 @@ mod tests {
             err.to_string().contains("not a string"),
             "unhelpful message: {err}"
         );
+    }
+
+    fn passkey_row(owner: &[(&str, &str)]) -> Item {
+        let mut fields = vec![
+            ("id", AttributeValue::S("cred1".to_string())),
+            ("name", AttributeValue::S("Phone".to_string())),
+            ("passkey_json", AttributeValue::S("{}".to_string())),
+            ("created_at", AttributeValue::N("1000".to_string())),
+        ];
+        for (k, v) in owner {
+            fields.push((k, AttributeValue::S(v.to_string())));
+        }
+        item(&fields)
+    }
+
+    #[test]
+    fn a_passkey_belongs_to_whichever_owner_attribute_it_has() {
+        let user: db::WebauthnCredential = passkey_row(&[("user_id", "u1")]).try_into().unwrap();
+        assert_eq!(user.owner, db::PasskeyOwner::User("u1".into()));
+        let member: db::WebauthnCredential =
+            passkey_row(&[("person_id", "p1")]).try_into().unwrap();
+        assert_eq!(member.owner, db::PasskeyOwner::Member("p1".into()));
+    }
+
+    #[test]
+    fn a_passkey_with_both_owners_or_neither_does_not_hydrate() {
+        for owner in [&[("user_id", "u1"), ("person_id", "p1")][..], &[]] {
+            let hydrated: Result<db::WebauthnCredential, _> = passkey_row(owner).try_into();
+            assert!(hydrated.is_err(), "{owner:?}");
+        }
     }
 
     #[test]

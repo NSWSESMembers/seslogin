@@ -238,7 +238,7 @@ impl<A: App + HasDb + Send + Sync + 'static> User<A> {
         let app = ctx.data_unchecked::<Arc<A>>();
         let creds = app
             .db()
-            .list_webauthn_credentials_by_user(&self.rec.id)
+            .list_webauthn_credentials_by_owner(&db::PasskeyOwner::User(self.rec.id.clone()))
             .await?;
         Ok(creds
             .into_iter()

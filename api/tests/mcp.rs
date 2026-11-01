@@ -3954,7 +3954,7 @@ fn seed_passkey(app: &App, id: &str, user_id: &str, name: &str) {
         id.to_string(),
         seslogin::db::WebauthnCredential {
             id: id.to_string(),
-            user_id: user_id.to_string(),
+            owner: seslogin::db::PasskeyOwner::User(user_id.to_string()),
             name: name.to_string(),
             passkey_json: PASSKEY_MATERIAL.to_string(),
             created_at: NINE as u64,

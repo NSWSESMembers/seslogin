@@ -89,7 +89,7 @@ export default function AdminLoginPage({
         if (result.status === "ok") {
           onNewTokenReceivedRef.current(result.token);
         } else if (result.status === "failed") {
-          setPasskeyError("Passkey login failed.");
+          setPasskeyError(result.message ?? "Passkey login failed.");
         }
         // "cancelled" → stay silent (user dismissed the autofill prompt).
       } catch (err) {
@@ -112,7 +112,7 @@ export default function AdminLoginPage({
       if (result.status === "ok") {
         onNewTokenReceived(result.token);
       } else if (result.status === "failed") {
-        setPasskeyError("Passkey login failed.");
+        setPasskeyError(result.message ?? "Passkey login failed.");
       } else {
         // "cancelled" — the user dismissed the prompt or has no passkey.
         setPasskeyError(

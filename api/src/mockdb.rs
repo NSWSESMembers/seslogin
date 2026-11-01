@@ -592,7 +592,7 @@ impl db::Handler for Handler {
     async fn create_webauthn_credential(
         &self,
         _id: &str,
-        _user_id: &str,
+        _owner: &db::PasskeyOwner,
         _name: &str,
         _passkey_json: &str,
     ) -> db::Result<db::WebauthnCredential> {
@@ -606,14 +606,17 @@ impl db::Handler for Handler {
         Self::unsupported()
     }
 
-    async fn list_webauthn_credentials_by_user(
+    async fn list_webauthn_credentials_by_owner(
         &self,
-        _user_id: &str,
+        _owner: &db::PasskeyOwner,
     ) -> db::Result<Vec<db::WebauthnCredential>> {
         Self::unsupported()
     }
 
-    async fn count_webauthn_credentials_by_user(&self, _user_id: &str) -> db::Result<usize> {
+    async fn count_webauthn_credentials_by_owner(
+        &self,
+        _owner: &db::PasskeyOwner,
+    ) -> db::Result<usize> {
         Self::unsupported()
     }
 
