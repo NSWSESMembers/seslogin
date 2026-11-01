@@ -30,6 +30,11 @@ vi.mock("../components/useUserInfo", () => ({
 function renderList(
   viewerCanEdit: boolean,
   sesApiPersonId: string | null = null,
+  person: {
+    locationId: string;
+    homeName: string;
+    viewerCanEdit: boolean;
+  } = { locationId: "loc1", homeName: "HQ", viewerCanEdit },
 ) {
   selected.viewerCanEdit = viewerCanEdit;
   const environment = createMockEnvironment();
@@ -56,6 +61,9 @@ function renderList(
       MockPayloadGenerator.generate(op, {
         Location: () => ({
           id: "loc1",
+          // The mock resolver also answers each member's nested `location`, so this
+          // is the home unit's name as the row sees it.
+          name: person.homeName,
           sesApiHeadquartersId: "hq",
           lastSuccessfulMemberSync: 1,
           people: [
@@ -66,6 +74,9 @@ function renderList(
               memberNumber: "1",
               sesApiPersonId,
               missingSince: null,
+              locationId: person.locationId,
+              location: { id: person.locationId, name: person.homeName },
+              viewerCanEdit: person.viewerCanEdit,
             },
           ],
         }),
@@ -98,6 +109,45 @@ describe("MembersList", () => {
     expect(
       screen.queryByRole("button", { name: "Sync now" }),
     ).not.toBeInTheDocument();
+  });
+});
+
+describe("MembersList secondary members", () => {
+  it("names the home unit and offers no Edit or Delete, even to an editor of this unit", async () => {
+    renderList(true, null, {
+      locationId: "loc2",
+      homeName: "Other Unit",
+      viewerCanEdit: false,
+    });
+    expect(await screen.findByText("Alice Anderson")).toBeInTheDocument();
+    expect(screen.getByText("Home: Other Unit")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Activity" })).toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: "Edit" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Delete" }),
+    ).not.toBeInTheDocument();
+    // The unit's own Sync now is unaffected.
+    expect(
+      screen.getByRole("button", { name: "Sync now" }),
+    ).toBeInTheDocument();
+  });
+
+  it("shows no home unit label for a home member", async () => {
+    renderList(true);
+    expect(await screen.findByText("Alice Anderson")).toBeInTheDocument();
+    expect(screen.queryByText(/^Home:/)).not.toBeInTheDocument();
+  });
+
+  it("follows the member's own viewerCanEdit, not the unit's", async () => {
+    renderList(false, null, {
+      locationId: "loc1",
+      homeName: "HQ",
+      viewerCanEdit: true,
+    });
+    expect(await screen.findByText("Alice Anderson")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Edit" })).toBeInTheDocument();
   });
 });
 

@@ -172,13 +172,17 @@ enum PersonCmd {
     GetByRego { registration_number: String },
     /// Look up a person by SES API person ID.
     GetBySesId { ses_api_person_id: String },
-    /// List people for a location.
+    /// List people for a location: those whose home unit it is.
     List {
         #[arg(long)]
         location: String,
         /// Include soft-deleted people.
         #[arg(long)]
         include_deleted: bool,
+        /// Also list members of other units who volunteer here (as the admin site's
+        /// Members page does), not only those whose home unit this is.
+        #[arg(long)]
+        include_secondary: bool,
     },
     /// List members with their most recent period, for spotting manually created
     /// members that are never actually used.
@@ -2743,10 +2747,15 @@ async fn run(db: &impl Handler, object: Object) -> Result<()> {
             PersonCmd::List {
                 location,
                 include_deleted,
+                include_secondary,
             } => {
-                let mut people = db
-                    .list_people_for_location(&location, !include_deleted)
-                    .await?;
+                let mut people = if include_secondary {
+                    db.list_members_for_location(&location, !include_deleted)
+                        .await?
+                } else {
+                    db.list_people_for_location(&location, !include_deleted)
+                        .await?
+                };
                 people.sort_by(|a, b| a.last_name.cmp(&b.last_name));
                 let rows: Vec<Vec<String>> = people
                     .iter()

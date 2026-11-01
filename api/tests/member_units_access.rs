@@ -2,6 +2,8 @@
 //! A is a secondary unit (as directory sync records it): admins, read-only users and API
 //! tokens at A can read her by id and by member number, including her contact fields,
 //! but cannot change or delete her, and a user at an unrelated unit still cannot read her.
+//! She is also listed as a member of A (`Location.people`, dashboard, leaderboard), with
+//! `Person.viewerCanEdit` true only for her home unit.
 //!
 //! Same harness as `location_access.rs`.
 
@@ -202,4 +204,162 @@ async fn the_home_unit_admin_can_still_change_the_member() {
         app.db.persons.lock().unwrap()["dana"].first_name,
         "Danielle"
     );
+}
+
+// Listings: a secondary member is a member of the unit, with the home unit's rules for
+// editing.
+
+const LISTING: &str = r#"{ location(id: "loc-a") { people { id locationId
+    isHere: isMemberOf(locationId: "loc-a") isThere: isMemberOf(locationId: "loc-c")
+    viewerCanEdit } } }"#;
+
+fn ids(data: &serde_json::Value, path: &str) -> Vec<String> {
+    let mut ids: Vec<String> = data["location"][path]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| p["id"].as_str().unwrap().to_string())
+        .collect();
+    ids.sort();
+    ids
+}
+
+#[tokio::test]
+async fn a_secondary_member_is_listed_at_each_of_their_units() {
+    let app = app();
+    seed_person(
+        &app, "alice", "loc-a", "Alice", "Anderson", "10000001", None,
+    );
+    let data = json(&run(&app, user(&["loc-a"], &[]), LISTING).await);
+    assert_eq!(ids(&data, "people"), ["alice", "dana"]);
+    let data = json(
+        &run(
+            &app,
+            user(&["loc-b"], &[]),
+            r#"{ location(id: "loc-b") { people { id } } }"#,
+        )
+        .await,
+    );
+    assert_eq!(ids(&data, "people"), ["dana"]);
+    // Unit C has no link to her.
+    let data = json(
+        &run(
+            &app,
+            user(&["loc-c"], &[]),
+            r#"{ location(id: "loc-c") { people { id } } }"#,
+        )
+        .await,
+    );
+    assert!(ids(&data, "people").is_empty());
+}
+
+#[tokio::test]
+async fn a_soft_deleted_secondary_member_is_not_listed() {
+    let app = app();
+    app.db
+        .persons
+        .lock()
+        .unwrap()
+        .get_mut("dana")
+        .unwrap()
+        .deleted = Some(1);
+    let data = json(&run(&app, user(&["loc-a"], &[]), LISTING).await);
+    assert!(ids(&data, "people").is_empty());
+}
+
+#[tokio::test]
+async fn viewer_can_edit_follows_the_home_unit() {
+    let app = app();
+    let dana = |data: &serde_json::Value| {
+        data["location"]["people"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|p| p["id"] == "dana")
+            .unwrap()
+            .clone()
+    };
+    // The secondary unit's admin can list her but not edit her.
+    let data = json(&run(&app, user(&["loc-a"], &[]), LISTING).await);
+    let row = dana(&data);
+    assert_eq!(row["locationId"], "loc-b");
+    assert_eq!(row["viewerCanEdit"], false);
+    assert_eq!(row["isHere"], true);
+    assert_eq!(row["isThere"], false);
+    // Her home unit's admin can, from either listing.
+    let data = json(
+        &run(
+            &app,
+            user(&["loc-a", "loc-b"], &[]),
+            r#"{ location(id: "loc-a") { people { id viewerCanEdit } } }"#,
+        )
+        .await,
+    );
+    assert_eq!(dana(&data)["viewerCanEdit"], true);
+    // A home-unit read-only user cannot.
+    let data = json(
+        &run(
+            &app,
+            user(&["loc-a"], &["loc-b"]),
+            r#"{ location(id: "loc-b") { people { id viewerCanEdit } } }"#,
+        )
+        .await,
+    );
+    assert_eq!(dana(&data)["viewerCanEdit"], false);
+}
+
+#[tokio::test]
+async fn the_home_only_list_stays_home_only() {
+    use seslogin::db::Handler;
+    let app = app();
+    let home = app
+        .db
+        .list_people_for_location("loc-a", true)
+        .await
+        .unwrap();
+    assert!(home.is_empty());
+    let members = app
+        .db
+        .list_members_for_location("loc-a", true)
+        .await
+        .unwrap();
+    assert_eq!(members.len(), 1);
+    assert_eq!(members[0].id, "dana");
+    let home = app
+        .db
+        .list_people_for_location("loc-b", true)
+        .await
+        .unwrap();
+    assert_eq!(home.len(), 1);
+}
+
+#[tokio::test]
+async fn the_dashboard_and_leaderboard_count_a_secondary_member() {
+    let app = app();
+    let mut state = seslogin::badges::BadgeState::default();
+    seslogin::badges::award_if_missing(
+        &mut state,
+        "loc-a",
+        "service-one-year-in",
+        seslogin::clock::now_sec() - 60,
+    );
+    app.db
+        .persons
+        .lock()
+        .unwrap()
+        .get_mut("dana")
+        .unwrap()
+        .badge_state = seslogin::badges::write_state(&state);
+    let data = json(
+        &run(
+            &app,
+            user(&["loc-a"], &[]),
+            r#"{ location(id: "loc-a") { dashboardSummary { totalMembers }
+                badgeLeaderboard { personId badgeCount } } }"#,
+        )
+        .await,
+    );
+    assert_eq!(data["location"]["dashboardSummary"]["totalMembers"], 1);
+    assert_eq!(data["location"]["badgeLeaderboard"][0]["personId"], "dana");
+    assert_eq!(data["location"]["badgeLeaderboard"][0]["badgeCount"], 1);
 }

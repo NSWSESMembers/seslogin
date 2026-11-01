@@ -96,6 +96,14 @@ impl db::Handler for Handler {
         Self::unsupported()
     }
 
+    async fn list_members_for_location(
+        &self,
+        _location_id: &str,
+        _skip_deleted: bool,
+    ) -> db::Result<Vec<Person>> {
+        Self::unsupported()
+    }
+
     async fn list_periods_for_location(
         &self,
         _location_id: &str,

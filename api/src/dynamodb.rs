@@ -16,7 +16,7 @@ use aws_sdk_dynamodb::types::{
     TransactWriteItem, WriteRequest,
 };
 use aws_sdk_dynamodb::{Client, types::AttributeValue};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 /// Extract the most useful info from a DynamoDB SdkError.
 /// `{}` just prints "service error"; `{:?}` dumps raw HTTP responses.
@@ -2787,6 +2787,45 @@ impl db::Handler for Handler {
             }
         })
         .await
+    }
+
+    async fn list_members_for_location(
+        &self,
+        location_id: &str,
+        skip_deleted: bool,
+    ) -> db::Result<Vec<Person>> {
+        let mut members = self
+            .list_people_for_location(location_id, skip_deleted)
+            .await?;
+        let mut seen: HashSet<String> = members.iter().map(|p| p.id.clone()).collect();
+
+        // Find the secondary members through the sparse `person_unit` index. It is only a
+        // way to find candidates: `secondary_location_ids` on the person decides, so a
+        // stale row (directory sync writes the two separately) can't list someone.
+        let rows: Vec<db::PersonUnit> = query_all("list_members_for_location", || {
+            self.client
+                .query()
+                .table_name(self.table_name("person_unit"))
+                .index_name("location_id-index")
+                .key_condition_expression("location_id = :location_id")
+                .expression_attribute_values(
+                    ":location_id",
+                    AttributeValue::S(location_id.to_string()),
+                )
+        })
+        .await?;
+        let mut candidates: Vec<&str> = Vec::new();
+        for row in &rows {
+            if row.membership_type.is_some() && seen.insert(row.person_id.clone()) {
+                candidates.push(&row.person_id);
+            }
+        }
+        for person in self.get_persons(&candidates).await?.into_iter().flatten() {
+            if person.is_member_of(location_id) && !(skip_deleted && person.deleted.is_some()) {
+                members.push(person);
+            }
+        }
+        Ok(members)
     }
 
     async fn list_periods_for_location(

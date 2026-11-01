@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<8341df38bbc2f8200cc2ffb02c92c303>>
+ * @generated SignedSource<<1cbd21de96387c5955e0e2bf04ab475b>>
  * @lightSyntaxTransform
  */
 
@@ -24,9 +24,15 @@ export type MembersListQuery$data = {
       readonly firstName: string;
       readonly id: string;
       readonly lastName: string;
+      readonly location: {
+        readonly id: string;
+        readonly name: string;
+      };
+      readonly locationId: string;
       readonly memberNumber: string | null | undefined;
       readonly missingSince: number | null | undefined;
       readonly sesApiPersonId: string | null | undefined;
+      readonly viewerCanEdit: boolean;
     }>;
     readonly sesApiHeadquartersId: string | null | undefined;
   };
@@ -131,6 +137,39 @@ v2 = [
             "storageKey": null
           },
           {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "locationId",
+            "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": null,
+            "concreteType": "Location",
+            "kind": "LinkedField",
+            "name": "location",
+            "plural": false,
+            "selections": [
+              (v1/*:: as any*/),
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "name",
+                "storageKey": null
+              }
+            ],
+            "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "viewerCanEdit",
+            "storageKey": null
+          },
+          {
             "condition": "showBadges",
             "kind": "Condition",
             "passingValue": true,
@@ -189,16 +228,16 @@ return {
     "selections": (v2/*:: as any*/)
   },
   "params": {
-    "cacheID": "fc8140028276fc9c11b1953e592738bc",
+    "cacheID": "8ed6a5b4b553661de599fcf54d27df97",
     "id": null,
     "metadata": {},
     "name": "MembersListQuery",
     "operationKind": "query",
-    "text": "query MembersListQuery(\n  $location: ID!\n  $showBadges: Boolean!\n) {\n  location(id: $location) {\n    id\n    sesApiHeadquartersId\n    lastSuccessfulMemberSync\n    people {\n      id\n      firstName\n      lastName\n      memberNumber\n      sesApiPersonId\n      missingSince\n      badges(locationId: $location) @include(if: $showBadges) {\n        id\n        tier\n      }\n    }\n  }\n}\n"
+    "text": "query MembersListQuery(\n  $location: ID!\n  $showBadges: Boolean!\n) {\n  location(id: $location) {\n    id\n    sesApiHeadquartersId\n    lastSuccessfulMemberSync\n    people {\n      id\n      firstName\n      lastName\n      memberNumber\n      sesApiPersonId\n      missingSince\n      locationId\n      location {\n        id\n        name\n      }\n      viewerCanEdit\n      badges(locationId: $location) @include(if: $showBadges) {\n        id\n        tier\n      }\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "9005fc3c80d9a1ae071e825b5b36aec5";
+(node as any).hash = "c5615a9fbc4d5e7ce6d096a0a7a541d5";
 
 export default node;

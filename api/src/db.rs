@@ -2133,7 +2133,24 @@ pub trait Handler: Sync {
         &self,
         query: ListSessionsQuery,
     ) -> impl Future<Output = Result<Vec<Session>>> + Send;
+    /// The people whose HOME unit (`Person.location_id`) is this location, and no one else.
+    ///
+    /// This is the roster member sync reconciles against SES, so it must stay home-only:
+    /// a secondary member is absent from this unit's SES payload, and listing them here
+    /// would have the absence pass mark and then soft-delete them. For an admin-facing
+    /// listing of who belongs to a unit use `list_members_for_location`.
     fn list_people_for_location(
+        &self,
+        location_id: &str,
+        skip_deleted: bool,
+    ) -> impl Future<Output = Result<Vec<Person>>> + Send;
+    /// Every member of this location: those whose home unit it is (as
+    /// `list_people_for_location`) plus those who hold a Volunteer assignment here
+    /// (`Person::is_member_of`, driven by `secondary_location_ids`), each once.
+    ///
+    /// For admin-facing listings and counts. Not for member sync: see
+    /// `list_people_for_location`.
+    fn list_members_for_location(
         &self,
         location_id: &str,
         skip_deleted: bool,

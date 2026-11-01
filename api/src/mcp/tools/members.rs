@@ -17,7 +17,7 @@ use crate::app::{App, HasDb, HasMail, HasQueues, HasRealtime};
 
 /// A `Person`'s fields, as the Members page shows them plus ids and times.
 const MEMBER_SELECTION: &str = "id firstName lastName memberNumber sesApiPersonId missingSince \
-     deleted locationId createdAt updatedAt";
+     deleted locationId viewerCanEdit createdAt updatedAt";
 
 /// What member sync owns, repeated in every tool description that can change a member.
 const SYNC_OWNED: &str = "Members with `sesApiPersonId` set (`syncManaged: true`) are owned by the \
@@ -32,7 +32,9 @@ pub(super) fn catalogue() -> Vec<Value> {
             "list_members",
             "List members",
             &format!(
-                "List the active (not deleted) members of a location: id, name, member \
+                "List the active (not deleted) members of a location, including members of \
+                 other units who also volunteer here (their `locationId` is their home unit; \
+                 only the home unit can edit them, see `viewerCanEdit`): id, name, member \
                  number, `sesApiPersonId`, `missingSince` (set when member sync last saw them \
                  missing from SES) and `syncManaged`. `query` keeps only members whose first \
                  name, last name, full name or member number contains it (case-insensitive). \

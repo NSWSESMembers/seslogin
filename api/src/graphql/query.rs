@@ -977,8 +977,26 @@ impl<A: App + HasDb + Send + Sync> Person<A> {
         self.rec.updated_at.map(|t| t as i64)
     }
 
+    /// The member's home unit: the one that owns the record, and the only one whose
+    /// admins may edit or delete it. A member who also volunteers at other units is
+    /// listed there too (`isMemberOf`), but `locationId` stays this one.
     async fn location_id(&self) -> ID {
         ID(self.rec.location_id.clone())
+    }
+
+    /// Whether this person is a member of the given unit: their home unit, or one they
+    /// hold a Volunteer assignment at. Says nothing about who may edit them: that is
+    /// `viewerCanEdit`.
+    async fn is_member_of(&self, location_id: ID) -> bool {
+        self.rec.is_member_of(&location_id)
+    }
+
+    /// Whether the current caller may edit or delete this person. This is write access
+    /// at the member's HOME unit, matching `updatePerson` and `deletePerson`: a secondary
+    /// unit's admins can see the member but not change the record. False for Read only
+    /// users, kiosks and edit links.
+    async fn viewer_can_edit(&self, ctx: &Context<'_>) -> bool {
+        can_write_location(ctx, &self.rec.location_id)
     }
 
     async fn location(&self, ctx: &Context<'_>) -> Result<Location<A>> {
@@ -2514,7 +2532,7 @@ impl<A: App + HasDb + Send + Sync> Location<A> {
         let app = ctx.data_unchecked::<Arc<A>>();
         let items = app
             .db()
-            .list_people_for_location(&self.rec.id, true)
+            .list_members_for_location(&self.rec.id, true)
             .await
             .map_err(|e| {
                 warn!("db error: {:?}", e);
@@ -3083,7 +3101,7 @@ impl<A: App + HasDb + Send + Sync> Location<A> {
 
         let members = app
             .db()
-            .list_people_for_location(&self.rec.id, true)
+            .list_members_for_location(&self.rec.id, true)
             .await
             .map_err(|e| {
                 warn!("db error: {:?}", e);
@@ -3380,7 +3398,7 @@ impl<A: App + HasDb + Send + Sync> Location<A> {
         let app = ctx.data_unchecked::<Arc<A>>();
         let people = app
             .db()
-            .list_people_for_location(&self.rec.id, true)
+            .list_members_for_location(&self.rec.id, true)
             .await
             .map_err(|e| {
                 warn!("db error: {:?}", e);

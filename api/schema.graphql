@@ -1963,7 +1963,25 @@ type Person {
 	missingSince: Int
 	createdAt: Int
 	updatedAt: Int
+	"""
+	The member's home unit: the one that owns the record, and the only one whose
+	admins may edit or delete it. A member who also volunteers at other units is
+	listed there too (`isMemberOf`), but `locationId` stays this one.
+	"""
 	locationId: ID!
+	"""
+	Whether this person is a member of the given unit: their home unit, or one they
+	hold a Volunteer assignment at. Says nothing about who may edit them: that is
+	`viewerCanEdit`.
+	"""
+	isMemberOf(locationId: ID!): Boolean!
+	"""
+	Whether the current caller may edit or delete this person. This is write access
+	at the member's HOME unit, matching `updatePerson` and `deletePerson`: a secondary
+	unit's admins can see the member but not change the record. False for Read only
+	users, kiosks and edit links.
+	"""
+	viewerCanEdit: Boolean!
 	location: Location!
 	"""
 	Earned badges for this person across all locations.
