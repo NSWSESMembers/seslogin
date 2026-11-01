@@ -149,3 +149,26 @@ describe("startKioskSessionFetcher with a wrong clock", () => {
     fetcher.stop();
   });
 });
+
+describe("the live interval", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.resetModules();
+  });
+
+  async function liveIntervalOn(environment: string) {
+    vi.stubEnv("MODE", "production");
+    vi.stubEnv("VITE_ENVIRONMENT", environment);
+    vi.resetModules();
+    return (await import("./KioskSessionFetcher"))
+      .LIVE_SESSION_REFRESH_INTERVAL_MS;
+  }
+
+  it("is 15 minutes on prod", async () => {
+    expect(await liveIntervalOn("prod")).toBe(15 * 60 * 1000);
+  });
+
+  it.each(["preprod", "qa", "test"])("is 2 minutes on %s", async (env) => {
+    expect(await liveIntervalOn(env)).toBe(2 * 60 * 1000);
+  });
+});
