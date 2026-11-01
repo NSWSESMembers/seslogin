@@ -234,7 +234,8 @@ pub(crate) fn require_location_write_access(ctx: &Context<'_>, location_id: &str
 }
 
 /// Check the caller is a member signed in to Tally who may use `location_id`'s shared
-/// Tally tools: their home unit, any unit the user signed in alongside them holds
+/// Tally tools: any unit they belong to (their home unit or a secondary one, see
+/// [`db::Person::member_location_ids`]), any unit the user signed in alongside them holds
 /// either role at, or every unit when that user is a super user. Everyone else —
 /// users on their own, kiosks, API tokens and edit links — is refused with `refusal`:
 /// Tally is for members.
@@ -248,13 +249,13 @@ pub(crate) fn require_member_location(
 ) -> Result<()> {
     match ctx.data_opt::<AuthInfo>() {
         Some(AuthInfo::Member {
-            location_id: home,
+            member_location_ids,
             is_super,
             user_location_ids,
             ..
         }) => {
             if *is_super
-                || home == location_id
+                || member_location_ids.iter().any(|l| l == location_id)
                 || user_location_ids.iter().any(|l| l == location_id)
             {
                 Ok(())

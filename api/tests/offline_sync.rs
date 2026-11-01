@@ -649,6 +649,29 @@ async fn shared_contacts_are_the_callers_own_and_come_again_only_when_they_chang
 }
 
 #[tokio::test]
+async fn shared_contacts_include_every_unit_the_member_belongs_to() {
+    let (app, auth) = setup().await;
+    seed_location(&app, "loc-b", "Bravo Unit");
+    seed_location(&app, "loc-c", "Charlie Unit");
+    // The caller's secondary unit is loc-b; her user has no grants; loc-c is nobody's.
+    app.db
+        .persons
+        .lock()
+        .unwrap()
+        .get_mut("caller")
+        .unwrap()
+        .secondary_location_ids = vec!["loc-b".to_string()];
+    add_shared_contact(&app, Some("loc-a"), "Alpha DO").await;
+    add_shared_contact(&app, Some("loc-b"), "Bravo DO").await;
+    add_shared_contact(&app, Some("loc-c"), "Charlie DO").await;
+    add_person(&app, "Ann", "10000000").await;
+    app.db.age_contacts(60);
+
+    let (_, page) = get(&app, Some(&auth), "").await;
+    assert_eq!(shared_contact_names(&page), ["Alpha DO", "Bravo DO"]);
+}
+
+#[tokio::test]
 async fn unreadable_shared_contacts_leave_the_rest_of_the_sync_working() {
     let (app, auth) = setup().await;
     add_shared_contact(&app, None, "SOC").await;

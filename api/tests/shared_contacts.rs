@@ -39,6 +39,7 @@ fn member(units: &[&str]) -> AuthInfo {
     AuthInfo::Member {
         person_id: "caller".to_string(),
         location_id: "loc-home".to_string(),
+        member_location_ids: vec!["loc-home".to_string()],
         user_id: Some("caller".to_string()),
         is_super: false,
         user_location_ids: units.iter().map(|s| s.to_string()).collect(),
@@ -51,6 +52,7 @@ fn plain_member() -> AuthInfo {
     AuthInfo::Member {
         person_id: "alice".to_string(),
         location_id: "loc-a".to_string(),
+        member_location_ids: vec!["loc-a".to_string()],
         user_id: None,
         is_super: false,
         user_location_ids: vec![],
@@ -62,6 +64,7 @@ fn super_user() -> AuthInfo {
     AuthInfo::Member {
         person_id: "super".to_string(),
         location_id: "loc-home".to_string(),
+        member_location_ids: vec!["loc-home".to_string()],
         user_id: Some("super".to_string()),
         is_super: true,
         user_location_ids: vec![],

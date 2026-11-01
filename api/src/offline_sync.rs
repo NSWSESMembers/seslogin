@@ -296,14 +296,15 @@ pub async fn sync<A: App + HasDb + HasQueues>(
     let (person_id, scope) = match auth::verify_token(app, token, host).await {
         Ok(AuthInfo::Member {
             person_id,
-            location_id,
+            member_location_ids,
             is_super,
             user_location_ids,
             ..
         }) => {
             let scope = ContactScope {
                 is_super,
-                locations: std::iter::once(location_id)
+                locations: member_location_ids
+                    .into_iter()
                     .chain(user_location_ids)
                     .collect(),
             };
@@ -618,7 +619,7 @@ fn unit(l: &db::Location) -> Unit<'_> {
 /// lets them read.
 struct ContactScope {
     is_super: bool,
-    /// Their home unit and their user's units, either role.
+    /// Every unit they belong to and their user's units, either role.
     locations: HashSet<String>,
 }
 

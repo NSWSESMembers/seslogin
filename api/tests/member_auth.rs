@@ -304,6 +304,7 @@ fn super_member() -> AuthInfo {
     AuthInfo::Member {
         person_id: "alice".to_string(),
         location_id: "loc-a".to_string(),
+        member_location_ids: vec!["loc-a".to_string()],
         user_id: Some("u1".to_string()),
         is_super: true,
         user_location_ids: vec!["loc-a".to_string(), "loc-b".to_string()],
@@ -384,6 +385,7 @@ fn member_at(home: &str, units: &[&str], is_super: bool) -> AuthInfo {
     AuthInfo::Member {
         person_id: "alice".to_string(),
         location_id: home.to_string(),
+        member_location_ids: vec![home.to_string()],
         user_id: Some("u1".to_string()),
         is_super,
         user_location_ids: units.iter().map(|s| s.to_string()).collect(),
