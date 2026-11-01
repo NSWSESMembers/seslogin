@@ -736,6 +736,31 @@ Each member's in-app notification inbox (Tally), fanned out on write: an event n
 
 ---
 
+### `{prefix}webauthn_credential`
+
+Passkeys. Each row belongs to exactly one owner: a user (`user_id`) or, for Tally sign-in, a member (`person_id`). The owner attribute that does not apply is omitted, so each GSI is sparse and holds only its own kind of passkey.
+
+| Attribute   | Type | Role                                                        |
+| ----------- | ---- | ----------------------------------------------------------- |
+| `id`        | S    | Hash key (PK) — the credential ID, unpadded base64url       |
+| `user_id`   | S    | GSI hash key (`user_id-index`) — present on a user's passkey |
+| `person_id` | S    | GSI hash key (`person_id-index`) — present on a member's passkey |
+
+**GSIs:**
+
+| GSI               | Hash key    | Sort key | Projection | Purpose                              |
+| ----------------- | ----------- | -------- | ---------- | ------------------------------------ |
+| `user_id-index`   | `user_id`   | —        | ALL        | List and count a user's passkeys     |
+| `person_id-index` | `person_id` | —        | ALL        | List and count a member's passkeys   |
+
+**Non-obvious attributes (not in table definition):**
+
+- `name` (S) — the label the owner gave it
+- `passkey_json` (S) — the serialized `webauthn_rs` `Passkey`: public key and signature counter. Never returned or audited
+- `created_at` (N); `last_used_at` (N, optional) — Unix seconds
+
+---
+
 ### `{prefix}audit_log`
 
 An append-only record of business database writes, shown in the admin UI. Entries are kept forever (no TTL). One item is written **per affected location** for each audited event, so a write touching two locations produces two items sharing an `event_id`.
