@@ -4,6 +4,7 @@ import type { IEnvironment } from "relay-runtime";
 import type { KioskSessionFetcherQuery } from "./__generated__/KioskSessionFetcherQuery.graphql";
 import type { KioskSession } from "./KioskSessionContext";
 import { setEnvironmentInfo } from "../../lib/environmentInfo";
+import { getCurrentEnvironment } from "../../lib/clientInfo";
 import {
   recordServerContactFailure,
   recordServerContactSuccess,
@@ -22,11 +23,18 @@ export const SESSION_REFRESH_INTERVAL_MS = DEV
  * re-enrollment arrive as pushes then (see SessionPushListener), so the poll is
  * only the heartbeat — it keeps `last_contact` fresh (the admin status dot and
  * dashboard), pings the healthcheck URL, and proves the kiosk can
- * still authenticate. Their thresholds are sized for this interval.
+ * still authenticate. Their thresholds are sized for the prod interval, so the
+ * shorter one elsewhere only makes them see a kiosk sooner.
+ *
+ * Only prod stretches it to 15 minutes: preprod, qa and test have few kiosks,
+ * and checking in every 2 minutes there keeps their last contact fresh while a
+ * release is being tried.
  */
 export const LIVE_SESSION_REFRESH_INTERVAL_MS = DEV
   ? 60 * 1000 // dev: 1 minute
-  : 15 * 60 * 1000; // prod: 15 minutes
+  : getCurrentEnvironment() === "prod"
+    ? 15 * 60 * 1000 // prod: 15 minutes
+    : 2 * 60 * 1000; // preprod, qa, test: 2 minutes
 
 // `environment` is handed to setEnvironmentInfo() whole rather than read field by
 // field, so the lint rule can't see the usage. See the same disable in

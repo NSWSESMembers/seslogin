@@ -10,7 +10,7 @@ export default function SessionStatus({
   lastContact: number | null | undefined;
 }) {
   const [nowSeconds] = useState(() => Math.floor(Date.now() / 1000));
-  // A kiosk with realtime session pushes checks in every 15 min ±10% (see
+  // On prod, a kiosk with realtime session pushes checks in every 15 min ±10% (see
   // LIVE_SESSION_REFRESH_INTERVAL_MS); matches the server's ONLINE_SESSION_SECONDS.
   const greenSeconds = 20 * 60;
   const orangeSeconds = 24 * 60 * 60;
