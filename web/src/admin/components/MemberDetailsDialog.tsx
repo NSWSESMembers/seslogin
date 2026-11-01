@@ -1,4 +1,5 @@
 import { graphql } from "react-relay";
+import { TextLink } from "../../components/ui/TextLink";
 import { useRetryableLazyLoadQuery } from "../../components/useRetryableLazyLoadQuery";
 import type { MemberDetailsDialogQuery } from "./__generated__/MemberDetailsDialogQuery.graphql";
 import { Muted } from "../../components/ui/Muted";
@@ -61,14 +62,14 @@ function MemberDetails({ personId }: { personId: string }) {
         <Field label="SES ID">{person.sesApiPersonId ?? NONE}</Field>
         <Field label="Email">
           {person.email ? (
-            <a href={`mailto:${person.email}`}>{person.email}</a>
+            <TextLink href={`mailto:${person.email}`}>{person.email}</TextLink>
           ) : (
             NONE
           )}
         </Field>
         <Field label="Mobile">
           {person.mobile ? (
-            <a href={`tel:${person.mobile}`}>{person.mobile}</a>
+            <TextLink href={`tel:${person.mobile}`}>{person.mobile}</TextLink>
           ) : (
             NONE
           )}
@@ -78,7 +79,7 @@ function MemberDetails({ personId }: { personId: string }) {
             <ul className="m-0 list-none p-0">
               {otherPhones.map((p) => (
                 <li key={p.number}>
-                  <a href={`tel:${p.number}`}>{p.number}</a>
+                  <TextLink href={`tel:${p.number}`}>{p.number}</TextLink>
                   {p.types.length > 0 && (
                     <span className="text-ink-muted">
                       {" "}

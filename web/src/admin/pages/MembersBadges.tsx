@@ -1,4 +1,5 @@
-import { Link, useParams } from "react-router";
+import { useParams } from "react-router";
+import { TextLink } from "../../components/ui/TextLink";
 import { graphql } from "react-relay";
 import { useRetryableLazyLoadQuery } from "../../components/useRetryableLazyLoadQuery";
 import useSelectedLocation from "../components/useSelectedLocation";
@@ -45,7 +46,7 @@ export default function MembersBadges() {
       <>
         <p className="my-4">Gamification is disabled for this location.</p>
         <p className="my-4">
-          <Link to="/admin/members">Back to members</Link>
+          <TextLink to="/admin/members">Back to members</TextLink>
         </p>
       </>
     );
@@ -60,7 +61,9 @@ export default function MembersBadges() {
         {person.memberNumber ? ` (SES ID ${person.memberNumber})` : ""}.
       </p>
       <p className="my-4">
-        <Link to={`/admin/members/${person.id}`}>Back to member details</Link>
+        <TextLink to={`/admin/members/${person.id}`}>
+          Back to member details
+        </TextLink>
       </p>
       <MemberBadgeProgressPanel badgeProgress={person.badgeProgress} />
     </>

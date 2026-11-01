@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link } from "react-router";
+import { TextLink } from "../../components/ui/TextLink";
 import { graphql, useMutation } from "react-relay";
 import { useRetryableLazyLoadQuery } from "../../components/useRetryableLazyLoadQuery";
 import type { ApiTokenNewQuery } from "./__generated__/ApiTokenNewQuery.graphql";
@@ -98,7 +98,7 @@ export default function ApiTokenNew() {
         </p>
         <CopyableSecret secret={created.secret} />
         <p className="my-4">
-          <Link to="/admin/api-tokens">Back to API tokens</Link>
+          <TextLink to="/admin/api-tokens">Back to API tokens</TextLink>
         </p>
       </>
     );
