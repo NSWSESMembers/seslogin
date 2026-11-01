@@ -30,7 +30,9 @@ use crate::realtime::Handler as _;
 use crate::ses_api;
 
 use super::audit_log::{self, AuditEntityType, AuditEntryConnection};
-use super::auth::{AuthGuard, AuthRequirement, can_write_location, require_location_access};
+use super::auth::{
+    AuthGuard, AuthRequirement, can_write_location, require_location_access, require_person_access,
+};
 use super::calendar::{self, CalendarEvent};
 use super::dataloader::DatabaseLoader;
 use super::equipment::{self, Equipment};
@@ -858,16 +860,17 @@ impl<A: App + HasDb + Send + Sync> Person<A> {
     }
 
     // The fields below are personal contact details and qualifications, so each one is
-    // limited to users and API tokens with access to the person's *home* location.
+    // limited to users and API tokens with access to any of the member's units (home or
+    // secondary).
     // This deliberately narrows the rule that `Person`'s own fields are unchecked (that
     // exists so a kiosk can show a visiting member from another unit): a kiosk never
     // needs these, so sessions are refused outright.
 
-    /// The SES directory's preferred name. Users and API tokens with access to the
-    /// member's home location only; never a kiosk.
+    /// The SES directory's preferred name. Users and API tokens with access to any of
+    /// the member's units only; never a kiosk.
     #[graphql(guard = "AuthGuard::new(AuthRequirement::UserOrApiToken)")]
     async fn preferred_name(&self, ctx: &Context<'_>) -> Result<Option<String>> {
-        require_location_access(ctx, &self.rec.location_id)?;
+        require_person_access(ctx, &self.rec)?;
         Ok(self.rec.preferred_name.clone())
     }
 
@@ -875,7 +878,7 @@ impl<A: App + HasDb + Send + Sync> Person<A> {
     /// `preferredName`.
     #[graphql(guard = "AuthGuard::new(AuthRequirement::UserOrApiToken)")]
     async fn mobile(&self, ctx: &Context<'_>) -> Result<Option<String>> {
-        require_location_access(ctx, &self.rec.location_id)?;
+        require_person_access(ctx, &self.rec)?;
         Ok(self.rec.mobile.clone())
     }
 
@@ -883,7 +886,7 @@ impl<A: App + HasDb + Send + Sync> Person<A> {
     /// `preferredName`.
     #[graphql(guard = "AuthGuard::new(AuthRequirement::UserOrApiToken)")]
     async fn phones(&self, ctx: &Context<'_>) -> Result<Vec<PersonPhone>> {
-        require_location_access(ctx, &self.rec.location_id)?;
+        require_person_access(ctx, &self.rec)?;
         Ok(
             ses_details::read_phones(&self.rec.id, self.rec.phones.as_deref())
                 .into_iter()
@@ -898,7 +901,7 @@ impl<A: App + HasDb + Send + Sync> Person<A> {
     /// The member's SES qualifications, by id. Same access as `preferredName`.
     #[graphql(guard = "AuthGuard::new(AuthRequirement::UserOrApiToken)")]
     async fn capability_tags(&self, ctx: &Context<'_>) -> Result<Vec<CapabilityTag>> {
-        require_location_access(ctx, &self.rec.location_id)?;
+        require_person_access(ctx, &self.rec)?;
         Ok(
             ses_details::read_capability_tags(&self.rec.id, self.rec.capability_tags.as_deref())
                 .into_iter()
@@ -915,7 +918,7 @@ impl<A: App + HasDb + Send + Sync> Person<A> {
     /// name. Same access as `preferredName`.
     #[graphql(guard = "AuthGuard::new(AuthRequirement::UserOrApiToken)")]
     async fn units(&self, ctx: &Context<'_>) -> Result<Vec<PersonUnitAssignment>> {
-        require_location_access(ctx, &self.rec.location_id)?;
+        require_person_access(ctx, &self.rec)?;
         let app = ctx.data_unchecked::<Arc<A>>();
         let mut units = app
             .db()
@@ -1097,7 +1100,7 @@ impl<A: App + HasDb + Send + Sync> Person<A> {
         let category_ids: Option<Vec<String>> =
             categories.map(|cs| cs.into_iter().map(|c| c.0).collect());
 
-        require_location_access(ctx, &self.rec.location_id)?;
+        require_person_access(ctx, &self.rec)?;
         let app = ctx.data_unchecked::<Arc<A>>();
         let items = app
             .db()
@@ -1131,7 +1134,7 @@ impl<A: App + HasDb + Send + Sync> Person<A> {
 
     /// The person's most recent period (by start time), or null if they have none.
     async fn last_period(&self, ctx: &Context<'_>) -> Result<Option<Period<A>>> {
-        require_location_access(ctx, &self.rec.location_id)?;
+        require_person_access(ctx, &self.rec)?;
         let app = ctx.data_unchecked::<Arc<A>>();
         let mut items = app
             .db()
@@ -4060,16 +4063,16 @@ impl<A: App + HasDb + HasRealtime + Send + Sync + 'static> QueryRoot<A> {
             .map_err(|e| anyhow!("Failed to load person via DataLoader: {}", e))?
             .flatten()
             .ok_or_else(|| anyhow!("Person with ID {:?} missing", id))?;
-        // Checked against the person's home location. A member visiting another unit
-        // is still visible there through `Period.person`, which is how kiosks and that
-        // unit's admins reach them; this lookup by id is not.
-        require_location_access(ctx, &rec.rec.location_id)?;
+        // Checked against any of the member's units (home or secondary). A member
+        // visiting an unrelated unit is still visible there through `Period.person`,
+        // which is how kiosks and that unit's admins reach them; this lookup by id is not.
+        require_person_access(ctx, &rec.rec)?;
 
         Ok(rec)
     }
 
     /// The person with this member number, or null if there is none *or* the caller
-    /// cannot read the person's home location, so it cannot be used to probe for member
+    /// cannot read any of the member's units (home or secondary), so it cannot be used to probe for member
     /// numbers at other units. Kiosk sign-in doesn't use this: `scanRegister2` looks the
     /// number up itself, which is what lets members sign in away from their own unit.
     #[graphql(guard = "AuthGuard::new(AuthRequirement::Authenticated)")]
@@ -4098,7 +4101,7 @@ impl<A: App + HasDb + HasRealtime + Send + Sync + 'static> QueryRoot<A> {
         let Some(person) = app.db().get_persons(&[&person_id]).await?.pop().flatten() else {
             return Ok(None);
         };
-        if require_location_access(ctx, &person.location_id).is_err() {
+        if require_person_access(ctx, &person).is_err() {
             return Ok(None);
         }
 

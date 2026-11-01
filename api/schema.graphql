@@ -1931,8 +1931,8 @@ type Person {
 	"""
 	email: String
 	"""
-	The SES directory's preferred name. Users and API tokens with access to the
-	member's home location only; never a kiosk.
+	The SES directory's preferred name. Users and API tokens with access to any of
+	the member's units only; never a kiosk.
 	"""
 	preferredName: String
 	"""
@@ -2107,7 +2107,7 @@ type QueryRoot {
 	): Person!
 	"""
 	The person with this member number, or null if there is none *or* the caller
-	cannot read the person's home location, so it cannot be used to probe for member
+	cannot read any of the member's units (home or secondary), so it cannot be used to probe for member
 	numbers at other units. Kiosk sign-in doesn't use this: `scanRegister2` looks the
 	number up itself, which is what lets members sign in away from their own unit.
 	"""

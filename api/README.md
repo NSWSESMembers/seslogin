@@ -474,9 +474,8 @@ from `list_users`/`create_user`/etc. that the admin UI would; only `whoami`,
 `get_user` (on your own id), the category reads, the own-account tools (settings, connected apps, passkeys, feedback), `get_audit_log` for your own locations and the location/member/period/report/kiosk
 tools (for your own locations) work; the category/NITC/location/API-token administration
 tools are `SuperUser` in GraphQL and refuse everyone else. Where a GraphQL read doesn't itself check the caller's grants
-(`location`, `Location.people`, `person` and the six `Location.periodSummaryBy*` resolvers behind `summarize_activity`), the tool does, and the period and kiosk
-tools check again even where the resolver does (`period`, `Location.periods`,
-`Person.periods`, `Query.session`, `Location.sessions`, `Location.auditLog`), so a tool only ever narrows access. A tool failure (a guard rejection, a
+(`location`, `Location.people` and the six `Location.periodSummaryBy*` resolvers behind `summarize_activity`), the tool does, and the period and kiosk
+tools check again even where the resolver does (`period`, `Location.periods`, `Query.session`, `Location.sessions`, `Location.auditLog`), so a tool only ever narrows access. A single member (`get_member`, `find_member_by_number`, `list_member_periods`) is read through `Query.person`, which allows an Admin or Read only grant at any of the member's units (home or secondary); `update_member` and `delete_member` still need Admin at the home unit. A tool failure (a guard rejection, a
 validation error) comes back as an ordinary JSON-RPC *success* whose
 `CallToolResult` carries `isError: true` and the message — not a transport
 error — so a client can show it inline rather than treating the whole request

@@ -191,6 +191,25 @@ pub(crate) fn require_location_access(ctx: &Context<'_>, location_id: &str) -> R
     }
 }
 
+/// Check the caller may read a person's record: [`require_location_access`] for any of
+/// the units the member belongs to (their home unit or a secondary one, see
+/// [`db::Person::member_location_ids`]). Same refusal as `require_location_access`.
+///
+/// Reads only. Changing or deleting a person stays with the home unit
+/// (`require_location_write_access(ctx, &person.location_id)`). A pure check: it reads
+/// nothing from the database.
+pub(crate) fn require_person_access(ctx: &Context<'_>, person: &db::Person) -> Result<()> {
+    if person
+        .member_location_ids()
+        .into_iter()
+        .any(|id| require_location_access(ctx, id).is_ok())
+    {
+        Ok(())
+    } else {
+        Err(ApiError::forbidden("Not authorized for this location").into())
+    }
+}
+
 /// Check the caller is allowed to *change* things at the given location. Same as
 /// [`require_location_access`] except a regular user must hold the location in
 /// `location_grants` (Admin); `location_read_only_grants` does not qualify.

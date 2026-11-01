@@ -1,10 +1,12 @@
 //! Member tools: `list_members`, `get_member`, `find_member_by_number`,
 //! `create_member`, `update_member`, `delete_member`, `sync_members`.
 //!
-//! Reads of a location's members and of a single person only require a signed-in
-//! caller in GraphQL, so these tools check the caller's grants themselves
-//! ([`ToolCtx::require_location_read`]). Writes rely on the resolvers, which require
-//! an Admin grant (a Read only user is refused).
+//! Reads of a location's members only require a signed-in caller in GraphQL, so
+//! these tools check the caller's grants themselves
+//! ([`ToolCtx::require_location_read`]). A single person is read through
+//! `Query.person`, which checks every unit the member belongs to. Writes rely on the
+//! resolvers, which require an Admin grant at the member's home unit (a Read only user,
+//! or an admin of only a secondary unit, is refused).
 
 use serde_json::{Value, json};
 
@@ -208,27 +210,27 @@ where
          lastPeriod {{ id startTime endTime categoryId category {{ id name }} comment }} }} }}"
     );
     let data = ctx.graphql(&doc, json!({ "id": id })).await?;
+    // `Query.person` has already checked the caller against every unit the member
+    // belongs to, so there is no separate home-unit check here.
     let mut member = data["person"].clone();
-    ctx.require_location_read(member["locationId"].as_str().unwrap_or_default())?;
     decorate(&mut member);
     Ok(member)
 }
 
-/// A member's location id, without the other details, for access checks.
-pub(super) async fn member_location<A>(ctx: &ToolCtx<'_, A>, id: &str) -> Result<String, ToolError>
+/// Refuse unless the caller may read this member. `Query.person` enforces the access
+/// rule itself (an Admin or Read only grant at any of the member's units), so asking
+/// for the id is the check; the member's home unit alone would wrongly refuse a
+/// secondary unit's admin.
+pub(super) async fn require_member_read<A>(ctx: &ToolCtx<'_, A>, id: &str) -> Result<(), ToolError>
 where
     A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static,
 {
-    let data = ctx
-        .graphql(
-            "query McpMemberLocation($id: ID!) { person(id: $id) { locationId } }",
-            json!({ "id": id }),
-        )
-        .await?;
-    Ok(data["person"]["locationId"]
-        .as_str()
-        .unwrap_or_default()
-        .to_string())
+    ctx.graphql(
+        "query McpMemberAccess($id: ID!) { person(id: $id) { id } }",
+        json!({ "id": id }),
+    )
+    .await?;
+    Ok(())
 }
 
 async fn get_member<A>(ctx: &ToolCtx<'_, A>, a: &Value) -> Result<Value, ToolError>
@@ -258,9 +260,6 @@ where
         .as_str()
         .ok_or_else(not_found)?
         .to_string();
-    let location_id = member_location(ctx, &id).await?;
-    ctx.require_location_read(&location_id)
-        .map_err(|_| not_found())?;
     let member = fetch_member(ctx, &id).await?;
     Ok(json!({ "member": member }))
 }
