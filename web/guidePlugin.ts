@@ -33,6 +33,16 @@ export default function guidePlugin(guideDir: string): Plugin {
         }),
     );
 
+  // Badge artwork the guides may show inline, as badge ids: "first-steps" for
+  // public/image/badges/by-id/first-steps.svg.
+  const badgeDir = join(guideDir, "..", "public", "image", "badges", "by-id");
+  const badgeIcons = () =>
+    new Set(
+      (existsSync(badgeDir) ? readdirSync(badgeDir) : [])
+        .filter((f) => f.endsWith(".svg"))
+        .map((f) => f.slice(0, -".svg".length)),
+    );
+
   // Every Markdown page, as [guide, file] pairs: web/guide/admin/kiosks.md is
   // ["admin", "kiosks.md"]. Folders other than screenshots/ are guides.
   const pageFiles = () =>
@@ -52,7 +62,7 @@ export default function guidePlugin(guideDir: string): Plugin {
         source: readFileSync(join(guideDir, guide, file), "utf8"),
       })),
       images(),
-      { allowMissingImages: serving },
+      { allowMissingImages: serving, badgeIcons: badgeIcons() },
     );
     const pages = Object.values(guides).flat();
     // Each screenshot a page uses becomes an import; its placeholder in the

@@ -79,6 +79,11 @@ You choose these when you set a kiosk up, and can change them later with
   shows their name and home unit and asks "Are you …?". Most mistyped SES IDs
   belong to someone at another unit, so this stops people signing in as the
   wrong person. Members of your own unit are signed in straight away, as usual.
+- **Badges** (beta): counts sign-ins and sign-outs at this kiosk towards
+  members' badges, and shows a member any badge they've just earned. Only offered
+  when your unit has badges turned on, which SESLogin's administrators do for
+  you; it counts only for members whose own unit has them on too. The kiosk guide
+  lists [every badge and how to earn it](../kiosk/badges.md).
 
 ### Other settings
 
