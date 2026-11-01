@@ -112,3 +112,14 @@ serde = { version = "1.0", features = ["derive"] }
 reqwest = { version = "0.13", default-features = false, features = ["json", "rustls", "http2", "charset", "query", "form"] }
 xxhash-rust = { version = "0.8", features = ["xxh64"] }
 nanoid = "0.5.0"
+
+# Debug info is most of what a dev/test build writes. With full debug info every
+# linked binary (26 bins, one per tests/*.rs file) was ~600MB and `cargo test` filled
+# a CI runner's disk. Line tables keep file:line in backtraces and panics; dependencies
+# get none. `test` inherits from `dev`. Need a debugger's variables? Override locally
+# with CARGO_PROFILE_DEV_DEBUG=2.
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false

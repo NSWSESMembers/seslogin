@@ -10,6 +10,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+      # The runner image ships SDKs we never use. Clearing them frees ~20GB of
+      # headroom for `cargo test`, which links one binary per tests/*.rs file.
+      - name: Free disk space
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
       - name: Setup Rust toolchain (pinned by api/rust-toolchain.toml)
         run: |
           channel=$(sed -nE 's/^channel *= *"(.*)"/\1/p' api/rust-toolchain.toml)
