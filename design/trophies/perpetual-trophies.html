@@ -1,0 +1,425 @@
+<title>SESLogin Perpetual Trophies</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;800&family=Public+Sans:ital,wght@0,400;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: a unit's trophy cabinet first, then the rules that move trophies between people, then where it shows and how it's built. Single centred column, wide cabinet grid. */
+:root {
+  --bg: #f6f4f1;
+  --surface: #ffffff;
+  --ink: #1d2433;
+  --muted: #5b6272;
+  --line: #ddd8d1;
+  --orange: #e2640f;      /* SES orange: daily claims */
+  --navy: #1f3d79;        /* records */
+  --brass: #9a6d12;       /* rolling leads */
+  --plate: #efe7d6;
+  --plate-ink: #4a3a17;
+  --steal: #b42318;
+  --hold: #2f7d4f;
+  --shield-fill: #ffffff;
+  --display: "Big Shoulders Display", "Arial Narrow", Impact, sans-serif;
+  --body: "Public Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #12151c; --surface: #1b2029; --ink: #e8e9ee; --muted: #a2a8b6; --line: #2e3542;
+  --orange: #ff8a3d; --navy: #8aa8ec; --brass: #e0b04c; --plate: #2b2618; --plate-ink: #ecd9a8;
+  --steal: #ff7b6e; --hold: #6fcf97; --shield-fill: #1b2029; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #12151c; --surface: #1b2029; --ink: #e8e9ee; --muted: #a2a8b6; --line: #2e3542;
+  --orange: #ff8a3d; --navy: #8aa8ec; --brass: #e0b04c; --plate: #2b2618; --plate-ink: #ecd9a8;
+  --steal: #ff7b6e; --hold: #6fcf97; --shield-fill: #1b2029; color-scheme: dark }
+
+body { background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 15px; line-height: 1.55; }
+.wrap { max-width: 1120px; margin: 0 auto; padding-block: 40px 72px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: grid; gap: 56px; }
+h1, h2, h3 { font-family: var(--display); font-weight: 800; letter-spacing: .01em; text-wrap: balance; margin: 0; line-height: 1.05; }
+h1 { font-size: clamp(44px, 8vw, 84px); text-transform: uppercase; }
+h2 { font-size: clamp(30px, 4.5vw, 42px); text-transform: uppercase; }
+h3 { font-size: 22px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; }
+p { margin: 0; max-width: 68ch; }
+.eyebrow { font-family: var(--mono); font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+section { display: grid; gap: 20px; }
+.lede { font-size: 18px; color: var(--muted); max-width: 60ch; }
+.lede strong { color: var(--ink); }
+code, .mono { font-family: var(--mono); font-size: .88em; }
+
+/* header */
+header { display: grid; gap: 16px; }
+.legend { display: flex; flex-wrap: wrap; gap: 10px 22px; margin-top: 6px; }
+.legend span { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; }
+.legend i { width: 14px; height: 14px; border-radius: 3px; display: inline-block; }
+
+/* cabinet */
+.cabinet { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 18px; }
+.trophy { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 18px 16px 16px; display: grid; gap: 12px; justify-items: center; text-align: center; }
+.trophy svg.shield { width: 112px; height: 130px; }
+.trophy .tname { font-family: var(--display); font-weight: 800; font-size: 26px; text-transform: uppercase; line-height: 1; }
+.trophy .tline { font-size: 13.5px; color: var(--muted); min-height: 3em; }
+.kind { font-family: var(--mono); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; padding: 3px 8px; border-radius: 99px; border: 1px solid currentColor; }
+.plate { width: 100%; background: var(--plate); color: var(--plate-ink); border-radius: 6px; padding: 10px 12px; display: grid; gap: 2px; text-align: left; font-size: 13px; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--plate-ink) 18%, transparent); }
+.plate .holder { font-weight: 700; font-size: 15px; }
+.plate .meta { font-family: var(--mono); font-size: 11.5px; display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; font-variant-numeric: tabular-nums; }
+
+.tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; min-width: 760px; font-size: 13.5px; }
+th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-family: var(--mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+tr:last-child td { border-bottom: 0; }
+td.n { font-variant-numeric: tabular-nums; white-space: nowrap; }
+td b { font-weight: 700; }
+
+/* mechanics */
+.mechs { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 18px; }
+.mech { border-top: 4px solid var(--c); padding-top: 14px; display: grid; gap: 10px; align-content: start; }
+.mech h3 { color: var(--c); }
+.mech ul { margin: 0; padding-left: 18px; display: grid; gap: 6px; font-size: 14px; }
+.mech .when { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+
+/* reign history */
+.reign { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); gap: 28px; align-items: start; }
+@media (max-width: 760px) { .reign { grid-template-columns: 1fr; } }
+.engraved { background: var(--plate); color: var(--plate-ink); border-radius: 8px; padding: 16px 18px; display: grid; gap: 0; font-family: var(--mono); font-size: 13px; font-variant-numeric: tabular-nums; }
+.engraved .row { display: grid; grid-template-columns: 1fr auto; gap: 10px; padding: 7px 0; border-bottom: 1px dashed color-mix(in srgb, var(--plate-ink) 30%, transparent); }
+.engraved .row:last-child { border-bottom: 0; }
+.engraved .who { font-family: var(--body); font-weight: 700; font-size: 14px; }
+.engraved .sub { opacity: .8; font-size: 11.5px; }
+.engraved .now { color: var(--orange); }
+
+/* rules */
+.rules { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px 28px; counter-reset: r; }
+.rule { display: grid; grid-template-columns: 34px minmax(0,1fr); gap: 10px; }
+.rule::before { counter-increment: r; content: counter(r); font-family: var(--display); font-weight: 800; font-size: 30px; line-height: 1; color: var(--orange); }
+.rule b { display: block; margin-bottom: 2px; }
+.rule p { font-size: 14px; color: var(--muted); }
+
+/* surfaces */
+.surfaces { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 18px; }
+.surface { display: grid; gap: 10px; align-content: start; }
+.surface > p { font-size: 14px; color: var(--muted); }
+.kiosk { background: #1b355a; color: #fff; border-radius: 14px; padding: 18px; display: grid; gap: 12px; }
+.kiosk .k-top { font-size: 13px; opacity: .8; }
+.kiosk .k-name { font-family: var(--display); font-size: 30px; font-weight: 800; text-transform: uppercase; line-height: 1; }
+.steal-card { background: #fff7ef; color: #6c2e09; border: 2px solid #d57c2f; border-radius: 10px; padding: 12px; display: grid; grid-template-columns: 52px minmax(0,1fr); gap: 12px; align-items: center; }
+.steal-card .s-eyebrow { font-family: var(--mono); font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; color: #b42318; font-weight: 600; }
+.steal-card.hold .s-eyebrow { color: #2f7d4f; }
+.steal-card .s-title { font-weight: 700; font-size: 15px; color: #8a3f10; }
+.steal-card .s-body { font-size: 13px; }
+.steal-card svg { width: 52px; height: 60px; }
+@media (prefers-reduced-motion: no-preference) {
+  .steal-card.anim { animation: thud .6s cubic-bezier(.2,1.6,.4,1) both; animation-delay: .4s; }
+  @keyframes thud { from { transform: scale(.85) rotate(-3deg); } to { transform: none; } }
+}
+.phone { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 14px; display: grid; gap: 10px; }
+.notif { display: grid; grid-template-columns: 36px minmax(0,1fr); gap: 10px; padding: 10px; border-radius: 10px; background: color-mix(in srgb, var(--orange) 9%, var(--surface)); }
+.notif .dot { width: 36px; height: 36px; border-radius: 50%; background: var(--steal); color: #fff; display: grid; place-items: center; font-family: var(--display); font-weight: 800; }
+.notif b { display: block; font-size: 14px; }
+.notif span { font-size: 13px; color: var(--muted); }
+.notif small { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+.admin-row { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.admin-row .ar-head { background: var(--navy); color: #fff; padding: 8px 12px; font-family: var(--mono); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .admin-row .ar-head { color: #12151c; } }
+:root[data-theme="dark"] .admin-row .ar-head { color: #12151c; }
+.admin-row .ar { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 8px; padding: 9px 12px; border-top: 1px solid var(--line); font-size: 13.5px; }
+.admin-row .ar small { color: var(--muted); font-family: var(--mono); font-size: 11.5px; }
+.admin-row .ar .chg { color: var(--steal); font-family: var(--mono); font-size: 11.5px; white-space: nowrap; }
+
+/* build */
+.build { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 22px; }
+.build > div { display: grid; gap: 10px; align-content: start; min-width: 0; }
+pre { margin: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 14px; overflow-x: auto; font-family: var(--mono); font-size: 12.5px; line-height: 1.6; }
+.build ul { margin: 0; padding-left: 18px; display: grid; gap: 6px; font-size: 14px; }
+
+.stack { display: grid; gap: 0; border-left: 2px solid var(--line); margin-left: 8px; }
+.pr { position: relative; padding: 0 0 18px 24px; display: grid; gap: 3px; }
+.pr::before { content: ""; position: absolute; left: -7px; top: 5px; width: 12px; height: 12px; border-radius: 50%; background: var(--bg); border: 2px solid var(--orange); }
+.pr b { font-size: 15px; }
+.pr span { font-size: 14px; color: var(--muted); max-width: 72ch; }
+.pr .tag { font-family: var(--mono); font-size: 11px; color: var(--orange); }
+
+.qs { display: grid; gap: 12px; }
+.q { display: grid; gap: 4px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+.q b { font-size: 15px; }
+.q span { font-size: 14px; color: var(--muted); }
+.q em { font-style: normal; color: var(--ink); font-weight: 600; }
+footer { font-size: 13px; color: var(--muted); border-top: 1px solid var(--line); padding-top: 16px; }
+</style>
+
+<div class="wrap">
+
+<header>
+  <div class="eyebrow">SESLogin · badge design · 31 Oct 2026</div>
+  <h1>Perpetual Trophies</h1>
+  <p class="lede">Eleven badges that belong to a <strong>unit</strong>, not to a member. Each one has exactly <strong>one holder</strong> at a time. Win it and you take it from whoever had it; the plate keeps every name that ever held it.</p>
+  <div class="legend" aria-label="Trophy kinds">
+    <span><i style="background:var(--navy)"></i>Standing record: held until beaten</span>
+    <span><i style="background:var(--brass)"></i>Rolling lead: whoever leads a moving window</span>
+  </div>
+</header>
+
+<section aria-labelledby="cab">
+  <div class="eyebrow">Example cabinet · Test A Unit · invented data</div>
+  <h2 id="cab">The cabinet</h2>
+  <div class="cabinet" id="cabinet"></div>
+</section>
+
+<section aria-labelledby="spec">
+  <h2 id="spec">Each trophy, precisely</h2>
+  <p>Category groups are the ones the personal badges already use in <code>badges.rs</code>, so "Storm", "Trainer", "Maintenance" and "Administration" mean the same thing everywhere. The Spanner and The Clipboard count hours rather than sign-outs, because one long afternoon in the shed is more work than three quick visits. The Owl uses no category at all, only the time a sign-in started, so it counts night call-outs however they were logged. Virtual categories (myAvailability) never count.</p>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Trophy</th><th>Kind</th><th>You take it when…</th><th>Minimum</th><th>Window</th><th>Decided</th><th>Who can win</th></tr></thead>
+      <tbody id="spec-rows"></tbody>
+    </table>
+  </div>
+</section>
+
+<section aria-labelledby="mech">
+  <h2 id="mech">How a trophy changes hands</h2>
+  <div class="mechs">
+    <div class="mech" style="--c:var(--navy)">
+      <h3>Standing record</h3>
+      <div class="when">The Boomerang · The Welcome Mat</div>
+      <ul>
+        <li>The holder's claim is a number (days away, km travelled). Strictly beat it and the trophy moves on the spot.</li>
+        <li>Records sit in a 365-day window. When the holder's claim ages out, the best claim still inside the window takes over at the nightly run; if there is none, the holder keeps it.</li>
+      </ul>
+    </div>
+    <div class="mech" style="--c:var(--brass)">
+      <h3>Rolling lead</h3>
+      <div class="when">The Kettle · The Padlock · Iron Roster · The Owl · The Chalk · The Tarp · The Spanner · The Clipboard · Unbroken Chain</div>
+      <ul>
+        <li>Each night, every eligible member gets a score over the trailing window.</li>
+        <li>A challenger takes the trophy only by <b>strictly beating the holder's current score</b> and meeting the minimum.</li>
+        <li>A holder who goes quiet keeps it until someone actually passes them, so the trophy is never empty.</li>
+        <li>The Kettle and The Padlock used to change hands every day, which made holding them mean nothing. Counting first-ins and last-outs over 30 days keeps them with the member who really opens and locks up the shed.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section aria-labelledby="reign">
+  <h2 id="reign">The plate remembers</h2>
+  <div class="reign">
+    <div style="display:grid;gap:12px">
+      <p>Every change of hands writes a reign. The admin report shows it as an engraved plate, newest first: who held it, for how long, how many times they defended it, and who took it.</p>
+      <p>The same history is the fallback when a claim turns out to be wrong. If an admin deletes or edits the period a claim rests on, the nightly run hands the trophy back to the most recent earlier holder whose claim still stands, and records the reign as <i>reverted</i> rather than stolen.</p>
+    </div>
+    <div class="engraved" aria-label="Example reign history for The Kettle">
+      <div class="row"><div><div class="who now">Bob Brown</div><div class="sub">took it from Priya Nair · first in 9 of 30 days</div></div><div>since Thu 29 Oct<br><span class="sub">2 defences</span></div></div>
+      <div class="row"><div><div class="who">Priya Nair</div><div class="sub">took it from Alice Anderson</div></div><div>5 weeks<br><span class="sub">31 defences</span></div></div>
+      <div class="row"><div><div class="who">Alice Anderson</div><div class="sub">took it from Bob Brown</div></div><div>3 months<br><span class="sub">88 defences</span></div></div>
+      <div class="row"><div><div class="who">Bob Brown</div><div class="sub">first holder</div></div><div>6 weeks<br><span class="sub">40 defences</span></div></div>
+    </div>
+  </div>
+</section>
+
+<section aria-labelledby="rules">
+  <h2 id="rules">House rules</h2>
+  <div class="rules">
+    <div class="rule"><div><b>One unit, one holder</b><p>A trophy is keyed by unit and trophy. There is no "joint holder" and no per-member copy.</p></div></div>
+    <div class="rule"><div><b>Ties go to the holder</b><p>You have to beat the holder, not match them. Between challengers on the same score, whoever reached it first wins.</p></div></div>
+    <div class="rule"><div><b>Never empty, except when the holder leaves</b><p>A trophy goes vacant only when its holder stops being a member of the unit (soft-deleted, or moved by member sync). The next winner takes an empty trophy with no minimum to beat beyond the trophy's own.</p></div></div>
+    <div class="rule"><div><b>Same switches as personal badges</b><p>Only units with gamification on, and only scans on kiosks with gamification on, can move a trophy. Switching a unit off freezes its cabinet; switching back on resumes it as it was.</p></div></div>
+    <div class="rule"><div><b>Home members only</b><p>Everything except The Welcome Mat is for members whose home unit is this one. The Welcome Mat is the reverse: visitors only. Guest sign-ins belong to nobody and never count.</p></div></div>
+    <div class="rule"><div><b>Nothing rewards a long shift</b><p>No trophy is won by staying on site longer in one go. Iron Roster counts each sign-in at most 12 hours, the same cap the personal hour badges use, so a forgotten sign-out can't win it.</p></div></div>
+  </div>
+</section>
+
+<section aria-labelledby="where">
+  <h2 id="where">Where it shows</h2>
+  <div class="surfaces">
+    <div class="surface">
+      <h3>Kiosk confirmation</h3>
+      <div class="kiosk">
+        <div class="k-top">Signed in · 06:12 · Training – Storm &amp; Water</div>
+        <div class="k-name">Bob Brown</div>
+        <div class="steal-card anim">
+          <svg viewBox="0 0 120 140" aria-hidden="true" id="mini-kettle"></svg>
+          <div><div class="s-eyebrow">Trophy taken</div><div class="s-title">The Boomerang</div><div class="s-body">Back after 240 days away. You took it from Priya Nair.</div></div>
+        </div>
+        <div class="steal-card hold">
+          <svg viewBox="0 0 120 140" aria-hidden="true" id="mini-mat"></svg>
+          <div><div class="s-eyebrow">Still yours</div><div class="s-title">The Welcome Mat</div><div class="s-body">Held at Test B Unit for 41 days.</div></div>
+        </div>
+      </div>
+      <p>Appears beside personal badge awards on the sign-in and sign-out screens. The Who's here list puts a small trophy mark next to holders who are on site.</p>
+    </div>
+    <div class="surface">
+      <h3>Kiosk, while you were away</h3>
+      <div class="phone">
+        <div style="font-size:13px;color:var(--muted)">Signed in · Priya Nair · Sat 31 Oct 18:40</div>
+        <div class="notif"><div class="dot">!</div><div><b>Bob Brown took The Kettle</b><span>First in on 9 of the last 30 days, ahead of your 8. You held it for 5 weeks.</span></div></div>
+        <div class="notif"><div class="dot" style="background:var(--brass)">↑</div><div><b>Alice Anderson took Iron Roster</b><span>31 h on site in 28 days, ahead of your 29 h.</span></div></div>
+      </div>
+      <p>A member who lost a trophy finds out on their next kiosk scan at the unit, once per lost trophy. Defences aren't announced to anyone else.</p>
+    </div>
+    <div class="surface">
+      <h3>Admin reports</h3>
+      <div class="admin-row">
+        <div class="ar-head">Reports › Badges › Perpetual trophies</div>
+        <div class="ar"><div><b>The Kettle</b> · Bob Brown<br><small>first in 9 / 30 days · since 29 Oct</small></div><div class="chg">changed 3d ago</div></div>
+        <div class="ar"><div><b>Iron Roster</b> · Alice Anderson<br><small>31 h / 28 days · since 30 Oct</small></div><div class="chg">changed 1d ago</div></div>
+        <div class="ar"><div><b>The Owl</b> · Priya Nair<br><small>5 nights / 60 days · since 2 Sep</small></div><div style="font-family:var(--mono);font-size:11.5px;color:var(--muted)">59 days</div></div>
+      </div>
+      <p>Admins and Read only users see the unit's cabinet and each trophy's plate. The weekly badge digest gains a "Changed hands this week" section.</p>
+    </div>
+  </div>
+</section>
+
+<section aria-labelledby="build">
+  <h2 id="build">Under the hood</h2>
+  <div class="build">
+    <div>
+      <h3>Storage</h3>
+      <p>One new table, <code>{prefix}_trophy</code>, partitioned by unit so the whole cabinet is one Query. No GSI.</p>
+<pre>pk  location_id
+sk  holder#&lt;trophy_id&gt;
+      person_id, value, claimed_at,
+      reign_started_at, defences,
+      claim_period_id?   (omitted, never Null)
+      version            (conditional writes)
+sk  reign#&lt;trophy_id&gt;#&lt;claimed_at, zero-padded&gt;
+      person_id, value, claimed_at,
+      ended_at?, ended_by_person_id?,
+      end_reason?  stolen | left-unit | reverted
+      seen_at?     (set once the loser's kiosk scan told them)</pre>
+      <ul>
+        <li>Every holder write is conditional on <code>version</code>; a loser re-reads and re-applies, as <code>badge_store::update</code> already does for personal state.</li>
+        <li>Added to <code>infra/dynamodb_test.tf</code>, the prod tables and <code>local-tables.rs</code> together, plus SCHEMA.md.</li>
+        <li><b>Not audited</b>, like person <code>BadgeState</code>: it is derived from periods. <code>AuditingHandler</code> passes the new methods through and says so.</li>
+      </ul>
+    </div>
+    <div>
+      <h3>When trophies move</h3>
+      <ul>
+        <li><b>On the scan</b>, in the same place <code>kiosk_badge_member</code> already gates personal badges: The Boomerang (gap since the member's previous sign-in) and The Welcome Mat (reusing <code>away_distance_km</code>).</li>
+        <li><b>Nightly</b>, inside <code>badge_nightly::run</code>, which already loads 53 weeks of each gamification unit's periods: all nine rolling leads, record age-outs, and a check that each on-scan claim's period still exists and still says what it did.</li>
+        <li>Nothing changes in Tally. Nightly trophies read every period whatever its source, so a sign-in made some other way still counts.</li>
+      </ul>
+      <h3>GraphQL</h3>
+<pre>type Location {
+  trophies: [Trophy!]!          # require_location_access
+}
+type Trophy {
+  id: ID!  name: String!  kind: TrophyKind!
+  holder: Person  value: Float  valueLabel: String
+  heldSince: Int  defences: Int!
+  reigns(first: Int): [TrophyReign!]!
+}
+# sign-in / sign-out payloads gain:
+trophyChanges: [TrophyChange!]!   # TAKEN | DEFENDED</pre>
+    </div>
+  </div>
+</section>
+
+<section aria-labelledby="stack">
+  <h2 id="stack">Delivery stack</h2>
+  <p>One commit per PR, each safe to deploy alone. Members see nothing until PR 5; the first four can sit on prod quietly filling the cabinet.</p>
+  <div class="stack">
+    <div class="pr"><span class="tag">PR 1 · infra</span><b>Create the trophy table</b><span>Terraform for test and prod, <code>local-tables.rs</code>, SCHEMA.md, IAM. Nothing reads it yet. Guide: not needed, no user-visible effect.</span></div>
+    <div class="pr"><span class="tag">PR 2 · api</span><b>Trophy reads and conditional writes on db::Handler</b><span>DynamoDB implementation, mockdb, explicit audit pass-through, a CLI <code>trophy list</code> for inspection.</span></div>
+    <div class="pr"><span class="tag">PR 3 · api</span><b><code>trophies.rs</code>: the eleven definitions and the steal rule</b><span>Pure functions: score a window, compare challenger to holder, break ties, pick the revert target. Unit tests for every tie and age-out case.</span></div>
+    <div class="pr"><span class="tag">PR 4 · api</span><b>Nightly evaluation</b><span>Rolling leads, age-outs and reconciliation in <code>badge_nightly</code>, honouring its existing <code>--dry-run</code>. Ships via <code>workers</code>.</span></div>
+    <div class="pr"><span class="tag">PR 5 · api + web</span><b>Location.trophies and the admin cabinet</b><span>Schema export, Relay, Reports › Badges panel and plate. Admin guide: reports page.</span></div>
+    <div class="pr"><span class="tag">PR 6 · api + web</span><b>Claims on the scan and the kiosk card</b><span>Boomerang, Welcome Mat; <code>trophyChanges</code> on the payloads; kiosk confirmation and Who's here mark. Kiosk guide and re-captured screenshots.</span></div>
+    <div class="pr"><span class="tag">PR 7 · api + web</span><b>"While you were away" and the weekly digest</b><span>The kiosk tells a member which trophies they lost since their last scan (a <code>seen</code> flag on the reign row); "Changed hands this week" in the digest email. Kiosk guide updated.</span></div>
+  </div>
+</section>
+
+<section aria-labelledby="open">
+  <h2 id="open">Decisions to make</h2>
+  <div class="qs">
+    <div class="q"><b>Should visitors be able to take home trophies?</b><span>Proposed: no. Members on deployment would otherwise sweep The Kettle at whichever unit they're staying at. <em>The Welcome Mat exists to give visitors their own.</em></span></div>
+    <div class="q"><b>Does holding a trophy leave anything permanent on the member?</b><span>Option: the first time someone takes each trophy, they also earn a personal wildcard badge ("Once held The Kettle") in their own badge state. Proposed: yes, in PR 6, so losing a trophy still leaves a mark.</span></div>
+    <div class="q"><b>Show the scores, or only the holder?</b><span>Proposed: the holder's own score is shown (on the plate and on the kiosk); a full leaderboard is not. It keeps the fun about the steal, not about grinding hours.</span></div>
+    <div class="q"><b>Which days count for The Kettle and The Padlock?</b><span>Being first in on a day only you came in isn't much of a win. Proposed: only days with 4 or more members on site count, the same "busy day" threshold Lights On and Lights Off use. <em>Check against prod how many busy days a typical unit has in 30 days before fixing the window.</em></span></div>
+    <div class="q"><b>Should The Owl count any night sign-in, or only call-outs?</b><span>A member who drops in at 10:30 pm to finish paperwork would score the same as one paged to a storm job. Limiting it to operational categories would fix that, but brings back the problem of members not logging what they actually did. <em>Proposed: any category, with the 30-minute minimum, and see whether it gets gamed.</em></span></div>
+  </div>
+</section>
+
+<footer>All names and numbers on this page are invented. Alice Anderson, Bob Brown and Test A/B Unit are the local seed fixtures; Priya Nair is made up for the example. The Spanner and The Clipboard icons are from Lucide (ISC licence).</footer>
+</div>
+
+<script>
+const ICONS = {
+  kettle: '<path d="M5 10h12l-1.2 9.2a1 1 0 0 1-1 .8H7.2a1 1 0 0 1-1-.8z"/><path d="M8 10c0-2.8 1.8-4.6 4-4.6s4 1.8 4 4.6"/><path d="M17 13.5l3.2-2.2"/><path d="M10 3.2c-.6.8.6 1.2 0 2M13 3.2c-.6.8.6 1.2 0 2"/>',
+  padlock: '<rect x="5" y="11" width="14" height="9.5" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/><path d="M12 14.6v2.4"/>',
+  boomerang: '<path d="M20.2 3.9C18.4 2.2 11 2.4 5.6 3.5C3.4 4 2.2 4.8 2.4 5.7C2.6 6.8 4.6 6.8 7.2 6.5C10.6 6.2 14.4 6.1 16.4 8C18.3 10 18.2 13.6 17.8 16.9C17.4 19.6 17.3 21.4 18.4 21.6C19.4 21.7 20.4 19.9 21.1 17.2C22.2 12.4 22.3 5.8 20.2 3.9Z"/><path d="M8.6 3.1l.3 3.3M20.9 16.6l-3.2-.4"/>',
+  mat: '<rect x="3" y="12.5" width="18" height="7.5" rx="1.2"/><path d="M6 15.2h12M6 17.4h12"/><path d="M12 3.5c-2 0-3.4 1.4-3.4 3.3 0 2.4 3.4 4.7 3.4 4.7s3.4-2.3 3.4-4.7c0-1.9-1.4-3.3-3.4-3.3z"/>',
+  clock: '<circle cx="12" cy="12.5" r="8"/><path d="M12 8v4.6l3.2 2"/><path d="M9.5 2.8h5"/>',
+  moon: '<path d="M19.5 14.8A8 8 0 1 1 9.2 4.5a6.4 6.4 0 0 0 10.3 10.3z"/><path d="M17 3.2l.7 1.6 1.6.7-1.6.7-.7 1.6-.7-1.6-1.6-.7 1.6-.7z"/>',
+  chalk: '<rect x="3" y="4" width="18" height="11.5" rx="1"/><path d="M7 11.5l2.6-3 2.4 2 3-3.5"/><path d="M8.5 20.5l1.8-5M15.5 20.5l-1.8-5"/>',
+  tarp: '<path d="M2.8 12.2L12 5l9.2 7.2"/><path d="M5.5 10.4v-0M6 11.4l6-4.4 6 4.4"/><path d="M7 15.5v2M12 15.5v3.2M17 15.5v2"/>',
+  wrench: '<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.106-3.105c.32-.322.863-.22.983.218a6 6 0 0 1-8.259 7.057l-7.91 7.91a1 1 0 0 1-2.999-3l7.91-7.91a6 6 0 0 1 7.057-8.259c.438.12.54.662.219.984z"/>',
+  clipboard: '<rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2m4 7h4m-4 5h4m-8-5h.01M8 16h.01"/>',
+  chain: '<path d="M10.2 13.8a3.8 3.8 0 0 1 0-5.4l2.2-2.2a3.8 3.8 0 0 1 5.4 5.4l-1.1 1.1"/><path d="M13.8 10.2a3.8 3.8 0 0 1 0 5.4l-2.2 2.2a3.8 3.8 0 0 1-5.4-5.4l1.1-1.1"/>'
+};
+const KIND = {
+  record: { label: 'Standing record', color: 'var(--navy)' },
+  rolling:{ label: 'Rolling lead', color: 'var(--brass)' }
+};
+const T = [
+  { id:'kettle', name:'The Kettle', icon:'kettle', kind:'rolling', line:'First in puts the kettle on.',
+    take:'You were first to sign in on more busy days in the last 30 days than the holder. A busy day has 4 or more members on site.', min:'3 days', win:'30 days', when:'Nightly', who:'Home members',
+    holder:'Bob Brown', since:'29 Oct', score:'first in 9 / 30 d', defences:2 },
+  { id:'padlock', name:'The Padlock', icon:'padlock', kind:'rolling', line:'Last out locks up.',
+    take:'You were last to sign out on more busy days in the last 30 days than the holder. A busy day has 4 or more members on site.', min:'3 days', win:'30 days', when:'Nightly', who:'Home members',
+    holder:'Alice Anderson', since:'30 Sep', score:'last out 11 / 30 d', defences:31 },
+  { id:'boomerang', name:'The Boomerang', icon:'boomerang', kind:'record', line:'Longest time away, then back through the door.',
+    take:'Your gap since your previous sign-in at this unit is longer than the holder’s.', min:'90 days away', win:'365 days', when:'On the scan', who:'Home members',
+    holder:'Priya Nair', since:'14 Aug', score:'212 days away', defences:0 },
+  { id:'mat', name:'The Welcome Mat', icon:'mat', kind:'record', line:'Furthest-travelled visitor this year.',
+    take:'Your home unit is further from here than the holder’s.', min:'50 km', win:'365 days', when:'On the scan', who:'Visitors only',
+    holder:'Crossunit Tester', since:'20 Sep', score:'412 km · Test B Unit', defences:3 },
+  { id:'iron', name:'Iron Roster', icon:'clock', kind:'rolling', line:'Most hours on site over four weeks.',
+    take:'Your hours on site in the last 28 days beat the holder’s. Each sign-in counts at most 12 h.', min:'10 h', win:'28 days', when:'Nightly', who:'Home members',
+    holder:'Alice Anderson', since:'30 Oct', score:'31 h / 28 d', defences:0 },
+  { id:'owl', name:'The Owl', icon:'moon', kind:'rolling', line:'First out of bed when the pager goes at night.',
+    take:'You started more sign-ins between 10 pm and 5 am in the last 60 days than the holder. Each one must last 30 minutes or more, and one per night counts.', min:'2 nights', win:'60 days', when:'Nightly', who:'Home members',
+    holder:'Priya Nair', since:'2 Sep', score:'5 nights / 60 d', defences:12 },
+  { id:'chalk', name:'The Chalk', icon:'chalk', kind:'rolling', line:'The unit’s busiest trainer.',
+    take:'Your trainer and assessor sign-outs (the teaching disciplines) in the last 90 days beat the holder’s.', min:'2', win:'90 days', when:'Nightly', who:'Home members',
+    holder:'Bob Brown', since:'11 Oct', score:'6 sessions / 90 d', defences:4 },
+  { id:'tarp', name:'The Tarp', icon:'tarp', kind:'rolling', line:'Most storm jobs this month.',
+    take:'Your Storm sign-outs in the last 30 days beat the holder’s.', min:'2', win:'30 days', when:'Nightly', who:'Home members',
+    holder:'Alice Anderson', since:'24 Oct', score:'7 jobs / 30 d', defences:1 },
+  { id:'spanner', name:'The Spanner', icon:'wrench', kind:'rolling', line:'Keeps the trucks, kit and shed running.',
+    take:'Your hours signed out to Maintenance (Building/Land or Equipment) in the last 60 days beat the holder’s. Each sign-in counts at most 12 h.', min:'4 h', win:'60 days', when:'Nightly', who:'Home members',
+    holder:'Bob Brown', since:'18 Oct', score:'14 h / 60 d', defences:2 },
+  { id:'clipboard', name:'The Clipboard', icon:'clipboard', kind:'rolling', line:'The paperwork doesn’t do itself.',
+    take:'Your hours signed out to Administration (including Administration Operations and Administration – Training) in the last 60 days beat the holder’s. Each sign-in counts at most 12 h.', min:'4 h', win:'60 days', when:'Nightly', who:'Home members',
+    holder:'Priya Nair', since:'9 Sep', score:'22 h / 60 d', defences:6 },
+  { id:'chain', name:'Unbroken Chain', icon:'chain', kind:'rolling', line:'Longest weekly streak still going.',
+    take:'Your current run of weeks with a sign-in is longer than the holder’s current run.', min:'4 weeks', win:'Current streak', when:'Nightly', who:'Home members',
+    holder:'Bob Brown', since:'6 Jul', score:'38 weeks', defences:16 }
+];
+function shield(t, unit) {
+  const c = KIND[t.kind].color;
+  return `
+    <path d="M60 4 L112 19 V68 C112 103 88 125 60 136 C32 125 8 103 8 68 V19 Z" fill="var(--shield-fill)" stroke="${c}" stroke-width="5"/>
+    <path d="M60 15 L101 27 V68 C101 96 82 114 60 124 C38 114 19 96 19 68 V27 Z" fill="none" stroke="${c}" stroke-width="1.5" opacity=".45"/>
+    <g transform="translate(34 26) scale(2.15)" fill="none" stroke="${c}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${ICONS[t.icon]}</g>
+    ${unit ? `<g><path d="M2 92 H118 L112 101 L118 110 H2 L8 101 Z" fill="${c}"/>
+    <text x="60" y="105" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="9.5" font-weight="600" letter-spacing="1.4" fill="var(--shield-fill)">${unit}</text></g>` : ''}`;
+}
+const cab = document.getElementById('cabinet');
+cab.innerHTML = T.map(t => `
+  <article class="trophy">
+    <svg class="shield" viewBox="0 0 120 140" role="img" aria-label="${t.name} trophy, bound to Test A Unit">${shield(t, 'TEST A UNIT')}</svg>
+    <span class="kind" style="color:${KIND[t.kind].color}">${KIND[t.kind].label}</span>
+    <div class="tname">${t.name}</div>
+    <div class="tline">${t.line}</div>
+    <div class="plate"><div class="holder">${t.holder}</div>
+      <div class="meta"><span>${t.score}</span><span>since ${t.since}</span></div>
+      <div class="meta"><span>${t.defences} defence${t.defences===1?'':'s'}</span></div></div>
+  </article>`).join('');
+document.getElementById('spec-rows').innerHTML = T.map(t => `
+  <tr><td><b>${t.name}</b></td><td style="color:${KIND[t.kind].color};white-space:nowrap">${KIND[t.kind].label}</td>
+  <td>${t.take}</td><td class="n">${t.min}</td><td class="n">${t.win}</td><td class="n">${t.when}</td><td class="n">${t.who}</td></tr>`).join('');
+document.getElementById('mini-kettle').innerHTML = shield(T[2]).replace(/var\(--shield-fill\)/g,'#ffffff').replace(/var\(--navy\)/g,'#1f3d79');
+document.getElementById('mini-mat').innerHTML = shield(T[3]).replace(/var\(--shield-fill\)/g,'#ffffff').replace(/var\(--navy\)/g,'#1f3d79');
+</script>
