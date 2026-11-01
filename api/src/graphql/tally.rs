@@ -97,6 +97,17 @@ impl<A: App + HasDb + Send + Sync + 'static> TallyViewer<A> {
         ID(self.person.location_id.clone())
     }
 
+    /// Every unit the member belongs to: their home unit first, then their secondary
+    /// units. Unlike `locations`, this leaves out units reached only through the user
+    /// signed in alongside them, so Tally can tell "my units" from those.
+    async fn member_location_ids(&self) -> Vec<ID> {
+        self.person
+            .member_location_ids()
+            .into_iter()
+            .map(|id| ID(id.to_string()))
+            .collect()
+    }
+
     /// The email of the SESLogin user signed in alongside the member, when their email
     /// matched one; null otherwise.
     async fn user_email(&self) -> Option<&str> {
@@ -115,9 +126,10 @@ impl<A: App + HasDb + Send + Sync + 'static> TallyViewer<A> {
         self.is_dev
     }
 
-    /// Every unit the member can use in Tally, by name: their home unit, plus the units
-    /// the user signed in alongside them holds either role at (every enabled unit for a
-    /// super user). Disabled units are left out, except a member's own home unit.
+    /// Every unit the member can use in Tally, by name: every unit they belong to (home
+    /// or secondary), plus the units the user signed in alongside them holds either role
+    /// at (every enabled unit for a super user). Disabled units are left out, except a
+    /// member's own home unit.
     async fn locations(&self, ctx: &Context<'_>) -> Result<Vec<TallyLocation<A>>> {
         let app = ctx.data_unchecked::<Arc<A>>();
         let mut locations = if self.is_super {
@@ -126,7 +138,7 @@ impl<A: App + HasDb + Send + Sync + 'static> TallyViewer<A> {
                 .await?
         } else {
             let mut ids: Vec<&str> = self.user_location_ids.iter().map(String::as_str).collect();
-            ids.push(&self.person.location_id);
+            ids.extend(self.person.member_location_ids());
             ids.sort_unstable();
             ids.dedup();
             app.db()

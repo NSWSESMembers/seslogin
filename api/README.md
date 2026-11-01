@@ -250,7 +250,7 @@ that email (compared trimmed and lowercased, through the person table's
 otherwise nobody — a user with no member, or an email several members share.
 A disabled user counts as no user. The grant names the member and that user,
 and resolves fresh on every use to `AuthInfo::Member` (see CLAUDE.md), so the
-member's unit is their home unit plus that user's units.
+member's units are every unit they belong to (home or secondary) plus that user's units.
 
 **Passkeys.** Every deployed environment's relying party is `seslogin.com`,
 and the sign-in page is on the site's own origin, so a passkey a user added on
@@ -518,7 +518,8 @@ label a visitor "Visiting from <unit>" and a member whose home is elsewhere "Hom
 
 Tally is for **members**, not users: every Tally field below admits only an
 `AuthInfo::Member`, which only Tally sign-in issues (see "Tally sign-in"). A
-member can use their home unit, plus every unit the user signed in alongside
+member can use every unit they belong to (their home unit and their secondary
+units, `AuthInfo::Member::member_location_ids`), plus every unit the user signed in alongside
 them holds either role at (every unit for a super user); `require_member_location`
 in `graphql/auth.rs` is the one check. Any such member may read **and** write a
 unit's shared tools — they are the unit's own, not admin data. Users on their
@@ -526,10 +527,13 @@ own (even super users), kiosks, API tokens and edit links are refused.
 
 The apps start from two queries (`graphql/tally.rs`):
 
-- `tallyViewer` — the member (`member`, `name`, `homeLocationId`), the email of
+- `tallyViewer` — the member (`member`, `name`, `homeLocationId`, and
+  `memberLocationIds`: every unit they belong to, home first, which tells "my units"
+  apart from units reached only through the user's grants), the email of
   the user signed in alongside if any (`userEmail`), whether that user is a super
   user (`isSuper`) or a developer (`isDev`, which shows Tally's environment
-  picker), and every unit they can use (`locations`, by name).
+  picker), and every unit they can use (`locations`, by name: the ones they belong to plus
+  the user's).
 - `tallyLocation(id)` — one unit's tools: `tasks`, `taskLists`, `notes`,
   `noteFolders`, `equipment`, `equipmentReservations`,
   `equipmentReservationConflicts`, `mapPins`, `mapLayers`, `calendars`,
@@ -639,7 +643,7 @@ the location table (a Scan of ~280 rows) to compute the hash.
 list, by name, whenever it differs from the one the cursor last delivered, and nothing
 otherwise; the client replaces what it holds, so a contact missing from it was deleted.
 Unlike units, the list is the **caller's own**: every statewide contact (no
-`locationId`), plus the contacts of each location they may use in Tally (their home unit
+`locationId`), plus the contacts of each location they may use in Tally (every unit they belong to
 and their user's units, either role, or every location for a super user) — exactly what
 GraphQL lets them read. So a member who gains or loses a unit gets the new list on their
 next sync. `description` and `email`, and `phone` when absent, are left out; whether the
@@ -722,7 +726,7 @@ mutation {
 ## Self sign-in (Tally)
 
 A member signs themselves in and out from the Tally app, exactly as they would by typing
-their member number at a kiosk at their home unit, or at another unit they can use in Tally
+their member number at a kiosk at their home unit, or at another unit they can use in Tally (a secondary unit included)
 (`src/graphql/self_sign_in.rs`; the two mutations are in `mutations.rs`).
 
 - **Who:** only a member signed in to Tally. Users on their own, kiosk sessions, API tokens
@@ -730,8 +734,8 @@ their member number at a kiosk at their home unit, or at another unit they can u
   authority, read fresh on every call, and the member must still exist and not be deleted.
   The MCP interface deliberately has no tool for this.
 - **Which unit:** `selfSignInStatus` and `selfSignIn` take an optional `locationId`. Without
-  it (or with the member's own `location_id`) they act at the home unit. Any other unit must
-  be one the member can use in Tally — a unit the user signed in alongside them holds either
+  it they act at the home unit. Any unit given must be one the member can use in Tally — one
+  they belong to (home or secondary, no user grant needed), a unit the user signed in alongside them holds either
   role at, or any unit for a super user (`require_member_location`, as for Tasks) — else
   `FORBIDDEN`; one that doesn't exist is `NOT_FOUND`. This is the app's version of a member
   signing in at another unit's kiosk.
@@ -746,7 +750,7 @@ their member number at a kiosk at their home unit, or at another unit they can u
   non-deleted period there (members and guests), oldest first (ties by id), capped at 500. `name` is "First Last", the guest's
   name ("Guest" if blank) or "Unknown member" for a missing or deleted member; `isMe` marks
   the caller's own period. It is deliberately narrow (no guest reason, member number or
-  other period fields), needs no location grant at home, and is computed only when selected.
+  other period fields), needs no location grant at any unit the member belongs to, and is computed only when selected.
 - `selfSignIn(locationId)` returns the newest open period at that unit unchanged if there is
   one (a double tap never opens two), otherwise opens one with no kiosk session and publishes
   the realtime event. Without a linked member it fails `BAD_REQUEST`.

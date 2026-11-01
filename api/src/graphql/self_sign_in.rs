@@ -73,19 +73,19 @@ pub(super) async fn require_linked_person<A: App + HasDb + Send + Sync + 'static
 }
 
 /// The unit to sign `person` in at: `location_id` when given, which must be a unit the
-/// member may use in Tally (their home unit, or one the user signed in alongside them
-/// holds either role at; see [`require_member_location`]), else their home unit.
+/// member may use in Tally (any unit they belong to, or one the user signed in alongside
+/// them holds either role at; see [`require_member_location`]), else their home unit.
 pub(super) fn sign_in_location_id(
     ctx: &Context<'_>,
     person: &db::Person,
     location_id: Option<&str>,
 ) -> Result<String> {
     match location_id {
-        Some(id) if id != person.location_id => {
+        Some(id) => {
             require_member_location(ctx, id, "Only a member signed in to Tally can sign in")?;
             Ok(id.to_string())
         }
-        _ => Ok(person.location_id.clone()),
+        None => Ok(person.location_id.clone()),
     }
 }
 

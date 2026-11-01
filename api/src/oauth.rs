@@ -248,7 +248,7 @@ pub async fn verify_access_token<A: App + HasDb>(
 /// ([`AuthInfo::Member`]): the member the user is now linked to if they are, else the
 /// one the grant names, and refused once that member is gone or soft-deleted. The user
 /// adds their units only while they exist and are enabled; without them the member
-/// still has their home unit.
+/// still has the units they belong to.
 pub(crate) async fn grant_auth_info<A: App + HasDb>(
     app: &A,
     grant: &db::OAuthGrant,
@@ -304,9 +304,15 @@ pub(crate) async fn grant_auth_info<A: App + HasDb>(
         .filter(|p| p.deleted.is_none())
         .ok_or_else(|| AuthError::Permanent("Member not found".into()))?;
 
+    let member_location_ids = person
+        .member_location_ids()
+        .into_iter()
+        .map(str::to_owned)
+        .collect();
     Ok(AuthInfo::Member {
         person_id: person.id,
         location_id: person.location_id,
+        member_location_ids,
         user_id: user.as_ref().map(|u| u.id.clone()),
         is_super: user.as_ref().is_some_and(|u| u.is_super),
         user_location_ids: user

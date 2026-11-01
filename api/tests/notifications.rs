@@ -44,6 +44,7 @@ fn member(person_id: &str, home: &str) -> AuthInfo {
     AuthInfo::Member {
         person_id: person_id.to_string(),
         location_id: home.to_string(),
+        member_location_ids: vec![home.to_string()],
         user_id: None,
         is_super: false,
         user_location_ids: vec![],
@@ -473,6 +474,7 @@ async fn a_notification_about_a_location_the_caller_lost_is_hidden() {
     let boss = AuthInfo::Member {
         person_id: "alice".to_string(),
         location_id: "loc-b".to_string(),
+        member_location_ids: vec!["loc-b".to_string()],
         user_id: Some("alice-user".to_string()),
         is_super: true,
         user_location_ids: vec![],

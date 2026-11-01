@@ -40,6 +40,7 @@ fn auth(id: &str) -> AuthInfo {
     AuthInfo::Member {
         person_id: id.to_string(),
         location_id: if id == "carol" { "loc-b" } else { "loc-a" }.to_string(),
+        member_location_ids: vec![if id == "carol" { "loc-b" } else { "loc-a" }.to_string()],
         user_id: None,
         is_super: id == "boss",
         user_location_ids: vec![],

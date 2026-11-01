@@ -60,6 +60,7 @@ fn user(id: &str) -> AuthInfo {
     AuthInfo::Member {
         person_id: person_id.to_string(),
         location_id: "loc-a".to_string(),
+        member_location_ids: vec!["loc-a".to_string()],
         user_id: Some(id.to_string()),
         is_super: false,
         user_location_ids: vec![],
@@ -435,6 +436,7 @@ fn alice_with(units: &[&str], is_super: bool) -> AuthInfo {
     let AuthInfo::Member {
         person_id,
         location_id,
+        member_location_ids,
         user_id,
         grant_id,
         ..
@@ -445,6 +447,7 @@ fn alice_with(units: &[&str], is_super: bool) -> AuthInfo {
     AuthInfo::Member {
         person_id,
         location_id,
+        member_location_ids,
         user_id,
         is_super,
         user_location_ids: units.iter().map(|u| u.to_string()).collect(),

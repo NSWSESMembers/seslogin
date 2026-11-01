@@ -3798,6 +3798,7 @@ mod tests {
         let member = AuthInfo::Member {
             person_id: "p1".to_string(),
             location_id: "loc".to_string(),
+            member_location_ids: vec!["loc".to_string()],
             user_id: Some("u1".to_string()),
             is_super: false,
             user_location_ids: vec![],

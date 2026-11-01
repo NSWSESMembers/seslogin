@@ -3815,10 +3815,11 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
 
     /// Sign the member signed in to Tally in at a unit, as typing their member number at
     /// a kiosk there would: their home unit, or `locationId` when given, which must be a
-    /// unit they can use in Tally (`FORBIDDEN` otherwise). Idempotent: if the member is
+    /// unit they can use in Tally (`FORBIDDEN` otherwise; any unit they belong to
+    /// qualifies). Idempotent: if the member is
     /// already signed in at that unit, that period is returned unchanged, so a double tap
     /// never opens two. A period open at another unit is ignored. Tally members only,
-    /// and no location grant is needed at home (being the member is the authority).
+    /// and no location grant is needed at any unit they belong to (being the member is the authority).
     async fn self_sign_in(&self, ctx: &Context<'_>, location_id: Option<ID>) -> Result<Period<A>> {
         require_writable(ctx)?;
         let person = require_linked_person(ctx, self.app.as_ref()).await?;
@@ -3828,7 +3829,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
             return Ok(Period::new(open));
         }
         if location_id != person.location_id {
-            // The home unit always exists; a chosen one may have gone.
+            // The home unit always exists; any other may have gone.
             self.app
                 .db()
                 .get_locations(&[&location_id])

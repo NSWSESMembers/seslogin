@@ -47,6 +47,7 @@ fn member() -> AuthInfo {
     AuthInfo::Member {
         person_id: "alice".to_string(),
         location_id: "loc-a".to_string(),
+        member_location_ids: vec!["loc-a".to_string()],
         user_id: None,
         is_super: false,
         user_location_ids: vec![],

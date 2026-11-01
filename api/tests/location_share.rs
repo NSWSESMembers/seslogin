@@ -39,6 +39,7 @@ fn member(person_id: &str, home: &str, units: &[&str]) -> AuthInfo {
     AuthInfo::Member {
         person_id: person_id.to_string(),
         location_id: home.to_string(),
+        member_location_ids: vec![home.to_string()],
         user_id: None,
         is_super: false,
         user_location_ids: units.iter().map(|s| s.to_string()).collect(),

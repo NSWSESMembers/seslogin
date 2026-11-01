@@ -40,6 +40,7 @@ fn user(admin: &[&str], read_only: &[&str]) -> AuthInfo {
     AuthInfo::Member {
         person_id: "caller".to_string(),
         location_id: "loc-home".to_string(),
+        member_location_ids: vec!["loc-home".to_string()],
         user_id: Some("caller".to_string()),
         is_super: false,
         user_location_ids: {
@@ -63,6 +64,7 @@ fn super_user() -> AuthInfo {
     AuthInfo::Member {
         person_id: "super".to_string(),
         location_id: "loc-home".to_string(),
+        member_location_ids: vec!["loc-home".to_string()],
         user_id: Some("super".to_string()),
         is_super: true,
         user_location_ids: vec![],

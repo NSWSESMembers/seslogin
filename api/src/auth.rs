@@ -88,11 +88,14 @@ pub enum AuthInfo {
     ///
     /// When the email they signed in with is also a user's, that user rides along in
     /// `user_id`, and their units (`is_super`, `user_location_ids`) add to the member's
-    /// home unit in Tally. See [`crate::oauth`] for how a grant resolves to this.
+    /// own units in Tally. See [`crate::oauth`] for how a grant resolves to this.
     Member {
         person_id: String,
         /// The member's home unit (`Person.location_id`).
         location_id: String,
+        /// Every unit the member belongs to, home first then their secondary units
+        /// ([`crate::db::Person::member_location_ids`]).
+        member_location_ids: Vec<String>,
         /// The user signed in alongside the member, if any.
         user_id: Option<String>,
         /// That user is a super user, so has every unit.
