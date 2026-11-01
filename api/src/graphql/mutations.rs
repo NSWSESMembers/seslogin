@@ -1118,6 +1118,29 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         super::tally_sign_in::complete(&*self.app, &email, &code, request).await
     }
 
+    /// Sign in to Tally with a passkey: verify the assertion for a challenge from
+    /// `beginPasskeyLogin` and authorize the app that opened the sign-in page as the
+    /// passkey's owner, returning the URL to send the browser to as
+    /// `completeTallySignIn` does. A user's passkey signs in as the member that
+    /// user's email would.
+    async fn complete_tally_passkey_sign_in(
+        &self,
+        ctx: &Context<'_>,
+        challenge_id: String,
+        credential_json: String,
+        request: crate::tally_sign_in::AuthorizationRequest,
+    ) -> Result<String> {
+        let webauthn = ctx.data_unchecked::<Arc<webauthn_rs::prelude::Webauthn>>();
+        crate::tally_sign_in::complete_with_passkey(
+            &*self.app,
+            webauthn,
+            &challenge_id,
+            &credential_json,
+            request,
+        )
+        .await
+    }
+
     /// Request an email login code. Always returns true to avoid email enumeration.
     /// Requires a valid Cloudflare Turnstile token.
     async fn request_auth_code(
@@ -4381,7 +4404,13 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
 
         self.app
             .db()
-            .put_webauthn_state(&challenge_id, "auth", None, &state_json, expires_at)
+            .put_webauthn_state(
+                &challenge_id,
+                crate::passkey::LOGIN_STATE_KIND,
+                None,
+                &state_json,
+                expires_at,
+            )
             .await?;
 
         Ok(PasskeyChallenge {
@@ -4397,59 +4426,14 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         challenge_id: String,
         credential_json: String,
     ) -> Result<Option<String>> {
-        use webauthn_rs::prelude::*;
-
-        let state_record = self
-            .app
-            .db()
-            .get_webauthn_state(&challenge_id)
-            .await?
-            .ok_or_else(|| anyhow!("Login challenge not found or expired"))?;
-
-        if state_record.kind != "auth" {
-            return Err(anyhow!("Invalid challenge kind"));
-        }
-
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
-        if now >= state_record.expires_at {
-            let _ = self.app.db().delete_webauthn_state(&challenge_id).await;
+        let webauthn = ctx.data_unchecked::<Arc<webauthn_rs::prelude::Webauthn>>();
+        let Some(stored) =
+            crate::passkey::verify_login(self.app.db(), webauthn, &challenge_id, &credential_json)
+                .await?
+        else {
             return Ok(None);
-        }
-
-        let auth_state: DiscoverableAuthentication = serde_json::from_str(&state_record.state_json)
-            .map_err(|e| anyhow!("Failed to deserialize auth state: {}", e))?;
-
-        let auth_credential: PublicKeyCredential = serde_json::from_str(&credential_json)
-            .map_err(|_| anyhow!("Failed to parse credential"))?;
-
-        let webauthn = ctx.data_unchecked::<Arc<Webauthn>>();
-        let (_user_handle, cred_id_bytes) = webauthn
-            .identify_discoverable_authentication(&auth_credential)
-            .map_err(|e| anyhow!("Failed to identify credential: {}", e))?;
-
-        let cred_id_str = URL_SAFE_NO_PAD.encode(cred_id_bytes);
-        let stored = match self.app.db().get_webauthn_credential(&cred_id_str).await? {
-            Some(c) => c,
-            None => {
-                info!("finish_passkey_login: unknown credential {}", cred_id_str);
-                let _ = self.app.db().delete_webauthn_state(&challenge_id).await;
-                return Ok(None);
-            }
         };
-
-        let mut passkey: Passkey = serde_json::from_str(&stored.passkey_json)
-            .map_err(|e| anyhow!("Failed to deserialize stored passkey: {}", e))?;
-
-        let auth_result = webauthn
-            .finish_discoverable_authentication(
-                &auth_credential,
-                auth_state,
-                &[DiscoverableKey::from(&passkey)],
-            )
-            .map_err(|e| anyhow!("Passkey authentication failed: {}", e))?;
+        let cred_id_str = stored.id;
 
         // A member's passkey is for Tally only. It shares this site's relying party,
         // so the browser offers it here too: say what it is rather than "failed".
@@ -4459,33 +4443,9 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
             db::PasskeyOwner::User(id) => id.clone(),
             db::PasskeyOwner::Member(_) => {
                 info!("finish_passkey_login: member passkey {}", cred_id_str);
-                let _ = self.app.db().delete_webauthn_state(&challenge_id).await;
                 return Err(ApiError::forbidden(TALLY_PASSKEY_ON_ADMIN_LOGIN).into());
             }
         };
-
-        // Always record last_used_at on a successful login. The counter bump is
-        // conditional (needs_update() only fires when the signature counter
-        // advanced), but most platform/synced passkeys keep the counter at 0 and
-        // never report needs_update(), so gating the whole write on it would
-        // leave last_used_at perpetually unset.
-        if auth_result.needs_update() {
-            passkey.update_credential(&auth_result);
-        }
-        let updated_json = serde_json::to_string(&passkey)
-            .map_err(|e| anyhow!("Failed to serialize updated passkey: {}", e))?;
-        let _ = self
-            .app
-            .db()
-            .update_webauthn_credential(
-                &cred_id_str,
-                db::WebauthnCredentialUpdate::TouchLastUsed {
-                    passkey_json: updated_json,
-                },
-            )
-            .await;
-
-        let _ = self.app.db().delete_webauthn_state(&challenge_id).await;
 
         match self
             .app

@@ -222,8 +222,9 @@ own flow, so it can never yield an admin session: the app opens
 `<WEB_BASE_URL>/tally/sign-in` with an ordinary authorization request
 (`client_id`, `redirect_uri`, PKCE `code_challenge`, `state`), the page asks
 for an email, and the emailed 6-digit code is redeemed straight for an OAuth
-authorization code — no `slu_` token is ever issued. Three unauthenticated
-GraphQL fields back it:
+authorization code — no `slu_` token is ever issued. The page also takes a
+passkey instead of the code (below). Four unauthenticated GraphQL fields back
+it, plus `beginPasskeyLogin`, shared with the admin login:
 
 - `tallySignInRequest(clientId, redirectUri)` checks the link: a member sign-in
   client and one of its exact redirects (or an Expo Go development redirect,
@@ -235,6 +236,12 @@ GraphQL fields back it:
   app's redirect URL with `code` and `state`. A wrong, expired or used-up code
   fails the same way. A development build needs the user signing in alongside
   to be a developer (`isDev`).
+- `completeTallyPasskeySignIn(challengeId, credentialJson, request)` verifies a
+  passkey assertion for a `beginPasskeyLogin` challenge (single use, whatever
+  the outcome) and returns the redirect URL the same way. An unknown passkey,
+  a bad signature or an expired challenge fails with "That passkey wasn't
+  recognised"; a passkey whose owner signs in as nobody, with a message saying
+  the account isn't linked to an SES member.
 
 Who an email signs in as (`tally_sign_in::identify`): an enabled user linked to
 a live member is that user and member; otherwise exactly one live member with
@@ -244,6 +251,19 @@ otherwise nobody — a user with no member, or an email several members share.
 A disabled user counts as no user. The grant names the member and that user,
 and resolves fresh on every use to `AuthInfo::Member` (see CLAUDE.md), so the
 member's unit is their home unit plus that user's units.
+
+**Passkeys.** Every deployed environment's relying party is `seslogin.com`,
+and the sign-in page is on the site's own origin, so a passkey a user added on
+the admin site works here too. The page has a "Sign in with a passkey" button
+and also offers saved passkeys on the email field (conditional mediation). A
+user's passkey signs in as `tally_sign_in::identify` would for the user's
+email (`identify_user`), skipping the lookup by email, and as nobody once the
+user is disabled: a passkey proves the user, not the inbox. Members can't have
+passkeys of their own yet; `webauthn_credential` can store one
+(`PasskeyOwner::Member`, see SCHEMA.md), but nothing writes one, and Tally
+sign-in refuses one. The admin login (`finishPasskeyLogin`) refuses a
+member's passkey with a `FORBIDDEN` error saying it is for Tally. Both finish
+mutations verify through `passkey::verify_login`.
 
 **App Store review.** `TALLY_REVIEW_SIGN_IN=<email>:<6 digits>` makes that one
 email always be sent that code instead of a random one, so a reviewer can sign

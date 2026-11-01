@@ -3,9 +3,10 @@
 //!
 //! It is its own flow, not the admin login followed by the consent screen: the
 //! browser page (`web/src/tally/`) asks for an email, and the code it is sent is
-//! redeemed straight for an OAuth authorization code. No admin session (`slu_`
-//! token) is ever issued, so nothing from this flow can reach the admin site, and
-//! the consent screen refuses member sign-in clients outright.
+//! redeemed straight for an OAuth authorization code ([`complete`]). Or it takes a
+//! passkey instead ([`complete_with_passkey`]). No admin session (`slu_` token) is
+//! ever issued, so nothing from this flow can reach the admin site, and the consent
+//! screen refuses member sign-in clients outright.
 //!
 //! Who an email signs in as ([`identify`]):
 //!
@@ -19,6 +20,11 @@
 //! is theirs whichever flow sent it, and redeeming one here never yields more than
 //! an admin code to the same inbox would. Its key is the email as [`db::email_key`]
 //! normalises it.
+//!
+//! A passkey signs in as its owner ([`identify_passkey_owner`]). A user's passkey
+//! (one they added on the admin site) signs in as [`identify`] would for the user's
+//! email, without the lookup by email, and as nobody once the user is disabled.
+//! Members can't have passkeys of their own yet.
 //!
 //! The grant then resolves on every use through [`crate::oauth::grant_auth_info`],
 //! so the user's units and member link are read fresh, not frozen at sign-in.
@@ -65,7 +71,49 @@ pub struct Identity {
 /// Who `email` signs in to Tally as, if anyone. See the module docs.
 pub async fn identify<H: db::Handler>(db: &H, email: &str) -> db::Result<Option<Identity>> {
     let user = enabled_user_by_email(db, email).await?;
+    identify_with(db, user, email).await
+}
 
+/// Who a user signs in to Tally as, if anyone: the same answer as [`identify`] gives
+/// for the user's email, without looking the user up by it. A disabled user signs in
+/// as nobody, where an email code would still sign in as the member alone: a passkey
+/// proves the user, not the inbox.
+pub async fn identify_user<H: db::Handler>(db: &H, user: db::User) -> db::Result<Option<Identity>> {
+    if !user.enabled {
+        return Ok(None);
+    }
+    let email = user.email.clone();
+    identify_with(db, Some(user), &email).await
+}
+
+/// Who a passkey's owner signs in to Tally as, if anyone.
+pub async fn identify_passkey_owner<H: db::Handler>(
+    db: &H,
+    owner: &db::PasskeyOwner,
+) -> db::Result<Option<Identity>> {
+    match owner {
+        db::PasskeyOwner::User(id) => {
+            let user = db.get_users(&[id]).await?.into_iter().next().flatten();
+            match user {
+                Some(user) => identify_user(db, user).await,
+                None => Ok(None),
+            }
+        }
+        // Nothing saves a member's passkey yet; when Tally sign-in starts to, this
+        // is where it signs in.
+        db::PasskeyOwner::Member(person_id) => {
+            info!("tally sign-in: member passkey for {person_id}, not supported yet");
+            Ok(None)
+        }
+    }
+}
+
+/// [`identify`], given the enabled user with `email` (or none) already.
+async fn identify_with<H: db::Handler>(
+    db: &H,
+    user: Option<db::User>,
+    email: &str,
+) -> db::Result<Option<Identity>> {
     if let Some(person_id) = user.as_ref().and_then(|u| u.person_id.clone())
         && let Some(person) = live_person(db, &person_id).await?
     {
@@ -320,14 +368,9 @@ pub fn check_client<A: App>(
     })
 }
 
-/// Redeem `code` for `email` and mint an authorization code for `request`, returning
-/// the URL to send the browser to (the client's redirect, with `code` and `state`).
-pub async fn complete<A: App + HasDb + HasMail>(
-    app: &A,
-    email: &str,
-    code: &str,
-    request: AuthorizationRequest,
-) -> Result<String> {
+/// Check everything about `request` that doesn't depend on who signs in: the
+/// client and redirect ([`check_client`]), the resource, PKCE and scope.
+fn check_request<A: App>(app: &A, request: &AuthorizationRequest) -> Result<CheckedRequest> {
     let checked = check_client(app, &request.client_id, &request.redirect_uri)?;
     if let Some(resource) = &request.resource
         && !checked.client.allows_resource_path(resource)
@@ -354,18 +397,84 @@ pub async fn complete<A: App + HasDb + HasMail>(
     {
         return Err(ApiError::bad_request(format!("Unsupported scope: {scope:?}")).into());
     }
+    Ok(checked)
+}
 
+/// Redeem `code` for `email` and mint an authorization code for `request`, returning
+/// the URL to send the browser to (the client's redirect, with `code` and `state`).
+pub async fn complete<A: App + HasDb + HasMail>(
+    app: &A,
+    email: &str,
+    code: &str,
+    request: AuthorizationRequest,
+) -> Result<String> {
+    let checked = check_request(app, &request)?;
     let identity = redeem_code(app.db(), email, code)
         .await?
         .ok_or_else(|| ApiError::bad_request("That code is wrong or has expired"))?;
+    check_development_build(&checked, &identity)?;
+    notify_review_sign_in(app, email, &identity).await;
+    authorize(app, identity, checked, request).await
+}
+
+/// `completeTallyPasskeySignIn`'s answer to a passkey this server doesn't know, or
+/// whose challenge has expired.
+pub const PASSKEY_NOT_RECOGNISED: &str =
+    "That passkey wasn't recognised. Try again, or sign in with your email.";
+/// Its answer to a passkey whose owner signs in to Tally as nobody: a user with no
+/// member, or a disabled one.
+pub const PASSKEY_NO_MEMBER: &str = "That passkey's account isn't linked to an SES member, so it can't sign in to Tally. Sign in with your email instead.";
+
+/// Verify a passkey sign-in (the challenge `beginPasskeyLogin` issued, and the
+/// browser's assertion) and mint an authorization code for `request` as whoever the
+/// passkey's owner signs in as ([`identify_passkey_owner`]). Returns the URL to send
+/// the browser to, as [`complete`] does.
+pub async fn complete_with_passkey<A: App + HasDb>(
+    app: &A,
+    webauthn: &webauthn_rs::prelude::Webauthn,
+    challenge_id: &str,
+    credential_json: &str,
+    request: AuthorizationRequest,
+) -> Result<String> {
+    let checked = check_request(app, &request)?;
+    let credential =
+        crate::passkey::verify_login(app.db(), webauthn, challenge_id, credential_json)
+            .await
+            .map_err(|e| {
+                info!("tally sign-in: passkey refused: {e:#}");
+                ApiError::bad_request(PASSKEY_NOT_RECOGNISED)
+            })?
+            .ok_or_else(|| ApiError::bad_request(PASSKEY_NOT_RECOGNISED))?;
+    let identity = identify_passkey_owner(app.db(), &credential.owner)
+        .await?
+        .ok_or_else(|| ApiError::bad_request(PASSKEY_NO_MEMBER))?;
+    check_development_build(&checked, &identity)?;
+    info!(
+        "tally sign-in: passkey {} signed in as person {}",
+        credential.id, identity.person.id
+    );
+    authorize(app, identity, checked, request).await
+}
+
+/// Only a developer may sign in to a development build.
+fn check_development_build(checked: &CheckedRequest, identity: &Identity) -> Result<()> {
     if checked.is_development_build && !identity.user.as_ref().is_some_and(|u| u.is_dev) {
         return Err(ApiError::forbidden(
             "This is a development build; only a developer account can sign in to it",
         )
         .into());
     }
-    notify_review_sign_in(app, email, &identity).await;
+    Ok(())
+}
 
+/// Mint an authorization code for `identity` and return the client's redirect URL
+/// with `code` and `state`.
+async fn authorize<A: HasDb>(
+    app: &A,
+    identity: Identity,
+    checked: CheckedRequest,
+    request: AuthorizationRequest,
+) -> Result<String> {
     let authorization_code = crate::nonce::generate_nonce(32);
     let payload = AuthCodePayload {
         user_id: identity.user.map(|u| u.id),

@@ -18,6 +18,16 @@ import { graphql, HttpResponse } from "msw";
 import { getGraphQLEndpoint } from "../lib/api";
 import TallySignIn from "./TallySignIn";
 
+const passkey = vi.hoisted(() => ({
+  autofill: vi.fn<() => Promise<boolean>>(),
+  assertion: vi.fn(),
+}));
+vi.mock("../lib/passkey", () => ({
+  browserSupportsWebAuthn: () => true,
+  browserSupportsWebAuthnAutofill: passkey.autofill,
+  getPasskeyAssertion: passkey.assertion,
+}));
+
 const LINK =
   "/tally/sign-in?response_type=code&client_id=tally" +
   "&redirect_uri=tally%3A%2F%2Foauth%2Fcallback" +
@@ -27,6 +37,7 @@ const LINK =
 const endpoint = graphql.link(getGraphQLEndpoint());
 
 const completeCalls: Record<string, unknown>[] = [];
+const passkeyCalls: Record<string, unknown>[] = [];
 
 const server = setupServer(
   endpoint.query("TallySignInRequest", ({ variables }) =>
@@ -60,18 +71,40 @@ const server = setupServer(
           errors: [{ message: "That code is wrong or has expired" }],
         });
   }),
+  endpoint.mutation("CompleteTallyPasskeySignIn", ({ variables }) => {
+    passkeyCalls.push(variables);
+    return variables.challengeId === "chal-1"
+      ? HttpResponse.json({
+          data: {
+            completeTallyPasskeySignIn:
+              "tally://oauth/callback?code=pk&state=xyz",
+          },
+        })
+      : HttpResponse.json({
+          data: null,
+          errors: [
+            {
+              message: "That passkey's account isn't linked to an SES member",
+              extensions: { code: "BAD_REQUEST" },
+            },
+          ],
+        });
+  }),
 );
 
 beforeAll(() => server.listen());
 afterEach(() => {
   server.resetHandlers();
   completeCalls.length = 0;
+  passkeyCalls.length = 0;
 });
 afterAll(() => server.close());
 
 const assign = vi.fn();
 beforeEach(() => {
   assign.mockReset();
+  passkey.autofill.mockReset().mockResolvedValue(false);
+  passkey.assertion.mockReset();
   vi.stubGlobal("location", { ...window.location, assign });
 });
 afterEach(() => vi.unstubAllGlobals());
@@ -148,5 +181,78 @@ describe("TallySignIn", () => {
     ).toBeInTheDocument();
     expect(screen.getByLabelText("6-digit code")).toHaveValue("");
     expect(assign).not.toHaveBeenCalled();
+  });
+  it("signs in with a passkey from the button", async () => {
+    const user = UserEvent.setup();
+    passkey.assertion.mockResolvedValue({
+      status: "ok",
+      challengeId: "chal-1",
+      credentialJson: "{}",
+    });
+    renderAt(LINK);
+
+    await user.click(
+      await screen.findByRole("button", { name: "Sign in with a passkey" }),
+    );
+
+    await waitFor(() =>
+      expect(assign).toHaveBeenCalledWith(
+        "tally://oauth/callback?code=pk&state=xyz",
+      ),
+    );
+    expect(passkey.assertion).toHaveBeenCalledWith({ useAutofill: false });
+    expect(passkeyCalls[0]).toMatchObject({
+      challengeId: "chal-1",
+      credentialJson: "{}",
+      request: { clientId: "tally", state: "xyz" },
+    });
+  });
+
+  it("says why the server refused a passkey", async () => {
+    const user = UserEvent.setup();
+    passkey.assertion.mockResolvedValue({
+      status: "ok",
+      challengeId: "chal-other",
+      credentialJson: "{}",
+    });
+    renderAt(LINK);
+
+    await user.click(
+      await screen.findByRole("button", { name: "Sign in with a passkey" }),
+    );
+
+    expect(
+      await screen.findByText(/isn't linked to an SES member/),
+    ).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Email address")).toBeInTheDocument();
+    expect(assign).not.toHaveBeenCalled();
+  });
+
+  it("says so when no passkey was used, and leaves the email form", async () => {
+    const user = UserEvent.setup();
+    passkey.assertion.mockResolvedValue({ status: "cancelled" });
+    renderAt(LINK);
+
+    await user.click(
+      await screen.findByRole("button", { name: "Sign in with a passkey" }),
+    );
+
+    expect(await screen.findByText(/No passkey was used/)).toBeInTheDocument();
+    expect(passkeyCalls).toHaveLength(0);
+  });
+
+  it("offers saved passkeys on the email field, silently if none is picked", async () => {
+    passkey.autofill.mockResolvedValue(true);
+    passkey.assertion.mockResolvedValue({ status: "cancelled" });
+    renderAt(LINK);
+
+    expect(await screen.findByPlaceholderText("Email address")).toHaveAttribute(
+      "autocomplete",
+      "email webauthn",
+    );
+    await waitFor(() =>
+      expect(passkey.assertion).toHaveBeenCalledWith({ useAutofill: true }),
+    );
+    expect(screen.queryByText(/No passkey was used/)).not.toBeInTheDocument();
   });
 });
