@@ -95,7 +95,7 @@ pub async fn run(
         let mut by_location: HashMap<String, Vec<AwardRow>> = HashMap::new();
 
         for location in &digest_locations {
-            let people = db.list_people_for_location(&location.id, true).await?;
+            let people = db.list_members_for_location(&location.id, true).await?;
             let rows = award_rows_for_people(&people, &location.id, start_ts, end_ts);
             if rows.is_empty() {
                 continue;

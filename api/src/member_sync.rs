@@ -1301,6 +1301,10 @@ async fn run_inner(config: SyncConfig) -> Result<RunStats> {
         // *in*, and everyone it creates or moves in is by construction exempt — so take the
         // snapshot that is consistent with `people_by_id` and leaves nothing attempted if
         // `apply_changes` later fails.
+        //
+        // Home-unit people only, never `list_members_for_location`: a member of several
+        // units is absent from the other units' SES payloads, and the absence pass would
+        // mark and then soft-delete them.
         let roster = db
             .list_people_for_location(&location.id, true)
             .await

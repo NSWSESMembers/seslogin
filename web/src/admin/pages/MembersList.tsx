@@ -79,13 +79,13 @@ function Row({
   person,
   idx,
   isDev,
-  canEdit,
+  locationId,
   showBadges,
 }: {
   person: Person;
   idx: number;
   isDev: boolean;
-  canEdit: boolean;
+  locationId: string;
   showBadges: boolean;
 }) {
   const { notifyError, notifySuccess } = useNotify();
@@ -129,6 +129,12 @@ function Row({
   // Member sync has stopped seeing this person in SES. They are soft-deleted once the
   // marker ages past the grace window, unless a later sync finds them again.
   const missingSince = person.missingSince;
+  // A member of several units is listed at each. Their home unit owns the record, so
+  // it is named on the other units' lists, and only its admins may edit them
+  // (`viewerCanEdit` is access at the home unit, not at the unit being listed).
+  const homeUnit =
+    person.locationId !== locationId ? person.location.name : null;
+  const canEdit = person.viewerCanEdit;
   const badges = person.badges ?? [];
 
   const countByTier = new Map<string, number>();
@@ -164,6 +170,9 @@ function Row({
       <Td>{person.memberNumber}</Td>
       <Td nowrap>
         {person.firstName} {person.lastName}
+        {homeUnit && (
+          <div className="text-xs text-ink-muted">Home: {homeUnit}</div>
+        )}
       </Td>
       {showBadges && (
         <Td nowrap>
@@ -244,6 +253,12 @@ export default function MembersList() {
             memberNumber
             sesApiPersonId
             missingSince
+            locationId
+            location {
+              id
+              name
+            }
+            viewerCanEdit
             badges(locationId: $location) @include(if: $showBadges) {
               id
               tier
@@ -310,7 +325,9 @@ export default function MembersList() {
   return (
     <>
       <p className="my-4">
-        This list shows only members who belong to this unit.
+        This list shows the members of this unit, including members whose home
+        unit is elsewhere (their home unit is shown under their name). Only a
+        member&apos;s home unit can edit or delete them.
       </p>
       {location.sesApiHeadquartersId ? (
         <div className="mb-2">
@@ -368,7 +385,7 @@ export default function MembersList() {
                 person={person}
                 idx={idx}
                 isDev={isDev}
-                canEdit={canEdit}
+                locationId={locationId}
                 showBadges={showBadges}
               />
             ))}

@@ -3095,6 +3095,16 @@ impl<D: db::Handler> db::Handler for AuditingHandler<D> {
             .await
     }
 
+    async fn list_members_for_location(
+        &self,
+        location_id: &str,
+        skip_deleted: bool,
+    ) -> db::Result<Vec<Person>> {
+        self.inner
+            .list_members_for_location(location_id, skip_deleted)
+            .await
+    }
+
     async fn list_periods_for_location(
         &self,
         location_id: &str,

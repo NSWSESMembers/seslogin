@@ -423,6 +423,21 @@ impl db::Handler for FakeDb {
             .cloned()
             .collect())
     }
+    async fn list_members_for_location(
+        &self,
+        location_id: &str,
+        skip_deleted: bool,
+    ) -> db::Result<Vec<db::Person>> {
+        Ok(self
+            .persons
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|p| p.is_member_of(location_id))
+            .filter(|p| !skip_deleted || p.deleted.is_none())
+            .cloned()
+            .collect())
+    }
     async fn list_periods_for_location(
         &self,
         location_id: &str,

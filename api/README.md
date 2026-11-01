@@ -494,6 +494,17 @@ requests to CORS — production intentionally doesn't allow arbitrary
 browser-origin JS to hit its OAuth endpoints; use `claude mcp add` or a
 claude.ai connector there instead.
 
+## Members at several units
+
+A member's home unit is `Person.location_id`; the other units they volunteer at are
+`secondary_location_ids` (directory sync). `Location.people` (and so the MCP
+`list_members`), `dashboardSummary`, `badgeLeaderboard` and the weekly badge digest use
+`list_members_for_location`, which lists both. `Person.locationId` is always the home
+unit, `Person.isMemberOf(locationId)` says whether a unit is one of theirs, and
+`Person.viewerCanEdit` is write access at the home unit, matching `updatePerson` and
+`deletePerson`. `cli person list --include-secondary` lists a unit the same way; its
+default is the home-only list.
+
 ## Tally (members)
 
 Tally is for **members**, not users: every Tally field below admits only an
@@ -1222,6 +1233,12 @@ the OAuth client-id signing key (`api/src/server_secret.rs`).
 ## SES member sync
 
 Set `ses_api_headquarters_id` per location via the admin UI before syncing.
+
+Sync reconciles against `db::list_people_for_location`, the people whose **home** unit
+is the location. Never swap in `list_members_for_location`, which also returns members
+of other units who volunteer here (the admin Members page, dashboard and badges use
+it): they are absent from this unit's SES payload, so the absence pass would mark and
+then soft-delete them.
 
 Sync defaults to dry-run mode (prints planned changes only):
 

@@ -5,12 +5,16 @@ order: 40
 ---
 
 **Members** lists everyone who belongs to your unit, with their SES ID. Members
-from other units can still sign in at your kiosks — they just aren't listed here.
+from other units can still sign in at your kiosks, but they only appear here if
+your unit is one of theirs (see below).
 
 A member can belong to more than one unit: they have a home unit in SESLogin and
-may volunteer at others. If your unit is one of those other units, you can open
-that member's details and activity (for example from your unit's activity),
-including their contact details, but only their home unit can edit or delete them.
+may volunteer at others. If your unit is one of those other units, they are listed
+here like any other member, with their home unit shown under their name, and you
+can open their details and activity, including their contact details. They count
+as your members on the dashboard and in the badge leaderboard and weekly digest.
+Only their home unit can edit or delete them, so they have no **Edit** or
+**Delete** buttons on your list.
 
 ## Finding a member
 
