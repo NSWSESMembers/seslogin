@@ -76,10 +76,10 @@ You choose these when you set a kiosk up, and can change them later with
   Trainer and Assessor last, so people who are unsure aren't steered into the
   instructor groups. On a touch kiosk, tapping the box brings up the keyboard.
 - **Confirm visitors**: before signing in a visitor (a member who doesn't belong
-  to your unit), the kiosk shows their name and home unit and asks "Are you …?".
+  to your unit), the kiosk shows their name and primary unit and asks "Are you …?".
   Most mistyped SES IDs belong to someone at another unit, so this stops people
   signing in as the wrong person. Members of your own unit, including those whose
-  home unit is another one but who also volunteer at yours, are signed in
+  primary unit is another one but who also volunteer at yours, are signed in
   straight away, as usual.
 - **Badges** (beta): counts sign-ins and sign-outs at this kiosk towards
   members' badges, and shows a member any badge they've just earned. Only offered

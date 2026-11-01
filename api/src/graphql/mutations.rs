@@ -225,7 +225,7 @@ enum RegisterState {
     NotFound,
     SignedIn,
     SignOutPending,
-    /// The member is not a member of this unit (home or otherwise) and would have been signed in here, but
+    /// The member is not a member of this unit (primary or otherwise) and would have been signed in here, but
     /// the kiosk asked to confirm that first (`confirmVisitor`). Nothing was
     /// written; `person` says who the number belongs to.
     ConfirmVisitor,
@@ -248,7 +248,7 @@ struct RegisterResult<A: App + HasDb + Send + Sync + 'static> {
     person: Option<Person<A>>,
     /// Badges to celebrate on this sign-in: everything the member has earned and not
     /// yet seen. Empty unless the kiosk, its location and at least one of the member's
-    /// units (home or secondary) all have gamification on, and always empty for a
+    /// units (primary or secondary) all have gamification on, and always empty for a
     /// sign-out pending.
     awarded_badges: Vec<BadgeAward>,
 }
@@ -367,7 +367,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
 
     /// The member a kiosk scan should credit with badges, or `None` when the scan
     /// doesn't count: badges are only worked out when the kiosk's location, the kiosk
-    /// itself (its `gamification` config key) and at least one of the member's units (home
+    /// itself (its `gamification` config key) and at least one of the member's units (primary
     /// or secondary) all have gamification switched on. Checked cheapest-first, so a kiosk at a location that
     /// is not taking part costs one location read and nothing else.
     async fn kiosk_badge_member(
@@ -408,7 +408,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
     }
 
     /// Whether badge work applies to `person` at `location`: gamification is on at any of
-    /// the member's units (home or secondary), or `location` itself is one of them. A
+    /// the member's units (primary or secondary), or `location` itself is one of them. A
     /// visitor from a unit that is not taking part is not counted.
     async fn member_gamification_enabled(
         &self,
@@ -527,7 +527,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
     /// counters, streaks and easter eggs that kiosk check-in/sign-out feed into stay in
     /// step for API-created periods too.
     ///
-    /// Only when both the period's location and at least one of the member's units (home
+    /// Only when both the period's location and at least one of the member's units (primary
     /// or secondary) have gamification on; a location that is not taking part does no badge work at all,
     /// and is backfilled when it is switched on. Any award earned this way stays
     /// undisplayed until the member's next scan at a kiosk that celebrates badges, as
@@ -3603,7 +3603,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         quick_pick: Option<bool>,
         #[graphql(
             desc = "Before signing in a member who doesn't belong to this kiosk's location (not \
-                    their home unit or one of their other units), return `CONFIRM_VISITOR` instead and write nothing, so the kiosk can \
+                    their primary unit or one of their other units), return `CONFIRM_VISITOR` instead and write nothing, so the kiosk can \
                     check a mistyped number isn't about to sign in the wrong person. The \
                     kiosk repeats the call without it once they confirm. Has no effect on \
                     a sign-out, which shows the member's name before anything is written."
@@ -3814,7 +3814,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
     }
 
     /// Sign the member signed in to Tally in at a unit, as typing their member number at
-    /// a kiosk there would: their home unit, or `locationId` when given, which must be a
+    /// a kiosk there would: their primary unit, or `locationId` when given, which must be a
     /// unit they can use in Tally (`FORBIDDEN` otherwise; any unit they belong to
     /// qualifies). Idempotent: if the member is
     /// already signed in at that unit, that period is returned unchanged, so a double tap
@@ -3829,7 +3829,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
             return Ok(Period::new(open));
         }
         if location_id != person.location_id {
-            // The home unit always exists; any other may have gone.
+            // The primary unit always exists; any other may have gone.
             self.app
                 .db()
                 .get_locations(&[&location_id])

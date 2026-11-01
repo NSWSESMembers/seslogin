@@ -39,12 +39,12 @@ fn webauthn() -> Arc<webauthn_rs::prelude::Webauthn> {
     )
 }
 
-/// A member signed in to Tally, at home at `home`.
-fn member(person_id: &str, home: &str) -> AuthInfo {
+/// A member signed in to Tally, whose primary unit is `primary`.
+fn member(person_id: &str, primary: &str) -> AuthInfo {
     AuthInfo::Member {
         person_id: person_id.to_string(),
-        location_id: home.to_string(),
-        member_location_ids: vec![home.to_string()],
+        location_id: primary.to_string(),
+        member_location_ids: vec![primary.to_string()],
         user_id: None,
         is_super: false,
         user_location_ids: vec![],
@@ -52,12 +52,12 @@ fn member(person_id: &str, home: &str) -> AuthInfo {
     }
 }
 
-/// At home at loc-a.
+/// Primary unit loc-a.
 fn alice() -> AuthInfo {
     member("alice", "loc-a")
 }
 
-/// At home at loc-a.
+/// Primary unit loc-a.
 fn bob() -> AuthInfo {
     member("bob", "loc-a")
 }

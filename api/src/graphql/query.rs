@@ -860,7 +860,7 @@ impl<A: App + HasDb + Send + Sync> Person<A> {
     }
 
     // The fields below are personal contact details and qualifications, so each one is
-    // limited to users and API tokens with access to any of the member's units (home or
+    // limited to users and API tokens with access to any of the member's units (primary or
     // secondary).
     // This deliberately narrows the rule that `Person`'s own fields are unchecked (that
     // exists so a kiosk can show a visiting member from another unit): a kiosk never
@@ -977,14 +977,14 @@ impl<A: App + HasDb + Send + Sync> Person<A> {
         self.rec.updated_at.map(|t| t as i64)
     }
 
-    /// The member's home unit: the one that owns the record, and the only one whose
+    /// The member's primary unit: the one that owns the record, and the only one whose
     /// admins may edit or delete it. A member who also volunteers at other units is
     /// listed there too (`isMemberOf`), but `locationId` stays this one.
     async fn location_id(&self) -> ID {
         ID(self.rec.location_id.clone())
     }
 
-    /// Whether this person is a member of the given unit: their home unit, or one they
+    /// Whether this person is a member of the given unit: their primary unit, or one they
     /// hold a Volunteer assignment at. Says nothing about who may edit them: that is
     /// `viewerCanEdit`.
     async fn is_member_of(&self, location_id: ID) -> bool {
@@ -992,7 +992,7 @@ impl<A: App + HasDb + Send + Sync> Person<A> {
     }
 
     /// Whether the current caller may edit or delete this person. This is write access
-    /// at the member's HOME unit, matching `updatePerson` and `deletePerson`: a secondary
+    /// at the member's PRIMARY unit, matching `updatePerson` and `deletePerson`: a secondary
     /// unit's admins can see the member but not change the record. False for Read only
     /// users, kiosks and edit links.
     async fn viewer_can_edit(&self, ctx: &Context<'_>) -> bool {
@@ -2062,7 +2062,7 @@ pub struct QuickPick<A: App + HasDb + Send + Sync + 'static> {
 /// is only reached from `scanRegister2` once the person has been found to have an
 /// open period at the calling kiosk's location. That is what lets the person half
 /// span every location — a member signing out at a unit other than their own is
-/// standing at the kiosk, and their `Person` record's home location is irrelevant.
+/// standing at the kiosk, and their `Person` record's primary location is irrelevant.
 ///
 /// The three reads run concurrently: this sits on the scan path, with a member
 /// waiting at the screen.
@@ -4081,7 +4081,7 @@ impl<A: App + HasDb + HasRealtime + Send + Sync + 'static> QueryRoot<A> {
             .map_err(|e| anyhow!("Failed to load person via DataLoader: {}", e))?
             .flatten()
             .ok_or_else(|| anyhow!("Person with ID {:?} missing", id))?;
-        // Checked against any of the member's units (home or secondary). A member
+        // Checked against any of the member's units (primary or secondary). A member
         // visiting an unrelated unit is still visible there through `Period.person`,
         // which is how kiosks and that unit's admins reach them; this lookup by id is not.
         require_person_access(ctx, &rec.rec)?;
@@ -4090,7 +4090,7 @@ impl<A: App + HasDb + HasRealtime + Send + Sync + 'static> QueryRoot<A> {
     }
 
     /// The person with this member number, or null if there is none *or* the caller
-    /// cannot read any of the member's units (home or secondary), so it cannot be used to probe for member
+    /// cannot read any of the member's units (primary or secondary), so it cannot be used to probe for member
     /// numbers at other units. Kiosk sign-in doesn't use this: `scanRegister2` looks the
     /// number up itself, which is what lets members sign in away from their own unit.
     #[graphql(guard = "AuthGuard::new(AuthRequirement::Authenticated)")]
@@ -4190,10 +4190,10 @@ impl<A: App + HasDb + HasRealtime + Send + Sync + 'static> QueryRoot<A> {
         tally::location(ctx, &id).await
     }
 
-    /// The signed-in member's own sign-in state at a unit, for the Tally app: their home
+    /// The signed-in member's own sign-in state at a unit, for the Tally app: their primary
     /// unit, or `locationId` when given, which must be a unit they can use in Tally
     /// (`FORBIDDEN` otherwise). Null when the member has since been deleted. Tally
-    /// members only. No location grant is needed at home — being the member is the
+    /// members only. No location grant is needed at their primary unit — being the member is the
     /// authority (see `graphql::self_sign_in`).
     async fn self_sign_in_status(
         &self,

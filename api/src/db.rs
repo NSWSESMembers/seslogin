@@ -214,8 +214,8 @@ pub struct Person {
     /// assignment (`membership_type`), less `location_id` as it stood when written.
     /// Written only by directory sync (`PersonUpdateShape::Directory`); empty when there
     /// are none. Read it through [`Person::member_location_ids`] or
-    /// [`Person::is_member_of`], which add the home unit: member sync can move
-    /// `location_id` between directory syncs, so this set may name the home unit too.
+    /// [`Person::is_member_of`], which add the primary unit: member sync can move
+    /// `location_id` between directory syncs, so this set may name the primary unit too.
     pub secondary_location_ids: Vec<String>,
     pub created_at: Option<u64>,
     pub updated_at: Option<u64>,
@@ -228,7 +228,7 @@ impl HasID for Person {
 }
 
 impl Person {
-    /// Every unit the member is a member of: their home unit (`location_id`) first,
+    /// Every unit the member is a member of: their primary unit (`location_id`) first,
     /// then their [secondary units](Person::secondary_location_ids), without repeats.
     pub fn member_location_ids(&self) -> Vec<&str> {
         let mut ids = vec![self.location_id.as_str()];
@@ -240,7 +240,7 @@ impl Person {
         ids
     }
 
-    /// Whether the member is a member of `location_id`: it is their home unit or one of
+    /// Whether the member is a member of `location_id`: it is their primary unit or one of
     /// their secondary units.
     pub fn is_member_of(&self, location_id: &str) -> bool {
         self.location_id == location_id
@@ -2133,9 +2133,9 @@ pub trait Handler: Sync {
         &self,
         query: ListSessionsQuery,
     ) -> impl Future<Output = Result<Vec<Session>>> + Send;
-    /// The people whose HOME unit (`Person.location_id`) is this location, and no one else.
+    /// The people whose PRIMARY unit (`Person.location_id`) is this location, and no one else.
     ///
-    /// This is the roster member sync reconciles against SES, so it must stay home-only:
+    /// This is the roster member sync reconciles against SES, so it must stay primary-only:
     /// a secondary member is absent from this unit's SES payload, and listing them here
     /// would have the absence pass mark and then soft-delete them. For an admin-facing
     /// listing of who belongs to a unit use `list_members_for_location`.
@@ -2144,7 +2144,7 @@ pub trait Handler: Sync {
         location_id: &str,
         skip_deleted: bool,
     ) -> impl Future<Output = Result<Vec<Person>>> + Send;
-    /// Every member of this location: those whose home unit it is (as
+    /// Every member of this location: those whose primary unit it is (as
     /// `list_people_for_location`) plus those who hold a Volunteer assignment here
     /// (`Person::is_member_of`, driven by `secondary_location_ids`), each once.
     ///
@@ -3128,10 +3128,10 @@ mod tests {
         assert!(!leftover.is_live());
     }
 
-    fn member(home: &str, secondary: &[&str]) -> Person {
+    fn member(primary: &str, secondary: &[&str]) -> Person {
         Person {
             id: "p1".into(),
-            location_id: home.into(),
+            location_id: primary.into(),
             first_name: "First".into(),
             last_name: "Last".into(),
             registration_number: None,
@@ -3151,18 +3151,21 @@ mod tests {
     }
 
     #[test]
-    fn a_member_belongs_to_their_home_unit_and_their_secondary_units() {
-        let p = member("home", &["a", "b"]);
-        assert_eq!(p.member_location_ids(), vec!["home", "a", "b"]);
-        assert!(p.is_member_of("home"));
+    fn a_member_belongs_to_their_primary_unit_and_their_secondary_units() {
+        let p = member("primary", &["a", "b"]);
+        assert_eq!(p.member_location_ids(), vec!["primary", "a", "b"]);
+        assert!(p.is_member_of("primary"));
         assert!(p.is_member_of("b"));
         assert!(!p.is_member_of("c"));
-        assert_eq!(member("home", &[]).member_location_ids(), vec!["home"]);
+        assert_eq!(
+            member("primary", &[]).member_location_ids(),
+            vec!["primary"]
+        );
     }
 
     #[test]
-    fn a_home_unit_also_in_the_secondary_set_is_listed_once() {
-        // Member sync moved them home to `a` since directory sync last wrote the set.
+    fn a_primary_unit_also_in_the_secondary_set_is_listed_once() {
+        // Member sync moved their primary unit to `a` since directory sync last wrote the set.
         let p = member("a", &["a", "b"]);
         assert_eq!(p.member_location_ids(), vec!["a", "b"]);
     }

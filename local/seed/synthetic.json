@@ -101,7 +101,7 @@
         "contact_key": { "S": "00001767225600000000#TestBMember1" }
       },
       {
-        "_comment": "A member of two units: home Test B Unit, plus Test A Unit as a secondary unit (directory sync writes secondary_location_ids). Test A Unit's admins can read her record but not edit or delete it. Not sync-owned (no ses_api_person_id). Unlike Crossunit Tester she is no visitor at Test A Unit's kiosk.",
+        "_comment": "A member of two units: primary unit Test B Unit, plus Test A Unit as a secondary unit (directory sync writes secondary_location_ids). Test A Unit's admins can read her record but not edit or delete it. Not sync-owned (no ses_api_person_id). Unlike Crossunit Tester she is no visitor at Test A Unit's kiosk.",
         "id": { "S": "TestBMember2" },
         "location_id": { "S": "TestBUnit001" },
         "secondary_location_ids": { "SS": ["TestAUnit001"] },

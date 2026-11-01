@@ -13,11 +13,11 @@ vi.mock("./useUserInfo", () => ({
   useUserInfo: () => ({ disaggregateVirtualPeriods: false }),
 }));
 
-// One row per member; the home unit of the row at each index.
+// One row per member; the primary unit of the row at each index.
 const rows = [
-  { id: "p1", name: "Alice", homeId: "a", isMemberOf: true },
-  { id: "p2", name: "Dana", homeId: "b", isMemberOf: true },
-  { id: "p3", name: "Vera", homeId: "c", isMemberOf: false },
+  { id: "p1", name: "Alice", primaryId: "a", isMemberOf: true },
+  { id: "p2", name: "Dana", primaryId: "b", isMemberOf: true },
+  { id: "p3", name: "Vera", primaryId: "c", isMemberOf: false },
 ];
 
 function row({ id, name, isMemberOf }: (typeof rows)[number]) {
@@ -29,7 +29,7 @@ function row({ id, name, isMemberOf }: (typeof rows)[number]) {
 }
 
 describe("ActivityTotalsDisplay unit labels", () => {
-  it("labels a visitor, a member whose home is elsewhere, and leaves a home member plain", async () => {
+  it("labels a visitor, a member whose primary unit is elsewhere, and leaves a primary-unit member plain", async () => {
     const environment = createMockEnvironment();
     render(
       <RelayEnvironmentProvider environment={environment}>
@@ -46,7 +46,7 @@ describe("ActivityTotalsDisplay unit labels", () => {
     act(() => {
       environment.mock.resolveMostRecentOperation((op) =>
         MockPayloadGenerator.generate(op, {
-          // The mock answers every nested `location` too, so pick each member's home
+          // The mock answers every nested `location` too, so pick each member's primary unit
           // unit by the row it sits in.
           Location: (ctx) => {
             const index = ctx.path?.indexOf("periodSummaryByMember") ?? -1;
@@ -57,15 +57,22 @@ describe("ActivityTotalsDisplay unit labels", () => {
                 periodSummaryByCategory: [],
               };
             }
-            const home = rows[Number(ctx.path?.[index + 1])];
-            return { id: home.homeId, name: `Home of ${home.name}` };
+            const primary = rows[Number(ctx.path?.[index + 1])];
+            return {
+              id: primary.primaryId,
+              name: `Primary of ${primary.name}`,
+            };
           },
         }),
       );
     });
 
-    expect(await screen.findByText("Home: Home of Dana")).toBeInTheDocument();
-    expect(screen.getByText("Visiting from Home of Vera")).toBeInTheDocument();
-    expect(screen.queryByText(/Home of Alice/)).not.toBeInTheDocument();
+    expect(
+      await screen.findByText("Primary: Primary of Dana"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Visiting from Primary of Vera"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Primary of Alice/)).not.toBeInTheDocument();
   });
 });

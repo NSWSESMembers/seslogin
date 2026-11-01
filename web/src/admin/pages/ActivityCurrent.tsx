@@ -56,8 +56,8 @@ export default function ActivityCurrent() {
       <p className="my-4">
         This list shows members currently signed in at this location, including
         visitors from other units. Under a name, a visitor shows as
-        &quot;Visiting from&quot; their unit, and a member whose home is another
-        unit shows as &quot;Home:&quot; that unit.
+        &quot;Visiting from&quot; their unit, and a member whose primary unit is
+        another unit shows as &quot;Primary:&quot; that unit.
       </p>
       <div className="mb-3 flex flex-wrap items-center gap-3">
         <TextInput

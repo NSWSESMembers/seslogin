@@ -1,9 +1,9 @@
-//! A member of several units can be read through any of them. Dana's home unit is B and
+//! A member of several units can be read through any of them. Dana's primary unit is B and
 //! A is a secondary unit (as directory sync records it): admins, read-only users and API
 //! tokens at A can read her by id and by member number, including her contact fields,
 //! but cannot change or delete her, and a user at an unrelated unit still cannot read her.
 //! She is also listed as a member of A (`Location.people`, dashboard, leaderboard), with
-//! `Person.viewerCanEdit` true only for her home unit.
+//! `Person.viewerCanEdit` true only for her primary unit.
 //!
 //! Same harness as `location_access.rs`.
 
@@ -62,7 +62,7 @@ fn kiosk_at(location: &str) -> AuthInfo {
     }
 }
 
-/// Units A, B and C; Dana (20000002) is at home in B with A as a secondary unit.
+/// Units A, B and C; Dana (20000002), whose primary unit is B, has A as a secondary unit.
 fn app() -> Arc<TestApp> {
     let app = fake_app();
     for (id, name) in [
@@ -124,7 +124,7 @@ async fn users_and_tokens_at_a_secondary_unit_read_the_member() {
         user(&["loc-a"], &[]),
         user(&[], &["loc-a"]),
         api_token(&["loc-a"]),
-        // The home unit still works.
+        // The primary unit still works.
         user(&["loc-b"], &[]),
     ] {
         let data = json(&run(&app, auth.clone(), PERSON).await);
@@ -191,7 +191,7 @@ async fn a_secondary_unit_admin_cannot_change_or_delete_the_member() {
 }
 
 #[tokio::test]
-async fn the_home_unit_admin_can_still_change_the_member() {
+async fn the_primary_unit_admin_can_still_change_the_member() {
     let app = app();
     let response = run(
         &app,
@@ -206,7 +206,7 @@ async fn the_home_unit_admin_can_still_change_the_member() {
     );
 }
 
-// Listings: a secondary member is a member of the unit, with the home unit's rules for
+// Listings: a secondary member is a member of the unit, with the primary unit's rules for
 // editing.
 
 const LISTING: &str = r#"{ location(id: "loc-a") { people { id locationId
@@ -268,7 +268,7 @@ async fn a_soft_deleted_secondary_member_is_not_listed() {
 }
 
 #[tokio::test]
-async fn viewer_can_edit_follows_the_home_unit() {
+async fn viewer_can_edit_follows_the_primary_unit() {
     let app = app();
     let dana = |data: &serde_json::Value| {
         data["location"]["people"]
@@ -286,7 +286,7 @@ async fn viewer_can_edit_follows_the_home_unit() {
     assert_eq!(row["viewerCanEdit"], false);
     assert_eq!(row["isHere"], true);
     assert_eq!(row["isThere"], false);
-    // Her home unit's admin can, from either listing.
+    // Her primary unit's admin can, from either listing.
     let data = json(
         &run(
             &app,
@@ -296,7 +296,7 @@ async fn viewer_can_edit_follows_the_home_unit() {
         .await,
     );
     assert_eq!(dana(&data)["viewerCanEdit"], true);
-    // A home-unit read-only user cannot.
+    // A primary-unit read-only user cannot.
     let data = json(
         &run(
             &app,
@@ -309,15 +309,15 @@ async fn viewer_can_edit_follows_the_home_unit() {
 }
 
 #[tokio::test]
-async fn the_home_only_list_stays_home_only() {
+async fn the_primary_only_list_stays_primary_only() {
     use seslogin::db::Handler;
     let app = app();
-    let home = app
+    let primary = app
         .db
         .list_people_for_location("loc-a", true)
         .await
         .unwrap();
-    assert!(home.is_empty());
+    assert!(primary.is_empty());
     let members = app
         .db
         .list_members_for_location("loc-a", true)
@@ -325,12 +325,12 @@ async fn the_home_only_list_stays_home_only() {
         .unwrap();
     assert_eq!(members.len(), 1);
     assert_eq!(members[0].id, "dana");
-    let home = app
+    let primary = app
         .db
         .list_people_for_location("loc-b", true)
         .await
         .unwrap();
-    assert_eq!(home.len(), 1);
+    assert_eq!(primary.len(), 1);
 }
 
 #[tokio::test]

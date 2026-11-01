@@ -7,7 +7,7 @@ order: 100
 ## Can a member from another unit sign in at our kiosk?
 
 Yes. Any member of any unit can sign in and out at any kiosk. Their time is
-recorded in your unit's activity, with their home unit shown under their name
+recorded in your unit's activity, with their primary unit shown under their name
 ("Visiting from" for someone who doesn't belong to your unit), and also appears
 in their own history.
 

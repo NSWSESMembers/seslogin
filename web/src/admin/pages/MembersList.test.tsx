@@ -32,9 +32,9 @@ function renderList(
   sesApiPersonId: string | null = null,
   person: {
     locationId: string;
-    homeName: string;
+    primaryName: string;
     viewerCanEdit: boolean;
-  } = { locationId: "loc1", homeName: "HQ", viewerCanEdit },
+  } = { locationId: "loc1", primaryName: "HQ", viewerCanEdit },
 ) {
   selected.viewerCanEdit = viewerCanEdit;
   const environment = createMockEnvironment();
@@ -62,8 +62,8 @@ function renderList(
         Location: () => ({
           id: "loc1",
           // The mock resolver also answers each member's nested `location`, so this
-          // is the home unit's name as the row sees it.
-          name: person.homeName,
+          // is the primary unit's name as the row sees it.
+          name: person.primaryName,
           sesApiHeadquartersId: "hq",
           lastSuccessfulMemberSync: 1,
           people: [
@@ -75,7 +75,7 @@ function renderList(
               sesApiPersonId,
               missingSince: null,
               locationId: person.locationId,
-              location: { id: person.locationId, name: person.homeName },
+              location: { id: person.locationId, name: person.primaryName },
               viewerCanEdit: person.viewerCanEdit,
             },
           ],
@@ -113,14 +113,14 @@ describe("MembersList", () => {
 });
 
 describe("MembersList secondary members", () => {
-  it("names the home unit and offers no Edit or Delete, even to an editor of this unit", async () => {
+  it("names the primary unit and offers no Edit or Delete, even to an editor of this unit", async () => {
     renderList(true, null, {
       locationId: "loc2",
-      homeName: "Other Unit",
+      primaryName: "Other Unit",
       viewerCanEdit: false,
     });
     expect(await screen.findByText("Alice Anderson")).toBeInTheDocument();
-    expect(screen.getByText("Home: Other Unit")).toBeInTheDocument();
+    expect(screen.getByText("Primary: Other Unit")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Activity" })).toBeInTheDocument();
     expect(
       screen.queryByRole("link", { name: "Edit" }),
@@ -134,16 +134,16 @@ describe("MembersList secondary members", () => {
     ).toBeInTheDocument();
   });
 
-  it("shows no home unit label for a home member", async () => {
+  it("shows no primary unit label for a primary-unit member", async () => {
     renderList(true);
     expect(await screen.findByText("Alice Anderson")).toBeInTheDocument();
-    expect(screen.queryByText(/^Home:/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^Primary:/)).not.toBeInTheDocument();
   });
 
   it("follows the member's own viewerCanEdit, not the unit's", async () => {
     renderList(false, null, {
       locationId: "loc1",
-      homeName: "HQ",
+      primaryName: "HQ",
       viewerCanEdit: true,
     });
     expect(await screen.findByText("Alice Anderson")).toBeInTheDocument();

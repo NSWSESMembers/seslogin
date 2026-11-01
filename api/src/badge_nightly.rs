@@ -37,7 +37,7 @@ pub async fn run(db: &impl db::Handler, args: NightlyArgs) -> Result<()> {
         .list_locations(db::ListLocationsFilter::EnabledOnly)
         .await?;
     let mut total_awards = 0_u64;
-    // A member only earns badges when gamification is on at one of their own units (home
+    // A member only earns badges when gamification is on at one of their own units (primary
     // or secondary), wherever the periods were — the same rule a kiosk scan follows. Disabled
     // locations aren't in the list, so their members count as switched off too.
     let gamification_location_ids: HashSet<String> = locations

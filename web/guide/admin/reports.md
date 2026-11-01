@@ -9,7 +9,7 @@ Admin and Read only users.
 
 ## The dashboard
 
-**Home** gives a snapshot: how many members you have (including members whose home
+**Home** gives a snapshot: how many members you have (including members whose primary
 unit is elsewhere but who also volunteer at yours) and how many have been
 active, which kiosks are online, entries and hours over the last week, a chart of
 entries per day, and your most-used categories.

@@ -2,7 +2,7 @@
 //! unit assignments) and `Location` (code, zone, coordinates, addresses, accreditations).
 //!
 //! These are personal and unit contact details, so they need access to the person's
-//! *home* location and are never served to a kiosk — unlike `Person`'s identity fields,
+//! *primary* location and are never served to a kiosk — unlike `Person`'s identity fields,
 //! which a visiting member's kiosk must read for cross-unit sign-in.
 
 mod common;
@@ -161,7 +161,7 @@ const LOCATION: &str = r#"{ location(id: "loc-a") {
 } }"#;
 
 #[tokio::test]
-async fn read_only_user_of_the_home_location_reads_the_person_details() {
+async fn read_only_user_of_the_primary_location_reads_the_person_details() {
     let app = app();
     let response = run(&app, user(&[], &["loc-a"]), PERSON).await;
     assert!(response.errors.is_empty(), "{:?}", response.errors);
@@ -207,11 +207,11 @@ async fn unreadable_json_yields_empty_lists_not_an_error() {
 }
 
 #[tokio::test]
-async fn user_without_access_to_the_home_location_is_refused_the_person_details() {
+async fn user_without_access_to_the_primary_location_is_refused_the_person_details() {
     let app = app();
     seed_person(&app, "carol", "loc-b", "Carol", "Cole", "20000009", None);
     // Another unit's member, reached by id: `Query.person` refuses first, so this also
-    // covers the home-location check the fields repeat.
+    // covers the primary-location check the fields repeat.
     let query = r#"{ person(id: "carol") { mobile } }"#;
     assert_forbidden(&run(&app, user(&["loc-a"], &[]), query).await);
     assert_forbidden(&run(&app, user(&[], &["loc-a"]), query).await);
@@ -228,7 +228,7 @@ fn assert_not_for_kiosks(response: &async_graphql::Response) {
 }
 
 #[tokio::test]
-async fn kiosk_is_refused_the_person_details_even_at_the_home_location() {
+async fn kiosk_is_refused_the_person_details_even_at_the_primary_location() {
     let app = app();
     for field in [
         "preferredName",

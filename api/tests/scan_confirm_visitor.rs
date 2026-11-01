@@ -1,7 +1,7 @@
 //! `scanRegister2(confirmVisitor: true)` asks the kiosk to confirm before signing
 //! in a member who isn't a member of this unit — a mistyped member number most often belongs to
 //! someone elsewhere. It must write nothing when it asks, and must not get in the
-//! way of a home-unit sign-in, a sign-out, or a kiosk that didn't opt in.
+//! way of a primary-unit sign-in, a sign-out, or a kiosk that didn't opt in.
 //!
 //! Uses the shared `FakeDb` (`tests/common/mod.rs`) and runs real GraphQL documents
 //! through `graphql::build_schema`.
@@ -36,14 +36,14 @@ fn webauthn() -> Arc<webauthn_rs::prelude::Webauthn> {
     )
 }
 
-/// A kiosk at Unit A, Alice (1001) at home there and Bob (2001) from Unit B.
+/// A kiosk at Unit A, Alice (1001) whose primary unit it is and Bob (2001) from Unit B.
 fn app() -> Arc<TestApp> {
     let app = fake_app();
     seed_location(&app, "loc-a", "Unit A");
     seed_location(&app, "loc-b", "Unit B");
     seed_person(&app, "alice", "loc-a", "Alice", "Anderson", "1001", None);
     seed_person(&app, "bob", "loc-b", "Bob", "Brown", "2001", None);
-    // Dana is at home in Unit B with Unit A as a secondary unit: a member of A, not a visitor.
+    // Dana's primary unit is Unit B, with Unit A as a secondary unit: a member of A, not a visitor.
     seed_person(&app, "dana", "loc-b", "Dana", "Dualunit", "2002", None);
     app.db
         .persons
@@ -124,7 +124,7 @@ async fn signs_in_a_visitor_once_the_kiosk_repeats_the_scan_without_asking() {
 }
 
 #[tokio::test]
-async fn signs_in_a_home_unit_member_straight_away() {
+async fn signs_in_a_primary_unit_member_straight_away() {
     let app = app();
     let result = scan(&app, "1001", Some(true)).await;
     assert_eq!(result["state"], "SIGNED_IN");

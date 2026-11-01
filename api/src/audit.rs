@@ -556,9 +556,9 @@ pub fn person_units_changes(
     )
 }
 
-/// The locations a person update affects: every unit the member belongs to, home first
+/// The locations a person update affects: every unit the member belongs to, primary first
 /// (`Person::member_location_ids`), before and after the write. So a move records both
-/// the old and the new home, and a directory write that adds or drops a secondary unit
+/// the old and the new primary unit, and a directory write that adds or drops a secondary unit
 /// reaches the units gained and the units lost. The after-state is derived from the
 /// shape, so no extra read is needed.
 pub fn person_update_locations(
@@ -2303,7 +2303,7 @@ impl<D: db::Handler> db::Handler for AuditingHandler<D> {
             .inner
             .create_webauthn_credential(id, owner, name, passkey_json)
             .await?;
-        // A member's passkey is in their home unit's log; a user's is global.
+        // A member's passkey is in their primary unit's log; a user's is global.
         let location_ids = match owner {
             db::PasskeyOwner::User(_) => vec![],
             db::PasskeyOwner::Member(person_id) => {
@@ -4117,10 +4117,10 @@ mod tests {
         p.secondary_location_ids = vec!["loc-b".into(), "loc-a".into()];
         let ids = |shape: &db::PersonUpdateShape<'_>| person_update_locations(Some(&p), shape);
         let both = vec!["loc-a".to_string(), "loc-b".to_string()];
-        // Home first, secondaries after, deduped.
+        // Primary first, secondaries after, deduped.
         assert_eq!(ids(&db::PersonUpdateShape::Delete), both);
         assert_eq!(ids(&db::PersonUpdateShape::Undelete), both);
-        // A move adds the new home to the existing units.
+        // A move adds the new primary unit to the existing units.
         assert_eq!(
             ids(&db::PersonUpdateShape::Location {
                 location_id: "loc-c"
@@ -4145,7 +4145,7 @@ mod tests {
             preferred_name: None,
             secondary_location_ids: &gained,
         };
-        // loc-b is lost, loc-c gained: both are in the entry, as is the home.
+        // loc-b is lost, loc-c gained: both are in the entry, as is the primary unit.
         assert_eq!(
             person_update_locations(Some(&p), &shape),
             vec![
@@ -4154,7 +4154,7 @@ mod tests {
                 "loc-c".to_string()
             ]
         );
-        // A member with no secondary units is filed at home only.
+        // A member with no secondary units is filed at the primary unit only.
         assert_eq!(
             person_update_locations(Some(&person()), &db::PersonUpdateShape::Delete),
             vec!["loc-a".to_string()]

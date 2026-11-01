@@ -192,10 +192,10 @@ pub(crate) fn require_location_access(ctx: &Context<'_>, location_id: &str) -> R
 }
 
 /// Check the caller may read a person's record: [`require_location_access`] for any of
-/// the units the member belongs to (their home unit or a secondary one, see
+/// the units the member belongs to (their primary unit or a secondary one, see
 /// [`db::Person::member_location_ids`]). Same refusal as `require_location_access`.
 ///
-/// Reads only. Changing or deleting a person stays with the home unit
+/// Reads only. Changing or deleting a person stays with the primary unit
 /// (`require_location_write_access(ctx, &person.location_id)`). A pure check: it reads
 /// nothing from the database.
 pub(crate) fn require_person_access(ctx: &Context<'_>, person: &db::Person) -> Result<()> {
@@ -234,7 +234,7 @@ pub(crate) fn require_location_write_access(ctx: &Context<'_>, location_id: &str
 }
 
 /// Check the caller is a member signed in to Tally who may use `location_id`'s shared
-/// Tally tools: any unit they belong to (their home unit or a secondary one, see
+/// Tally tools: any unit they belong to (their primary unit or a secondary one, see
 /// [`db::Person::member_location_ids`]), any unit the user signed in alongside them holds
 /// either role at, or every unit when that user is a super user. Everyone else —
 /// users on their own, kiosks, API tokens and edit links — is refused with `refusal`:

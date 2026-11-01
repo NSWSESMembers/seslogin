@@ -964,7 +964,7 @@ async fn a_directory_write_removing_a_unit_shows_in_the_old_units_log() {
 }
 
 #[tokio::test]
-async fn a_member_with_no_secondary_unit_is_logged_at_home_only() {
+async fn a_member_with_no_secondary_unit_is_logged_at_the_primary_unit_only() {
     let app = multi_unit_app().await;
     app.db
         .inner()

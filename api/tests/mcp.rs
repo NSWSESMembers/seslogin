@@ -1054,7 +1054,7 @@ async fn member_reads_are_refused_without_a_grant_for_the_location() {
 async fn a_secondary_unit_admin_can_read_but_not_change_a_member() {
     let (app, schema) = setup();
     seed_unit(&app);
-    // Dana's home unit is loc-2; loc-1 is a secondary unit.
+    // Dana's primary unit is loc-2; loc-1 is a secondary unit.
     seed_person(&app, "p-dana", "loc-2", "Dana", "Dualunit", "2002", None);
     app.db
         .persons
@@ -1083,7 +1083,7 @@ async fn a_secondary_unit_admin_can_read_but_not_change_a_member() {
     .await;
     assert_eq!(result["isError"], false, "{result:?}");
 
-    // Writes stay with the home unit.
+    // Writes stay with the primary unit.
     let result = run_tool(
         &app,
         &schema,

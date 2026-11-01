@@ -1,4 +1,4 @@
-//! A member signed in to Tally uses every unit they belong to — their home unit and
+//! A member signed in to Tally uses every unit they belong to — their primary unit and
 //! their secondary ones (`Person::member_location_ids`) — with no user signed in
 //! alongside them: the shared tools, `tallyLocation`, `tallyViewer`, self sign-in and
 //! the offline sync's shared contacts. A unit they don't belong to stays closed.
@@ -42,7 +42,7 @@ fn webauthn() -> Arc<webauthn_rs::prelude::Webauthn> {
     )
 }
 
-/// Dana belongs to loc-b (home) and loc-a (secondary); loc-c is nobody's.
+/// Dana belongs to loc-b (primary) and loc-a (secondary); loc-c is nobody's.
 fn app() -> Arc<App> {
     let app = fake_app();
     seed_location(&app, "loc-a", "Unit A");
@@ -101,7 +101,7 @@ fn data(response: &async_graphql::Response) -> serde_json::Value {
 }
 
 #[tokio::test]
-async fn the_grant_carries_home_then_secondary_units() {
+async fn the_grant_carries_primary_then_secondary_units() {
     let app = app();
     match dana(&app).await {
         AuthInfo::Member {
@@ -236,9 +236,9 @@ async fn self_sign_in_at_a_secondary_unit_needs_no_user() {
         json!({ "personId": "dana", "locationId": "loc-a" })
     );
 
-    // With no unit given she still signs in at home.
-    let home = data(&run(&app, &auth, "mutation { selfSignIn { locationId } }").await);
-    assert_eq!(home["selfSignIn"]["locationId"], "loc-b");
+    // With no unit given she still signs in at her primary unit.
+    let primary = data(&run(&app, &auth, "mutation { selfSignIn { locationId } }").await);
+    assert_eq!(primary["selfSignIn"]["locationId"], "loc-b");
 
     // An unrelated unit is refused, for status and sign-in alike.
     let refused = run(

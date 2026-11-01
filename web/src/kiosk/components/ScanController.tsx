@@ -466,7 +466,7 @@ export default function ScanController(props: {
         uuid,
         memberId,
         name: `${person.firstName} ${person.lastName}`,
-        homeUnitName: person.location.name,
+        primaryUnitName: person.location.name,
       });
       return;
     }

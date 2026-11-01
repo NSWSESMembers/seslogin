@@ -250,7 +250,7 @@ that email (compared trimmed and lowercased, through the person table's
 otherwise nobody — a user with no member, or an email several members share.
 A disabled user counts as no user. The grant names the member and that user,
 and resolves fresh on every use to `AuthInfo::Member` (see CLAUDE.md), so the
-member's units are every unit they belong to (home or secondary) plus that user's units.
+member's units are every unit they belong to (primary or secondary) plus that user's units.
 
 **Passkeys.** Every deployed environment's relying party is `seslogin.com`,
 and the sign-in page is on the site's own origin, so a passkey a user added on
@@ -475,7 +475,7 @@ from `list_users`/`create_user`/etc. that the admin UI would; only `whoami`,
 tools (for your own locations) work; the category/NITC/location/API-token administration
 tools are `SuperUser` in GraphQL and refuse everyone else. Where a GraphQL read doesn't itself check the caller's grants
 (`location`, `Location.people` and the six `Location.periodSummaryBy*` resolvers behind `summarize_activity`), the tool does, and the period and kiosk
-tools check again even where the resolver does (`period`, `Location.periods`, `Query.session`, `Location.sessions`, `Location.auditLog`), so a tool only ever narrows access. A single member (`get_member`, `find_member_by_number`, `list_member_periods`) is read through `Query.person`, which allows an Admin or Read only grant at any of the member's units (home or secondary); `update_member` and `delete_member` still need Admin at the home unit. A tool failure (a guard rejection, a
+tools check again even where the resolver does (`period`, `Location.periods`, `Query.session`, `Location.sessions`, `Location.auditLog`), so a tool only ever narrows access. A single member (`get_member`, `find_member_by_number`, `list_member_periods`) is read through `Query.person`, which allows an Admin or Read only grant at any of the member's units (primary or secondary); `update_member` and `delete_member` still need Admin at the primary unit. A tool failure (a guard rejection, a
 validation error) comes back as an ordinary JSON-RPC *success* whose
 `CallToolResult` carries `isError: true` and the message — not a transport
 error — so a client can show it inline rather than treating the whole request
@@ -496,29 +496,30 @@ claude.ai connector there instead.
 
 ## Members at several units
 
-A member's home unit is `Person.location_id`; the other units they volunteer at are
+A member's primary unit is `Person.location_id`, the unit member sync lists them at in
+the SES API; the other units they volunteer at are
 `secondary_location_ids` (directory sync). `Location.people` (and so the MCP
 `list_members`), `dashboardSummary`, `badgeLeaderboard` and the weekly badge digest use
-`list_members_for_location`, which lists both. `Person.locationId` is always the home
+`list_members_for_location`, which lists both. `Person.locationId` is always the primary
 unit, `Person.isMemberOf(locationId)` says whether a unit is one of theirs, and
-`Person.viewerCanEdit` is write access at the home unit, matching `updatePerson` and
+`Person.viewerCanEdit` is write access at the primary unit, matching `updatePerson` and
 `deletePerson`. `cli person list --include-secondary` lists a unit the same way; its
-default is the home-only list.
+default is the primary-only list.
 
 A member is a *visitor* only at a unit that is none of theirs: `!person.is_member_of(location)`,
 never `location_id != location.id`. So `scanRegister2(confirmVisitor: true)` signs a member of
-the kiosk's unit (home or secondary) in without `CONFIRM_VISITOR`, and a secondary unit counts
-like home for badges: it earns no "visiting" credit there (away check-ins, distance badges).
+the kiosk's unit (primary or secondary) in without `CONFIRM_VISITOR`, and a secondary unit counts
+like the primary unit for badges: it earns no "visiting" credit there (away check-ins, distance badges).
 Badges are worked out when gamification is on at the kiosk's unit and at *any* of the member's
 units (kiosk scans, directly-created periods and `badge-nightly` alike); distance badges
 measure from the nearest of the member's units that has coordinates. The admin Activity pages
-label a visitor "Visiting from <unit>" and a member whose home is elsewhere "Home: <unit>".
+label a visitor "Visiting from <unit>" and a member whose primary unit is elsewhere "Primary: <unit>".
 
 ## Tally (members)
 
 Tally is for **members**, not users: every Tally field below admits only an
 `AuthInfo::Member`, which only Tally sign-in issues (see "Tally sign-in"). A
-member can use every unit they belong to (their home unit and their secondary
+member can use every unit they belong to (their primary unit and their secondary
 units, `AuthInfo::Member::member_location_ids`), plus every unit the user signed in alongside
 them holds either role at (every unit for a super user); `require_member_location`
 in `graphql/auth.rs` is the one check. Any such member may read **and** write a
@@ -528,7 +529,7 @@ own (even super users), kiosks, API tokens and edit links are refused.
 The apps start from two queries (`graphql/tally.rs`):
 
 - `tallyViewer` — the member (`member`, `name`, `homeLocationId`, and
-  `memberLocationIds`: every unit they belong to, home first, which tells "my units"
+  `memberLocationIds`: every unit they belong to, primary first, which tells "my units"
   apart from units reached only through the user's grants), the email of
   the user signed in alongside if any (`userEmail`), whether that user is a super
   user (`isSuper`) or a developer (`isDev`, which shows Tally's environment
@@ -726,7 +727,7 @@ mutation {
 ## Self sign-in (Tally)
 
 A member signs themselves in and out from the Tally app, exactly as they would by typing
-their member number at a kiosk at their home unit, or at another unit they can use in Tally (a secondary unit included)
+their member number at a kiosk at their primary unit, or at another unit they can use in Tally (a secondary unit included)
 (`src/graphql/self_sign_in.rs`; the two mutations are in `mutations.rs`).
 
 - **Who:** only a member signed in to Tally. Users on their own, kiosk sessions, API tokens
@@ -734,8 +735,8 @@ their member number at a kiosk at their home unit, or at another unit they can u
   authority, read fresh on every call, and the member must still exist and not be deleted.
   The MCP interface deliberately has no tool for this.
 - **Which unit:** `selfSignInStatus` and `selfSignIn` take an optional `locationId`. Without
-  it they act at the home unit. Any unit given must be one the member can use in Tally — one
-  they belong to (home or secondary, no user grant needed), a unit the user signed in alongside them holds either
+  it they act at the primary unit. Any unit given must be one the member can use in Tally — one
+  they belong to (primary or secondary, no user grant needed), a unit the user signed in alongside them holds either
   role at, or any unit for a super user (`require_member_location`, as for Tasks) — else
   `FORBIDDEN`; one that doesn't exist is `NOT_FOUND`. This is the app's version of a member
   signing in at another unit's kiosk.
@@ -1160,7 +1161,7 @@ Both views are Relay connections, **newest first**, default page 50 (max 200), a
 
 | Field | Who may read it | Shows |
 |---|---|---|
-| `Location.auditLog` | A *user* with Admin **or** Read only access to the location, or a super user. Kiosk sessions, API tokens and edit links are refused even for their own location. | Entries at that location. A write touching several locations is in each of their logs: a member moved between units, and every change to a person, which is filed at every unit they belong to (home and secondary). Global records (users, categories, …) are not here. |
+| `Location.auditLog` | A *user* with Admin **or** Read only access to the location, or a super user. Kiosk sessions, API tokens and edit links are refused even for their own location. | Entries at that location. A write touching several locations is in each of their logs: a member moved between units, and every change to a person, which is filed at every unit they belong to (primary and secondary). Global records (users, categories, …) are not here. |
 | `Query.auditLog` | Super users only | Every event once, including global records. |
 
 Each `AuditEntry` has `timestamp` (Unix seconds), `action`, `entityType`, `entityId`, `entityLabel`, `location` (the item's own location; the first one a multi-location write touched in the all-locations view; null for global records), `actor { kind id via label }` and `changes { field before after }`. `before`/`after` are text: a JSON string comes back raw, anything else as compact JSON. `actor.label` is looked up at read time (user email, kiosk name, API token name, job name, "Period edit link"); an unknown `actor_kind` reads as `UNKNOWN`. `ip` and `actor.via` are personal data and are returned to **super users only** (null otherwise).
@@ -1247,7 +1248,7 @@ the OAuth client-id signing key (`api/src/server_secret.rs`).
 
 Set `ses_api_headquarters_id` per location via the admin UI before syncing.
 
-Sync reconciles against `db::list_people_for_location`, the people whose **home** unit
+Sync reconciles against `db::list_people_for_location`, the people whose **primary** unit
 is the location. Never swap in `list_members_for_location`, which also returns members
 of other units who volunteer here (the admin Members page, dashboard and badges use
 it): they are absent from this unit's SES payload, so the absence pass would mark and

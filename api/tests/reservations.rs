@@ -38,8 +38,8 @@ fn webauthn() -> Arc<webauthn_rs::prelude::Webauthn> {
 fn user_as(id: &str, admin: &[&str], read_only: &[&str]) -> AuthInfo {
     AuthInfo::Member {
         person_id: id.to_string(),
-        location_id: "loc-home".to_string(),
-        member_location_ids: vec!["loc-home".to_string()],
+        location_id: "loc-primary".to_string(),
+        member_location_ids: vec!["loc-primary".to_string()],
         user_id: Some(id.to_string()),
         is_super: false,
         user_location_ids: {
@@ -66,8 +66,8 @@ fn read_only() -> AuthInfo {
 fn super_user() -> AuthInfo {
     AuthInfo::Member {
         person_id: "super".to_string(),
-        location_id: "loc-home".to_string(),
-        member_location_ids: vec!["loc-home".to_string()],
+        location_id: "loc-primary".to_string(),
+        member_location_ids: vec!["loc-primary".to_string()],
         user_id: Some("super".to_string()),
         is_super: true,
         user_location_ids: vec![],
@@ -88,11 +88,23 @@ fn app() -> Arc<TestApp> {
     seed_location(&app, "loc-b", "Unit B");
     seed_user(&app, "caller", true);
     seed_person(
-        &app, "caller", "loc-home", "Casey", "Caller", "99999999", None,
+        &app,
+        "caller",
+        "loc-primary",
+        "Casey",
+        "Caller",
+        "99999999",
+        None,
     );
     seed_user(&app, "other", true);
     seed_person(
-        &app, "other", "loc-home", "Olive", "Other", "99999998", None,
+        &app,
+        "other",
+        "loc-primary",
+        "Olive",
+        "Other",
+        "99999998",
+        None,
     );
     Arc::new(app)
 }

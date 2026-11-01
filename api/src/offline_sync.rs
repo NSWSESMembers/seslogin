@@ -25,7 +25,7 @@
 //! Shared contacts (`sharedContacts`, see SCHEMA.md's `shared_contact`) work the same
 //! way as units: the whole list, whenever it differs from the one the cursor last
 //! delivered. It is the caller's own, not statewide: every statewide contact, plus the
-//! contacts of each location the caller may use in Tally (their home unit and their
+//! contacts of each location the caller may use in Tally (their primary unit and their
 //! user's units, or every location for a super user), the same set GraphQL lets them
 //! read. So the list, and the hash the cursor keeps of it, differ between members, and
 //! a member who gains or loses a unit gets the new list on their next sync.
