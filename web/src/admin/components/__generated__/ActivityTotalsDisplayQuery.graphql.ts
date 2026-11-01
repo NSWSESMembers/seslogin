@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<022e3d976c1a0826f1b16315254b2c6e>>
+ * @generated SignedSource<<fbc51f38c5b69c351805f28869e6f382>>
  * @lightSyntaxTransform
  */
 
@@ -29,6 +29,7 @@ export type ActivityTotalsDisplayQuery$data = {
       readonly person: {
         readonly firstName: string;
         readonly id: string;
+        readonly isMemberOf: boolean;
         readonly lastName: string;
         readonly location: {
           readonly id: string;
@@ -164,6 +165,19 @@ v9 = [
                   (v7/*:: as any*/)
                 ],
                 "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": [
+                  {
+                    "kind": "Variable",
+                    "name": "locationId",
+                    "variableName": "location"
+                  }
+                ],
+                "kind": "ScalarField",
+                "name": "isMemberOf",
+                "storageKey": null
               }
             ],
             "storageKey": null
@@ -248,16 +262,16 @@ return {
     "selections": (v9/*:: as any*/)
   },
   "params": {
-    "cacheID": "1d71240303b4b9f27222bbb4a713f6f6",
+    "cacheID": "b3d24758636f5b3e605cc7cca2abbf15",
     "id": null,
     "metadata": {},
     "name": "ActivityTotalsDisplayQuery",
     "operationKind": "query",
-    "text": "query ActivityTotalsDisplayQuery(\n  $location: ID!\n  $startTime: Int!\n  $endTime: Int!\n  $categories: [ID!]\n) {\n  location(id: $location) {\n    id\n    periodSummaryByMember(startTime: $startTime, endTime: $endTime, categories: $categories) {\n      person {\n        id\n        firstName\n        lastName\n        location {\n          id\n          name\n        }\n      }\n      totalTime\n      totalTimeVirtual\n    }\n    periodSummaryByCategory(startTime: $startTime, endTime: $endTime) {\n      category {\n        id\n        name\n        isVirtual\n      }\n      totalTime\n    }\n  }\n}\n"
+    "text": "query ActivityTotalsDisplayQuery(\n  $location: ID!\n  $startTime: Int!\n  $endTime: Int!\n  $categories: [ID!]\n) {\n  location(id: $location) {\n    id\n    periodSummaryByMember(startTime: $startTime, endTime: $endTime, categories: $categories) {\n      person {\n        id\n        firstName\n        lastName\n        location {\n          id\n          name\n        }\n        isMemberOf(locationId: $location)\n      }\n      totalTime\n      totalTimeVirtual\n    }\n    periodSummaryByCategory(startTime: $startTime, endTime: $endTime) {\n      category {\n        id\n        name\n        isVirtual\n      }\n      totalTime\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "817df7bfb7a3c71d2e8ec82e941342fb";
+(node as any).hash = "72f787da300338d7012c6b493e4f28a1";
 
 export default node;

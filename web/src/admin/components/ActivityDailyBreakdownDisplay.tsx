@@ -8,6 +8,7 @@ import type { ActivityDailyBreakdownDisplayQuery } from "./__generated__/Activit
 import { useUserInfo } from "./useUserInfo";
 import { formatSeconds } from "../../lib/time";
 import { useRelayRetryFetchKey } from "../../components/relayRetryContext";
+import { memberUnitLabel } from "./memberUnitLabel";
 
 interface ActivityDailyBreakdownDisplayProps {
   locationId: string;
@@ -56,6 +57,7 @@ export default function ActivityDailyBreakdownDisplay({
                     id
                     name
                   }
+                  isMemberOf(locationId: $location)
                 }
                 totalTime
               }
@@ -96,10 +98,12 @@ export default function ActivityDailyBreakdownDisplay({
             members: category.members.map((member) => ({
               id: member.person.id,
               name: `${member.person.firstName} ${member.person.lastName}`,
-              locationName:
-                member.person.location.id !== locationId
-                  ? member.person.location.name
-                  : null,
+              locationName: memberUnitLabel(
+                member.person.isMemberOf,
+                member.person.location.id,
+                member.person.location.name,
+                locationId,
+              ),
               totalTime: member.totalTime,
             })),
           })),

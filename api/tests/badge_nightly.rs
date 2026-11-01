@@ -74,6 +74,66 @@ async fn only_members_whose_home_location_takes_part_earn_badges() {
 }
 
 #[tokio::test]
+async fn any_of_a_members_units_taking_part_is_enough() {
+    let app = fake_app();
+    for (id, name) in [
+        ("loc-a", "Unit A"),
+        ("loc-b", "Unit B"),
+        ("loc-c", "Unit C"),
+        ("loc-d", "Unit D"),
+    ] {
+        seed_location(&app, id, name);
+    }
+    {
+        let mut locations = app.db.locations.lock().unwrap();
+        // Only Units A and C take part.
+        locations.get_mut("loc-a").unwrap().gamification_enabled = true;
+        locations.get_mut("loc-c").unwrap().gamification_enabled = true;
+    }
+    // Bob: home B (off), secondary A (on, where he signs in). Carol: home B (off),
+    // secondary D (off). Dana: home B (off), secondary C (on), signing in at A as a visitor.
+    for (id, first, number, secondary) in [
+        ("bob", "Bob", "2001", "loc-a"),
+        ("carol", "Carol", "2002", "loc-d"),
+        ("dana", "Dana", "2003", "loc-c"),
+    ] {
+        seed_person(&app, id, "loc-b", first, "Test", number, None);
+        app.db
+            .persons
+            .lock()
+            .unwrap()
+            .get_mut(id)
+            .unwrap()
+            .secondary_location_ids = vec![secondary.to_string()];
+    }
+
+    let now = seslogin::clock::now_sec();
+    for week in 0..4 {
+        let start = now - DAY - week * 7 * DAY;
+        for id in ["bob", "carol", "dana"] {
+            seed_period(&app, period(&format!("{id}-{week}"), id, start));
+        }
+    }
+
+    badge_nightly::run(&app.db, NightlyArgs { dry_run: false })
+        .await
+        .unwrap();
+
+    let persons = app.db.persons.lock().unwrap();
+    for id in ["bob", "dana"] {
+        assert!(
+            persons[id]
+                .badge_state
+                .as_deref()
+                .is_some_and(|s| s.contains("four-week-rhythm")),
+            "{id}: {:?}",
+            persons[id].badge_state
+        );
+    }
+    assert_eq!(persons["carol"].badge_state, None);
+}
+
+#[tokio::test]
 async fn service_badges_count_from_a_first_sign_in_outside_the_window() {
     let app = fake_app();
     seed_location(&app, "loc-a", "Unit A");

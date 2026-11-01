@@ -94,8 +94,8 @@ pub(super) fn catalogue() -> Vec<Value> {
             "List periods",
             "List the activity periods (sign-in to sign-out) at a location, newest first, with \
              the member's name and member number (or `guestName` for a guest), category, \
-             comment and the sign-in and sign-out kiosk names. Includes members visiting from \
-             other units (`person.location` is their home unit). `onlyActive: true` lists who \
+             comment and the sign-in and sign-out kiosk names. Includes visitors (members who do not \
+             belong to the location, home or otherwise); `person.location` is the member's home unit. `onlyActive: true` lists who \
              is signed in right now; `endTime` is null for an open period. `start`/`end` \
              select by when a period *started* and must be given together. Durations are in \
              seconds. Returns `periods` and `pageInfo` (`hasNextPage`, `endCursor`; pass \
@@ -127,7 +127,7 @@ pub(super) fn catalogue() -> Vec<Value> {
             "Create period",
             "Add a finished activity period for a member by hand (it cannot create an open \
              period or a guest period). `startTime` must be before `endTime`. The member may \
-             belong to another unit (a visitor). Needs an Admin (or super-user) grant for \
+             be a visitor, one who does not belong to `locationId`. Needs an Admin (or super-user) grant for \
              `locationId`; Read only users are refused. Use `list_members` and \
              `list_categories` for the ids.",
             input_schema(

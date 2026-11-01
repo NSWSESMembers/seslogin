@@ -8,6 +8,7 @@ import type { ActivityBreakdownDisplayQuery } from "./__generated__/ActivityBrea
 import { useUserInfo } from "./useUserInfo";
 import { formatSeconds } from "../../lib/time";
 import { useRelayRetryFetchKey } from "../../components/relayRetryContext";
+import { memberUnitLabel } from "./memberUnitLabel";
 
 interface ActivityBreakdownDisplayProps {
   locationId: string;
@@ -46,6 +47,7 @@ export default function ActivityBreakdownDisplay({
                 id
                 name
               }
+              isMemberOf(locationId: $location)
             }
             totalTime
             categories {
@@ -76,6 +78,7 @@ export default function ActivityBreakdownDisplay({
                   id
                   name
                 }
+                isMemberOf(locationId: $location)
               }
               totalTime
             }
@@ -103,10 +106,12 @@ export default function ActivityBreakdownDisplay({
       return {
         id: entry.person.id,
         name: `${entry.person.firstName} ${entry.person.lastName}`,
-        locationName:
-          entry.person.location.id !== locationId
-            ? entry.person.location.name
-            : null,
+        locationName: memberUnitLabel(
+          entry.person.isMemberOf,
+          entry.person.location.id,
+          entry.person.location.name,
+          locationId,
+        ),
         totalTime: hideVirtual ? nonVirtualTime : entry.totalTime,
         splitLine: showSplit
           ? `${formatSeconds(virtualTime)} virtual · ${formatSeconds(nonVirtualTime)} non-virtual`
@@ -130,10 +135,12 @@ export default function ActivityBreakdownDisplay({
       children: entry.members.map((member) => ({
         id: member.person.id,
         name: `${member.person.firstName} ${member.person.lastName}`,
-        locationName:
-          member.person.location.id !== locationId
-            ? member.person.location.name
-            : null,
+        locationName: memberUnitLabel(
+          member.person.isMemberOf,
+          member.person.location.id,
+          member.person.location.name,
+          locationId,
+        ),
         totalTime: member.totalTime,
       })),
     };

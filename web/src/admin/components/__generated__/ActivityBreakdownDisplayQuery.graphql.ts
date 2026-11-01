@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<90c0ae0b2e00075f1d52321fe7862684>>
+ * @generated SignedSource<<40ccc94917859f210758a8c2920902f5>>
  * @lightSyntaxTransform
  */
 
@@ -26,6 +26,7 @@ export type ActivityBreakdownDisplayQuery$data = {
         readonly person: {
           readonly firstName: string;
           readonly id: string;
+          readonly isMemberOf: boolean;
           readonly lastName: string;
           readonly location: {
             readonly id: string;
@@ -48,6 +49,7 @@ export type ActivityBreakdownDisplayQuery$data = {
       readonly person: {
         readonly firstName: string;
         readonly id: string;
+        readonly isMemberOf: boolean;
         readonly lastName: string;
         readonly location: {
           readonly id: string;
@@ -139,6 +141,19 @@ v6 = {
         (v3/*:: as any*/),
         (v5/*:: as any*/)
       ],
+      "storageKey": null
+    },
+    {
+      "alias": null,
+      "args": [
+        {
+          "kind": "Variable",
+          "name": "locationId",
+          "variableName": "location"
+        }
+      ],
+      "kind": "ScalarField",
+      "name": "isMemberOf",
       "storageKey": null
     }
   ],
@@ -271,16 +286,16 @@ return {
     "selections": (v9/*:: as any*/)
   },
   "params": {
-    "cacheID": "d0eddfa011816ba916ad8d585eb08a63",
+    "cacheID": "ea36bbfe588ae4c531755efb57b6f81e",
     "id": null,
     "metadata": {},
     "name": "ActivityBreakdownDisplayQuery",
     "operationKind": "query",
-    "text": "query ActivityBreakdownDisplayQuery(\n  $location: ID!\n  $startTime: Int!\n  $endTime: Int!\n) {\n  location(id: $location) {\n    id\n    periodSummaryByMemberByCategory(startTime: $startTime, endTime: $endTime) {\n      person {\n        id\n        firstName\n        lastName\n        location {\n          id\n          name\n        }\n      }\n      totalTime\n      categories {\n        category {\n          id\n          name\n          isVirtual\n        }\n        totalTime\n      }\n    }\n    periodSummaryByCategoryByMember(startTime: $startTime, endTime: $endTime) {\n      category {\n        id\n        name\n        isVirtual\n      }\n      totalTime\n      members {\n        person {\n          id\n          firstName\n          lastName\n          location {\n            id\n            name\n          }\n        }\n        totalTime\n      }\n    }\n  }\n}\n"
+    "text": "query ActivityBreakdownDisplayQuery(\n  $location: ID!\n  $startTime: Int!\n  $endTime: Int!\n) {\n  location(id: $location) {\n    id\n    periodSummaryByMemberByCategory(startTime: $startTime, endTime: $endTime) {\n      person {\n        id\n        firstName\n        lastName\n        location {\n          id\n          name\n        }\n        isMemberOf(locationId: $location)\n      }\n      totalTime\n      categories {\n        category {\n          id\n          name\n          isVirtual\n        }\n        totalTime\n      }\n    }\n    periodSummaryByCategoryByMember(startTime: $startTime, endTime: $endTime) {\n      category {\n        id\n        name\n        isVirtual\n      }\n      totalTime\n      members {\n        person {\n          id\n          firstName\n          lastName\n          location {\n            id\n            name\n          }\n          isMemberOf(locationId: $location)\n        }\n        totalTime\n      }\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "318937614fc676bff354be466bc2e57e";
+(node as any).hash = "cb10e91e148210cff7cf0a5b0a5443a6";
 
 export default node;

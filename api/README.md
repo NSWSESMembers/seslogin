@@ -505,6 +505,15 @@ unit, `Person.isMemberOf(locationId)` says whether a unit is one of theirs, and
 `deletePerson`. `cli person list --include-secondary` lists a unit the same way; its
 default is the home-only list.
 
+A member is a *visitor* only at a unit that is none of theirs: `!person.is_member_of(location)`,
+never `location_id != location.id`. So `scanRegister2(confirmVisitor: true)` signs a member of
+the kiosk's unit (home or secondary) in without `CONFIRM_VISITOR`, and a secondary unit counts
+like home for badges: it earns no "visiting" credit there (away check-ins, distance badges).
+Badges are worked out when gamification is on at the kiosk's unit and at *any* of the member's
+units (kiosk scans, directly-created periods and `badge-nightly` alike); distance badges
+measure from the nearest of the member's units that has coordinates. The admin Activity pages
+label a visitor "Visiting from <unit>" and a member whose home is elsewhere "Home: <unit>".
+
 ## Tally (members)
 
 Tally is for **members**, not users: every Tally field below admits only an

@@ -1904,14 +1904,14 @@ const BADGE_DEFINITIONS: &[BadgeDefinition] = &[
     BadgeDefinition {
         id: "away-over-the-range",
         name: "Over the Range",
-        description: "Signed in 100 km or more from your home unit.",
+        description: "Signed in 100 km or more from your nearest unit.",
         tier: "bronze",
         rule: BadgeRule::AwayDistance { km: 100 },
     },
     BadgeDefinition {
         id: "away-long-haul",
         name: "Long Haul",
-        description: "Signed in 250 km or more from your home unit.",
+        description: "Signed in 250 km or more from your nearest unit.",
         tier: "silver",
         rule: BadgeRule::AwayDistance { km: 250 },
     },
@@ -2498,7 +2498,7 @@ pub fn apply_event(
     location_id: &str,
     event: BadgeEvent,
     now_sec: u64,
-    is_away_from_home: bool,
+    is_visiting: bool,
     sign_out_category_id: Option<&str>,
     sign_out_times: Option<(u64, u64)>,
 ) -> Vec<BadgeAward> {
@@ -2527,7 +2527,7 @@ pub fn apply_event(
                 }
             }
 
-            if is_away_from_home {
+            if is_visiting {
                 location_state.away_check_in_count =
                     location_state.away_check_in_count.saturating_add(1);
             }
@@ -2683,7 +2683,7 @@ pub fn apply_event(
             | BadgeRule::AwayDistance { .. } => false,
             BadgeRule::AwayCheckIn { threshold } => {
                 matches!(event, BadgeEvent::CheckIn)
-                    && is_away_from_home
+                    && is_visiting
                     && location_state.away_check_in_count >= threshold
             }
             BadgeRule::FixedDatePublicHolidaySignOut { month, day } => {
@@ -2731,7 +2731,7 @@ pub fn distance_km(from: (f64, f64), to: (f64, f64)) -> f64 {
     2.0 * EARTH_RADIUS_KM * a.sqrt().asin()
 }
 
-/// Credit an away sign-in at `location_id`, `distance_km` from the member's home unit,
+/// Credit an away sign-in at `location_id`, `distance_km` from the nearest of the member's units,
 /// towards the distance badges. Kept apart from `apply_event` because only callers
 /// that know both locations' coordinates can work the distance out; one that can't
 /// simply doesn't call it. Each badge is awarded once per member.

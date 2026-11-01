@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<5383f8607c7f1c7729072fecb2a6be2c>>
+ * @generated SignedSource<<50c57827b5f0ed189e1f3574c039b6e4>>
  * @lightSyntaxTransform
  */
 
@@ -14,6 +14,7 @@ export type ActivityCurrent_periodName$data = {
   readonly person: Result<{
     readonly firstName: string;
     readonly id: string;
+    readonly isMemberOf: boolean;
     readonly lastName: string;
     readonly location: {
       readonly id: string;
@@ -33,6 +34,6 @@ const node: ReaderInlineDataFragment = {
   "name": "ActivityCurrent_periodName"
 };
 
-(node as any).hash = "5ad044ce7bcfe2303a7f25c88bc9fffd";
+(node as any).hash = "745722b1c30c60780a327078696c977f";
 
 export default node;
