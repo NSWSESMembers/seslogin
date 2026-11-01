@@ -2273,11 +2273,28 @@ impl<D: db::Handler> db::Handler for AuditingHandler<D> {
             .inner
             .create_webauthn_credential(id, owner, name, passkey_json)
             .await?;
+        // A member's passkey is in their home unit's log; a user's is global.
+        let location_ids = match owner {
+            db::PasskeyOwner::User(_) => vec![],
+            db::PasskeyOwner::Member(person_id) => {
+                match self.inner.get_persons(&[person_id]).await {
+                    Ok(people) => people
+                        .into_iter()
+                        .flatten()
+                        .map(|p| p.location_id)
+                        .collect(),
+                    Err(e) => {
+                        warn!("audit: could not read person {person_id} for their passkey: {e}");
+                        vec![]
+                    }
+                }
+            }
+        };
         self.record_create(
             AuditEntityType::WebauthnCredential,
             &credential.id,
             Some(credential.name.clone()),
-            vec![],
+            location_ids,
             webauthn_create_changes(&credential),
         )
         .await;

@@ -1,4 +1,4 @@
-//! The GraphQL surface of Tally sign-in ([`crate::tally_sign_in`]): four
+//! The GraphQL surface of Tally sign-in ([`crate::tally_sign_in`]): the
 //! unauthenticated fields the sign-in page (`web/src/tally/`) calls.
 //!
 //! - `tallySignInRequest(clientId, redirectUri)` checks the link the app opened the
@@ -9,6 +9,11 @@
 //!   browser back to the app with an authorization code.
 //! - `completeTallyPasskeySignIn(...)` does the same for a passkey, after the page
 //!   has had a challenge from `beginPasskeyLogin` (shared with the admin login).
+//! - `redeemTallySignInCode(...)` redeems a code too, but may answer with a ticket
+//!   to save a passkey with first (`beginTallyPasskeyRegistration`,
+//!   `finishTallyPasskeyRegistration`), then exchange for the redirect
+//!   (`continueTallySignIn`). The page uses it; `completeTallySignIn` stays for a
+//!   page loaded before it existed.
 
 use anyhow::Result;
 use async_graphql::{Context, SimpleObject};
@@ -48,6 +53,30 @@ pub(super) fn sign_in_request<A: App>(
         client_name: checked.client.client_name,
         is_development_build: checked.is_development_build,
     })
+}
+
+/// Where redeeming a code leads: back to the app (`redirectUrl`), or first to an
+/// offer to save a passkey (`passkeyTicket`, for `beginTallyPasskeyRegistration`,
+/// `finishTallyPasskeyRegistration` and `continueTallySignIn`). Exactly one is set.
+#[derive(SimpleObject, Clone, Debug)]
+pub struct TallySignInStep {
+    pub redirect_url: Option<String>,
+    pub passkey_ticket: Option<String>,
+}
+
+impl From<tally_sign_in::SignInStep> for TallySignInStep {
+    fn from(step: tally_sign_in::SignInStep) -> Self {
+        match step {
+            tally_sign_in::SignInStep::Redirect(url) => Self {
+                redirect_url: Some(url),
+                passkey_ticket: None,
+            },
+            tally_sign_in::SignInStep::OfferPasskey { ticket } => Self {
+                redirect_url: None,
+                passkey_ticket: Some(ticket),
+            },
+        }
+    }
 }
 
 /// Email a code unless Turnstile fails. Always `true`, so the answer says nothing

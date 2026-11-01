@@ -21,11 +21,15 @@ import TallySignIn from "./TallySignIn";
 const passkey = vi.hoisted(() => ({
   autofill: vi.fn<() => Promise<boolean>>(),
   assertion: vi.fn(),
+  platform: vi.fn<() => Promise<boolean>>(),
+  create: vi.fn(),
 }));
 vi.mock("../lib/passkey", () => ({
   browserSupportsWebAuthn: () => true,
   browserSupportsWebAuthnAutofill: passkey.autofill,
   getPasskeyAssertion: passkey.assertion,
+  platformAuthenticatorIsAvailable: passkey.platform,
+  createPasskey: passkey.create,
 }));
 
 const LINK =
@@ -38,6 +42,7 @@ const endpoint = graphql.link(getGraphQLEndpoint());
 
 const completeCalls: Record<string, unknown>[] = [];
 const passkeyCalls: Record<string, unknown>[] = [];
+const registrationCalls: Record<string, unknown>[] = [];
 
 const server = setupServer(
   endpoint.query("TallySignInRequest", ({ variables }) =>
@@ -58,18 +63,49 @@ const server = setupServer(
   endpoint.mutation("RequestTallySignInCode", () =>
     HttpResponse.json({ data: { requestTallySignInCode: true } }),
   ),
-  endpoint.mutation("CompleteTallySignIn", ({ variables }) => {
+  endpoint.mutation("RedeemTallySignInCode", ({ variables }) => {
     completeCalls.push(variables);
-    return variables.code === "123456"
-      ? HttpResponse.json({
-          data: {
-            completeTallySignIn: "tally://oauth/callback?code=abc&state=xyz",
-          },
-        })
-      : HttpResponse.json({
-          data: null,
-          errors: [{ message: "That code is wrong or has expired" }],
-        });
+    if (variables.code !== "123456") {
+      return HttpResponse.json({
+        data: null,
+        errors: [{ message: "That code is wrong or has expired" }],
+      });
+    }
+    return HttpResponse.json({
+      data: {
+        redeemTallySignInCode: variables.canSavePasskey
+          ? { redirectUrl: null, passkeyTicket: "ticket-1" }
+          : {
+              redirectUrl: "tally://oauth/callback?code=abc&state=xyz",
+              passkeyTicket: null,
+            },
+      },
+    });
+  }),
+  endpoint.mutation("BeginTallyPasskeyRegistration", ({ variables }) => {
+    registrationCalls.push({ begin: variables });
+    return HttpResponse.json({
+      data: {
+        beginTallyPasskeyRegistration: {
+          challengeId: "reg-1",
+          optionsJson: "{}",
+        },
+      },
+    });
+  }),
+  endpoint.mutation("FinishTallyPasskeyRegistration", ({ variables }) => {
+    registrationCalls.push({ finish: variables });
+    return HttpResponse.json({
+      data: { finishTallyPasskeyRegistration: true },
+    });
+  }),
+  endpoint.mutation("ContinueTallySignIn", ({ variables }) => {
+    registrationCalls.push({ continue: variables });
+    return HttpResponse.json({
+      data: {
+        continueTallySignIn: "tally://oauth/callback?code=after&state=xyz",
+      },
+    });
   }),
   endpoint.mutation("CompleteTallyPasskeySignIn", ({ variables }) => {
     passkeyCalls.push(variables);
@@ -97,6 +133,8 @@ afterEach(() => {
   server.resetHandlers();
   completeCalls.length = 0;
   passkeyCalls.length = 0;
+  registrationCalls.length = 0;
+  localStorage.clear();
 });
 afterAll(() => server.close());
 
@@ -105,6 +143,8 @@ beforeEach(() => {
   assign.mockReset();
   passkey.autofill.mockReset().mockResolvedValue(false);
   passkey.assertion.mockReset();
+  passkey.platform.mockReset().mockResolvedValue(false);
+  passkey.create.mockReset();
   vi.stubGlobal("location", { ...window.location, assign });
 });
 afterEach(() => vi.unstubAllGlobals());
@@ -152,6 +192,7 @@ describe("TallySignIn", () => {
     expect(completeCalls[0]).toEqual({
       email: "alice@example.com",
       code: "123456",
+      canSavePasskey: false,
       request: {
         clientId: "tally",
         redirectUri: "tally://oauth/callback",
@@ -254,5 +295,87 @@ describe("TallySignIn", () => {
       expect(passkey.assertion).toHaveBeenCalledWith({ useAutofill: true }),
     );
     expect(screen.queryByText(/No passkey was used/)).not.toBeInTheDocument();
+  });
+  async function signInWithCode(user: ReturnType<typeof UserEvent.setup>) {
+    await user.type(
+      await screen.findByPlaceholderText("Email address"),
+      "alice@example.com",
+    );
+    await user.click(screen.getByRole("button", { name: "Send code" }));
+    await user.type(await screen.findByLabelText("6-digit code"), "123456");
+    await user.click(screen.getByRole("button", { name: "Sign in" }));
+  }
+
+  it("offers to save a passkey after a code, then returns to the app", async () => {
+    const user = UserEvent.setup();
+    passkey.platform.mockResolvedValue(true);
+    passkey.create.mockResolvedValue({ status: "ok", credentialJson: "{}" });
+    renderAt(LINK);
+
+    await signInWithCode(user);
+    expect(
+      await screen.findByText("Sign in faster next time?"),
+    ).toBeInTheDocument();
+    expect(assign).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "Save a passkey" }));
+
+    await waitFor(() =>
+      expect(assign).toHaveBeenCalledWith(
+        "tally://oauth/callback?code=after&state=xyz",
+      ),
+    );
+    expect(completeCalls[0]).toMatchObject({ canSavePasskey: true });
+    expect(registrationCalls).toEqual([
+      { begin: { ticket: "ticket-1" } },
+      {
+        finish: {
+          ticket: "ticket-1",
+          challengeId: "reg-1",
+          credentialJson: "{}",
+        },
+      },
+      { continue: { ticket: "ticket-1" } },
+    ]);
+  });
+
+  it("keeps the offer open when no passkey was saved", async () => {
+    const user = UserEvent.setup();
+    passkey.platform.mockResolvedValue(true);
+    passkey.create.mockResolvedValue({ status: "cancelled" });
+    renderAt(LINK);
+
+    await signInWithCode(user);
+    await user.click(
+      await screen.findByRole("button", { name: "Save a passkey" }),
+    );
+
+    expect(await screen.findByText(/No passkey was saved/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Not now" })).toBeEnabled();
+    expect(assign).not.toHaveBeenCalled();
+  });
+
+  it("returns to the app on Not now, and doesn't ask again on this device", async () => {
+    const user = UserEvent.setup();
+    passkey.platform.mockResolvedValue(true);
+    const first = renderAt(LINK);
+
+    await signInWithCode(user);
+    await user.click(await screen.findByRole("button", { name: "Not now" }));
+    await waitFor(() =>
+      expect(assign).toHaveBeenCalledWith(
+        "tally://oauth/callback?code=after&state=xyz",
+      ),
+    );
+    expect(registrationCalls).toEqual([{ continue: { ticket: "ticket-1" } }]);
+
+    first.unmount();
+    renderAt(LINK);
+    await signInWithCode(user);
+    await waitFor(() =>
+      expect(assign).toHaveBeenCalledWith(
+        "tally://oauth/callback?code=abc&state=xyz",
+      ),
+    );
+    expect(completeCalls[1]).toMatchObject({ canSavePasskey: false });
   });
 });

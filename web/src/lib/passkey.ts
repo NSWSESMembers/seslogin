@@ -1,12 +1,37 @@
 import {
   startAuthentication,
+  startRegistration,
   browserSupportsWebAuthn,
   browserSupportsWebAuthnAutofill,
+  platformAuthenticatorIsAvailable,
 } from "@simplewebauthn/browser";
 import { getGraphQLEndpoint } from "./api";
 import { clientHeaders } from "./clientInfo";
 
-export { browserSupportsWebAuthn, browserSupportsWebAuthnAutofill };
+export {
+  browserSupportsWebAuthn,
+  browserSupportsWebAuthnAutofill,
+  platformAuthenticatorIsAvailable,
+};
+
+/**
+ * Have the browser create a passkey for the registration options a begin
+ * mutation returned (`optionsJson`): the `credentialJson` to finish with, or
+ * `cancelled` if the person dismissed the prompt (or the device refused).
+ */
+export async function createPasskey(
+  optionsJson: string,
+): Promise<{ status: "ok"; credentialJson: string } | { status: "cancelled" }> {
+  try {
+    const response = await startRegistration({
+      optionsJSON: JSON.parse(optionsJson),
+    });
+    return { status: "ok", credentialJson: JSON.stringify(response) };
+  } catch (err) {
+    console.warn("[passkey] startRegistration threw/aborted:", err);
+    return { status: "cancelled" };
+  }
+}
 
 const PASSKEY_LOGIN_FLAG = "passkey_login_session";
 

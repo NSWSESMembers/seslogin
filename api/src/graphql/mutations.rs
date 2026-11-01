@@ -31,7 +31,6 @@ use crate::queue::Handler as _;
 use crate::realtime;
 use crate::realtime::Handler as _;
 use async_graphql::dataloader::DataLoader;
-use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use hex;
 
 use super::auth::{
@@ -64,6 +63,9 @@ use super::{
 const SELF_SIGN_OUT_FUTURE_SLACK_SECS: i64 = 60;
 
 const LINK_EDIT_MAX_DURATION_S: i64 = 24 * 60 * 60;
+
+/// The `webauthn_state` kind of an admin-site passkey registration challenge.
+const ADMIN_REGISTRATION_STATE_KIND: &str = "reg";
 
 /// `finishPasskeyLogin`'s answer to a member's passkey, which signs in to Tally only.
 /// A `FORBIDDEN` error, so the admin login page shows it as written.
@@ -1116,6 +1118,68 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         request: crate::tally_sign_in::AuthorizationRequest,
     ) -> Result<String> {
         super::tally_sign_in::complete(&*self.app, &email, &code, request).await
+    }
+
+    /// Redeem a Tally sign-in code. With `canSavePasskey` (the browser can make a
+    /// passkey), someone with no passkey yet is offered one first: the answer is a
+    /// `passkeyTicket` instead of the `redirectUrl`. Fails as `completeTallySignIn`
+    /// does for a wrong code.
+    async fn redeem_tally_sign_in_code(
+        &self,
+        email: String,
+        code: String,
+        request: crate::tally_sign_in::AuthorizationRequest,
+        can_save_passkey: bool,
+    ) -> Result<super::tally_sign_in::TallySignInStep> {
+        crate::tally_sign_in::redeem(&*self.app, &email, &code, request, can_save_passkey)
+            .await
+            .map(Into::into)
+    }
+
+    /// Start saving a passkey with a sign-in ticket from `redeemTallySignInCode`:
+    /// the user's who signed in, else the member's. Returns the options for
+    /// `navigator.credentials.create`.
+    async fn begin_tally_passkey_registration(
+        &self,
+        ctx: &Context<'_>,
+        ticket: String,
+    ) -> Result<PasskeyChallenge> {
+        require_not_oauth_grant(ctx, "Adding a passkey")?;
+        let webauthn = ctx.data_unchecked::<Arc<webauthn_rs::prelude::Webauthn>>();
+        let challenge =
+            crate::tally_sign_in::begin_passkey_registration(&*self.app, webauthn, &ticket).await?;
+        Ok(PasskeyChallenge {
+            challenge_id: challenge.challenge_id,
+            options_json: challenge.options_json,
+        })
+    }
+
+    /// Finish saving a passkey with a sign-in ticket. The ticket still has to be
+    /// exchanged with `continueTallySignIn`.
+    async fn finish_tally_passkey_registration(
+        &self,
+        ctx: &Context<'_>,
+        ticket: String,
+        challenge_id: String,
+        credential_json: String,
+    ) -> Result<bool> {
+        require_not_oauth_grant(ctx, "Adding a passkey")?;
+        let webauthn = ctx.data_unchecked::<Arc<webauthn_rs::prelude::Webauthn>>();
+        crate::tally_sign_in::finish_passkey_registration(
+            &*self.app,
+            webauthn,
+            &ticket,
+            &challenge_id,
+            &credential_json,
+        )
+        .await?;
+        Ok(true)
+    }
+
+    /// Exchange a sign-in ticket for the URL to send the browser back to the app
+    /// with, as `completeTallySignIn` returns. Uses the ticket up.
+    async fn continue_tally_sign_in(&self, ticket: String) -> Result<String> {
+        crate::tally_sign_in::continue_sign_in(&*self.app, &ticket).await
     }
 
     /// Sign in to Tally with a passkey: verify the assertion for a challenge from
@@ -4184,36 +4248,14 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
     /// Returns a JSON challenge to pass to the browser's WebAuthn API.
     #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
     async fn begin_passkey_registration(&self, ctx: &Context<'_>) -> Result<PasskeyChallenge> {
-        use webauthn_rs::prelude::*;
-
         require_not_oauth_grant(ctx, "Adding a passkey")?;
         let user_id = match ctx.data_opt::<AuthInfo>() {
             Some(AuthInfo::User { id, .. }) => id.clone(),
             _ => return Err(anyhow!("Not authenticated")),
         };
 
-        let owner = db::PasskeyOwner::User(user_id.clone());
-        let count = self
-            .app
-            .db()
-            .count_webauthn_credentials_by_owner(&owner)
-            .await?;
-        if count >= 10 {
-            return Err(anyhow!("Maximum of 10 passkeys allowed"));
-        }
-
-        let existing = self
-            .app
-            .db()
-            .list_webauthn_credentials_by_owner(&owner)
-            .await?;
-
-        let webauthn = ctx.data_unchecked::<Arc<Webauthn>>();
-
-        // The user handle stays tied to the (immutable) user id so a passkey
-        // keeps working if the user's email changes. Only the display name —
-        // what the OS/password manager shows — uses the email.
-        let user_uuid = uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_OID, user_id.as_bytes());
+        // What the OS/password manager shows: the email. The user handle stays
+        // tied to the user ID (see `passkey::user_handle`).
         let display_name = self
             .app
             .db()
@@ -4225,70 +4267,19 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
             .map(|u| u.email)
             .unwrap_or_else(|| user_id.clone());
 
-        let existing_cred_ids: Vec<CredentialID> = existing
-            .iter()
-            .filter_map(|c| {
-                serde_json::from_str::<Passkey>(&c.passkey_json)
-                    .ok()
-                    .map(|pk| pk.cred_id().clone())
-            })
-            .collect();
-
-        let exclude = if existing_cred_ids.is_empty() {
-            None
-        } else {
-            Some(existing_cred_ids)
-        };
-
-        let (ccr, reg_state) = webauthn.start_passkey_registration(
-            user_uuid,
+        let webauthn = ctx.data_unchecked::<Arc<webauthn_rs::prelude::Webauthn>>();
+        let challenge = crate::passkey::start_registration(
+            self.app.db(),
+            webauthn,
+            &db::PasskeyOwner::User(user_id.clone()),
             &display_name,
-            &display_name,
-            exclude,
-        )?;
-
-        // Force the credential to be discoverable (a resident key). webauthn-rs
-        // 0.4 only emits the legacy `requireResidentKey: false` and no modern
-        // `residentKey` field, so platform authenticators make it discoverable
-        // but security keys may not — and a non-discoverable credential can't be
-        // used by our usernameless login. Inject `residentKey: "required"` into
-        // the options before handing them to the browser. (finish_* doesn't
-        // validate residency, so there's no verification mismatch.)
-        let mut options_value = serde_json::to_value(&ccr.public_key)
-            .map_err(|e| anyhow!("Failed to serialize registration options: {}", e))?;
-        if let Some(sel) = options_value
-            .get_mut("authenticatorSelection")
-            .and_then(|v| v.as_object_mut())
-        {
-            sel.insert("residentKey".to_string(), serde_json::json!("required"));
-            sel.insert("requireResidentKey".to_string(), serde_json::json!(true));
-        }
-        let options_json = serde_json::to_string(&options_value)
-            .map_err(|e| anyhow!("Failed to serialize registration options: {}", e))?;
-        let state_json = serde_json::to_string(&reg_state)
-            .map_err(|e| anyhow!("Failed to serialize registration state: {}", e))?;
-
-        let challenge_id = nanoid::nanoid!(32);
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
-        let expires_at = now + 5 * 60;
-
-        self.app
-            .db()
-            .put_webauthn_state(
-                &challenge_id,
-                "reg",
-                Some(&user_id),
-                &state_json,
-                expires_at,
-            )
-            .await?;
-
+            ADMIN_REGISTRATION_STATE_KIND,
+            &user_id,
+        )
+        .await?;
         Ok(PasskeyChallenge {
-            challenge_id,
-            options_json,
+            challenge_id: challenge.challenge_id,
+            options_json: challenge.options_json,
         })
     }
 
@@ -4301,77 +4292,24 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         credential_json: String,
         name: String,
     ) -> Result<PasskeyInfo> {
-        use webauthn_rs::prelude::*;
-
         require_not_oauth_grant(ctx, "Adding a passkey")?;
         let user_id = match ctx.data_opt::<AuthInfo>() {
             Some(AuthInfo::User { id, .. }) => id.clone(),
             _ => return Err(anyhow!("Not authenticated")),
         };
 
-        let state_record = self
-            .app
-            .db()
-            .get_webauthn_state(&challenge_id)
-            .await?
-            .ok_or_else(|| anyhow!("Registration challenge not found or expired"))?;
-
-        if state_record.kind != "reg" {
-            return Err(anyhow!("Invalid challenge kind"));
-        }
-        if state_record.user_id.as_deref() != Some(&user_id) {
-            return Err(anyhow!("Challenge belongs to a different user"));
-        }
-
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
-        if now >= state_record.expires_at {
-            let _ = self.app.db().delete_webauthn_state(&challenge_id).await;
-            return Err(anyhow!("Registration challenge expired"));
-        }
-
-        let reg_state: PasskeyRegistration = serde_json::from_str(&state_record.state_json)
-            .map_err(|e| anyhow!("Failed to deserialize registration state: {}", e))?;
-
-        let reg_credential: RegisterPublicKeyCredential = serde_json::from_str(&credential_json)
-            .map_err(|e| anyhow!("Failed to parse credential: {}", e))?;
-
-        let webauthn = ctx.data_unchecked::<Arc<Webauthn>>();
-        let passkey = webauthn
-            .finish_passkey_registration(&reg_credential, &reg_state)
-            .map_err(|e| anyhow!("Passkey registration failed: {}", e))?;
-
-        // Re-check cap to guard against races
-        let owner = db::PasskeyOwner::User(user_id.clone());
-        let count = self
-            .app
-            .db()
-            .count_webauthn_credentials_by_owner(&owner)
-            .await?;
-        if count >= 10 {
-            let _ = self.app.db().delete_webauthn_state(&challenge_id).await;
-            return Err(anyhow!("Maximum of 10 passkeys allowed"));
-        }
-
-        let cred_id = URL_SAFE_NO_PAD.encode(passkey.cred_id().as_ref());
-        let passkey_json = serde_json::to_string(&passkey)
-            .map_err(|e| anyhow!("Failed to serialize passkey: {}", e))?;
-
-        let cred = self
-            .app
-            .db()
-            .create_webauthn_credential(&cred_id, &owner, &name, &passkey_json)
-            .await?;
-
-        let _ = self.app.db().delete_webauthn_state(&challenge_id).await;
-
-        info!(
-            "Passkey registered for user_id={} cred_id={}",
-            user_id, cred_id
-        );
-
+        let webauthn = ctx.data_unchecked::<Arc<webauthn_rs::prelude::Webauthn>>();
+        let cred = crate::passkey::finish_registration(
+            self.app.db(),
+            webauthn,
+            &challenge_id,
+            ADMIN_REGISTRATION_STATE_KIND,
+            &user_id,
+            &credential_json,
+            &db::PasskeyOwner::User(user_id.clone()),
+            &name,
+        )
+        .await?;
         Ok(PasskeyInfo {
             id: cred.id,
             name: cred.name,

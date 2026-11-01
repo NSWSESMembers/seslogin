@@ -1341,12 +1341,24 @@ impl db::Handler for FakeDb {
     }
     async fn create_webauthn_credential(
         &self,
-        _id: &str,
-        _owner: &db::PasskeyOwner,
-        _name: &str,
-        _passkey_json: &str,
+        id: &str,
+        owner: &db::PasskeyOwner,
+        name: &str,
+        passkey_json: &str,
     ) -> db::Result<db::WebauthnCredential> {
-        unsupported()
+        let credential = db::WebauthnCredential {
+            id: id.to_string(),
+            owner: owner.clone(),
+            name: name.to_string(),
+            passkey_json: passkey_json.to_string(),
+            created_at: seslogin::clock::now_sec(),
+            last_used_at: None,
+        };
+        self.webauthn_credentials
+            .lock()
+            .unwrap()
+            .insert(id.to_string(), credential.clone());
+        Ok(credential)
     }
     async fn get_webauthn_credential(
         &self,
@@ -1371,9 +1383,15 @@ impl db::Handler for FakeDb {
     }
     async fn count_webauthn_credentials_by_owner(
         &self,
-        _owner: &db::PasskeyOwner,
+        owner: &db::PasskeyOwner,
     ) -> db::Result<usize> {
-        unsupported()
+        Ok(self
+            .webauthn_credentials
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|c| &c.owner == owner)
+            .count())
     }
     async fn update_webauthn_credential(
         &self,

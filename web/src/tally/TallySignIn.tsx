@@ -7,7 +7,9 @@ import { clientHeaders } from "../lib/clientInfo";
 import {
   browserSupportsWebAuthn,
   browserSupportsWebAuthnAutofill,
+  createPasskey,
   getPasskeyAssertion,
+  platformAuthenticatorIsAvailable,
 } from "../lib/passkey";
 import LoadingIndicator from "../components/LoadingIndicator";
 import {
@@ -102,7 +104,50 @@ function LinkProblem() {
   );
 }
 
-type Step = "email" | "sending" | "code" | "verifying" | "passkey" | "done";
+type Step =
+  | "email"
+  | "sending"
+  | "code"
+  | "verifying"
+  | "passkey"
+  | "offer"
+  | "saving"
+  | "done";
+
+/** How long "Not now" holds off the offer to save a passkey, per email. */
+const OFFER_DISMISSED_FOR_MS = 30 * 24 * 60 * 60 * 1000;
+
+function offerDismissedKey(email: string): string {
+  return `tally_passkey_offer_dismissed:${email.trim().toLowerCase()}`;
+}
+
+/** Whether "Not now" was chosen for this email on this device lately. */
+function offerDismissed(email: string): boolean {
+  try {
+    const at = Number(localStorage.getItem(offerDismissedKey(email)));
+    return at > 0 && Date.now() - at < OFFER_DISMISSED_FOR_MS;
+  } catch {
+    return false;
+  }
+}
+
+function dismissOffer(email: string) {
+  try {
+    localStorage.setItem(offerDismissedKey(email), String(Date.now()));
+  } catch {
+    // Storage blocked: they'll be asked again next time.
+  }
+}
+
+/** Whether this device can save a passkey for the offer to be worth making. */
+async function canSavePasskey(email: string): Promise<boolean> {
+  if (!browserSupportsWebAuthn() || offerDismissed(email)) return false;
+  try {
+    return await platformAuthenticatorIsAvailable();
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Tally's sign-in page, at `/tally/sign-in`: the OAuth authorization endpoint for
@@ -121,6 +166,7 @@ export default function TallySignIn() {
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
+  const [ticket, setTicket] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const turnstileRef = useRef<TurnstileInstance | null>(null);
   const passkeySupported = browserSupportsWebAuthn();
@@ -207,22 +253,46 @@ export default function TallySignIn() {
     setStep("verifying");
     setError(null);
     try {
-      const reply = await graphql<{ completeTallySignIn: string }>(
+      const reply = await graphql<{
+        redeemTallySignInCode: {
+          redirectUrl: string | null;
+          passkeyTicket: string | null;
+        };
+      }>(
         `
-          mutation CompleteTallySignIn(
+          mutation RedeemTallySignInCode(
             $email: String!
             $code: String!
             $request: TallyAuthorizationInput!
+            $canSavePasskey: Boolean!
           ) {
-            completeTallySignIn(email: $email, code: $code, request: $request)
+            redeemTallySignInCode(
+              email: $email
+              code: $code
+              request: $request
+              canSavePasskey: $canSavePasskey
+            ) {
+              redirectUrl
+              passkeyTicket
+            }
           }
         `,
-        { email, code, request },
+        {
+          email,
+          code,
+          request,
+          canSavePasskey: await canSavePasskey(email),
+        },
       );
-      const url = reply.data?.completeTallySignIn;
-      if (url) {
+      const step = reply.data?.redeemTallySignInCode;
+      if (step?.passkeyTicket) {
+        setTicket(step.passkeyTicket);
+        setStep("offer");
+        return;
+      }
+      if (step?.redirectUrl) {
         setStep("done");
-        window.location.assign(url);
+        window.location.assign(step.redirectUrl);
         return;
       }
       setError(
@@ -236,6 +306,106 @@ export default function TallySignIn() {
       setError("Something went wrong. Please try again.");
       setStep("code");
     }
+  }
+
+  /** Save a passkey with the sign-in ticket, then go back to the app. */
+  async function handleSavePasskey(signInTicket: string) {
+    setStep("saving");
+    setError(null);
+    try {
+      const begin = await graphql<{
+        beginTallyPasskeyRegistration: {
+          challengeId: string;
+          optionsJson: string;
+        };
+      }>(
+        `
+          mutation BeginTallyPasskeyRegistration($ticket: String!) {
+            beginTallyPasskeyRegistration(ticket: $ticket) {
+              challengeId
+              optionsJson
+            }
+          }
+        `,
+        { ticket: signInTicket },
+      );
+      const challenge = begin.data?.beginTallyPasskeyRegistration;
+      if (!challenge) {
+        setError(
+          refusalMessage(begin) ??
+            "We couldn't start saving a passkey. Try again, or continue without one.",
+        );
+        setStep("offer");
+        return;
+      }
+      const created = await createPasskey(challenge.optionsJson);
+      if (created.status !== "ok") {
+        setError("No passkey was saved. Try again, or continue without one.");
+        setStep("offer");
+        return;
+      }
+      const finish = await graphql<{ finishTallyPasskeyRegistration: boolean }>(
+        `
+          mutation FinishTallyPasskeyRegistration(
+            $ticket: String!
+            $challengeId: String!
+            $credentialJson: String!
+          ) {
+            finishTallyPasskeyRegistration(
+              ticket: $ticket
+              challengeId: $challengeId
+              credentialJson: $credentialJson
+            )
+          }
+        `,
+        {
+          ticket: signInTicket,
+          challengeId: challenge.challengeId,
+          credentialJson: created.credentialJson,
+        },
+      );
+      if (!finish.data?.finishTallyPasskeyRegistration) {
+        setError(
+          refusalMessage(finish) ??
+            "That passkey couldn't be saved. Try again, or continue without one.",
+        );
+        setStep("offer");
+        return;
+      }
+    } catch {
+      setError("Something went wrong. Try again, or continue without one.");
+      setStep("offer");
+      return;
+    }
+    await continueSignIn(signInTicket);
+  }
+
+  /** Exchange the sign-in ticket for the way back to the app. */
+  async function continueSignIn(signInTicket: string) {
+    setStep("saving");
+    setError(null);
+    try {
+      const reply = await graphql<{ continueTallySignIn: string }>(
+        `
+          mutation ContinueTallySignIn($ticket: String!) {
+            continueTallySignIn(ticket: $ticket)
+          }
+        `,
+        { ticket: signInTicket },
+      );
+      const url = reply.data?.continueTallySignIn;
+      if (url) {
+        setStep("done");
+        window.location.assign(url);
+        return;
+      }
+      setError(
+        refusalMessage(reply) ?? "Something went wrong. Please start over.",
+      );
+    } catch {
+      setError("Something went wrong. Please try again.");
+    }
+    setStep("offer");
   }
 
   /**
@@ -298,6 +468,7 @@ export default function TallySignIn() {
 
   function startOver() {
     setStep("email");
+    setTicket(null);
     setCode("");
     setError(null);
     setTurnstileToken(null);
@@ -377,6 +548,52 @@ export default function TallySignIn() {
         )}
 
         {step === "passkey" && <PanelIntro>Signing you in…</PanelIntro>}
+
+        {(step === "offer" || step === "saving") && ticket && (
+          <div>
+            <PanelIntro>
+              <strong>Sign in faster next time?</strong> Save a passkey on this
+              device, and next time sign in with Face ID, your fingerprint or
+              your screen lock instead of waiting for a code.
+            </PanelIntro>
+            {error && <PanelMessage>{error}</PanelMessage>}
+            <div className="flex flex-row flex-wrap items-center gap-3">
+              <Button
+                type="button"
+                size="panel"
+                variant="primary"
+                onClick={() => void handleSavePasskey(ticket)}
+                disabled={step !== "offer"}
+              >
+                {step === "saving" ? "Saving…" : "Save a passkey"}
+              </Button>
+              <Button
+                type="button"
+                size="panel"
+                variant="secondary"
+                onClick={() => {
+                  dismissOffer(email);
+                  void continueSignIn(ticket);
+                }}
+                disabled={step !== "offer"}
+              >
+                Not now
+              </Button>
+            </div>
+            {error?.includes("timed out") && (
+              <div className="mt-4">
+                <Button
+                  type="button"
+                  size="panel"
+                  variant="secondary"
+                  onClick={startOver}
+                >
+                  Start over
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
 
         {(step === "code" || step === "verifying") && (
           <form onSubmit={handleVerifyCode}>
