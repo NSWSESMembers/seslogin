@@ -12,9 +12,11 @@ use std::sync::Arc;
 use async_graphql::{Request, Variables};
 use serde_json::json;
 
+use common::passkey::SoftPasskey;
 use common::{FakeDb, fake_app, seed_location, seed_person, seed_user};
 use seslogin::app::MyApp;
 use seslogin::auth::{self, AuthInfo};
+use seslogin::db::PasskeyOwner;
 use seslogin::graphql;
 use seslogin::mockmail;
 use seslogin::mockqueue;
@@ -511,4 +513,319 @@ async fn signing_in_ends_with_a_token_that_is_the_member() {
         }
         _ => panic!("expected a member"),
     }
+}
+
+// ── Signing in with a passkey ────────────────────────────────────────────────
+
+const BEGIN_PASSKEY: &str = "mutation { beginPasskeyLogin { challengeId optionsJson } }";
+
+const COMPLETE_PASSKEY: &str = r#"
+    mutation($challengeId: String!, $credentialJson: String!, $request: TallyAuthorizationInput!) {
+        completeTallyPasskeySignIn(
+            challengeId: $challengeId, credentialJson: $credentialJson, request: $request
+        )
+    }"#;
+
+fn seed_passkey(app: &App, passkey: &SoftPasskey, owner: seslogin::db::PasskeyOwner) {
+    app.db
+        .webauthn_credentials
+        .lock()
+        .unwrap()
+        .insert(passkey.id(), passkey.credential(owner));
+}
+
+/// A challenge from `beginPasskeyLogin`: `(challengeId, optionsJson)`.
+async fn begin_passkey(app: &Arc<App>) -> (String, String) {
+    let begin = data(&run(app, BEGIN_PASSKEY, json!({})).await);
+    let challenge = &begin["beginPasskeyLogin"];
+    (
+        challenge["challengeId"].as_str().unwrap().to_string(),
+        challenge["optionsJson"].as_str().unwrap().to_string(),
+    )
+}
+
+async fn complete_passkey(
+    app: &Arc<App>,
+    challenge_id: &str,
+    credential_json: &str,
+    redirect_uri: &str,
+) -> async_graphql::Response {
+    run(
+        app,
+        COMPLETE_PASSKEY,
+        json!({
+            "challengeId": challenge_id,
+            "credentialJson": credential_json,
+            "request": request(redirect_uri),
+        }),
+    )
+    .await
+}
+
+/// Sign in with `passkey` from start to finish, as the page does.
+async fn sign_in_with(app: &Arc<App>, passkey: &SoftPasskey) -> async_graphql::Response {
+    let (challenge_id, options) = begin_passkey(app).await;
+    complete_passkey(app, &challenge_id, &passkey.assert(&options), REDIRECT).await
+}
+
+/// Exchange the authorization code in `url` for a token, and say who it is.
+async fn token_for(app: &Arc<App>, url: &str) -> AuthInfo {
+    let url = url::Url::parse(url).unwrap();
+    let params: std::collections::HashMap<String, String> =
+        url.query_pairs().into_owned().collect();
+    assert_eq!(params["state"], "xyz");
+    let form = format!(
+        "grant_type=authorization_code&code={}&client_id=tally&redirect_uri=tally%3A%2F%2Foauth%2Fcallback&code_verifier={VERIFIER}",
+        params["code"]
+    );
+    let reply = oauth_http::token(&**app, Some("api.seslogin.com"), form.as_bytes()).await;
+    assert_eq!(reply.status, 200, "body: {}", reply.body);
+    let body: serde_json::Value = serde_json::from_str(&reply.body).unwrap();
+    auth::verify_token(
+        &**app,
+        body["access_token"].as_str().unwrap(),
+        Some("api.seslogin.com"),
+    )
+    .await
+    .unwrap()
+}
+
+#[tokio::test]
+async fn a_users_passkey_signs_in_as_their_member() {
+    let app = app();
+    set_user(&app, "u1", |u| {
+        u.person_id = Some("alice".into());
+        u.location_grants = vec!["loc-b".into()];
+    });
+    let passkey = SoftPasskey::new("u1-phone");
+    seed_passkey(&app, &passkey, PasskeyOwner::User("u1".into()));
+
+    let response = sign_in_with(&app, &passkey).await;
+    let url = data(&response)["completeTallyPasskeySignIn"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert!(url.starts_with(&format!("{REDIRECT}?code=")), "{url}");
+    match token_for(&app, &url).await {
+        AuthInfo::Member {
+            person_id,
+            user_id,
+            user_location_ids,
+            ..
+        } => {
+            assert_eq!(person_id, "alice");
+            assert_eq!(user_id.as_deref(), Some("u1"));
+            assert_eq!(user_location_ids, vec!["loc-b"]);
+        }
+        _ => panic!("expected a member"),
+    }
+    let stored = app.db.webauthn_credentials.lock().unwrap()[&passkey.id()].clone();
+    assert!(stored.last_used_at.is_some(), "last use is recorded");
+}
+
+#[tokio::test]
+async fn a_users_passkey_finds_their_member_by_email_as_a_code_would() {
+    let app = app();
+    set_email(&app, "alice", "U1@example.com");
+    let passkey = SoftPasskey::new("u1-phone");
+    seed_passkey(&app, &passkey, PasskeyOwner::User("u1".into()));
+
+    let response = sign_in_with(&app, &passkey).await;
+    let url = data(&response)["completeTallyPasskeySignIn"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    match token_for(&app, &url).await {
+        AuthInfo::Member {
+            person_id, user_id, ..
+        } => {
+            assert_eq!(person_id, "alice");
+            assert_eq!(user_id.as_deref(), Some("u1"));
+        }
+        _ => panic!("expected a member"),
+    }
+}
+
+#[tokio::test]
+async fn a_passkey_whose_user_has_no_member_is_refused() {
+    let app = app();
+    let passkey = SoftPasskey::new("u1-phone");
+    seed_passkey(&app, &passkey, PasskeyOwner::User("u1".into()));
+
+    let response = sign_in_with(&app, &passkey).await;
+    assert_eq!(error(&response), tally_sign_in::PASSKEY_NO_MEMBER);
+}
+
+#[tokio::test]
+async fn a_disabled_users_passkey_is_refused_even_with_a_member() {
+    let app = app();
+    set_user(&app, "u1", |u| {
+        u.person_id = Some("alice".into());
+        u.enabled = false;
+    });
+    let passkey = SoftPasskey::new("u1-phone");
+    seed_passkey(&app, &passkey, PasskeyOwner::User("u1".into()));
+
+    let response = sign_in_with(&app, &passkey).await;
+    assert_eq!(error(&response), tally_sign_in::PASSKEY_NO_MEMBER);
+}
+
+#[tokio::test]
+async fn a_members_own_passkey_cannot_sign_in_yet() {
+    let app = app();
+    let passkey = SoftPasskey::new("alice-phone");
+    seed_passkey(&app, &passkey, PasskeyOwner::Member("alice".into()));
+
+    let response = sign_in_with(&app, &passkey).await;
+    assert_eq!(error(&response), tally_sign_in::PASSKEY_NO_MEMBER);
+}
+
+#[tokio::test]
+async fn an_unknown_passkey_is_refused() {
+    let app = app();
+    let response = sign_in_with(&app, &SoftPasskey::new("nobodys")).await;
+    assert_eq!(error(&response), tally_sign_in::PASSKEY_NOT_RECOGNISED);
+}
+
+#[tokio::test]
+async fn a_passkey_signature_from_another_key_is_refused() {
+    let app = app();
+    set_user(&app, "u1", |u| u.person_id = Some("alice".into()));
+    let passkey = SoftPasskey::new("u1-phone");
+    seed_passkey(&app, &passkey, PasskeyOwner::User("u1".into()));
+    // Same credential ID, so the stored key is found, but signed with another key.
+    let mut forged = passkey.credential(PasskeyOwner::User("u1".into()));
+    forged.passkey_json = SoftPasskey::new("someone-else")
+        .credential(PasskeyOwner::User("u1".into()))
+        .passkey_json
+        .replace(&SoftPasskey::new("someone-else").id(), &passkey.id());
+    app.db
+        .webauthn_credentials
+        .lock()
+        .unwrap()
+        .insert(passkey.id(), forged);
+
+    let response = sign_in_with(&app, &passkey).await;
+    assert_eq!(error(&response), tally_sign_in::PASSKEY_NOT_RECOGNISED);
+}
+
+#[tokio::test]
+async fn an_assertion_made_for_another_site_is_refused() {
+    let app = app();
+    set_user(&app, "u1", |u| u.person_id = Some("alice".into()));
+    let passkey = SoftPasskey::new("u1-phone");
+    seed_passkey(&app, &passkey, PasskeyOwner::User("u1".into()));
+
+    let (challenge_id, options) = begin_passkey(&app).await;
+    let assertion = passkey.assert_for_origin(&options, "https://evil.example");
+    let response = complete_passkey(&app, &challenge_id, &assertion, REDIRECT).await;
+    assert_eq!(error(&response), tally_sign_in::PASSKEY_NOT_RECOGNISED);
+}
+
+#[tokio::test]
+async fn a_passkey_challenge_is_used_once() {
+    let app = app();
+    set_user(&app, "u1", |u| u.person_id = Some("alice".into()));
+    let passkey = SoftPasskey::new("u1-phone");
+    seed_passkey(&app, &passkey, PasskeyOwner::User("u1".into()));
+
+    let (challenge_id, options) = begin_passkey(&app).await;
+    let assertion = passkey.assert(&options);
+    let first = complete_passkey(&app, &challenge_id, &assertion, REDIRECT).await;
+    data(&first);
+    let again = complete_passkey(&app, &challenge_id, &assertion, REDIRECT).await;
+    assert_eq!(error(&again), tally_sign_in::PASSKEY_NOT_RECOGNISED);
+}
+
+#[tokio::test]
+async fn a_passkey_checks_the_link_before_the_passkey() {
+    let app = app();
+    set_user(&app, "u1", |u| u.person_id = Some("alice".into()));
+    let passkey = SoftPasskey::new("u1-phone");
+    seed_passkey(&app, &passkey, PasskeyOwner::User("u1".into()));
+
+    let (challenge_id, options) = begin_passkey(&app).await;
+    let assertion = passkey.assert(&options);
+    let response =
+        complete_passkey(&app, &challenge_id, &assertion, "https://evil.example/cb").await;
+    assert!(
+        error(&response).contains("redirect_uri"),
+        "{:?}",
+        response.errors
+    );
+}
+
+#[tokio::test]
+async fn only_a_developers_passkey_signs_in_to_a_development_build() {
+    let app = app();
+    set_user(&app, "u1", |u| u.person_id = Some("alice".into()));
+    let passkey = SoftPasskey::new("u1-phone");
+    seed_passkey(&app, &passkey, PasskeyOwner::User("u1".into()));
+
+    let (challenge_id, options) = begin_passkey(&app).await;
+    let response =
+        complete_passkey(&app, &challenge_id, &passkey.assert(&options), DEV_REDIRECT).await;
+    assert!(error(&response).contains("developer account"));
+
+    set_user(&app, "u1", |u| u.is_dev = true);
+    let (challenge_id, options) = begin_passkey(&app).await;
+    let response =
+        complete_passkey(&app, &challenge_id, &passkey.assert(&options), DEV_REDIRECT).await;
+    let url = data(&response)["completeTallyPasskeySignIn"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert!(url.starts_with(&format!("{DEV_REDIRECT}?code=")), "{url}");
+}
+
+// ── The admin login, with the same passkeys ──────────────────────────────────
+
+const FINISH_ADMIN_LOGIN: &str = r#"
+    mutation($challengeId: String!, $credentialJson: String!) {
+        finishPasskeyLogin(challengeId: $challengeId, credentialJson: $credentialJson)
+    }"#;
+
+async fn admin_login(app: &Arc<App>, passkey: &SoftPasskey) -> async_graphql::Response {
+    let (challenge_id, options) = begin_passkey(app).await;
+    run(
+        app,
+        FINISH_ADMIN_LOGIN,
+        json!({ "challengeId": challenge_id, "credentialJson": passkey.assert(&options) }),
+    )
+    .await
+}
+
+#[tokio::test]
+async fn a_users_passkey_still_signs_in_to_the_admin_site() {
+    let app = app();
+    let passkey = SoftPasskey::new("u1-phone");
+    seed_passkey(&app, &passkey, PasskeyOwner::User("u1".into()));
+
+    let response = admin_login(&app, &passkey).await;
+    let token = data(&response)["finishPasskeyLogin"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    match auth::verify_token(&*app, &token, None).await.unwrap() {
+        AuthInfo::User { id, .. } => assert_eq!(id, "u1"),
+        _ => panic!("expected a user"),
+    }
+}
+
+#[tokio::test]
+async fn a_members_passkey_is_refused_on_the_admin_site_saying_why() {
+    let app = app();
+    let passkey = SoftPasskey::new("alice-phone");
+    seed_passkey(&app, &passkey, PasskeyOwner::Member("alice".into()));
+
+    let response = admin_login(&app, &passkey).await;
+    assert!(error(&response).contains("for signing in to Tally"));
+    assert_eq!(
+        response.errors[0]
+            .extensions
+            .as_ref()
+            .and_then(|e| e.get("code"))
+            .map(|c| c.to_string()),
+        Some("\"FORBIDDEN\"".to_string())
+    );
 }

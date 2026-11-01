@@ -1,4 +1,4 @@
-//! The GraphQL surface of Tally sign-in ([`crate::tally_sign_in`]): three
+//! The GraphQL surface of Tally sign-in ([`crate::tally_sign_in`]): four
 //! unauthenticated fields the sign-in page (`web/src/tally/`) calls.
 //!
 //! - `tallySignInRequest(clientId, redirectUri)` checks the link the app opened the
@@ -7,6 +7,8 @@
 //!   can sign in; it answers `true` either way.
 //! - `completeTallySignIn(...)` redeems the code and returns the URL to send the
 //!   browser back to the app with an authorization code.
+//! - `completeTallyPasskeySignIn(...)` does the same for a passkey, after the page
+//!   has had a challenge from `beginPasskeyLogin` (shared with the admin login).
 
 use anyhow::Result;
 use async_graphql::{Context, SimpleObject};

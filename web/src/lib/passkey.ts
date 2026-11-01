@@ -108,13 +108,20 @@ function forbiddenMessage(errors: unknown[] | undefined): string | undefined {
 }
 
 /**
- * Attempt a discoverable (usernameless) passkey login. With `useAutofill`,
- * the browser surfaces saved passkeys inline on the email field (conditional
- * UI) rather than showing a modal.
+ * The first half of a discoverable (usernameless) passkey sign-in, shared by
+ * the admin login and Tally sign-in: get a challenge from the server and have
+ * the browser sign it with a passkey the person picks. Pass the result to the
+ * flow's own finish mutation. With `useAutofill`, the browser offers saved
+ * passkeys inline on the email field (conditional UI) instead of a modal.
  */
-export async function loginWithPasskey(opts?: {
+export type PasskeyAssertionResult =
+  | { status: "ok"; challengeId: string; credentialJson: string }
+  | { status: "cancelled" }
+  | { status: "failed" };
+
+export async function getPasskeyAssertion(opts?: {
   useAutofill?: boolean;
-}): Promise<PasskeyLoginResult> {
+}): Promise<PasskeyAssertionResult> {
   const useAutofill = opts?.useAutofill ?? false;
 
   const beginResp = (await rawGraphQL(
@@ -151,13 +158,31 @@ export async function loginWithPasskey(opts?: {
     return { status: "cancelled" };
   }
 
+  return {
+    status: "ok",
+    challengeId: challenge.challengeId,
+    credentialJson: JSON.stringify(authResponse),
+  };
+}
+
+/**
+ * Attempt a discoverable (usernameless) passkey login to the admin site. With
+ * `useAutofill`, the browser surfaces saved passkeys inline on the email field
+ * (conditional UI) rather than showing a modal.
+ */
+export async function loginWithPasskey(opts?: {
+  useAutofill?: boolean;
+}): Promise<PasskeyLoginResult> {
+  const assertion = await getPasskeyAssertion(opts);
+  if (assertion.status !== "ok") return assertion;
+
   const finishResp = (await rawGraphQL(
     `mutation FinishPasskeyLogin($challengeId: String!, $credentialJson: String!) {
       finishPasskeyLogin(challengeId: $challengeId, credentialJson: $credentialJson)
     }`,
     {
-      challengeId: challenge.challengeId,
-      credentialJson: JSON.stringify(authResponse),
+      challengeId: assertion.challengeId,
+      credentialJson: assertion.credentialJson,
     },
   )) as {
     data?: { finishPasskeyLogin?: string | null };

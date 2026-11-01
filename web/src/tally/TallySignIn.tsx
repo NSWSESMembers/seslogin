@@ -4,6 +4,11 @@ import { useLocation } from "react-router";
 
 import { getGraphQLEndpoint } from "../lib/api";
 import { clientHeaders } from "../lib/clientInfo";
+import {
+  browserSupportsWebAuthn,
+  browserSupportsWebAuthnAutofill,
+  getPasskeyAssertion,
+} from "../lib/passkey";
 import LoadingIndicator from "../components/LoadingIndicator";
 import {
   Panel,
@@ -54,7 +59,19 @@ function readRequest(search: string): AuthorizationRequest | null {
 
 interface GraphQLReply<T> {
   data?: T | null;
-  errors?: { message: string }[];
+  errors?: { message: string; extensions?: { code?: string } }[];
+}
+
+/**
+ * A refusal the server words for people (a passkey it doesn't know, or whose
+ * account has no member), or null for anything else.
+ */
+function refusalMessage(reply: GraphQLReply<unknown>): string | null {
+  const err = reply.errors?.[0];
+  const code = err?.extensions?.code;
+  return err && (code === "BAD_REQUEST" || code === "FORBIDDEN")
+    ? err.message
+    : null;
 }
 
 async function graphql<T>(
@@ -85,7 +102,7 @@ function LinkProblem() {
   );
 }
 
-type Step = "email" | "sending" | "code" | "verifying" | "done";
+type Step = "email" | "sending" | "code" | "verifying" | "passkey" | "done";
 
 /**
  * Tally's sign-in page, at `/tally/sign-in`: the OAuth authorization endpoint for
@@ -106,6 +123,8 @@ export default function TallySignIn() {
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const turnstileRef = useRef<TurnstileInstance | null>(null);
+  const passkeySupported = browserSupportsWebAuthn();
+  const autofillStarted = useRef(false);
 
   useEffect(() => {
     if (!request) return;
@@ -139,6 +158,17 @@ export default function TallySignIn() {
       cancelled = true;
     };
   }, [request]);
+
+  // Offer saved passkeys on the email field (the keyboard's suggestions), once
+  // the link checks out. Silent if they pick none.
+  useEffect(() => {
+    if (!linkOk || !request || autofillStarted.current) return;
+    autofillStarted.current = true;
+    void (async () => {
+      if (!(await browserSupportsWebAuthnAutofill())) return;
+      await signInWithPasskey(request, true);
+    })();
+  }, [linkOk, request]);
 
   if (linkOk === false || !request) return <LinkProblem />;
   if (linkOk === null) return <LoadingIndicator />;
@@ -208,6 +238,64 @@ export default function TallySignIn() {
     }
   }
 
+  /**
+   * Sign in with a passkey: from the email field's suggestions (`autofill`), or
+   * the button. A cancelled prompt from the field says nothing.
+   */
+  async function signInWithPasskey(
+    authRequest: AuthorizationRequest,
+    autofill: boolean,
+  ) {
+    const assertion = await getPasskeyAssertion({ useAutofill: autofill });
+    if (assertion.status !== "ok") {
+      if (!autofill) {
+        setError(
+          assertion.status === "cancelled"
+            ? "No passkey was used. Try again, or sign in with your email."
+            : "Passkey sign-in failed. Please try again, or sign in with your email.",
+        );
+      }
+      return;
+    }
+    setStep("passkey");
+    setError(null);
+    try {
+      const reply = await graphql<{ completeTallyPasskeySignIn: string }>(
+        `
+          mutation CompleteTallyPasskeySignIn(
+            $challengeId: String!
+            $credentialJson: String!
+            $request: TallyAuthorizationInput!
+          ) {
+            completeTallyPasskeySignIn(
+              challengeId: $challengeId
+              credentialJson: $credentialJson
+              request: $request
+            )
+          }
+        `,
+        {
+          challengeId: assertion.challengeId,
+          credentialJson: assertion.credentialJson,
+          request: authRequest,
+        },
+      );
+      const url = reply.data?.completeTallyPasskeySignIn;
+      if (url) {
+        setStep("done");
+        window.location.assign(url);
+        return;
+      }
+      setError(
+        refusalMessage(reply) ??
+          "Passkey sign-in failed. Please try again, or sign in with your email.",
+      );
+    } catch {
+      setError("Something went wrong. Please try again.");
+    }
+    setStep("email");
+  }
+
   function startOver() {
     setStep("email");
     setCode("");
@@ -238,7 +326,7 @@ export default function TallySignIn() {
               type="email"
               className="mb-3 box-border block min-w-65 p-3 text-xl"
               placeholder="Email address"
-              autoComplete="email"
+              autoComplete="email webauthn"
               value={email}
               onChange={(e) => {
                 setEmail(e.target.value);
@@ -272,8 +360,23 @@ export default function TallySignIn() {
             >
               {step === "sending" ? "Sending…" : "Send code"}
             </Button>
+            {passkeySupported && (
+              <div className="mt-4">
+                <Button
+                  type="button"
+                  size="panel"
+                  variant="secondary"
+                  onClick={() => void signInWithPasskey(request, false)}
+                  disabled={step !== "email"}
+                >
+                  Sign in with a passkey
+                </Button>
+              </div>
+            )}
           </form>
         )}
+
+        {step === "passkey" && <PanelIntro>Signing you in…</PanelIntro>}
 
         {(step === "code" || step === "verifying") && (
           <form onSubmit={handleVerifyCode}>

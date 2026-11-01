@@ -1081,6 +1081,14 @@ type MutationRoot {
 	"""
 	completeTallySignIn(email: String!, code: String!, request: TallyAuthorizationInput!): String!
 	"""
+	Sign in to Tally with a passkey: verify the assertion for a challenge from
+	`beginPasskeyLogin` and authorize the app that opened the sign-in page as the
+	passkey's owner, returning the URL to send the browser to as
+	`completeTallySignIn` does. A user's passkey signs in as the member that
+	user's email would.
+	"""
+	completeTallyPasskeySignIn(challengeId: String!, credentialJson: String!, request: TallyAuthorizationInput!): String!
+	"""
 	Request an email login code. Always returns true to avoid email enumeration.
 	Requires a valid Cloudflare Turnstile token.
 	"""

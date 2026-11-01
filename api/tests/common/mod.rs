@@ -21,6 +21,9 @@ use seslogin::mockqueue;
 use seslogin::mockrealtime;
 use seslogin::server_secret::ServerSecret;
 
+#[allow(dead_code)] // see `seed_super_user`'s doc comment
+pub(crate) mod passkey;
+
 /// A tiny in-memory `db::Handler` covering only what the token endpoint
 /// touches: users (read + `AccessTime` touch), `ephemeral_state`, and
 /// `oauth_grant` — plus enough of sessions for the session mutations. Every
@@ -29,6 +32,7 @@ use seslogin::server_secret::ServerSecret;
 pub(crate) struct FakeDb {
     pub(crate) users: Mutex<HashMap<String, User>>,
     pub(crate) ephemeral_state: Mutex<HashMap<String, EphemeralState>>,
+    pub(crate) webauthn_states: Mutex<HashMap<String, db::WebauthnState>>,
     pub(crate) oauth_grants: Mutex<HashMap<String, OAuthGrant>>,
     pub(crate) locations: Mutex<HashMap<String, Location>>,
     pub(crate) sessions: Mutex<HashMap<String, db::Session>>,
@@ -1385,7 +1389,15 @@ impl db::Handler for FakeDb {
                 cred.name = name;
                 Ok(())
             }
-            db::WebauthnCredentialUpdate::TouchLastUsed { .. } => unsupported(),
+            db::WebauthnCredentialUpdate::TouchLastUsed { passkey_json } => {
+                let mut creds = self.webauthn_credentials.lock().unwrap();
+                let cred = creds
+                    .get_mut(id)
+                    .ok_or_else(|| db::Error::NotFound(id.to_string()))?;
+                cred.passkey_json = passkey_json;
+                cred.last_used_at = Some(seslogin::clock::now_sec());
+                Ok(())
+            }
         }
     }
     async fn delete_webauthn_credential(&self, id: &str) -> db::Result<()> {
@@ -1394,19 +1406,30 @@ impl db::Handler for FakeDb {
     }
     async fn put_webauthn_state(
         &self,
-        _id: &str,
-        _kind: &str,
-        _user_id: Option<&str>,
-        _state_json: &str,
-        _expires_at: u64,
+        id: &str,
+        kind: &str,
+        user_id: Option<&str>,
+        state_json: &str,
+        expires_at: u64,
     ) -> db::Result<()> {
-        unsupported()
+        self.webauthn_states.lock().unwrap().insert(
+            id.to_string(),
+            db::WebauthnState {
+                id: id.to_string(),
+                kind: kind.to_string(),
+                user_id: user_id.map(str::to_string),
+                state_json: state_json.to_string(),
+                expires_at,
+            },
+        );
+        Ok(())
     }
-    async fn get_webauthn_state(&self, _id: &str) -> db::Result<Option<db::WebauthnState>> {
-        unsupported()
+    async fn get_webauthn_state(&self, id: &str) -> db::Result<Option<db::WebauthnState>> {
+        Ok(self.webauthn_states.lock().unwrap().get(id).cloned())
     }
-    async fn delete_webauthn_state(&self, _id: &str) -> db::Result<()> {
-        unsupported()
+    async fn delete_webauthn_state(&self, id: &str) -> db::Result<()> {
+        self.webauthn_states.lock().unwrap().remove(id);
+        Ok(())
     }
     async fn get_tasks<T: AsRef<str> + Sync>(
         &self,
