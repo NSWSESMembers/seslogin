@@ -24,7 +24,7 @@ use crate::dynamodb;
 use crate::ses_api::{SesAssignment, SesContactDetail, SesSearchClient, SesSearchResult};
 use anyhow::{Context, Result, anyhow};
 use serde::Serialize;
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use tracing::{error, info, warn};
 
 pub const DEFAULT_MAX_MUTATIONS: usize = 500;
@@ -62,6 +62,9 @@ pub struct RunStats {
     pub orphan_unit_deletes: usize,
     /// Matched members assigned to two or more entities.
     pub multi_unit_people: usize,
+    /// Matched members who are volunteers at one or more of our locations besides their
+    /// home unit (a non-empty `secondary_location_ids`).
+    pub multi_location_members: usize,
 }
 
 impl RunStats {
@@ -144,13 +147,15 @@ fn dedupe_phones(contacts: &[SesContactDetail], mobile: Option<&str>) -> Vec<Pho
     phones
 }
 
-/// What directory sync stores in a member's four directory fields.
+/// What directory sync stores in a member's five directory fields.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 struct Contact {
     email: Option<String>,
     mobile: Option<String>,
     phones: Option<String>,
     preferred_name: Option<String>,
+    /// Sorted. See `Person::secondary_location_ids`.
+    secondary_location_ids: Vec<String>,
 }
 
 impl Contact {
@@ -160,13 +165,32 @@ impl Contact {
             mobile: p.mobile.clone(),
             phones: p.phones.clone(),
             preferred_name: p.preferred_name.clone(),
+            secondary_location_ids: p.secondary_location_ids.clone(),
         }
     }
 }
 
-/// The member's contact fields after this run. An email or phones the record lacks keep
-/// the stored values; a blank preferred name clears it.
-fn plan_contact(person: &db::Person, record: &SesSearchResult) -> Contact {
+/// The units other than `person`'s home unit that `units` (their desired `person_unit`
+/// rows) make them a member of: the locations at which they hold a Volunteer
+/// assignment, sorted. A staff-only row, or an entity that isn't one of our locations,
+/// makes nobody a member.
+fn secondary_location_ids(person: &db::Person, units: &[db::PersonUnit]) -> Vec<String> {
+    let ids: BTreeSet<&str> = units
+        .iter()
+        .filter(|u| u.membership_type.is_some())
+        .filter_map(|u| u.location_id.as_deref())
+        .filter(|l| *l != person.location_id)
+        .collect();
+    ids.into_iter().map(str::to_string).collect()
+}
+
+/// The member's directory fields after this run, given their desired `units`. An email
+/// or phones the record lacks keep the stored values; a blank preferred name clears it.
+fn plan_contact(
+    person: &db::Person,
+    record: &SesSearchResult,
+    units: &[db::PersonUnit],
+) -> Contact {
     let current = Contact::of(person);
     let mobile = pick_mobile(&record.contact_details);
     let phones = dedupe_phones(&record.contact_details, mobile.as_deref());
@@ -188,6 +212,7 @@ fn plan_contact(person: &db::Person, record: &SesSearchResult) -> Contact {
             .map(str::trim)
             .filter(|s| !s.is_empty())
             .map(str::to_string),
+        secondary_location_ids: secondary_location_ids(person, units),
     }
 }
 
@@ -369,17 +394,6 @@ fn plan(input: PlanInput<'_>, stats: &mut RunStats) -> Vec<PlannedChange> {
         }
         stats.matched += 1;
 
-        let before = Contact::of(person);
-        let after = plan_contact(person, record);
-        if before != after {
-            changes.push(PlannedChange::Contact {
-                person_id: person.id.clone(),
-                registration_number: rn.to_string(),
-                before,
-                after,
-            });
-        }
-
         let desired = group_assignments(
             &person.id,
             &person.location_id,
@@ -389,6 +403,20 @@ fn plan(input: PlanInput<'_>, stats: &mut RunStats) -> Vec<PlannedChange> {
         );
         if desired.len() >= 2 {
             stats.multi_unit_people += 1;
+        }
+
+        let before = Contact::of(person);
+        let after = plan_contact(person, record, &desired);
+        if !after.secondary_location_ids.is_empty() {
+            stats.multi_location_members += 1;
+        }
+        if before != after {
+            changes.push(PlannedChange::Contact {
+                person_id: person.id.clone(),
+                registration_number: rn.to_string(),
+                before,
+                after,
+            });
         }
         let stored = units_by_person
             .remove(person.id.as_str())
@@ -486,6 +514,12 @@ fn print_planned_change(change: &PlannedChange, dry_run: bool) {
                 &before.preferred_name,
                 &after.preferred_name,
             );
+            if before.secondary_location_ids != after.secondary_location_ids {
+                fields.push(format!(
+                    "secondary_location_ids={:?}=>{:?}",
+                    before.secondary_location_ids, after.secondary_location_ids
+                ));
+            }
             println!(
                 "[{mode}] update contact person id={person_id} registrationNumber={registration_number} {}",
                 fields.join(" ")
@@ -638,6 +672,7 @@ async fn run_inner(config: SyncConfig) -> Result<RunStats> {
                         mobile: after.mobile.as_deref(),
                         phones: after.phones.as_deref(),
                         preferred_name: after.preferred_name.as_deref(),
+                        secondary_location_ids: &after.secondary_location_ids,
                     },
                 )
                 .await
@@ -659,7 +694,7 @@ async fn run_inner(config: SyncConfig) -> Result<RunStats> {
     }
 
     info!(
-        "directory sync complete mode={} directory_people={} matched={} unmatched={} local_absent={} duplicate_registration_numbers={} contact_updates={} unit_updates={} orphan_unit_deletes={} multi_unit_people={}",
+        "directory sync complete mode={} directory_people={} matched={} unmatched={} local_absent={} duplicate_registration_numbers={} contact_updates={} unit_updates={} orphan_unit_deletes={} multi_unit_people={} multi_location_members={}",
         if config.dry_run { "dry-run" } else { "apply" },
         stats.directory_people,
         stats.matched,
@@ -670,6 +705,7 @@ async fn run_inner(config: SyncConfig) -> Result<RunStats> {
         stats.unit_updates,
         stats.orphan_unit_deletes,
         stats.multi_unit_people,
+        stats.multi_location_members,
     );
     Ok(stats)
 }
@@ -725,6 +761,7 @@ mod tests {
             capability_tags: None,
             deleted: None,
             missing_since: None,
+            secondary_location_ids: vec![],
             created_at: None,
             updated_at: None,
         }
@@ -794,7 +831,7 @@ mod tests {
         p.phones = Some(r#"[{"number":"+61400000001","types":["SMS"]}]"#.into());
         p.preferred_name = Some("Lex".into());
         let r = record("40000001", vec![], vec![]);
-        let c = plan_contact(&p, &r);
+        let c = plan_contact(&p, &r, &[]);
         assert_eq!(c.email, p.email);
         assert_eq!(c.mobile, p.mobile);
         assert_eq!(c.phones, p.phones);
@@ -815,7 +852,7 @@ mod tests {
             vec![],
         );
         r.preferred_name = Some(" Lex ".into());
-        let c = plan_contact(&p, &r);
+        let c = plan_contact(&p, &r, &[]);
         assert_eq!(c.email.as_deref(), Some("agency@example.test"));
         // A record with phones but no mobile clears the mobile.
         assert_eq!(c.mobile, None);
@@ -908,6 +945,40 @@ mod tests {
         stored[0].roles.push("Deputy".into());
         assert!(units_differ(&stored, &desired));
         assert!(units_differ(&stored[..1], &desired));
+    }
+
+    #[test]
+    fn secondary_units_are_our_other_locations_with_a_volunteer_assignment() {
+        let (mut codes, mut locations) = maps();
+        for (entity, code, loc) in [("70000050", "BBB", "loc2"), ("70000051", "CCC", "loc3")] {
+            codes.insert(entity.into(), code.into());
+            locations.insert(entity.into(), loc.into());
+        }
+        let p = person("p1", "40000001", "loc1");
+        let units = group_assignments(
+            &p.id,
+            &p.location_id,
+            &[
+                // The home unit is never a secondary one.
+                assignment("Volunteer", "Member", "70000047", "Aberdeen Unit"),
+                assignment("Volunteer", "Probationary", "70000050", "Bravo Unit"),
+                // Staff only: no Volunteer assignment, so not a member there.
+                assignment(
+                    "Position",
+                    "Unit Support Officer",
+                    "70000051",
+                    "Charlie Unit",
+                ),
+                // A cluster is not one of our locations.
+                assignment("Volunteer", "Member", "70000099", "Hume - HMC"),
+            ],
+            &codes,
+            &locations,
+        );
+        assert_eq!(secondary_location_ids(&p, &units), vec!["loc2"]);
+        // The member moved home to loc2 since: it drops out, and loc1 comes in.
+        let moved = person("p1", "40000001", "loc2");
+        assert_eq!(secondary_location_ids(&moved, &units), vec!["loc1"]);
     }
 
     fn run_plan(
@@ -1030,5 +1101,54 @@ mod tests {
         assert_eq!(changes.len(), 2);
         assert_eq!(stats.total_mutations(), 2);
         assert_eq!(stats.matched, 1);
+    }
+
+    fn secondary_unit_record() -> SesSearchResult {
+        record(
+            "40000001",
+            vec![],
+            vec![
+                assignment("Volunteer", "Member", "70000047", "Aberdeen Unit"),
+                assignment("Volunteer", "Member", "70000099", "Hume - HMC"),
+            ],
+        )
+    }
+
+    #[test]
+    fn a_new_secondary_unit_is_a_contact_change_and_a_stored_one_is_not() {
+        // `maps()` makes 70000047 our loc1, so a member at home in loc9 holds it as a
+        // secondary unit.
+        let p = person("p1", "40000001", "loc9");
+        let (changes, stats) = run_plan(std::slice::from_ref(&p), &[], &[secondary_unit_record()]);
+        let contact = changes.iter().find_map(|c| match c {
+            PlannedChange::Contact { before, after, .. } => Some((before, after)),
+            _ => None,
+        });
+        let (before, after) = contact.expect("a contact change");
+        assert!(before.secondary_location_ids.is_empty());
+        assert_eq!(after.secondary_location_ids, vec!["loc1"]);
+        assert_eq!(stats.multi_location_members, 1);
+
+        let mut stored = p;
+        stored.secondary_location_ids = vec!["loc1".into()];
+        let (changes, stats) = run_plan(&[stored], &[], &[secondary_unit_record()]);
+        assert!(
+            !changes
+                .iter()
+                .any(|c| matches!(c, PlannedChange::Contact { .. })),
+            "nothing to change: {changes:?}"
+        );
+        assert_eq!(stats.multi_location_members, 1);
+    }
+
+    #[test]
+    fn losing_every_secondary_unit_clears_the_set() {
+        let mut p = person("p1", "40000001", "loc1");
+        p.secondary_location_ids = vec!["loc2".into()];
+        let (changes, _) = run_plan(&[p], &[], &[secondary_unit_record()]);
+        assert!(changes.iter().any(|c| matches!(
+            c,
+            PlannedChange::Contact { after, .. } if after.secondary_location_ids.is_empty()
+        )));
     }
 }

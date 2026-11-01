@@ -518,6 +518,11 @@ impl TryInto<Person> for Item {
                 .i64_field("missing_since")?
                 .map(|i| i as u64)
                 .filter(|&i| i != 0),
+            secondary_location_ids: {
+                let mut ids = self.string_set_field("secondary_location_ids")?;
+                ids.sort();
+                ids
+            },
             created_at: self.i64_field("created_at")?.map(|i| i as u64),
             updated_at: self.i64_field("updated_at")?.map(|i| i as u64),
         })
@@ -3286,6 +3291,7 @@ impl db::Handler for Handler {
             capability_tags: None,
             deleted: None,
             missing_since: None,
+            secondary_location_ids: vec![],
             created_at: Some(now),
             updated_at: Some(now),
         })
@@ -3376,6 +3382,7 @@ impl db::Handler for Handler {
                 mobile,
                 phones,
                 preferred_name,
+                secondary_location_ids,
             } => {
                 let s = |v: Option<&str>| v.map(|v| AttributeValue::S(v.to_string()));
                 // `email_key` follows `email` (it backs `email_key-index`), and the contacts
@@ -3394,6 +3401,12 @@ impl db::Handler for Handler {
                         ("mobile", s(mobile)),
                         ("phones", s(phones)),
                         ("preferred_name", s(preferred_name)),
+                        // A string set can't be stored empty, so none removes it.
+                        (
+                            "secondary_location_ids",
+                            (!secondary_location_ids.is_empty())
+                                .then(|| AttributeValue::Ss(secondary_location_ids.to_vec())),
+                        ),
                     ],
                     &[CONTACT_STAMP_SET],
                 )

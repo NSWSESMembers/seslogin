@@ -436,6 +436,10 @@ fn person_fields(p: &Person) -> Fields {
         .with("capability_tags", json_text(p.capability_tags.as_deref()))
         .with("deleted", opt_num(p.deleted))
         .with("missing_since", opt_num(p.missing_since))
+        .with(
+            "secondary_location_ids",
+            string_set(&p.secondary_location_ids),
+        )
 }
 
 pub fn person_create_changes(p: &Person) -> Vec<AuditFieldChange> {
@@ -481,11 +485,13 @@ pub fn person_update_changes(
             mobile,
             phones,
             preferred_name,
+            secondary_location_ids,
         } => {
             after.set("email", opt_text(*email));
             after.set("mobile", opt_text(*mobile));
             after.set("phones", json_text(*phones));
             after.set("preferred_name", opt_text(*preferred_name));
+            after.set("secondary_location_ids", string_set(secondary_location_ids));
         }
         db::PersonUpdateShape::CapabilityTags { capability_tags } => {
             after.set("capability_tags", json_text(*capability_tags));
@@ -3657,6 +3663,7 @@ mod tests {
             capability_tags: None,
             deleted: None,
             missing_since: None,
+            secondary_location_ids: vec![],
             created_at: Some(1),
             updated_at: Some(1),
         }
@@ -3922,6 +3929,7 @@ mod tests {
                 mobile: None,
                 phones: None,
                 preferred_name: None,
+                secondary_location_ids: &[],
             },
             100,
         );
@@ -3932,6 +3940,32 @@ mod tests {
                 before: None,
                 after: Some(json!("a@example.com")),
             }]
+        );
+    }
+
+    #[test]
+    fn person_secondary_units_are_diffed_as_a_sorted_list() {
+        let mut p = person();
+        p.secondary_location_ids = vec!["loc-b".into()];
+        let set = ["loc-c".to_string(), "loc-b".to_string()];
+        let (_, changes) = person_update_changes(
+            Some(&p),
+            &db::PersonUpdateShape::Directory {
+                email: None,
+                mobile: None,
+                phones: None,
+                preferred_name: None,
+                secondary_location_ids: &set,
+            },
+            100,
+        );
+        assert_eq!(
+            change(&changes, "secondary_location_ids").before,
+            Some(json!(["loc-b"]))
+        );
+        assert_eq!(
+            change(&changes, "secondary_location_ids").after,
+            Some(json!(["loc-b", "loc-c"]))
         );
     }
 
@@ -3949,6 +3983,7 @@ mod tests {
                 mobile: None,
                 phones: None,
                 preferred_name: None,
+                secondary_location_ids: &[],
             },
             100,
         );
@@ -4521,6 +4556,7 @@ mod tests {
                 mobile: Some("+61400000001"),
                 phones: Some(r#"[{"number":"+61400000001","types":["SMS"]}]"#),
                 preferred_name: None,
+                secondary_location_ids: &[],
             },
             100,
         );

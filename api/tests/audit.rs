@@ -99,6 +99,7 @@ fn seed_person(app: &TestApp, id: &str, first: &str, last: &str, number: &str) {
             capability_tags: None,
             deleted: None,
             missing_since: None,
+            secondary_location_ids: vec![],
             created_at: Some(0),
             updated_at: Some(0),
         },

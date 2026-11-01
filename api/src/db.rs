@@ -209,6 +209,14 @@ pub struct Person {
     /// soft-delete — so a marker only ever exists on a live row. Once it is older than
     /// the configured grace window the person is soft-deleted.
     pub missing_since: Option<u64>,
+    /// The other units the member is a volunteer at, by location id, sorted: those of
+    /// their `person_unit` rows that are one of our locations and carry a Volunteer
+    /// assignment (`membership_type`), less `location_id` as it stood when written.
+    /// Written only by directory sync (`PersonUpdateShape::Directory`); empty when there
+    /// are none. Read it through [`Person::member_location_ids`] or
+    /// [`Person::is_member_of`], which add the home unit: member sync can move
+    /// `location_id` between directory syncs, so this set may name the home unit too.
+    pub secondary_location_ids: Vec<String>,
     pub created_at: Option<u64>,
     pub updated_at: Option<u64>,
 }
@@ -216,6 +224,27 @@ pub struct Person {
 impl HasID for Person {
     fn id(&self) -> &str {
         &self.id
+    }
+}
+
+impl Person {
+    /// Every unit the member is a member of: their home unit (`location_id`) first,
+    /// then their [secondary units](Person::secondary_location_ids), without repeats.
+    pub fn member_location_ids(&self) -> Vec<&str> {
+        let mut ids = vec![self.location_id.as_str()];
+        for id in &self.secondary_location_ids {
+            if !ids.contains(&id.as_str()) {
+                ids.push(id);
+            }
+        }
+        ids
+    }
+
+    /// Whether the member is a member of `location_id`: it is their home unit or one of
+    /// their secondary units.
+    pub fn is_member_of(&self, location_id: &str) -> bool {
+        self.location_id == location_id
+            || self.secondary_location_ids.iter().any(|l| l == location_id)
     }
 }
 
@@ -248,13 +277,14 @@ pub enum PersonUpdateShape<'a> {
     SesApiPersonId {
         ses_api_person_id: Option<&'a str>,
     },
-    /// Written only by directory sync: replaces all four directory fields, removing
-    /// each one that is `None`.
+    /// Written only by directory sync: replaces all five directory fields, removing
+    /// each one that is `None` (or, for `secondary_location_ids`, empty).
     Directory {
         email: Option<&'a str>,
         mobile: Option<&'a str>,
         phones: Option<&'a str>,
         preferred_name: Option<&'a str>,
+        secondary_location_ids: &'a [String],
     },
     /// Replaces the capability tags JSON text; `None` removes it.
     CapabilityTags {
@@ -2998,7 +3028,7 @@ pub trait Handler: Sync {
 
 #[cfg(test)]
 mod tests {
-    use super::{Session, audit_sk, email_key, parse_audit_cursor};
+    use super::{Person, Session, audit_sk, email_key, parse_audit_cursor};
 
     #[test]
     fn an_email_key_ignores_case_and_surrounding_space() {
@@ -3079,5 +3109,44 @@ mod tests {
         let leftover = session(true, Some(1_700_000_100));
         assert!(leftover.active);
         assert!(!leftover.is_live());
+    }
+
+    fn member(home: &str, secondary: &[&str]) -> Person {
+        Person {
+            id: "p1".into(),
+            location_id: home.into(),
+            first_name: "First".into(),
+            last_name: "Last".into(),
+            registration_number: None,
+            ses_api_person_id: None,
+            email: None,
+            mobile: None,
+            phones: None,
+            preferred_name: None,
+            badge_state: None,
+            capability_tags: None,
+            deleted: None,
+            missing_since: None,
+            secondary_location_ids: secondary.iter().map(|s| s.to_string()).collect(),
+            created_at: None,
+            updated_at: None,
+        }
+    }
+
+    #[test]
+    fn a_member_belongs_to_their_home_unit_and_their_secondary_units() {
+        let p = member("home", &["a", "b"]);
+        assert_eq!(p.member_location_ids(), vec!["home", "a", "b"]);
+        assert!(p.is_member_of("home"));
+        assert!(p.is_member_of("b"));
+        assert!(!p.is_member_of("c"));
+        assert_eq!(member("home", &[]).member_location_ids(), vec!["home"]);
+    }
+
+    #[test]
+    fn a_home_unit_also_in_the_secondary_set_is_listed_once() {
+        // Member sync moved them home to `a` since directory sync last wrote the set.
+        let p = member("a", &["a", "b"]);
+        assert_eq!(p.member_location_ids(), vec!["a", "b"]);
     }
 }

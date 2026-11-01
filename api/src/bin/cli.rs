@@ -795,7 +795,11 @@ async fn nitc_event_dates(db: &impl Handler, ids: &[String]) -> HashMap<String, 
 // ones. Please keep it that way rather than reaching for `..`.
 
 async fn show_persons(db: &impl Handler, persons: &[Person]) {
-    let loc_ids: Vec<String> = persons.iter().map(|p| p.location_id.clone()).collect();
+    let loc_ids: Vec<String> = persons
+        .iter()
+        .flat_map(|p| p.member_location_ids())
+        .map(str::to_string)
+        .collect();
     let locs = location_names(db, &loc_ids).await;
     for (i, p) in persons.iter().enumerate() {
         if i > 0 {
@@ -816,6 +820,7 @@ async fn show_persons(db: &impl Handler, persons: &[Person]) {
             capability_tags,
             deleted,
             missing_since,
+            secondary_location_ids,
             created_at,
             updated_at,
         } = p;
@@ -842,6 +847,18 @@ async fn show_persons(db: &impl Handler, persons: &[Person]) {
             ),
             ("deleted", opt_ts(*deleted)),
             ("missing_since", opt_ts(*missing_since)),
+            (
+                "secondary_location_ids",
+                if secondary_location_ids.is_empty() {
+                    "-".to_string()
+                } else {
+                    secondary_location_ids
+                        .iter()
+                        .map(|l| decorate(l, locs.get(l)))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                },
+            ),
             ("created_at", opt_ts(*created_at)),
             ("updated_at", opt_ts(*updated_at)),
         ];

@@ -549,6 +549,7 @@ impl db::Handler for FakeDb {
             capability_tags: None,
             deleted: None,
             missing_since: None,
+            secondary_location_ids: vec![],
             created_at: Some(now),
             updated_at: Some(now),
         };
@@ -582,7 +583,9 @@ impl db::Handler for FakeDb {
                 mobile,
                 phones,
                 preferred_name,
+                secondary_location_ids,
             } => {
+                person.secondary_location_ids = secondary_location_ids.to_vec();
                 person.email = email.map(str::to_string);
                 person.mobile = mobile.map(str::to_string);
                 person.phones = phones.map(str::to_string);
@@ -2807,6 +2810,7 @@ pub(crate) fn seed_person(
             capability_tags: None,
             deleted: None,
             missing_since: None,
+            secondary_location_ids: vec![],
             created_at: Some(1_760_000_000),
             updated_at: Some(1_760_000_000),
         },
