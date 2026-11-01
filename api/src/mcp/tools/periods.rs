@@ -293,9 +293,9 @@ where
     let member_id = args::str_arg(a, "memberId")?;
     let (first, after) = page_args(a)?;
     let categories = args::opt_str_array_arg(a, "categoryIds")?;
-    // `Query.person` only needs a signed-in caller, so check the member's location first.
-    let location_id = members::member_location(ctx, member_id).await?;
-    ctx.require_location_read(&location_id)?;
+    // `Query.person` checks every unit the member belongs to; ask first so a refusal
+    // comes before any periods are fetched.
+    members::require_member_read(ctx, member_id).await?;
 
     let doc = format!(
         "query McpMemberPeriods($id: ID!, $categories: [ID!], $first: Int, $after: String) {{ \

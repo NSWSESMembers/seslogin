@@ -1051,6 +1051,73 @@ async fn member_reads_are_refused_without_a_grant_for_the_location() {
 }
 
 #[tokio::test]
+async fn a_secondary_unit_admin_can_read_but_not_change_a_member() {
+    let (app, schema) = setup();
+    seed_unit(&app);
+    // Dana's home unit is loc-2; loc-1 is a secondary unit.
+    seed_person(&app, "p-dana", "loc-2", "Dana", "Dualunit", "2002", None);
+    app.db
+        .persons
+        .lock()
+        .unwrap()
+        .get_mut("p-dana")
+        .unwrap()
+        .secondary_location_ids = vec!["loc-1".to_string()];
+    let bearer = grant_user(&app, "user-1", &["loc-1"], &[]).await;
+
+    for (tool, args) in [
+        ("get_member", json!({ "id": "p-dana" })),
+        ("find_member_by_number", json!({ "memberNumber": "2002" })),
+    ] {
+        let result = run_tool(&app, &schema, &bearer, tool, args).await;
+        assert_eq!(result["isError"], false, "{tool}: {result:?}");
+        assert_eq!(result["structuredContent"]["member"]["id"], "p-dana");
+    }
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "list_member_periods",
+        json!({ "memberId": "p-dana" }),
+    )
+    .await;
+    assert_eq!(result["isError"], false, "{result:?}");
+
+    // Writes stay with the home unit.
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "update_member",
+        json!({ "id": "p-dana", "firstName": "Danielle" }),
+    )
+    .await;
+    assert_eq!(result["isError"], true, "{result:?}");
+    let result = run_tool(
+        &app,
+        &schema,
+        &bearer,
+        "delete_member",
+        json!({ "id": "p-dana" }),
+    )
+    .await;
+    assert_eq!(result["isError"], true, "{result:?}");
+
+    // A user at neither unit gets nothing.
+    seed_location(&app, "loc-3", "Third Unit");
+    let other = grant_user(&app, "user-2", &["loc-3"], &[]).await;
+    let result = run_tool(
+        &app,
+        &schema,
+        &other,
+        "get_member",
+        json!({ "id": "p-dana" }),
+    )
+    .await;
+    assert_eq!(result["isError"], true);
+}
+
+#[tokio::test]
 async fn get_and_find_member_return_the_member_with_their_last_period() {
     let (app, schema) = setup();
     seed_unit(&app);

@@ -99,6 +99,21 @@
         "updated_at": { "N": "1767225600" },
         "contact_feed": { "S": "all" },
         "contact_key": { "S": "00001767225600000000#TestBMember1" }
+      },
+      {
+        "_comment": "A member of two units: home Test B Unit, plus Test A Unit as a secondary unit (directory sync writes secondary_location_ids). Test A Unit's admins can read her record but not edit or delete it. Not sync-owned (no ses_api_person_id). Unlike Crossunit Tester she is no visitor at Test A Unit's kiosk.",
+        "id": { "S": "TestBMember2" },
+        "location_id": { "S": "TestBUnit001" },
+        "secondary_location_ids": { "SS": ["TestAUnit001"] },
+        "first_name": { "S": "Dana" },
+        "last_name": { "S": "Dualunit" },
+        "registration_number": { "S": "20000002" },
+        "email": { "S": "dana@seslogin.test" },
+        "email_key": { "S": "dana@seslogin.test" },
+        "created_at": { "N": "1767225600" },
+        "updated_at": { "N": "1767225600" },
+        "contact_feed": { "S": "all" },
+        "contact_key": { "S": "00001767225600000000#TestBMember2" }
       }
     ],
     "user": [
@@ -204,6 +219,28 @@
         "zone": { "S": "Test Zone" },
         "membership_type": { "S": "Member" },
         "roles": { "SS": ["Cluster Support"] },
+        "updated_at": { "N": "1767225600" }
+      },
+      {
+        "_comment": "Invented directory assignments for Dana Dualunit: her primary unit and a second unit she volunteers at.",
+        "person_id": { "S": "TestBMember2" },
+        "entity_id": { "S": "70002" },
+        "location_id": { "S": "TestBUnit001" },
+        "entity_name": { "S": "Test B Unit" },
+        "entity_code": { "S": "TST-B" },
+        "zone": { "S": "Test Zone" },
+        "membership_type": { "S": "Member" },
+        "is_primary": { "BOOL": true },
+        "updated_at": { "N": "1767225600" }
+      },
+      {
+        "person_id": { "S": "TestBMember2" },
+        "entity_id": { "S": "70001" },
+        "location_id": { "S": "TestAUnit001" },
+        "entity_name": { "S": "Test A Unit" },
+        "entity_code": { "S": "TST-A" },
+        "zone": { "S": "Test Zone" },
+        "membership_type": { "S": "Member" },
         "updated_at": { "N": "1767225600" }
       }
     ]

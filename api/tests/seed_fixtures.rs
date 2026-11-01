@@ -36,6 +36,7 @@ const DOCUMENTED: &[&str] = &[
     "10000001",
     "10000002",
     "20000001",
+    "20000002",
 ];
 
 fn repo_root() -> PathBuf {

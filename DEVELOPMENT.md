@@ -408,7 +408,7 @@ than the thing standing between production data and a public repo.
 | | |
 | --- | --- |
 | **Test A Unit** (`TestAUnit001`) | Where most testing happens. Members **Alice Anderson** (`10000001`) and **Bob Brown** (`10000002`) |
-| **Test B Unit** (`TestBUnit001`) | Second unit, for cross-unit sign-in and for checking a grant is enforced. Member **Crossunit Tester** (`20000001`) |
+| **Test B Unit** (`TestBUnit001`) | Second unit, for cross-unit sign-in and for checking a grant is enforced. Members **Crossunit Tester** (`20000001`) and **Dana Dualunit** (`20000002`, who also belongs to Test A Unit as a secondary unit) |
 | **Users** | `super@seslogin.test` (super), `testunit@seslogin.test` (Admin at Test A Unit only) and `readonly@seslogin.test` (Read only at Test A Unit) |
 | **User tokens** | One ready-made login per user — see [Logging in](#logging-in) |
 | **Kiosk session** | `TestAKiosk02` at Test A Unit, **key-enrolled** |

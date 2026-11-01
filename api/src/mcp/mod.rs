@@ -285,9 +285,9 @@ where
 
     /// Refuse unless the caller can view `location_id` (any grant, or super).
     ///
-    /// Some read resolvers (`Query.location`, `Location.people`, `Query.person`,
-    /// `Query.personByRegistrationNumber`) only require a signed-in caller and don't
-    /// check the location themselves. A tool must not hand that data to a caller
+    /// Some read resolvers (`Query.location`, `Location.people`) only require a
+    /// signed-in caller and don't check the location themselves. (`Query.person` and
+    /// `Query.personByRegistrationNumber` do, against every unit the member belongs to.) A tool must not hand that data to a caller
     /// with no grant, so any tool built on them calls this first. It only ever
     /// narrows access. Writes need no such check: their resolvers enforce Admin.
     pub(crate) fn require_location_read(&self, location_id: &str) -> Result<(), ToolError> {
