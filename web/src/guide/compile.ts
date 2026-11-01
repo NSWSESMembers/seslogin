@@ -117,6 +117,9 @@ export const IMAGE_PLACEHOLDER = /__GUIDE_IMAGE:([^_]+?)__/g;
 // Pages sit in web/guide/<guide>/ and screenshots in web/guide/screenshots/, so
 // a page refers to one as ../screenshots/<name>.png (which previews on GitHub too).
 const IMAGE_PATH = /^\.\.\/(screenshots\/[a-z0-9-]+\.(png|jpg|webp))$/;
+// A badge's own artwork, served by the app from web/public/image/badges/by-id/.
+// Unlike a screenshot it may sit inline — in a table cell, say — beside its name.
+const BADGE_ICON_PATH = /^\/image\/badges\/by-id\/([a-z0-9-]+)\.svg$/;
 
 export function compileGuides(
   sources: GuideSource[],
@@ -127,12 +130,18 @@ export function compileGuides(
   images?: Map<string, { width: number; height: number }>,
   {
     allowMissingImages = false,
+    badgeIcons,
   }: {
     /**
      * Dev server only: show a placeholder for a screenshot that hasn't been
      * captured yet instead of failing, so a page can reference it first.
      */
     allowMissingImages?: boolean;
+    /**
+     * Badge ids with artwork in web/public/image/badges/by-id/, e.g.
+     * "first-steps". When given, a page referring to any other badge fails.
+     */
+    badgeIcons?: Set<string>;
   } = {},
 ): Record<string, GuidePage[]> {
   const files = sources.filter(
@@ -224,8 +233,13 @@ export function compileGuides(
           return `<a ${attrs.join(" ")}>${this.parser.parseInline(tokens)}</a>`;
         },
         paragraph({ tokens }) {
-          // An image on a line of its own becomes a captioned figure.
-          if (tokens.length === 1 && tokens[0].type === "image") {
+          // An image on a line of its own becomes a captioned figure, unless it
+          // is a badge icon, which stays an inline image.
+          if (
+            tokens.length === 1 &&
+            tokens[0].type === "image" &&
+            !BADGE_ICON_PATH.test((tokens[0] as Tokens.Image).href)
+          ) {
             const { href, text, title } = tokens[0] as Tokens.Image;
             if (!text.trim())
               errors.push(
@@ -256,9 +270,21 @@ export function compileGuides(
           }
           return `<p>${this.parser.parseInline(tokens)}</p>\n`;
         },
-        image({ href }) {
-          errors.push(`image "${href}" — put images on a line of their own`);
-          return "";
+        image({ href, text }) {
+          const badge = href.match(BADGE_ICON_PATH)?.[1];
+          if (!badge) {
+            errors.push(`image "${href}" — put images on a line of their own`);
+            return "";
+          }
+          if (!text.trim())
+            errors.push(
+              `image "${href}" — needs alt text describing what it shows`,
+            );
+          if (badgeIcons && !badgeIcons.has(badge))
+            errors.push(
+              `image "${href}" — no such badge in web/public/image/badges/by-id/`,
+            );
+          return `<img class="guide-badge" src="${escapeHtml(href)}" alt="${escapeHtml(text)}" width="40" height="40" loading="lazy">`;
         },
         html({ text }) {
           // Raw HTML would bypass the guide's styling and escaping rules.
