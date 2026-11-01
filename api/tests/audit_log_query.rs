@@ -841,3 +841,146 @@ async fn an_api_token_actor_is_labelled_with_its_name() {
     assert_eq!(actor("odd-entry")["kind"], "UNKNOWN");
     assert!(actor("odd-entry")["label"].is_null());
 }
+
+/// A member of `loc-a` who also belongs to `loc-b`, in an app with a third unit `loc-c`.
+async fn multi_unit_app() -> Arc<TestApp> {
+    let app = app::new(
+        AuditingHandler::new(FakeDb::default()),
+        ServerSecret::new("test-secret"),
+        0,
+        mockqueue::Handler::new(),
+        mockmail::Handler::new(),
+        mockrealtime::Handler::new("test"),
+    );
+    let fake = app.db.inner();
+    for (id, name) in [
+        ("loc-a", "Unit A"),
+        ("loc-b", "Unit B"),
+        ("loc-c", "Unit C"),
+    ] {
+        fake.locations
+            .lock()
+            .unwrap()
+            .insert(id.into(), location(id, name));
+    }
+    fake.persons.lock().unwrap().insert(
+        "p1".into(),
+        db::Person {
+            id: "p1".into(),
+            location_id: "loc-a".into(),
+            first_name: "Alice".into(),
+            last_name: "Anderson".into(),
+            registration_number: Some("1001".into()),
+            ses_api_person_id: None,
+            email: None,
+            mobile: None,
+            phones: None,
+            preferred_name: None,
+            badge_state: None,
+            capability_tags: None,
+            deleted: None,
+            missing_since: None,
+            secondary_location_ids: vec!["loc-b".into()],
+            created_at: Some(0),
+            updated_at: Some(0),
+        },
+    );
+    Arc::new(app)
+}
+
+async fn directory_write(app: &Arc<TestApp>, secondary: &[String]) {
+    audit::scope(
+        audit::AuditContext::system("directory-sync"),
+        app.db.update_person(
+            "p1",
+            db::PersonUpdateShape::Directory {
+                email: Some("alice@example.com"),
+                mobile: None,
+                phones: None,
+                preferred_name: None,
+                secondary_location_ids: secondary,
+            },
+        ),
+    )
+    .await
+    .unwrap();
+}
+
+#[tokio::test]
+async fn a_member_update_is_in_both_units_logs_and_once_in_the_root_log() {
+    let app = multi_unit_app().await;
+    audit::scope(
+        audit::AuditContext::system("member-sync"),
+        app.db.update_person(
+            "p1",
+            db::PersonUpdateShape::Fields {
+                first_name: "Alicia",
+                last_name: "Anderson",
+                registration_number: "1001",
+            },
+        ),
+    )
+    .await
+    .unwrap();
+    for loc in ["loc-a", "loc-b"] {
+        let connection = log(&app, super_user(), Some(loc), json!({})).await;
+        assert_eq!(nodes(&connection).len(), 1, "{loc}");
+        assert_eq!(nodes(&connection)[0]["entityLabel"], "Alicia Anderson");
+    }
+    let c = log(&app, super_user(), Some("loc-c"), json!({})).await;
+    assert!(nodes(&c).is_empty());
+    let root = log(&app, super_user(), None, json!({})).await;
+    assert_eq!(nodes(&root).len(), 1);
+    // A secondary unit's own admin can read it.
+    let connection = log(&app, user("u", &["loc-b"], &[]), Some("loc-b"), json!({})).await;
+    assert_eq!(nodes(&connection).len(), 1);
+}
+
+#[tokio::test]
+async fn a_directory_write_adding_a_unit_shows_in_the_new_units_log() {
+    let app = multi_unit_app().await;
+    directory_write(&app, &["loc-b".to_string(), "loc-c".to_string()]).await;
+    let c = log(&app, super_user(), Some("loc-c"), json!({})).await;
+    assert_eq!(nodes(&c).len(), 1);
+    let fields: Vec<_> = nodes(&c)[0]["changes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| c["field"].as_str().unwrap())
+        .collect();
+    assert!(fields.contains(&"secondary_location_ids"));
+    let root = log(&app, super_user(), None, json!({})).await;
+    assert_eq!(nodes(&root).len(), 1);
+}
+
+#[tokio::test]
+async fn a_directory_write_removing_a_unit_shows_in_the_old_units_log() {
+    let app = multi_unit_app().await;
+    directory_write(&app, &[]).await;
+    let b = log(&app, super_user(), Some("loc-b"), json!({})).await;
+    assert_eq!(nodes(&b).len(), 1);
+    let a = log(&app, super_user(), Some("loc-a"), json!({})).await;
+    assert_eq!(nodes(&a).len(), 1);
+}
+
+#[tokio::test]
+async fn a_member_with_no_secondary_unit_is_logged_at_home_only() {
+    let app = multi_unit_app().await;
+    app.db
+        .inner()
+        .persons
+        .lock()
+        .unwrap()
+        .get_mut("p1")
+        .unwrap()
+        .secondary_location_ids
+        .clear();
+    directory_write(&app, &[]).await;
+    assert_eq!(
+        nodes(&log(&app, super_user(), Some("loc-a"), json!({})).await).len(),
+        1
+    );
+    for loc in ["loc-b", "loc-c"] {
+        assert!(nodes(&log(&app, super_user(), Some(loc), json!({})).await).is_empty());
+    }
+}

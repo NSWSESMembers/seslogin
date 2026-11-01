@@ -1160,7 +1160,7 @@ Both views are Relay connections, **newest first**, default page 50 (max 200), a
 
 | Field | Who may read it | Shows |
 |---|---|---|
-| `Location.auditLog` | A *user* with Admin **or** Read only access to the location, or a super user. Kiosk sessions, API tokens and edit links are refused even for their own location. | Entries at that location. A write touching two locations (a member moved between units) is in both logs. Global records (users, categories, …) are not here. |
+| `Location.auditLog` | A *user* with Admin **or** Read only access to the location, or a super user. Kiosk sessions, API tokens and edit links are refused even for their own location. | Entries at that location. A write touching several locations is in each of their logs: a member moved between units, and every change to a person, which is filed at every unit they belong to (home and secondary). Global records (users, categories, …) are not here. |
 | `Query.auditLog` | Super users only | Every event once, including global records. |
 
 Each `AuditEntry` has `timestamp` (Unix seconds), `action`, `entityType`, `entityId`, `entityLabel`, `location` (the item's own location; the first one a multi-location write touched in the all-locations view; null for global records), `actor { kind id via label }` and `changes { field before after }`. `before`/`after` are text: a JSON string comes back raw, anything else as compact JSON. `actor.label` is looked up at read time (user email, kiosk name, API token name, job name, "Period edit link"); an unknown `actor_kind` reads as `UNKNOWN`. `ip` and `actor.via` are personal data and are returned to **super users only** (null otherwise).
