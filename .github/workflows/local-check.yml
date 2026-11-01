@@ -9,6 +9,7 @@ on:
       - 'Makefile'
       - '.github/workflows/local-check.yml'
       - '.github/workflows/_check-local.yml'
+      - '.github/actions/setup-rust/**'
 
 jobs:
   local_check:

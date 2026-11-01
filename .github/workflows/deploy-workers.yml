@@ -26,15 +26,8 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: stable
-
-      - name: Cache Rust dependencies
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: api
+      - name: Setup Rust (pinned by api/rust-toolchain.toml)
+        uses: ./.github/actions/setup-rust
 
       - name: Install cargo-lambda
         run: pip install cargo-lambda

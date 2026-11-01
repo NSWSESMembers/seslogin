@@ -1,0 +1,25 @@
+name: Setup Rust
+description: >
+  Install the toolchain pinned in api/rust-toolchain.toml, make it the default,
+  and restore the cargo cache. Every job that builds the API uses this, so CI
+  checks, deploys and local dev all compile with the same rustc.
+
+runs:
+  using: composite
+  steps:
+    # Read from the toolchain file rather than repeated here, so a bump is a
+    # one-line change there. Set as the default too, not just left to rustup's
+    # per-directory override: anything run outside api/ (and rust-cache's own
+    # `rustc -vV`, which goes into its cache key) then sees the same compiler.
+    - name: Install pinned Rust toolchain
+      shell: bash
+      run: |
+        channel=$(sed -nE 's/^channel *= *"(.*)"/\1/p' api/rust-toolchain.toml)
+        rustup toolchain install "$channel" --profile minimal --component rustfmt --component clippy
+        rustup default "$channel"
+        rustc --version
+
+    - name: Cache Rust dependencies
+      uses: Swatinem/rust-cache@v2
+      with:
+        workspaces: api

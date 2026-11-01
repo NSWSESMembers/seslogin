@@ -5,6 +5,7 @@ on:
       - 'api/**'
       - '.github/workflows/api-clippy.yml'
       - '.github/workflows/_check-api.yml'
+      - '.github/actions/setup-rust/**'
 
 jobs:
   api_check:
