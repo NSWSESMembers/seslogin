@@ -1081,6 +1081,29 @@ type MutationRoot {
 	"""
 	completeTallySignIn(email: String!, code: String!, request: TallyAuthorizationInput!): String!
 	"""
+	Redeem a Tally sign-in code. With `canSavePasskey` (the browser can make a
+	passkey), someone with no passkey yet is offered one first: the answer is a
+	`passkeyTicket` instead of the `redirectUrl`. Fails as `completeTallySignIn`
+	does for a wrong code.
+	"""
+	redeemTallySignInCode(email: String!, code: String!, request: TallyAuthorizationInput!, canSavePasskey: Boolean!): TallySignInStep!
+	"""
+	Start saving a passkey with a sign-in ticket from `redeemTallySignInCode`:
+	the user's who signed in, else the member's. Returns the options for
+	`navigator.credentials.create`.
+	"""
+	beginTallyPasskeyRegistration(ticket: String!): PasskeyChallenge!
+	"""
+	Finish saving a passkey with a sign-in ticket. The ticket still has to be
+	exchanged with `continueTallySignIn`.
+	"""
+	finishTallyPasskeyRegistration(ticket: String!, challengeId: String!, credentialJson: String!): Boolean!
+	"""
+	Exchange a sign-in ticket for the URL to send the browser back to the app
+	with, as `completeTallySignIn` returns. Uses the ticket up.
+	"""
+	continueTallySignIn(ticket: String!): String!
+	"""
 	Sign in to Tally with a passkey: verify the assertion for a challenge from
 	`beginPasskeyLogin` and authorize the app that opened the sign-in page as the
 	passkey's owner, returning the URL to send the browser to as
@@ -2700,6 +2723,16 @@ type TallySignInRequest {
 	Only a developer account can finish signing in to one.
 	"""
 	isDevelopmentBuild: Boolean!
+}
+
+"""
+Where redeeming a code leads: back to the app (`redirectUrl`), or first to an
+offer to save a passkey (`passkeyTicket`, for `beginTallyPasskeyRegistration`,
+`finishTallyPasskeyRegistration` and `continueTallySignIn`). Exactly one is set.
+"""
+type TallySignInStep {
+	redirectUrl: String
+	passkeyTicket: String
 }
 
 type TallyViewer {

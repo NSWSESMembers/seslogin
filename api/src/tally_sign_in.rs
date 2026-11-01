@@ -23,8 +23,15 @@
 //!
 //! A passkey signs in as its owner ([`identify_passkey_owner`]). A user's passkey
 //! (one they added on the admin site) signs in as [`identify`] would for the user's
-//! email, without the lookup by email, and as nobody once the user is disabled.
-//! Members can't have passkeys of their own yet.
+//! email, without the lookup by email, and as nobody once the user is disabled. A
+//! member's own passkey signs in as that member while they are live.
+//!
+//! Signing in with a code can end in an offer to save a passkey ([`redeem`]): the
+//! page is given a sign-in ticket instead of the app's redirect, saves a passkey
+//! with it, or doesn't, and then exchanges it for the redirect ([`continue_sign_in`]).
+//! The passkey is the user's when a user signed in alongside the member (so it
+//! works on the admin site too: an email code to that inbox already signs in there,
+//! so this hands out nothing new), and the member's otherwise.
 //!
 //! The grant then resolves on every use through [`crate::oauth::grant_auth_info`],
 //! so the user's units and member link are read fresh, not frozen at sign-in.
@@ -99,13 +106,28 @@ pub async fn identify_passkey_owner<H: db::Handler>(
                 None => Ok(None),
             }
         }
-        // Nothing saves a member's passkey yet; when Tally sign-in starts to, this
-        // is where it signs in.
         db::PasskeyOwner::Member(person_id) => {
-            info!("tally sign-in: member passkey for {person_id}, not supported yet");
-            Ok(None)
+            let Some(person) = live_person(db, person_id).await? else {
+                return Ok(None);
+            };
+            identify_member(db, person).await.map(Some)
         }
     }
+}
+
+/// Who a member's own passkey signs in as: the member, alongside the user their
+/// email would sign in with, when that email still signs in as this member. A
+/// member whose email has changed, or is now shared, still signs in, alone: the
+/// passkey proves the member, not the inbox.
+async fn identify_member<H: db::Handler>(db: &H, person: db::Person) -> db::Result<Identity> {
+    let user = match &person.email {
+        Some(email) => identify(db, email)
+            .await?
+            .filter(|i| i.person.id == person.id)
+            .and_then(|i| i.user),
+        None => None,
+    };
+    Ok(Identity { user, person })
 }
 
 /// [`identify`], given the enabled user with `email` (or none) already.
@@ -325,7 +347,7 @@ pub async fn redeem_code<H: db::Handler>(
 
 /// The OAuth authorization request the sign-in page was opened with, as the app sent
 /// it (camel-cased in GraphQL).
-#[derive(async_graphql::InputObject, Clone, Debug)]
+#[derive(async_graphql::InputObject, Clone, Debug, serde::Serialize, serde::Deserialize)]
 #[graphql(name = "TallyAuthorizationInput")]
 pub struct AuthorizationRequest {
     pub client_id: String,
@@ -503,6 +525,200 @@ async fn authorize<A: HasDb>(
         url.query_pairs_mut().append_pair("state", state);
     }
     Ok(url.to_string())
+}
+
+// ── Saving a passkey after a code ───────────────────────────────────────────
+
+/// The `ephemeral_state` kind of a sign-in ticket.
+pub const TICKET_STATE_KIND: &str = "tally_signin";
+/// The `webauthn_state` kind of a passkey registration challenge made with one.
+pub const REGISTRATION_STATE_KIND: &str = "tally_reg";
+/// How long a ticket lasts: long enough to save a passkey, at a stretch.
+pub const TICKET_TTL_S: u64 = 10 * 60;
+/// What a passkey saved here is called, until its owner renames it.
+pub const SAVED_PASSKEY_NAME: &str = "Saved at Tally sign-in";
+/// The answer to a ticket that is unknown, expired or used.
+pub const TICKET_EXPIRED: &str = "Your sign-in timed out. Start over to sign in again.";
+
+/// What redeeming a code leads to.
+#[derive(Debug, PartialEq)]
+pub enum SignInStep {
+    /// Back to the app, with this URL.
+    Redirect(String),
+    /// Offer to save a passkey, with this ticket, before going back.
+    OfferPasskey { ticket: String },
+}
+
+/// Who signed in with a code, and the request they did it for: everything
+/// [`continue_sign_in`] needs, so the authorization code is only minted then
+/// (it would expire while the person decided).
+#[derive(serde::Serialize, serde::Deserialize)]
+struct Ticket {
+    user_id: Option<String>,
+    person_id: String,
+    request: AuthorizationRequest,
+}
+
+fn ticket_state_id(ticket: &str) -> String {
+    format!("{TICKET_STATE_KIND}_{}", hash_token(ticket))
+}
+
+/// Whose a passkey saved after signing in as `identity` is: the user's when there
+/// is one, the member's otherwise.
+pub fn passkey_owner(identity: &Identity) -> db::PasskeyOwner {
+    match &identity.user {
+        Some(user) => db::PasskeyOwner::User(user.id.clone()),
+        None => db::PasskeyOwner::Member(identity.person.id.clone()),
+    }
+}
+
+/// Whether `identity` has no passkey that signs in to Tally yet: none of the
+/// user's, and none of the member's.
+async fn has_no_passkey<H: db::Handler>(db: &H, identity: &Identity) -> db::Result<bool> {
+    let member = db::PasskeyOwner::Member(identity.person.id.clone());
+    if db.count_webauthn_credentials_by_owner(&member).await? > 0 {
+        return Ok(false);
+    }
+    match &identity.user {
+        Some(user) => Ok(db
+            .count_webauthn_credentials_by_owner(&db::PasskeyOwner::User(user.id.clone()))
+            .await?
+            == 0),
+        None => Ok(true),
+    }
+}
+
+/// Redeem `code` for `email`, as [`complete`] does, but when `can_save_passkey`
+/// (the browser can make one) and the person has none yet, offer to save one
+/// first: answer with a ticket instead of the app's redirect.
+pub async fn redeem<A: App + HasDb + HasMail>(
+    app: &A,
+    email: &str,
+    code: &str,
+    request: AuthorizationRequest,
+    can_save_passkey: bool,
+) -> Result<SignInStep> {
+    let checked = check_request(app, &request)?;
+    let identity = redeem_code(app.db(), email, code)
+        .await?
+        .ok_or_else(|| ApiError::bad_request("That code is wrong or has expired"))?;
+    check_development_build(&checked, &identity)?;
+    notify_review_sign_in(app, email, &identity).await;
+
+    if !(can_save_passkey && has_no_passkey(app.db(), &identity).await?) {
+        return Ok(SignInStep::Redirect(
+            authorize(app, identity, checked, request).await?,
+        ));
+    }
+    let ticket = crate::nonce::generate_nonce(32);
+    let payload = Ticket {
+        user_id: identity.user.map(|u| u.id),
+        person_id: identity.person.id,
+        request,
+    };
+    app.db()
+        .put_ephemeral_state(
+            &ticket_state_id(&ticket),
+            TICKET_STATE_KIND,
+            &serde_json::to_string(&payload).context("serializing sign-in ticket")?,
+            crate::clock::now_sec() + TICKET_TTL_S,
+        )
+        .await?;
+    Ok(SignInStep::OfferPasskey { ticket })
+}
+
+/// The ticket, and who it signs in as now: the member while still live, alongside
+/// the user while still enabled.
+async fn read_ticket<H: db::Handler>(db: &H, ticket: &str) -> Result<(Ticket, Identity)> {
+    let expired = || ApiError::bad_request(TICKET_EXPIRED);
+    let state = db
+        .get_ephemeral_state(&ticket_state_id(ticket))
+        .await?
+        .filter(|s| s.kind == TICKET_STATE_KIND && crate::clock::now_sec() < s.expires_at)
+        .ok_or_else(expired)?;
+    let payload: Ticket = serde_json::from_str(&state.payload).context("reading sign-in ticket")?;
+    let person = live_person(db, &payload.person_id)
+        .await?
+        .ok_or_else(expired)?;
+    let user = match &payload.user_id {
+        Some(id) => db
+            .get_users(&[id])
+            .await?
+            .into_iter()
+            .next()
+            .flatten()
+            .filter(|u| u.enabled),
+        None => None,
+    };
+    Ok((payload, Identity { user, person }))
+}
+
+/// Start saving a passkey with a sign-in ticket. See [`redeem`].
+pub async fn begin_passkey_registration<A: HasDb>(
+    app: &A,
+    webauthn: &webauthn_rs::prelude::Webauthn,
+    ticket: &str,
+) -> Result<crate::passkey::RegistrationChallenge> {
+    let (_, identity) = read_ticket(app.db(), ticket).await?;
+    // What their password manager shows the passkey as.
+    let display_name = match (&identity.user, &identity.person.email) {
+        (Some(user), _) => user.email.clone(),
+        (None, Some(email)) => db::email_key(email),
+        (None, None) => format!(
+            "{} {}",
+            identity.person.first_name, identity.person.last_name
+        ),
+    };
+    crate::passkey::start_registration(
+        app.db(),
+        webauthn,
+        &passkey_owner(&identity),
+        &display_name,
+        REGISTRATION_STATE_KIND,
+        &ticket_state_id(ticket),
+    )
+    .await
+}
+
+/// Finish saving a passkey with a sign-in ticket, for the user who signed in or
+/// else the member ([`passkey_owner`]). The ticket stays good for
+/// [`continue_sign_in`].
+pub async fn finish_passkey_registration<A: HasDb>(
+    app: &A,
+    webauthn: &webauthn_rs::prelude::Webauthn,
+    ticket: &str,
+    challenge_id: &str,
+    credential_json: &str,
+) -> Result<db::WebauthnCredential> {
+    let (_, identity) = read_ticket(app.db(), ticket).await?;
+    crate::passkey::finish_registration(
+        app.db(),
+        webauthn,
+        challenge_id,
+        REGISTRATION_STATE_KIND,
+        &ticket_state_id(ticket),
+        credential_json,
+        &passkey_owner(&identity),
+        SAVED_PASSKEY_NAME,
+    )
+    .await
+    .map_err(|e| {
+        info!("tally sign-in: saving a passkey failed: {e:#}");
+        ApiError::bad_request("That passkey couldn't be saved. Try again, or continue without one.")
+            .into()
+    })
+}
+
+/// Use up a sign-in ticket and mint the authorization code it was issued for,
+/// returning the app's redirect URL as [`complete`] does.
+pub async fn continue_sign_in<A: App + HasDb>(app: &A, ticket: &str) -> Result<String> {
+    let (payload, identity) = read_ticket(app.db(), ticket).await?;
+    app.db()
+        .delete_ephemeral_state(&ticket_state_id(ticket))
+        .await?;
+    let checked = check_request(app, &payload.request)?;
+    check_development_build(&checked, &identity)?;
+    authorize(app, identity, checked, payload.request).await
 }
 
 #[cfg(test)]

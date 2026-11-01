@@ -671,8 +671,76 @@ async fn a_disabled_users_passkey_is_refused_even_with_a_member() {
 }
 
 #[tokio::test]
-async fn a_members_own_passkey_cannot_sign_in_yet() {
+async fn a_members_own_passkey_signs_in_as_the_member() {
     let app = app();
+    let passkey = SoftPasskey::new("alice-phone");
+    seed_passkey(&app, &passkey, PasskeyOwner::Member("alice".into()));
+
+    let response = sign_in_with(&app, &passkey).await;
+    let url = data(&response)["completeTallyPasskeySignIn"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    match token_for(&app, &url).await {
+        AuthInfo::Member {
+            person_id, user_id, ..
+        } => {
+            assert_eq!(person_id, "alice");
+            assert_eq!(user_id, None);
+        }
+        _ => panic!("expected a member"),
+    }
+}
+
+#[tokio::test]
+async fn a_members_passkey_brings_the_user_their_email_signs_in_with() {
+    let app = app();
+    set_email(&app, "alice", "u1@example.com");
+    let passkey = SoftPasskey::new("alice-phone");
+    seed_passkey(&app, &passkey, PasskeyOwner::Member("alice".into()));
+
+    let url = data(&sign_in_with(&app, &passkey).await)["completeTallyPasskeySignIn"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    match token_for(&app, &url).await {
+        AuthInfo::Member {
+            person_id, user_id, ..
+        } => {
+            assert_eq!(person_id, "alice");
+            assert_eq!(user_id.as_deref(), Some("u1"));
+        }
+        _ => panic!("expected a member"),
+    }
+}
+
+#[tokio::test]
+async fn a_members_passkey_still_works_once_their_email_is_shared() {
+    let app = app();
+    set_email(&app, "bob", "Alice@Example.com");
+    let passkey = SoftPasskey::new("alice-phone");
+    seed_passkey(&app, &passkey, PasskeyOwner::Member("alice".into()));
+
+    let url = data(&sign_in_with(&app, &passkey).await)["completeTallyPasskeySignIn"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    match token_for(&app, &url).await {
+        AuthInfo::Member { person_id, .. } => assert_eq!(person_id, "alice"),
+        _ => panic!("expected a member"),
+    }
+}
+
+#[tokio::test]
+async fn a_deleted_members_passkey_is_refused() {
+    let app = app();
+    app.db
+        .persons
+        .lock()
+        .unwrap()
+        .get_mut("alice")
+        .unwrap()
+        .deleted = Some(1);
     let passkey = SoftPasskey::new("alice-phone");
     seed_passkey(&app, &passkey, PasskeyOwner::Member("alice".into()));
 
@@ -827,5 +895,243 @@ async fn a_members_passkey_is_refused_on_the_admin_site_saying_why() {
             .and_then(|e| e.get("code"))
             .map(|c| c.to_string()),
         Some("\"FORBIDDEN\"".to_string())
+    );
+}
+
+// ── Saving a passkey after a code ────────────────────────────────────────────
+
+const REDEEM: &str = r#"
+    mutation($email: String!, $code: String!, $request: TallyAuthorizationInput!, $can: Boolean!) {
+        redeemTallySignInCode(email: $email, code: $code, request: $request, canSavePasskey: $can) {
+            redirectUrl passkeyTicket
+        }
+    }"#;
+
+const BEGIN_REGISTRATION: &str = r#"
+    mutation($ticket: String!) {
+        beginTallyPasskeyRegistration(ticket: $ticket) { challengeId optionsJson }
+    }"#;
+
+const FINISH_REGISTRATION: &str = r#"
+    mutation($ticket: String!, $challengeId: String!, $credentialJson: String!) {
+        finishTallyPasskeyRegistration(
+            ticket: $ticket, challengeId: $challengeId, credentialJson: $credentialJson
+        )
+    }"#;
+
+const CONTINUE: &str = r#"
+    mutation($ticket: String!) { continueTallySignIn(ticket: $ticket) }"#;
+
+/// Send `email` a code and redeem it, saying whether the browser can save a
+/// passkey: the `redeemTallySignInCode` answer.
+async fn redeem(app: &Arc<App>, email: &str, can_save_passkey: bool) -> serde_json::Value {
+    tally_sign_in::send_code(&**app, email).await.unwrap();
+    let code = last_code(app, email);
+    let response = run(
+        app,
+        REDEEM,
+        json!({ "email": email, "code": code, "request": request(REDIRECT), "can": can_save_passkey }),
+    )
+    .await;
+    data(&response)["redeemTallySignInCode"].clone()
+}
+
+/// Save `passkey` with `ticket`, as the page's prompt does.
+async fn save_passkey(
+    app: &Arc<App>,
+    ticket: &str,
+    passkey: &SoftPasskey,
+) -> async_graphql::Response {
+    let begin = data(&run(app, BEGIN_REGISTRATION, json!({ "ticket": ticket })).await);
+    let challenge = &begin["beginTallyPasskeyRegistration"];
+    run(
+        app,
+        FINISH_REGISTRATION,
+        json!({
+            "ticket": ticket,
+            "challengeId": challenge["challengeId"],
+            "credentialJson": passkey.register(challenge["optionsJson"].as_str().unwrap()),
+        }),
+    )
+    .await
+}
+
+async fn continue_with(app: &Arc<App>, ticket: &str) -> async_graphql::Response {
+    run(app, CONTINUE, json!({ "ticket": ticket })).await
+}
+
+#[tokio::test]
+async fn a_browser_that_cant_save_a_passkey_goes_straight_back_to_the_app() {
+    let app = app();
+    let step = redeem(&app, "alice@example.com", false).await;
+    assert!(step["passkeyTicket"].is_null());
+    let url = step["redirectUrl"].as_str().unwrap();
+    assert!(url.starts_with(&format!("{REDIRECT}?code=")), "{url}");
+}
+
+#[tokio::test]
+async fn someone_who_has_a_passkey_is_not_offered_another() {
+    let app = app();
+    seed_passkey(
+        &app,
+        &SoftPasskey::new("alice-phone"),
+        PasskeyOwner::Member("alice".into()),
+    );
+    let step = redeem(&app, "alice@example.com", true).await;
+    assert!(step["passkeyTicket"].is_null());
+    assert!(step["redirectUrl"].is_string());
+}
+
+#[tokio::test]
+async fn a_member_saves_a_passkey_of_their_own_and_signs_in_with_it_next_time() {
+    let app = app();
+    let step = redeem(&app, "alice@example.com", true).await;
+    assert!(step["redirectUrl"].is_null());
+    let ticket = step["passkeyTicket"].as_str().unwrap().to_string();
+
+    let passkey = SoftPasskey::new("alice-new-phone");
+    let saved = save_passkey(&app, &ticket, &passkey).await;
+    assert_eq!(data(&saved)["finishTallyPasskeyRegistration"], json!(true));
+    let stored = app.db.webauthn_credentials.lock().unwrap()[&passkey.id()].clone();
+    assert_eq!(stored.owner, PasskeyOwner::Member("alice".into()));
+    assert_eq!(stored.name, tally_sign_in::SAVED_PASSKEY_NAME);
+
+    let url = data(&continue_with(&app, &ticket).await)["continueTallySignIn"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    match token_for(&app, &url).await {
+        AuthInfo::Member { person_id, .. } => assert_eq!(person_id, "alice"),
+        _ => panic!("expected a member"),
+    }
+
+    let next_time = sign_in_with(&app, &passkey).await;
+    let url = data(&next_time)["completeTallyPasskeySignIn"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    match token_for(&app, &url).await {
+        AuthInfo::Member { person_id, .. } => assert_eq!(person_id, "alice"),
+        _ => panic!("expected a member"),
+    }
+}
+
+#[tokio::test]
+async fn a_passkey_saved_alongside_a_user_is_the_users_and_works_on_the_admin_site() {
+    let app = app();
+    set_user(&app, "u1", |u| u.person_id = Some("alice".into()));
+    let ticket = redeem(&app, "u1@example.com", true).await["passkeyTicket"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let passkey = SoftPasskey::new("u1-new-phone");
+    data(&save_passkey(&app, &ticket, &passkey).await);
+    let stored = app.db.webauthn_credentials.lock().unwrap()[&passkey.id()].clone();
+    assert_eq!(stored.owner, PasskeyOwner::User("u1".into()));
+    data(&continue_with(&app, &ticket).await);
+
+    let token = data(&admin_login(&app, &passkey).await)["finishPasskeyLogin"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    match auth::verify_token(&*app, &token, None).await.unwrap() {
+        AuthInfo::User { id, .. } => assert_eq!(id, "u1"),
+        _ => panic!("expected a user"),
+    }
+}
+
+#[tokio::test]
+async fn not_now_still_signs_in() {
+    let app = app();
+    let ticket = redeem(&app, "alice@example.com", true).await["passkeyTicket"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let url = data(&continue_with(&app, &ticket).await)["continueTallySignIn"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert!(url.starts_with(&format!("{REDIRECT}?code=")), "{url}");
+    assert!(app.db.webauthn_credentials.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn a_ticket_is_used_up_by_continuing() {
+    let app = app();
+    let ticket = redeem(&app, "alice@example.com", true).await["passkeyTicket"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    data(&continue_with(&app, &ticket).await);
+    assert_eq!(
+        error(&continue_with(&app, &ticket).await),
+        tally_sign_in::TICKET_EXPIRED
+    );
+    assert_eq!(
+        error(&run(&app, BEGIN_REGISTRATION, json!({ "ticket": ticket })).await),
+        tally_sign_in::TICKET_EXPIRED
+    );
+}
+
+#[tokio::test]
+async fn an_unknown_ticket_does_nothing() {
+    let app = app();
+    assert_eq!(
+        error(&continue_with(&app, "made-up").await),
+        tally_sign_in::TICKET_EXPIRED
+    );
+    assert_eq!(
+        error(&run(&app, BEGIN_REGISTRATION, json!({ "ticket": "made-up" })).await),
+        tally_sign_in::TICKET_EXPIRED
+    );
+}
+
+#[tokio::test]
+async fn a_registration_challenge_only_finishes_with_its_own_ticket() {
+    let app = app();
+    let alice = redeem(&app, "alice@example.com", true).await["passkeyTicket"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let bob = redeem(&app, "bob@example.com", true).await["passkeyTicket"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let begin = data(&run(&app, BEGIN_REGISTRATION, json!({ "ticket": alice })).await);
+    let challenge = &begin["beginTallyPasskeyRegistration"];
+    let passkey = SoftPasskey::new("bobs-phone");
+    let response = run(
+        &app,
+        FINISH_REGISTRATION,
+        json!({
+            "ticket": bob,
+            "challengeId": challenge["challengeId"],
+            "credentialJson": passkey.register(challenge["optionsJson"].as_str().unwrap()),
+        }),
+    )
+    .await;
+    assert!(error(&response).contains("couldn't be saved"));
+    assert!(app.db.webauthn_credentials.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn a_member_deleted_while_deciding_cannot_continue() {
+    let app = app();
+    let ticket = redeem(&app, "alice@example.com", true).await["passkeyTicket"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    app.db
+        .persons
+        .lock()
+        .unwrap()
+        .get_mut("alice")
+        .unwrap()
+        .deleted = Some(1);
+    assert_eq!(
+        error(&continue_with(&app, &ticket).await),
+        tally_sign_in::TICKET_EXPIRED
     );
 }

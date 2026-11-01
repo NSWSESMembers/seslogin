@@ -256,14 +256,37 @@ member's unit is their home unit plus that user's units.
 and the sign-in page is on the site's own origin, so a passkey a user added on
 the admin site works here too. The page has a "Sign in with a passkey" button
 and also offers saved passkeys on the email field (conditional mediation). A
-user's passkey signs in as `tally_sign_in::identify` would for the user's
-email (`identify_user`), skipping the lookup by email, and as nobody once the
-user is disabled: a passkey proves the user, not the inbox. Members can't have
-passkeys of their own yet; `webauthn_credential` can store one
-(`PasskeyOwner::Member`, see SCHEMA.md), but nothing writes one, and Tally
-sign-in refuses one. The admin login (`finishPasskeyLogin`) refuses a
-member's passkey with a `FORBIDDEN` error saying it is for Tally. Both finish
-mutations verify through `passkey::verify_login`.
+passkey signs in as its owner (`tally_sign_in::identify_passkey_owner`):
+
+- a user's passkey as `identify` would for the user's email (`identify_user`),
+  skipping the lookup by email, and as nobody once the user is disabled: a
+  passkey proves the user, not the inbox;
+- a member's own passkey as that member while they are live, alongside the user
+  their email signs in with, if it still signs in as them.
+
+The admin login (`finishPasskeyLogin`) refuses a member's passkey with a
+`FORBIDDEN` error saying it is for Tally. Both finish mutations verify through
+`passkey::verify_login`; both registrations go through
+`passkey::start_registration`/`finish_registration`, and a member's passkey
+has its own user handle (`passkey::user_handle`).
+
+**Saving a passkey after a code.** The page redeems a code with
+`redeemTallySignInCode(email, code, request, canSavePasskey)`, passing whether
+the device has a platform authenticator and "Not now" hasn't been chosen for
+that email on it in the last 30 days. When it can, and the person has no
+passkey yet (the user's or the member's), the answer is a `passkeyTicket`
+instead of the `redirectUrl`: a single-use, 10-minute `ephemeral_state` row
+(kind `tally_signin`, stored by hash) holding who signed in and the request.
+The page offers "Save a passkey" (`beginTallyPasskeyRegistration(ticket)`, then
+`finishTallyPasskeyRegistration(ticket, challengeId, credentialJson)`, whose
+challenge is bound to that ticket) or "Not now", and either way exchanges the
+ticket with `continueTallySignIn(ticket)`, which re-checks the member is live
+and the user enabled, then mints the authorization code (so it can't expire
+while they decide). The passkey is the user's when a user signed in alongside
+the member, so it works on the admin site too — an email code to that inbox
+already signs in there, so this hands out nothing new — and the member's
+otherwise. It is called "Saved at Tally sign-in". `completeTallySignIn` still
+works, for a page loaded before the offer existed.
 
 **App Store review.** `TALLY_REVIEW_SIGN_IN=<email>:<6 digits>` makes that one
 email always be sent that code instead of a random one, so a reviewer can sign
