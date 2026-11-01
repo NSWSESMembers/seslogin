@@ -1,13 +1,13 @@
 //! Self sign-in: a member signed in to Tally signs themselves in and out at a unit,
 //! exactly as they would by typing their member number at a kiosk there. The unit is
-//! their home unit unless they pick another they can use in Tally (see
+//! their primary unit unless they pick another they can use in Tally (see
 //! [`sign_in_location_id`]), as a member may sign in at another unit's kiosk.
 //!
 //! The authority is being that member (an [`AuthInfo::Member`]), **not** a location
-//! grant: a member needs no role anywhere to sign themselves in at home. So this
+//! grant: a member needs no role anywhere to sign themselves in at their primary unit. So this
 //! deliberately uses neither `require_location_access` nor
 //! `require_location_write_access`; [`linked_person`] is the check, plus
-//! `require_member_location` for a unit other than home. Only Tally members qualify —
+//! `require_member_location` for a unit other than their primary unit. Only Tally members qualify —
 //! users on their own, kiosk sessions, API tokens and period links are refused — and
 //! only the chosen unit's periods are ever considered, as at a kiosk, which scopes by
 //! location. See `mutations.rs` for `selfSignIn` / `selfSignOut`.
@@ -74,7 +74,7 @@ pub(super) async fn require_linked_person<A: App + HasDb + Send + Sync + 'static
 
 /// The unit to sign `person` in at: `location_id` when given, which must be a unit the
 /// member may use in Tally (any unit they belong to, or one the user signed in alongside
-/// them holds either role at; see [`require_member_location`]), else their home unit.
+/// them holds either role at; see [`require_member_location`]), else their primary unit.
 pub(super) fn sign_in_location_id(
     ctx: &Context<'_>,
     person: &db::Person,
@@ -214,7 +214,7 @@ pub struct SelfSignInStatus<A: App + HasDb + 'static> {
     pub(super) open_period: Option<db::Period>,
 }
 
-/// A member's own sign-in state at one unit: their home unit, or the one asked for.
+/// A member's own sign-in state at one unit: their primary unit, or the one asked for.
 #[Object]
 impl<A: App + HasDb + Send + Sync + 'static> SelfSignInStatus<A> {
     /// The member.
@@ -223,7 +223,7 @@ impl<A: App + HasDb + Send + Sync + 'static> SelfSignInStatus<A> {
     }
 
     /// The unit this status is for, where `selfSignIn` with the same `locationId`
-    /// signs in: the member's home unit unless another was asked for.
+    /// signs in: the member's primary unit unless another was asked for.
     async fn location(&self) -> Location<A> {
         Location::new_db(self.location.clone())
     }

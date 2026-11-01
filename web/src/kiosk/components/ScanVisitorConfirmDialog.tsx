@@ -13,11 +13,11 @@ const AUTO_CLOSE_MS = 30_000;
 export type VisitorConfirmation = {
   memberId: string;
   name: string;
-  homeUnitName: string;
+  primaryUnitName: string;
 };
 
 /**
- * Asked before signing in a member who doesn't belong to this kiosk's location (neither their home unit nor another of theirs)
+ * Asked before signing in a member who doesn't belong to this kiosk's location (neither their primary unit nor another of theirs)
  * (the kiosk's "Confirm visitors" option). Most mistyped member IDs belong to
  * someone at another unit, so this is where they get caught. Nothing has been
  * written yet: "Yes" signs them in, "No" (or no answer) drops the scan.
@@ -45,7 +45,7 @@ export default function ScanVisitorConfirmDialog(props: {
       <p className="m-0 text-lg">
         Member ID <span className="font-mono">{visitor.memberId}</span> belongs
         to <strong>{visitor.name}</strong> from{" "}
-        <strong>{visitor.homeUnitName}</strong>
+        <strong>{visitor.primaryUnitName}</strong>
         {locationName ? <>, not {locationName}</> : null}.
       </p>
       <p className="m-0 text-ink-muted">

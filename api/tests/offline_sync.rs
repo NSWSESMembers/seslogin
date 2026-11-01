@@ -583,7 +583,7 @@ async fn shared_contacts_are_the_callers_own_and_come_again_only_when_they_chang
         .get_mut("user-1")
         .unwrap()
         .location_read_only_grants = vec!["loc-b".to_string()];
-    let home = add_shared_contact(&app, Some("loc-a"), "Alpha DO").await;
+    let own = add_shared_contact(&app, Some("loc-a"), "Alpha DO").await;
     add_shared_contact(&app, Some("loc-b"), "bravo shed").await;
     add_shared_contact(&app, Some("loc-c"), "Charlie DO").await;
     let soc = add_shared_contact(&app, None, "SOC").await;
@@ -627,7 +627,7 @@ async fn shared_contacts_are_the_callers_own_and_come_again_only_when_they_chang
 
     // An edit or a delete sends the whole list again, once.
     app.db
-        .update_shared_contact(&home.id, db::SharedContactUpdateShape::Delete { by: None })
+        .update_shared_contact(&own.id, db::SharedContactUpdateShape::Delete { by: None })
         .await
         .unwrap();
     let (_, changed) = get(&app, Some(&auth), &cursor_query(&delta)).await;

@@ -3,7 +3,7 @@ import { formatDayDate, formatSeconds } from "../../lib/time";
 export type ActivityDailyBreakdownMemberRow = {
   id: string;
   name: string;
-  /** The member's home location, shown only when it differs from the one being viewed. */
+  /** The member's primary location, shown only when it differs from the one being viewed. */
   locationName?: string | null;
   totalTime: number;
 };

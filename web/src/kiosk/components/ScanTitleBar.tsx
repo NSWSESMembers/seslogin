@@ -158,8 +158,9 @@ function MemberBadgesModalLoadingFallback(props: {
   );
 }
 
-// A member from another unit is the usual way to get here: the kiosk can
-// sign them out, but `Query.person` only answers for their home unit.
+// A visitor from another unit is the usual way to get here: the kiosk can
+// sign them out, but `Query.person` only answers at the units they belong to
+// (their primary unit and any secondary ones).
 function badgeModalErrorMessage(error: unknown): string {
   if (getErrorCode(error) === "FORBIDDEN") {
     return "This kiosk can't show badges for members from another unit.";

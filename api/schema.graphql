@@ -1454,7 +1454,7 @@ type MutationRoot {
 		"""
 		quickPick: Boolean,
 		"""
-		Before signing in a member who doesn't belong to this kiosk's location (not their home unit or one of their other units), return `CONFIRM_VISITOR` instead and write nothing, so the kiosk can check a mistyped number isn't about to sign in the wrong person. The kiosk repeats the call without it once they confirm. Has no effect on a sign-out, which shows the member's name before anything is written.
+		Before signing in a member who doesn't belong to this kiosk's location (not their primary unit or one of their other units), return `CONFIRM_VISITOR` instead and write nothing, so the kiosk can check a mistyped number isn't about to sign in the wrong person. The kiosk repeats the call without it once they confirm. Has no effect on a sign-out, which shows the member's name before anything is written.
 		"""
 		confirmVisitor: Boolean
 	): RegisterResult!
@@ -1485,7 +1485,7 @@ type MutationRoot {
 	scanSignOutWithBadges(id: ID!, startTime: Int!, endTime: Int!, categoryId: ID!): ScanSignOutResult!
 	"""
 	Sign the member signed in to Tally in at a unit, as typing their member number at
-	a kiosk there would: their home unit, or `locationId` when given, which must be a
+	a kiosk there would: their primary unit, or `locationId` when given, which must be a
 	unit they can use in Tally (`FORBIDDEN` otherwise; any unit they belong to
 	qualifies). Idempotent: if the member is
 	already signed in at that unit, that period is returned unchanged, so a double tap
@@ -1965,20 +1965,20 @@ type Person {
 	createdAt: Int
 	updatedAt: Int
 	"""
-	The member's home unit: the one that owns the record, and the only one whose
+	The member's primary unit: the one that owns the record, and the only one whose
 	admins may edit or delete it. A member who also volunteers at other units is
 	listed there too (`isMemberOf`), but `locationId` stays this one.
 	"""
 	locationId: ID!
 	"""
-	Whether this person is a member of the given unit: their home unit, or one they
+	Whether this person is a member of the given unit: their primary unit, or one they
 	hold a Volunteer assignment at. Says nothing about who may edit them: that is
 	`viewerCanEdit`.
 	"""
 	isMemberOf(locationId: ID!): Boolean!
 	"""
 	Whether the current caller may edit or delete this person. This is write access
-	at the member's HOME unit, matching `updatePerson` and `deletePerson`: a secondary
+	at the member's PRIMARY unit, matching `updatePerson` and `deletePerson`: a secondary
 	unit's admins can see the member but not change the record. False for Read only
 	users, kiosks and edit links.
 	"""
@@ -2126,7 +2126,7 @@ type QueryRoot {
 	): Person!
 	"""
 	The person with this member number, or null if there is none *or* the caller
-	cannot read any of the member's units (home or secondary), so it cannot be used to probe for member
+	cannot read any of the member's units (primary or secondary), so it cannot be used to probe for member
 	numbers at other units. Kiosk sign-in doesn't use this: `scanRegister2` looks the
 	number up itself, which is what lets members sign in away from their own unit.
 	"""
@@ -2162,10 +2162,10 @@ type QueryRoot {
 	"""
 	tallyLocation(id: ID!): TallyLocation!
 	"""
-	The signed-in member's own sign-in state at a unit, for the Tally app: their home
+	The signed-in member's own sign-in state at a unit, for the Tally app: their primary
 	unit, or `locationId` when given, which must be a unit they can use in Tally
 	(`FORBIDDEN` otherwise). Null when the member has since been deleted. Tally
-	members only. No location grant is needed at home — being the member is the
+	members only. No location grant is needed at their primary unit — being the member is the
 	authority (see `graphql::self_sign_in`).
 	"""
 	selfSignInStatus(locationId: ID): SelfSignInStatus
@@ -2371,7 +2371,7 @@ type RegisterResult {
 	"""
 	Badges to celebrate on this sign-in: everything the member has earned and not
 	yet seen. Empty unless the kiosk, its location and at least one of the member's
-	units (home or secondary) all have gamification on, and always empty for a
+	units (primary or secondary) all have gamification on, and always empty for a
 	sign-out pending.
 	"""
 	awardedBadges: [BadgeAward!]!
@@ -2382,7 +2382,7 @@ enum RegisterState {
 	SIGNED_IN
 	SIGN_OUT_PENDING
 	"""
-	The member is not a member of this unit (home or otherwise) and would have been signed in here, but
+	The member is not a member of this unit (primary or otherwise) and would have been signed in here, but
 	the kiosk asked to confirm that first (`confirmVisitor`). Nothing was
 	written; `person` says who the number belongs to.
 	"""
@@ -2398,7 +2398,7 @@ type ScanSignOutResult {
 }
 
 """
-A member's own sign-in state at one unit: their home unit, or the one asked for.
+A member's own sign-in state at one unit: their primary unit, or the one asked for.
 """
 type SelfSignInStatus {
 	"""
@@ -2407,7 +2407,7 @@ type SelfSignInStatus {
 	person: Person!
 	"""
 	The unit this status is for, where `selfSignIn` with the same `locationId`
-	signs in: the member's home unit unless another was asked for.
+	signs in: the member's primary unit unless another was asked for.
 	"""
 	location: Location!
 	"""
@@ -2765,11 +2765,16 @@ type TallyViewer {
 	"""
 	name: String!
 	"""
-	The member's home unit.
+	The member's primary unit: the one member sync lists them at in SES.
 	"""
-	homeLocationId: ID!
+	primaryLocationId: ID!
 	"""
-	Every unit the member belongs to: their home unit first, then their secondary
+	The member's primary unit. Kept for Tally builds that predate
+	`primaryLocationId`.
+	"""
+	homeLocationId: ID! @deprecated(reason: "Use `primaryLocationId`.")
+	"""
+	Every unit the member belongs to: their primary unit first, then their secondary
 	units. Unlike `locations`, this leaves out units reached only through the user
 	signed in alongside them, so Tally can tell "my units" from those.
 	"""
@@ -2790,10 +2795,10 @@ type TallyViewer {
 	"""
 	isDev: Boolean!
 	"""
-	Every unit the member can use in Tally, by name: every unit they belong to (home
+	Every unit the member can use in Tally, by name: every unit they belong to (primary
 	or secondary), plus the units the user signed in alongside them holds either role
 	at (every enabled unit for a super user). Disabled units are left out, except a
-	member's own home unit.
+	member's own primary unit.
 	"""
 	locations: [TallyLocation!]!
 }
@@ -3009,6 +3014,10 @@ enum WifiSecurity {
 	NONE
 }
 
+"""
+Marks an element of a GraphQL schema as no longer supported.
+"""
+directive @deprecated(reason: String = "No longer supported") on FIELD_DEFINITION | ARGUMENT_DEFINITION | INPUT_FIELD_DEFINITION | ENUM_VALUE
 """
 Directs the executor to include this field or fragment only when the `if` argument is true.
 """

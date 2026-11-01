@@ -91,9 +91,9 @@ pub enum AuthInfo {
     /// own units in Tally. See [`crate::oauth`] for how a grant resolves to this.
     Member {
         person_id: String,
-        /// The member's home unit (`Person.location_id`).
+        /// The member's primary unit (`Person.location_id`).
         location_id: String,
-        /// Every unit the member belongs to, home first then their secondary units
+        /// Every unit the member belongs to, primary first then their secondary units
         /// ([`crate::db::Person::member_location_ids`]).
         member_location_ids: Vec<String>,
         /// The user signed in alongside the member, if any.

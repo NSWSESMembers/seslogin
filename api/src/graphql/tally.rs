@@ -92,12 +92,19 @@ impl<A: App + HasDb + Send + Sync + 'static> TallyViewer<A> {
         full_name(&self.person)
     }
 
-    /// The member's home unit.
+    /// The member's primary unit: the one member sync lists them at in SES.
+    async fn primary_location_id(&self) -> ID {
+        ID(self.person.location_id.clone())
+    }
+
+    /// The member's primary unit. Kept for Tally builds that predate
+    /// `primaryLocationId`.
+    #[graphql(deprecation = "Use `primaryLocationId`.")]
     async fn home_location_id(&self) -> ID {
         ID(self.person.location_id.clone())
     }
 
-    /// Every unit the member belongs to: their home unit first, then their secondary
+    /// Every unit the member belongs to: their primary unit first, then their secondary
     /// units. Unlike `locations`, this leaves out units reached only through the user
     /// signed in alongside them, so Tally can tell "my units" from those.
     async fn member_location_ids(&self) -> Vec<ID> {
@@ -126,10 +133,10 @@ impl<A: App + HasDb + Send + Sync + 'static> TallyViewer<A> {
         self.is_dev
     }
 
-    /// Every unit the member can use in Tally, by name: every unit they belong to (home
+    /// Every unit the member can use in Tally, by name: every unit they belong to (primary
     /// or secondary), plus the units the user signed in alongside them holds either role
     /// at (every enabled unit for a super user). Disabled units are left out, except a
-    /// member's own home unit.
+    /// member's own primary unit.
     async fn locations(&self, ctx: &Context<'_>) -> Result<Vec<TallyLocation<A>>> {
         let app = ctx.data_unchecked::<Arc<A>>();
         let mut locations = if self.is_super {
@@ -150,7 +157,7 @@ impl<A: App + HasDb + Send + Sync + 'static> TallyViewer<A> {
                 .collect()
         };
         if !locations.iter().any(|l| l.id == self.person.location_id)
-            && let Some(home) = app
+            && let Some(primary) = app
                 .db()
                 .get_locations(&[&self.person.location_id])
                 .await?
@@ -158,7 +165,7 @@ impl<A: App + HasDb + Send + Sync + 'static> TallyViewer<A> {
                 .next()
                 .flatten()
         {
-            locations.push(home);
+            locations.push(primary);
         }
         locations.sort_by(|a, b| a.name.cmp(&b.name).then_with(|| a.id.cmp(&b.id)));
         Ok(locations.into_iter().map(TallyLocation::new).collect())

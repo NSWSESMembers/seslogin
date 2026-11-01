@@ -1,4 +1,4 @@
-//! The nightly evaluator only awards badges to members whose own home location has
+//! The nightly evaluator only awards badges to members whose own primary location has
 //! gamification on, wherever their periods were — the same rule a kiosk scan follows.
 //!
 //! Uses the shared `FakeDb` (`tests/common/mod.rs`).
@@ -34,7 +34,7 @@ fn period(id: &str, person_id: &str, start_time: u64) -> db::Period {
 }
 
 #[tokio::test]
-async fn only_members_whose_home_location_takes_part_earn_badges() {
+async fn only_members_whose_primary_location_takes_part_earn_badges() {
     let app = fake_app();
     seed_location(&app, "loc-a", "Unit A");
     seed_location(&app, "loc-b", "Unit B");
@@ -45,7 +45,7 @@ async fn only_members_whose_home_location_takes_part_earn_badges() {
         .get_mut("loc-a")
         .unwrap()
         .gamification_enabled = true;
-    // Alice is at home at Unit A; Bob visits it from Unit B, which has gamification off.
+    // Alice's primary unit is Unit A; Bob visits it from Unit B, which has gamification off.
     seed_person(&app, "alice", "loc-a", "Alice", "Anderson", "1001", None);
     seed_person(&app, "bob", "loc-b", "Bob", "Brown", "2001", None);
 
@@ -90,8 +90,8 @@ async fn any_of_a_members_units_taking_part_is_enough() {
         locations.get_mut("loc-a").unwrap().gamification_enabled = true;
         locations.get_mut("loc-c").unwrap().gamification_enabled = true;
     }
-    // Bob: home B (off), secondary A (on, where he signs in). Carol: home B (off),
-    // secondary D (off). Dana: home B (off), secondary C (on), signing in at A as a visitor.
+    // Bob: primary B (off), secondary A (on, where he signs in). Carol: primary B (off),
+    // secondary D (off). Dana: primary B (off), secondary C (on), signing in at A as a visitor.
     for (id, first, number, secondary) in [
         ("bob", "Bob", "2001", "loc-a"),
         ("carol", "Carol", "2002", "loc-d"),

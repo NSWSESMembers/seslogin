@@ -172,7 +172,7 @@ enum PersonCmd {
     GetByRego { registration_number: String },
     /// Look up a person by SES API person ID.
     GetBySesId { ses_api_person_id: String },
-    /// List people for a location: those whose home unit it is.
+    /// List people for a location: those whose primary unit it is.
     List {
         #[arg(long)]
         location: String,
@@ -180,7 +180,7 @@ enum PersonCmd {
         #[arg(long)]
         include_deleted: bool,
         /// Also list members of other units who volunteer here (as the admin site's
-        /// Members page does), not only those whose home unit this is.
+        /// Members page does), not only those whose primary unit this is.
         #[arg(long)]
         include_secondary: bool,
     },

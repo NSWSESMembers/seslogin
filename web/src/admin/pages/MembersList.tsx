@@ -129,10 +129,10 @@ function Row({
   // Member sync has stopped seeing this person in SES. They are soft-deleted once the
   // marker ages past the grace window, unless a later sync finds them again.
   const missingSince = person.missingSince;
-  // A member of several units is listed at each. Their home unit owns the record, so
+  // A member of several units is listed at each. Their primary unit owns the record, so
   // it is named on the other units' lists, and only its admins may edit them
-  // (`viewerCanEdit` is access at the home unit, not at the unit being listed).
-  const homeUnit =
+  // (`viewerCanEdit` is access at the primary unit, not at the unit being listed).
+  const primaryUnit =
     person.locationId !== locationId ? person.location.name : null;
   const canEdit = person.viewerCanEdit;
   const badges = person.badges ?? [];
@@ -170,8 +170,8 @@ function Row({
       <Td>{person.memberNumber}</Td>
       <Td nowrap>
         {person.firstName} {person.lastName}
-        {homeUnit && (
-          <div className="text-xs text-ink-muted">Home: {homeUnit}</div>
+        {primaryUnit && (
+          <div className="text-xs text-ink-muted">Primary: {primaryUnit}</div>
         )}
       </Td>
       {showBadges && (
@@ -325,9 +325,9 @@ export default function MembersList() {
   return (
     <>
       <p className="my-4">
-        This list shows the members of this unit, including members whose home
-        unit is elsewhere (their home unit is shown under their name). Only a
-        member&apos;s home unit can edit or delete them.
+        This list shows the members of this unit, including members whose
+        primary unit is elsewhere (their primary unit is shown under their
+        name). Only a member&apos;s primary unit can edit or delete them.
       </p>
       {location.sesApiHeadquartersId ? (
         <div className="mb-2">

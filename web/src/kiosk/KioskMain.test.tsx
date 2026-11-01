@@ -1971,7 +1971,7 @@ describe("KioskMain category search", () => {
 
 describe("KioskMain member badges", () => {
   // A member from another unit can be signed out here, but `Query.person`
-  // only answers for their home unit.
+  // only answers for their primary unit.
   it("shows an error in the modal instead of crashing when the query is refused", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     server.use(

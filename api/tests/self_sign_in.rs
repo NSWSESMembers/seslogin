@@ -1,9 +1,9 @@
 //! `selfSignInStatus`, `selfSignIn` and `selfSignOut`: a member signed in to Tally signs
-//! themselves in and out at their home unit, or another unit they can use in Tally, as a
+//! themselves in and out at their primary unit, or another unit they can use in Tally, as a
 //! kiosk there would.
 //!
 //! Authority is being the member, not a location grant, so most callers below hold no
-//! units beyond their home. Uses the shared `FakeDb` (`tests/common/mod.rs`) and runs real
+//! units beyond their primary unit. Uses the shared `FakeDb` (`tests/common/mod.rs`) and runs real
 //! GraphQL documents through `graphql::build_schema`.
 
 mod common;
@@ -214,7 +214,7 @@ async fn a_deleted_member_has_no_status_and_cannot_sign_in() {
 // ---- status ----
 
 #[tokio::test]
-async fn status_reports_home_unit_and_ignores_other_units() {
+async fn status_reports_primary_unit_and_ignores_other_units() {
     let app = app();
     let data = json(&run(&app, user("alice-user"), STATUS).await);
     let s = &data["selfSignInStatus"];
@@ -223,7 +223,7 @@ async fn status_reports_home_unit_and_ignores_other_units() {
     assert_eq!(s["openPeriod"], serde_json::Value::Null);
     assert!(s["quickPick"].is_object());
 
-    // Open at another unit's kiosk: not shown. A deleted open period at home: not shown.
+    // Open at another unit's kiosk: not shown. A deleted open period at the primary unit: not shown.
     seed_period(&app, period("away", "p-alice", "loc-b", None));
     let mut deleted = period("dead", "p-alice", "loc-a", None);
     deleted.deleted = Some(5);
@@ -234,9 +234,9 @@ async fn status_reports_home_unit_and_ignores_other_units() {
         serde_json::Value::Null
     );
 
-    seed_period(&app, period("home", "p-alice", "loc-a", None));
+    seed_period(&app, period("primary", "p-alice", "loc-a", None));
     let data = json(&run(&app, user("alice-user"), STATUS).await);
-    assert_eq!(data["selfSignInStatus"]["openPeriod"]["id"], "home");
+    assert_eq!(data["selfSignInStatus"]["openPeriod"]["id"], "primary");
     assert_eq!(data["selfSignInStatus"]["openPeriod"]["version"], 3);
 }
 
@@ -258,7 +258,7 @@ fn guest_period(id: &str, location_id: &str, name: Option<&str>, start: u64) -> 
 }
 
 #[tokio::test]
-async fn whos_here_lists_home_unit_open_periods_oldest_first() {
+async fn whos_here_lists_primary_unit_open_periods_oldest_first() {
     let app = app();
     let base = now_sec() - 10_000;
     seed_period(&app, at(period("bob", "p-bob", "loc-a", None), base + 300));
@@ -388,7 +388,7 @@ async fn whos_here_unreachable_without_a_live_member() {
 // ---- sign in ----
 
 #[tokio::test]
-async fn sign_in_opens_a_home_period_without_a_kiosk_and_is_idempotent() {
+async fn sign_in_opens_a_primary_unit_period_without_a_kiosk_and_is_idempotent() {
     let app = app();
     let data = json(&run(&app, user("alice-user"), SIGN_IN).await);
     let first = data["selfSignIn"].clone();
@@ -469,8 +469,8 @@ fn sign_in_at(location_id: &str) -> String {
 #[tokio::test]
 async fn sign_in_at_another_unit_the_member_can_use() {
     let app = app();
-    // Open at home already: a sign-in elsewhere opens alongside it, as at that unit's kiosk.
-    seed_period(&app, period("home", "p-alice", "loc-a", None));
+    // Open at the primary unit already: a sign-in elsewhere opens alongside it, as at that unit's kiosk.
+    seed_period(&app, period("primary", "p-alice", "loc-a", None));
     seed_period(&app, period("bob-away", "p-bob", "loc-b", None));
     let auth = alice_with(&["loc-b"], false);
 
@@ -487,7 +487,7 @@ async fn sign_in_at_another_unit_the_member_can_use() {
     let data = json(&run(&app, auth.clone(), &sign_in_at("loc-b")).await);
     let id = data["selfSignIn"]["id"].as_str().unwrap().to_string();
     assert_eq!(data["selfSignIn"]["locationId"], "loc-b");
-    assert_eq!(stored(&app, "home").end_time, None);
+    assert_eq!(stored(&app, "primary").end_time, None);
     assert!(
         app.realtime
             .published()
@@ -502,11 +502,11 @@ async fn sign_in_at_another_unit_the_member_can_use() {
     let data = json(&run(&app, auth.clone(), &status_at("loc-b")).await);
     assert_eq!(data["selfSignInStatus"]["openPeriod"]["id"], id.as_str());
 
-    // Home is unchanged, and asking for it by id is the same as not asking.
+    // The primary unit's is unchanged, and asking for it by id is the same as not asking.
     let data = json(&run(&app, auth.clone(), &status_at("loc-a")).await);
-    assert_eq!(data["selfSignInStatus"]["openPeriod"]["id"], "home");
+    assert_eq!(data["selfSignInStatus"]["openPeriod"]["id"], "primary");
     let data = json(&run(&app, auth.clone(), &sign_in_at("loc-a")).await);
-    assert_eq!(data["selfSignIn"]["id"], "home");
+    assert_eq!(data["selfSignIn"]["id"], "primary");
 
     // And signing out there works like any of their own periods.
     let end = now_sec();

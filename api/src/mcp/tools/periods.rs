@@ -27,7 +27,7 @@ use super::{Effect, id_property, input_schema, members, tool};
 use crate::app::{App, HasDb, HasMail, HasQueues, HasRealtime};
 
 /// A `Period`'s fields, as the Activity pages show them. The person is trimmed to
-/// name, member number and home unit (never their email), and the sessions to the
+/// name, member number and primary unit (never their email), and the sessions to the
 /// kiosk names.
 const PERIOD_SELECTION: &str = "id personId guestName comment locationId categoryId startTime \
      endTime version createdAt updatedAt nitcExportStatus \
@@ -95,7 +95,7 @@ pub(super) fn catalogue() -> Vec<Value> {
             "List the activity periods (sign-in to sign-out) at a location, newest first, with \
              the member's name and member number (or `guestName` for a guest), category, \
              comment and the sign-in and sign-out kiosk names. Includes visitors (members who do not \
-             belong to the location, home or otherwise); `person.location` is the member's home unit. `onlyActive: true` lists who \
+             belong to the location, primary or otherwise); `person.location` is the member's primary unit. `onlyActive: true` lists who \
              is signed in right now; `endTime` is null for an open period. `start`/`end` \
              select by when a period *started* and must be given together. Durations are in \
              seconds. Returns `periods` and `pageInfo` (`hasNextPage`, `endCursor`; pass \
@@ -110,7 +110,7 @@ pub(super) fn catalogue() -> Vec<Value> {
             "List one member's activity periods across every location they signed in at, \
              newest first, in the same shape as `list_periods`. Returns `periods` and \
              `pageInfo` (pass `endCursor` as `after` for the next page). Needs a grant for the \
-             member's home location; get ids from `list_members`.",
+             member's primary location; get ids from `list_members`.",
             input_schema(member_properties, &["memberId"]),
             Effect::Read,
         ),

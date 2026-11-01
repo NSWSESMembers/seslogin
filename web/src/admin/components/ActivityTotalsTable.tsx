@@ -4,7 +4,7 @@ import { SectionHeading } from "../../components/ui/SectionHeading";
 export type ActivityTotalsRow = {
   id: string;
   name: string;
-  /** The member's home location, shown only when it differs from the one being viewed. */
+  /** The member's primary location, shown only when it differs from the one being viewed. */
   locationName?: string | null;
   totalTime: number;
   totalTimeVirtual?: number;

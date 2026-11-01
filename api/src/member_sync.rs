@@ -1302,7 +1302,7 @@ async fn run_inner(config: SyncConfig) -> Result<RunStats> {
         // snapshot that is consistent with `people_by_id` and leaves nothing attempted if
         // `apply_changes` later fails.
         //
-        // Home-unit people only, never `list_members_for_location`: a member of several
+        // Primary-unit people only, never `list_members_for_location`: a member of several
         // units is absent from the other units' SES payloads, and the absence pass would
         // mark and then soft-delete them.
         let roster = db

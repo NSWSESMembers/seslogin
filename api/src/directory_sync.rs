@@ -63,7 +63,7 @@ pub struct RunStats {
     /// Matched members assigned to two or more entities.
     pub multi_unit_people: usize,
     /// Matched members who are volunteers at one or more of our locations besides their
-    /// home unit (a non-empty `secondary_location_ids`).
+    /// primary unit (a non-empty `secondary_location_ids`).
     pub multi_location_members: usize,
 }
 
@@ -170,7 +170,7 @@ impl Contact {
     }
 }
 
-/// The units other than `person`'s home unit that `units` (their desired `person_unit`
+/// The units other than `person`'s primary unit that `units` (their desired `person_unit`
 /// rows) make them a member of: the locations at which they hold a Volunteer
 /// assignment, sorted. A staff-only row, or an entity that isn't one of our locations,
 /// makes nobody a member.
@@ -959,7 +959,7 @@ mod tests {
             &p.id,
             &p.location_id,
             &[
-                // The home unit is never a secondary one.
+                // The primary unit is never a secondary one.
                 assignment("Volunteer", "Member", "70000047", "Aberdeen Unit"),
                 assignment("Volunteer", "Probationary", "70000050", "Bravo Unit"),
                 // Staff only: no Volunteer assignment, so not a member there.
@@ -976,7 +976,7 @@ mod tests {
             &locations,
         );
         assert_eq!(secondary_location_ids(&p, &units), vec!["loc2"]);
-        // The member moved home to loc2 since: it drops out, and loc1 comes in.
+        // The member's primary unit moved to loc2 since: it drops out, and loc1 comes in.
         let moved = person("p1", "40000001", "loc2");
         assert_eq!(secondary_location_ids(&moved, &units), vec!["loc1"]);
     }
@@ -1116,7 +1116,7 @@ mod tests {
 
     #[test]
     fn a_new_secondary_unit_is_a_contact_change_and_a_stored_one_is_not() {
-        // `maps()` makes 70000047 our loc1, so a member at home in loc9 holds it as a
+        // `maps()` makes 70000047 our loc1, so a member whose primary unit is loc9 holds it as a
         // secondary unit.
         let p = person("p1", "40000001", "loc9");
         let (changes, stats) = run_plan(std::slice::from_ref(&p), &[], &[secondary_unit_record()]);

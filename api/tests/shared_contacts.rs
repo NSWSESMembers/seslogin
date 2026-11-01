@@ -34,12 +34,12 @@ fn webauthn() -> Arc<webauthn_rs::prelude::Webauthn> {
     )
 }
 
-/// A member at loc-home whose user holds a role at `units`.
+/// A member at loc-primary whose user holds a role at `units`.
 fn member(units: &[&str]) -> AuthInfo {
     AuthInfo::Member {
         person_id: "caller".to_string(),
-        location_id: "loc-home".to_string(),
-        member_location_ids: vec!["loc-home".to_string()],
+        location_id: "loc-primary".to_string(),
+        member_location_ids: vec!["loc-primary".to_string()],
         user_id: Some("caller".to_string()),
         is_super: false,
         user_location_ids: units.iter().map(|s| s.to_string()).collect(),
@@ -63,8 +63,8 @@ fn plain_member() -> AuthInfo {
 fn super_user() -> AuthInfo {
     AuthInfo::Member {
         person_id: "super".to_string(),
-        location_id: "loc-home".to_string(),
-        member_location_ids: vec!["loc-home".to_string()],
+        location_id: "loc-primary".to_string(),
+        member_location_ids: vec!["loc-primary".to_string()],
         user_id: Some("super".to_string()),
         is_super: true,
         user_location_ids: vec![],
@@ -78,10 +78,16 @@ fn app() -> Arc<TestApp> {
     seed_location(&app, "loc-b", "Unit B");
     seed_user(&app, "caller", true);
     seed_person(
-        &app, "caller", "loc-home", "Casey", "Caller", "99999999", None,
+        &app,
+        "caller",
+        "loc-primary",
+        "Casey",
+        "Caller",
+        "99999999",
+        None,
     );
     seed_person(&app, "alice", "loc-a", "Alice", "Anderson", "1001", None);
-    seed_person(&app, "super", "loc-home", "Sam", "Super", "1002", None);
+    seed_person(&app, "super", "loc-primary", "Sam", "Super", "1002", None);
     Arc::new(app)
 }
 
@@ -176,7 +182,7 @@ async fn members_manage_their_units_contacts() {
     assert_eq!(contact["viewerCanEdit"], true);
     assert_eq!(contact["createdBy"], "Casey Caller");
 
-    // A member at their home unit, with no user, may change it too.
+    // A member at their primary unit, with no user, may change it too.
     let response = update(&app, plain_member(), &contact, r#"name: "DO phone""#).await;
     let updated = json(&response)["updateSharedContact"].clone();
     assert_eq!(updated["name"], "DO phone");

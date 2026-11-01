@@ -81,7 +81,7 @@ fn set_user(app: &App, id: &str, f: impl FnOnce(&mut seslogin::db::User)) {
 // ── Resolving a grant ────────────────────────────────────────────────────────
 
 #[tokio::test]
-async fn a_member_only_grant_is_the_member_at_their_home_unit() {
+async fn a_member_only_grant_is_the_member_at_their_primary_unit() {
     let app = app();
     let token = token_for(&app, member("alice"), GRAPHQL).await;
     match verify(&app, &token).await.unwrap() {
@@ -381,11 +381,11 @@ async fn a_member_grant_is_refused_by_mcp() {
 
 // ── Tally's entry points ─────────────────────────────────────────────────────
 
-fn member_at(home: &str, units: &[&str], is_super: bool) -> AuthInfo {
+fn member_at(primary: &str, units: &[&str], is_super: bool) -> AuthInfo {
     AuthInfo::Member {
         person_id: "alice".to_string(),
-        location_id: home.to_string(),
-        member_location_ids: vec![home.to_string()],
+        location_id: primary.to_string(),
+        member_location_ids: vec![primary.to_string()],
         user_id: Some("u1".to_string()),
         is_super,
         user_location_ids: units.iter().map(|s| s.to_string()).collect(),
@@ -401,7 +401,7 @@ fn data(response: &async_graphql::Response) -> serde_json::Value {
 const VIEWER: &str = "{ tallyViewer { name homeLocationId userEmail isSuper isDev member { id } locations { id name } } }";
 
 #[tokio::test]
-async fn the_viewer_is_the_member_with_their_home_unit_and_their_users_units() {
+async fn the_viewer_is_the_member_with_their_primary_unit_and_their_users_units() {
     let app = app();
     seed_user(&app, "u1", true);
     seed_location(&app, "loc-c", "Unit C");
@@ -440,8 +440,8 @@ async fn the_viewer_is_the_member_with_their_home_unit_and_their_users_units() {
 async fn tally_location_is_only_for_a_unit_the_member_can_use() {
     let app = app();
     let doc = |id: &str| format!(r#"{{ tallyLocation(id: "{id}") {{ name tasks {{ id }} }} }}"#);
-    let home = data(&run(&app, member_at("loc-a", &[], false), &doc("loc-a")).await);
-    assert_eq!(home["tallyLocation"]["name"], "Unit A");
+    let primary = data(&run(&app, member_at("loc-a", &[], false), &doc("loc-a")).await);
+    assert_eq!(primary["tallyLocation"]["name"], "Unit A");
     let extra = data(&run(&app, member_at("loc-b", &["loc-a"], false), &doc("loc-a")).await);
     assert_eq!(extra["tallyLocation"]["name"], "Unit A");
 

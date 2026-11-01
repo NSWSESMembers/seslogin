@@ -1,5 +1,5 @@
 //! Kiosk scans earn badges only when the kiosk's location, the kiosk itself (its
-//! `gamification` config key) and at least one of the member's units (home or secondary) have gamification on;
+//! `gamification` config key) and at least one of the member's units (primary or secondary) have gamification on;
 //! otherwise a scan does no badge work at all. `scanSignOut` keeps its pre-badge
 //! `Period` result, and a kiosk that celebrates badges signs out with
 //! `scanSignOutWithBadges` instead.
@@ -41,16 +41,16 @@ fn webauthn() -> Arc<webauthn_rs::prelude::Webauthn> {
 struct Switches {
     kiosk_location: bool,
     kiosk: bool,
-    home_location: bool,
+    primary_location: bool,
 }
 
 const ALL_ON: Switches = Switches {
     kiosk_location: true,
     kiosk: true,
-    home_location: true,
+    primary_location: true,
 };
 
-/// A kiosk at Unit A and Bob (2001), whose home is Unit B, so each switch is separate.
+/// A kiosk at Unit A and Bob (2001), whose primary unit is Unit B, so each switch is separate.
 fn app(switches: Switches) -> Arc<TestApp> {
     let app = fake_app();
     seed_location(&app, "loc-a", "Unit A");
@@ -58,7 +58,7 @@ fn app(switches: Switches) -> Arc<TestApp> {
     {
         let mut locations = app.db.locations.lock().unwrap();
         locations.get_mut("loc-a").unwrap().gamification_enabled = switches.kiosk_location;
-        locations.get_mut("loc-b").unwrap().gamification_enabled = switches.home_location;
+        locations.get_mut("loc-b").unwrap().gamification_enabled = switches.primary_location;
     }
     seed_person(&app, "bob", "loc-b", "Bob", "Brown", "2001", None);
     seed_category(&app, "cat-1", "Training", true);
@@ -162,7 +162,7 @@ async fn no_badge_work_unless_all_three_switches_are_on() {
             ..ALL_ON
         },
         Switches {
-            home_location: false,
+            primary_location: false,
             ..ALL_ON
         },
     ] {
@@ -255,11 +255,12 @@ async fn unreadable_badge_state_still_signs_in_and_is_left_alone() {
 }
 
 #[tokio::test]
-async fn a_visit_far_from_home_earns_the_distance_badges_when_both_units_have_coordinates() {
+async fn a_visit_far_from_the_primary_unit_earns_the_distance_badges_when_both_units_have_coordinates()
+ {
     let app = app(ALL_ON);
     {
         let mut locations = app.db.locations.lock().unwrap();
-        // Bob's home, Unit B, in Sydney; the kiosk's Unit A in Wagga Wagga, ~370 km away.
+        // Bob's primary unit, Unit B, in Sydney; the kiosk's Unit A in Wagga Wagga, ~370 km away.
         let set = |location: &mut db::Location, latitude, longitude| {
             location.ses_details.latitude = Some(latitude);
             location.ses_details.longitude = Some(longitude);
@@ -297,7 +298,7 @@ async fn no_distance_badges_without_coordinates_for_both_units() {
     );
 }
 
-/// Give Bob (home Unit B) a secondary unit, and a third unit C to hang switches off.
+/// Give Bob (primary Unit B) a secondary unit, and a third unit C to hang switches off.
 fn give_bob_secondary(app: &TestApp, secondary: &str) {
     seed_location(app, "loc-c", "Unit C");
     app.db
@@ -322,9 +323,9 @@ fn away_check_ins(app: &TestApp, location_id: &str) -> u64 {
 }
 
 #[tokio::test]
-async fn a_secondary_unit_earns_even_when_the_home_unit_is_not_taking_part() {
+async fn a_secondary_unit_earns_even_when_the_primary_unit_is_not_taking_part() {
     let app = app(Switches {
-        home_location: false,
+        primary_location: false,
         ..ALL_ON
     });
     give_bob_secondary(&app, "loc-a");
@@ -336,7 +337,7 @@ async fn a_secondary_unit_earns_even_when_the_home_unit_is_not_taking_part() {
 async fn a_secondary_unit_is_not_a_visit_so_no_distance_or_away_credit() {
     let app = app(ALL_ON);
     give_bob_secondary(&app, "loc-a");
-    // Home is ~370 km from the kiosk's Unit A, which would earn the distance badges for a
+    // The primary unit is ~370 km from the kiosk's Unit A, which would earn the distance badges for a
     // visitor.
     set_coordinates(&app, "loc-b", -33.8679, 151.2073);
     set_coordinates(&app, "loc-a", -35.1082, 147.3598);
@@ -353,7 +354,7 @@ async fn a_secondary_unit_is_not_a_visit_so_no_distance_or_away_credit() {
 
 #[tokio::test]
 async fn an_unrelated_unit_is_still_a_visit_and_measures_from_the_nearest_unit() {
-    // Unit A is neither of Bob's units. Home B is ~370 km away but secondary C is near.
+    // Unit A is neither of Bob's units. Primary B is ~370 km away but secondary C is near.
     let app = app(ALL_ON);
     give_bob_secondary(&app, "loc-c");
     set_coordinates(&app, "loc-b", -33.8679, 151.2073);
@@ -374,7 +375,7 @@ async fn an_unrelated_unit_is_still_a_visit_and_measures_from_the_nearest_unit()
 #[tokio::test]
 async fn a_visitor_whose_only_participating_unit_is_secondary_still_earns() {
     let app = app(Switches {
-        home_location: false,
+        primary_location: false,
         ..ALL_ON
     });
     give_bob_secondary(&app, "loc-c");

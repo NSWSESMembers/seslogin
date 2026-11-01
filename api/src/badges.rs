@@ -152,7 +152,7 @@ enum BadgeRule {
     DistinctLocations {
         count: usize,
     },
-    /// Signed in at a location at least this far from home; see `apply_away_distance`.
+    /// Signed in at a location at least this far from the member's nearest unit; see `apply_away_distance`.
     AwayDistance {
         km: u32,
     },

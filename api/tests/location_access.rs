@@ -156,7 +156,7 @@ async fn user_cannot_read_another_locations_people() {
 }
 
 /// `Location.people` refuses on its own, not only through `Query.location`: a
-/// location reached another way (here, a person's home location) is still checked.
+/// location reached another way (here, a person's primary location) is still checked.
 #[tokio::test]
 async fn people_are_checked_when_location_is_reached_through_a_period() {
     let app = app();

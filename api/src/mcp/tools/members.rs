@@ -5,7 +5,7 @@
 //! these tools check the caller's grants themselves
 //! ([`ToolCtx::require_location_read`]). A single person is read through
 //! `Query.person`, which checks every unit the member belongs to. Writes rely on the
-//! resolvers, which require an Admin grant at the member's home unit (a Read only user,
+//! resolvers, which require an Admin grant at the member's primary unit (a Read only user,
 //! or an admin of only a secondary unit, is refused).
 
 use serde_json::{Value, json};
@@ -33,8 +33,8 @@ pub(super) fn catalogue() -> Vec<Value> {
             "List members",
             &format!(
                 "List the active (not deleted) members of a location, including members of \
-                 other units who also volunteer here (their `locationId` is their home unit; \
-                 only the home unit can edit them, see `viewerCanEdit`): id, name, member \
+                 other units who also volunteer here (their `locationId` is their primary unit; \
+                 only the primary unit can edit them, see `viewerCanEdit`): id, name, member \
                  number, `sesApiPersonId`, `missingSince` (set when member sync last saw them \
                  missing from SES) and `syncManaged`. `query` keeps only members whose first \
                  name, last name, full name or member number contains it (case-insensitive). \
@@ -213,7 +213,7 @@ where
     );
     let data = ctx.graphql(&doc, json!({ "id": id })).await?;
     // `Query.person` has already checked the caller against every unit the member
-    // belongs to, so there is no separate home-unit check here.
+    // belongs to, so there is no separate primary-unit check here.
     let mut member = data["person"].clone();
     decorate(&mut member);
     Ok(member)
@@ -221,7 +221,7 @@ where
 
 /// Refuse unless the caller may read this member. `Query.person` enforces the access
 /// rule itself (an Admin or Read only grant at any of the member's units), so asking
-/// for the id is the check; the member's home unit alone would wrongly refuse a
+/// for the id is the check; the member's primary unit alone would wrongly refuse a
 /// secondary unit's admin.
 pub(super) async fn require_member_read<A>(ctx: &ToolCtx<'_, A>, id: &str) -> Result<(), ToolError>
 where

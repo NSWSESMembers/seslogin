@@ -54,14 +54,14 @@ fn app() -> Arc<TestApp> {
     let app = fake_app();
     seed_location(&app, "loc-a", "Unit A");
     seed_location(&app, "loc-b", "Unit B");
-    for (id, first, home) in [
+    for (id, first, primary) in [
         ("alice", "Alice", "loc-a"),
         ("bob", "Bob", "loc-a"),
         ("carol", "Carol", "loc-b"),
         ("erin", "Erin", "loc-a"),
         ("boss", "Boss", "loc-b"),
     ] {
-        seed_person(&app, id, home, first, "Test", id, None);
+        seed_person(&app, id, primary, first, "Test", id, None);
     }
     Arc::new(app)
 }
