@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 
 export function Panel({ children }: { children: ReactNode }) {
   return (
-    <section className="flex min-h-screen items-center justify-center bg-surface-panel px-4 py-8 sm:bg-[radial-gradient(circle_at_top,rgba(255,205,161,0.65),transparent_32%),linear-gradient(180deg,#fff3e7_0%,#f7ede4_45%,#efe3d8_100%)] sm:px-6 sm:py-12 sm:dark:bg-[radial-gradient(circle_at_top,rgba(120,70,30,0.32),transparent_38%),linear-gradient(180deg,#1c1a18_0%,#161514_55%,#121110_100%)]">
+    <section className="flex min-h-dvh items-center justify-center bg-surface-panel px-4 py-8 sm:bg-[radial-gradient(circle_at_top,rgba(255,205,161,0.65),transparent_32%),linear-gradient(180deg,#fff3e7_0%,#f7ede4_45%,#efe3d8_100%)] sm:px-6 sm:py-12 sm:dark:bg-[radial-gradient(circle_at_top,rgba(120,70,30,0.32),transparent_38%),linear-gradient(180deg,#1c1a18_0%,#161514_55%,#121110_100%)]">
       {children}
     </section>
   );
