@@ -5,6 +5,8 @@
 
 import { getGraphQLEndpoint } from "../../lib/api";
 import { clientHeaders } from "../../lib/clientInfo";
+import { clockSkewServerTime } from "../../lib/graphql";
+import { clearClockSkew, reportClockSkew } from "./clockSkew";
 import { buildSignedAuthHeader, type KioskKeyInfo } from "./kioskKey";
 import type { RealtimeTokenRequest } from "./realtimeClient";
 
@@ -55,6 +57,10 @@ export async function submitEnrollmentKey(info: KioskKeyInfo): Promise<void> {
  * Ask the server which session this device's key is bound to, by making a signed
  * request. Resolves the session id once the key is enrolled, or null while it is not
  * (a 401 is expected until an admin enrolls it).
+ *
+ * Also how the enrollment screen learns the device's clock is wrong: the server checks
+ * the signature's timestamp before anything else, so a `CLOCK_SKEW` 401 is reported
+ * (see clockSkew.ts) and any other 200 or 401 means the clock is fine.
  */
 export async function fetchKeySessionId(
   info: KioskKeyInfo,
@@ -69,9 +75,19 @@ export async function fetchKeySessionId(
     body,
     cache: "no-store",
   });
+  if (resp.status === 401) {
+    const serverTime = clockSkewServerTime(await resp.json().catch(() => null));
+    if (serverTime !== null) {
+      reportClockSkew(serverTime);
+    } else {
+      clearClockSkew();
+    }
+    return null;
+  }
   if (!resp.ok) {
     return null;
   }
+  clearClockSkew();
   const json = await resp.json();
   const id = json?.data?.session?.id;
   return typeof id === "string" ? id : null;

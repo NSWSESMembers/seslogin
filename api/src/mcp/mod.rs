@@ -439,8 +439,9 @@ where
             return reply;
         }
         Ok(info) => info,
-        Err(AuthError::Permanent(msg)) => {
-            tracing::info!("mcp: auth rejected: {msg}");
+        // ClockSkew is only for kiosk signatures, which never reach here.
+        Err(e @ (AuthError::Permanent(_) | AuthError::ClockSkew { .. })) => {
+            tracing::info!("mcp: auth rejected: {e}");
             let reply = unauthorized(&api_base, true);
             emit(reply.status, "mcp:auth", None);
             return reply;
