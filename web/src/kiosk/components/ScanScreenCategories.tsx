@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { useEffect, useMemo, useState, type RefObject } from "react";
 import { categories } from "../../lib/categories";
 import type { Category } from "../../lib/categories";
 import { scanViewProps, type ScreenPosition } from "../../styles";
@@ -12,6 +12,11 @@ import {
   searchTokens,
   type CategorySearchResult,
 } from "../lib/categorySearch";
+import {
+  SCANNED_HINT,
+  useAutoFocusSearch,
+  useSearchQuery,
+} from "../useCategorySearch";
 
 // Every dimension below is `<px at scale 1> * --cat-scale`; the scale is chosen
 // once per kiosk (see categoryScale.ts) and inherited from the scan area. The
@@ -77,43 +82,6 @@ export function CategoriesHeader(props: {
 }
 
 type SearchScope = "role" | "all";
-
-// What a barcode scanner types is a member ID: at least 8 digits.
-const MEMBER_ID_DIGITS = 8;
-
-/** `value` with any member IDs taken out (spaces inside one are allowed), or
- * null if it has none. One pass, so a huge paste can't be slow. */
-function withoutScannedIds(value: string): string | null {
-  let kept = "";
-  let copied = 0;
-  let digits = 0;
-  let first = -1;
-  let last = -1;
-  let found = false;
-  function endRun() {
-    if (digits >= MEMBER_ID_DIGITS) {
-      kept += value.slice(copied, first);
-      copied = last + 1;
-      found = true;
-    }
-    digits = 0;
-    first = -1;
-  }
-  for (let i = 0; i < value.length; i++) {
-    const char = value[i];
-    if (char >= "0" && char <= "9") {
-      if (first === -1) first = i;
-      last = i;
-      digits += 1;
-    } else if (!/\s/.test(char)) {
-      endRun();
-    }
-  }
-  endRun();
-  return found ? kept + value.slice(copied) : null;
-}
-const SCANNED_HINT =
-  "Finish or cancel this sign-out before scanning another member.";
 
 /**
  * The search box under the title row, with the role / all switch when there are
@@ -244,6 +212,63 @@ function SearchResultButton(props: {
   );
 }
 
+/**
+ * What goes under the search box: the screen reader's count, the line saying why
+ * a scanned ID was dropped, and, once there is enough typed, the results (or that
+ * there are none). The screen shows its own list while `searching` is false.
+ */
+export function CategorySearchResults(props: {
+  query: string;
+  searching: boolean;
+  scanned: boolean;
+  results: CategorySearchResult[];
+  /** On a touch kiosk the keyboard covers the bottom of the screen, so the last
+   * results need room to scroll above it. */
+  keyboardRoom: boolean;
+  onSelect: (categoryId: string) => void;
+}) {
+  const { query, searching, scanned, results } = props;
+  const tokens = useMemo(() => searchTokens(query), [query]);
+  return (
+    <>
+      {/* One steady region, so a screen reader reliably hears how many matched
+          (or that none did) after each letter; it is not drawn on screen. */}
+      <p role="status" className="sr-only">
+        {scanned
+          ? SCANNED_HINT
+          : !searching
+            ? ""
+            : results.length === 0
+              ? `No categories match \u201C${query.trim()}\u201D`
+              : `${results.length} ${results.length === 1 ? "category" : "categories"} found`}
+      </p>
+      {scanned && (
+        <p className="mt-6 text-2xl text-ink opacity-60">{SCANNED_HINT}</p>
+      )}
+      {searching &&
+        (results.length > 0 ? (
+          <ul
+            className={`pl-0 ${props.keyboardRoom ? "pb-[50dvh]" : ""}`}
+            aria-label="Search results"
+          >
+            {results.map((result) => (
+              <SearchResultButton
+                key={result.id + result.parentId}
+                result={result}
+                tokens={tokens}
+                onSelect={() => props.onSelect(result.id)}
+              />
+            ))}
+          </ul>
+        ) : (
+          <p className="mt-6 text-2xl text-ink opacity-60">
+            No categories match &ldquo;{query.trim()}&rdquo;
+          </p>
+        ))}
+    </>
+  );
+}
+
 export function Inner(props: {
   onSelectCategory: (uuid: string, categoryId: string) => void;
   uuid: string | null;
@@ -258,11 +283,18 @@ export function Inner(props: {
   active?: boolean;
 }) {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-  const [query, setQuery] = useState("");
   const [scope, setScope] = useState<SearchScope>("role");
-  const [scanned, setScanned] = useState(false);
-  const searchInputRef = useRef<HTMLInputElement>(null);
   const { categorySearch, autoFocusSearch, active } = props;
+  // The role / all switch only shows with results, so it starts over on This
+  // role whenever the search empties.
+  const { query, scanned, changeQuery } = useSearchQuery(() =>
+    setScope("role"),
+  );
+  const searchInputRef = useAutoFocusSearch(
+    categorySearch,
+    autoFocusSearch,
+    active,
+  );
 
   // Drilling into or out of a subcategory, or a new search, swaps the whole list,
   // so start at the top. Runs on mount too, which covers a new uuid (Inner is
@@ -272,16 +304,7 @@ export function Inner(props: {
     onListChange();
   }, [onListChange, selectedCategory, query, scope]);
 
-  // The scan screens stay mounted, so wait until this one is showing. Without
-  // `preventScroll` the browser would scroll the sliding screen to the input.
-  useEffect(() => {
-    if (categorySearch && autoFocusSearch && active) {
-      searchInputRef.current?.focus({ preventScroll: true });
-    }
-  }, [categorySearch, autoFocusSearch, active]);
-
   const searching = !!categorySearch && isSearchableQuery(query);
-  const tokens = useMemo(() => searchTokens(query), [query]);
   const results = useMemo(
     () =>
       searching
@@ -304,33 +327,6 @@ export function Inner(props: {
   const sortedCategories = [...shownCategories].sort((a, b) =>
     a.name.localeCompare(b.name),
   );
-
-  // A barcode scanner types the member's ID, a digit at a time, into whichever box
-  // has the cursor. Another member can't be signed in while this screen is up, so
-  // take the digits out again, keep whatever was already typed, and say why.
-  function changeQuery(value: string) {
-    // The role / all switch only shows with results, so it starts over on This
-    // role whenever the search empties.
-    const update = (next: string) => {
-      setQuery(next);
-      if (!isSearchableQuery(next)) setScope("role");
-    };
-    const stripped = withoutScannedIds(value);
-    if (stripped !== null) {
-      // A whole ID, or one tacked on to (or into) a search.
-      setScanned(true);
-      update(stripped);
-    } else if (
-      scanned &&
-      value.startsWith(query) &&
-      /^\d+$/.test(value.slice(query.length))
-    ) {
-      // The rest of an ID longer than 8 digits.
-    } else {
-      setScanned(false);
-      update(value);
-    }
-  }
 
   function back() {
     setSelectedCategory(null);
@@ -362,62 +358,32 @@ export function Inner(props: {
         />
       )}
       {categorySearch && (
-        // One steady region, so a screen reader reliably hears how many matched
-        // (or that none did) after each letter; it is not drawn on screen.
-        <p role="status" className="sr-only">
-          {scanned
-            ? SCANNED_HINT
-            : !searching
-              ? ""
-              : results.length === 0
-                ? `No categories match \u201C${query.trim()}\u201D`
-                : `${results.length} ${results.length === 1 ? "category" : "categories"} found`}
-        </p>
+        <CategorySearchResults
+          query={query}
+          searching={searching}
+          scanned={scanned}
+          results={results}
+          keyboardRoom={!autoFocusSearch}
+          onSelect={(categoryId) => {
+            if (props.uuid === null) {
+              throw new Error("UUID is null");
+            }
+            props.onSelectCategory(props.uuid, categoryId);
+          }}
+        />
       )}
-      {scanned && (
-        <p className="mt-6 text-2xl text-ink opacity-60">{SCANNED_HINT}</p>
-      )}
-      {searching ? (
-        results.length > 0 ? (
-          // On a touch kiosk the keyboard covers the bottom of the screen, so leave
-          // room to scroll the last results above it.
-          <ul
-            className={`pl-0 ${autoFocusSearch ? "" : "pb-[50dvh]"}`}
-            aria-label="Search results"
-          >
-            {results.map((result) => (
-              <SearchResultButton
-                key={result.id + result.parentId}
-                result={result}
-                tokens={tokens}
-                onSelect={() => {
-                  if (props.uuid === null) {
-                    throw new Error("UUID is null");
-                  }
-                  props.onSelectCategory(props.uuid, result.id);
-                }}
-              />
-            ))}
-          </ul>
-        ) : (
-          <p className="mt-6 text-2xl text-ink opacity-60">
-            No categories match &ldquo;{query.trim()}&rdquo;
-          </p>
-        )
-      ) : (
-        <>
-          <ul className="pl-0">
-            {sortedCategories.map((category) => (
-              <CategoryButton
-                key={category.id}
-                id={category.id}
-                name={category.name}
-                icon={category.icon}
-                onSelect={() => select(category.id)}
-              />
-            ))}
-          </ul>
-        </>
+      {!searching && (
+        <ul className="pl-0">
+          {sortedCategories.map((category) => (
+            <CategoryButton
+              key={category.id}
+              id={category.id}
+              name={category.name}
+              icon={category.icon}
+              onSelect={() => select(category.id)}
+            />
+          ))}
+        </ul>
       )}
     </>
   );
