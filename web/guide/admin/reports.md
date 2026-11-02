@@ -73,4 +73,6 @@ visitors (members who don't belong to your unit), but doesn't say which unit the
 ## Daily email
 
 To have a summary of each day's activity emailed to you, see
-[Daily email summary](settings.md#daily-email-summary).
+[Daily email summary](settings.md#daily-email-summary). To hear about members
+joining or leaving, see
+[Daily membership changes](settings.md#daily-membership-changes).

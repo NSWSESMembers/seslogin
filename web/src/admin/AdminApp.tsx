@@ -45,6 +45,7 @@ import ReportsBadges from "./pages/ReportsBadges";
 import SettingsPasskeys from "./pages/SettingsPasskeys";
 import SettingsConnectedApps from "./pages/SettingsConnectedApps";
 import SettingsDailyEmail from "./pages/SettingsDailyEmail";
+import SettingsDailyChanges from "./pages/SettingsDailyChanges";
 import SettingsWeeklyBadgeDigest from "./pages/SettingsWeeklyBadgeDigest";
 import SettingsActivityDisplay from "./pages/SettingsActivityDisplay";
 
@@ -140,6 +141,7 @@ export default function AdminApp() {
             path="weekly-badge-digest"
             element={<SettingsWeeklyBadgeDigest />}
           />
+          <Route path="daily-changes" element={<SettingsDailyChanges />} />
           <Route
             path="activity-display"
             element={<SettingsActivityDisplay />}
