@@ -938,6 +938,7 @@ async fn show_locations(_db: &impl Handler, locs: &[Location]) {
             nitc_enabled,
             nitc_complete_on_export,
             gamification_enabled,
+            badge_emails_enabled,
             ses_api_headquarters_id,
             last_successful_member_sync,
             ses_details,
@@ -958,6 +959,7 @@ async fn show_locations(_db: &impl Handler, locs: &[Location]) {
                 bool_str(*nitc_complete_on_export),
             ),
             ("gamification_enabled", bool_str(*gamification_enabled)),
+            ("badge_emails_enabled", bool_str(*badge_emails_enabled)),
             ("ses_api_headquarters_id", opt_str(ses_api_headquarters_id)),
             (
                 "last_successful_member_sync",

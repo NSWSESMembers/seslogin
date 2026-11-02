@@ -568,6 +568,22 @@ a version conflict is left for the nightly run. `scanRegister2` (on a sign-in) a
 unseen notices at each of their units, which are then deleted. A kiosk that doesn't
 select `trophyChanges` still makes claims but leaves the notices for one that does.
 
+### Badge congratulations emails
+
+`badge_congrats::run` (`seslogin-badge-congrats`, 19:00 Sydney daily; `badge-congrats`
+by hand, a dry run unless `--apply`, with `--person-id` and `--override-to` for testing)
+emails each member what they won: every badge awarded to them in the last 3 days,
+wherever they earned it, and every trophy they took at a unit of theirs in that time and
+still hold, with who they took it from. A member is mailed when any of their units
+(primary or secondary) has gamification and `badge_emails_enabled` on, which is off by
+default, at the email directory sync stored for them; no email, no message. The 3-day
+look-back covers `badge-nightly` dating a badge back to the sign-in that earned it and a
+missed run, and an `ephemeral_state` record per member (`badge-congrats:<person id>`,
+kept 7 days) lists what has been mailed, so each win is mailed once. The record is written
+after the send: if it fails the member may be mailed a win twice, but never misses one.
+Badge icons are the PNGs in `web/public/image/badges/png/`, since Gmail and Outlook
+don't show SVG.
+
 ## Tally (members)
 
 Tally is for **members**, not users: every Tally field below admits only an

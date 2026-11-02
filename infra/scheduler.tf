@@ -159,3 +159,23 @@ resource "aws_scheduler_schedule" "badge_digest_weekly" {
     input    = "{}"
   }
 }
+
+resource "aws_scheduler_schedule" "badge_congrats_daily" {
+  name       = "seslogin-badge-congrats-daily"
+  group_name = "default"
+
+  flexible_time_window {
+    mode = "OFF"
+  }
+
+  # 19:00 Sydney time every day: the end of the day. Wins after it, and anything
+  # badge_nightly awards at 01:15, go out the following evening.
+  schedule_expression          = "cron(0 19 * * ? *)"
+  schedule_expression_timezone = "Australia/Sydney"
+
+  target {
+    arn      = aws_lambda_function.badge_congrats.arn
+    role_arn = aws_iam_role.scheduler.arn
+    input    = "{}"
+  }
+}
