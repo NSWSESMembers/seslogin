@@ -2950,6 +2950,9 @@ impl<D: db::Handler> db::Handler for AuditingHandler<D> {
     //     a user's inbox is plumbing. The business write that caused a notification is
     //     audited where it is made, and read state is a personal marker like
     //     `TouchLastUsed`. Reads pass through.
+    //   * the trophy methods (`write_trophy`, `delete_trophy_notices`): perpetual
+    //     trophies are worked out from periods, like person `BadgeState`, and the
+    //     period writes they follow from are audited. Reads pass through.
     // The excluded *shapes* of audited methods (`AccessTime`, session `Info`,
     // `TouchLastUsed`, `LastSyncTime`) are handled inside those methods above.
     // `put_audit_entry` itself must of course not recurse into auditing.
@@ -3015,6 +3018,37 @@ impl<D: db::Handler> db::Handler for AuditingHandler<D> {
         self.inner
             .mark_notifications_read(person_id, sks, read_at)
             .await
+    }
+
+    async fn list_trophy_holders(&self, location_id: &str) -> db::Result<Vec<db::TrophyHolder>> {
+        self.inner.list_trophy_holders(location_id).await
+    }
+
+    async fn list_trophy_reigns(
+        &self,
+        location_id: &str,
+        trophy_id: &str,
+        limit: usize,
+    ) -> db::Result<Vec<db::TrophyReign>> {
+        self.inner
+            .list_trophy_reigns(location_id, trophy_id, limit)
+            .await
+    }
+
+    async fn write_trophy(&self, write: db::TrophyWrite) -> db::Result<()> {
+        self.inner.write_trophy(write).await
+    }
+
+    async fn list_trophy_notices(
+        &self,
+        location_id: &str,
+        person_id: &str,
+    ) -> db::Result<Vec<db::TrophyNotice>> {
+        self.inner.list_trophy_notices(location_id, person_id).await
+    }
+
+    async fn delete_trophy_notices(&self, notices: &[db::TrophyNotice]) -> db::Result<()> {
+        self.inner.delete_trophy_notices(notices).await
     }
 
     async fn put_audit_entry(&self, entry: &AuditEntry) -> db::Result<()> {
