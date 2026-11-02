@@ -82,6 +82,10 @@ describe("ReportsBadges trophy cabinet", () => {
 
     expect(await screen.findByText("Perpetual trophies")).toBeInTheDocument();
     const kettle = screen.getByText("The Kettle").closest("article")!;
+    expect(kettle.querySelector("img")).toHaveAttribute(
+      "src",
+      "/image/badges/by-id/trophy-kettle.svg",
+    );
     expect(
       within(kettle).getByRole("link", { name: "Bob Brown" }),
     ).toHaveAttribute("href", "/admin/members/badges/p1");

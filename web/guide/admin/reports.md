@@ -78,8 +78,8 @@ trophy cabinet and the members who have earned badges at your unit.
 ### Perpetual trophies
 
 The unit has twelve trophies, and each one has one holder at a time. Whoever beats
-the holder takes it from them. Each card shows who holds the trophy, their score and
-when they took it. Open **How to win it** to see exactly what it takes and who held
+the holder takes it from them. Each card shows the trophy's shield, who holds it, their
+score and when they took it. Open **How to win it** to see exactly what it takes and who held
 it before.
 
 - Most trophies are worked out overnight, from the last 30 to 90 days of sign-ins.

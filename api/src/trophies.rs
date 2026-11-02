@@ -767,6 +767,23 @@ pub fn decide(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The Badge Report, the kiosk guide and the congratulations email draw each trophy
+    /// from web/public/image/badges/by-id/trophy-<id>.svg, and its PNG render (make
+    /// badge-pngs) for email.
+    #[test]
+    fn every_trophy_has_its_pictures() {
+        let dir =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../web/public/image/badges");
+        for trophy in TROPHIES {
+            for path in [
+                dir.join(format!("by-id/trophy-{}.svg", trophy.id)),
+                dir.join(format!("png/trophy-{}.png", trophy.id)),
+            ] {
+                assert!(path.is_file(), "no picture at {}", path.display());
+            }
+        }
+    }
     use chrono::TimeZone;
 
     const HOUR: u64 = 3600;

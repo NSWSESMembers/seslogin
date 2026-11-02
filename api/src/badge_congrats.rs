@@ -481,7 +481,7 @@ fn build_html(name: &str, wins: &[&Win], icon_base_url: &str, unit_names: &[&str
             "Unit trophies"
         }));
         for win in trophy_wins {
-            html.push_str(&trophy_card(win));
+            html.push_str(&trophy_card(win, icon_base_url));
         }
     }
     if !badge_wins.is_empty() {
@@ -558,7 +558,7 @@ fn badge_card(win: &Win, icon_base_url: &str) -> String {
     )
 }
 
-fn trophy_card(win: &Win) -> String {
+fn trophy_card(win: &Win, icon_base_url: &str) -> String {
     let Win::Trophy {
         trophy,
         location_name,
@@ -579,7 +579,7 @@ fn trophy_card(win: &Win) -> String {
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:2px solid #f2c14e;border-radius:14px;background:#fffaeb">
 <tr>
   <td width="112" align="center" valign="middle" style="padding:18px 0 18px 18px">
-    <table role="presentation" cellpadding="0" cellspacing="0"><tr><td width="96" height="96" align="center" valign="middle" style="width:96px;height:96px;border-radius:48px;background:#f6c544;background-image:radial-gradient(circle at 35% 30%,#fde68a,#f2b51c);font-size:52px;line-height:96px">&#127942;</td></tr></table>
+    <img src="{icon}" width="96" height="96" alt="{name} trophy" style="display:block;border:0">
   </td>
   <td valign="middle" style="padding:18px 20px 18px 16px">
     <span style="display:inline-block;background:#f6d77a;color:#6b4b00;border-radius:999px;padding:3px 10px;font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase">{unit} trophy</span>
@@ -593,6 +593,7 @@ fn trophy_card(win: &Win) -> String {
 </table>
 </td></tr>
 "#,
+        icon = badge_icon_url_by_badge_id(icon_base_url, &format!("trophy-{}", trophy.id)),
         unit = escape_html(location_name),
         name = escape_html(trophy.name),
         tagline = escape_html(trophy.tagline),
@@ -685,6 +686,7 @@ mod tests {
         assert!(html.contains("https://example.com/image/badges/png/first-steps.png"));
         assert!(html.contains("First Steps"));
         assert!(html.contains("The Kettle"));
+        assert!(html.contains("https://example.com/image/badges/png/trophy-kettle.png"));
         assert!(html.contains("You took it from Bob &lt;Brown&gt;."));
         assert!(html.contains("Unit A has badge emails turned on"));
         assert!(!html.contains("<Brown>"));

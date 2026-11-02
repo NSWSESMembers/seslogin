@@ -52,17 +52,76 @@ function reignEnding(reign: ReportReign) {
   }
 }
 
-function TrophyCard({ trophy }: { trophy: ReportTrophy }) {
+// The shield's outline colour, as in its SVG.
+const TROPHY_COLOUR = "#9a6d12";
+
+/**
+ * The trophy's shield (web/public/image/badges/by-id/trophy-<id>.svg) with the
+ * unit's name on a ribbon across it: the trophy belongs to the unit.
+ */
+function TrophyShield({
+  trophyId,
+  unitName,
+}: {
+  trophyId: string;
+  unitName: string;
+}) {
+  const label = unitName.toUpperCase();
+  // The ribbon holds about 16 characters at full size; shrink longer names.
+  const fontSize = Math.min(9.5, 150 / Math.max(label.length, 1));
+  return (
+    <div className="relative size-32.5">
+      <img
+        src={`/image/badges/by-id/trophy-${trophyId}.svg`}
+        alt=""
+        width={130}
+        height={130}
+        className="size-full"
+      />
+      <svg
+        viewBox="-10 0 140 140"
+        className="absolute inset-0 size-full"
+        aria-hidden
+      >
+        <path
+          d="M2 92 H118 L112 101 L118 110 H2 L8 101 Z"
+          fill={TROPHY_COLOUR}
+        />
+        <text
+          x="60"
+          y={101 + fontSize * 0.36}
+          textAnchor="middle"
+          fontFamily="ui-monospace, Menlo, Consolas, monospace"
+          fontSize={fontSize}
+          fontWeight={600}
+          letterSpacing={fontSize * 0.14}
+          fill="#ffffff"
+        >
+          {label}
+        </text>
+      </svg>
+    </div>
+  );
+}
+
+function TrophyCard({
+  trophy,
+  unitName,
+}: {
+  trophy: ReportTrophy;
+  unitName: string;
+}) {
   return (
     <article className="flex flex-col gap-2 rounded-xl border border-[#d7c3b1] bg-linear-to-b from-[#fff9f1] to-white px-4 py-3.5 dark:border-line dark:from-surface-raised dark:to-surface-raised">
-      <div>
+      <div className="flex flex-col items-center gap-1 text-center">
+        <TrophyShield trophyId={trophy.id} unitName={unitName} />
         <div className="font-title text-xl text-navy dark:text-ink">
           {trophy.name}
         </div>
         <div className="text-sm text-ink-muted">{trophy.tagline}</div>
       </div>
       {trophy.holder ? (
-        <div>
+        <div className="text-center">
           <TextLink to={`/admin/members/badges/${trophy.holder.id}`}>
             {personName(trophy.holder)}
           </TextLink>
@@ -74,12 +133,12 @@ function TrophyCard({ trophy }: { trophy: ReportTrophy }) {
           </div>
         </div>
       ) : (
-        <div className="text-sm text-ink-muted">
+        <div className="text-center text-sm text-ink-muted">
           Nobody holds it yet. It takes at least {trophy.minimumLabel}.
         </div>
       )}
       <details className="group/rule text-sm">
-        <summary className="cursor-pointer list-none text-ink-muted [&::-webkit-details-marker]:hidden">
+        <summary className="cursor-pointer list-none text-center text-ink-muted [&::-webkit-details-marker]:hidden">
           <span
             aria-hidden
             className="mr-1 inline-block transition-transform group-open/rule:rotate-90"
@@ -115,20 +174,22 @@ function TrophyCard({ trophy }: { trophy: ReportTrophy }) {
 
 function TrophyCabinet({
   trophies,
+  unitName,
 }: {
   trophies: ReadonlyArray<ReportTrophy>;
+  unitName: string;
 }) {
   return (
     <section className="my-6">
       <SectionHeading>Perpetual trophies</SectionHeading>
-      <p className="my-2 max-w-[68ch]">
+      <p className="mx-auto my-2 max-w-[68ch]">
         Each trophy belongs to the unit and has one holder at a time. Whoever
         beats the holder takes it. Most are worked out overnight; The Boomerang
         and The Odometer can change hands when a member signs in.
       </p>
       <div className="grid grid-cols-[repeat(auto-fill,minmax(230px,1fr))] gap-3">
         {trophies.map((trophy) => (
-          <TrophyCard key={trophy.id} trophy={trophy} />
+          <TrophyCard key={trophy.id} trophy={trophy} unitName={unitName} />
         ))}
       </div>
     </section>
@@ -261,7 +322,10 @@ export default function ReportsBadges() {
         </article>
       </div>
 
-      <TrophyCabinet trophies={location.trophies} />
+      <TrophyCabinet
+        trophies={location.trophies}
+        unitName={selectedLocation.name}
+      />
 
       <SectionHeading>Members' badges</SectionHeading>
       <AdminTable>
