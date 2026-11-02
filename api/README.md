@@ -515,6 +515,36 @@ units (kiosk scans, directly-created periods and `badge-nightly` alike); distanc
 measure from the nearest of the member's units that has coordinates. The admin Activity pages
 label a visitor "Visiting from <unit>" and a member whose primary unit is elsewhere "Primary: <unit>".
 
+## Perpetual trophies
+
+Twelve badges that belong to a **unit**, not a member, each with exactly one holder at a
+time (`src/trophies.rs`). Whoever beats the holder takes it, and every change of hands is
+kept as a reign in the `trophy` table (see SCHEMA.md). Two kinds:
+
+- **Standing records** (The Boomerang: longest gap between sign-ins at the unit; The
+  Odometer: a member's furthest sign-in at a unit that is none of theirs, from the
+  nearest of their own units). A claim counts for 365 days; a strictly bigger one takes
+  the trophy. When the holder's claim ages out, the best claim still inside the window
+  takes over, or the holder keeps it if there is none.
+- **Rolling leads** (the other ten), scored nightly over a trailing window. A challenger
+  must strictly beat the holder's current score and meet the minimum; a quiet holder
+  keeps it until passed.
+
+Ties go to the holder, and between challengers on the same score, whoever reached it
+first. Only a unit's own members (primary or secondary) can hold its trophies. Every
+hours-based trophy counts a sign-in at most 12 hours, so nothing rewards a long shift.
+
+`trophy_nightly::run`, at the end of `badge-nightly` (`seslogin-badge-nightly`), is the
+source of truth: for every unit with gamification on it reads 372 days of sign-ins,
+scores each trophy, and writes what changed with `write_trophy`, which is conditional on
+the holder row's version. It also catches what a kiosk scan can't: a record whose period
+was deleted or edited reverts to the best claim still standing (or goes vacant), a claim
+that has aged out passes on, and a holder who is no longer a member hands the trophy to
+the leader (or leaves it vacant). Each change writes a reign for the old holder and
+notices for the member who took it and, if they were beaten, the one who lost it. A
+dry run (`badge-nightly` without `--apply`) logs the changes instead. A unit that fails
+is logged and skipped. `cli trophy list --location <id>` shows a unit's cabinet.
+
 ## Tally (members)
 
 Tally is for **members**, not users: every Tally field below admits only an

@@ -7,6 +7,7 @@ use tracing::info;
 use crate::badge_store;
 use crate::badges;
 use crate::db;
+use crate::trophy_nightly;
 
 /// How far back the nightly rules look. It has to hold the longest streak awarded
 /// here, the 52-week one, plus the current part-week, which also covers the whole of
@@ -196,6 +197,9 @@ pub async fn run(db: &impl db::Handler, args: NightlyArgs) -> Result<()> {
         "Nightly badge evaluation complete; awarded {} badges",
         total_awards
     );
+
+    // Perpetual trophies, at the same units: those with gamification on.
+    trophy_nightly::run(db, now_ts, args.dry_run).await?;
     Ok(())
 }
 
