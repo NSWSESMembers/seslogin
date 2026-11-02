@@ -5,6 +5,7 @@ import TextInput from "../../components/ui/TextInput";
 import Select from "../../components/ui/Select";
 import { Button } from "../../components/ui/Button";
 import { Muted } from "../../components/ui/Muted";
+import { TextLink } from "../../components/ui/TextLink";
 
 /** Marks an option still finding its shape — shared so two options flagged
  * beta don't drift into two different-looking badges. */
@@ -641,14 +642,13 @@ function HealthcheckUrlField({
         while the kiosk using this session remains connected to the system (set
         your check's period to 15 minutes, with a grace time of about 10
         minutes). Perfect for use with something like{" "}
-        <a
+        <TextLink
           href="https://healthchecks.io/"
           target="_blank"
           rel="noreferrer"
-          className="underline"
         >
           healthchecks.io
-        </a>{" "}
+        </TextLink>{" "}
         to automatically notify you when the kiosk isn't working.
       </Muted>
     </FormField>

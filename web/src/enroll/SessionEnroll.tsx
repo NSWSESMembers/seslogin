@@ -1,5 +1,6 @@
 import { graphql, useMutation } from "react-relay";
-import { Link, useSearchParams } from "react-router";
+import { TextLink } from "../components/ui/TextLink";
+import { useSearchParams } from "react-router";
 import { useState } from "react";
 import SessionForm from "../admin/components/SessionForm";
 import { NEW_SESSION_CONFIG } from "../admin/components/sessionConfig";
@@ -118,7 +119,7 @@ function SessionEnrollForm({ fingerprint }: { fingerprint: string }) {
       <Notice title="Kiosk enrolled">
         The kiosk screen will switch over automatically within a few seconds.
         You can close this page, or head to{" "}
-        <Link to="/admin/sessions">the kiosks list</Link>.
+        <TextLink to="/admin/sessions">the kiosks list</TextLink>.
       </Notice>
     );
   }

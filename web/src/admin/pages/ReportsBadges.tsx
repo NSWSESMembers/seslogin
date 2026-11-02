@@ -1,5 +1,5 @@
 import { graphql } from "react-relay";
-import { Link } from "react-router";
+import { TextLink } from "../../components/ui/TextLink";
 import { useRetryableLazyLoadQuery } from "../../components/useRetryableLazyLoadQuery";
 import useSelectedLocation from "../components/useSelectedLocation";
 import { formatFullDateTime } from "../../lib/time";
@@ -54,7 +54,7 @@ export default function ReportsBadges() {
       <>
         <p className="my-4">Gamification is disabled for this location.</p>
         <p className="my-4">
-          <Link to="/admin/reports">Back to reports</Link>
+          <TextLink to="/admin/reports">Back to reports</TextLink>
         </p>
       </>
     );
@@ -91,7 +91,7 @@ export default function ReportsBadges() {
         awards, and members who are building momentum.
       </p>
       <p className="my-4">
-        <Link to="/admin/members">Back to members</Link>
+        <TextLink to="/admin/members">Back to members</TextLink>
       </p>
 
       <div className="my-4 grid grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-3">
@@ -135,9 +135,9 @@ export default function ReportsBadges() {
               >
                 <Td>{ranks[idx]}</Td>
                 <Td nowrap>
-                  <Link to={`/admin/members/badges/${person.id}`}>
+                  <TextLink to={`/admin/members/badges/${person.id}`}>
                     {person.firstName} {person.lastName}
-                  </Link>
+                  </TextLink>
                 </Td>
                 <Td>{person.memberNumber || "-"}</Td>
                 <Td>

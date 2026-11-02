@@ -1,4 +1,5 @@
 import { graphql } from "react-relay";
+import { TextLink } from "../../components/ui/TextLink";
 import { useRetryableLazyLoadQuery } from "../../components/useRetryableLazyLoadQuery";
 import type {
   LocationDetailsDialogQuery,
@@ -79,13 +80,13 @@ function LocationDetails({ locationId }: { locationId: string }) {
         <Field label="Zone">{location.zone?.name ?? NONE}</Field>
         <Field label="Coordinates">
           {hasCoordinates ? (
-            <a
+            <TextLink
               href={mapUrl(location.latitude!, location.longitude!)}
               target="_blank"
               rel="noreferrer"
             >
               {location.latitude}, {location.longitude}
-            </a>
+            </TextLink>
           ) : (
             NONE
           )}
@@ -99,14 +100,16 @@ function LocationDetails({ locationId }: { locationId: string }) {
         </Field>
         <Field label="Email">
           {location.email ? (
-            <a href={`mailto:${location.email}`}>{location.email}</a>
+            <TextLink href={`mailto:${location.email}`}>
+              {location.email}
+            </TextLink>
           ) : (
             NONE
           )}
         </Field>
         <Field label="Phone">
           {location.phone ? (
-            <a href={`tel:${location.phone}`}>{location.phone}</a>
+            <TextLink href={`tel:${location.phone}`}>{location.phone}</TextLink>
           ) : (
             NONE
           )}
