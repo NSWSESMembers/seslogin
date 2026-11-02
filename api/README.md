@@ -545,6 +545,16 @@ notices for the member who took it and, if they were beaten, the one who lost it
 dry run (`badge-nightly` without `--apply`) logs the changes instead. A unit that fails
 is logged and skipped. `cli trophy list --location <id>` shows a unit's cabinet.
 
+On a kiosk scan (`trophy_scan.rs`, under the same switches as badges: `kiosk_badge_member`)
+a sign-in can take a standing record on the spot: The Boomerang when it is at one of the
+member's units (the gap since their previous sign-in there), or The Odometer at each of
+their units with gamification on when it is at a unit that is none of theirs
+(`away_distance_km`). A take writes the reign and a `lost` notice for the old holder, and
+a version conflict is left for the nightly run. `scanRegister2` (on a sign-in) and
+`scanSignOutWithBadges` return `trophyChanges`: what this scan took, plus the member's
+unseen notices at each of their units, which are then deleted. A kiosk that doesn't
+select `trophyChanges` still makes claims but leaves the notices for one that does.
+
 ## Tally (members)
 
 Tally is for **members**, not users: every Tally field below admits only an

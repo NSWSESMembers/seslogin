@@ -304,6 +304,10 @@ before.
 - **Most trophies are worked out overnight.** The Boomerang and The Odometer can
   change hands as soon as you sign in.
 - **No trophy rewards one long shift.** Hours count at most 12 hours per sign-in.
+- **The kiosk tells you.** When a sign-in takes The Boomerang or The Odometer, the
+  kiosk shows it straight away. Anything else you took or lost since your last scan,
+  overnight or when someone else signed in, is shown the next time you scan at a
+  kiosk with badges turned on, once.
 
 | Trophy        | How to win it                                                                                                                                            | At least |
 | ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |

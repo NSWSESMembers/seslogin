@@ -49,6 +49,7 @@ export type PersonResolvedAction = {
   /** Only present when signing out, and only if the kiosk asked for it. */
   quickPick?: QuickPickSuggestions;
   awardedBadges?: BadgeAward[];
+  trophyChanges?: TrophyChange[];
 };
 
 export type BadgeAward = {
@@ -56,6 +57,16 @@ export type BadgeAward = {
   name: string;
   description: string;
   tier: string;
+};
+
+/** A unit trophy the member just took, or took or lost since their last scan. */
+export type TrophyChange = {
+  trophyId: string;
+  name: string;
+  kind: string;
+  valueLabel: string;
+  otherPersonName: string | null | undefined;
+  locationName: string;
 };
 
 export type ErrorAction = {
@@ -87,6 +98,7 @@ export type AdjustPeriodAction = {
   startTime: Date;
   endTime: Date;
   awardedBadges?: BadgeAward[];
+  trophyChanges?: TrophyChange[];
 };
 
 export type PurgeExpiredTransactionsAction = {
@@ -150,6 +162,7 @@ export type TransactionSignedIn = {
   };
   startTime: Date;
   awardedBadges?: BadgeAward[];
+  trophyChanges?: TrophyChange[];
 };
 
 export type TransactionSignedOut = {
@@ -180,6 +193,7 @@ export type TransactionSignedOut = {
   forgotSignOutPrompted: boolean;
   quickPick?: QuickPickSuggestions;
   awardedBadges?: BadgeAward[];
+  trophyChanges?: TrophyChange[];
 };
 
 export type TransactionLoading = LoadingLabel & {
@@ -248,6 +262,7 @@ export function reducer(
           status: "SIGNED_IN",
           periodId: action.periodId,
           awardedBadges: action.awardedBadges,
+          trophyChanges: action.trophyChanges,
         };
       } else if (action.status == "SIGNED_OUT") {
         updatedTransaction = {
@@ -265,6 +280,7 @@ export function reducer(
           periodId: action.periodId,
           quickPick: action.quickPick,
           awardedBadges: action.awardedBadges,
+          trophyChanges: action.trophyChanges,
         };
       } else {
         throw Error("Invalid status in PERSON_RESOLVED action");
@@ -437,6 +453,7 @@ export function reducer(
         adjusted: true,
         finalizedTime: new Date(),
         awardedBadges: action.awardedBadges ?? oldTransaction.awardedBadges,
+        trophyChanges: action.trophyChanges ?? oldTransaction.trophyChanges,
       };
       return {
         ...state,

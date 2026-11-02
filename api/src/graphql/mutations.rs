@@ -30,6 +30,8 @@ use crate::queue;
 use crate::queue::Handler as _;
 use crate::realtime;
 use crate::realtime::Handler as _;
+use crate::trophies;
+use crate::trophy_scan;
 use async_graphql::dataloader::DataLoader;
 use hex;
 
@@ -251,6 +253,33 @@ struct RegisterResult<A: App + HasDb + Send + Sync + 'static> {
     /// units (primary or secondary) all have gamification on, and always empty for a
     /// sign-out pending.
     awarded_badges: Vec<BadgeAward>,
+    /// Unit trophies this sign-in took, and those the member took or lost since their
+    /// last scan. Under the same conditions as `awardedBadges`; always empty for a
+    /// sign-out pending.
+    trophy_changes: Vec<TrophyChange>,
+}
+
+/// Whether a member took a unit trophy or lost one.
+#[derive(Enum, Copy, Clone, Eq, PartialEq)]
+enum TrophyChangeKind {
+    Taken,
+    Lost,
+}
+
+/// A change to one of a unit's perpetual trophies, for the kiosk to show the member.
+#[derive(SimpleObject)]
+struct TrophyChange {
+    /// The trophy's ID, e.g. `kettle`.
+    trophy_id: ID,
+    /// e.g. `The Kettle`.
+    name: String,
+    kind: TrophyChangeKind,
+    /// The winning score or claim, e.g. `9 busy days` or `212 days away`.
+    value_label: String,
+    /// Who they took it from, or who took it from them, by name; null if nobody held it.
+    other_person_name: Option<String>,
+    /// The unit the trophy belongs to.
+    location_name: String,
 }
 
 #[derive(SimpleObject)]
@@ -267,6 +296,9 @@ struct ScanSignOutResult<A: App + HasDb + Send + Sync + 'static> {
     period: Period<A>,
     /// Badges to celebrate on this sign-out; see `RegisterResult.awardedBadges`.
     awarded_badges: Vec<BadgeAward>,
+    /// Unit trophies the member took or lost since their last scan; see
+    /// `RegisterResult.trophyChanges`.
+    trophy_changes: Vec<TrophyChange>,
 }
 
 #[derive(SimpleObject)]
@@ -519,6 +551,127 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
             warn!("failed to work out badges for person {person_id}: {e:?}");
             vec![]
         })
+    }
+
+    /// The perpetual trophy work for a kiosk scan: on a sign-in (`signed_in` is the new
+    /// period) the member may take The Boomerang at a unit of theirs, or The Odometer at
+    /// each of their units with gamification on when they sign in at a unit that is none
+    /// of theirs. When `show` is set, the trophy changes they haven't seen yet at their
+    /// own units are returned too, and cleared. Under the same conditions as badges
+    /// (`kiosk_badge_member`); best-effort like them, so a failure is logged and
+    /// treated as nothing to show. The nightly run settles anything a scan misses.
+    async fn kiosk_trophy_changes(
+        &self,
+        session_id: &str,
+        location_id: &str,
+        person_id: &str,
+        signed_in: Option<&db::Period>,
+        show: bool,
+    ) -> Vec<TrophyChange> {
+        let result = async {
+            let Some(location) = self.location_by_id(location_id).await? else {
+                return Ok(vec![]);
+            };
+            let Some(person) = self
+                .kiosk_badge_member(session_id, &location, person_id)
+                .await?
+            else {
+                return Ok(vec![]);
+            };
+            let db = self.app.db();
+            let now = crate::clock::now_sec();
+            let mut changes = Vec::new();
+            if let Some(period) = signed_in {
+                if person.is_member_of(location_id) {
+                    let virtual_ids: std::collections::HashSet<String> = db
+                        .list_categories()
+                        .await?
+                        .into_iter()
+                        .filter(|c| c.is_virtual)
+                        .map(|c| c.id)
+                        .collect();
+                    if let Some(claim) =
+                        trophy_scan::boomerang_claim(db, period, &virtual_ids).await?
+                    {
+                        changes.extend(
+                            trophy_scan::try_claim(db, location_id, "boomerang", &claim, now)
+                                .await?,
+                        );
+                    }
+                } else if let Some(km) = self.away_distance_km(&person, &location).await?
+                    && let Some(claim) = trophy_scan::odometer_claim(period, km)
+                {
+                    let units = db.get_locations(&person.member_location_ids()).await?;
+                    for unit in units
+                        .into_iter()
+                        .flatten()
+                        .filter(|u| u.gamification_enabled)
+                    {
+                        changes.extend(
+                            trophy_scan::try_claim(db, &unit.id, "odometer", &claim, now).await?,
+                        );
+                    }
+                }
+            }
+            if show {
+                changes.extend(
+                    trophy_scan::take_notices(db, person_id, &person.member_location_ids()).await?,
+                );
+            }
+            self.describe_trophy_changes(changes).await
+        }
+        .await;
+        result.unwrap_or_else(|e: anyhow::Error| {
+            warn!("failed to work out trophies for person {person_id}: {e:?}");
+            vec![]
+        })
+    }
+
+    /// Put names to trophy changes for the kiosk.
+    async fn describe_trophy_changes(
+        &self,
+        changes: Vec<trophy_scan::ScanTrophyChange>,
+    ) -> Result<Vec<TrophyChange>> {
+        if changes.is_empty() {
+            return Ok(vec![]);
+        }
+        let db = self.app.db();
+        let person_ids: Vec<&str> = changes
+            .iter()
+            .filter_map(|c| c.other_person_id.as_deref())
+            .collect();
+        let people: std::collections::HashMap<String, String> = db
+            .get_persons(&person_ids)
+            .await?
+            .into_iter()
+            .flatten()
+            .map(|p| (p.id.clone(), format!("{} {}", p.first_name, p.last_name)))
+            .collect();
+        let location_ids: Vec<&str> = changes.iter().map(|c| c.location_id.as_str()).collect();
+        let locations: std::collections::HashMap<String, String> = db
+            .get_locations(&location_ids)
+            .await?
+            .into_iter()
+            .flatten()
+            .map(|l| (l.id, l.name))
+            .collect();
+        Ok(changes
+            .into_iter()
+            .filter_map(|c| {
+                let trophy = trophies::definition(&c.trophy_id)?;
+                Some(TrophyChange {
+                    trophy_id: ID(c.trophy_id),
+                    name: trophy.name.to_string(),
+                    kind: match c.kind {
+                        db::TrophyNoticeKind::Taken => TrophyChangeKind::Taken,
+                        db::TrophyNoticeKind::Lost => TrophyChangeKind::Lost,
+                    },
+                    value_label: trophies::value_label(trophy.unit, c.value),
+                    other_person_name: c.other_person_id.and_then(|id| people.get(&id).cloned()),
+                    location_name: locations.get(&c.location_id).cloned().unwrap_or_default(),
+                })
+            })
+            .collect())
     }
 
     /// Apply both halves of a directly-created (non-kiosk) period to badge progress:
@@ -889,6 +1042,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
             quick_pick,
             person: None,
             awarded_badges: vec![],
+            trophy_changes: vec![],
         }
     }
 
@@ -3640,6 +3794,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
                 quick_pick: None,
                 person: None,
                 awarded_badges: vec![],
+                trophy_changes: vec![],
             });
         };
 
@@ -3684,6 +3839,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
                         quick_pick: None,
                         person: Some(person),
                         awarded_badges: vec![],
+                        trophy_changes: vec![],
                     });
                 }
             }
@@ -3710,6 +3866,18 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
                     display,
                 )
                 .await;
+            // Likewise a kiosk that doesn't select `trophyChanges` still makes claims, but
+            // leaves the member's unseen changes for a kiosk that can show them.
+            let show_trophies = ctx.look_ahead().field("trophyChanges").exists();
+            let trophy_changes = self
+                .kiosk_trophy_changes(
+                    session_id,
+                    location_id,
+                    &person_id,
+                    Some(&rec),
+                    show_trophies,
+                )
+                .await;
 
             Ok(RegisterResult {
                 state: RegisterState::SignedIn,
@@ -3717,6 +3885,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
                 quick_pick: None,
                 person: None,
                 awarded_badges,
+                trophy_changes,
             })
         }
     }
@@ -3807,9 +3976,18 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
             .sign_out_at_kiosk(ctx, &id, start_time, end_time, &category_id)
             .await?;
         let awarded_badges = self.award_sign_out_badges(ctx, &rec, true).await;
+        let trophy_changes = match (rec.person_id.as_deref(), ctx.data_opt::<AuthInfo>()) {
+            (Some(person_id), Some(AuthInfo::Session { id: session_id, .. })) => {
+                let show = ctx.look_ahead().field("trophyChanges").exists();
+                self.kiosk_trophy_changes(session_id, &rec.location_id, person_id, None, show)
+                    .await
+            }
+            _ => vec![],
+        };
         Ok(ScanSignOutResult {
             period: Period::new(rec),
             awarded_badges,
+            trophy_changes,
         })
     }
 
