@@ -704,6 +704,40 @@ Members sharing their phone's position with a location's members ("Locate"), for
 
 ---
 
+### `{prefix}trophy`
+
+Each unit's cabinet of perpetual trophies: unit-bound badges with exactly one holder at a time, which pass from member to member as someone beats the holder. One partition per location, so the whole cabinet is one Query. Every row is worked out from periods (by the nightly run, and by a kiosk scan for the two standing records), so the table is **not audited**, like person `BadgeState`. Holder writes are conditional on `version`, so a kiosk scan and the nightly run can't both take the same trophy.
+
+| Attribute     | Type | Role                                                      |
+| ------------- | ---- | --------------------------------------------------------- |
+| `location_id` | S    | Hash key (PK) — the unit the trophy belongs to            |
+| `sk`          | S    | Range key — what the row is; see below                    |
+
+No GSIs.
+
+Three kinds of row share the partition, told apart by the `sk` prefix:
+
+- **Holder** — `holder#<trophy_id>`: who holds the trophy now. Absent while it is vacant.
+  - `trophy_id` (S), `person_id` (S) — the holder
+  - `value` (N) — the holder's current score or claim, in the trophy's unit (busy days, hours, nights, sign-outs, days, weeks, days away, km)
+  - `claimed_at` (N) — Unix seconds when the holder reached `value`
+  - `reign_started_at` (N) — Unix seconds when the holder took the trophy
+  - `claim_period_id` (S, optional) — for a standing record, the period the claim rests on; omitted otherwise
+  - `version` (N) — starts at 1; every write of the row is conditional on it
+- **Reign** — `reign#<trophy_id>#<started_at, zero-padded to 10 digits>#<person_id>`: one finished reign, written when the trophy leaves its holder, so a descending query on `reign#<trophy_id>#` lists the history newest first. The current reign is the holder row.
+  - `trophy_id` (S), `person_id` (S), `value` (N) — the holder's last score or claim
+  - `started_at` (N), `ended_at` (N) — Unix seconds
+  - `end_reason` (S) — `stolen` (beaten), `aged-out` (a standing record's claim left its 365-day window), `reverted` (the period the claim rested on was deleted or changed) or `left-unit` (the holder is no longer a member)
+  - `ended_by_person_id` (S, optional) — who took it; omitted when it went vacant
+- **Notice** — `notice#<person_id>#<trophy_id>#<at, zero-padded to 10 digits>`: a change a member hasn't seen yet, shown on their next kiosk scan and then deleted.
+  - `person_id` (S), `trophy_id` (S)
+  - `kind` (S) — `taken` (they took it) or `lost` (someone took it from them)
+  - `other_person_id` (S, optional) — who they took it from, or who took it
+  - `value` (N) — the winning score or claim
+  - `at` (N) — Unix seconds
+
+---
+
 ### `{prefix}notification`
 
 Each member's in-app notification inbox (Tally), fanned out on write: an event notifying several members is stored as one full copy per recipient, so the inbox is a single query with no join. Titles and bodies are small and written once, so a copy costs the same single write unit as a reference would. Rows are removed by the TTL 90 days after they were created, read or not.
