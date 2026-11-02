@@ -15,16 +15,18 @@ The kiosk may first offer a **Quick pick**:
   the names of some who chose it.
 - **Your recent picks**: what you chose last time.
 
-Tap one to choose it, or press **More categories** to see them all.
+Tap one to choose it, or press **More categories** to see them all. If your unit
+has turned on category search, you can also type into the search box above them;
+see [Searching for a category](#searching-for-a-category).
 
-![The Quick pick screen, with recent choices at the unit and your own](../screenshots/kiosk-quick-pick.png "Quick pick: tap the one that fits.")
+![The Quick pick screen, with recent choices at the unit and your own](../screenshots/kiosk-quick-pick.png "Quick pick: tap the one that fits. The search box only shows if your unit has turned on category search.")
 
 **More categories** shows the groups first, such as Training or Other. Tap a
 group to see the categories in it, and tap the one that fits. **← Categories**
-takes you back to the groups. If your unit has turned on category search, a
-search box sits above the groups; see [Searching for a category](#searching-for-a-category).
+takes you back to the groups. With category search on, a search box sits above
+the groups too.
 
-![The list of category groups](../screenshots/kiosk-categories.png "Choose a group, then a category in it.")
+![The list of category groups](../screenshots/kiosk-categories.png "Choose a group, then a category in it. The search box only shows if your unit has turned on category search.")
 
 ## Searching for a category
 

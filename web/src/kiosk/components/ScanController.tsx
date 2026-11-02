@@ -843,6 +843,8 @@ export default function ScanController(props: {
         onSkip={onSkipQuickPick}
         uuid={needsQuickPick ? transactionUuid : null}
         suggestions={quickPickSuggestions}
+        categorySearch={categorySearch}
+        autoFocusSearch={!touchInput}
       />
       <ScanScreenCategories
         screenPosition={categoriesPos}

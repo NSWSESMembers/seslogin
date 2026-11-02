@@ -380,6 +380,33 @@ describe("KioskMain quick pick categories", () => {
     );
   });
 
+  it("searches from the quick pick screen too, and a result goes to confirm", async () => {
+    server.use(
+      sessionConfigHandler({
+        quickPickCategories: true,
+        categorySearch: true,
+      }),
+      register2Handler(POPULATED_QUICK_PICK),
+    );
+    const user = await setupTest();
+    await user.type(screen.getByRole("textbox"), SIGNOUT_USER + "{enter}");
+
+    await waitFor(() =>
+      expect(screen.getByText("Quick pick")).toBeInTheDocument(),
+    );
+    // The category screen's box is mounted too, parked off to the side.
+    const box = screen
+      .getAllByRole("searchbox")
+      .find((input) => !input.closest("[inert]"))!;
+    await user.type(box, "aiims");
+    expect(screen.queryByText("This location")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Training, AIIMS" }));
+
+    await waitFor(() =>
+      expect(screen.getByText("Confirm")).toBeInTheDocument(),
+    );
+  });
+
   it("skips straight to the full category tree when there are no recent categories", async () => {
     await setupQuickPickTest(EMPTY_QUICK_PICK);
 
