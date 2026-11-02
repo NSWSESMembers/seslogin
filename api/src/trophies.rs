@@ -799,6 +799,18 @@ pub fn decide(
 mod tests {
     use super::*;
 
+    /// The Badge Report and the kiosk guide draw each trophy from
+    /// web/public/image/badges/by-id/trophy-<id>.svg.
+    #[test]
+    fn every_trophy_has_its_picture() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../web/public/image/badges/by-id");
+        for trophy in TROPHIES {
+            let path = dir.join(format!("trophy-{}.svg", trophy.id));
+            assert!(path.is_file(), "no picture at {}", path.display());
+        }
+    }
+
     use chrono::TimeZone;
 
     const HOUR: u64 = 3600;
