@@ -115,6 +115,10 @@ local-cli:
 guide-screenshots:
 	@node local/guide/capture.mjs $(SHOTS)
 
+# Re-render the badge PNGs emails use (web/public/image/badges/png/) from the SVGs.
+badge-pngs:
+	@web/scripts/badge-pngs.sh
+
 local-tables:
 	@$(LOCAL_ENV) cd api && cargo run --quiet --bin local-tables
 

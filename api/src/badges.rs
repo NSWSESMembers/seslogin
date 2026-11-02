@@ -3899,6 +3899,26 @@ mod tests {
         }
     }
 
+    /// Emails draw badges from PNG renders (web/public/image/badges/png/), since
+    /// Gmail and Outlook don't show SVG. `make badge-pngs` makes them.
+    #[test]
+    fn every_badge_has_an_email_png() {
+        let dir =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../web/public/image/badges/png");
+        let ids = BADGE_DEFINITIONS
+            .iter()
+            .map(|definition| definition.id)
+            .chain(["first-signin-location-template"]);
+        for id in ids {
+            let path = dir.join(format!("{id}.png"));
+            assert!(
+                path.is_file(),
+                "no PNG at {} (run make badge-pngs)",
+                path.display()
+            );
+        }
+    }
+
     #[test]
     fn badge_names_are_unique() {
         let mut seen = std::collections::HashSet::new();
