@@ -110,6 +110,10 @@ impl mail::Handler for Handler {
     async fn send_html(&self, to: &str, subject: &str, html: &str) -> Result<()> {
         self.record(to, subject, html, true)
     }
+
+    async fn send_multipart(&self, to: &str, subject: &str, html: &str, _text: &str) -> Result<()> {
+        self.record(to, subject, html, true)
+    }
 }
 
 #[cfg(test)]

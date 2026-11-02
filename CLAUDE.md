@@ -190,6 +190,7 @@ cd api && RUST_LOG=info cargo run --bin load-category-display --      # Dry-run 
 cd api && RUST_LOG=info cargo run --bin load-category-display -- --apply  # Apply it
 cd api && RUST_LOG=info cargo run --bin nitc-export -- backfill        # Dry-run NITC export backfill
 cd api && RUST_LOG=info cargo run --bin activity-summary --            # Print summary emails instead of sending
+cd api && RUST_LOG=info cargo run --bin change-digest --               # Print the daily membership-changes digest emails instead of sending
 ```
 
 `cli` is the exception: it writes immediately, and takes an optional global `--dry-run`

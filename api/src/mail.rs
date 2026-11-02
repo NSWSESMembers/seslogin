@@ -52,4 +52,14 @@ pub trait Handler: Sync {
         subject: &str,
         html: &str,
     ) -> impl Future<Output = Result<()>> + Send;
+
+    /// One message carrying both an HTML and a plain-text body; the recipient's mail
+    /// client shows whichever it prefers.
+    fn send_multipart(
+        &self,
+        to: &str,
+        subject: &str,
+        html: &str,
+        text: &str,
+    ) -> impl Future<Output = Result<()>> + Send;
 }

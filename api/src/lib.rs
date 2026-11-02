@@ -10,6 +10,7 @@ pub mod badges;
 pub mod base_url;
 pub mod calendar;
 pub mod change_digest;
+pub mod change_digest_job;
 pub mod client_info;
 pub mod clock;
 pub mod db;
