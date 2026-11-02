@@ -54,4 +54,11 @@ impl mail::Handler for Mailer {
         self.send(to, subject, Body::builder().html(html).build())
             .await
     }
+
+    async fn send_multipart(&self, to: &str, subject: &str, html: &str, text: &str) -> Result<()> {
+        let html = Content::builder().data(html).charset("UTF-8").build()?;
+        let text = Content::builder().data(text).charset("UTF-8").build()?;
+        self.send(to, subject, Body::builder().html(html).text(text).build())
+            .await
+    }
 }
