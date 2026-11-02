@@ -60,6 +60,7 @@ pub mod tasks;
 pub mod telemetry;
 pub mod text_table;
 pub mod toolbox;
+pub mod trophies;
 pub mod turnstile;
 pub mod wifi;
 
