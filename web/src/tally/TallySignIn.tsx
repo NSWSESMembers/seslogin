@@ -487,64 +487,70 @@ export default function TallySignIn() {
         )}
 
         {(step === "email" || step === "sending") && (
-          <form onSubmit={handleSendCode}>
-            <PanelIntro>
-              Enter the email address SES has for you, and we'll send you a
-              sign-in code.
-            </PanelIntro>
+          <div>
+            <PanelIntro>{clientName} uses SESLogin for sign-in.</PanelIntro>
             {error && <PanelMessage>{error}</PanelMessage>}
-            <TextInput
-              type="email"
-              className="mb-3 box-border block min-w-65 p-3 text-xl"
-              placeholder="Email address"
-              autoComplete="email webauthn"
-              value={email}
-              onChange={(e) => {
-                setEmail(e.target.value);
-                if (e.target.value.length === 0) setTurnstileToken(null);
-              }}
-              required
-              disabled={step !== "email"}
-            />
-            {/* Only once they start typing, as on the admin sign-in page, so
-                Cloudflare doesn't see challenges nobody submits. */}
-            {TURNSTILE_SITE_KEY && email.length > 0 && (
-              <div className="mb-3">
-                <Turnstile
-                  ref={turnstileRef}
-                  siteKey={TURNSTILE_SITE_KEY}
-                  onSuccess={setTurnstileToken}
-                  onExpire={() => setTurnstileToken(null)}
-                  onError={() => setTurnstileToken(null)}
-                />
-              </div>
-            )}
-            <Button
-              type="submit"
-              size="panel"
-              variant="primary"
-              disabled={
-                !email ||
-                (!turnstileToken && !!TURNSTILE_SITE_KEY) ||
-                step !== "email"
-              }
-            >
-              {step === "sending" ? "Sending…" : "Send code"}
-            </Button>
             {passkeySupported && (
-              <div className="mt-4">
+              <>
                 <Button
                   type="button"
                   size="panel"
-                  variant="secondary"
+                  variant="primary"
+                  className="w-full"
                   onClick={() => void signInWithPasskey(request, false)}
                   disabled={step !== "email"}
                 >
                   Sign in with a passkey
                 </Button>
-              </div>
+                <div className="my-6 text-center text-ink-muted">— or —</div>
+              </>
             )}
-          </form>
+            <form onSubmit={handleSendCode}>
+              <PanelIntro>
+                Enter your service email address, or another email address
+                registered in SESLogin, to receive a login code.
+              </PanelIntro>
+              <TextInput
+                type="email"
+                className="mb-3 box-border block w-full p-3 text-xl"
+                placeholder="Email address"
+                autoComplete="email webauthn"
+                value={email}
+                onChange={(e) => {
+                  setEmail(e.target.value);
+                  if (e.target.value.length === 0) setTurnstileToken(null);
+                }}
+                required
+                disabled={step !== "email"}
+              />
+              {/* Only once they start typing, as on the admin sign-in page, so
+                  Cloudflare doesn't see challenges nobody submits. */}
+              {TURNSTILE_SITE_KEY && email.length > 0 && (
+                <div className="mb-3 flex justify-center">
+                  <Turnstile
+                    ref={turnstileRef}
+                    siteKey={TURNSTILE_SITE_KEY}
+                    onSuccess={setTurnstileToken}
+                    onExpire={() => setTurnstileToken(null)}
+                    onError={() => setTurnstileToken(null)}
+                  />
+                </div>
+              )}
+              <Button
+                type="submit"
+                size="panel"
+                variant={passkeySupported ? "secondary" : "primary"}
+                className="w-full"
+                disabled={
+                  !email ||
+                  (!turnstileToken && !!TURNSTILE_SITE_KEY) ||
+                  step !== "email"
+                }
+              >
+                {step === "sending" ? "Sending…" : "Send code"}
+              </Button>
+            </form>
+          </div>
         )}
 
         {step === "passkey" && <PanelIntro>Signing you in…</PanelIntro>}
@@ -557,11 +563,12 @@ export default function TallySignIn() {
               your screen lock instead of waiting for a code.
             </PanelIntro>
             {error && <PanelMessage>{error}</PanelMessage>}
-            <div className="flex flex-row flex-wrap items-center gap-3">
+            <div className="flex flex-col gap-3">
               <Button
                 type="button"
                 size="panel"
                 variant="primary"
+                className="w-full"
                 onClick={() => void handleSavePasskey(ticket)}
                 disabled={step !== "offer"}
               >
@@ -571,6 +578,7 @@ export default function TallySignIn() {
                 type="button"
                 size="panel"
                 variant="secondary"
+                className="w-full"
                 onClick={() => {
                   dismissOffer(email);
                   void continueSignIn(ticket);
@@ -586,6 +594,7 @@ export default function TallySignIn() {
                   type="button"
                   size="panel"
                   variant="secondary"
+                  className="w-full"
                   onClick={startOver}
                 >
                   Start over
@@ -608,7 +617,7 @@ export default function TallySignIn() {
               autoComplete="one-time-code"
               pattern="[0-9]{6}"
               maxLength={6}
-              className="mb-3 box-border block min-w-65 p-3 text-xl"
+              className="mb-3 box-border block w-full p-3 text-xl"
               placeholder="6-digit code"
               aria-label="6-digit code"
               value={code}
@@ -617,11 +626,12 @@ export default function TallySignIn() {
               autoFocus
               disabled={step !== "code"}
             />
-            <div className="flex flex-row flex-wrap items-center gap-3">
+            <div className="flex flex-col gap-3">
               <Button
                 type="submit"
                 size="panel"
                 variant="primary"
+                className="w-full"
                 disabled={code.length !== 6 || step !== "code"}
               >
                 {step === "verifying" ? "Checking…" : "Sign in"}
@@ -630,6 +640,7 @@ export default function TallySignIn() {
                 type="button"
                 size="panel"
                 variant="secondary"
+                className="w-full"
                 onClick={startOver}
               >
                 Start over
