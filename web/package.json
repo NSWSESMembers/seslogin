@@ -3,8 +3,12 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "engines": {
-    "node": ">=22.22.0"
+  "devEngines": {
+    "runtime": {
+      "name": "node",
+      "version": "^26",
+      "onFail": "error"
+    }
   },
   "scripts": {
     "start": "vite",

@@ -26,7 +26,7 @@ cd web && npm i
 make dev        # API :8000 + Relay watch + web dev server :5173
 ```
 
-Prerequisites are Rust (via [rustup](https://rustup.rs)), Node.js >= 22, and AWS
+Prerequisites are Rust (via [rustup](https://rustup.rs)), Node.js 26 (pinned in `.nvmrc`), and AWS
 credentials for DynamoDB — there is no offline mode.
 
 > Local dev defaults to the **dev** database tables (`DB_PREFIX=seslogin_test`), which hold
