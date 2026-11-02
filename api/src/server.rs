@@ -303,6 +303,22 @@ async fn oauth_metadata(headers: &HeaderMap) -> impl IntoResponse {
     oauth_response(crate::oauth_http::metadata(host_header(headers)))
 }
 
+/// The metadata's `authorization_endpoint` is on the issuer's origin, which
+/// deployed is also the web app's (CloudFront serves both). Locally `poem` serves
+/// no pages, so send the browser on to the same path on the web dev server.
+#[handler]
+async fn redirect_to_web(req: &poem::Request) -> poem::Response {
+    let path_and_query = req
+        .uri()
+        .path_and_query()
+        .map_or(req.uri().path(), |pq| pq.as_str());
+    poem::web::Redirect::see_other(format!(
+        "{}{path_and_query}",
+        crate::base_url::web_base_url()
+    ))
+    .into_response()
+}
+
 #[handler]
 async fn oauth_protected_resource_metadata(headers: &HeaderMap) -> impl IntoResponse {
     oauth_response(crate::oauth_http::protected_resource_metadata(host_header(
@@ -450,6 +466,8 @@ where
             "/.well-known/oauth-authorization-server",
             get(oauth_metadata),
         )
+        .at(crate::oauth_http::AUTHORIZE_PATH, get(redirect_to_web))
+        .at("/tally/sign-in", get(redirect_to_web))
         .at(
             "/oauth/register",
             post(oauth_register::<H, Q, M, R> {

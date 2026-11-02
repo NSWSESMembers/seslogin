@@ -19,7 +19,7 @@ use tracing::warn;
 
 use crate::app::{App, HasDb};
 use crate::auth::{AuthError, hash_token};
-use crate::base_url::{api_base_url, web_base_url};
+use crate::base_url::api_base_url;
 use crate::clock::now_sec;
 use crate::db;
 use crate::db::Handler;
@@ -115,17 +115,25 @@ struct AuthServerMetadata {
     scopes_supported: Vec<&'static str>,
 }
 
+/// Path of the browser-facing authorization endpoint: the web app's consent page.
+pub const AUTHORIZE_PATH: &str = "/admin/oauth/authorize";
+
 /// `GET /.well-known/oauth-authorization-server`. `host` is the request's `Host`
 /// header, used only as a fallback when `API_BASE_URL` isn't set — see
 /// [`api_base_url`].
+///
+/// Every endpoint, `authorization_endpoint` included, is on the issuer's origin.
+/// Deployed, that origin's CloudFront serves the web app too, so the consent page
+/// is the same environment's; locally `poem` redirects [`AUTHORIZE_PATH`] to the
+/// web dev server. It must not be `WEB_BASE_URL`: preprod and qa point that at
+/// prod (for member-facing links), which sent their sign-ins to prod's page.
 pub fn metadata(host: Option<&str>) -> HttpReply {
     let api_base = api_base_url(host);
-    let web_base = web_base_url();
     HttpReply::json(
         200,
         &AuthServerMetadata {
             issuer: api_base.clone(),
-            authorization_endpoint: format!("{web_base}/admin/oauth/authorize"),
+            authorization_endpoint: format!("{api_base}{AUTHORIZE_PATH}"),
             token_endpoint: format!("{api_base}/oauth/token"),
             registration_endpoint: format!("{api_base}/oauth/register"),
             response_types_supported: vec!["code"],
@@ -646,6 +654,10 @@ mod tests {
         assert_eq!(reply.status, 200);
         let body = body_of(&reply);
         assert_eq!(body["issuer"], "https://api.seslogin.com");
+        assert_eq!(
+            body["authorization_endpoint"],
+            "https://api.seslogin.com/admin/oauth/authorize"
+        );
         assert_eq!(
             body["token_endpoint"],
             "https://api.seslogin.com/oauth/token"

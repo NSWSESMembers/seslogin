@@ -211,9 +211,13 @@ framework dependency, so `server.rs` (poem) and `bin/lambda/handler.rs` (raw
 
 Config: `API_BASE_URL` (optional) fixes the issuer/endpoint URLs instead of
 deriving them from the request's `Host` header — set it if the server sits
-behind something that changes the host a client sees. `WEB_BASE_URL` (see
-CLAUDE.md) doubles as the origin the `authorization_endpoint` metadata points
-the browser at, via the shared `base_url::web_base_url()` helper.
+behind something that changes the host a client sees. The
+`authorization_endpoint` metadata is on the issuer's origin too
+(`<issuer>/admin/oauth/authorize`): deployed, the same CloudFront distribution
+serves the web app, so a client always lands on its own environment's consent
+page. It deliberately isn't `WEB_BASE_URL`, which preprod and qa point at prod.
+Locally `poem` redirects `/admin/oauth/authorize` and `/tally/sign-in` to the
+same path on `base_url::web_base_url()` (the web dev server).
 
 ### Tally sign-in
 
