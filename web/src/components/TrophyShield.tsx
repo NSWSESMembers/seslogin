@@ -6,7 +6,7 @@ const TROPHY_COLOUR = "#9a6d12";
 /**
  * The trophy's shield (web/public/image/badges/by-id/trophy-<id>.svg) with the
  * unit's name on a ribbon across it: the trophy belongs to the unit. Shown on
- * the admin Badge Report.
+ * the admin Badge Report and the kiosk's Unit Trophies overlay.
  */
 export default function TrophyShield({
   trophyId,

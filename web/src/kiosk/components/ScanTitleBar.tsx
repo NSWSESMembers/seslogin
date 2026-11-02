@@ -7,6 +7,8 @@ import { ErrorBoundary } from "react-error-boundary";
 import { getErrorCode, getErrorMessage } from "../../lib/relayErrors";
 import type { ScanTitleBarLeaderboardQuery } from "./__generated__/ScanTitleBarLeaderboardQuery.graphql";
 import type { ScanTitleBarMemberBadgesQuery } from "./__generated__/ScanTitleBarMemberBadgesQuery.graphql";
+import type { ScanTitleBarTrophiesQuery } from "./__generated__/ScanTitleBarTrophiesQuery.graphql";
+import TrophyShield from "../../components/TrophyShield";
 import { formatFullDateTime } from "../../lib/time";
 import MemberBadgeProgressPanel from "../../admin/components/MemberBadgeProgressPanel";
 import { kioskBadgesEnabled } from "../lib/kioskBadges";
@@ -354,6 +356,144 @@ function LeaderboardModal(props: {
   );
 }
 
+const trophyDateFormatter = new Intl.DateTimeFormat(undefined, {
+  day: "numeric",
+  month: "short",
+  year: "numeric",
+});
+
+function TrophiesModalLoadingFallback(props: {
+  locationName: string;
+  onClose: () => void;
+}) {
+  return (
+    <div className={LEADERBOARD_OVERLAY_CLASS} role="dialog" aria-modal="true">
+      <button
+        className={LEADERBOARD_BACKDROP_CLASS}
+        aria-label="Close trophies"
+        onClick={props.onClose}
+      />
+      <div className={LEADERBOARD_PANEL_CLASS}>
+        <div className={LEADERBOARD_HEADER_CLASS}>
+          <h2 className="m-0 text-3xl text-kiosk-modal-heading capitalize">
+            {props.locationName} trophies
+          </h2>
+          <button className={MODAL_HEADER_BUTTON_CLASS} onClick={props.onClose}>
+            Close
+          </button>
+        </div>
+        <div className={MODAL_LOADING_CLASS} role="status" aria-live="polite">
+          <div className={MODAL_LOADING_SPINNER_CLASS} aria-hidden="true" />
+          <p className={MODAL_LOADING_MESSAGE_CLASS}>Loading trophies...</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** The unit's trophy cabinet: every trophy, its holder and their score. */
+function TrophiesModal(props: {
+  locationId: string;
+  locationName: string;
+  onClose: () => void;
+}) {
+  const data = useLazyLoadQuery<ScanTitleBarTrophiesQuery>(
+    graphql`
+      query ScanTitleBarTrophiesQuery($locationId: ID!) {
+        location(id: $locationId) {
+          id
+          trophies {
+            id
+            name
+            tagline
+            rule
+            minimumLabel
+            holder {
+              id
+              firstName
+              lastName
+            }
+            valueLabel
+            heldSince
+          }
+        }
+      }
+    `,
+    { locationId: props.locationId },
+    { fetchKey: props.locationId, fetchPolicy: "network-only" },
+  );
+  const trophies = data.location.trophies;
+  const held = trophies.filter((trophy) => trophy.holder).length;
+
+  return (
+    <div className={LEADERBOARD_OVERLAY_CLASS} role="dialog" aria-modal="true">
+      <button
+        className={LEADERBOARD_BACKDROP_CLASS}
+        aria-label="Close trophies"
+        onClick={props.onClose}
+      />
+      <div className={LEADERBOARD_PANEL_CLASS}>
+        <div className={LEADERBOARD_HEADER_CLASS}>
+          <h2 className="m-0 text-3xl text-kiosk-modal-heading capitalize">
+            {props.locationName} trophies
+          </h2>
+          <button className={MODAL_HEADER_BUTTON_CLASS} onClick={props.onClose}>
+            Close
+          </button>
+        </div>
+        <p className="mt-0 mb-3 text-base text-kiosk-modal-muted">
+          Each trophy belongs to the unit and has one holder at a time. Beat the
+          holder and you take it. {held} of {trophies.length} are held.
+        </p>
+        <ul className="m-0 grid list-none grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-3 p-0">
+          {trophies.map((trophy) => (
+            // Five rows of the list's grid (subgrid), so each part lines up
+            // across the cards in a row.
+            <li
+              key={trophy.id}
+              className="row-span-5 grid grid-rows-subgrid justify-items-center gap-1 rounded-xl border border-[rgba(121,154,206,0.4)] bg-white/82 p-3 text-center"
+            >
+              <TrophyShield
+                trophyId={trophy.id}
+                unitName={props.locationName}
+              />
+              <div className="text-xl font-extrabold text-kiosk-modal-heading">
+                {trophy.name}
+              </div>
+              <div className="text-sm text-kiosk-modal-muted">
+                {trophy.tagline}
+              </div>
+              {trophy.holder ? (
+                <div>
+                  <div className="text-lg font-bold text-kiosk-modal-heading">
+                    {trophy.holder.firstName} {trophy.holder.lastName}
+                  </div>
+                  <div className="text-sm text-kiosk-modal-muted">
+                    {trophy.valueLabel}
+                    {trophy.heldSince != null
+                      ? ` · since ${trophyDateFormatter.format(new Date(trophy.heldSince * 1000))}`
+                      : ""}
+                  </div>
+                </div>
+              ) : (
+                <div className="text-sm font-semibold text-kiosk-modal-heading">
+                  Nobody holds it yet
+                </div>
+              )}
+              <div className="text-xs text-kiosk-modal-muted">
+                {trophy.rule}
+                {trophy.minimumLabel
+                  ? ` Minimum ${trophy.minimumLabel} to qualify.`
+                  : ""}
+              </div>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  );
+}
+
 function MemberBadgesModal(props: {
   personId: string;
   locationId: string;
@@ -431,6 +571,7 @@ export default function ScanTitleBar(props: {
   const nonProdDb = useNonProdDb();
   const [showLeaderboard, setShowLeaderboard] = useState(false);
   const [showMemberBadges, setShowMemberBadges] = useState(false);
+  const [showTrophies, setShowTrophies] = useState(false);
   const locationName = session?.location.name ?? "Unknown location";
   const locationId = session?.location.id;
   const gamificationEnabled = kioskBadgesEnabled(session);
@@ -460,6 +601,14 @@ export default function ScanTitleBar(props: {
               onClick={() => setShowLeaderboard(true)}
             >
               Badge leaderboard
+            </button>
+          )}
+          {locationId && gamificationEnabled && (
+            <button
+              className={TITLE_BAR_BUTTON_CLASS}
+              onClick={() => setShowTrophies(true)}
+            >
+              Unit Trophies
             </button>
           )}
           {locationId && gamificationEnabled && props.signingOutPersonId && (
@@ -501,6 +650,32 @@ export default function ScanTitleBar(props: {
                 locationId={locationId}
                 locationName={locationName}
                 onClose={() => setShowLeaderboard(false)}
+              />
+            </Suspense>
+          </ErrorBoundary>
+        )}
+        {showTrophies && locationId && gamificationEnabled && (
+          <ErrorBoundary
+            fallbackRender={({ error }) => (
+              <BadgeModalErrorFallback
+                title={`${locationName} trophies`}
+                error={error}
+                onClose={() => setShowTrophies(false)}
+              />
+            )}
+          >
+            <Suspense
+              fallback={
+                <TrophiesModalLoadingFallback
+                  locationName={locationName}
+                  onClose={() => setShowTrophies(false)}
+                />
+              }
+            >
+              <TrophiesModal
+                locationId={locationId}
+                locationName={locationName}
+                onClose={() => setShowTrophies(false)}
               />
             </Suspense>
           </ErrorBoundary>

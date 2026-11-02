@@ -2380,6 +2380,12 @@ type RegisterResult {
 	sign-out pending.
 	"""
 	awardedBadges: [BadgeAward!]!
+	"""
+	Unit trophies this sign-in took, and those the member took or lost since their
+	last scan. Under the same conditions as `awardedBadges`; always empty for a
+	sign-out pending.
+	"""
+	trophyChanges: [TrophyChange!]!
 }
 
 enum RegisterState {
@@ -2400,6 +2406,11 @@ type ScanSignOutResult {
 	Badges to celebrate on this sign-out; see `RegisterResult.awardedBadges`.
 	"""
 	awardedBadges: [BadgeAward!]!
+	"""
+	Unit trophies the member took or lost since their last scan; see
+	`RegisterResult.trophyChanges`.
+	"""
+	trophyChanges: [TrophyChange!]!
 }
 
 """
@@ -2958,6 +2969,41 @@ type Trophy {
 	Earlier holders, newest first: at most `first` (default 10, at most 50).
 	"""
 	reigns(first: Int): [TrophyReign!]!
+}
+
+"""
+A change to one of a unit's perpetual trophies, for the kiosk to show the member.
+"""
+type TrophyChange {
+	"""
+	The trophy's ID, e.g. `kettle`.
+	"""
+	trophyId: ID!
+	"""
+	e.g. `The Kettle`.
+	"""
+	name: String!
+	kind: TrophyChangeKind!
+	"""
+	The winning score or claim, e.g. `9 busy days` or `212 days away`.
+	"""
+	valueLabel: String!
+	"""
+	Who they took it from, or who took it from them, by name; null if nobody held it.
+	"""
+	otherPersonName: String
+	"""
+	The unit the trophy belongs to.
+	"""
+	locationName: String!
+}
+
+"""
+Whether a member took a unit trophy or lost one.
+"""
+enum TrophyChangeKind {
+	TAKEN
+	LOST
 }
 
 enum TrophyEndReason {
