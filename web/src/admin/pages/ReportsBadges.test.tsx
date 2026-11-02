@@ -96,7 +96,7 @@ describe("ReportsBadges trophy cabinet", () => {
     const boomerang = screen.getByText("The Boomerang").closest("article")!;
     expect(
       within(boomerang).getByText(
-        "Nobody holds it yet. It takes at least 30 days away.",
+        "Nobody holds it yet. Minimum 30 days away to qualify.",
       ),
     ).toBeInTheDocument();
   });

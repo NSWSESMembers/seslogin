@@ -75,6 +75,9 @@ describe("ScanTitleBar trophies", () => {
     expect(screen.getByText(/1 of 2 are held\./)).toBeInTheDocument();
     expect(kettle).toHaveTextContent("Bob Brown");
     expect(kettle).toHaveTextContent("9 busy days · since");
+    expect(kettle).toHaveTextContent(
+      "The Kettle rule. Minimum 3 busy days to qualify.",
+    );
     expect(kettle.querySelector("img")).toHaveAttribute(
       "src",
       "/image/badges/by-id/trophy-kettle.svg",
