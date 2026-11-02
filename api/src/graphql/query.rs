@@ -2414,6 +2414,12 @@ impl<A: App + HasDb + Send + Sync> Location<A> {
         self.rec.gamification_enabled
     }
 
+    /// Whether members of this location are emailed each morning about the badges they
+    /// earned and the trophies they took. Needs gamification on too.
+    async fn badge_emails_enabled(&self) -> bool {
+        self.rec.badge_emails_enabled
+    }
+
     async fn ses_api_headquarters_id(&self) -> Option<String> {
         self.rec.ses_api_headquarters_id.clone()
     }

@@ -4958,6 +4958,7 @@ impl db::Handler for Handler {
                 nitc_enabled,
                 nitc_complete_on_export,
                 gamification_enabled,
+                badge_emails_enabled,
             } => {
                 let mut update_expr = String::from(
                     "SET #name = :name, enabled = :enabled, nitc_enabled = :nitc_enabled, updated_at = :updated_at",
@@ -5006,6 +5007,19 @@ impl db::Handler for Handler {
                         );
                     }
                     Some(false) => remove_attrs.push("gamification_enabled"),
+                    None => {}
+                }
+
+                // Badge emails likewise: off by default, only the opt-in is stored.
+                match badge_emails_enabled {
+                    Some(true) => {
+                        update_expr.push_str(", badge_emails_enabled = :badge_emails_enabled");
+                        req = req.expression_attribute_values(
+                            ":badge_emails_enabled",
+                            AttributeValue::Bool(true),
+                        );
+                    }
+                    Some(false) => remove_attrs.push("badge_emails_enabled"),
                     None => {}
                 }
 

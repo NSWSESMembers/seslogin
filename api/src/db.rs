@@ -466,6 +466,8 @@ pub enum LocationUpdateShape<'a> {
         nitc_complete_on_export: Option<bool>,
         /// `None` leaves the current preference untouched.
         gamification_enabled: Option<bool>,
+        /// `None` leaves the current preference untouched.
+        badge_emails_enabled: Option<bool>,
     },
     LastSyncTime {
         time: u64,

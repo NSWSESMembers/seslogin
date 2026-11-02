@@ -3581,6 +3581,8 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         nitc_complete_on_export: Option<bool>,
         // Omitted for the same reason as nitc_complete_on_export above.
         gamification_enabled: Option<bool>,
+        // Likewise.
+        badge_emails_enabled: Option<bool>,
     ) -> Result<Location<A>> {
         let nitc_enabled = nitc_enabled
             .and_then(|ts| u64::try_from(ts).ok())
@@ -3595,6 +3597,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
                     nitc_enabled,
                     nitc_complete_on_export,
                     gamification_enabled,
+                    badge_emails_enabled,
                 },
             )
             .await?;
