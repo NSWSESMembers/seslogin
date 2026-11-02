@@ -187,6 +187,10 @@ export default function SubmenuBar({
             to: "/admin/settings/weekly-badge-digest",
             label: "Weekly Badge Digest",
           },
+          {
+            to: "/admin/settings/daily-changes",
+            label: "Daily Membership Changes",
+          },
           { to: "/admin/settings/activity-display", label: "Activity Display" },
           {
             to: "/admin/settings/connected-apps",

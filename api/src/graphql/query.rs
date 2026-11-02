@@ -152,6 +152,21 @@ impl<A: App + HasDb + Send + Sync + 'static> User<A> {
             .collect()
     }
 
+    /// Locations this user has opted into the daily membership changes email
+    /// for. See `change_digest_job.rs`'s `daily_changes_opted_in_location_ids`,
+    /// which reads the same `email_config` shape — keep them in sync.
+    async fn daily_changes_location_ids(&self) -> Vec<String> {
+        self.rec
+            .email_config
+            .iter()
+            .filter_map(|(loc_id, val)| {
+                val.as_object()
+                    .filter(|m| m.contains_key("daily_changes"))
+                    .map(|_| loc_id.clone())
+            })
+            .collect()
+    }
+
     async fn location_grant_ids(&self) -> Vec<ID> {
         self.rec
             .location_grants

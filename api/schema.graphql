@@ -1521,7 +1521,7 @@ type MutationRoot {
 	`Query.feedbackAvailable`).
 	"""
 	submitFeedback(subject: String!, message: String!): SubmittedFeedback!
-	updateMyEmailConfig(dailyLocationIds: [String!]!, weeklyBadgeLocationIds: [String!]): User!
+	updateMyEmailConfig(dailyLocationIds: [String!]!, weeklyBadgeLocationIds: [String!], dailyChangesLocationIds: [String!]): User!
 	updateMyDisaggregateVirtualPeriods(value: Boolean!): User!
 	"""
 	Start passkey registration for the authenticated user.
@@ -2928,6 +2928,12 @@ type User {
 	reads the same `email_config` shape — keep them in sync.
 	"""
 	badgeWeeklyDigestLocationIds: [String!]!
+	"""
+	Locations this user has opted into the daily membership changes email
+	for. See `change_digest_job.rs`'s `daily_changes_opted_in_location_ids`,
+	which reads the same `email_config` shape — keep them in sync.
+	"""
+	dailyChangesLocationIds: [String!]!
 	locationGrantIds: [ID!]!
 	"""
 	Locations where the user is Read only (can view but not change).
