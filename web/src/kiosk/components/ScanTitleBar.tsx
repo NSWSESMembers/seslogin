@@ -447,9 +447,11 @@ function TrophiesModal(props: {
         </p>
         <ul className="m-0 grid list-none grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-3 p-0">
           {trophies.map((trophy) => (
+            // Five rows of the list's grid (subgrid), so each part lines up
+            // across the cards in a row.
             <li
               key={trophy.id}
-              className="flex flex-col items-center gap-1 rounded-xl border border-[rgba(121,154,206,0.4)] bg-white/82 p-3 text-center"
+              className="row-span-5 grid grid-rows-subgrid justify-items-center gap-1 rounded-xl border border-[rgba(121,154,206,0.4)] bg-white/82 p-3 text-center"
             >
               <TrophyShield
                 trophyId={trophy.id}
@@ -462,7 +464,7 @@ function TrophiesModal(props: {
                 {trophy.tagline}
               </div>
               {trophy.holder ? (
-                <div className="mt-1">
+                <div>
                   <div className="text-lg font-bold text-kiosk-modal-heading">
                     {trophy.holder.firstName} {trophy.holder.lastName}
                   </div>
@@ -474,11 +476,11 @@ function TrophiesModal(props: {
                   </div>
                 </div>
               ) : (
-                <div className="mt-1 text-sm font-semibold text-kiosk-modal-heading">
+                <div className="text-sm font-semibold text-kiosk-modal-heading">
                   Nobody holds it yet
                 </div>
               )}
-              <div className="mt-1 text-xs text-kiosk-modal-muted">
+              <div className="text-xs text-kiosk-modal-muted">
                 {trophy.rule}
                 {trophy.minimumLabel ? ` At least ${trophy.minimumLabel}.` : ""}
               </div>

@@ -61,14 +61,16 @@ function TrophyCard({
   unitName: string;
 }) {
   return (
-    <article className="flex flex-col gap-2 rounded-xl border border-[#d7c3b1] bg-linear-to-b from-[#fff9f1] to-white px-4 py-3.5 dark:border-line dark:from-surface-raised dark:to-surface-raised">
+    // Four rows of the cabinet's grid (subgrid), so the name, tagline, holder
+    // and rule line up across every card in a row.
+    <article className="row-span-4 grid grid-rows-subgrid gap-2 rounded-xl border border-[#d7c3b1] bg-linear-to-b from-[#fff9f1] to-white px-4 py-3.5 dark:border-line dark:from-surface-raised dark:to-surface-raised">
       <div className="flex flex-col items-center gap-1 text-center">
         <TrophyShield trophyId={trophy.id} unitName={unitName} />
         <div className="font-title text-xl text-navy dark:text-ink">
           {trophy.name}
         </div>
-        <div className="text-sm text-ink-muted">{trophy.tagline}</div>
       </div>
+      <div className="text-center text-sm text-ink-muted">{trophy.tagline}</div>
       {trophy.holder ? (
         <div className="text-center">
           <TextLink to={`/admin/members/badges/${trophy.holder.id}`}>
