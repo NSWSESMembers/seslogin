@@ -3375,6 +3375,14 @@ impl<A: App + HasDb + Send + Sync> Location<A> {
         })
     }
 
+    /// The unit's perpetual trophies, in cabinet order, each with its holder if it has
+    /// one. Every trophy is listed, held or not.
+    async fn trophies(&self, ctx: &Context<'_>) -> Result<Vec<super::trophies::Trophy<A>>> {
+        require_location_access(ctx, &self.rec.id)?;
+        let app = ctx.data_unchecked::<Arc<A>>();
+        super::trophies::location_trophies(app.as_ref(), &self.rec.id).await
+    }
+
     async fn badge_leaderboard(
         &self,
         ctx: &Context<'_>,

@@ -767,6 +767,11 @@ type Location {
 	periodSummaryByDayByMember(startTime: Int!, endTime: Int!, categories: [ID!]): [DayMemberPeriodSummary!]!
 	sessions: [Session!]!
 	dashboardSummary(asOf: Int): LocationDashboardSummary!
+	"""
+	The unit's perpetual trophies, in cabinet order, each with its holder if it has
+	one. Every trophy is listed, held or not.
+	"""
+	trophies: [Trophy!]!
 	badgeLeaderboard(limit: Int): [LocationBadgeLeaderboardEntry!]!
 }
 
@@ -2906,6 +2911,107 @@ enum TaskView {
 	Showing only from a later day, soonest first.
 	"""
 	SCHEDULED
+}
+
+type Trophy {
+	"""
+	The trophy's ID, e.g. `kettle`; the same at every unit.
+	"""
+	id: ID!
+	name: String!
+	"""
+	One line about who holds it.
+	"""
+	tagline: String!
+	"""
+	Exactly what it takes to win it from the holder.
+	"""
+	rule: String!
+	kind: TrophyKind!
+	"""
+	The least score or claim that can take it, e.g. `3 busy days`.
+	"""
+	minimumLabel: String!
+	"""
+	How far back scores or claims count, in days; null for The Chain, a current
+	streak.
+	"""
+	windowDays: Int
+	"""
+	Who holds it; null while it is vacant.
+	"""
+	holder: Person
+	"""
+	The holder's current score or claim, in the trophy's own unit.
+	"""
+	value: Float
+	"""
+	`value` as members see it, e.g. `9 busy days` or `412 km`.
+	"""
+	valueLabel: String
+	"""
+	Unix seconds when the holder took it.
+	"""
+	heldSince: Int
+	"""
+	Earlier holders, newest first: at most `first` (default 10, at most 50).
+	"""
+	reigns(first: Int): [TrophyReign!]!
+}
+
+enum TrophyEndReason {
+	"""
+	Someone beat the holder.
+	"""
+	STOLEN
+	"""
+	The holder's claim left the 365-day window and a better one inside it took over.
+	"""
+	AGED_OUT
+	"""
+	The period the claim rested on was deleted or changed.
+	"""
+	REVERTED
+	"""
+	The holder stopped being a member of the unit.
+	"""
+	LEFT_UNIT
+}
+
+enum TrophyKind {
+	"""
+	Held until a strictly bigger claim beats it: The Boomerang and The Odometer.
+	"""
+	RECORD
+	"""
+	Whoever leads a moving window, scored nightly.
+	"""
+	ROLLING
+}
+
+type TrophyReign {
+	"""
+	Who held it; null if they can no longer be found.
+	"""
+	holder: Person
+	"""
+	Their last score or claim.
+	"""
+	value: Float!
+	valueLabel: String!
+	"""
+	Unix seconds.
+	"""
+	startedAt: Int!
+	"""
+	Unix seconds.
+	"""
+	endedAt: Int!
+	endReason: TrophyEndReason!
+	"""
+	Who took it; null when it went vacant.
+	"""
+	endedBy: Person
 }
 
 type User {

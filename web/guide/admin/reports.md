@@ -70,6 +70,39 @@ Each row is one entry: the member, category, start and end times, how long it
 was, any comment, and the kiosks they signed in and out at. The download includes
 visitors (members who don't belong to your unit), but doesn't say which unit they're from.
 
+## Badge Report
+
+If your unit has badges turned on, **Reports → Badge Report** shows your unit's
+trophy cabinet and the members who have earned badges at your unit.
+
+### Perpetual trophies
+
+The unit has twelve trophies, and each one has one holder at a time. Whoever beats
+the holder takes it from them. Each card shows who holds the trophy, their score and
+when they took it. Open **How to win it** to see exactly what it takes and who held
+it before.
+
+- Most trophies are worked out overnight, from the last 30 to 90 days of sign-ins.
+  The Chain counts a member's current weekly streak.
+- The Boomerang (the longest gap between sign-ins at your unit) and The Odometer
+  (the furthest one of your members has signed in from their own units) can change
+  hands as soon as a member signs in. A claim counts for a year.
+- Only your unit's own members can hold its trophies, including members whose primary
+  unit is elsewhere. Visitors can't.
+- Ties go to the holder. A holder who stops coming in keeps the trophy until someone
+  beats their score.
+- If a member leaves your unit, their trophies pass to whoever is next. If you delete
+  or change the sign-in a Boomerang or Odometer claim rested on, the trophy goes back
+  to the best claim that still stands.
+
+The kiosk guide lists [every trophy and how to win it](../kiosk/badges.md#unit-trophies).
+
+### Members' badges
+
+The table lists each member with a badge at your unit: how many they have, how many
+they earned in the last 7 days, and their latest. Select a name to see all of their
+badges.
+
 ## Daily email
 
 To have a summary of each day's activity emailed to you, see

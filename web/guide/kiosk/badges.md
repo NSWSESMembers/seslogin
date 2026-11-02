@@ -287,3 +287,35 @@ a secret: keep signing in and out to find out.
 | ![Leap of Faith badge](/image/badges/by-id/easter-leap-of-faith.svg)           | Leap of Faith      |
 | ![Unlucky for Some badge](/image/badges/by-id/easter-unlucky-for-some.svg)     | Unlucky for Some   |
 | ![All-Rounder badge](/image/badges/by-id/easter-all-rounder.svg)               | All-Rounder        |
+
+## Unit trophies
+
+As well as your own badges, a unit with badges turned on has twelve trophies. Each
+one belongs to the unit and has one holder at a time. Beat the holder and you take
+it from them. Your unit's administrators can see who holds each one and who held it
+before.
+
+- **Only your unit's members can hold its trophies**, at your primary unit and any
+  other unit you belong to. Visitors can't.
+- **You have to beat the holder.** If you only match their score, they keep it. If
+  two people beat the holder with the same score, whoever got there first takes it.
+- **A holder keeps a trophy until someone beats them**, even if they stop coming in.
+  If they leave the unit, it passes to whoever is next.
+- **Most trophies are worked out overnight.** The Boomerang and The Odometer can
+  change hands as soon as you sign in.
+- **No trophy rewards one long shift.** Hours count at most 12 hours per sign-in.
+
+| Trophy        | How to win it                                                                                                                                            | At least |
+| ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
+| The Kettle    | Be first to sign in on more busy days in the last 30 days than the holder. A busy day has 4 or more people on site.                                      | 3 days   |
+| The Padlock   | Be last to sign out on more busy days in the last 30 days than the holder.                                                                               | 3 days   |
+| The Boomerang | Come back to the unit after a longer gap since your previous sign-in there than the holder's. A claim counts for a year.                                 | 90 days  |
+| The Odometer  | Sign in at a unit that isn't one of yours, further from your nearest unit than the holder's trip. A claim counts for a year, at each unit you belong to. | 50 km    |
+| The Boots     | Spend more hours on site in the last 90 days than the holder.                                                                                            | 20 hours |
+| The Owl       | Sign in between 10 pm and 5 am on more nights in the last 60 days than the holder. Only sign-ins of 30 minutes or more count, once per night.            | 2 nights |
+| The Chalk     | Sign out as a trainer or assessor more times in the last 90 days than the holder.                                                                        | 2        |
+| The Tarp      | Spend more hours signed out to Storm in the last 90 days than the holder.                                                                                | 8 hours  |
+| The Spanner   | Spend more hours signed out to Maintenance (Building/Land or Equipment) in the last 60 days than the holder.                                             | 4 hours  |
+| The Clipboard | Spend more hours signed out to Administration in the last 60 days than the holder.                                                                       | 4 hours  |
+| The Pager     | Use myAvailability, to set your availability or reply to a request, on more days in the last 60 days than the holder.                                    | 4 days   |
+| The Chain     | Sign in at least once every week for longer than the holder's current run. Weeks run Monday to Sunday.                                                   | 4 weeks  |
