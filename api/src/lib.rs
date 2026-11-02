@@ -9,6 +9,7 @@ pub mod badge_store;
 pub mod badges;
 pub mod base_url;
 pub mod calendar;
+pub mod change_digest;
 pub mod client_info;
 pub mod clock;
 pub mod db;
