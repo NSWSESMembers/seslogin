@@ -319,7 +319,7 @@ async fn trophy_rows(
     Ok(rows)
 }
 
-fn person_display_name(person: &db::Person) -> String {
+pub(crate) fn person_display_name(person: &db::Person) -> String {
     let name = format!("{} {}", person.first_name, person.last_name)
         .trim()
         .to_string();
@@ -345,7 +345,7 @@ fn date_range_label(start: DateTime<Utc>, end: DateTime<Utc>) -> String {
 /// rather than a hard-coded prod hostname, so preprod/test builds — and this
 /// job's own worker deployment, which always points at prod per CLAUDE.md —
 /// don't have to be kept in sync with it by hand.
-fn badge_icon_base_url() -> String {
+pub(crate) fn badge_icon_base_url() -> String {
     format!(
         "{}/image/badges",
         base_url::web_base_url().trim_end_matches('/')
@@ -456,7 +456,7 @@ fn trophy_table_html(rows: &[TrophyRow]) -> String {
 /// SVG images (`make badge-pngs`). The per-location "first sign-in here" badges
 /// (`first-signin-location-<id>`/`first-away-signin-location-<id>`) all share
 /// one template image rather than one file per location.
-fn badge_icon_url_by_badge_id(base_url: &str, badge_id: &str) -> String {
+pub(crate) fn badge_icon_url_by_badge_id(base_url: &str, badge_id: &str) -> String {
     let normalized_base = base_url.trim_end_matches('/');
     let file_stem = if badge_id.starts_with("first-signin-location-")
         || badge_id.starts_with("first-away-signin-location-")
@@ -477,7 +477,7 @@ fn format_timestamp_sydney(ts: u64) -> String {
         .to_string()
 }
 
-fn escape_html(s: &str) -> String {
+pub(crate) fn escape_html(s: &str) -> String {
     s.replace('&', "&amp;")
         .replace('<', "&lt;")
         .replace('>', "&gt;")

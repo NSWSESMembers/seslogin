@@ -421,6 +421,7 @@ impl TryInto<Location> for Item {
             // Only stored when the location has opted out; absent means complete.
             nitc_complete_on_export: self.bool_field("nitc_complete_on_export")?.unwrap_or(true),
             gamification_enabled: self.bool_field("gamification_enabled")?.unwrap_or(false),
+            badge_emails_enabled: self.bool_field("badge_emails_enabled")?.unwrap_or(false),
             ses_api_headquarters_id,
             last_successful_member_sync: self
                 .i64_field("last_successful_member_sync")?
@@ -4902,6 +4903,7 @@ impl db::Handler for Handler {
             // Likewise not stored on create — the attribute only appears if the location
             // opts in.
             gamification_enabled: false,
+            badge_emails_enabled: false,
             ses_api_headquarters_id: ses_api_headquarters_id.map(str::to_string),
             last_successful_member_sync: None,
             ses_details: db::LocationSesDetails::default(),

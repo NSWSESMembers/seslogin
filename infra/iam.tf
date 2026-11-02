@@ -329,6 +329,22 @@ resource "aws_iam_role_policy" "scheduler_invoke_badge_digest" {
   })
 }
 
+# The badge congratulations lambda runs as the badge digest's role (see
+# lambda_badge_congrats.tf), so only the scheduler's invoke is its own.
+resource "aws_iam_role_policy" "scheduler_invoke_badge_congrats" {
+  name = "invoke-badge-congrats"
+  role = aws_iam_role.scheduler.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["lambda:InvokeFunction"]
+      Resource = aws_lambda_function.badge_congrats.arn
+    }]
+  })
+}
+
 # ── Sync locations lambda role ─────────────────────────────────────────────────
 
 resource "aws_iam_role" "sync_locations_lambda" {
