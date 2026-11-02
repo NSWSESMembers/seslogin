@@ -702,6 +702,11 @@ type Location {
 	Whether members of this location earn badges.
 	"""
 	gamificationEnabled: Boolean!
+	"""
+	Whether members of this location are emailed each morning about the badges they
+	earned and the trophies they took. Needs gamification on too.
+	"""
+	badgeEmailsEnabled: Boolean!
 	sesApiHeadquartersId: String
 	lastSuccessfulMemberSync: Int
 	"""
@@ -1421,7 +1426,7 @@ type MutationRoot {
 	"""
 	reactivateSession(id: ID!): Session!
 	createLocation(name: String!, nitcEnabled: Int): Location!
-	updateLocation(id: ID!, name: String!, enabled: Boolean!, nitcEnabled: Int, nitcCompleteOnExport: Boolean, gamificationEnabled: Boolean): Location!
+	updateLocation(id: ID!, name: String!, enabled: Boolean!, nitcEnabled: Int, nitcCompleteOnExport: Boolean, gamificationEnabled: Boolean, badgeEmailsEnabled: Boolean): Location!
 	createCategory(		name: String!,		isVirtual: Boolean!,		nitcGroupId: String,		nitcParticipantType: String,
 		"""
 		Kiosk group the category appears under, e.g. "Training".

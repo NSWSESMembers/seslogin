@@ -1012,6 +1012,7 @@ impl db::Handler for FakeDb {
                 nitc_enabled,
                 nitc_complete_on_export,
                 gamification_enabled,
+                badge_emails_enabled,
             } => {
                 location.name = name.to_string();
                 location.enabled = enabled;
@@ -1021,6 +1022,9 @@ impl db::Handler for FakeDb {
                 }
                 if let Some(gamification) = gamification_enabled {
                     location.gamification_enabled = gamification;
+                }
+                if let Some(badge_emails) = badge_emails_enabled {
+                    location.badge_emails_enabled = badge_emails;
                 }
             }
             _ => return unsupported(),

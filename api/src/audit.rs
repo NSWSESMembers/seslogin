@@ -869,6 +869,7 @@ fn location_fields(l: &Location) -> Fields {
         .with("nitc_enabled", opt_num(l.nitc_enabled))
         .with("nitc_complete_on_export", flag(l.nitc_complete_on_export))
         .with("gamification_enabled", flag(l.gamification_enabled))
+        .with("badge_emails_enabled", flag(l.badge_emails_enabled))
         .with(
             "ses_api_headquarters_id",
             opt_text(l.ses_api_headquarters_id.as_deref()),
@@ -940,6 +941,7 @@ pub fn location_update_changes(
             nitc_enabled,
             nitc_complete_on_export,
             gamification_enabled,
+            badge_emails_enabled,
         } => {
             after.set("name", text(name));
             after.set("enabled", flag(*enabled));
@@ -949,6 +951,9 @@ pub fn location_update_changes(
             }
             if let Some(gamification) = gamification_enabled {
                 after.set("gamification_enabled", flag(*gamification));
+            }
+            if let Some(badge_emails) = badge_emails_enabled {
+                after.set("badge_emails_enabled", flag(*badge_emails));
             }
         }
         db::LocationUpdateShape::LastSyncTime { .. } => {}
@@ -4625,6 +4630,7 @@ mod tests {
                 nitc_enabled: Some(123),
                 nitc_complete_on_export: None,
                 gamification_enabled: None,
+                badge_emails_enabled: None,
             },
         );
         assert_eq!(fields(&changes), vec!["enabled", "nitc_enabled"]);

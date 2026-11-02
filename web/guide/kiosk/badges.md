@@ -328,3 +328,12 @@ before.
 | ![The Clipboard trophy](/image/badges/by-id/trophy-clipboard.svg) | The Clipboard | Spend more hours signed out to Administration in the last 60 days than the holder.                                                                                                                                                    | 4 hours            |
 | ![The Pager trophy](/image/badges/by-id/trophy-pager.svg)         | The Pager     | Use myAvailability, to set your availability or reply to a request, on more days in the last 60 days than the holder.                                                                                                                 | 4 days             |
 | ![The Chain trophy](/image/badges/by-id/trophy-chain.svg)         | The Chain     | Sign in at least once every week for longer than the holder's current run. Weeks run Monday to Sunday.                                                                                                                                | 4 weeks            |
+
+## Congratulations emails
+
+If your unit has turned them on, SESLogin emails you at the end of a day you earn a
+badge or take a trophy, at about 7 pm. One email covers everything you won that day,
+showing each badge and trophy and how you won it. Most trophies, and some badges, are
+worked out overnight, so they're in the next evening's email. It goes to the email
+address SES holds for you. If you'd rather not get these emails, ask your unit's
+administrators.
