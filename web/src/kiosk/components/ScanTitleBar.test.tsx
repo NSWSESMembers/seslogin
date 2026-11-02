@@ -49,7 +49,7 @@ describe("ScanTitleBar trophies", () => {
       </RelayEnvironmentProvider>,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Trophies" }));
+    fireEvent.click(screen.getByRole("button", { name: "Unit Trophies" }));
     act(() => {
       environment.mock.resolveMostRecentOperation((op) =>
         MockPayloadGenerator.generate(op, {
@@ -91,7 +91,7 @@ describe("ScanTitleBar trophies", () => {
       </RelayEnvironmentProvider>,
     );
     expect(
-      screen.queryByRole("button", { name: "Trophies" }),
+      screen.queryByRole("button", { name: "Unit Trophies" }),
     ).not.toBeInTheDocument();
   });
 });

@@ -606,7 +606,7 @@ export default function ScanTitleBar(props: {
               className={TITLE_BAR_BUTTON_CLASS}
               onClick={() => setShowTrophies(true)}
             >
-              Trophies
+              Unit Trophies
             </button>
           )}
           {locationId && gamificationEnabled && props.signingOutPersonId && (
