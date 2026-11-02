@@ -800,14 +800,19 @@ mod tests {
     use super::*;
 
     /// The Badge Report and the kiosk guide draw each trophy from
-    /// web/public/image/badges/by-id/trophy-<id>.svg.
+    /// web/public/image/badges/by-id/trophy-<id>.svg, and email from its PNG render
+    /// (make badge-pngs).
     #[test]
     fn every_trophy_has_its_picture() {
-        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../web/public/image/badges/by-id");
+        let dir =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../web/public/image/badges");
         for trophy in TROPHIES {
-            let path = dir.join(format!("trophy-{}.svg", trophy.id));
-            assert!(path.is_file(), "no picture at {}", path.display());
+            for path in [
+                dir.join(format!("by-id/trophy-{}.svg", trophy.id)),
+                dir.join(format!("png/trophy-{}.png", trophy.id)),
+            ] {
+                assert!(path.is_file(), "no picture at {}", path.display());
+            }
         }
     }
 
