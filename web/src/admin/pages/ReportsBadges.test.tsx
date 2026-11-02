@@ -77,7 +77,7 @@ describe("ReportsBadges trophy cabinet", () => {
           },
         ],
       }),
-      trophy("boomerang", "The Boomerang", { minimumLabel: "90 days away" }),
+      trophy("boomerang", "The Boomerang", { minimumLabel: "30 days away" }),
     ]);
 
     expect(await screen.findByText("Perpetual trophies")).toBeInTheDocument();
@@ -96,7 +96,7 @@ describe("ReportsBadges trophy cabinet", () => {
     const boomerang = screen.getByText("The Boomerang").closest("article")!;
     expect(
       within(boomerang).getByText(
-        "Nobody holds it yet. It takes at least 90 days away.",
+        "Nobody holds it yet. It takes at least 30 days away.",
       ),
     ).toBeInTheDocument();
   });

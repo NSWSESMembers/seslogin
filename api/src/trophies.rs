@@ -138,7 +138,7 @@ pub const TROPHIES: &[TrophyDefinition] = &[
         tagline: "Longest time away, then back through the door.",
         rule: "Back at the unit after a longer gap since your previous sign-in here than the holder's.",
         kind: TrophyKind::Record,
-        minimum: 90.0,
+        minimum: 30.0,
         window_days: Some(365),
         unit: ValueUnit::DaysAway,
         measure: Measure::Boomerang,
@@ -589,14 +589,14 @@ fn weekly_streaks<'a>(
     standings
 }
 
-/// The Boomerang's claims at a unit: each member's sign-in there that came at least 90
+/// The Boomerang's claims at a unit: each member's sign-in there that came at least 30
 /// days after their previous one there, scored by the gap in days (from the previous
 /// sign-out, or sign-in if it was never signed out).
 ///
 /// `periods` are the unit's sign-ins; `previous` is, for each member, when their last
 /// sign-in at the unit before the earliest of `periods` ended, if they had one.
 pub fn boomerang_claims(periods: &[TrophyPeriod], previous: &HashMap<String, u64>) -> Vec<Claim> {
-    let minimum = definition("boomerang").map_or(90.0, |t| t.minimum);
+    let minimum = definition("boomerang").map_or(30.0, |t| t.minimum);
     let mut sorted: Vec<&TrophyPeriod> = periods.iter().collect();
     sorted.sort_by_key(|p| (p.start_time, p.id.as_str()));
     let mut last: HashMap<&str, u64> = previous
@@ -1039,13 +1039,14 @@ mod tests {
     }
 
     #[test]
-    fn boomerang_claims_are_gaps_of_ninety_days_or_more() {
+    fn boomerang_claims_are_gaps_of_thirty_days_or_more() {
         let day = DAY_SECONDS;
         let start = at(5, 18, 0);
         let periods = vec![
             period("a1", "alice", "x", start, 2.0),
             period("a2", "alice", "x", start + 100 * day, 2.0),
             period("a3", "alice", "x", start + 110 * day, 2.0),
+            period("a4", "alice", "x", start + 150 * day, 2.0),
             period("b1", "bob", "x", start + 30 * day, 2.0),
         ];
         let previous = HashMap::from([("bob".to_string(), start - 200 * day)]);
@@ -1055,7 +1056,11 @@ mod tests {
             .map(|c| (c.person_id.as_str(), c.period_id.as_str(), c.value as u64))
             .collect();
         // Alice's gap is from her sign-out, two hours after she signed in.
-        assert_eq!(summary, vec![("bob", "b1", 230), ("alice", "a2", 99)]);
+        // a3 came 10 days after a2, too soon; a4 came 39 days after a3.
+        assert_eq!(
+            summary,
+            vec![("bob", "b1", 230), ("alice", "a2", 99), ("alice", "a4", 39)]
+        );
     }
 
     fn standing(person: &str, score: f64, reached_at: u64) -> Standing {

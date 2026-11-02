@@ -1,5 +1,5 @@
 //! Kiosk scans and perpetual trophies: a sign-in can take The Boomerang (back at a unit
-//! of yours after 90 days or more) or The Odometer (at a unit that is none of yours,
+//! of yours after 30 days or more) or The Odometer (at a unit that is none of yours,
 //! 50 km or more from yours) on the spot, and every scan at a kiosk that shows trophies
 //! tells the member what they took or lost since their last one.
 //!
@@ -181,7 +181,7 @@ async fn coming_back_after_a_long_gap_takes_the_boomerang() {
 async fn a_short_gap_takes_nothing() {
     let app = app();
     let now = seslogin::clock::now_sec();
-    seed_period(&app, old_period("a-old", "alice", "loc-a", now - 30 * DAY));
+    seed_period(&app, old_period("a-old", "alice", "loc-a", now - 20 * DAY));
 
     assert!(sign_in(&app, "kiosk-a", "1001").await.is_empty());
     assert!(holder(&app, "loc-a", "boomerang").is_none());

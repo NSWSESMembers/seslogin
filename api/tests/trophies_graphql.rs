@@ -118,7 +118,7 @@ async fn lists_every_trophy_with_its_holder_and_history() {
     assert_eq!(boomerang["id"], "boomerang");
     assert_eq!(boomerang["kind"], "RECORD");
     assert_eq!(boomerang["holder"], serde_json::Value::Null);
-    assert_eq!(boomerang["minimumLabel"], "90 days away");
+    assert_eq!(boomerang["minimumLabel"], "30 days away");
     assert_eq!(trophies[11]["windowDays"], serde_json::Value::Null);
 }
 
