@@ -399,7 +399,7 @@ async fn odometer_claims(
     members: &[db::Person],
     since: u64,
 ) -> Result<Vec<Claim>> {
-    let minimum = trophies::definition("odometer").map_or(50.0, |t| t.minimum);
+    let minimum = trophies::definition("odometer").map_or(0.0, |t| t.minimum);
     let mut claims = Vec::new();
     for member in members {
         let homes: Vec<(f64, f64)> = member

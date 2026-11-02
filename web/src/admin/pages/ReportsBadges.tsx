@@ -83,7 +83,10 @@ function TrophyCard({
         </div>
       ) : (
         <div className="text-center text-sm text-ink-muted">
-          Nobody holds it yet. It takes at least {trophy.minimumLabel}.
+          Nobody holds it yet.
+          {trophy.minimumLabel
+            ? ` It takes at least ${trophy.minimumLabel}.`
+            : ""}
         </div>
       )}
       <details className="group/rule text-sm">
@@ -98,7 +101,8 @@ function TrophyCard({
           {trophy.reigns.length > 0 ? " and earlier holders" : ""}
         </summary>
         <p className="mt-1">
-          {trophy.rule} At least {trophy.minimumLabel}.
+          {trophy.rule}
+          {trophy.minimumLabel ? ` At least ${trophy.minimumLabel}.` : ""}
         </p>
         {trophy.reigns.length > 0 && (
           <ol className="mt-2 flex flex-col gap-1.5 border-t border-line pt-2">

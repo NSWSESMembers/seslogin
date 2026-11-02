@@ -2945,9 +2945,10 @@ type Trophy {
 	rule: String!
 	kind: TrophyKind!
 	"""
-	The least score or claim that can take it, e.g. `3 busy days`.
+	The least score or claim that can take it, e.g. `3 busy days`; null when any
+	score counts (The Odometer: any trip).
 	"""
-	minimumLabel: String!
+	minimumLabel: String
 	"""
 	How far back scores or claims count, in days; null for The Chain, a current
 	streak.

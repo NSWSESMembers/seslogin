@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<322dde2173da56b0a61a2ef24fe20043>>
+ * @generated SignedSource<<d219f512b7c8929835df28b8897bb48a>>
  * @lightSyntaxTransform
  */
 
@@ -34,7 +34,7 @@ export type ReportsBadgesQuery$data = {
         readonly lastName: string;
       } | null | undefined;
       readonly id: string;
-      readonly minimumLabel: string;
+      readonly minimumLabel: string | null | undefined;
       readonly name: string;
       readonly reigns: ReadonlyArray<{
         readonly endReason: TrophyEndReason;

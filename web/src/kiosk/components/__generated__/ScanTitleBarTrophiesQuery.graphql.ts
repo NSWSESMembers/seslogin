@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<72149baf4d5522db8ef760c9a9258e13>>
+ * @generated SignedSource<<8d33465becd5eb2c8e35889434de2f13>>
  * @lightSyntaxTransform
  */
 
@@ -22,7 +22,7 @@ export type ScanTitleBarTrophiesQuery$data = {
         readonly lastName: string;
       } | null | undefined;
       readonly id: string;
-      readonly minimumLabel: string;
+      readonly minimumLabel: string | null | undefined;
       readonly name: string;
       readonly rule: string;
       readonly tagline: string;

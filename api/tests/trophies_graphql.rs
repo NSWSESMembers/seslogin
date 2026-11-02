@@ -119,6 +119,9 @@ async fn lists_every_trophy_with_its_holder_and_history() {
     assert_eq!(boomerang["kind"], "RECORD");
     assert_eq!(boomerang["holder"], serde_json::Value::Null);
     assert_eq!(boomerang["minimumLabel"], "30 days away");
+    // Any trip counts for The Odometer, so it has no minimum to show.
+    assert_eq!(trophies[3]["id"], "odometer");
+    assert_eq!(trophies[3]["minimumLabel"], serde_json::Value::Null);
     assert_eq!(trophies[11]["windowDays"], serde_json::Value::Null);
 }
 

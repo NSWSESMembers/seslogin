@@ -116,9 +116,11 @@ impl<A: App + HasDb + Send + Sync + 'static> Trophy<A> {
         }
     }
 
-    /// The least score or claim that can take it, e.g. `3 busy days`.
-    async fn minimum_label(&self) -> String {
-        trophies::value_label(self.definition.unit, self.definition.minimum)
+    /// The least score or claim that can take it, e.g. `3 busy days`; null when any
+    /// score counts (The Odometer: any trip).
+    async fn minimum_label(&self) -> Option<String> {
+        (self.definition.minimum > 0.0)
+            .then(|| trophies::value_label(self.definition.unit, self.definition.minimum))
     }
 
     /// How far back scores or claims count, in days; null for The Chain, a current

@@ -1,6 +1,6 @@
 //! Kiosk scans and perpetual trophies: a sign-in can take The Boomerang (back at a unit
 //! of yours after 30 days or more) or The Odometer (at a unit that is none of yours,
-//! 50 km or more from yours) on the spot, and every scan at a kiosk that shows trophies
+//! however far from yours) on the spot, and every scan at a kiosk that shows trophies
 //! tells the member what they took or lost since their last one.
 //!
 //! Uses the shared `FakeDb` (`tests/common/mod.rs`) and runs real GraphQL documents

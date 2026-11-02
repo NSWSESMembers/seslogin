@@ -479,7 +479,8 @@ function TrophiesModal(props: {
                 </div>
               )}
               <div className="mt-1 text-xs text-kiosk-modal-muted">
-                {trophy.rule} At least {trophy.minimumLabel}.
+                {trophy.rule}
+                {trophy.minimumLabel ? ` At least ${trophy.minimumLabel}.` : ""}
               </div>
             </li>
           ))}

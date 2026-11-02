@@ -149,7 +149,8 @@ pub const TROPHIES: &[TrophyDefinition] = &[
         tagline: "Most kilometres from home to lend a hand.",
         rule: "Signed in at a unit that is none of yours, further from your nearest unit than the holder's trip. It counts at each unit you belong to.",
         kind: TrophyKind::Record,
-        minimum: 50.0,
+        // Any trip counts: the furthest one wins.
+        minimum: 0.0,
         window_days: Some(365),
         unit: ValueUnit::Km,
         measure: Measure::Odometer,
@@ -1269,9 +1270,12 @@ mod tests {
             claim("alice", 120.0, 10, "a1"),
             claim("alice", 300.0, 400, "a0"), // aged out
             claim("alice", 150.0, 5, "a2"),
-            claim("bob", 40.0, 5, "b1"),     // under 50 km
+            claim("bob", 40.0, 5, "b1"),     // short, but any trip counts
             claim("visitor", 900.0, 1, "v"), // not a member here
         ];
-        assert_eq!(unit.standings("odometer"), scores(&[("alice", 150.0)]));
+        assert_eq!(
+            unit.standings("odometer"),
+            scores(&[("alice", 150.0), ("bob", 40.0)])
+        );
     }
 }
