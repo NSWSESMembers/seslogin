@@ -238,7 +238,7 @@ impl ForceFieldErrorsExt {
         match self.budget.as_ref() {
             None => true,
             Some(remaining) => remaining
-                .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |n| {
+                .try_update(Ordering::SeqCst, Ordering::SeqCst, |n| {
                     if n > 0 { Some(n - 1) } else { None }
                 })
                 .is_ok(),

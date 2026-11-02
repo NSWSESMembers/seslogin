@@ -11,15 +11,8 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Setup Rust toolchain (pinned by api/rust-toolchain.toml)
-        run: |
-          channel=$(sed -nE 's/^channel *= *"(.*)"/\1/p' api/rust-toolchain.toml)
-          rustup toolchain install "$channel" --profile minimal
-
-      - name: Cache Rust dependencies
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: api
+      - name: Setup Rust (pinned by api/rust-toolchain.toml)
+        uses: ./.github/actions/setup-rust
 
       # The scripts are plain ESM run with bare node, not part of the web build, so they
       # get no formatter or linter from web/'s config. Borrow web/'s prettier for them.

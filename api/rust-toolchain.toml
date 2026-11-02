@@ -2,7 +2,9 @@
 # dev run the *same* clippy lint set. A floating channel let CI pick up a newer
 # stable — and newer/stricter clippy lints — that didn't reproduce under
 # `make check` locally. Bump this deliberately in its own PR, fixing any new
-# lints at the same time. `make check` verifies the active toolchain matches.
+# lints at the same time. `make check` verifies the active toolchain matches,
+# and every CI job (checks and deploys) installs this version through
+# .github/actions/setup-rust, so this file is the only place to bump.
 [toolchain]
-channel = "1.97.0"
+channel = "1.99.1"
 components = ["rustfmt", "clippy"]

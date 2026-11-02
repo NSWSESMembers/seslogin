@@ -17,14 +17,8 @@ jobs:
           df -h /
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
           df -h /
-      - name: Setup Rust toolchain (pinned by api/rust-toolchain.toml)
-        run: |
-          channel=$(sed -nE 's/^channel *= *"(.*)"/\1/p' api/rust-toolchain.toml)
-          rustup toolchain install "$channel" --profile minimal --component rustfmt --component clippy
-      - name: Cache Rust dependencies
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: api
+      - name: Setup Rust (pinned by api/rust-toolchain.toml)
+        uses: ./.github/actions/setup-rust
       - name: Create JWT_SECRET
         run: echo "testsecret" > api/jwt_secret.local
       - name: Run rustfmt check

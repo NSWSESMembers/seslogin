@@ -123,12 +123,16 @@ rustc --version
 ```
 
 The repo pins an **exact** Rust version in [api/rust-toolchain.toml](api/rust-toolchain.toml)
-(currently `1.97.0`) so that CI and local dev run the same clippy lint set. rustup normally
+(currently `1.99.1`) so that CI and local dev run the same clippy lint set and the deployed
+Lambdas are built with the same compiler that was checked. Every CI job that builds the API,
+checks and deploys alike, installs it through
+[.github/actions/setup-rust](.github/actions/setup-rust/action.yml), so there is nothing else
+to bump. rustup normally
 installs it automatically the first time you build in `api/`. If it doesn't, `make check`
 will tell you, and the fix is:
 
 ```bash
-rustup toolchain install 1.97.0
+rustup toolchain install 1.99.1
 ```
 
 ### Node
@@ -282,7 +286,7 @@ See [api/README.md](api/README.md) for more.
 | Symptom | Fix |
 | --- | --- |
 | Credential / `ExpiredToken` errors from the API | `aws sso login --profile seslogin` |
-| `make check` fails on Rust toolchain mismatch | `rustup toolchain install 1.97.0` |
+| `make check` fails on Rust toolchain mismatch | `rustup toolchain install 1.99.1` |
 | `make check` fails with `actionlint not found` | `brew install actionlint` |
 | Frontend type errors on a query you just changed | `cd web && npm run relay` |
 | Schema diff failure in `make check` | Regenerate `schema.graphql` (see §6) |
