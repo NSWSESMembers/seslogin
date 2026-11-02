@@ -137,8 +137,14 @@ rustup toolchain install 1.99.1
 
 ### Node
 
-Node.js **>= 22** is required. Install it however you normally do (`nvm`, `fnm`, Homebrew,
-or [nodejs.org](https://nodejs.org)).
+Node.js **26** is required, pinned in [.nvmrc](.nvmrc), which CI reads too. Install it
+however you normally do (Homebrew, [nodejs.org](https://nodejs.org)); with `nvm` or `fnm`,
+`nvm use` / `fnm use` in the repo root picks it up from that file.
+
+npm refuses to run anything in `web/` or `pagination-test/` under another major version
+(`devEngines` in their `package.json`, error `EBADDEVENGINES`), and `make guide-screenshots`,
+which runs `node` directly, checks it the same way (`make check-node`). Bumping Node means
+changing `.nvmrc` and both `devEngines.runtime.version`s together.
 
 ### Dependencies
 
