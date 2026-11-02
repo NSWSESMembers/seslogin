@@ -333,6 +333,14 @@ struct TeachingDiscipline {
     training: &'static [&'static str],
 }
 
+/// Every category for teaching or assessing, across all the disciplines: what The Chalk
+/// trophy counts.
+pub fn teaching_category_ids() -> impl Iterator<Item = &'static str> {
+    TEACHING_DISCIPLINES
+        .iter()
+        .flat_map(|discipline| discipline.teaching.iter().copied())
+}
+
 // Each discipline members teach in, with the categories for teaching or assessing it
 // and for being trained in it. Storm & Water's Ground and Heights splits fold into
 // Storm & Water, whose old category holds the history.
