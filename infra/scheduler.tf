@@ -59,6 +59,26 @@ resource "aws_scheduler_schedule" "activity_summary_nightly" {
   }
 }
 
+resource "aws_scheduler_schedule" "change_digest_daily" {
+  name       = "seslogin-change-digest-daily"
+  group_name = "default"
+  state      = var.background_jobs_enabled ? "ENABLED" : "DISABLED"
+
+  flexible_time_window {
+    mode = "OFF"
+  }
+
+  # 06:30 Sydney time — emails the previous Sydney day's membership changes.
+  schedule_expression          = "cron(30 6 * * ? *)"
+  schedule_expression_timezone = "Australia/Sydney"
+
+  target {
+    arn      = aws_lambda_function.change_digest.arn
+    role_arn = aws_iam_role.scheduler.arn
+    input    = "{}"
+  }
+}
+
 resource "aws_scheduler_schedule" "location_sync_nightly" {
   name       = "seslogin-location-sync-nightly"
   group_name = "default"

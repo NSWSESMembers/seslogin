@@ -1426,6 +1426,32 @@ resource "aws_iam_role_policy" "activity_summary_lambda_dynamodb" {
   })
 }
 
+# Read-only: the change digest reads the audit log (by location), the user list
+# and location names, and writes nothing.
+resource "aws_iam_role_policy" "change_digest_lambda_dynamodb" {
+  name = "dynamodb"
+  role = aws_iam_role.change_digest_lambda.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Action = [
+        "dynamodb:GetItem",
+        "dynamodb:BatchGetItem",
+        "dynamodb:Query",
+        "dynamodb:Scan",
+      ]
+      Resource = [
+        aws_dynamodb_table.prod_audit_log.arn,
+        "${aws_dynamodb_table.prod_audit_log.arn}/index/location_id-sk-index",
+        "arn:aws:dynamodb:${local.region}:${local.account_id}:table/${var.db_prefix}_user",
+        "arn:aws:dynamodb:${local.region}:${local.account_id}:table/${var.db_prefix}_location",
+      ]
+    }]
+  })
+}
+
 resource "aws_iam_role_policy" "badge_nightly_lambda_dynamodb" {
   name = "dynamodb"
   role = aws_iam_role.badge_nightly_lambda.id
