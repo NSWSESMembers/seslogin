@@ -88,7 +88,7 @@ The failure is raised from an async-graphql extension, which is indistinguishabl
 from the resolver itself returning `Err` — so async-graphql applies its normal
 null-propagation. That is what makes this useful:
 
-- A **nullable** target (`...node.person`, `...node.category`) produces a *partial*
+- A **nullable** target (`...node.person`, `...node.category`) produces a _partial_
   response: HTTP 200, `data` populated, plus an `errors` entry. This is the case
   clients tend to mishandle, and it is otherwise hard to provoke.
 - A **non-null** target (`...node.location`) propagates up to the nearest nullable
@@ -97,7 +97,7 @@ null-propagation. That is what makes this useful:
 Two details worth knowing:
 
 - **Failures are deterministic.** With a `*` in the path, the rate is decided by
-  hashing each matched row's own full response path, so the *same* rows fail on every
+  hashing each matched row's own full response path, so the _same_ rows fail on every
   refetch. A random rate would make retry behaviour untestable — you couldn't tell a
   fix from a lucky reroll.
 - **`_BUDGET` caps total injections** for the life of the process. Set it to `1` and
@@ -347,6 +347,7 @@ and for how every tool call still goes through the same GraphQL guards the
 admin UI does.
 
 **Connecting:**
+
 - **Claude Code**: `claude mcp add --transport http seslogin <API base>/mcp`
   — it discovers the OAuth metadata, opens the consent page
   (`/admin/oauth/authorize`) in your browser, and stores the resulting token.
@@ -387,69 +388,69 @@ the MCP authorization spec's discovery flow.
 
 **Tools:**
 
-| tool | what it does |
-|---|---|
-| `whoami` | Who you're authenticated as: id, email, `isSuper`, the locations you can access, and your own settings (`emailSummaryLocationIds`, `disaggregateVirtualPeriods`). |
-| `list_users` | List every admin user. Super user only. |
-| `get_user` | Look up one user by id. A non-super caller may only look up themselves. |
-| `create_user` | Create a user (email, `isSuper`, `locationGrants`, optional `readOnlyLocationGrants`). Super user only. |
-| `update_user` | Change a user's email/`isSuper`/`isDev`/`locationGrants`/`readOnlyLocationGrants`; omitted fields keep their current value. Never touches `enabled`. Super user only. |
-| `disable_user` / `enable_user` | Flip `enabled` — SESLogin has no user delete, only disable. Super user only. |
-| `set_user_member` | Set (`personId`) or clear (`null`) the member a user acts as when signing in or out from the mobile app. Any user, the caller included; several users may share a member. Super user only. |
-| `list_locations` | The locations you can access (id, name, `enabled`, `viewerCanEdit`, `nitcEnabled`, `lastSuccessfulMemberSync`): every enabled one for a super user, otherwise your Admin and Read only grants. Start here for location ids. |
-| `get_location` | One location's details (adds NITC and SES headquarters settings, created/updated). Needs a grant for it. |
-| `list_members` | A location's active members, optionally filtered by `query` (case-insensitive substring of first/last/full name or member number). Deleted members are never listed. Each carries `syncManaged` (`sesApiPersonId` set). Admin, Read only or super user. |
-| `get_member` | One member, with their `lastPeriod`. Needs a grant for their location. |
-| `find_member_by_number` | As `get_member`, looked up by member number. "Not found" and "no grant" give the same error. |
-| `create_member` / `update_member` / `delete_member` | Manage members. `update_member` changes only the fields passed. Admin (or super user) only; Read only is refused. Members owned by member sync (`syncManaged`) can be changed but the next sync may undo it, and the admin site doesn't offer it. |
-| `sync_members` | Queue a member sync for a location. Admin (or super user) only. |
-| `list_categories` / `get_category` | The activity categories a period is filed under (name, `enabled`, `isVirtual`, NITC group, kiosk `groupName` / `shortName` / `icon`). Disabled ones are left out of the list unless `includeDisabled`. Global, so any signed-in user. |
-| `list_periods` | A location's activity periods, newest first, with member name/number (or `guestName`), category, comment and sign-in/out kiosk names. `onlyActive` is who is signed in now (the Current page); `start` and `end` (together) select by when a period started; `categoryIds`, `first` and `after` filter and page. This also covers the Reports page's export. Admin, Read only or super user. |
-| `list_member_periods` | One member's periods, same shape and paging, optionally by `categoryIds`. Needs a grant for the member's location. |
-| `get_period` | One period. Needs a grant for its location. |
-| `create_period` | Add a finished period for a member (member, location, category, start, end, optional comment). Admin (or super user) only. |
-| `update_period` | Change times, comment and category (member periods, via `updatePeriodTimeCategory`) or guest name (guest periods, via `updateGuestPeriod`), as the admin edit page does. Only passed fields change; `comment: null` clears it, leaving it out keeps it. Admin (or super user) only. |
-| `delete_period` | Delete a period. Admin (or super user) only. |
-| `send_period_edit_link` | Email the member a link to correct a period. Sends real email; subject to a reminder cooldown; guests can't be sent one. Admin (or super user) only. |
-| `get_dashboard` | The admin Home page for a location: member and check-in counts (24h / 7d / 30d, with the virtual split), total and average durations, kiosk counts, last member sync, the 7 daily buckets and the top categories. `asOf` moves the windows. Durations are seconds; the daily buckets are UTC days. Admin, Read only or super user. |
-| `summarize_activity` | Time per member / category over a range, grouped by `groupBy`: `member`, `category`, `member_category`, `category_member`, `day_category_member` or `day_member` (the Totals, Breakdown, Daily breakdown and Heatmap pages). `start`/`end` select by when a period started. `categoryIds` is accepted only by `member` and `day_member`; other groupings reject it. Durations are seconds (completed periods only); a day's `date` is a Sydney `YYYY-MM-DD`. Admin, Read only or super user. |
-| `members_last_seen` | Each active member of a location with when they were last seen (end of their latest period, or its start if still open, at any location; null if never) and `secondsAgo`; `sort` by `recent`, `least_recent` or `alphabetical` (the Last seen page). Admin, Read only or super user. |
-| `list_kiosks` | A location's kiosks, most recent contact first: name, `lastContact`, client version, `keyFingerprint`, `keyExpiresAt`, `reactivatable`, `healthcheckUrl`, `config` and the kiosk's self-reported `clientInfo`. `keyReleasedAt` set marks a replaced leftover that no longer works. Admin, Read only or super user. |
-| `get_kiosk` | One kiosk, same shape. Needs a grant for its location. |
-| `update_kiosk` | Change `name`, `config` (a JSON object that replaces the whole config) or `healthcheckUrl`; only passed fields change, `healthcheckUrl: null` clears it, leaving it out keeps it. Admin (or super user) only. |
-| `delete_kiosk` | Delete a kiosk (the device must be set up again by QR code). Also how to remove a replaced leftover. Admin (or super user) only. |
-| `create_category` / `update_category` | Add or change an activity category (`name`, `isVirtual`, `enabled`, NITC group and participant type, kiosk display `groupName` / `shortName` / `icon`). `update_category` changes only the fields passed; `nitcGroupId`, `nitcParticipantType`, `groupName`, `shortName` and `icon` can be cleared with `null`. Super user only. |
-| `list_nitc_groups` / `get_nitc_group` | The NITC groups (SES non-incident type and tags) with the `categories` that export as each. Super user only. |
-| `create_nitc_group` / `update_nitc_group` / `delete_nitc_group` | Manage NITC groups. `update_nitc_group` changes only the fields passed (`nitcTagIds` replaces the whole list). Deleting does not check categories still using the group. Super user only. |
-| `list_ses_nonincident_tags` / `list_ses_reference_data` | The valid values for those forms: SES tag ids, `nonincidentTypes` (a group's `nitcType`) and `participantTypes` (a category's `nitcParticipantType`; fetched from SES, so can fail when SES is unreachable). Super user only. |
-| `create_location` / `update_location` | Add or change a location: `name`, `enabled`, `nitcEnabled` (when NITC export starts; `null` turns it off) and `nitcCompleteOnExport`. `update_location` changes only the fields passed. No SES headquarters field: the site's pages don't set it (location sync does). Super user only. |
-| `list_api_tokens` / `get_api_token` | API tokens (`slgn_`): name, `locationGrants`, `readOnly`, creator, `expiresAt`, `revokedAt`, `lastUsedAt`. Never a secret or hash. Super user only. |
-| `update_api_token` / `revoke_api_token` | Change a token's name, locations, `readOnly` or `expiresAt` (only passed fields change; `expiresAt: null` = never expires), or revoke it for good. Super user only. |
-| `get_audit_log` | The record of changes, newest first: `entries` (time, action, `entityType`, `entityLabel`, location, actor, field-level `changes`) and `pageInfo`. With `locationId` it is that location's log, open to Admin, Read only and super users; without it, every location plus global records (users, categories, tokens), super user only. `entityTypes` filters by kind; `first` (max 200) and `after` page. `ip` and `actor.via` are shown to super users only. |
-| `update_my_settings` | Change your own `dailyEmailLocationIds` (the complete list of locations whose daily summary you get; locations you can access only) and/or `disaggregateVirtualPeriods`. Passing neither is an error. |
-| `list_connected_apps` / `revoke_connected_app` | The AI clients and other apps you have authorised (the Connected apps page): client name, redirect host, created/last used, `refreshExpiresAt`, with `thisConnection` on the grant the call itself came in on. Revoking that one ends the session (`endedThisConnection`). `userId` (list) is super user only for anyone but yourself; a super user can revoke anyone's grant, anyone else only their own. |
-| `list_passkeys` / `rename_passkey` / `delete_passkey` | Your passkeys: id, name, created/last used, never key material. Rename and delete work on your own passkeys only, even for a super user; `list_passkeys`'s `userId` is super user only for anyone but yourself. Adding a passkey is done in the browser. |
-| `submit_feedback` | Send the seslogin team a help request as a Toolbox ticket from your own address (subject, message). Sends real email. If Toolbox isn't configured on the server the tool says so and points at support@seslogin.com, like the site's help dialog. |
+| tool                                                            | what it does                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| --------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `whoami`                                                        | Who you're authenticated as: id, email, `isSuper`, the locations you can access, and your own settings (`emailSummaryLocationIds`, `disaggregateVirtualPeriods`).                                                                                                                                                                                                                                                                                                                            |
+| `list_users`                                                    | List every admin user. Super user only.                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `get_user`                                                      | Look up one user by id. A non-super caller may only look up themselves.                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `create_user`                                                   | Create a user (email, `isSuper`, `locationGrants`, optional `readOnlyLocationGrants`). Super user only.                                                                                                                                                                                                                                                                                                                                                                                      |
+| `update_user`                                                   | Change a user's email/`isSuper`/`isDev`/`locationGrants`/`readOnlyLocationGrants`; omitted fields keep their current value. Never touches `enabled`. Super user only.                                                                                                                                                                                                                                                                                                                        |
+| `disable_user` / `enable_user`                                  | Flip `enabled` — SESLogin has no user delete, only disable. Super user only.                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `set_user_member`                                               | Set (`personId`) or clear (`null`) the member a user acts as when signing in or out from the mobile app. Any user, the caller included; several users may share a member. Super user only.                                                                                                                                                                                                                                                                                                   |
+| `list_locations`                                                | The locations you can access (id, name, `enabled`, `viewerCanEdit`, `nitcEnabled`, `lastSuccessfulMemberSync`): every enabled one for a super user, otherwise your Admin and Read only grants. Start here for location ids.                                                                                                                                                                                                                                                                  |
+| `get_location`                                                  | One location's details (adds NITC and SES headquarters settings, created/updated). Needs a grant for it.                                                                                                                                                                                                                                                                                                                                                                                     |
+| `list_members`                                                  | A location's active members, optionally filtered by `query` (case-insensitive substring of first/last/full name or member number). Deleted members are never listed. Each carries `syncManaged` (`sesApiPersonId` set). Admin, Read only or super user.                                                                                                                                                                                                                                      |
+| `get_member`                                                    | One member, with their `lastPeriod`. Needs a grant for their location.                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `find_member_by_number`                                         | As `get_member`, looked up by member number. "Not found" and "no grant" give the same error.                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `create_member` / `update_member` / `delete_member`             | Manage members. `update_member` changes only the fields passed. Admin (or super user) only; Read only is refused. Members owned by member sync (`syncManaged`) can be changed but the next sync may undo it, and the admin site doesn't offer it.                                                                                                                                                                                                                                            |
+| `sync_members`                                                  | Queue a member sync for a location. Admin (or super user) only.                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `list_categories` / `get_category`                              | The activity categories a period is filed under (name, `enabled`, `isVirtual`, NITC group, kiosk `groupName` / `shortName` / `icon`). Disabled ones are left out of the list unless `includeDisabled`. Global, so any signed-in user.                                                                                                                                                                                                                                                        |
+| `list_periods`                                                  | A location's activity periods, newest first, with member name/number (or `guestName`), category, comment and sign-in/out kiosk names. `onlyActive` is who is signed in now (the Current page); `start` and `end` (together) select by when a period started; `categoryIds`, `first` and `after` filter and page. This also covers the Reports page's export. Admin, Read only or super user.                                                                                                 |
+| `list_member_periods`                                           | One member's periods, same shape and paging, optionally by `categoryIds`. Needs a grant for the member's location.                                                                                                                                                                                                                                                                                                                                                                           |
+| `get_period`                                                    | One period. Needs a grant for its location.                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `create_period`                                                 | Add a finished period for a member (member, location, category, start, end, optional comment). Admin (or super user) only.                                                                                                                                                                                                                                                                                                                                                                   |
+| `update_period`                                                 | Change times, comment and category (member periods, via `updatePeriodTimeCategory`) or guest name (guest periods, via `updateGuestPeriod`), as the admin edit page does. Only passed fields change; `comment: null` clears it, leaving it out keeps it. Admin (or super user) only.                                                                                                                                                                                                          |
+| `delete_period`                                                 | Delete a period. Admin (or super user) only.                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `send_period_edit_link`                                         | Email the member a link to correct a period. Sends real email; subject to a reminder cooldown; guests can't be sent one. Admin (or super user) only.                                                                                                                                                                                                                                                                                                                                         |
+| `get_dashboard`                                                 | The admin Home page for a location: member and check-in counts (24h / 7d / 30d, with the virtual split), total and average durations, kiosk counts, last member sync, the 7 daily buckets and the top categories. `asOf` moves the windows. Durations are seconds; the daily buckets are UTC days. Admin, Read only or super user.                                                                                                                                                           |
+| `summarize_activity`                                            | Time per member / category over a range, grouped by `groupBy`: `member`, `category`, `member_category`, `category_member`, `day_category_member` or `day_member` (the Totals, Breakdown, Daily breakdown and Heatmap pages). `start`/`end` select by when a period started. `categoryIds` is accepted only by `member` and `day_member`; other groupings reject it. Durations are seconds (completed periods only); a day's `date` is a Sydney `YYYY-MM-DD`. Admin, Read only or super user. |
+| `members_last_seen`                                             | Each active member of a location with when they were last seen (end of their latest period, or its start if still open, at any location; null if never) and `secondsAgo`; `sort` by `recent`, `least_recent` or `alphabetical` (the Last seen page). Admin, Read only or super user.                                                                                                                                                                                                         |
+| `list_kiosks`                                                   | A location's kiosks, most recent contact first: name, `lastContact`, client version, `keyFingerprint`, `keyExpiresAt`, `reactivatable`, `healthcheckUrl`, `config` and the kiosk's self-reported `clientInfo`. `keyReleasedAt` set marks a replaced leftover that no longer works. Admin, Read only or super user.                                                                                                                                                                           |
+| `get_kiosk`                                                     | One kiosk, same shape. Needs a grant for its location.                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `update_kiosk`                                                  | Change `name`, `config` (a JSON object that replaces the whole config) or `healthcheckUrl`; only passed fields change, `healthcheckUrl: null` clears it, leaving it out keeps it. Admin (or super user) only.                                                                                                                                                                                                                                                                                |
+| `delete_kiosk`                                                  | Delete a kiosk (the device must be set up again by QR code). Also how to remove a replaced leftover. Admin (or super user) only.                                                                                                                                                                                                                                                                                                                                                             |
+| `create_category` / `update_category`                           | Add or change an activity category (`name`, `isVirtual`, `enabled`, NITC group and participant type, kiosk display `groupName` / `shortName` / `icon`). `update_category` changes only the fields passed; `nitcGroupId`, `nitcParticipantType`, `groupName`, `shortName` and `icon` can be cleared with `null`. Super user only.                                                                                                                                                             |
+| `list_nitc_groups` / `get_nitc_group`                           | The NITC groups (SES non-incident type and tags) with the `categories` that export as each. Super user only.                                                                                                                                                                                                                                                                                                                                                                                 |
+| `create_nitc_group` / `update_nitc_group` / `delete_nitc_group` | Manage NITC groups. `update_nitc_group` changes only the fields passed (`nitcTagIds` replaces the whole list). Deleting does not check categories still using the group. Super user only.                                                                                                                                                                                                                                                                                                    |
+| `list_ses_nonincident_tags` / `list_ses_reference_data`         | The valid values for those forms: SES tag ids, `nonincidentTypes` (a group's `nitcType`) and `participantTypes` (a category's `nitcParticipantType`; fetched from SES, so can fail when SES is unreachable). Super user only.                                                                                                                                                                                                                                                                |
+| `create_location` / `update_location`                           | Add or change a location: `name`, `enabled`, `nitcEnabled` (when NITC export starts; `null` turns it off) and `nitcCompleteOnExport`. `update_location` changes only the fields passed. No SES headquarters field: the site's pages don't set it (location sync does). Super user only.                                                                                                                                                                                                      |
+| `list_api_tokens` / `get_api_token`                             | API tokens (`slgn_`): name, `locationGrants`, `readOnly`, creator, `expiresAt`, `revokedAt`, `lastUsedAt`. Never a secret or hash. Super user only.                                                                                                                                                                                                                                                                                                                                          |
+| `update_api_token` / `revoke_api_token`                         | Change a token's name, locations, `readOnly` or `expiresAt` (only passed fields change; `expiresAt: null` = never expires), or revoke it for good. Super user only.                                                                                                                                                                                                                                                                                                                          |
+| `get_audit_log`                                                 | The record of changes, newest first: `entries` (time, action, `entityType`, `entityLabel`, location, actor, field-level `changes`) and `pageInfo`. With `locationId` it is that location's log, open to Admin, Read only and super users; without it, every location plus global records (users, categories, tokens), super user only. `entityTypes` filters by kind; `first` (max 200) and `after` page. `ip` and `actor.via` are shown to super users only.                                |
+| `update_my_settings`                                            | Change your own `dailyEmailLocationIds` (the complete list of locations whose daily summary you get; locations you can access only) and/or `disaggregateVirtualPeriods`. Passing neither is an error.                                                                                                                                                                                                                                                                                        |
+| `list_connected_apps` / `revoke_connected_app`                  | The AI clients and other apps you have authorised (the Connected apps page): client name, redirect host, created/last used, `refreshExpiresAt`, with `thisConnection` on the grant the call itself came in on. Revoking that one ends the session (`endedThisConnection`). `userId` (list) is super user only for anyone but yourself; a super user can revoke anyone's grant, anyone else only their own.                                                                                   |
+| `list_passkeys` / `rename_passkey` / `delete_passkey`           | Your passkeys: id, name, created/last used, never key material. Rename and delete work on your own passkeys only, even for a super user; `list_passkeys`'s `userId` is super user only for anyone but yourself. Adding a passkey is done in the browser.                                                                                                                                                                                                                                     |
+| `submit_feedback`                                               | Send the seslogin team a help request as a Toolbox ticket from your own address (subject, message). Sends real email. If Toolbox isn't configured on the server the tool says so and points at support@seslogin.com, like the site's help dialog.                                                                                                                                                                                                                                            |
 
 **Not exposed, on purpose:**
 
-- *Creating API tokens* (`createApiToken`). An MCP grant is revocable and expires, while an
+- _Creating API tokens_ (`createApiToken`). An MCP grant is revocable and expires, while an
   `slgn_` token is a long-lived credential that works on `/graphql` outside this tool set,
   so a grant must not be able to mint one. The API token tools never return a secret or
   hash.
-- *Enrolling or reactivating kiosks, and the pending-enrolment lookup* (`enrollSession`,
+- _Enrolling or reactivating kiosks, and the pending-enrolment lookup_ (`enrollSession`,
   `reactivateSession`, `pendingEnrollmentKey`). A device is only bound to a location by a
   person scanning its QR code in the browser.
-- *Login, logout and auth codes.* They mint or end the credentials this endpoint is
+- _Login, logout and auth codes._ They mint or end the credentials this endpoint is
   already authenticated with.
-- *Passkey registration and login.* The WebAuthn ceremonies need the user's authenticator
+- _Passkey registration and login._ The WebAuthn ceremonies need the user's authenticator
   in the browser. Passkeys can be listed, renamed and deleted.
-- *OAuth consent* (`approveOauthAuthorization`, `oauthAuthorizationRequest`). Approving an
+- _OAuth consent_ (`approveOauthAuthorization`, `oauthAuthorizationRequest`). Approving an
   app is the user's own decision on the site, not an AI client's. Connected apps can be
   listed and revoked.
-- *`refreshToken`.* It re-issues a kiosk's session JWT (`Session`-guarded) and means
+- _`refreshToken`._ It re-issues a kiosk's session JWT (`Session`-guarded) and means
   nothing for a user.
-- *Kiosk-only (`Session`-guarded) and edit-link-only (`PeriodLink`) fields.* They
+- _Kiosk-only (`Session`-guarded) and edit-link-only (`PeriodLink`) fields._ They
   authenticate a device or a member's single link, neither of which can be this user.
 
 **Times.** Any time argument takes Unix seconds (an integer) or a string: RFC 3339
@@ -460,7 +461,7 @@ fall-back takes the earlier one; one that doesn't exist is an error). Results
 keep each Unix-seconds timestamp and add a `<name>Sydney` RFC 3339 sibling
 (`createdAt` and `createdAtSydney`). Durations stay in seconds. Report day buckets come
 in two kinds: `dailyPeriods7D[].dayStart` in `get_dashboard` is a Unix time at the start
-of a *UTC* day, while the `date` in `summarize_activity` is a Sydney calendar date
+of a _UTC_ day, while the `date` in `summarize_activity` is a Sydney calendar date
 string.
 
 **Partial updates.** `update_*` tools fetch the record, overlay only the arguments
@@ -480,7 +481,7 @@ tools (for your own locations) work; the category/NITC/location/API-token admini
 tools are `SuperUser` in GraphQL and refuse everyone else. Where a GraphQL read doesn't itself check the caller's grants
 (`location`, `Location.people` and the six `Location.periodSummaryBy*` resolvers behind `summarize_activity`), the tool does, and the period and kiosk
 tools check again even where the resolver does (`period`, `Location.periods`, `Query.session`, `Location.sessions`, `Location.auditLog`), so a tool only ever narrows access. A single member (`get_member`, `find_member_by_number`, `list_member_periods`) is read through `Query.person`, which allows an Admin or Read only grant at any of the member's units (primary or secondary); `update_member` and `delete_member` still need Admin at the primary unit. A tool failure (a guard rejection, a
-validation error) comes back as an ordinary JSON-RPC *success* whose
+validation error) comes back as an ordinary JSON-RPC _success_ whose
 `CallToolResult` carries `isError: true` and the message — not a transport
 error — so a client can show it inline rather than treating the whole request
 as failed.
@@ -493,7 +494,7 @@ policy, so the browser-based
 [MCP Inspector](https://github.com/modelcontextprotocol/inspector)
 (`npx @modelcontextprotocol/inspector`) works against
 `http://localhost:8000/mcp` end-to-end, including the OAuth flow. The same
-Inspector run against a *deployed* server will fail the discovery/registration
+Inspector run against a _deployed_ server will fail the discovery/registration
 requests to CORS — production intentionally doesn't allow arbitrary
 browser-origin JS to hit its OAuth endpoints; use `claude mcp add` or a
 claude.ai connector there instead.
@@ -510,14 +511,52 @@ unit, `Person.isMemberOf(locationId)` says whether a unit is one of theirs, and
 `deletePerson`. `cli person list --include-secondary` lists a unit the same way; its
 default is the primary-only list.
 
-A member is a *visitor* only at a unit that is none of theirs: `!person.is_member_of(location)`,
+A member is a _visitor_ only at a unit that is none of theirs: `!person.is_member_of(location)`,
 never `location_id != location.id`. So `scanRegister2(confirmVisitor: true)` signs a member of
 the kiosk's unit (primary or secondary) in without `CONFIRM_VISITOR`, and a secondary unit counts
 like the primary unit for badges: it earns no "visiting" credit there (away check-ins, distance badges).
-Badges are worked out when gamification is on at the kiosk's unit and at *any* of the member's
+Badges are worked out when gamification is on at the kiosk's unit and at _any_ of the member's
 units (kiosk scans, directly-created periods and `badge-nightly` alike); distance badges
 measure from the nearest of the member's units that has coordinates. The admin Activity pages
 label a visitor "Visiting from <unit>" and a member whose primary unit is elsewhere "Primary: <unit>".
+
+## Perpetual trophies
+
+Twelve badges that belong to a **unit**, not a member, each with exactly one holder at a
+time (`src/trophies.rs`). Whoever beats the holder takes it, and every change of hands is
+kept as a reign in the `trophy` table (see SCHEMA.md). Two kinds:
+
+- **Standing records** (The Boomerang: longest gap between sign-ins at the unit; The
+  Odometer: a member's furthest sign-in at a unit that is none of theirs, from the
+  nearest of their own units). A claim counts for 365 days; a strictly bigger one takes
+  the trophy. When the holder's claim ages out, the best claim still inside the window
+  takes over, or the holder keeps it if there is none.
+- **Rolling leads** (the other ten), scored nightly over a trailing window. A challenger
+  must strictly beat the holder's current score and meet the minimum; a quiet holder
+  keeps it until passed, or until their own score falls below the trophy's
+  `keep_minimum` (`lapsed`; the same as its minimum except The Kettle and The Padlock,
+  which take 3 busy days in 60 to win but are kept while at least 1),
+  when it passes to whoever leads or goes vacant if nobody qualifies.
+
+A reign records the best score the holder reached while holding it (the holder row's
+`best_value`) and the score the next holder took it with (`ended_by_value`), so the
+history reads sensibly even when a rolling holder's score had fallen by the time they lost
+it.
+
+Ties go to the holder, and between challengers on the same score, whoever reached it
+first. Only a unit's own members (primary or secondary) can hold its trophies. Every
+hours-based trophy counts a sign-in at most 12 hours, so nothing rewards a long shift.
+
+`trophy_nightly::run`, at the end of `badge-nightly` (`seslogin-badge-nightly`), is the
+source of truth: for every unit with gamification on it reads 372 days of sign-ins,
+scores each trophy, and writes what changed with `write_trophy`, which is conditional on
+the holder row's version. It also catches what a kiosk scan can't: a record whose period
+was deleted or edited reverts to the best claim still standing (or goes vacant), a claim
+that has aged out passes on, and a holder who is no longer a member hands the trophy to
+the leader (or leaves it vacant). Each change writes a reign for the old holder and
+notices for the member who took it and, if they were beaten, the one who lost it. A
+dry run (`badge-nightly` without `--apply`) logs the changes instead. A unit that fails
+is logged and skipped. `cli trophy list --location <id>` shows a unit's cabinet.
 
 ## Tally (members)
 
@@ -575,8 +614,15 @@ A location's shared to-do list, used by the Tally app (`src/graphql/tasks.rs`, r
 
 ```graphql
 mutation {
-  createTask(locationId: "TestAUnit001", title: "Wash the truck",
-             recurrence: { every: 1, unit: WEEKS }) { id version dueDate }
+  createTask(
+    locationId: "TestAUnit001"
+    title: "Wash the truck"
+    recurrence: { every: 1, unit: WEEKS }
+  ) {
+    id
+    version
+    dueDate
+  }
 }
 ```
 
@@ -591,31 +637,78 @@ fields:
 ```json
 {
   "contacts": [
-    { "id": "…", "firstName": "Ann", "lastName": "Smith", "preferredName": "Annie",
-      "memberNumber": "40064936", "locationId": "…", "unit": "Alpha Unit",
-      "email": "…", "mobile": "+61400000000",
-      "phones": [{ "number": "+61400000000", "types": ["Primary Telephone", "SMS"] }],
+    {
+      "id": "…",
+      "firstName": "Ann",
+      "lastName": "Smith",
+      "preferredName": "Annie",
+      "memberNumber": "40064936",
+      "locationId": "…",
+      "unit": "Alpha Unit",
+      "email": "…",
+      "mobile": "+61400000000",
+      "phones": [
+        { "number": "+61400000000", "types": ["Primary Telephone", "SMS"] }
+      ],
       "capabilityTags": [{ "id": 12, "name": "Chainsaw", "description": "…" }],
       "units": [
-        { "entityId": "…", "name": "Alpha Unit", "code": "ALP", "locationId": "…",
-          "zone": "Metro Zone", "membershipType": "Member", "ranks": ["Unit Commander"],
-          "roles": ["Storm Team Leader"], "positions": [], "isPrimary": true }
+        {
+          "entityId": "…",
+          "name": "Alpha Unit",
+          "code": "ALP",
+          "locationId": "…",
+          "zone": "Metro Zone",
+          "membershipType": "Member",
+          "ranks": ["Unit Commander"],
+          "roles": ["Storm Team Leader"],
+          "positions": [],
+          "isPrimary": true
+        }
       ],
-      "updatedAt": 1783655893 },
+      "updatedAt": 1783655893
+    },
     { "id": "…", "deleted": true }
   ],
   "units": [
-    { "id": "…", "name": "Hornsby Unit", "code": "HOR", "zoneId": "…",
-      "address": { "line1": "…", "line2": "…", "suburb": "Hornsby", "state": "NSW",
-                   "postcode": "2077", "formatted": "…" },
+    {
+      "id": "…",
+      "name": "Hornsby Unit",
+      "code": "HOR",
+      "zoneId": "…",
+      "address": {
+        "line1": "…",
+        "line2": "…",
+        "suburb": "Hornsby",
+        "state": "NSW",
+        "postcode": "2077",
+        "formatted": "…"
+      },
       "postalAddress": { "formatted": "…" },
-      "latitude": -33.7, "longitude": 151.1, "phone": "…", "email": "…",
-      "accreditations": [{ "type": "Flood Rescue", "status": "Accredited", "number": "…",
-                           "note": "…" }] }
+      "latitude": -33.7,
+      "longitude": 151.1,
+      "phone": "…",
+      "email": "…",
+      "accreditations": [
+        {
+          "type": "Flood Rescue",
+          "status": "Accredited",
+          "number": "…",
+          "note": "…"
+        }
+      ]
+    }
   ],
   "sharedContacts": [
-    { "id": "…", "locationId": "…", "name": "Duty Officer phone", "description": "…",
-      "phone": "0400 000 000", "phoneCanSms": true, "email": "…", "updatedAt": 1783655893 },
+    {
+      "id": "…",
+      "locationId": "…",
+      "name": "Duty Officer phone",
+      "description": "…",
+      "phone": "0400 000 000",
+      "phoneCanSms": true,
+      "email": "…",
+      "updatedAt": 1783655893
+    },
     { "id": "…", "name": "SOC", "phoneCanSms": false, "updatedAt": 1783655893 }
   ],
   "nextCursor": "…",
@@ -652,7 +745,7 @@ Unlike units, the list is the **caller's own**: every statewide contact (no
 and their user's units, either role, or every location for a super user) — exactly what
 GraphQL lets them read. So a member who gains or loses a unit gets the new list on their
 next sync. `description` and `email`, and `phone` when absent, are left out; whether the
-caller may *edit* one isn't sent (a location's always, a statewide one only for a super
+caller may _edit_ one isn't sent (a location's always, a statewide one only for a super
 user, which `tallyViewer.isSuper` says). Each response scans the `shared_contact` table
 (a few rows per location) to compute the hash. A cursor from before shared contacts were
 synced has no hash for them, so its next response carries the list.
@@ -723,8 +816,14 @@ A location's shared notebook, used by the Tally app (`src/graphql/notes.rs`, rul
 
 ```graphql
 mutation {
-  createNote(locationId: "TestAUnit001", title: "Radio channels",
-             content: "Ops: 1\nAdmin: 2") { id version }
+  createNote(
+    locationId: "TestAUnit001"
+    title: "Radio channels"
+    content: "Ops: 1\nAdmin: 2"
+  ) {
+    id
+    version
+  }
 }
 ```
 
@@ -777,11 +876,38 @@ their member number at a kiosk at their primary unit, or at another unit they ca
   render as plain times (and blank cells in report exports), like admin-created periods.
 
 ```graphql
-query { selfSignInStatus { person { firstName } openPeriod { id version startTime }
-  whosHere { id name guest startTime isMe } } }
-mutation { selfSignIn { id version } }
+query {
+  selfSignInStatus {
+    person {
+      firstName
+    }
+    openPeriod {
+      id
+      version
+      startTime
+    }
+    whosHere {
+      id
+      name
+      guest
+      startTime
+      isMe
+    }
+  }
+}
+mutation {
+  selfSignIn {
+    id
+    version
+  }
+}
 # At another unit the member can use:
-mutation { selfSignIn(locationId: "TestBUnit001") { id version } }
+mutation {
+  selfSignIn(locationId: "TestBUnit001") {
+    id
+    version
+  }
+}
 ```
 
 ## Equipment
@@ -799,7 +925,7 @@ A location's equipment register, used by the Tally app (`src/graphql/equipment.r
   `IN_SERVICE`, `HAS_ISSUE` (still usable, but something needs fixing), `OUT_OF_SERVICE`,
   `MISSING` or `BORROWED`.
 - **The log:** the status is never edited directly. `changeEquipmentStatus(id, status,
-  comment)` changes it and logs the change with a comment saying why (required, max 1,000);
+comment)` changes it and logs the change with a comment saying why (required, max 1,000);
   `checkEquipment(id, comment)` logs that the caller checked it, comment optional, and leaves
   the status alone (it stamps `lastCheckedAt`). Each entry and its effect on the equipment are
   written in one DynamoDB transaction, conditional on the status it starts from, so the log
@@ -813,7 +939,15 @@ A location's equipment register, used by the Tally app (`src/graphql/equipment.r
 ```graphql
 mutation {
   changeEquipmentStatus(id: "…", status: OUT_OF_SERVICE, comment: "Flat tyre") {
-    status log { kind previousStatus status comment createdBy createdAt }
+    status
+    log {
+      kind
+      previousStatus
+      status
+      comment
+      createdBy
+      createdAt
+    }
   }
 }
 ```
@@ -852,7 +986,7 @@ storage in SCHEMA.md's `equipment_reservation` section).
   the same question about a reservation not yet saved, so a client can warn before saving;
   `excludeId` leaves out the one being edited.
 - **Writes:** `createEquipmentReservation(locationId, equipmentIds, startTime, endTime,
-  reservedFor, reservedForMemberIds, description)`. `updateEquipmentReservation` changes only
+reservedFor, reservedForMemberIds, description)`. `updateEquipmentReservation` changes only
   the arguments given — who it is for changes when `reservedFor` or `reservedForMemberIds` is
   given, decided by the two as on create, so `reservedFor: null` makes it the caller's — and
   takes `expectedVersion`, failing with
@@ -863,10 +997,20 @@ storage in SCHEMA.md's `equipment_reservation` section).
 ```graphql
 mutation {
   createEquipmentReservation(
-    locationId: "…", equipmentIds: ["…"], startTime: 1793000000, endTime: 1793010800,
+    locationId: "…"
+    equipmentIds: ["…"]
+    startTime: 1793000000
+    endTime: 1793010800
     reservedFor: "Detailing / clean"
   ) {
-    id reservedFor conflicts { id reservedFor startTime endTime }
+    id
+    reservedFor
+    conflicts {
+      id
+      reservedFor
+      startTime
+      endTime
+    }
   }
 }
 ```
@@ -903,7 +1047,7 @@ rules in `src/calendar.rs`, storage in SCHEMA.md's `calendar` and `calendar_even
   ends, so finished ones cost nothing to skip. `Query.calendarEvent(id)` reads one.
 - **Writes:** `createCalendarEvent`, `updateCalendarEvent` and `deleteCalendarEvent`. Update
   changes only the arguments given: `calendarId: null` takes it out of its calendar, `repeat:
-  null` stops it repeating, `repeatUntil: null` makes it repeat forever; a new start with no end
+null` stops it repeating, `repeatUntil: null` makes it repeat forever; a new start with no end
   keeps the event's length, and switching `allDay` needs the new start (and end, for timed).
 - **Concurrency:** `updateCalendarEvent` takes `expectedVersion`; if someone else saved the
   event since it was read, the save fails with `CONFLICT` rather than overwriting their change.
@@ -912,15 +1056,36 @@ rules in `src/calendar.rs`, storage in SCHEMA.md's `calendar` and `calendar_even
 
 ```graphql
 mutation {
-  createCalendarEvent(locationId: "TestAUnit001", title: "Training night",
-                      allDay: false, startTime: 1793000000, endTime: 1793007200,
-                      repeat: WEEKLY, repeatUntil: "2027-06-30") { id version }
+  createCalendarEvent(
+    locationId: "TestAUnit001"
+    title: "Training night"
+    allDay: false
+    startTime: 1793000000
+    endTime: 1793007200
+    repeat: WEEKLY
+    repeatUntil: "2027-06-30"
+  ) {
+    id
+    version
+  }
 }
 {
   tallyLocation(id: "TestAUnit001") {
     calendarEvents(from: 1793000000, to: 1795600000) {
-      startTime endTime startDate endDate
-      event { id title allDay calendarId calendar { name color } }
+      startTime
+      endTime
+      startDate
+      endDate
+      event {
+        id
+        title
+        allDay
+        calendarId
+        calendar {
+          name
+          color
+        }
+      }
     }
   }
 }
@@ -950,9 +1115,18 @@ A location's shared map of pins, used by the Tally app (`src/graphql/map.rs`, ru
 
 ```graphql
 mutation {
-  createMapPin(locationId: "TestAUnit001", title: "Staging area",
-               latitude: -33.8688, longitude: 151.2093, type: ACCESS,
-               address: "1 Example St", note: "Gate code at the shed") { id version }
+  createMapPin(
+    locationId: "TestAUnit001"
+    title: "Staging area"
+    latitude: -33.8688
+    longitude: 151.2093
+    type: ACCESS
+    address: "1 Example St"
+    note: "Gate code at the shed"
+  ) {
+    id
+    version
+  }
 }
 ```
 
@@ -985,8 +1159,15 @@ later; for now a role just has the people in it now.
 
 ```graphql
 mutation {
-  createOnCallRole(locationId: "TestAUnit001", name: "Duty Officer",
-                   phone: "0400 000 000", primaryPersonId: "TestAMember1") { id version }
+  createOnCallRole(
+    locationId: "TestAUnit001"
+    name: "Duty Officer"
+    phone: "0400 000 000"
+    primaryPersonId: "TestAMember1"
+  ) {
+    id
+    version
+  }
 }
 ```
 
@@ -1023,8 +1204,15 @@ SCHEMA.md's `shared_contact` section).
 
 ```graphql
 mutation {
-  createSharedContact(locationId: "TestAUnit001", name: "Duty Officer",
-                      phone: "0400 000 000", phoneCanSms: true) { id version }
+  createSharedContact(
+    locationId: "TestAUnit001"
+    name: "Duty Officer"
+    phone: "0400 000 000"
+    phoneCanSms: true
+  ) {
+    id
+    version
+  }
 }
 ```
 
@@ -1056,8 +1244,14 @@ in SCHEMA.md's `location_share` section).
 
 ```graphql
 mutation {
-  startLocationShare(locationId: "TestAUnit001", durationMinutes: 15, intervalSeconds: 120,
-                     position: { latitude: -33.70, longitude: 151.10, accuracy: 8 }) { endsAt }
+  startLocationShare(
+    locationId: "TestAUnit001"
+    durationMinutes: 15
+    intervalSeconds: 120
+    position: { latitude: -33.70, longitude: 151.10, accuracy: 8 }
+  ) {
+    endsAt
+  }
 }
 ```
 
@@ -1073,7 +1267,7 @@ producers' API in `src/notifications.rs`, storage in SCHEMA.md's `notification` 
   optional `targetType`/`targetId` for what tapping it opens. The table is keyed by recipient
   member (person ID) and a time-ordered `sk`, with a sparse `unread-index` for counting and listing unread.
   Rows are removed by the TTL 90 days after creation, read or not.
-- **Producing one:** call `notifications::notify(app, NewNotification, Audience)` *after* the
+- **Producing one:** call `notifications::notify(app, NewNotification, Audience)` _after_ the
   business write has succeeded. `NewNotification::new(source, kind, title)` takes `.location()`,
   `.body()` and `.target(type, id)`. An `Audience` is `Members(person_ids)`. Only live (not
   deleted) members are notified, the acting member (the current audit-context actor, if it is
@@ -1083,10 +1277,10 @@ producers' API in `src/notifications.rs`, storage in SCHEMA.md's `notification` 
   with `locationId` set. Tally maps `source`/`kind`/`targetType` to icons and screens, so the
   strings are fixed:
 
-  | source | kind | targetType | When | Audience | Title / body |
-  |---|---|---|---|---|---|
-  | `reservations` | `reservation.for_you` | `reservation` | `createEquipmentReservation`, or `updateEquipmentReservation`, adds members to `reserved_for_person_ids` (every member it is for, on create) | each added member other than the actor | "Equipment reserved for you" / "<equipment names, sorted> · <Sun 25 Oct 09:00–11:00, Sydney time>" ("Equipment" if the names can't be read) |
-  | `oncall` | `oncall.assigned` | `on_call_role` | `createOnCallRole`, or `updateOnCallRole`, makes a person the primary when they were not, or adds them to the secondaries when they were not already there (moving primary to secondary counts; removals and reorderings do not) | that member, once per newly assigned member | "You're now primary for <role>" / "You're now a secondary for <role>" |
+  | source         | kind                  | targetType     | When                                                                                                                                                                                                                             | Audience                                    | Title / body                                                                                                                                |
+  | -------------- | --------------------- | -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+  | `reservations` | `reservation.for_you` | `reservation`  | `createEquipmentReservation`, or `updateEquipmentReservation`, adds members to `reserved_for_person_ids` (every member it is for, on create)                                                                                     | each added member other than the actor      | "Equipment reserved for you" / "<equipment names, sorted> · <Sun 25 Oct 09:00–11:00, Sydney time>" ("Equipment" if the names can't be read) |
+  | `oncall`       | `oncall.assigned`     | `on_call_role` | `createOnCallRole`, or `updateOnCallRole`, makes a person the primary when they were not, or adds them to the secondaries when they were not already there (moving primary to secondary counts; removals and reorderings do not) | that member, once per newly assigned member | "You're now primary for <role>" / "You're now a secondary for <role>"                                                                       |
 
   Equipment going into HAS_ISSUE, OUT_OF_SERVICE or MISSING used to tell the unit's users; it
   notifies nobody for now, while who among a unit's members should hear is rethought
@@ -1094,6 +1288,7 @@ producers' API in `src/notifications.rs`, storage in SCHEMA.md's `notification` 
 
   The acting member is never told (so a reservation you make for yourself, or an on-call role you
   put yourself in, sends nothing).
+
 - **Best-effort:** like the audit log, `notify` returns `()`: a failure is logged at `error!`
   and swallowed, because the thing it announces has already happened. The notification methods
   of `db::Handler` pass through `AuditingHandler` unaudited: the business write is audited where
@@ -1116,8 +1311,21 @@ producers' API in `src/notifications.rs`, storage in SCHEMA.md's `notification` 
 ```graphql
 {
   myNotifications(first: 20, unreadOnly: true) {
-    edges { cursor node { id title body targetType targetId createdAt } }
-    pageInfo { hasNextPage endCursor }
+    edges {
+      cursor
+      node {
+        id
+        title
+        body
+        targetType
+        targetId
+        createdAt
+      }
+    }
+    pageInfo {
+      hasNextPage
+      endCursor
+    }
   }
   myUnreadNotificationCount
 }
@@ -1132,7 +1340,7 @@ The WiFi networks Tally's WiFi app shows signed-in members, with their passwords
   JSON array. Deployed, it is `var.wifi_networks`, set only in the git-ignored
   `infra/terraform.tfvars` and shared by prod, preprod, qa and the test API; `jsonencode` saves
   escaping there: `wifi_networks = jsonencode([{ title = "Shed", ssid = "SES-Shed", password =
-  "..." }])`. Locally, put it in the git-ignored `.env.secret`. Unset or blank means no
+"..." }])`. Locally, put it in the git-ignored `.env.secret`. Unset or blank means no
   networks.
 - **Format:** `[{"title": "Shed", "ssid": "SES-Shed", "password": "..."}]`. `title` defaults to
   the SSID; `security` is `WPA` (WPA/WPA2/WPA3 personal; the default with a password), `WEP` or
@@ -1148,7 +1356,18 @@ The WiFi networks Tally's WiFi app shows signed-in members, with their passwords
   edit links are refused.
 
 ```graphql
-{ wifiNetworks(knownVersion: "3f2a9c0d1b7e4a65") { version networks { title ssid password security hidden } } }
+{
+  wifiNetworks(knownVersion: "3f2a9c0d1b7e4a65") {
+    version
+    networks {
+      title
+      ssid
+      password
+      security
+      hidden
+    }
+  }
+}
 ```
 
 ## Audit log
@@ -1163,10 +1382,10 @@ Auditing is **best-effort**: if recording an entry fails it is logged at `error!
 
 Both views are Relay connections, **newest first**, default page 50 (max 200), and take `first`/`after` (towards older entries), `last`/`before` (back towards newer ones) and an optional `entityTypes` filter (any of the listed kinds; omitted or empty means every kind — the single `entityType` argument it replaces is deprecated but still accepted, and adds to the list). A cursor is the item's `sk` (`{ts:010}#{id}`); a malformed one is a `BAD_REQUEST` error. `first` with `before`, or `last` with `after`, is rejected.
 
-| Field | Who may read it | Shows |
-|---|---|---|
-| `Location.auditLog` | A *user* with Admin **or** Read only access to the location, or a super user. Kiosk sessions, API tokens and edit links are refused even for their own location. | Entries at that location. A write touching several locations is in each of their logs: a member moved between units, and every change to a person, which is filed at every unit they belong to (primary and secondary). Global records (users, categories, …) are not here. |
-| `Query.auditLog` | Super users only | Every event once, including global records. |
+| Field               | Who may read it                                                                                                                                                  | Shows                                                                                                                                                                                                                                                                       |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Location.auditLog` | A _user_ with Admin **or** Read only access to the location, or a super user. Kiosk sessions, API tokens and edit links are refused even for their own location. | Entries at that location. A write touching several locations is in each of their logs: a member moved between units, and every change to a person, which is filed at every unit they belong to (primary and secondary). Global records (users, categories, …) are not here. |
+| `Query.auditLog`    | Super users only                                                                                                                                                 | Every event once, including global records.                                                                                                                                                                                                                                 |
 
 Each `AuditEntry` has `timestamp` (Unix seconds), `action`, `entityType`, `entityId`, `entityLabel`, `location` (the item's own location; the first one a multi-location write touched in the all-locations view; null for global records), `actor { kind id via label }` and `changes { field before after }`. `before`/`after` are text: a JSON string comes back raw, anything else as compact JSON. `actor.label` is looked up at read time (user email, kiosk name, API token name, job name, "Period edit link"); an unknown `actor_kind` reads as `UNKNOWN`. `ip` and `actor.via` are personal data and are returned to **super users only** (null otherwise).
 

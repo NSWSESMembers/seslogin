@@ -122,14 +122,31 @@ fn matches_categories(period: &db::Period, category_ids: Option<&[String]>) -> b
     category_ids.is_none_or(|ids| period.category_id.as_ref().is_some_and(|c| ids.contains(c)))
 }
 
-/// Order by start time as the real index does and cut to the page size. Cursors are not
-/// modelled: a test that pages checks `hasNextPage`, which needs only the limit.
+/// Order by start time as the real index does, apply the page's cursor and cut to the page
+/// size. As in `dynamodb.rs`, `after` is the page following the cursor in the list's own
+/// order, and `before` the page preceding it, still in the list's order.
 fn sort_and_limit(periods: &mut Vec<db::Period>, page: &db::ListPeriodsPage) {
     periods.sort_by(|a, b| (a.start_time, &a.id).cmp(&(b.start_time, &b.id)));
     if page.descending {
         periods.reverse();
     }
-    periods.truncate(page.limit.max(0) as usize);
+    let limit = page.limit.max(0) as usize;
+    let position = |p: &db::Period, c: &db::PeriodCursor| {
+        let order = (p.start_time, p.id.as_str()).cmp(&(c.start_time, c.id.as_str()));
+        if page.descending {
+            order.reverse()
+        } else {
+            order
+        }
+    };
+    if let Some(cursor) = &page.after {
+        periods.retain(|p| position(p, cursor) == std::cmp::Ordering::Greater);
+    } else if let Some(cursor) = &page.before {
+        periods.retain(|p| position(p, cursor) == std::cmp::Ordering::Less);
+        let excess = periods.len().saturating_sub(limit);
+        periods.drain(..excess);
+    }
+    periods.truncate(limit);
 }
 
 pub(crate) fn unsupported<T>() -> db::Result<T> {
@@ -479,7 +496,7 @@ impl db::Handler for FakeDb {
             .lock()
             .unwrap()
             .values()
-            .filter(|p| p.person_id.as_deref() == Some(person_id))
+            .filter(|p| p.person_id.as_deref() == Some(person_id) && p.deleted.is_none())
             .filter(|p| location_id.is_none_or(|l| p.location_id == l))
             .filter(|p| only_unfinished != Some(true) || p.end_time.is_none())
             .filter(|p| matches_categories(p, category_ids))
