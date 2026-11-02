@@ -24,6 +24,19 @@ Get an email each day summarising the previous day's activity at your unit.
 
 Emails are sent just after midnight. Untick a unit and save to stop them.
 
+## Weekly badge digest
+
+If your unit has badges turned on, you can get a weekly email listing the badges
+members earned at your unit over the previous 7 days, and the
+[unit trophies](reports.md#perpetual-trophies) that changed hands: who holds each
+one now, who held it before and how they lost it.
+
+1. Open **Settings → Weekly Badge Digest**.
+2. Tick each unit you want included.
+3. Press **Save**.
+
+A week with no new badges and no trophy changes sends nothing.
+
 ## Activity display
 
 Some categories are marked as **virtual**. Tick **Disaggregate virtual periods**

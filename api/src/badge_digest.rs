@@ -4,9 +4,10 @@
 //! and (b) opted into the weekly badge digest for (`email_config`'s
 //! `weekly_badge` key — see [`weekly_badge_opted_in_location_ids`]), restricted
 //! to locations with gamification enabled, and mails a summary of every badge
-//! awarded there in the trailing 7 days. A user with nothing to report — no
-//! opted-in locations, or opted-in locations with zero awards this week — is
-//! skipped entirely; nobody gets an empty digest.
+//! awarded there in the trailing 7 days, and every unit trophy that changed hands
+//! there ("Changed hands this week"). A user with nothing to report — no
+//! opted-in locations, or opted-in locations with no awards and no trophy changes
+//! this week — is skipped entirely; nobody gets an empty digest.
 //!
 //! Structured the same way as [`crate::activity_summary`]: a plain `run`
 //! function taking an injected `db::Handler` and `mail::Handler`, driven by a
@@ -17,17 +18,40 @@ use anyhow::Result;
 use chrono::{DateTime, Duration, Utc};
 use chrono_tz::Australia::Sydney;
 use std::collections::{HashMap, HashSet};
-use tracing::info;
+use tracing::{info, warn};
 
 use crate::badges;
 use crate::base_url;
 use crate::db;
 use crate::mail;
+use crate::trophies;
 
 pub struct DigestArgs {
     pub dry_run: bool,
     pub user_id_filter: Option<String>,
     pub override_to: Option<String>,
+}
+
+/// One unit trophy changing hands, for "Changed hands this week".
+#[derive(Clone, Debug, PartialEq)]
+struct TrophyRow {
+    trophy_name: String,
+    /// Who holds it now; `None` when it went vacant.
+    to_name: Option<String>,
+    /// Who held it before; `None` when it was vacant.
+    from_name: Option<String>,
+    /// e.g. "taken", "claim aged out", "left the unit".
+    how: String,
+    /// The new holder's score, or the old holder's when it went vacant.
+    value_label: String,
+    at: u64,
+}
+
+/// What one location's section of the digest holds.
+#[derive(Clone, Debug, Default, PartialEq)]
+struct LocationDigest {
+    awards: Vec<AwardRow>,
+    trophies: Vec<TrophyRow>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -92,19 +116,29 @@ pub async fn run(
             continue;
         }
 
-        let mut by_location: HashMap<String, Vec<AwardRow>> = HashMap::new();
+        let mut by_location: HashMap<String, LocationDigest> = HashMap::new();
 
         for location in &digest_locations {
             let people = db.list_members_for_location(&location.id, true).await?;
-            let rows = award_rows_for_people(&people, &location.id, start_ts, end_ts);
-            if rows.is_empty() {
+            let awards = award_rows_for_people(&people, &location.id, start_ts, end_ts);
+            // Trophies are a bonus: if they can't be read, the badges still go out.
+            let trophies = trophy_rows(db, &location.id, &people, start_ts, end_ts)
+                .await
+                .unwrap_or_else(|e| {
+                    warn!(
+                        "could not read trophies for location {}: {e:?}",
+                        location.id
+                    );
+                    vec![]
+                });
+            if awards.is_empty() && trophies.is_empty() {
                 continue;
             }
-            by_location.insert(location.name.clone(), rows);
+            by_location.insert(location.name.clone(), LocationDigest { awards, trophies });
         }
 
-        // Nothing was awarded at any opted-in location this week — don't send
-        // an empty digest.
+        // Nothing happened at any opted-in location this week — don't send an
+        // empty digest.
         if by_location.is_empty() {
             continue;
         }
@@ -182,6 +216,109 @@ fn award_rows_for_people(
     rows
 }
 
+/// Every trophy at the location that changed hands in `[start_ts, end_ts]`, oldest
+/// first: each reign that ended then, and each holder who took a vacant trophy then.
+async fn trophy_rows(
+    db: &impl db::Handler,
+    location_id: &str,
+    people: &[db::Person],
+    start_ts: u64,
+    end_ts: u64,
+) -> Result<Vec<TrophyRow>> {
+    let mut names: HashMap<String, String> = people
+        .iter()
+        .map(|p| (p.id.clone(), person_display_name(p)))
+        .collect();
+    let holders = db.list_trophy_holders(location_id).await?;
+    let in_week = |ts: u64| ts >= start_ts && ts <= end_ts;
+
+    // (trophy, ended reign or None, new holder or None)
+    let mut changes: Vec<(
+        &trophies::TrophyDefinition,
+        Option<db::TrophyReign>,
+        Option<&db::TrophyHolder>,
+    )> = Vec::new();
+    for trophy in trophies::TROPHIES {
+        let holder = holders.iter().find(|h| h.trophy_id == trophy.id);
+        // A week rarely sees more than a handful of changes of one trophy.
+        let reigns = db.list_trophy_reigns(location_id, trophy.id, 20).await?;
+        let ended: Vec<db::TrophyReign> =
+            reigns.into_iter().filter(|r| in_week(r.ended_at)).collect();
+        let first_claim = holder.filter(|h| {
+            in_week(h.reign_started_at) && !ended.iter().any(|r| r.ended_at == h.reign_started_at)
+        });
+        if let Some(h) = first_claim {
+            changes.push((trophy, None, Some(h)));
+        }
+        for reign in ended {
+            let taker = holder.filter(|h| {
+                Some(&h.person_id) == reign.ended_by_person_id.as_ref()
+                    && h.reign_started_at == reign.ended_at
+            });
+            changes.push((trophy, Some(reign), taker));
+        }
+    }
+
+    let missing: Vec<String> = changes
+        .iter()
+        .flat_map(|(_, reign, holder)| {
+            [
+                reign.as_ref().map(|r| r.person_id.clone()),
+                reign.as_ref().and_then(|r| r.ended_by_person_id.clone()),
+                holder.map(|h| h.person_id.clone()),
+            ]
+        })
+        .flatten()
+        .filter(|id| !names.contains_key(id))
+        .collect();
+    if !missing.is_empty() {
+        for person in db.get_persons(&missing).await?.into_iter().flatten() {
+            names.insert(person.id.clone(), person_display_name(&person));
+        }
+    }
+    let name = |id: &str| {
+        names
+            .get(id)
+            .cloned()
+            .unwrap_or_else(|| "A former member".to_string())
+    };
+
+    let mut rows: Vec<TrophyRow> = changes
+        .into_iter()
+        .map(|(trophy, reign, holder)| {
+            let to_id = reign
+                .as_ref()
+                .map_or(holder.map(|h| h.person_id.clone()), |r| {
+                    r.ended_by_person_id.clone()
+                });
+            let value = match (holder, &reign) {
+                (Some(h), _) => h.value,
+                (None, Some(r)) => r.value,
+                (None, None) => 0.0,
+            };
+            let how = match reign.as_ref().map(|r| r.end_reason) {
+                None => "first holder",
+                Some(db::TrophyEndReason::Stolen) => "beaten",
+                Some(db::TrophyEndReason::AgedOut) => "claim aged out",
+                Some(db::TrophyEndReason::Reverted) => "claim no longer stood",
+                Some(db::TrophyEndReason::LeftUnit) => "left the unit",
+            };
+            TrophyRow {
+                trophy_name: trophy.name.to_string(),
+                to_name: to_id.as_deref().map(name),
+                from_name: reign.as_ref().map(|r| name(&r.person_id)),
+                how: how.to_string(),
+                value_label: trophies::value_label(trophy.unit, value),
+                at: reign
+                    .as_ref()
+                    .map_or(holder.map_or(0, |h| h.reign_started_at), |r| r.ended_at),
+            }
+        })
+        .collect();
+    rows.sort_by_key(|r| r.at);
+    Ok(rows)
+}
+
 fn person_display_name(person: &db::Person) -> String {
     let name = format!("{} {}", person.first_name, person.last_name)
         .trim()
@@ -217,7 +354,7 @@ fn badge_icon_base_url() -> String {
 
 fn build_digest_html(
     date_range_label: &str,
-    by_location: &HashMap<String, Vec<AwardRow>>,
+    by_location: &HashMap<String, LocationDigest>,
     badge_icon_base_url: &str,
 ) -> String {
     let mut location_names: Vec<&String> = by_location.keys().collect();
@@ -237,14 +374,31 @@ fn build_digest_html(
     );
 
     for location_name in location_names {
-        let rows = &by_location[location_name];
+        let digest = &by_location[location_name];
+        let rows = &digest.awards;
         let location_awards = rows.len();
+        let trophy_changes = digest.trophies.len();
+        let trophy_summary = if trophy_changes == 0 {
+            String::new()
+        } else {
+            format!(
+                ", {} trophy change{}",
+                trophy_changes,
+                if trophy_changes == 1 { "" } else { "s" }
+            )
+        };
         html.push_str(&format!(
-            "<div style=\"margin-top:24px;background:#ffffff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden\"><div style=\"padding:14px 16px;background:#f1f5f9;border-bottom:1px solid #e2e8f0\"><h3 style=\"margin:0;color:#0f172a\">{}</h3><p style=\"margin:6px 0 0 0;color:#475569;font-size:13px\">{} badge award{}</p></div>",
+            "<div style=\"margin-top:24px;background:#ffffff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden\"><div style=\"padding:14px 16px;background:#f1f5f9;border-bottom:1px solid #e2e8f0\"><h3 style=\"margin:0;color:#0f172a\">{}</h3><p style=\"margin:6px 0 0 0;color:#475569;font-size:13px\">{} badge award{}{}</p></div>",
             escape_html(location_name),
             location_awards,
-            if location_awards == 1 { "" } else { "s" }
+            if location_awards == 1 { "" } else { "s" },
+            trophy_summary,
         ));
+        html.push_str(&trophy_table_html(&digest.trophies));
+        if rows.is_empty() {
+            html.push_str("</div>\n");
+            continue;
+        }
         html.push_str("<table width=\"100%\" cellpadding=\"10\" cellspacing=\"0\" style=\"border-collapse:collapse;font-size:14px\">\n");
         html.push_str("<tr style=\"background:#f8fafc;text-align:left;color:#334155\"><th>Member</th><th>Badge</th><th>Tier</th><th>Earned (Sydney)</th></tr>\n");
 
@@ -265,6 +419,36 @@ fn build_digest_html(
     }
 
     html.push_str("</body></html>");
+    html
+}
+
+/// "Changed hands this week": one row per trophy change, or nothing if there were none.
+fn trophy_table_html(rows: &[TrophyRow]) -> String {
+    if rows.is_empty() {
+        return String::new();
+    }
+    let mut html = String::from(
+        "<h4 style=\"margin:0;padding:12px 16px 4px 16px;color:#0f172a\">Changed hands this week</h4>\n<table width=\"100%\" cellpadding=\"10\" cellspacing=\"0\" style=\"border-collapse:collapse;font-size:14px\">\n<tr style=\"background:#f8fafc;text-align:left;color:#334155\"><th>Trophy</th><th>Now held by</th><th>From</th><th>When (Sydney)</th></tr>\n",
+    );
+    for row in rows {
+        let holder = row
+            .to_name
+            .as_deref()
+            .map_or("Nobody (vacant)".to_string(), escape_html);
+        let from = match &row.from_name {
+            Some(name) => format!("{} ({})", escape_html(name), escape_html(&row.how)),
+            None => escape_html(&row.how),
+        };
+        html.push_str(&format!(
+            "<tr style=\"border-top:1px solid #e2e8f0\"><td style=\"vertical-align:top;font-weight:600;color:#0f172a\">{}</td><td style=\"vertical-align:top\">{}<div style=\"margin-top:4px;color:#64748b;font-size:12px\">{}</div></td><td style=\"vertical-align:top\">{}</td><td style=\"vertical-align:top\">{}</td></tr>\n",
+            escape_html(&row.trophy_name),
+            holder,
+            escape_html(&row.value_label),
+            from,
+            format_timestamp_sydney(row.at),
+        ));
+    }
+    html.push_str("</table>\n");
     html
 }
 

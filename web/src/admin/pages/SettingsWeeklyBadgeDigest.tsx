@@ -95,8 +95,9 @@ export default function SettingsWeeklyBadgeDigest() {
       <SectionHeading>Weekly badge digest</SectionHeading>
       <p className="my-4">
         Choose which locations to include in your weekly badge digest email.
-        Emails are sent weekly, summarising badges earned over the previous 7
-        days. Only locations with gamification enabled are shown.
+        Emails are sent weekly, summarising badges earned and unit trophies that
+        changed hands over the previous 7 days. Only locations with gamification
+        enabled are shown.
       </p>
       <form action={handleSubmit}>
         <FieldList>
