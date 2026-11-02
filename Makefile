@@ -112,7 +112,7 @@ local-cli:
 # stack, which must be up (make local-e2e). Resets the local database first.
 #   make guide-screenshots              # all of them
 #   make guide-screenshots SHOTS=kiosks # only those whose name starts "kiosks"
-guide-screenshots:
+guide-screenshots: check-node
 	@node local/guide/capture.mjs $(SHOTS)
 
 local-tables:
@@ -180,3 +180,14 @@ check-toolchain:
 		exit 1; \
 	fi; \
 	echo "Rust toolchain OK ($$actual)"
+
+# npm enforces the Node major version itself (devEngines in web/ and pagination-test/),
+# so this only guards what runs `node` directly, like the guide screenshot scripts.
+check-node:
+	@expected=$$(cat .nvmrc); actual=$$(node --version); \
+	case "$$actual" in \
+		v$$expected.*) ;; \
+		*) echo "ERROR: Node $$actual is active, but .nvmrc pins $$expected."; \
+		   echo "  Fix: nvm use   (or fnm use; both read .nvmrc)"; \
+		   exit 1;; \
+	esac
