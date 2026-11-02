@@ -263,6 +263,46 @@ resource "aws_iam_role_policy" "scheduler_invoke_activity_summary" {
   })
 }
 
+# ── Change digest lambda role ──────────────────────────────────────────────────
+
+resource "aws_iam_role" "change_digest_lambda" {
+  name               = "seslogin-change-digest-lambda-role"
+  assume_role_policy = data.aws_iam_policy_document.lambda_assume_role.json
+}
+
+resource "aws_iam_role_policy_attachment" "change_digest_lambda_logs" {
+  role       = aws_iam_role.change_digest_lambda.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+}
+
+resource "aws_iam_role_policy" "change_digest_lambda_ses" {
+  name = "ses-send"
+  role = aws_iam_role.change_digest_lambda.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["ses:SendEmail", "ses:SendRawEmail"]
+      Resource = "*"
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "scheduler_invoke_change_digest" {
+  name = "invoke-change-digest"
+  role = aws_iam_role.scheduler.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["lambda:InvokeFunction"]
+      Resource = aws_lambda_function.change_digest.arn
+    }]
+  })
+}
+
 # ── Badge nightly lambda role ────────────────────────────────────────────────
 
 resource "aws_iam_role" "badge_nightly_lambda" {
