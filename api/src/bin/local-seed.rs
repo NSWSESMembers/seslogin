@@ -58,7 +58,11 @@ enum Command {
         allow_personal_data: bool,
     },
     /// Write the fixtures into the local database. Needs no AWS access.
-    Apply,
+    Apply {
+        /// Write only this table's rows, eg `user_token` to restore the seeded logins after a logout.
+        #[arg(long)]
+        table: Option<String>,
+    },
     /// Delete every row the app itself writes — periods, ephemeral state, passkeys, the audit log —
     /// leaving the seeded fixtures alone. Needs no AWS access.
     ///
@@ -392,7 +396,7 @@ async fn clear() -> Result<()> {
     Ok(())
 }
 
-async fn apply() -> Result<()> {
+async fn apply(only: Option<&str>) -> Result<()> {
     let endpoint = seslogin::local_dev::require_local_dynamodb_endpoint()?;
     let prefix = std::env::var("DB_PREFIX").map_err(|_| anyhow!("DB_PREFIX must be set"))?;
     let client = seslogin::local_dev::dynamodb_client().await;
@@ -404,6 +408,9 @@ async fn apply() -> Result<()> {
         let tables = load_tables(&path)?;
         println!("  {file}");
         for (table, rows) in &tables {
+            if only.is_some_and(|t| t != table) {
+                continue;
+            }
             let rows = rows
                 .as_array()
                 .ok_or_else(|| anyhow!("{file}: {table} must be an array"))?;
@@ -423,6 +430,11 @@ async fn apply() -> Result<()> {
             written.push((table.clone(), rows.len()));
         }
     }
+    if let Some(t) = only
+        && written.is_empty()
+    {
+        bail!("no fixture table named `{t}`");
+    }
     let total: usize = written.iter().map(|(_, n)| n).sum();
     println!("{total} row(s) written");
     Ok(())
@@ -437,7 +449,7 @@ async fn main() -> Result<()> {
             source_prefix,
             allow_personal_data,
         } => extract(&source_prefix, allow_personal_data).await,
-        Command::Apply => apply().await,
+        Command::Apply { table } => apply(table.as_deref()).await,
         Command::Clear => clear().await,
     }
 }

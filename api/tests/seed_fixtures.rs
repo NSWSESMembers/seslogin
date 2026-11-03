@@ -289,18 +289,31 @@ fn documented_ids_still_exist() {
 }
 
 #[test]
+fn devbar_offers_every_seeded_token() {
+    let devbar = std::fs::read_to_string(repo_root().join("web/src/dev/DevBar.tsx"))
+        .expect("reading DevBar.tsx");
+    for (_, plaintext) in USER_TOKENS {
+        assert!(
+            devbar.contains(plaintext),
+            "DevBar.tsx no longer offers the token {plaintext}"
+        );
+    }
+}
+
+#[test]
 fn identifiers_hard_coded_in_the_examples_exist() {
     let synthetic_text = std::fs::read_to_string(repo_root().join("local/seed/synthetic.json"))
         .expect("reading synthetic.json");
 
     let dir = repo_root().join("local/examples");
     let mut checked = 0;
-    for entry in std::fs::read_dir(&dir).expect("reading local/examples") {
-        let path = entry.expect("dir entry").path();
-        if path.extension().and_then(|e| e.to_str()) != Some("mjs") {
-            continue;
-        }
-        let text = std::fs::read_to_string(&path).expect("reading an example");
+    let examples = std::fs::read_dir(&dir)
+        .expect("reading local/examples")
+        .map(|entry| entry.expect("dir entry").path())
+        .filter(|path| path.extension().and_then(|e| e.to_str()) == Some("mjs"));
+    // The web dev bar hard-codes the same kind of ids.
+    for path in examples.chain([repo_root().join("web/src/dev/DevBar.tsx")]) {
+        let text = std::fs::read_to_string(&path).expect("reading a file that names seed ids");
 
         // Seed ids (TestAUnit001, TestAKiosk02, ...) and SES numbers, which are what the
         // scripts print and navigate to. A fixture rename that misses them leaves a script

@@ -8,7 +8,7 @@
 //! non-null one propagates up to the nearest nullable ancestor. Both are shapes the
 //! client is otherwise hard to push into.
 //!
-//! Configured entirely by environment variable:
+//! Configured by environment variable, or at runtime via [`set_runtime_targets`] (the dev bar):
 //!
 //! ```text
 //! SESLOGIN_FORCE_FIELD_ERRORS="location.periods.edges.1.node.person,location.periods.edges.*.node.category@0.1"
@@ -44,8 +44,8 @@ use async_graphql::extensions::{
 use async_graphql::{
     PathSegment, QueryPathNode, QueryPathSegment, ServerError, ServerResult, Value,
 };
-use std::sync::Arc;
 use std::sync::atomic::{AtomicI64, Ordering};
+use std::sync::{Arc, RwLock};
 
 const TARGETS_VAR: &str = "SESLOGIN_FORCE_FIELD_ERRORS";
 const BUDGET_VAR: &str = "SESLOGIN_FORCE_FIELD_ERRORS_BUDGET";
@@ -66,6 +66,15 @@ struct Target {
 }
 
 impl Target {
+    /// The target as written: `pattern@rate`.
+    fn spec(&self) -> String {
+        format!(
+            "{}@{}",
+            self.pattern,
+            self.scaled_rate as f64 / RATE_SCALE as f64
+        )
+    }
+
     /// Segment-wise match against an actual response path: same segment count, and
     /// each pattern segment either is `*` or equals the corresponding path segment.
     fn matches(&self, path: &str) -> bool {
@@ -164,6 +173,40 @@ fn path_segments(node: &QueryPathNode) -> Vec<PathSegment> {
     segments
 }
 
+/// Targets set at runtime from the dev bar (`poem-local`'s `/dev/errors`), checked after the env's.
+static RUNTIME_TARGETS: RwLock<Vec<Target>> = RwLock::new(Vec::new());
+
+fn runtime() -> std::sync::RwLockReadGuard<'static, Vec<Target>> {
+    RUNTIME_TARGETS.read().unwrap_or_else(|e| e.into_inner())
+}
+
+/// Replace the runtime targets with `raw` (env var syntax); empty clears, unparseable keeps. Returns how many parsed.
+pub fn set_runtime_targets(raw: &str) -> usize {
+    let targets = parse_targets(raw);
+    let count = targets.len();
+    if count == 0 && !raw.trim().is_empty() {
+        return 0;
+    }
+    *RUNTIME_TARGETS.write().unwrap_or_else(|e| e.into_inner()) = targets;
+    count
+}
+
+/// The runtime targets as `pattern@rate`, comma-separated.
+pub fn runtime_targets() -> String {
+    runtime()
+        .iter()
+        .map(Target::spec)
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
+/// The first runtime target matching `path`.
+fn runtime_match(path: &str) -> Option<Target> {
+    runtime().iter().find(|t| t.matches(path)).cloned()
+}
+
+/// Resolver error injector; `Default` has no env targets, so only the dev bar's runtime ones fire.
+#[derive(Default)]
 pub struct ForceFieldErrors {
     targets: Arc<Vec<Target>>,
     /// Remaining failures to inject, or `None` for unlimited.
@@ -201,7 +244,7 @@ impl ForceFieldErrors {
             "ERROR INJECTION ACTIVE: {} will fail{}. This is a dev-only testing aid.",
             targets
                 .iter()
-                .map(|t| format!("{}@{}", t.pattern, t.scaled_rate as f64 / RATE_SCALE as f64))
+                .map(Target::spec)
                 .collect::<Vec<_>>()
                 .join(", "),
             match &budget {
@@ -256,13 +299,18 @@ impl Extension for ForceFieldErrorsExt {
     ) -> ServerResult<Option<Value>> {
         // Targets are matched by response path (with optional wildcard segments)
         // rather than by (parent_type, name), so the path has to be built
-        // unconditionally rather than only after a cheap type/field match — fine,
-        // since this whole extension only exists when a developer has explicitly
-        // opted in via SESLOGIN_FORCE_FIELD_ERRORS.
+        // unconditionally rather than only after a cheap type/field match.
+        // Nothing configured is the usual case: skip building a path for every field.
+        if self.targets.is_empty() && runtime().is_empty() {
+            return next.run(ctx, info).await;
+        }
         let path = info.path_node.to_string();
-        let matched = self.targets.iter().find(|t| t.matches(&path));
+        // Which list matched, named in the error so it can't be mistaken for a real one.
+        let matched = (self.targets.iter().find(|t| t.matches(&path)).cloned())
+            .map(|t| (t, TARGETS_VAR))
+            .or_else(|| runtime_match(&path).map(|t| (t, "the dev bar")));
 
-        if let Some(target) = matched
+        if let Some((target, source)) = matched
             && selected_by_rate(&path, target.scaled_rate)
             && self.claim_budget()
         {
@@ -278,7 +326,7 @@ impl Extension for ForceFieldErrorsExt {
             let pos = info.field.name.pos;
             return Err(ServerError::new(
                 format!(
-                    "Injected error: `{}.{}` was failed by {TARGETS_VAR}",
+                    "Injected error: `{}.{}` was failed by {source}",
                     info.parent_type, info.name
                 ),
                 Some(pos),
@@ -293,6 +341,25 @@ impl Extension for ForceFieldErrorsExt {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn runtime_targets_set_list_and_clear() {
+        assert_eq!(set_runtime_targets("devbar.test.*@0.5,bad@x"), 1);
+        assert_eq!(runtime_targets(), "devbar.test.*@0.5");
+        assert!(runtime_match("devbar.test.3").is_some());
+        assert_eq!(
+            parse_targets(&runtime_targets()),
+            parse_targets("devbar.test.*@0.5")
+        );
+        assert_eq!(
+            set_runtime_targets("bad@x"),
+            0,
+            "unparseable input keeps the targets"
+        );
+        assert_eq!(runtime_targets(), "devbar.test.*@0.5");
+        assert_eq!(set_runtime_targets(""), 0);
+        assert_eq!(runtime_targets(), "");
+    }
 
     #[test]
     fn path_segments_walks_from_root_to_leaf() {

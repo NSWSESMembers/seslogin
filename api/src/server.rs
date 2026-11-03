@@ -12,6 +12,7 @@ use async_graphql::{EmptySubscription, http::GraphiQLSource};
 use async_graphql_poem::*;
 use clap::Parser;
 use poem::EndpointExt;
+use poem::endpoint::BoxEndpoint;
 use poem::http::{HeaderMap, StatusCode};
 use poem::middleware::Cors;
 use poem::web::Data;
@@ -142,8 +143,9 @@ where
     M: mail::Handler + Send + Sync + 'static,
     R: realtime::Handler + Send + Sync + 'static,
 {
-    if app.response_lag > 0 {
-        tokio::time::sleep(std::time::Duration::from_millis(app.response_lag)).await;
+    let lag = app.response_lag + crate::local_dev::extra_lag_ms();
+    if lag > 0 {
+        tokio::time::sleep(std::time::Duration::from_millis(lag)).await;
     }
 
     // Read the raw body so its hash can be bound into signed-key auth, then parse it as
@@ -423,13 +425,14 @@ async fn mcp_method_not_allowed() -> impl IntoResponse {
     oauth_response(crate::mcp::method_not_allowed())
 }
 
-/// Serve the GraphQL API on :8000 until interrupted.
+/// Serve the GraphQL API on :8000 until interrupted. `dev_routes`, if any, are mounted at `/dev`.
 pub async fn run<H, Q, M, R>(
     startup: Startup,
     db: H,
     queues: Q,
     mailer: M,
     realtime: R,
+    dev_routes: Option<BoxEndpoint<'static>>,
 ) -> Result<(), Box<dyn Error>>
 where
     H: db::Handler + Send + Sync + 'static,
@@ -455,7 +458,7 @@ where
     let schema = graphql::build_schema(app.clone(), webauthn);
     std::fs::write("schema.graphql", schema.sdl())?;
     let allow_cross_origin = Cors::new();
-    let routes = Route::new()
+    let mut routes = Route::new()
         .at(
             "/",
             get(graphiql).post(index::<H, Q, M, R> {
@@ -501,7 +504,11 @@ where
                 .post(mcp_post::<H, Q, M, R> {
                     ..Default::default()
                 }),
-        )
+        );
+    if let Some(dev) = dev_routes {
+        routes = routes.nest("/dev", dev);
+    }
+    let routes = routes
         .with(allow_cross_origin)
         .data(schema)
         .data(app)

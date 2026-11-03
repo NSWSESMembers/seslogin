@@ -15,6 +15,7 @@
     "dev": "vite",
     "typecheck": "tsc -b",
     "build": "tsc -b && VITE_CLIENT_VERSION=${VITE_CLIENT_VERSION:-dev} vite build",
+    "postbuild": "if grep -rlE 'data-devbar|localdev-|private_key_pkcs8' dist; then echo 'Dev bar code is in dist; it must never ship (DEVELOPMENT.md §10)' >&2; exit 1; fi",
     "test:unit": "tsc -b && vitest run",
     "test": "vitest run",
     "lint": "eslint . --max-warnings 0",
