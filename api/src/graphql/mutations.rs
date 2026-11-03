@@ -1388,14 +1388,17 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         let remote_ip = ctx
             .data_opt::<super::ClientIp>()
             .and_then(|ip| ip.0.as_deref());
+        // Logged normalised, as Tally sign-in logs it, so one filter finds both. The
+        // lookups below still use the email as typed.
+        let key = db::email_key(&email);
         match crate::turnstile::verify(&turnstile_token, remote_ip).await {
             Ok(true) => {}
             Ok(false) => {
-                info!("Turnstile challenge failed for request_auth_code");
+                info!(email = %key, "Turnstile challenge failed for request_auth_code");
                 return true;
             }
             Err(e) => {
-                warn!("Turnstile error in request_auth_code: {:#}", e);
+                warn!(email = %key, "Turnstile error in request_auth_code: {:#}", e);
                 return true;
             }
         }
@@ -1408,9 +1411,12 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
             .and_then(|ids| db::at_most_one(ids, || format!("Multiple users share email {email}")));
         let user_id = match lookup {
             Ok(Some(id)) => id,
-            Ok(None) => return true,
+            Ok(None) => {
+                info!(email = %key, "request_auth_code: no user has this email");
+                return true;
+            }
             Err(e) => {
-                warn!("DB error looking up user in request_auth_code: {:#}", e);
+                warn!(email = %key, "DB error looking up user in request_auth_code: {:#}", e);
                 return true;
             }
         };
@@ -1419,12 +1425,16 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
             Ok(users) => match users.into_iter().next().flatten() {
                 Some(user) if user.enabled => {}
                 _ => {
-                    info!("request_auth_code: user disabled or missing id={}", user_id);
+                    info!(
+                        email = %key,
+                        "request_auth_code: user disabled or missing id={}", user_id
+                    );
                     return true;
                 }
             },
             Err(e) => {
                 warn!(
+                    email = %key,
                     "DB error checking user enabled in request_auth_code: {:#}",
                     e
                 );
@@ -1438,12 +1448,18 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
             .as_secs();
 
         // Rate limit: at most one code per 30 seconds per email
-        if let Ok(Some(existing)) = self.app.db().get_login_code(&email).await
+        let existing = self.app.db().get_login_code(&email).await.ok().flatten();
+        if let Some(existing) = &existing
             && now < existing.last_sent_at + 30
         {
-            info!("Rate limit hit for request_auth_code email={}", email);
+            info!(
+                email = %key, user_id = %user_id, last_sent_secs_ago = now - existing.last_sent_at,
+                "Rate limit hit for request_auth_code"
+            );
             return true;
         }
+        // A new code replaces the last one, so an earlier email's code stops working.
+        let replaced_live_code = existing.is_some_and(|c| now < c.expires_at);
 
         let code = crate::nonce::generate_code(6);
 
@@ -1463,7 +1479,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
             .put_login_code(&email, &code_hash, expires_at, now)
             .await
         {
-            warn!("Failed to store login code: {:#}", e);
+            warn!(email = %key, "Failed to store login code: {:#}", e);
             return true;
         }
 
@@ -1473,14 +1489,20 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
             code
         );
 
-        tracing::info!(user_id = %user_id, "Sending login code to {}", email);
-        if let Err(e) = self
+        match self
             .app
             .mail()
             .send_plain_text(&email, subject, &body)
             .await
         {
-            warn!("Failed to send login code email to {}: {:#}", email, e);
+            Ok(()) => info!(
+                email = %key, user_id = %user_id, replaced_live_code,
+                "Sent login code to {}", email
+            ),
+            Err(e) => warn!(
+                email = %key, user_id = %user_id,
+                "Failed to send login code email to {}: {:#}", email, e
+            ),
         }
 
         true
@@ -1495,27 +1517,32 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
             .unwrap()
             .as_secs();
 
+        // Logged normalised, as in request_auth_code.
+        let key = db::email_key(&email);
         let record = match self.app.db().get_login_code(&email).await {
             Ok(Some(r)) => r,
             Ok(None) => {
-                info!("verify_auth_code: no code for email={}", email);
+                info!(email = %key, "verify_auth_code: no code for email={}", email);
                 return None;
             }
             Err(e) => {
-                warn!("DB error in verify_auth_code: {:#}", e);
+                warn!(email = %key, "DB error in verify_auth_code: {:#}", e);
                 return None;
             }
         };
 
         if now >= record.expires_at {
             let _ = self.app.db().delete_login_code(&email).await;
-            info!("verify_auth_code: expired code for email={}", email);
+            info!(
+                email = %key, expired_secs_ago = now - record.expires_at,
+                "verify_auth_code: expired code for email={}", email
+            );
             return None;
         }
 
         if record.attempts >= 5 {
             let _ = self.app.db().delete_login_code(&email).await;
-            info!("verify_auth_code: too many attempts for email={}", email);
+            info!(email = %key, "verify_auth_code: too many attempts for email={}", email);
             return None;
         }
 
@@ -1528,7 +1555,10 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         };
 
         if record.code_hash != expected_hash {
-            info!("verify_auth_code: wrong code for email={}", email);
+            info!(
+                email = %key, attempt = record.attempts + 1, max_attempts = 5,
+                "verify_auth_code: wrong code for email={}", email
+            );
             return None;
         }
 
@@ -1543,11 +1573,11 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         let user_id = match lookup {
             Ok(Some(id)) => id,
             Ok(None) => {
-                warn!("verify_auth_code: user not found for email={}", email);
+                warn!(email = %key, "verify_auth_code: user not found for email={}", email);
                 return None;
             }
             Err(e) => {
-                warn!("DB error fetching user in verify_auth_code: {:#}", e);
+                warn!(email = %key, "DB error fetching user in verify_auth_code: {:#}", e);
                 return None;
             }
         };
@@ -1556,12 +1586,13 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
             Ok(users) => match users.into_iter().next().flatten() {
                 Some(user) if user.enabled => {}
                 _ => {
-                    info!("verify_auth_code: user disabled or missing id={}", user_id);
+                    info!(email = %key, "verify_auth_code: user disabled or missing id={}", user_id);
                     return None;
                 }
             },
             Err(e) => {
                 warn!(
+                    email = %key,
                     "DB error checking user enabled in verify_auth_code: {:#}",
                     e
                 );
@@ -1571,11 +1602,11 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
 
         match auth::issue_user_token(&*self.app, &user_id).await {
             Ok(token) => {
-                info!("Issued user token for user_id={}", user_id);
+                info!(email = %key, user_id = %user_id, "Issued user token for user_id={}", user_id);
                 Some(token)
             }
             Err(e) => {
-                warn!("Failed to issue user token: {:#}", e);
+                warn!(email = %key, "Failed to issue user token: {:#}", e);
                 None
             }
         }
@@ -4547,8 +4578,10 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         let webauthn = ctx.data_unchecked::<Arc<webauthn_rs::prelude::Webauthn>>();
         let Some(stored) =
             crate::passkey::verify_login(self.app.db(), webauthn, &challenge_id, &credential_json)
-                .await?
+                .await
+                .inspect_err(|e| info!("finish_passkey_login: passkey refused: {e:#}"))?
         else {
+            info!("finish_passkey_login: passkey refused, unknown or its challenge expired");
             return Ok(None);
         };
         let cred_id_str = stored.id;
