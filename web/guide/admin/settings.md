@@ -52,7 +52,11 @@ For each unit it lists:
 - **Member details changed**: names, member number, capability tags, and
   unit assignments or roles. Changes to a member's email address, mobile or
   phone numbers are shown as **changed** only, without the old or new values.
-- **Unit details changed**: changes to the unit's own details.
+  For capability tags, only the tags the member gained or lost are listed.
+- **Unit details changed**: changes to the unit's own details. For
+  accreditations, only the accreditations added or removed are listed, each
+  with its status, so a change of status shows as the old status removed and
+  the new one added.
 
 Each change says where it came from: **Member sync**, **Directory sync**,
 **Location sync**, or the email address of the administrator who made it.
