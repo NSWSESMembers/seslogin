@@ -146,6 +146,126 @@ fn synthetic_references_resolve() {
     }
 }
 
+/// `demo.json` sits on top of synthetic.json and from-prod.json: everything it points at must exist in the three,
+/// every relative time must parse, and nothing in it may look like a real person's address.
+#[test]
+fn demo_references_resolve_and_times_parse() {
+    let demo = read_json("local/seed/demo.json");
+    let base = synthetic();
+    let prod = read_json("local/seed/from-prod.json");
+    let ids = |table: &str| -> HashSet<String> {
+        rows(&base, table)
+            .iter()
+            .chain(rows(&demo, table))
+            .map(id)
+            .collect()
+    };
+    let (locations, people, sessions) = (ids("location"), ids("person"), ids("session"));
+    let categories: HashSet<String> = rows(&prod, "category").iter().map(id).collect();
+
+    let mut seen = HashSet::new();
+    for table in demo["tables"].as_object().expect("tables").keys() {
+        for row in rows(&demo, table) {
+            assert!(
+                seen.insert(id(row)),
+                "{} appears twice in demo.json",
+                id(row)
+            );
+            assert!(
+                !rows(&base, table).iter().any(|b| id(b) == id(row)),
+                "demo.json's {} would overwrite synthetic.json's",
+                id(row)
+            );
+            for (attr, value) in row.as_object().expect("row") {
+                if let Some(n) = value["N"]
+                    .as_str()
+                    .filter(|n| n.starts_with(char::is_alphabetic))
+                {
+                    let now = chrono::Utc::now();
+                    seslogin::local_dev::resolve_relative_time(n, now)
+                        .unwrap_or_else(|e| panic!("{}.{attr}: {e}", id(row)));
+                }
+            }
+        }
+    }
+
+    for person in rows(&demo, "person") {
+        assert!(locations.contains(&s(person, "location_id").expect("person.location_id")));
+    }
+    for session in rows(&demo, "session") {
+        assert!(locations.contains(&s(session, "location_id").expect("session.location_id")));
+        // A key-enrolled kiosk's fingerprint is the SHA-256 of its public key, as enrolment computes it.
+        if let Some(spki) = s(session, "public_key") {
+            let der = BASE64.decode(spki).expect("public_key is base64");
+            assert_eq!(
+                Some(hex::encode(Sha256::digest(der))),
+                s(session, "key_fingerprint"),
+                "{}'s key_fingerprint does not match its public_key",
+                id(session)
+            );
+        }
+    }
+    for user in rows(&demo, "user") {
+        let email = s(user, "email").expect("user.email");
+        assert!(
+            email.ends_with("@seslogin.test"),
+            "{email} is not an invented address"
+        );
+        for attr in ["location_grants", "location_read_only_grants"] {
+            for grant in user[attr]["SS"].as_array().unwrap_or(&vec![]) {
+                assert!(
+                    locations.contains(grant.as_str().expect("grant")),
+                    "user {} grant {grant}",
+                    id(user)
+                );
+            }
+        }
+    }
+    for period in rows(&demo, "period") {
+        let pid = id(period);
+        assert!(
+            locations.contains(&s(period, "location_id").expect("period.location_id")),
+            "{pid}"
+        );
+        match s(period, "person_id") {
+            Some(person) => assert!(
+                people.contains(&person),
+                "{pid} points at missing person {person}"
+            ),
+            None => assert!(
+                s(period, "guest_name").is_some(),
+                "{pid} has neither person_id nor guest_name"
+            ),
+        }
+        if let Some(category) = s(period, "category_id") {
+            assert!(
+                categories.contains(&category),
+                "{pid} points at missing category {category}"
+            );
+        }
+        for attr in ["signed_in_session_id", "signed_out_session_id"] {
+            if let Some(session) = s(period, attr) {
+                assert!(
+                    sessions.contains(&session),
+                    "{pid}.{attr} points at missing session {session}"
+                );
+            }
+        }
+        // The sparse indexes, as the app writes them: open periods in location_open, live ones in location_live.
+        let deleted = period.get("deleted").is_some();
+        assert_eq!(
+            period.get("location_open").is_some(),
+            period.get("end_time").is_none() && !deleted,
+            "{pid}: location_open must mark exactly the open, undeleted periods"
+        );
+        assert_eq!(
+            period.get("location_live").is_some(),
+            !deleted,
+            "{pid}: location_live must mark undeleted periods"
+        );
+    }
+}
+
 #[test]
 fn person_emails_carry_their_email_key() {
     // Tally sign-in finds members through `email_key-index`, which only `update_person`

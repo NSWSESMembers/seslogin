@@ -56,6 +56,60 @@ fn is_local_url_host(host: &str) -> bool {
     matches!(host, "localhost" | "127.0.0.1" | "::1" | "[::1]")
 }
 
+/// A fixture time relative to when seeding runs, so seeded activity never goes stale: `now`, `today` (midnight) or
+/// `monday` (this week's, midnight), Sydney time, then any `+`/`-` `<n><s|m|h|d|w>` steps, eg `monday-3w+1d+19h`.
+/// `d` and `w` move by calendar days, keeping the Sydney wall time across a DST change; `h m s` are elapsed time.
+pub fn resolve_relative_time(expr: &str, now: chrono::DateTime<chrono::Utc>) -> Result<i64> {
+    use chrono::{Datelike, Duration, TimeZone, Utc};
+    use chrono_tz::Australia::Sydney;
+
+    // A Sydney wall time made absolute: the earlier of a repeated (autumn) hour, an hour on for a skipped one.
+    let localize = |t: chrono::NaiveDateTime| {
+        Sydney
+            .from_local_datetime(&t)
+            .earliest()
+            .or_else(|| {
+                Sydney
+                    .from_local_datetime(&(t + Duration::hours(1)))
+                    .earliest()
+            })
+            .expect("an hour past a DST gap exists")
+            .with_timezone(&Utc)
+    };
+    let midnight = |d: chrono::NaiveDate| localize(d.and_hms_opt(0, 0, 0).expect("midnight"));
+    let wall = |t: chrono::DateTime<Utc>| t.with_timezone(&Sydney).naive_local();
+    let local = now.with_timezone(&Sydney).date_naive();
+    let anchor_end = expr.find(['+', '-']).unwrap_or(expr.len());
+    let mut t = match &expr[..anchor_end] {
+        "now" => now,
+        "today" => midnight(local),
+        "monday" => midnight(local - Duration::days(local.weekday().num_days_from_monday().into())),
+        other => bail!("unknown time anchor {other:?} in {expr:?}"),
+    };
+    let mut rest = &expr[anchor_end..];
+    while let Some(sign) = rest.chars().next() {
+        let step = &rest[1..];
+        let digits = step
+            .find(|c: char| !c.is_ascii_digit())
+            .unwrap_or(step.len());
+        let n: i64 = step[..digits]
+            .parse()
+            .map_err(|_| anyhow!("{expr:?}: expected a number after {sign}"))?;
+        let n = if sign == '-' { -n } else { n };
+        t = match step[digits..].chars().next() {
+            // Calendar days, so a 7pm training night before the change is still 7pm, not 6.
+            Some('d') => localize(wall(t) + Duration::days(n)),
+            Some('w') => localize(wall(t) + Duration::weeks(n)),
+            Some('h') => t + Duration::hours(n),
+            Some('m') => t + Duration::minutes(n),
+            Some('s') => t + Duration::seconds(n),
+            _ => bail!("{expr:?}: each step needs a unit, one of s m h d w"),
+        };
+        rest = &step[digits + 1..];
+    }
+    Ok(t.timestamp())
+}
+
 /// A DynamoDB client for the given endpoint-and-region environment.
 pub async fn dynamodb_client() -> aws_sdk_dynamodb::Client {
     let config = crate::aws_config_loader()
@@ -86,6 +140,7 @@ fn routes(mail: crate::mockmail::Handler) -> BoxEndpoint<'static> {
         .at("/seed", post(seed))
         .at("/clear", post(clear))
         .at("/tokens", post(tokens))
+        .at("/demo", post(demo))
         .at("/summary", post(summary))
         .at("/changes", post(changes))
         .at("/badges", post(badges))
@@ -174,6 +229,12 @@ async fn tokens() -> poem::Result<String> {
     run_bin("local-seed", ["apply", "--table=user_token"]).await
 }
 
+/// `local-seed demo`: Test C Unit and its activity, relative to now.
+#[handler]
+async fn demo() -> poem::Result<String> {
+    run_bin("local-seed", ["demo"]).await
+}
+
 /// Dry run of an email job: the emails it would send, printed, else why there are none.
 async fn preview(bin: &str, args: &[&str], none: &str) -> poem::Result<String> {
     let out = run_bin(bin, args).await?;
@@ -190,7 +251,7 @@ async fn summary() -> poem::Result<String> {
     preview(
         "activity-summary",
         &[],
-        "needs a user subscribed to daily summaries (admin Settings) and activity yesterday at their unit.",
+        "needs a user subscribed to daily summaries (admin Settings) and activity yesterday at their unit (Seed: Demo has both).",
     )
     .await
 }
@@ -419,6 +480,38 @@ mod tests {
                 .finish();
             let code = routes(Default::default()).get_response(req).await.status();
             assert_eq!(code, StatusCode::FORBIDDEN, "{path}");
+        }
+    }
+
+    #[test]
+    fn relative_times_resolve_from_the_seeding_moment_in_sydney() {
+        // Sunday 25 Oct 2026, 20:00 Sydney (AEDT, UTC+11).
+        let now = "2026-10-25T09:00:00Z".parse().unwrap();
+        let at = |expr| resolve_relative_time(expr, now).unwrap();
+        let utc = |s: &str| {
+            s.parse::<chrono::DateTime<chrono::Utc>>()
+                .unwrap()
+                .timestamp()
+        };
+        assert_eq!(at("now"), now.timestamp());
+        assert_eq!(at("now-2h-30m"), now.timestamp() - 9000);
+        assert_eq!(at("today"), utc("2026-10-24T13:00:00Z"));
+        assert_eq!(at("monday"), utc("2026-10-18T13:00:00Z"));
+        // Tuesday 19:00, two weeks back.
+        assert_eq!(at("monday-2w+1d+19h"), utc("2026-10-06T08:00:00Z"));
+        // Across the 4 Oct DST start: still Tuesday 19:00 local, now AEST (UTC+10).
+        assert_eq!(at("monday-4w+1d+19h"), utc("2026-09-22T09:00:00Z"));
+        // Elapsed time stays elapsed: ten real hours back, across the change.
+        let just_after_change = "2026-10-04T00:00:00Z".parse().unwrap(); // 11:00 AEDT, 9h after the change
+        assert_eq!(
+            resolve_relative_time("now-10h", just_after_change).unwrap(),
+            just_after_change.timestamp() - 36_000
+        );
+        for bad in ["", "yesterday", "now-2", "now+h", "now-2y", "now-x1h"] {
+            assert!(
+                resolve_relative_time(bad, now).is_err(),
+                "{bad:?} should not parse"
+            );
         }
     }
 
