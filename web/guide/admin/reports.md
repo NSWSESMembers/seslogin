@@ -108,6 +108,24 @@ The table lists each member with a badge at your unit: how many they have, how m
 they earned in the last 7 days, and their latest. Select a name to see all of their
 badges.
 
+### Congratulations emails
+
+SESLogin can email your members about their wins. It's a **unit setting**, off until
+it's turned on. Unit settings are managed by the SESLogin maintainers, so ask them to
+turn it on or off: use **Help/Feedback?** at the bottom of any admin page, or email
+[support@seslogin.com](mailto:support@seslogin.com).
+
+- Each evening at about 7 pm, a member who earned a badge or took a trophy that day
+  gets one email showing each badge and trophy and how they won it. Most trophies,
+  and some badges, are worked out overnight, so they're in the next evening's email.
+- It goes to the email address SES holds for them. Members with no email address in
+  SES don't get one.
+- It covers all of your members, including those whose primary unit is elsewhere. A
+  member is emailed if any of their units has it turned on.
+- There is no unsubscribe link, and turning it off stops the emails for the whole unit.
+
+The kiosk guide tells members [what the email covers](../kiosk/badges.md#congratulations-emails).
+
 ## Daily email
 
 To have a summary of each day's activity emailed to you, see
