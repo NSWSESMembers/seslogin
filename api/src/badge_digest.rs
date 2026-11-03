@@ -456,7 +456,8 @@ fn trophy_table_html(rows: &[TrophyRow]) -> String {
     html
 }
 
-/// Icon file for a badge id. The per-location "first sign-in here" badges
+/// Icon file for a badge id: the PNG render, since Gmail and Outlook don't show
+/// SVG images (`make badge-pngs`). The per-location "first sign-in here" badges
 /// (`first-signin-location-<id>`/`first-away-signin-location-<id>`) all share
 /// one template image rather than one file per location.
 fn badge_icon_url_by_badge_id(base_url: &str, badge_id: &str) -> String {
@@ -469,7 +470,7 @@ fn badge_icon_url_by_badge_id(base_url: &str, badge_id: &str) -> String {
         badge_id
     };
 
-    format!("{normalized_base}/by-id/{file_stem}.svg")
+    format!("{normalized_base}/png/{file_stem}.png")
 }
 
 fn format_timestamp_sydney(ts: u64) -> String {
@@ -639,15 +640,15 @@ mod tests {
         let base = "https://example.com/image/badges";
         assert_eq!(
             badge_icon_url_by_badge_id(base, "first-signin-location-abc123"),
-            "https://example.com/image/badges/by-id/first-signin-location-template.svg"
+            "https://example.com/image/badges/png/first-signin-location-template.png"
         );
         assert_eq!(
             badge_icon_url_by_badge_id(base, "first-away-signin-location-abc123"),
-            "https://example.com/image/badges/by-id/first-signin-location-template.svg"
+            "https://example.com/image/badges/png/first-signin-location-template.png"
         );
         assert_eq!(
             badge_icon_url_by_badge_id(base, "first-steps"),
-            "https://example.com/image/badges/by-id/first-steps.svg"
+            "https://example.com/image/badges/png/first-steps.png"
         );
     }
 
@@ -657,7 +658,7 @@ mod tests {
         // own env-derived base is covered end-to-end by base_url's tests.
         assert_eq!(
             badge_icon_url_by_badge_id("https://example.com/image/badges/", "first-steps"),
-            "https://example.com/image/badges/by-id/first-steps.svg"
+            "https://example.com/image/badges/png/first-steps.png"
         );
     }
 }
