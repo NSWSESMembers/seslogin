@@ -7,7 +7,7 @@
 //! HTML emails, which are unreadable in a log line.
 
 use std::path::PathBuf;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use anyhow::{Context, Result};
 
@@ -24,9 +24,10 @@ pub struct Email {
     pub html: bool,
 }
 
-#[derive(Default)]
+/// Clones share one log, so a caller can read what the app's copy sent.
+#[derive(Default, Clone)]
 pub struct Handler {
-    sent: Mutex<Vec<Email>>,
+    sent: Arc<Mutex<Vec<Email>>>,
     dir: Option<PathBuf>,
 }
 
@@ -44,7 +45,7 @@ impl Handler {
             tracing::info!("mock mail: also writing messages to {}", dir.display());
         }
         Self {
-            sent: Mutex::new(Vec::new()),
+            sent: Arc::default(),
             dir,
         }
     }

@@ -17,6 +17,7 @@ use std::error::Error;
 
 use seslogin::audit::AuditingHandler;
 use seslogin::dynamodb;
+use seslogin::local_dev;
 use seslogin::mockmail;
 use seslogin::mockqueue;
 use seslogin::mockrealtime;
@@ -36,12 +37,15 @@ async fn run() -> Result<(), Box<dyn Error>> {
         dynamodb::Handler::new(&startup.db_prefix, !startup.cli.enable_mutations).await,
     );
     let realtime = mockrealtime::Handler::new(startup.db_prefix.clone());
+    let mail = mockmail::Handler::from_env();
+    let dev_routes = local_dev::dev_routes(&startup.db_prefix, mail.clone());
     server::run(
         startup,
         db,
         mockqueue::Handler::new(),
-        mockmail::Handler::from_env(),
+        mail,
         realtime,
+        dev_routes,
     )
     .await
 }
