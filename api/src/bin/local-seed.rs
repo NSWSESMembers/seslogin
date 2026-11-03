@@ -327,6 +327,7 @@ const TRANSIENT_TABLES: &[&str] = &[
     "calendar_event",
     "location_share",
     "notification",
+    "trophy",
 ];
 
 async fn clear() -> Result<()> {
@@ -338,7 +339,7 @@ async fn clear() -> Result<()> {
     let mut total = 0usize;
     for table in TRANSIENT_TABLES {
         let name = format!("{prefix}_{table}");
-        // Most tables are keyed by `id` alone; `notification` has a range key too.
+        // Most tables are keyed by `id` alone; `notification` and `trophy` have a range key too.
         let key_attrs: Vec<String> = client
             .describe_table()
             .table_name(&name)
