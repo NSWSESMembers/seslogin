@@ -287,3 +287,37 @@ a secret: keep signing in and out to find out.
 | ![Leap of Faith badge](/image/badges/by-id/easter-leap-of-faith.svg)           | Leap of Faith      |
 | ![Unlucky for Some badge](/image/badges/by-id/easter-unlucky-for-some.svg)     | Unlucky for Some   |
 | ![All-Rounder badge](/image/badges/by-id/easter-all-rounder.svg)               | All-Rounder        |
+
+## Unit trophies
+
+As well as your own badges, a unit with badges turned on has twelve trophies. Each
+one belongs to the unit and has one holder at a time. Beat the holder and you take
+it from them. Your unit's administrators can see who holds each one and who held it
+before.
+
+- **Only your unit's members can hold its trophies**, at your primary unit and any
+  other unit you belong to. Visitors can't.
+- **You have to beat the holder.** If you only match their score, they keep it. If
+  two people beat the holder with the same score, whoever got there first takes it.
+- **A holder keeps a trophy until someone beats them**, or until their own score drops
+  below the trophy's minimum. Then it passes to whoever leads, or nobody holds it until
+  someone qualifies. If they leave the unit, it passes to whoever is next. The Kettle
+  and The Padlock are easier to keep than to win: see the table.
+- **Most trophies are worked out overnight.** The Boomerang and The Odometer can
+  change hands as soon as you sign in.
+- **No trophy rewards one long shift.** Hours count at most 12 hours per sign-in.
+
+|                                                                   | Trophy        | How to win it                                                                                                                                                                                                                         | Minimum to qualify |
+| ----------------------------------------------------------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------ |
+| ![The Kettle trophy](/image/badges/by-id/trophy-kettle.svg)       | The Kettle    | Be first to sign in on more busy days in the last 60 days than the holder. A busy day has 4 or more people on site. Once you hold it, it's yours until someone overtakes you, or you go 60 days without being first in on a busy day. | 3 days             |
+| ![The Padlock trophy](/image/badges/by-id/trophy-padlock.svg)     | The Padlock   | Be last to sign out on more busy days in the last 60 days than the holder. Once you hold it, it's yours until someone overtakes you, or you go 60 days without being last out on a busy day.                                          | 3 days             |
+| ![The Boomerang trophy](/image/badges/by-id/trophy-boomerang.svg) | The Boomerang | Come back to the unit after a longer gap since your previous sign-in there than the holder's, however long you were away. Your record stands for a year from the day you come back.                                                   | 30 days            |
+| ![The Odometer trophy](/image/badges/by-id/trophy-odometer.svg)   | The Odometer  | Sign in at a unit that isn't one of yours, further from your nearest unit than the holder's trip. Your record stands for a year from that trip, at each unit you belong to.                                                           | Any trip           |
+| ![The Boots trophy](/image/badges/by-id/trophy-boots.svg)         | The Boots     | Spend more hours on site in the last 90 days than the holder.                                                                                                                                                                         | 20 hours           |
+| ![The Owl trophy](/image/badges/by-id/trophy-owl.svg)             | The Owl       | Sign in between 10 pm and 5 am on more nights in the last 60 days than the holder. Only sign-ins of 30 minutes or more count, once per night.                                                                                         | 2 nights           |
+| ![The Chalk trophy](/image/badges/by-id/trophy-chalk.svg)         | The Chalk     | Sign out as a trainer or assessor more times in the last 90 days than the holder.                                                                                                                                                     | 2                  |
+| ![The Tarp trophy](/image/badges/by-id/trophy-tarp.svg)           | The Tarp      | Spend more hours signed out to Storm in the last 90 days than the holder.                                                                                                                                                             | 8 hours            |
+| ![The Spanner trophy](/image/badges/by-id/trophy-spanner.svg)     | The Spanner   | Spend more hours signed out to Maintenance (Building/Land or Equipment) in the last 60 days than the holder.                                                                                                                          | 4 hours            |
+| ![The Clipboard trophy](/image/badges/by-id/trophy-clipboard.svg) | The Clipboard | Spend more hours signed out to Administration in the last 60 days than the holder.                                                                                                                                                    | 4 hours            |
+| ![The Pager trophy](/image/badges/by-id/trophy-pager.svg)         | The Pager     | Use myAvailability, to set your availability or reply to a request, on more days in the last 60 days than the holder.                                                                                                                 | 4 days             |
+| ![The Chain trophy](/image/badges/by-id/trophy-chain.svg)         | The Chain     | Sign in at least once every week for longer than the holder's current run. Weeks run Monday to Sunday.                                                                                                                                | 4 weeks            |
