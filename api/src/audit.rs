@@ -4595,6 +4595,7 @@ mod tests {
             nitc_enabled: None,
             nitc_complete_on_export: true,
             gamification_enabled: false,
+            badge_emails_enabled: false,
             ses_api_headquarters_id: Some("77".to_string()),
             last_successful_member_sync: Some(5),
             ses_details: Default::default(),

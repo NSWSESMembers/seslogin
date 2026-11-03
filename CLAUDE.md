@@ -191,6 +191,7 @@ cd api && RUST_LOG=info cargo run --bin load-category-display -- --apply  # Appl
 cd api && RUST_LOG=info cargo run --bin nitc-export -- backfill        # Dry-run NITC export backfill
 cd api && RUST_LOG=info cargo run --bin activity-summary --            # Print summary emails instead of sending
 cd api && RUST_LOG=info cargo run --bin change-digest --               # Print the daily membership-changes digest emails instead of sending
+cd api && RUST_LOG=info cargo run --bin badge-congrats --              # Print badge congratulations emails instead of sending
 ```
 
 `cli` is the exception: it writes immediately, and takes an optional global `--dry-run`
@@ -224,9 +225,9 @@ Auto-deployment is split by branch, one workflow per branch under `.github/workf
 | `preprod` | Preprod API Lambda (`seslogin-preprod-api`) + web to `preprod.seslogin.com` |
 | `qa` | QA API Lambda (`seslogin-qa-api`) + web to `qa.seslogin.com` |
 | `test` | Test API Lambda (`seslogin-test-api`) + web to `test.seslogin.com` |
-| `workers` | Background/worker Lambdas: sync/dispatcher/checker/nitc-export/activity-summary/sync-locations/sync-directory/badge-nightly/badge-digest/change-digest |
+| `workers` | Background/worker Lambdas: sync/dispatcher/checker/nitc-export/activity-summary/sync-locations/sync-directory/badge-nightly/badge-digest/change-digest/badge-congrats |
 
-A release usually goes `test` (if it's risky) → `qa` → `preprod` → `prod`. The following Lambdas are only deployed from the `workers` branch, not from `test`, `qa`, `preprod` or `prod`, which each deploy only their API Lambda + web: sync (`seslogin-sync-members`), dispatcher (`seslogin-dispatcher`), checker (`seslogin-checker`), nitc-export (`seslogin-nitc-export`), activity-summary (`seslogin-activity-summary`), sync-locations (`seslogin-sync-locations`), sync-directory (`seslogin-sync-directory`), badge-nightly (`seslogin-badge-nightly`), badge-digest (`seslogin-badge-digest`), and change-digest (`seslogin-change-digest`).
+A release usually goes `test` (if it's risky) → `qa` → `preprod` → `prod`. The following Lambdas are only deployed from the `workers` branch, not from `test`, `qa`, `preprod` or `prod`, which each deploy only their API Lambda + web: sync (`seslogin-sync-members`), dispatcher (`seslogin-dispatcher`), checker (`seslogin-checker`), nitc-export (`seslogin-nitc-export`), activity-summary (`seslogin-activity-summary`), sync-locations (`seslogin-sync-locations`), sync-directory (`seslogin-sync-directory`), badge-nightly (`seslogin-badge-nightly`), badge-digest (`seslogin-badge-digest`), change-digest (`seslogin-change-digest`), and badge-congrats (`seslogin-badge-congrats`).
 
 A new Lambda deployed by a workflow must also be added to the `github_lambda_deploy` policy in `infra/iam_oidc.tf` (and applied) before that workflow first runs, or its deploy step fails with AccessDenied.
 

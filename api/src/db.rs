@@ -1506,6 +1506,10 @@ pub struct Location {
     /// Whether members of this location earn badges. Defaults to false; a location opts in
     /// once it wants gamification, so the feature can be rolled out unit by unit.
     pub gamification_enabled: bool,
+    /// Whether members of this location are emailed when they earn a badge or take a
+    /// trophy (`badge_congrats`). Defaults to false: it mails real volunteers, so each
+    /// unit opts in.
+    pub badge_emails_enabled: bool,
     pub ses_api_headquarters_id: Option<String>,
     pub last_successful_member_sync: Option<u64>,
     pub ses_details: LocationSesDetails,
