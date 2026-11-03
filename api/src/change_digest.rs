@@ -57,6 +57,11 @@ const PERSON_DETAIL_FIELDS: &[&str] = &[
 /// Fields whose values are never shown, only that they changed.
 const REDACTED_FIELDS: &[&str] = &["email", "mobile", "phones"];
 
+/// Fields holding a list of records, reported as the names added and removed rather than
+/// as the whole list. Capability tags are `[{"id", "name"}]`; accreditations are
+/// `[{"type", "status", "number", "note"}]`.
+const SET_FIELDS: &[&str] = &["capability_tags", "accreditations"];
+
 /// Location fields that are internal identifiers rather than something to report.
 const LOCATION_HIDDEN_FIELDS: &[&str] = &["ses_api_headquarters_id", "ses_directory_entity_id"];
 
@@ -97,6 +102,11 @@ pub struct FieldChange {
     pub after: Option<String>,
     /// A contact detail: shown as "changed" with no values.
     pub redacted: bool,
+    /// For a list field ([`SET_FIELDS`]), the names it gained, sorted. `before` and
+    /// `after` are then `None`.
+    pub added: Vec<String>,
+    /// For a list field, the names it lost, sorted.
+    pub removed: Vec<String>,
 }
 
 /// A member in a section, with the reason where the section has one.
@@ -326,9 +336,57 @@ fn field_label(field: &str) -> String {
     }
 }
 
-fn field_change(field: &str, net: &Net) -> FieldChange {
+/// The name of one record in a [`SET_FIELDS`] list: a capability tag's `name`, or an
+/// accreditation's `type` with its status, so that a status change reads as one entry
+/// removed and another added. A bare string (older data) is its own name.
+fn set_item_name(field: &str, item: &Value) -> Option<String> {
+    match item {
+        Value::String(s) => Some(s.clone()),
+        Value::Object(o) if field == "accreditations" => {
+            let kind = o.get("type")?.as_str()?;
+            Some(match o.get("status").and_then(Value::as_str) {
+                Some(status) => format!("{kind} ({status})"),
+                None => kind.to_string(),
+            })
+        }
+        Value::Object(o) => o.get("name")?.as_str().map(str::to_string),
+        _ => None,
+    }
+}
+
+fn name_set(field: &str, v: &Option<Value>) -> BTreeSet<String> {
+    match present(v) {
+        Some(Value::Array(items)) => items
+            .iter()
+            .filter_map(|i| set_item_name(field, i))
+            .collect(),
+        Some(other) => BTreeSet::from([scalar(other)]),
+        None => BTreeSet::new(),
+    }
+}
+
+/// The change to show for `field`, or `None` when a list field's names are unchanged
+/// (only an id, number or note moved).
+fn field_change(field: &str, net: &Net) -> Option<FieldChange> {
+    if SET_FIELDS.contains(&field) {
+        let (before, after) = (name_set(field, &net.before), name_set(field, &net.after));
+        let added: Vec<String> = after.difference(&before).cloned().collect();
+        let removed: Vec<String> = before.difference(&after).cloned().collect();
+        if added.is_empty() && removed.is_empty() {
+            return None;
+        }
+        return Some(FieldChange {
+            field: field.to_string(),
+            label: field_label(field),
+            before: None,
+            after: None,
+            redacted: false,
+            added,
+            removed,
+        });
+    }
     let redacted = REDACTED_FIELDS.contains(&field);
-    FieldChange {
+    Some(FieldChange {
         field: field.to_string(),
         label: field_label(field),
         before: if redacted {
@@ -342,7 +400,9 @@ fn field_change(field: &str, net: &Net) -> FieldChange {
             format_value(field, &net.after)
         },
         redacted,
-    }
+        added: vec![],
+        removed: vec![],
+    })
 }
 
 fn string_set(v: &Option<Value>) -> BTreeSet<String> {
@@ -398,9 +458,12 @@ pub fn summarise_location(
     );
     for l in &locations {
         for (field, net) in &l.nets {
-            if net.changed() && !LOCATION_HIDDEN_FIELDS.contains(&field.as_str()) {
+            if net.changed()
+                && !LOCATION_HIDDEN_FIELDS.contains(&field.as_str())
+                && let Some(change) = field_change(field, net)
+            {
                 digest.unit_changes.push(UnitChange {
-                    change: field_change(field, net),
+                    change,
                     sources: net.sources.clone(),
                 });
             }
@@ -528,8 +591,10 @@ fn classify_person(location_id: &str, p: &Collapsed, digest: &mut LocationDigest
     let mut changes = vec![];
     let mut sources = BTreeSet::new();
     for field in PERSON_DETAIL_FIELDS {
-        if let Some(n) = p.net(field) {
-            changes.push(field_change(field, n));
+        if let Some(n) = p.net(field)
+            && let Some(change) = field_change(field, n)
+        {
+            changes.push(change);
             sources.extend(p.sources_of(field));
         }
     }
@@ -583,6 +648,16 @@ fn leave_reason_text(r: &LeaveReason, names: &HashMap<String, String>) -> String
 fn change_text(c: &FieldChange) -> String {
     if c.redacted {
         return format!("{} changed", c.label);
+    }
+    if !c.added.is_empty() || !c.removed.is_empty() {
+        let mut parts = vec![];
+        if !c.added.is_empty() {
+            parts.push(format!("added {}", c.added.join(", ")));
+        }
+        if !c.removed.is_empty() {
+            parts.push(format!("removed {}", c.removed.join(", ")));
+        }
+        return format!("{}: {}", c.label, parts.join("; "));
     }
     match (&c.before, &c.after) {
         (Some(b), Some(a)) => format!("{}: {b} → {a}", c.label),
@@ -1298,7 +1373,88 @@ mod tests {
             .iter()
             .find(|c| c.field == "capability_tags")
             .unwrap();
-        assert_eq!(tags.after.as_deref(), Some("Chainsaw, Storm"));
+        assert_eq!(tags.added, vec!["Chainsaw", "Storm"]);
+        assert!(tags.removed.is_empty() && tags.after.is_none());
+    }
+
+    #[test]
+    fn capability_tags_show_only_names_added_and_removed() {
+        let d = summarise(&[upd(
+            1,
+            "p1",
+            SYNC,
+            vec![ch(
+                "capability_tags",
+                Some(json!([
+                    {"id": 1, "name": "Storm"},
+                    {"id": 2, "name": "Chainsaw"},
+                    {"id": 3, "name": "Driver"}
+                ])),
+                Some(json!([
+                    {"id": 2, "name": "Chainsaw"},
+                    {"id": 3, "name": "Driver"},
+                    {"id": 4, "name": "Flood Rescue"}
+                ])),
+            )],
+        )]);
+        let c = &d.details[0].changes[0];
+        assert_eq!(c.added, vec!["Flood Rescue"]);
+        assert_eq!(c.removed, vec!["Storm"]);
+        let text = render_text("1 Jan", &[d], &HashMap::new(), "https://x.test");
+        assert!(text.contains("Capabilities: added Flood Rescue; removed Storm"));
+        assert!(!text.contains("Chainsaw") && !text.contains("\"id\""));
+    }
+
+    #[test]
+    fn capability_tags_with_the_same_names_report_nothing() {
+        let d = summarise(&[upd(
+            1,
+            "p1",
+            SYNC,
+            vec![ch(
+                "capability_tags",
+                Some(json!([{"id": 1, "name": "Storm"}])),
+                Some(json!([{"id": 9, "name": "Storm"}])),
+            )],
+        )]);
+        assert!(d.is_empty());
+    }
+
+    #[test]
+    fn accreditations_show_types_added_and_removed() {
+        let e = entry(
+            1,
+            AuditAction::Update,
+            AuditEntityType::Location,
+            UNIT,
+            "Unit A",
+            ("system", "location-sync"),
+            vec![ch(
+                "accreditations",
+                Some(json!([
+                    {"type": "CFR", "status": "Available"},
+                    {"type": "GLR", "status": "Accredited", "number": "A-1"},
+                    {"type": "Vertical Rescue", "status": "Accredited"}
+                ])),
+                Some(json!([
+                    {"type": "CFR", "status": "Not Applicable"},
+                    {"type": "GLR", "status": "Accredited", "number": "A-2"},
+                    {"type": "Storm"}
+                ])),
+            )],
+        );
+        let d = summarise(&[e]);
+        let c = &d.unit_changes[0].change;
+        assert_eq!(c.added, vec!["CFR (Not Applicable)", "Storm"]);
+        assert_eq!(
+            c.removed,
+            vec!["CFR (Available)", "Vertical Rescue (Accredited)"]
+        );
+        let html = render_html("1 Jan", &[d], &HashMap::new(), "https://x.test");
+        assert!(html.contains(
+            "Accreditations: added CFR (Not Applicable), Storm; removed CFR (Available), Vertical Rescue (Accredited)"
+        ));
+        assert!(!html.contains("GLR"));
     }
 
     #[test]
