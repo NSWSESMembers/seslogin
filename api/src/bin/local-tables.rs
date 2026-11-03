@@ -378,6 +378,14 @@ const TABLES: &[Table] = &[
         ttl: Some("expires_at"),
     },
     Table {
+        name: "trophy",
+        hash: "location_id",
+        range: Some("sk"),
+        attrs: &[Attr("location_id", S), Attr("sk", S)],
+        gsis: &[],
+        ttl: None,
+    },
+    Table {
         name: "notification",
         hash: "person_id",
         range: Some("sk"),

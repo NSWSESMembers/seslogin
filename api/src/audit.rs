@@ -869,6 +869,7 @@ fn location_fields(l: &Location) -> Fields {
         .with("nitc_enabled", opt_num(l.nitc_enabled))
         .with("nitc_complete_on_export", flag(l.nitc_complete_on_export))
         .with("gamification_enabled", flag(l.gamification_enabled))
+        .with("badge_emails_enabled", flag(l.badge_emails_enabled))
         .with(
             "ses_api_headquarters_id",
             opt_text(l.ses_api_headquarters_id.as_deref()),
@@ -940,6 +941,7 @@ pub fn location_update_changes(
             nitc_enabled,
             nitc_complete_on_export,
             gamification_enabled,
+            badge_emails_enabled,
         } => {
             after.set("name", text(name));
             after.set("enabled", flag(*enabled));
@@ -949,6 +951,9 @@ pub fn location_update_changes(
             }
             if let Some(gamification) = gamification_enabled {
                 after.set("gamification_enabled", flag(*gamification));
+            }
+            if let Some(badge_emails) = badge_emails_enabled {
+                after.set("badge_emails_enabled", flag(*badge_emails));
             }
         }
         db::LocationUpdateShape::LastSyncTime { .. } => {}
@@ -2950,6 +2955,9 @@ impl<D: db::Handler> db::Handler for AuditingHandler<D> {
     //     a user's inbox is plumbing. The business write that caused a notification is
     //     audited where it is made, and read state is a personal marker like
     //     `TouchLastUsed`. Reads pass through.
+    //   * the trophy methods (`write_trophy`, `delete_trophy_notices`): perpetual
+    //     trophies are worked out from periods, like person `BadgeState`, and the
+    //     period writes they follow from are audited. Reads pass through.
     // The excluded *shapes* of audited methods (`AccessTime`, session `Info`,
     // `TouchLastUsed`, `LastSyncTime`) are handled inside those methods above.
     // `put_audit_entry` itself must of course not recurse into auditing.
@@ -3015,6 +3023,37 @@ impl<D: db::Handler> db::Handler for AuditingHandler<D> {
         self.inner
             .mark_notifications_read(person_id, sks, read_at)
             .await
+    }
+
+    async fn list_trophy_holders(&self, location_id: &str) -> db::Result<Vec<db::TrophyHolder>> {
+        self.inner.list_trophy_holders(location_id).await
+    }
+
+    async fn list_trophy_reigns(
+        &self,
+        location_id: &str,
+        trophy_id: &str,
+        limit: usize,
+    ) -> db::Result<Vec<db::TrophyReign>> {
+        self.inner
+            .list_trophy_reigns(location_id, trophy_id, limit)
+            .await
+    }
+
+    async fn write_trophy(&self, write: db::TrophyWrite) -> db::Result<()> {
+        self.inner.write_trophy(write).await
+    }
+
+    async fn list_trophy_notices(
+        &self,
+        location_id: &str,
+        person_id: &str,
+    ) -> db::Result<Vec<db::TrophyNotice>> {
+        self.inner.list_trophy_notices(location_id, person_id).await
+    }
+
+    async fn delete_trophy_notices(&self, notices: &[db::TrophyNotice]) -> db::Result<()> {
+        self.inner.delete_trophy_notices(notices).await
     }
 
     async fn put_audit_entry(&self, entry: &AuditEntry) -> db::Result<()> {
@@ -4561,6 +4600,7 @@ mod tests {
             nitc_enabled: None,
             nitc_complete_on_export: true,
             gamification_enabled: false,
+            badge_emails_enabled: false,
             ses_api_headquarters_id: Some("77".to_string()),
             last_successful_member_sync: Some(5),
             ses_details: Default::default(),
@@ -4590,6 +4630,7 @@ mod tests {
                 nitc_enabled: Some(123),
                 nitc_complete_on_export: None,
                 gamification_enabled: None,
+                badge_emails_enabled: None,
             },
         );
         assert_eq!(fields(&changes), vec!["enabled", "nitc_enabled"]);

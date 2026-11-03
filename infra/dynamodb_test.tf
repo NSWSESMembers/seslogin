@@ -995,6 +995,27 @@ resource "aws_dynamodb_table" "test_notification" {
   }
 }
 
+# Perpetual trophies: each unit's trophy cabinet, one partition per location. The
+# current holder of each trophy (sk holder#<trophy_id>), each finished reign
+# (reign#<trophy_id>#<started_at>#<person_id>) and the "while you were away"
+# notices waiting for a member's next kiosk scan (notice#<person_id>#...). All of
+# it is worked out from periods, so the table is not audited.
+resource "aws_dynamodb_table" "test_trophy" {
+  name         = "${var.db_prefix_test}_trophy"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "location_id"
+  range_key    = "sk"
+
+  attribute {
+    name = "location_id"
+    type = "S"
+  }
+  attribute {
+    name = "sk"
+    type = "S"
+  }
+}
+
 # ── Test API access to the test tables ────────────────────────────────────────
 # seslogin-test-api's DB_PREFIX is var.db_prefix_test, and its dynamodb-access
 # policy in dynamodb.tf is scoped to ${var.db_prefix_test}* only, so the test

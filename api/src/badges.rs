@@ -333,6 +333,14 @@ struct TeachingDiscipline {
     training: &'static [&'static str],
 }
 
+/// Every category for teaching or assessing, across all the disciplines: what The Chalk
+/// trophy counts.
+pub fn teaching_category_ids() -> impl Iterator<Item = &'static str> {
+    TEACHING_DISCIPLINES
+        .iter()
+        .flat_map(|discipline| discipline.teaching.iter().copied())
+}
+
 // Each discipline members teach in, with the categories for teaching or assessing it
 // and for being trained in it. Storm & Water's Ground and Heights splits fold into
 // Storm & Water, whose old category holds the history.
@@ -3888,6 +3896,26 @@ mod tests {
         for definition in BADGE_DEFINITIONS {
             let path = dir.join(format!("{}.svg", definition.id));
             assert!(path.is_file(), "no icon at {}", path.display());
+        }
+    }
+
+    /// Emails draw badges from PNG renders (web/public/image/badges/png/), since
+    /// Gmail and Outlook don't show SVG. `make badge-pngs` makes them.
+    #[test]
+    fn every_badge_has_an_email_png() {
+        let dir =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../web/public/image/badges/png");
+        let ids = BADGE_DEFINITIONS
+            .iter()
+            .map(|definition| definition.id)
+            .chain(["first-signin-location-template"]);
+        for id in ids {
+            let path = dir.join(format!("{id}.png"));
+            assert!(
+                path.is_file(),
+                "no PNG at {} (run make badge-pngs)",
+                path.display()
+            );
         }
     }
 

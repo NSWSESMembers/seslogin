@@ -75,6 +75,12 @@ pub(crate) struct FakeDb {
     pub(crate) map_layers: Mutex<HashMap<String, db::MapLayer>>,
     pub(crate) calendars: Mutex<HashMap<String, db::Calendar>>,
     pub(crate) calendar_events: Mutex<HashMap<String, db::CalendarEvent>>,
+    /// Trophy holder rows, by (location, trophy).
+    pub(crate) trophy_holders: Mutex<HashMap<(String, String), db::TrophyHolder>>,
+    /// Finished trophy reigns, in the order they were written.
+    pub(crate) trophy_reigns: Mutex<Vec<db::TrophyReign>>,
+    /// Trophy notices not yet shown.
+    pub(crate) trophy_notices: Mutex<Vec<db::TrophyNotice>>,
 }
 
 impl FakeDb {
@@ -116,14 +122,31 @@ fn matches_categories(period: &db::Period, category_ids: Option<&[String]>) -> b
     category_ids.is_none_or(|ids| period.category_id.as_ref().is_some_and(|c| ids.contains(c)))
 }
 
-/// Order by start time as the real index does and cut to the page size. Cursors are not
-/// modelled: a test that pages checks `hasNextPage`, which needs only the limit.
+/// Order by start time as the real index does, apply the page's cursor and cut to the page
+/// size. As in `dynamodb.rs`, `after` is the page following the cursor in the list's own
+/// order, and `before` the page preceding it, still in the list's order.
 fn sort_and_limit(periods: &mut Vec<db::Period>, page: &db::ListPeriodsPage) {
     periods.sort_by(|a, b| (a.start_time, &a.id).cmp(&(b.start_time, &b.id)));
     if page.descending {
         periods.reverse();
     }
-    periods.truncate(page.limit.max(0) as usize);
+    let limit = page.limit.max(0) as usize;
+    let position = |p: &db::Period, c: &db::PeriodCursor| {
+        let order = (p.start_time, p.id.as_str()).cmp(&(c.start_time, c.id.as_str()));
+        if page.descending {
+            order.reverse()
+        } else {
+            order
+        }
+    };
+    if let Some(cursor) = &page.after {
+        periods.retain(|p| position(p, cursor) == std::cmp::Ordering::Greater);
+    } else if let Some(cursor) = &page.before {
+        periods.retain(|p| position(p, cursor) == std::cmp::Ordering::Less);
+        let excess = periods.len().saturating_sub(limit);
+        periods.drain(..excess);
+    }
+    periods.truncate(limit);
 }
 
 pub(crate) fn unsupported<T>() -> db::Result<T> {
@@ -473,7 +496,7 @@ impl db::Handler for FakeDb {
             .lock()
             .unwrap()
             .values()
-            .filter(|p| p.person_id.as_deref() == Some(person_id))
+            .filter(|p| p.person_id.as_deref() == Some(person_id) && p.deleted.is_none())
             .filter(|p| location_id.is_none_or(|l| p.location_id == l))
             .filter(|p| only_unfinished != Some(true) || p.end_time.is_none())
             .filter(|p| matches_categories(p, category_ids))
@@ -945,6 +968,7 @@ impl db::Handler for FakeDb {
             nitc_enabled,
             nitc_complete_on_export: true,
             gamification_enabled: false,
+            badge_emails_enabled: false,
             ses_api_headquarters_id: ses_api_headquarters_id.map(str::to_string),
             last_successful_member_sync: None,
             ses_details: Default::default(),
@@ -988,6 +1012,7 @@ impl db::Handler for FakeDb {
                 nitc_enabled,
                 nitc_complete_on_export,
                 gamification_enabled,
+                badge_emails_enabled,
             } => {
                 location.name = name.to_string();
                 location.enabled = enabled;
@@ -997,6 +1022,9 @@ impl db::Handler for FakeDb {
                 }
                 if let Some(gamification) = gamification_enabled {
                     location.gamification_enabled = gamification;
+                }
+                if let Some(badge_emails) = badge_emails_enabled {
+                    location.badge_emails_enabled = badge_emails;
                 }
             }
             _ => return unsupported(),
@@ -2667,6 +2695,96 @@ impl db::Handler for FakeDb {
         }
         Ok(())
     }
+
+    async fn list_trophy_holders(&self, location_id: &str) -> db::Result<Vec<db::TrophyHolder>> {
+        let mut holders: Vec<db::TrophyHolder> = self
+            .trophy_holders
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|h| h.location_id == location_id)
+            .cloned()
+            .collect();
+        holders.sort_by(|a, b| a.trophy_id.cmp(&b.trophy_id));
+        Ok(holders)
+    }
+
+    async fn list_trophy_reigns(
+        &self,
+        location_id: &str,
+        trophy_id: &str,
+        limit: usize,
+    ) -> db::Result<Vec<db::TrophyReign>> {
+        let mut reigns: Vec<db::TrophyReign> = self
+            .trophy_reigns
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|r| r.location_id == location_id && r.trophy_id == trophy_id)
+            .cloned()
+            .collect();
+        reigns.sort_by_key(|r| std::cmp::Reverse(db::trophy_reign_sk(r)));
+        reigns.truncate(limit);
+        Ok(reigns)
+    }
+
+    async fn write_trophy(&self, write: db::TrophyWrite) -> db::Result<()> {
+        let key = (write.location_id.clone(), write.trophy_id.clone());
+        let mut holders = self.trophy_holders.lock().unwrap();
+        // The same condition as the DynamoDB transaction.
+        if holders.get(&key).map(|h| h.version) != write.expected_version {
+            return Err(db::Error::Conflict(format!(
+                "trophy {} at {} changed since it was read",
+                write.trophy_id, write.location_id
+            )));
+        }
+        match write.holder {
+            Some(mut holder) => {
+                holder.version = write.expected_version.map_or(1, |v| v + 1);
+                holders.insert(key, holder);
+            }
+            None => {
+                holders.remove(&key);
+            }
+        }
+        if let Some(reign) = write.ended_reign {
+            self.trophy_reigns.lock().unwrap().push(reign);
+        }
+        let mut notices = self.trophy_notices.lock().unwrap();
+        for notice in write.notices {
+            let sk = db::trophy_notice_sk(&notice);
+            notices.retain(|n| {
+                !(n.location_id == notice.location_id && db::trophy_notice_sk(n) == sk)
+            });
+            notices.push(notice);
+        }
+        Ok(())
+    }
+
+    async fn list_trophy_notices(
+        &self,
+        location_id: &str,
+        person_id: &str,
+    ) -> db::Result<Vec<db::TrophyNotice>> {
+        let mut notices: Vec<db::TrophyNotice> = self
+            .trophy_notices
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|n| n.location_id == location_id && n.person_id == person_id)
+            .cloned()
+            .collect();
+        notices.sort_by_key(|n| n.at);
+        Ok(notices)
+    }
+
+    async fn delete_trophy_notices(&self, notices: &[db::TrophyNotice]) -> db::Result<()> {
+        self.trophy_notices
+            .lock()
+            .unwrap()
+            .retain(|n| !notices.contains(n));
+        Ok(())
+    }
     async fn put_audit_entry(&self, entry: &db::AuditEntry) -> db::Result<()> {
         if self.fail_audit_writes.load(Ordering::SeqCst) {
             return Err(db::Error::Infrastructure(
@@ -2786,6 +2904,7 @@ pub(crate) fn seed_location(
             nitc_enabled: None,
             nitc_complete_on_export: true,
             gamification_enabled: false,
+            badge_emails_enabled: false,
             ses_api_headquarters_id: None,
             last_successful_member_sync: None,
             ses_details: Default::default(),

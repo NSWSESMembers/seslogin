@@ -93,6 +93,11 @@ enum Object {
         #[command(subcommand)]
         cmd: NitcEventCmd,
     },
+    /// A unit's perpetual trophies.
+    Trophy {
+        #[command(subcommand)]
+        cmd: TrophyCmd,
+    },
     /// Daily activity-summary email subscriptions.
     ActivitySummary {
         #[command(subcommand)]
@@ -512,6 +517,18 @@ enum NitcTagCmd {
 }
 
 #[derive(Subcommand, Debug)]
+enum TrophyCmd {
+    /// List who holds each of a unit's trophies, and each trophy's recent reigns.
+    List {
+        #[arg(long)]
+        location: String,
+        /// Finished reigns to show per trophy.
+        #[arg(long, default_value_t = 5)]
+        reigns: usize,
+    },
+}
+
+#[derive(Subcommand, Debug)]
 enum SesCmd {
     /// List valid NITC types from the SES API (live) — used by `nitc-group
     /// create --nitc-type` / `edit --nitc-type`.
@@ -921,6 +938,7 @@ async fn show_locations(_db: &impl Handler, locs: &[Location]) {
             nitc_enabled,
             nitc_complete_on_export,
             gamification_enabled,
+            badge_emails_enabled,
             ses_api_headquarters_id,
             last_successful_member_sync,
             ses_details,
@@ -941,6 +959,7 @@ async fn show_locations(_db: &impl Handler, locs: &[Location]) {
                 bool_str(*nitc_complete_on_export),
             ),
             ("gamification_enabled", bool_str(*gamification_enabled)),
+            ("badge_emails_enabled", bool_str(*badge_emails_enabled)),
             ("ses_api_headquarters_id", opt_str(ses_api_headquarters_id)),
             (
                 "last_successful_member_sync",
@@ -3202,6 +3221,64 @@ async fn run(db: &impl Handler, object: Object) -> Result<()> {
                     })
                     .collect();
                 print_table(&["id", "name", "primary_activity"], &rows);
+            }
+        },
+
+        Object::Trophy { cmd } => match cmd {
+            TrophyCmd::List { location, reigns } => {
+                let holders = db.list_trophy_holders(&location).await?;
+                let rows: Vec<Vec<String>> = holders
+                    .iter()
+                    .map(|h| {
+                        vec![
+                            h.trophy_id.clone(),
+                            h.person_id.clone(),
+                            h.value.to_string(),
+                            short_ts(h.reign_started_at),
+                            h.claim_period_id.clone().unwrap_or_else(|| "-".to_string()),
+                            h.version.to_string(),
+                        ]
+                    })
+                    .collect();
+                print_table(
+                    &[
+                        "trophy",
+                        "holder",
+                        "value",
+                        "since",
+                        "claim_period",
+                        "version",
+                    ],
+                    &rows,
+                );
+                for holder in &holders {
+                    let history = db
+                        .list_trophy_reigns(&location, &holder.trophy_id, reigns)
+                        .await?;
+                    if history.is_empty() {
+                        continue;
+                    }
+                    println!("\n{} reigns:", holder.trophy_id);
+                    let rows: Vec<Vec<String>> = history
+                        .iter()
+                        .map(|r| {
+                            vec![
+                                r.person_id.clone(),
+                                r.value.to_string(),
+                                short_ts(r.started_at),
+                                short_ts(r.ended_at),
+                                r.end_reason.as_str().to_string(),
+                                r.ended_by_person_id
+                                    .clone()
+                                    .unwrap_or_else(|| "-".to_string()),
+                            ]
+                        })
+                        .collect();
+                    print_table(
+                        &["person", "value", "started", "ended", "reason", "taken_by"],
+                        &rows,
+                    );
+                }
             }
         },
 

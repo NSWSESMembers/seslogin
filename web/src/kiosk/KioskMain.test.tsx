@@ -242,6 +242,54 @@ describe("KioskMain", () => {
     expect(textbox).toHaveValue("");
   });
 
+  it("shows the unit trophies a sign-in took or the member lost", async () => {
+    server.use(
+      relayEndpoint.mutation("ScanControllerRegister2Mutation", () =>
+        HttpResponse.json({
+          data: {
+            scanRegister2: {
+              ...FOUND_USER_RESPONSE.data.scanRegister2,
+              awardedBadges: [],
+              trophyChanges: [
+                {
+                  trophyId: "boomerang",
+                  name: "The Boomerang",
+                  kind: "TAKEN",
+                  valueLabel: "212 days away",
+                  otherPersonName: "Bob Brown",
+                  locationName: "Test A Unit",
+                },
+                {
+                  trophyId: "kettle",
+                  name: "The Kettle",
+                  kind: "LOST",
+                  valueLabel: "9 busy days",
+                  otherPersonName: "Alice Anderson",
+                  locationName: "Test A Unit",
+                },
+              ],
+            },
+          },
+        }),
+      ),
+    );
+    const user = await setupTest();
+    await user.type(screen.getByRole("textbox"), `${FOUND_USER}{enter}`);
+
+    await waitFor(() =>
+      expect(screen.getByText("The Boomerang")).toBeInTheDocument(),
+    );
+    expect(
+      screen.getByText(/212 days away from Bob Brown/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Alice Anderson took it with 9 busy days/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getAllByText(/Trophy (taken|lost) · Test A Unit/),
+    ).toHaveLength(2);
+  });
+
   it("returns an error for a member ID that does not exist", async () => {
     const user = await setupTest();
     await user.type(screen.getByRole("textbox"), "40050100{enter}");
@@ -377,6 +425,33 @@ describe("KioskMain quick pick categories", () => {
 
     await waitFor(() =>
       expect(screen.getByText("Categories")).toBeInTheDocument(),
+    );
+  });
+
+  it("searches from the quick pick screen too, and a result goes to confirm", async () => {
+    server.use(
+      sessionConfigHandler({
+        quickPickCategories: true,
+        categorySearch: true,
+      }),
+      register2Handler(POPULATED_QUICK_PICK),
+    );
+    const user = await setupTest();
+    await user.type(screen.getByRole("textbox"), SIGNOUT_USER + "{enter}");
+
+    await waitFor(() =>
+      expect(screen.getByText("Quick pick")).toBeInTheDocument(),
+    );
+    // The category screen's box is mounted too, parked off to the side.
+    const box = screen
+      .getAllByRole("searchbox")
+      .find((input) => !input.closest("[inert]"))!;
+    await user.type(box, "aiims");
+    expect(screen.queryByText("This location")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Training, AIIMS" }));
+
+    await waitFor(() =>
+      expect(screen.getByText("Confirm")).toBeInTheDocument(),
     );
   });
 

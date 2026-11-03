@@ -69,12 +69,14 @@ You choose these when you set a kiosk up, and can change them later with
 - **Quick pick categories**: when a member signs out, shows buttons for the
   categories your unit and that member have used recently, before the full list.
   It saves time, and keeps everyone choosing the same categories.
-- **Category search**: adds a **Search categories** box to the sign-out screen,
-  so members can type a few letters to find a category instead of tapping into
-  each group. Each result shows its group, such as Training > Storm & Water:
-  Ground. Training and Workshop - Participant come first and Workshop - Trainer,
-  Trainer and Assessor last, so people who are unsure aren't steered into the
-  instructor groups. On a touch kiosk, tapping the box brings up the keyboard.
+- **Category search**: adds a **Search categories** box to the screens where
+  members choose a category: the full category list, and the Quick pick if you
+  have that turned on too (the two options work independently). Members type a
+  few letters to find a category instead of tapping into each group. Each result
+  shows its group, such as Training > Storm & Water: Ground. Training and
+  Workshop - Participant come first and Workshop - Trainer, Trainer and Assessor
+  last, so people who are unsure aren't steered into the instructor groups. On a
+  touch kiosk, tapping the box brings up the keyboard.
 - **Confirm visitors**: before signing in a visitor (a member who doesn't belong
   to your unit), the kiosk shows their name and primary unit and asks "Are you …?".
   Most mistyped SES IDs belong to someone at another unit, so this stops people
@@ -82,7 +84,8 @@ You choose these when you set a kiosk up, and can change them later with
   primary unit is another one but who also volunteer at yours, are signed in
   straight away, as usual.
 - **Badges** (beta): counts sign-ins and sign-outs at this kiosk towards
-  members' badges, and shows a member any badge they've just earned. Only offered
+  members' badges, and shows a member any badge they've just earned, and any of the
+  unit's trophies they've taken or lost since their last scan. Only offered
   when your unit has badges turned on, which SESLogin's administrators do for
   you; it counts only for members who belong to a unit that has them on too. The kiosk guide
   lists [every badge and how to earn it](../kiosk/badges.md).

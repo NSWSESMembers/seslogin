@@ -152,6 +152,21 @@ impl<A: App + HasDb + Send + Sync + 'static> User<A> {
             .collect()
     }
 
+    /// Locations this user has opted into the daily membership changes email
+    /// for. See `change_digest_job.rs`'s `daily_changes_opted_in_location_ids`,
+    /// which reads the same `email_config` shape — keep them in sync.
+    async fn daily_changes_location_ids(&self) -> Vec<String> {
+        self.rec
+            .email_config
+            .iter()
+            .filter_map(|(loc_id, val)| {
+                val.as_object()
+                    .filter(|m| m.contains_key("daily_changes"))
+                    .map(|_| loc_id.clone())
+            })
+            .collect()
+    }
+
     async fn location_grant_ids(&self) -> Vec<ID> {
         self.rec
             .location_grants
@@ -2414,6 +2429,12 @@ impl<A: App + HasDb + Send + Sync> Location<A> {
         self.rec.gamification_enabled
     }
 
+    /// Whether members of this location are emailed each morning about the badges they
+    /// earned and the trophies they took. Needs gamification on too.
+    async fn badge_emails_enabled(&self) -> bool {
+        self.rec.badge_emails_enabled
+    }
+
     async fn ses_api_headquarters_id(&self) -> Option<String> {
         self.rec.ses_api_headquarters_id.clone()
     }
@@ -3373,6 +3394,14 @@ impl<A: App + HasDb + Send + Sync> Location<A> {
             daily_periods_7d,
             top_categories_7d,
         })
+    }
+
+    /// The unit's perpetual trophies, in cabinet order, each with its holder if it has
+    /// one. Every trophy is listed, held or not.
+    async fn trophies(&self, ctx: &Context<'_>) -> Result<Vec<super::trophies::Trophy<A>>> {
+        require_location_access(ctx, &self.rec.id)?;
+        let app = ctx.data_unchecked::<Arc<A>>();
+        super::trophies::location_trophies(app.as_ref(), &self.rec.id).await
     }
 
     async fn badge_leaderboard(

@@ -48,6 +48,9 @@ locals {
     aws_dynamodb_table.prod_equipment_reservation,
     aws_dynamodb_table.prod_calendar,
     aws_dynamodb_table.prod_calendar_event,
+    # Holders can be worked out again from periods, but the reign history can't:
+    # it records who held each trophy when.
+    aws_dynamodb_table.prod_trophy,
   ]
 }
 

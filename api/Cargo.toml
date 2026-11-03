@@ -67,6 +67,22 @@ path = "src/bin/badge-digest.rs"
 name = "badge-digest-lambda"
 path = "src/bin/badge-digest-lambda.rs"
 
+[[bin]]
+name = "change-digest"
+path = "src/bin/change-digest.rs"
+
+[[bin]]
+name = "change-digest-lambda"
+path = "src/bin/change-digest-lambda.rs"
+
+[[bin]]
+name = "badge-congrats"
+path = "src/bin/badge-congrats.rs"
+
+[[bin]]
+name = "badge-congrats-lambda"
+path = "src/bin/badge-congrats-lambda.rs"
+
 [dependencies]
 anyhow = "1.0.99"
 async-graphql = { version = "7.0.17", features = ["dataloader"] }

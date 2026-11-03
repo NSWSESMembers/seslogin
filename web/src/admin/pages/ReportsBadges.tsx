@@ -6,10 +6,164 @@ import { formatFullDateTime } from "../../lib/time";
 import { competitionRanks } from "../../lib/competitionRank";
 import type { ReportsBadgesQuery } from "./__generated__/ReportsBadgesQuery.graphql";
 import { AdminTable, Th, Td } from "../../components/ui/Table";
+import { SectionHeading } from "../../components/ui/SectionHeading";
+import TrophyShield from "../../components/TrophyShield";
 
-type ReportPerson = NonNullable<
+type ReportLocation = NonNullable<
   NonNullable<ReportsBadgesQuery["response"]>["location"]
->["people"][number];
+>;
+type ReportPerson = ReportLocation["people"][number];
+type ReportTrophy = ReportLocation["trophies"][number];
+type ReportReign = ReportTrophy["reigns"][number];
+
+const trophyDateFormatter = new Intl.DateTimeFormat(undefined, {
+  day: "numeric",
+  month: "short",
+  year: "numeric",
+});
+
+function formatTrophyDate(seconds: number) {
+  return trophyDateFormatter.format(new Date(seconds * 1000));
+}
+
+function personName(
+  person: { firstName: string; lastName: string } | null | undefined,
+) {
+  return person ? `${person.firstName} ${person.lastName}` : "A former member";
+}
+
+function reignEnding(trophyId: string, reign: ReportReign) {
+  const withScore = reign.endedByValueLabel
+    ? ` with ${reign.endedByValueLabel}`
+    : "";
+  switch (reign.endReason) {
+    case "STOLEN":
+      return `taken by ${personName(reign.endedBy)}${withScore}`;
+    case "AGED_OUT":
+      return reign.endedBy
+        ? `record set over a year ago; passed to ${personName(reign.endedBy)}${withScore}`
+        : "record set over a year ago";
+    case "REVERTED":
+      return reign.endedBy
+        ? `claim no longer stood; passed to ${personName(reign.endedBy)}`
+        : "claim no longer stood";
+    case "LEFT_UNIT":
+      return reign.endedBy
+        ? `left the unit; passed to ${personName(reign.endedBy)}`
+        : "left the unit";
+    case "LAPSED": {
+      // The Chain's score is a run of weeks, which drops to nothing on a missed week.
+      const how =
+        trophyId === "chain" ? "run broken" : "fell below the minimum";
+      return reign.endedBy
+        ? `${how}; passed to ${personName(reign.endedBy)}${withScore}`
+        : how;
+    }
+    default:
+      return "ended";
+  }
+}
+
+function TrophyCard({
+  trophy,
+  unitName,
+}: {
+  trophy: ReportTrophy;
+  unitName: string;
+}) {
+  return (
+    // Four rows of the cabinet's grid (subgrid), so the name, tagline, holder
+    // and rule line up across every card in a row.
+    <article className="row-span-4 grid grid-rows-subgrid gap-2 rounded-xl border border-[#d7c3b1] bg-linear-to-b from-[#fff9f1] to-white px-4 py-3.5 dark:border-line dark:from-surface-raised dark:to-surface-raised">
+      <div className="flex flex-col items-center gap-1 text-center">
+        <TrophyShield trophyId={trophy.id} unitName={unitName} />
+        <div className="font-title text-xl text-navy dark:text-ink">
+          {trophy.name}
+        </div>
+      </div>
+      <div className="text-center text-sm text-ink-muted">{trophy.tagline}</div>
+      {trophy.holder ? (
+        <div className="text-center">
+          <TextLink to={`/admin/members/badges/${trophy.holder.id}`}>
+            {personName(trophy.holder)}
+          </TextLink>
+          <div className="text-sm text-ink-muted">
+            {trophy.valueLabel}
+            {trophy.heldSince != null
+              ? ` · since ${formatTrophyDate(trophy.heldSince)}`
+              : ""}
+          </div>
+        </div>
+      ) : (
+        <div className="text-center text-sm text-ink-muted">
+          Nobody holds it yet.
+          {trophy.minimumLabel
+            ? ` Minimum ${trophy.minimumLabel} to qualify.`
+            : ""}
+        </div>
+      )}
+      <details className="group/rule text-sm">
+        <summary className="cursor-pointer list-none text-center text-ink-muted [&::-webkit-details-marker]:hidden">
+          <span
+            aria-hidden
+            className="mr-1 inline-block transition-transform group-open/rule:rotate-90"
+          >
+            ▸
+          </span>
+          How to win it
+          {trophy.reigns.length > 0 ? " and earlier holders" : ""}
+        </summary>
+        <p className="mt-1">
+          {trophy.rule}
+          {trophy.minimumLabel
+            ? ` Minimum ${trophy.minimumLabel} to qualify.`
+            : ""}
+        </p>
+        {trophy.reigns.length > 0 && (
+          <ol className="mt-2 flex flex-col gap-1.5 border-t border-line pt-2">
+            {trophy.reigns.map((reign) => (
+              <li key={`${reign.startedAt}-${reign.endedAt}`}>
+                <span className="font-semibold">
+                  {personName(reign.holder)}
+                </span>{" "}
+                · {reign.valueLabel}
+                <div className="text-ink-muted">
+                  {formatTrophyDate(reign.startedAt)} to{" "}
+                  {formatTrophyDate(reign.endedAt)},{" "}
+                  {reignEnding(trophy.id, reign)}
+                </div>
+              </li>
+            ))}
+          </ol>
+        )}
+      </details>
+    </article>
+  );
+}
+
+function TrophyCabinet({
+  trophies,
+  unitName,
+}: {
+  trophies: ReadonlyArray<ReportTrophy>;
+  unitName: string;
+}) {
+  return (
+    <section className="my-6">
+      <SectionHeading>Perpetual trophies</SectionHeading>
+      <p className="mx-auto my-2 max-w-[68ch]">
+        Each trophy belongs to the unit and has one holder at a time. Whoever
+        beats the holder takes it. Most are worked out overnight; The Boomerang
+        and The Odometer can change hands when a member signs in.
+      </p>
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(230px,1fr))] gap-3">
+        {trophies.map((trophy) => (
+          <TrophyCard key={trophy.id} trophy={trophy} unitName={unitName} />
+        ))}
+      </div>
+    </section>
+  );
+}
 
 const RECENT_AWARDS_CUTOFF_SECONDS =
   Math.floor(Date.now() / 1000) - 7 * 24 * 60 * 60;
@@ -40,6 +194,35 @@ export default function ReportsBadges() {
               id
               name
               awardedAt
+            }
+          }
+          trophies {
+            id
+            name
+            tagline
+            rule
+            minimumLabel
+            holder {
+              id
+              firstName
+              lastName
+            }
+            valueLabel
+            heldSince
+            reigns(first: 5) {
+              holder {
+                firstName
+                lastName
+              }
+              valueLabel
+              startedAt
+              endedAt
+              endReason
+              endedBy {
+                firstName
+                lastName
+              }
+              endedByValueLabel
             }
           }
         }
@@ -109,6 +292,12 @@ export default function ReportsBadges() {
         </article>
       </div>
 
+      <TrophyCabinet
+        trophies={location.trophies}
+        unitName={selectedLocation.name}
+      />
+
+      <SectionHeading>Members' badges</SectionHeading>
       <AdminTable>
         <thead>
           <tr>

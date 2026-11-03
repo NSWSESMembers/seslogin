@@ -1,10 +1,16 @@
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import type { QuickPickSuggestions } from "../ScanState";
 import { findLeafCategory } from "../../lib/categories";
 import { useResetScroll } from "../useResetScroll";
 import { scanViewProps, type ScreenPosition } from "../../styles";
 import { Button } from "../../components/ui/Button";
 import { CategoryIcon } from "../../components/CategoryIcon";
+import { isSearchableQuery, searchCategories } from "../lib/categorySearch";
+import {
+  CategorySearchBar,
+  CategorySearchResults,
+} from "./ScanScreenCategories";
+import { useAutoFocusSearch, useSearchQuery } from "../useCategorySearch";
 
 type QuickPickItem = {
   categoryId: string;
@@ -101,8 +107,34 @@ function Inner(props: {
   suggestions: QuickPickSuggestions;
   onSelectCategory: (categoryId: string) => void;
   onSkip: () => void;
+  /** Called on mount and when the search changes; the host resets its scroll. */
+  onListChange: () => void;
+  /** Adds the same search box as the full category list. */
+  categorySearch?: boolean;
+  /** Put the cursor in the search box when this screen comes on (not on touch
+   * kiosks, where it would raise the keyboard). */
+  autoFocusSearch?: boolean;
+  /** Whether this is the screen that is showing. */
+  active?: boolean;
 }) {
-  const { suggestions } = props;
+  const { suggestions, categorySearch, autoFocusSearch, active } = props;
+  const { query, scanned, changeQuery } = useSearchQuery();
+  const searchInputRef = useAutoFocusSearch(
+    categorySearch,
+    autoFocusSearch,
+    active,
+  );
+  const searching = !!categorySearch && isSearchableQuery(query);
+  const results = useMemo(
+    () => (searching ? searchCategories(query) : []),
+    [searching, query],
+  );
+
+  // A new search swaps the whole list, so start at the top.
+  const { onListChange } = props;
+  useEffect(() => {
+    onListChange();
+  }, [onListChange, query]);
 
   const locationItems = toItems(suggestions.location);
   const personItems = toItems(suggestions.person);
@@ -127,29 +159,51 @@ function Inner(props: {
       <div className="mt-5 flex items-center justify-center gap-3.75 text-3xl">
         <span className="align-middle">Quick pick</span>
       </div>
-      <QuickPickSection
-        title="This location"
-        description="Popular here recently"
-        items={locationItems}
-        onSelect={props.onSelectCategory}
-      />
-      <QuickPickSection
-        title="You"
-        description="Your recent picks"
-        items={personItems}
-        onSelect={props.onSelectCategory}
-      />
-      <div className="mt-8 pb-2 text-center">
-        <Button
-          variant="kiosk"
-          size="bare"
-          className="inline-flex items-center gap-2 px-7 py-3 text-2xl"
-          onClick={props.onSkip}
-        >
-          More categories
-          <span aria-hidden="true">&#8594;</span>
-        </Button>
-      </div>
+      {categorySearch && (
+        <>
+          <CategorySearchBar
+            query={query}
+            onQueryChange={changeQuery}
+            inputRef={searchInputRef}
+            focusAfterClear={autoFocusSearch}
+          />
+          <CategorySearchResults
+            query={query}
+            searching={searching}
+            scanned={scanned}
+            results={results}
+            keyboardRoom={!autoFocusSearch}
+            onSelect={props.onSelectCategory}
+          />
+        </>
+      )}
+      {!searching && (
+        <>
+          <QuickPickSection
+            title="This location"
+            description="Popular here recently"
+            items={locationItems}
+            onSelect={props.onSelectCategory}
+          />
+          <QuickPickSection
+            title="You"
+            description="Your recent picks"
+            items={personItems}
+            onSelect={props.onSelectCategory}
+          />
+          <div className="mt-8 pb-2 text-center">
+            <Button
+              variant="kiosk"
+              size="bare"
+              className="inline-flex items-center gap-2 px-7 py-3 text-2xl"
+              onClick={props.onSkip}
+            >
+              More categories
+              <span aria-hidden="true">&#8594;</span>
+            </Button>
+          </div>
+        </>
+      )}
     </>
   );
 }
@@ -163,10 +217,13 @@ export default function ScanScreenQuickPick(props: {
   uuid: string | null;
   /** Comes back with the sign-out itself; null if the server had none to give. */
   suggestions: QuickPickSuggestions | null;
+  categorySearch?: boolean;
+  autoFocusSearch?: boolean;
 }) {
   const { uuid, suggestions, onSelectCategory } = props;
 
-  const { ref: scrollRef } = useResetScroll<HTMLDivElement>(uuid);
+  const { ref: scrollRef, reset: onListChange } =
+    useResetScroll<HTMLDivElement>(uuid);
 
   return (
     <div ref={scrollRef} {...scanViewProps(props.screenPosition)}>
@@ -176,6 +233,10 @@ export default function ScanScreenQuickPick(props: {
           suggestions={suggestions}
           onSelectCategory={(categoryId) => onSelectCategory(uuid, categoryId)}
           onSkip={props.onSkip}
+          onListChange={onListChange}
+          categorySearch={props.categorySearch}
+          autoFocusSearch={props.autoFocusSearch}
+          active={props.screenPosition === "center"}
         />
       )}
     </div>

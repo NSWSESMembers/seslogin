@@ -2,6 +2,7 @@ import { graphql, useMutation } from "react-relay";
 import type {
   BadgeAward,
   MemberIdWithUuid,
+  TrophyChange,
   TransactionSignedOut,
 } from "../ScanState";
 import {
@@ -182,6 +183,14 @@ export default function ScanController(props: {
             description
             tier
           }
+          trophyChanges {
+            trophyId
+            name
+            kind
+            valueLabel
+            otherPersonName
+            locationName
+          }
           person {
             firstName
             lastName
@@ -313,6 +322,14 @@ export default function ScanController(props: {
             description
             tier
           }
+          trophyChanges {
+            trophyId
+            name
+            kind
+            valueLabel
+            otherPersonName
+            locationName
+          }
           period {
             id
             version
@@ -369,6 +386,12 @@ export default function ScanController(props: {
     awardedBadges: ReadonlyArray<BadgeAward> | null | undefined,
   ): BadgeAward[] {
     return awardedBadges ? [...awardedBadges] : [];
+  }
+
+  function toTrophyChanges(
+    changes: ReadonlyArray<TrophyChange> | null | undefined,
+  ): TrophyChange[] {
+    return changes ? [...changes] : [];
   }
 
   // `confirmVisitor` is false for the repeat of a scan the member has just
@@ -454,6 +477,7 @@ export default function ScanController(props: {
         status: "SIGNED_IN",
         startTime,
         awardedBadges: toBadges(res.scanRegister2.awardedBadges),
+        trophyChanges: toTrophyChanges(res.scanRegister2.trophyChanges),
       });
       return;
     } else if (state == "SIGN_OUT_PENDING") {
@@ -737,6 +761,7 @@ export default function ScanController(props: {
     const onSignedOut = (
       period: ScanControllerSignOutMutation$data["scanSignOut"],
       awardedBadges: ReadonlyArray<BadgeAward> | null | undefined,
+      trophyChanges?: ReadonlyArray<TrophyChange> | null,
     ) => {
       console.log("Adjust mutation completed");
       const person = period.person!;
@@ -756,6 +781,7 @@ export default function ScanController(props: {
         startTime: new Date(period.startTime * 1000),
         endTime: new Date(period.endTime! * 1000),
         awardedBadges: toBadges(awardedBadges),
+        trophyChanges: toTrophyChanges(trophyChanges),
       });
       focusMainInputRef.current?.();
     };
@@ -792,6 +818,7 @@ export default function ScanController(props: {
           onSignedOut(
             data.scanSignOutWithBadges.period,
             data.scanSignOutWithBadges.awardedBadges,
+            data.scanSignOutWithBadges.trophyChanges,
           ),
         onError,
       });
@@ -843,6 +870,8 @@ export default function ScanController(props: {
         onSkip={onSkipQuickPick}
         uuid={needsQuickPick ? transactionUuid : null}
         suggestions={quickPickSuggestions}
+        categorySearch={categorySearch}
+        autoFocusSearch={!touchInput}
       />
       <ScanScreenCategories
         screenPosition={categoriesPos}

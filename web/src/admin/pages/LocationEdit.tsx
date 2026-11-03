@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import { graphql, useMutation } from "react-relay";
 import { useRetryableLazyLoadQuery } from "../../components/useRetryableLazyLoadQuery";
@@ -25,6 +26,7 @@ export default function EditLocation() {
           nitcEnabled
           nitcCompleteOnExport
           gamificationEnabled
+          badgeEmailsEnabled
         }
       }
     `,
@@ -40,6 +42,7 @@ export default function EditLocation() {
         $nitcEnabled: Int
         $nitcCompleteOnExport: Boolean
         $gamificationEnabled: Boolean
+        $badgeEmailsEnabled: Boolean
       ) {
         updateLocation(
           id: $id
@@ -48,6 +51,7 @@ export default function EditLocation() {
           nitcEnabled: $nitcEnabled
           nitcCompleteOnExport: $nitcCompleteOnExport
           gamificationEnabled: $gamificationEnabled
+          badgeEmailsEnabled: $badgeEmailsEnabled
         ) {
           id
           name
@@ -55,11 +59,17 @@ export default function EditLocation() {
           nitcEnabled
           nitcCompleteOnExport
           gamificationEnabled
+          badgeEmailsEnabled
         }
       }
     `);
 
   const location = data.location;
+  // Congratulations emails only mean anything with gamification on, so the
+  // checkbox follows the Gamification one.
+  const [gamificationChecked, setGamificationChecked] = useState(
+    location.gamificationEnabled,
+  );
 
   async function handleSubmit(formData: FormData) {
     const name = formData.get("name")?.toString() || "";
@@ -70,6 +80,10 @@ export default function EditLocation() {
       : null;
     const nitcCompleteOnExport = formData.get("nitcCompleteOnExport") === "on";
     const gamificationEnabled = formData.get("gamificationEnabled") === "on";
+    // Hidden while gamification is off: leave the stored setting as it is.
+    const badgeEmailsEnabled = gamificationEnabled
+      ? formData.get("badgeEmailsEnabled") === "on"
+      : null;
 
     try {
       await new Promise((resolve, reject) => {
@@ -81,6 +95,7 @@ export default function EditLocation() {
             nitcEnabled,
             nitcCompleteOnExport,
             gamificationEnabled,
+            badgeEmailsEnabled,
           },
           onCompleted: resolve,
           onError: reject,
@@ -163,13 +178,34 @@ export default function EditLocation() {
               type="checkbox"
               name="gamificationEnabled"
               id="gamificationEnabled"
-              defaultChecked={location.gamificationEnabled}
+              checked={gamificationChecked}
+              onChange={(e) => setGamificationChecked(e.target.checked)}
             />
             <Muted className="mt-1.5 text-xs">
               Tick to let this location's members earn badges for their
               attendance.
             </Muted>
           </FormField>
+          {gamificationChecked && (
+            <FormField
+              label={
+                <label htmlFor="badgeEmailsEnabled">
+                  Congratulations emails
+                </label>
+              }
+            >
+              <input
+                type="checkbox"
+                name="badgeEmailsEnabled"
+                id="badgeEmailsEnabled"
+                defaultChecked={location.badgeEmailsEnabled}
+              />
+              <Muted className="mt-1.5 text-xs">
+                Tick to email members each evening about the badges they earned
+                and the trophies they took.
+              </Muted>
+            </FormField>
+          )}
           <FormField>
             <Button type="submit" disabled={isMutationInFlight}>
               Save

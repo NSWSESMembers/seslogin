@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<a9ffd9828b642ff4cb8fe64215524b83>>
+ * @generated SignedSource<<951ec113ad0536066eb0e0b861643501>>
  * @lightSyntaxTransform
  */
 
@@ -8,6 +8,7 @@
 // @ts-nocheck
 
 import { ConcreteRequest } from 'relay-runtime';
+export type TrophyChangeKind = "LOST" | "TAKEN" | "%future added value";
 export type ScanControllerSignOutWithBadgesMutation$variables = {
   categoryId: string;
   endTime: number;
@@ -37,6 +38,14 @@ export type ScanControllerSignOutWithBadgesMutation$data = {
       readonly startTime: number;
       readonly version: number;
     };
+    readonly trophyChanges: ReadonlyArray<{
+      readonly kind: TrophyChangeKind;
+      readonly locationName: string;
+      readonly name: string;
+      readonly otherPersonName: string | null | undefined;
+      readonly trophyId: string;
+      readonly valueLabel: string;
+    }>;
   };
 };
 export type ScanControllerSignOutWithBadgesMutation = {
@@ -131,6 +140,53 @@ v6 = [
             "args": null,
             "kind": "ScalarField",
             "name": "tier",
+            "storageKey": null
+          }
+        ],
+        "storageKey": null
+      },
+      {
+        "alias": null,
+        "args": null,
+        "concreteType": "TrophyChange",
+        "kind": "LinkedField",
+        "name": "trophyChanges",
+        "plural": true,
+        "selections": [
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "trophyId",
+            "storageKey": null
+          },
+          (v5/*:: as any*/),
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "kind",
+            "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "valueLabel",
+            "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "otherPersonName",
+            "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "locationName",
             "storageKey": null
           }
         ],
@@ -240,16 +296,16 @@ return {
     "selections": (v6/*:: as any*/)
   },
   "params": {
-    "cacheID": "9e9a1daa37c81d0f2c2c38410cd4df4d",
+    "cacheID": "a6c1f4ff6af5694e773e49648959c4a4",
     "id": null,
     "metadata": {},
     "name": "ScanControllerSignOutWithBadgesMutation",
     "operationKind": "mutation",
-    "text": "mutation ScanControllerSignOutWithBadgesMutation(\n  $id: ID!\n  $startTime: Int!\n  $endTime: Int!\n  $categoryId: ID!\n) {\n  scanSignOutWithBadges(id: $id, startTime: $startTime, endTime: $endTime, categoryId: $categoryId) {\n    awardedBadges {\n      id\n      name\n      description\n      tier\n    }\n    period {\n      id\n      version\n      person {\n        id\n        firstName\n        lastName\n      }\n      startTime\n      endTime\n      category {\n        id\n        name\n      }\n    }\n  }\n}\n"
+    "text": "mutation ScanControllerSignOutWithBadgesMutation(\n  $id: ID!\n  $startTime: Int!\n  $endTime: Int!\n  $categoryId: ID!\n) {\n  scanSignOutWithBadges(id: $id, startTime: $startTime, endTime: $endTime, categoryId: $categoryId) {\n    awardedBadges {\n      id\n      name\n      description\n      tier\n    }\n    trophyChanges {\n      trophyId\n      name\n      kind\n      valueLabel\n      otherPersonName\n      locationName\n    }\n    period {\n      id\n      version\n      person {\n        id\n        firstName\n        lastName\n      }\n      startTime\n      endTime\n      category {\n        id\n        name\n      }\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "13821210eda39769110d06ff29484abf";
+(node as any).hash = "7106266ffeced82d98d407bc48fc3ce3";
 
 export default node;

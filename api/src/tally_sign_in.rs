@@ -41,6 +41,12 @@
 //! is set only on the test API, whose database is the only one holding that account,
 //! and it is a secret: the repository is public. Each sign-in with it is emailed to
 //! [`REVIEW_NOTIFY_VAR`], so a leaked code is noticed.
+//!
+//! Every step logs its outcome (`tally sign-in: ...`) with the email as
+//! [`db::email_key`] normalises it and the person and user it resolved to, in every
+//! environment, so a member who can't sign in can be traced from the logs. The page
+//! never learns why a code wasn't sent; the logs are the only place that says. The
+//! code itself is logged only in debug builds.
 
 use anyhow::{Context, Result, anyhow};
 use sha2::{Digest, Sha256};
@@ -87,6 +93,7 @@ pub async fn identify<H: db::Handler>(db: &H, email: &str) -> db::Result<Option<
 /// proves the user, not the inbox.
 pub async fn identify_user<H: db::Handler>(db: &H, user: db::User) -> db::Result<Option<Identity>> {
     if !user.enabled {
+        info!(user_id = %user.id, "tally sign-in: user is disabled, signing in as nobody");
         return Ok(None);
     }
     let email = user.email.clone();
@@ -103,11 +110,18 @@ pub async fn identify_passkey_owner<H: db::Handler>(
             let user = db.get_users(&[id]).await?.into_iter().next().flatten();
             match user {
                 Some(user) => identify_user(db, user).await,
-                None => Ok(None),
+                None => {
+                    info!(user_id = %id, "tally sign-in: the passkey's user no longer exists");
+                    Ok(None)
+                }
             }
         }
         db::PasskeyOwner::Member(person_id) => {
             let Some(person) = live_person(db, person_id).await? else {
+                info!(
+                    person_id = %person_id,
+                    "tally sign-in: the passkey's member is deleted or missing"
+                );
                 return Ok(None);
             };
             identify_member(db, person).await.map(Some)
@@ -136,10 +150,20 @@ async fn identify_with<H: db::Handler>(
     user: Option<db::User>,
     email: &str,
 ) -> db::Result<Option<Identity>> {
-    if let Some(person_id) = user.as_ref().and_then(|u| u.person_id.clone())
-        && let Some(person) = live_person(db, &person_id).await?
-    {
-        return Ok(Some(Identity { user, person }));
+    let key = db::email_key(email);
+    let user_id = user.as_ref().map_or("none", |u| u.id.as_str());
+    if let Some(person_id) = user.as_ref().and_then(|u| u.person_id.clone()) {
+        if let Some(person) = live_person(db, &person_id).await? {
+            info!(
+                email = %key, user_id, person_id = %person.id,
+                "tally sign-in: lookup found the user's linked member"
+            );
+            return Ok(Some(Identity { user, person }));
+        }
+        info!(
+            email = %key, user_id, person_id,
+            "tally sign-in: the user's linked member is deleted or missing, looking up by email"
+        );
     }
 
     let ids = db.get_person_ids_by_email(email).await?;
@@ -150,19 +174,41 @@ async fn identify_with<H: db::Handler>(
         .flatten()
         .filter(|p| p.deleted.is_none())
         .collect();
-    if people.len() != 1 {
-        if people.len() > 1 {
+    let deleted_members = ids.len() - people.len();
+    match people.len() {
+        0 => {
             info!(
-                "tally sign-in: {} members share an email, refusing",
-                people.len()
+                email = %key, user_id, deleted_members,
+                "tally sign-in: lookup found no live member with this email"
             );
+            Ok(None)
         }
-        return Ok(None);
+        1 => {
+            let person = people.remove(0);
+            info!(
+                email = %key, user_id, person_id = %person.id, deleted_members,
+                "tally sign-in: lookup found a member by email"
+            );
+            Ok(Some(Identity { user, person }))
+        }
+        n => {
+            let person_ids = people
+                .iter()
+                .map(|p| p.id.as_str())
+                .collect::<Vec<_>>()
+                .join(",");
+            info!(
+                email = %key, user_id, person_ids,
+                "tally sign-in: {n} members share an email, refusing"
+            );
+            Ok(None)
+        }
     }
-    Ok(Some(Identity {
-        user,
-        person: people.remove(0),
-    }))
+}
+
+/// The id of the user signing in alongside the member, for logs.
+fn user_id(identity: &Identity) -> &str {
+    identity.user.as_ref().map_or("none", |u| u.id.as_str())
 }
 
 /// The enabled user with this email, trying it as typed and then lowercased (user
@@ -182,13 +228,16 @@ async fn enabled_user_by_email<H: db::Handler>(
     let Some(id) = db::at_most_one(ids, || format!("Multiple users share email {typed}"))? else {
         return Ok(None);
     };
-    Ok(db
-        .get_users(&[&id])
-        .await?
-        .into_iter()
-        .next()
-        .flatten()
-        .filter(|u| u.enabled))
+    let user = db.get_users(&[&id]).await?.into_iter().next().flatten();
+    if let Some(u) = &user
+        && !u.enabled
+    {
+        info!(
+            email = %lower, user_id = %u.id,
+            "tally sign-in: the user with this email is disabled, ignoring them"
+        );
+    }
+    Ok(user.filter(|u| u.enabled))
 }
 
 async fn live_person<H: db::Handler>(db: &H, id: &str) -> db::Result<Option<db::Person>> {
@@ -285,21 +334,32 @@ fn code_hash(code: &str) -> String {
 /// test which emails can sign in.
 pub async fn send_code<A: HasDb + HasMail>(app: &A, email: &str) -> Result<()> {
     let key = db::email_key(email);
-    if identify(app.db(), email).await?.is_none() {
-        info!("tally sign-in: no one to send a code to");
+    let Some(identity) = identify(app.db(), email).await? else {
+        info!(email = %key, "tally sign-in: no one to send a code to");
         return Ok(());
-    }
+    };
+    let person_id = identity.person.id.as_str();
 
     let now = crate::clock::now_sec();
-    if let Some(existing) = app.db().get_login_code(&key).await?
+    let existing = app.db().get_login_code(&key).await?;
+    if let Some(existing) = &existing
         && now < existing.last_sent_at + RESEND_AFTER_S
     {
-        info!("tally sign-in: rate limit hit");
+        info!(
+            email = %key, person_id, last_sent_secs_ago = now - existing.last_sent_at,
+            "tally sign-in: rate limit hit, not resending"
+        );
         return Ok(());
     }
+    // A new code replaces the last one, so an earlier email's code stops working.
+    let replaced_live_code = existing.is_some_and(|c| now < c.expires_at);
 
     let review = std::env::var(REVIEW_SIGN_IN_VAR).unwrap_or_default();
-    let code = review_code(&review, email).unwrap_or_else(|| crate::nonce::generate_code(6));
+    let fixed = review_code(&review, email);
+    if fixed.is_some() {
+        info!(email = %key, person_id, "tally sign-in: sending the review account's fixed code");
+    }
+    let code = fixed.unwrap_or_else(|| crate::nonce::generate_code(6));
     // Only in debug builds, so codes never reach production logs.
     #[cfg(debug_assertions)]
     info!("Tally sign-in code for email={key}: {code}");
@@ -310,12 +370,19 @@ pub async fn send_code<A: HasDb + HasMail>(app: &A, email: &str) -> Result<()> {
     let body = format!(
         "Your Tally sign-in code is: {code}\n\nThis code expires in 10 minutes. Do not share it.\n\nIf you did not request this code, you can ignore this email."
     );
-    if let Err(e) = app
+    match app
         .mail()
         .send_plain_text(&key, "Your Tally sign-in code", &body)
         .await
     {
-        warn!("Failed to send Tally sign-in code: {e:#}");
+        Ok(()) => info!(
+            email = %key, person_id, user_id = user_id(&identity), replaced_live_code,
+            "tally sign-in: code sent"
+        ),
+        Err(e) => warn!(
+            email = %key, person_id,
+            "Failed to send Tally sign-in code: {e:#}"
+        ),
     }
     Ok(())
 }
@@ -330,19 +397,37 @@ pub async fn redeem_code<H: db::Handler>(
 ) -> Result<Option<Identity>> {
     let key = db::email_key(email);
     let Some(record) = db.get_login_code(&key).await? else {
+        info!(email = %key, "tally sign-in: code refused, none is outstanding for this email");
         return Ok(None);
     };
     let now = crate::clock::now_sec();
-    if now >= record.expires_at || record.attempts >= MAX_ATTEMPTS {
+    if now >= record.expires_at {
+        info!(
+            email = %key, expired_secs_ago = now - record.expires_at,
+            "tally sign-in: code refused, it has expired"
+        );
+        db.delete_login_code(&key).await?;
+        return Ok(None);
+    }
+    if record.attempts >= MAX_ATTEMPTS {
+        info!(email = %key, "tally sign-in: code refused, too many wrong attempts");
         db.delete_login_code(&key).await?;
         return Ok(None);
     }
     db.increment_login_code_attempts(&key).await?;
     if record.code_hash != code_hash(code) {
+        info!(
+            email = %key, attempt = record.attempts + 1, max_attempts = MAX_ATTEMPTS,
+            "tally sign-in: code refused, it is wrong"
+        );
         return Ok(None);
     }
     db.delete_login_code(&key).await?;
-    Ok(identify(db, email).await?)
+    let identity = identify(db, email).await?;
+    if identity.is_none() {
+        info!(email = %key, "tally sign-in: code was right, but the email no longer signs anyone in");
+    }
+    Ok(identity)
 }
 
 /// The OAuth authorization request the sign-in page was opened with, as the app sent
@@ -430,13 +515,22 @@ pub async fn complete<A: App + HasDb + HasMail>(
     code: &str,
     request: AuthorizationRequest,
 ) -> Result<String> {
-    let checked = check_request(app, &request)?;
+    let checked = check_request(app, &request).inspect_err(|e| log_refused_request(email, e))?;
     let identity = redeem_code(app.db(), email, code)
         .await?
         .ok_or_else(|| ApiError::bad_request("That code is wrong or has expired"))?;
     check_development_build(&checked, &identity)?;
     notify_review_sign_in(app, email, &identity).await;
+    info!(
+        email = %db::email_key(email), person_id = %identity.person.id, user_id = user_id(&identity),
+        "tally sign-in: signed in with a code"
+    );
     authorize(app, identity, checked, request).await
+}
+
+/// Log a sign-in refused before the code is looked at: the app's link was bad.
+fn log_refused_request(email: &str, e: &anyhow::Error) {
+    info!(email = %db::email_key(email), "tally sign-in: request refused: {e:#}");
 }
 
 /// `completeTallyPasskeySignIn`'s answer to a passkey this server doesn't know, or
@@ -466,10 +560,19 @@ pub async fn complete_with_passkey<A: App + HasDb>(
                 info!("tally sign-in: passkey refused: {e:#}");
                 ApiError::bad_request(PASSKEY_NOT_RECOGNISED)
             })?
-            .ok_or_else(|| ApiError::bad_request(PASSKEY_NOT_RECOGNISED))?;
+            .ok_or_else(|| {
+                info!("tally sign-in: passkey refused, unknown or its challenge expired");
+                ApiError::bad_request(PASSKEY_NOT_RECOGNISED)
+            })?;
     let identity = identify_passkey_owner(app.db(), &credential.owner)
         .await?
-        .ok_or_else(|| ApiError::bad_request(PASSKEY_NO_MEMBER))?;
+        .ok_or_else(|| {
+            info!(
+                passkey_id = %credential.id, owner = ?credential.owner,
+                "tally sign-in: passkey refused, its owner signs in as nobody"
+            );
+            ApiError::bad_request(PASSKEY_NO_MEMBER)
+        })?;
     check_development_build(&checked, &identity)?;
     info!(
         "tally sign-in: passkey {} signed in as person {}",
@@ -481,6 +584,10 @@ pub async fn complete_with_passkey<A: App + HasDb>(
 /// Only a developer may sign in to a development build.
 fn check_development_build(checked: &CheckedRequest, identity: &Identity) -> Result<()> {
     if checked.is_development_build && !identity.user.as_ref().is_some_and(|u| u.is_dev) {
+        info!(
+            person_id = %identity.person.id, user_id = user_id(identity),
+            "tally sign-in: refused, a development build needs a developer account"
+        );
         return Err(ApiError::forbidden(
             "This is a development build; only a developer account can sign in to it",
         )
@@ -598,14 +705,20 @@ pub async fn redeem<A: App + HasDb + HasMail>(
     request: AuthorizationRequest,
     can_save_passkey: bool,
 ) -> Result<SignInStep> {
-    let checked = check_request(app, &request)?;
+    let checked = check_request(app, &request).inspect_err(|e| log_refused_request(email, e))?;
     let identity = redeem_code(app.db(), email, code)
         .await?
         .ok_or_else(|| ApiError::bad_request("That code is wrong or has expired"))?;
     check_development_build(&checked, &identity)?;
     notify_review_sign_in(app, email, &identity).await;
 
-    if !(can_save_passkey && has_no_passkey(app.db(), &identity).await?) {
+    let offer_passkey = can_save_passkey && has_no_passkey(app.db(), &identity).await?;
+    info!(
+        email = %db::email_key(email), person_id = %identity.person.id, user_id = user_id(&identity),
+        can_save_passkey, offer_passkey,
+        "tally sign-in: signed in with a code"
+    );
+    if !offer_passkey {
         return Ok(SignInStep::Redirect(
             authorize(app, identity, checked, request).await?,
         ));
@@ -635,11 +748,18 @@ async fn read_ticket<H: db::Handler>(db: &H, ticket: &str) -> Result<(Ticket, Id
         .get_ephemeral_state(&ticket_state_id(ticket))
         .await?
         .filter(|s| s.kind == TICKET_STATE_KIND && crate::clock::now_sec() < s.expires_at)
-        .ok_or_else(expired)?;
+        .ok_or_else(|| {
+            info!("tally sign-in: ticket refused, unknown, used or expired");
+            expired()
+        })?;
     let payload: Ticket = serde_json::from_str(&state.payload).context("reading sign-in ticket")?;
-    let person = live_person(db, &payload.person_id)
-        .await?
-        .ok_or_else(expired)?;
+    let person = live_person(db, &payload.person_id).await?.ok_or_else(|| {
+        info!(
+            person_id = %payload.person_id,
+            "tally sign-in: ticket refused, its member is deleted or missing"
+        );
+        expired()
+    })?;
     let user = match &payload.user_id {
         Some(id) => db
             .get_users(&[id])
@@ -702,8 +822,17 @@ pub async fn finish_passkey_registration<A: HasDb>(
         SAVED_PASSKEY_NAME,
     )
     .await
+    .inspect(|credential| {
+        info!(
+            passkey_id = %credential.id, owner = ?credential.owner,
+            "tally sign-in: saved a passkey"
+        )
+    })
     .map_err(|e| {
-        info!("tally sign-in: saving a passkey failed: {e:#}");
+        info!(
+            person_id = %identity.person.id,
+            "tally sign-in: saving a passkey failed: {e:#}"
+        );
         ApiError::bad_request("That passkey couldn't be saved. Try again, or continue without one.")
             .into()
     })
@@ -718,6 +847,10 @@ pub async fn continue_sign_in<A: App + HasDb>(app: &A, ticket: &str) -> Result<S
         .await?;
     let checked = check_request(app, &payload.request)?;
     check_development_build(&checked, &identity)?;
+    info!(
+        person_id = %identity.person.id, user_id = user_id(&identity),
+        "tally sign-in: continuing after the passkey offer"
+    );
     authorize(app, identity, checked, payload.request).await
 }
 

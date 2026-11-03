@@ -69,6 +69,7 @@ fn app() -> Arc<TestApp> {
             nitc_enabled: None,
             nitc_complete_on_export: true,
             gamification_enabled: false,
+            badge_emails_enabled: false,
             ses_api_headquarters_id: None,
             last_successful_member_sync: None,
             ses_details: Default::default(),

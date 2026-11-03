@@ -180,6 +180,70 @@ async fn read_only_user_may_still_subscribe_to_daily_summary() {
 }
 
 #[tokio::test]
+async fn daily_changes_opt_in_is_kept_by_other_settings_saves() {
+    let app = app_with_location();
+    let read_only = || auth(&[], &["loc-a"]);
+
+    // A read-only user may opt in (a personal, read-compatible setting).
+    let data = json(
+        &run(
+            &app,
+            read_only(),
+            r#"mutation { updateMyEmailConfig(dailyLocationIds: ["loc-a"], dailyChangesLocationIds: ["loc-a"]) { dailyChangesLocationIds emailSummaryLocationIds } }"#,
+        )
+        .await,
+    );
+    assert_eq!(
+        data["updateMyEmailConfig"]["dailyChangesLocationIds"],
+        serde_json::json!(["loc-a"])
+    );
+
+    // Saving the other two pages (which omit it) leaves it alone.
+    for save in [
+        r#"mutation { updateMyEmailConfig(dailyLocationIds: []) { dailyChangesLocationIds } }"#,
+        r#"mutation { updateMyEmailConfig(dailyLocationIds: [], weeklyBadgeLocationIds: ["loc-a"]) { dailyChangesLocationIds } }"#,
+    ] {
+        let data = json(&run(&app, read_only(), save).await);
+        assert_eq!(
+            data["updateMyEmailConfig"]["dailyChangesLocationIds"],
+            serde_json::json!(["loc-a"]),
+            "{save}"
+        );
+    }
+
+    // An explicit empty list turns it off.
+    let data = json(
+        &run(
+            &app,
+            read_only(),
+            r#"mutation { updateMyEmailConfig(dailyLocationIds: [], dailyChangesLocationIds: []) { dailyChangesLocationIds badgeWeeklyDigestLocationIds } }"#,
+        )
+        .await,
+    );
+    assert_eq!(
+        data["updateMyEmailConfig"]["dailyChangesLocationIds"],
+        serde_json::json!([])
+    );
+    // ...without touching the badge digest that was kept.
+    assert_eq!(
+        data["updateMyEmailConfig"]["badgeWeeklyDigestLocationIds"],
+        serde_json::json!(["loc-a"])
+    );
+}
+
+#[tokio::test]
+async fn daily_changes_opt_in_needs_access_to_the_location() {
+    let app = app_with_location();
+    let response = run(
+        &app,
+        auth(&[], &["loc-a"]),
+        r#"mutation { updateMyEmailConfig(dailyLocationIds: [], dailyChangesLocationIds: ["loc-b"]) { id } }"#,
+    )
+    .await;
+    assert!(!response.errors.is_empty());
+}
+
+#[tokio::test]
 async fn user_locations_lists_admin_then_read_only() {
     let app = app_with_location();
     {
