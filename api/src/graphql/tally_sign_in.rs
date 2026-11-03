@@ -88,19 +88,20 @@ pub(super) async fn request_code<A: HasDb + HasMail>(
     turnstile_token: &str,
 ) -> bool {
     let remote_ip = ctx.data_opt::<ClientIp>().and_then(|ip| ip.0.as_deref());
+    let key = crate::db::email_key(email);
     match crate::turnstile::verify(turnstile_token, remote_ip).await {
         Ok(true) => {}
         Ok(false) => {
-            info!("Turnstile challenge failed for requestTallySignInCode");
+            info!(email = %key, "Turnstile challenge failed for requestTallySignInCode");
             return true;
         }
         Err(e) => {
-            warn!("Turnstile error in requestTallySignInCode: {e:#}");
+            warn!(email = %key, "Turnstile error in requestTallySignInCode: {e:#}");
             return true;
         }
     }
     if let Err(e) = tally_sign_in::send_code(app, email).await {
-        warn!("requestTallySignInCode failed: {e:#}");
+        warn!(email = %key, "requestTallySignInCode failed: {e:#}");
     }
     true
 }
