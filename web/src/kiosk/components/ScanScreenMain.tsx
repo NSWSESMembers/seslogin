@@ -6,6 +6,7 @@ import type {
   TransactionSignedOut as TransactionSignedOutType,
   TransactionError as TransactionErrorType,
   TransactionAborted as TransactionAbortedType,
+  TrophyChange,
 } from "../ScanState";
 import { formatTime, formatDayDateTime } from "../../lib/time";
 import type { CSSProperties } from "react";
@@ -149,6 +150,7 @@ function TransactionSignedIn(props: {
         </span>{" "}
         signed in at {formatTime(txn.startTime)}
         <BadgeCelebration badges={txn.awardedBadges} />
+        <TrophyChanges changes={txn.trophyChanges} />
       </span>
       <span className={loadingSpinnerBase}></span>
     </p>
@@ -181,9 +183,50 @@ function TransactionSignedOut(props: {
         </span>{" "}
         signed out: {startTimeStr} &ndash; {endTimeStr}
         <BadgeCelebration badges={txn.awardedBadges} />
+        <TrophyChanges changes={txn.trophyChanges} />
       </span>
       <span className={loadingSpinnerBase}></span>
     </p>
+  );
+}
+
+/**
+ * The unit trophies a member just took, or took or lost since their last scan:
+ * one line each, taken in the badge colour, lost in plain text.
+ */
+function TrophyChanges(props: {
+  changes: ReadonlyArray<TrophyChange> | null | undefined;
+}) {
+  if (!props.changes || props.changes.length === 0) return null;
+  return (
+    <span className="mt-2 flex flex-col gap-1.5 text-left">
+      {props.changes.map((change) => {
+        const taken = change.kind === "TAKEN";
+        const from = change.otherPersonName
+          ? taken
+            ? ` from ${change.otherPersonName}`
+            : ` ${change.otherPersonName} took it`
+          : "";
+        return (
+          <span
+            key={`${change.locationName}-${change.trophyId}-${change.kind}`}
+            className={`block rounded-lg px-3 py-2 text-base ${
+              taken
+                ? "bg-badge-accent text-white"
+                : "bg-white/70 text-ink dark:bg-black/30 dark:text-white"
+            }`}
+          >
+            <span className="block text-xs font-semibold tracking-[0.08em] uppercase">
+              {taken ? "Trophy taken" : "Trophy lost"} · {change.locationName}
+            </span>
+            <span className="font-bold">{change.name}</span>
+            {taken
+              ? ` · ${change.valueLabel}${from}`
+              : ` ·${from} with ${change.valueLabel}`}
+          </span>
+        );
+      })}
+    </span>
   );
 }
 

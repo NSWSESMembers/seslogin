@@ -242,6 +242,54 @@ describe("KioskMain", () => {
     expect(textbox).toHaveValue("");
   });
 
+  it("shows the unit trophies a sign-in took or the member lost", async () => {
+    server.use(
+      relayEndpoint.mutation("ScanControllerRegister2Mutation", () =>
+        HttpResponse.json({
+          data: {
+            scanRegister2: {
+              ...FOUND_USER_RESPONSE.data.scanRegister2,
+              awardedBadges: [],
+              trophyChanges: [
+                {
+                  trophyId: "boomerang",
+                  name: "The Boomerang",
+                  kind: "TAKEN",
+                  valueLabel: "212 days away",
+                  otherPersonName: "Bob Brown",
+                  locationName: "Test A Unit",
+                },
+                {
+                  trophyId: "kettle",
+                  name: "The Kettle",
+                  kind: "LOST",
+                  valueLabel: "9 busy days",
+                  otherPersonName: "Alice Anderson",
+                  locationName: "Test A Unit",
+                },
+              ],
+            },
+          },
+        }),
+      ),
+    );
+    const user = await setupTest();
+    await user.type(screen.getByRole("textbox"), `${FOUND_USER}{enter}`);
+
+    await waitFor(() =>
+      expect(screen.getByText("The Boomerang")).toBeInTheDocument(),
+    );
+    expect(
+      screen.getByText(/212 days away from Bob Brown/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Alice Anderson took it with 9 busy days/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getAllByText(/Trophy (taken|lost) · Test A Unit/),
+    ).toHaveLength(2);
+  });
+
   it("returns an error for a member ID that does not exist", async () => {
     const user = await setupTest();
     await user.type(screen.getByRole("textbox"), "40050100{enter}");

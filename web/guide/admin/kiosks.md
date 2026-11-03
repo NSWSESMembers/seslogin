@@ -82,7 +82,8 @@ You choose these when you set a kiosk up, and can change them later with
   primary unit is another one but who also volunteer at yours, are signed in
   straight away, as usual.
 - **Badges** (beta): counts sign-ins and sign-outs at this kiosk towards
-  members' badges, and shows a member any badge they've just earned. Only offered
+  members' badges, and shows a member any badge they've just earned, and any of the
+  unit's trophies they've taken or lost since their last scan. Only offered
   when your unit has badges turned on, which SESLogin's administrators do for
   you; it counts only for members who belong to a unit that has them on too. The kiosk guide
   lists [every badge and how to earn it](../kiosk/badges.md).

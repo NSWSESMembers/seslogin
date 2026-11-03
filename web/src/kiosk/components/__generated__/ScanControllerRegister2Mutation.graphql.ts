@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<3008e4a12d96e27eda17929507607989>>
+ * @generated SignedSource<<fc897ac6e80ee2a2c028998b8c5f227e>>
  * @lightSyntaxTransform
  */
 
@@ -9,6 +9,7 @@
 
 import { ConcreteRequest } from 'relay-runtime';
 export type RegisterState = "CONFIRM_VISITOR" | "NOT_FOUND" | "SIGNED_IN" | "SIGN_OUT_PENDING" | "%future added value";
+export type TrophyChangeKind = "LOST" | "TAKEN" | "%future added value";
 export type ScanControllerRegister2Mutation$variables = {
   confirmVisitor: boolean;
   memberNumber: string;
@@ -57,6 +58,14 @@ export type ScanControllerRegister2Mutation$data = {
       }>;
     } | null | undefined;
     readonly state: RegisterState;
+    readonly trophyChanges: ReadonlyArray<{
+      readonly kind: TrophyChangeKind;
+      readonly locationName: string;
+      readonly name: string;
+      readonly otherPersonName: string | null | undefined;
+      readonly trophyId: string;
+      readonly valueLabel: string;
+    }>;
   };
 };
 export type ScanControllerRegister2Mutation = {
@@ -148,18 +157,65 @@ v7 = {
 v8 = {
   "alias": null,
   "args": null,
-  "kind": "ScalarField",
-  "name": "firstName",
+  "concreteType": "TrophyChange",
+  "kind": "LinkedField",
+  "name": "trophyChanges",
+  "plural": true,
+  "selections": [
+    {
+      "alias": null,
+      "args": null,
+      "kind": "ScalarField",
+      "name": "trophyId",
+      "storageKey": null
+    },
+    (v6/*:: as any*/),
+    {
+      "alias": null,
+      "args": null,
+      "kind": "ScalarField",
+      "name": "kind",
+      "storageKey": null
+    },
+    {
+      "alias": null,
+      "args": null,
+      "kind": "ScalarField",
+      "name": "valueLabel",
+      "storageKey": null
+    },
+    {
+      "alias": null,
+      "args": null,
+      "kind": "ScalarField",
+      "name": "otherPersonName",
+      "storageKey": null
+    },
+    {
+      "alias": null,
+      "args": null,
+      "kind": "ScalarField",
+      "name": "locationName",
+      "storageKey": null
+    }
+  ],
   "storageKey": null
 },
 v9 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
-  "name": "lastName",
+  "name": "firstName",
   "storageKey": null
 },
 v10 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
+  "name": "lastName",
+  "storageKey": null
+},
+v11 = {
   "alias": null,
   "args": null,
   "concreteType": "Period",
@@ -198,15 +254,15 @@ v10 = {
       "plural": false,
       "selections": [
         (v5/*:: as any*/),
-        (v8/*:: as any*/),
-        (v9/*:: as any*/)
+        (v9/*:: as any*/),
+        (v10/*:: as any*/)
       ],
       "storageKey": null
     }
   ],
   "storageKey": null
 },
-v11 = {
+v12 = {
   "alias": null,
   "args": null,
   "concreteType": "Category",
@@ -218,7 +274,7 @@ v11 = {
   ],
   "storageKey": null
 },
-v12 = {
+v13 = {
   "alias": null,
   "args": null,
   "concreteType": "QuickPick",
@@ -234,7 +290,7 @@ v12 = {
       "name": "locationCategories",
       "plural": true,
       "selections": [
-        (v11/*:: as any*/),
+        (v12/*:: as any*/),
         {
           "alias": null,
           "args": null,
@@ -244,7 +300,7 @@ v12 = {
           "plural": true,
           "selections": [
             (v5/*:: as any*/),
-            (v8/*:: as any*/)
+            (v9/*:: as any*/)
           ],
           "storageKey": null
         }
@@ -259,7 +315,7 @@ v12 = {
       "name": "personCategories",
       "plural": true,
       "selections": [
-        (v11/*:: as any*/)
+        (v12/*:: as any*/)
       ],
       "storageKey": null
     }
@@ -287,6 +343,7 @@ return {
         "selections": [
           (v4/*:: as any*/),
           (v7/*:: as any*/),
+          (v8/*:: as any*/),
           {
             "alias": null,
             "args": null,
@@ -295,8 +352,8 @@ return {
             "name": "person",
             "plural": false,
             "selections": [
-              (v8/*:: as any*/),
               (v9/*:: as any*/),
+              (v10/*:: as any*/),
               {
                 "alias": null,
                 "args": null,
@@ -312,8 +369,8 @@ return {
             ],
             "storageKey": null
           },
-          (v10/*:: as any*/),
-          (v12/*:: as any*/)
+          (v11/*:: as any*/),
+          (v13/*:: as any*/)
         ],
         "storageKey": null
       }
@@ -341,6 +398,7 @@ return {
         "selections": [
           (v4/*:: as any*/),
           (v7/*:: as any*/),
+          (v8/*:: as any*/),
           {
             "alias": null,
             "args": null,
@@ -349,8 +407,8 @@ return {
             "name": "person",
             "plural": false,
             "selections": [
-              (v8/*:: as any*/),
               (v9/*:: as any*/),
+              (v10/*:: as any*/),
               {
                 "alias": null,
                 "args": null,
@@ -368,24 +426,24 @@ return {
             ],
             "storageKey": null
           },
-          (v10/*:: as any*/),
-          (v12/*:: as any*/)
+          (v11/*:: as any*/),
+          (v13/*:: as any*/)
         ],
         "storageKey": null
       }
     ]
   },
   "params": {
-    "cacheID": "4cfe7810bd1fd650ad0d22fd6a46e712",
+    "cacheID": "0523bf77ff1df4b3e17791f775c2901d",
     "id": null,
     "metadata": {},
     "name": "ScanControllerRegister2Mutation",
     "operationKind": "mutation",
-    "text": "mutation ScanControllerRegister2Mutation(\n  $memberNumber: String!\n  $quickPick: Boolean!\n  $confirmVisitor: Boolean!\n) {\n  scanRegister2(memberNumber: $memberNumber, quickPick: $quickPick, confirmVisitor: $confirmVisitor) {\n    state\n    awardedBadges {\n      id\n      name\n      description\n      tier\n    }\n    person {\n      firstName\n      lastName\n      location {\n        name\n        id\n      }\n      id\n    }\n    period {\n      id\n      version\n      startTime\n      endTime\n      person {\n        id\n        firstName\n        lastName\n      }\n    }\n    quickPick {\n      locationCategories {\n        category {\n          id\n        }\n        recentPeople {\n          id\n          firstName\n        }\n      }\n      personCategories {\n        category {\n          id\n        }\n      }\n    }\n  }\n}\n"
+    "text": "mutation ScanControllerRegister2Mutation(\n  $memberNumber: String!\n  $quickPick: Boolean!\n  $confirmVisitor: Boolean!\n) {\n  scanRegister2(memberNumber: $memberNumber, quickPick: $quickPick, confirmVisitor: $confirmVisitor) {\n    state\n    awardedBadges {\n      id\n      name\n      description\n      tier\n    }\n    trophyChanges {\n      trophyId\n      name\n      kind\n      valueLabel\n      otherPersonName\n      locationName\n    }\n    person {\n      firstName\n      lastName\n      location {\n        name\n        id\n      }\n      id\n    }\n    period {\n      id\n      version\n      startTime\n      endTime\n      person {\n        id\n        firstName\n        lastName\n      }\n    }\n    quickPick {\n      locationCategories {\n        category {\n          id\n        }\n        recentPeople {\n          id\n          firstName\n        }\n      }\n      personCategories {\n        category {\n          id\n        }\n      }\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "55e43f5ea2ee7d3bd8d71f09160da637";
+(node as any).hash = "fba3872244c5ab9faf396ee904e7625f";
 
 export default node;
