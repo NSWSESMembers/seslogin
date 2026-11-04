@@ -14,6 +14,9 @@ use hmac::{Hmac, Mac};
 const OAUTH_CLIENT_ID_LABEL: &[u8] = b"seslogin-oauth-client-id-v1";
 /// Domain-separation label for the offline sync cursor HMAC.
 const SYNC_CURSOR_LABEL: &[u8] = b"seslogin-offline-sync-cursor-v1";
+/// Domain-separation label for the media URL HMAC (`crate::media`). Part of every
+/// signed media URL a client may have cached: do not change it.
+const MEDIA_URL_LABEL: &[u8] = b"seslogin-media-url-v1";
 
 pub struct ServerSecret {
     secret: Box<[u8]>,
@@ -44,6 +47,12 @@ impl ServerSecret {
         self.derived_key(SYNC_CURSOR_LABEL)
     }
 
+    /// A key for HMAC-signing media URLs (`crate::media`), derived the same way under
+    /// its own label.
+    pub fn media_url_key(&self) -> [u8; 32] {
+        self.derived_key(MEDIA_URL_LABEL)
+    }
+
     fn derived_key(&self, label: &[u8]) -> [u8; 32] {
         let mut mac = <Hmac<sha2::Sha256> as Mac>::new_from_slice(&self.secret)
             .expect("HMAC accepts a key of any length");
@@ -63,6 +72,15 @@ mod tests {
         assert_eq!(
             hex::encode(ServerSecret::new("test-secret").oauth_client_id_key()),
             "49d0a8684508de8448a552960ac14d3353a6dd986aaa7c9673b2de19e7f36917"
+        );
+    }
+
+    /// Pins the derivation, as above: a change invalidates every media URL in circulation.
+    #[test]
+    fn media_url_key_is_stable() {
+        assert_eq!(
+            hex::encode(ServerSecret::new("test-secret").media_url_key()),
+            "594213d3a368056ae466e5a8bdcd45e91b53237ca2c42881cf5bb09995fcf502"
         );
     }
 }

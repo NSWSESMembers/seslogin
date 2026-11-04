@@ -28,6 +28,7 @@ pub mod location_sync;
 pub mod mail;
 pub mod map;
 pub mod mcp;
+pub mod media;
 pub mod member_sync;
 pub mod mockdb;
 pub mod mockmail;

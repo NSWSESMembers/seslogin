@@ -1432,6 +1432,37 @@ without affecting anything else.
   expiry). `poem-local` serves that route: 204 on success, 400 with a short message otherwise.
   Files go to `MOCK_STORAGE_DIR` (default `local/storage/`).
 
+## Media
+
+Members only ever receive **derived** images: `src/media.rs` turns an original in the asset
+bucket into a normalised WebP at one of three sizes, on the first request for it.
+
+- **Variants** (`media::ImageVariant`, GraphQL `ImageVariant { THUMB DISPLAY FULL }`): `thumb`
+  400, `display` 1440, `full` 2560 pixels on the long edge. Never upscaled.
+- **Pipeline** (`media::derive`): decode JPEG or WebP under a 100-megapixel / 768 MiB limit,
+  resize (a cheap pre-shrink first for big sources, then Catmull-Rom), apply the EXIF
+  orientation, convert an embedded ICC profile to sRGB (`qcms`), encode lossy WebP at quality
+  80. The output has no metadata at all, so no GPS. It runs in `spawn_blocking`.
+- **Storage:** the result is written to `derived/{id}/{variant}.webp` and served from there
+  next time. Originals are never served. A failed write is logged and the image still returned.
+- **URL** (`media::media_path(asset_id, variant, now, &secret)`): relative,
+  `/media/{asset_id}/{variant}?e={expires}&s={sig}`; clients resolve it against the API origin.
+  `expires = (floor(now / 86400) + 2) * 86400`, so the URL is identical for a whole UTC day
+  (CDN and app caches hit) and valid for 1 to 2 days from when it was minted. `sig` is the first
+  16 bytes of HMAC-SHA256 over `"{id}/{variant}/{expires}"` (base64url, no padding), keyed by
+  `ServerSecret::media_url_key()` (its own derivation of `JWT_SECRET`).
+- **Responses** (`media::serve`): 200 `image/webp` with `Cache-Control: public, max-age=31536000,
+  immutable`; 400 unknown variant or malformed path; 401 bad, missing or expired signature; 410
+  no original; 422 the original cannot be decoded; 500 storage or encoding failed; 503 no
+  `ASSET_BUCKET`. Every error is `no-store`. **Never 403 or 404**: every CloudFront distribution
+  rewrites those to `/index.html` with a 200.
+- **Where it runs:** `poem` and `poem-local` serve `/media/*` in-process from the app's storage
+  and secret (local dev has no CloudFront). Deployed, the API Lambda does not; CloudFront routes
+  `/media/*` to the media Lambda (`bin/media-lambda.rs`: `ASSET_BUCKET` + `JWT_SECRET`, no
+  DynamoDB, 2048 MB): `seslogin-media` for prod, preprod and qa (prod bucket, deployed from
+  `workers`) and `seslogin-test-media` for test (deployed from `test`). The behaviour's cache
+  policy puts all query strings in the key (`aws_cloudfront_cache_policy.media`).
+
 ## WiFi networks
 
 The WiFi networks Tally's WiFi app shows signed-in members, with their passwords
