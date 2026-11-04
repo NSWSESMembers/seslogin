@@ -310,6 +310,17 @@ impl db::Handler for FakeDb {
             .collect())
     }
 
+    async fn list_oauth_grants_by_person(&self, person_id: &str) -> db::Result<Vec<OAuthGrant>> {
+        Ok(self
+            .oauth_grants
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|g| g.person_id.as_deref() == Some(person_id))
+            .cloned()
+            .collect())
+    }
+
     // Everything below is untouched by the OAuth-flow tests. `list_users`,
     // `create_user`, `get_locations`, and `list_locations` are also used by
     // the MCP tool tests (`tests/mcp.rs`), which run real `users`/`createUser`/

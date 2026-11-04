@@ -597,6 +597,10 @@ impl db::Handler for Handler {
         Self::unsupported()
     }
 
+    async fn list_oauth_grants_by_person(&self, _person_id: &str) -> db::Result<Vec<OAuthGrant>> {
+        Self::unsupported()
+    }
+
     async fn create_webauthn_credential(
         &self,
         _id: &str,

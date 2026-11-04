@@ -261,8 +261,11 @@ const TABLES: &[Table] = &[
         name: "oauth_grant",
         hash: "id",
         range: None,
-        attrs: &[Attr("id", S), Attr("user_id", S)],
-        gsis: &[all("user_id-index", "user_id", None)],
+        attrs: &[Attr("id", S), Attr("user_id", S), Attr("person_id", S)],
+        gsis: &[
+            all("user_id-index", "user_id", None),
+            all("person_id-index", "person_id", None),
+        ],
         ttl: Some("expires_at"),
     },
     Table {

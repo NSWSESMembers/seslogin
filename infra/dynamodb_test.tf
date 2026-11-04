@@ -458,11 +458,24 @@ resource "aws_dynamodb_table" "test_oauth_grant" {
     name = "user_id"
     type = "S"
   }
+  attribute {
+    name = "person_id"
+    type = "S"
+  }
 
   global_secondary_index {
     name = "user_id-index"
     key_schema {
       attribute_name = "user_id"
+      key_type       = "HASH"
+    }
+    projection_type = "ALL"
+  }
+
+  global_secondary_index {
+    name = "person_id-index"
+    key_schema {
+      attribute_name = "person_id"
       key_type       = "HASH"
     }
     projection_type = "ALL"
