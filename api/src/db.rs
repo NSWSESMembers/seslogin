@@ -706,6 +706,9 @@ pub struct Task {
     pub due_date: Option<NaiveDate>,
     pub show_date: NaiveDate,
     pub recurrence: Option<TaskRecurrence>,
+    /// The members the task is assigned to, by person ID (from any unit, like an
+    /// on-call role). Empty means nobody in particular: it is the whole unit's.
+    pub assignee_ids: Vec<String>,
     /// Whether the task is still to be done, i.e. it carries `open_location_id` and so
     /// is in `open_location_id-show_date-index`.
     pub open: bool,
@@ -739,6 +742,7 @@ pub struct NewTask<'a> {
     pub due_date: Option<NaiveDate>,
     pub show_date: NaiveDate,
     pub recurrence: Option<TaskRecurrence>,
+    pub assignee_ids: &'a [String],
     pub created_by: Option<&'a str>,
 }
 
@@ -774,6 +778,8 @@ pub enum TaskUpdateShape<'a> {
         due_date: Option<NaiveDate>,
         show_date: NaiveDate,
         recurrence: Option<TaskRecurrence>,
+        /// Empty removes every assignee.
+        assignee_ids: &'a [String],
         by: Option<&'a str>,
         expected_version: u64,
     },

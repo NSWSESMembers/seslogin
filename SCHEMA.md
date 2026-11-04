@@ -350,6 +350,7 @@ The index is **sparse**: completing a non-recurring task, or deleting any task, 
 - `title` (S), `description` (S, optional)
 - `due_date` (S, optional) — the day the task was scheduled for. `show_date` is this, or the creation day when there is none
 - `recurrence_every` (N), `recurrence_unit` (S: `days` or `weeks`) — both present or both absent
+- `assignee_ids` (SS, optional) — person IDs of the members the task is assigned to, from any unit; absent when it is nobody's in particular (a String Set can't be empty). It may name members deleted since
 - `v` (N) — version, bumped by every write; edits and completions are conditional on it, so two people completing the same task cannot both succeed
 - `completed_at` (N), `completed_by` (S) — a non-recurring task's completion, and the person ID of the member who completed it
 - `last_completed_at` (N), `last_completed_by` (S) — a recurring task's latest completion, and who by (person ID)

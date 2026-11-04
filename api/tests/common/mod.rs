@@ -1537,6 +1537,7 @@ impl db::Handler for FakeDb {
             due_date: task.due_date,
             show_date: task.show_date,
             recurrence: task.recurrence,
+            assignee_ids: task.assignee_ids.to_vec(),
             open: true,
             created_by: task.created_by.map(str::to_string),
             updated_by: None,
@@ -1571,12 +1572,14 @@ impl db::Handler for FakeDb {
                 due_date,
                 show_date,
                 recurrence,
+                assignee_ids,
                 by,
                 expected_version,
             } => {
                 if !live(t, expected_version) {
                     return Err(not_found());
                 }
+                t.assignee_ids = assignee_ids.to_vec();
                 t.list_id = list_id.map(str::to_string);
                 t.title = title.to_string();
                 t.description = description.map(str::to_string);

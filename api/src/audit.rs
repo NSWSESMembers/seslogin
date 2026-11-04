@@ -1075,6 +1075,7 @@ fn task_fields(t: &db::Task) -> Fields {
             t.recurrence
                 .map(|r| json!({ "every": r.every, "unit": r.unit.as_str() })),
         )
+        .with("assignee_ids", string_set(&t.assignee_ids))
         .with("completed_at", opt_num(t.completed_at))
         .with("last_completed_at", opt_num(t.last_completed_at))
 }

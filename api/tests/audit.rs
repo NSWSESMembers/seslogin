@@ -365,6 +365,7 @@ fn new_task<'a>(title: &'a str, recurrence: Option<db::TaskRecurrence>) -> db::N
         due_date: Some(day),
         show_date: day,
         recurrence,
+        assignee_ids: &[],
         created_by: Some("caller"),
     }
 }
@@ -1234,4 +1235,39 @@ async fn notifications_are_stored_and_read_without_auditing() {
         0
     );
     assert!(app.db.inner().audit_entries().is_empty());
+}
+
+#[tokio::test]
+async fn assigning_a_task_records_its_assignees() {
+    let app = app();
+    let task = app
+        .db
+        .create_task(new_task("Check the radios", None))
+        .await
+        .unwrap();
+    let assignees = vec!["bob".to_string(), "alice".to_string()];
+    app.db
+        .update_task(
+            &task.id,
+            db::TaskUpdateShape::Fields {
+                list_id: None,
+                title: &task.title,
+                description: None,
+                due_date: task.due_date,
+                show_date: task.show_date,
+                recurrence: None,
+                assignee_ids: &assignees,
+                by: Some("caller"),
+                expected_version: task.version,
+            },
+        )
+        .await
+        .unwrap();
+    let entries = app.db.inner().audit_entries();
+    assert_eq!(entries.len(), 2);
+    assert_eq!(changed_fields(&entries[1]), vec!["assignee_ids"]);
+    assert_eq!(
+        entries[1].changes[0].after,
+        Some(serde_json::json!(["alice", "bob"]))
+    );
 }

@@ -360,3 +360,59 @@ async fn reservations_tell_the_members_newly_named_other_than_the_actor() {
     .await;
     assert_eq!(total(&app), 3);
 }
+
+#[tokio::test]
+async fn tasks_tell_the_members_newly_assigned_other_than_the_actor() {
+    let app = app();
+
+    // Unassigned, or assigned only to yourself: nobody is told.
+    run(
+        &app,
+        "alice",
+        r#"mutation { createTask(locationId: "loc-a", title: "Sweep the shed") { id } }"#,
+    )
+    .await;
+    run(
+        &app,
+        "alice",
+        r#"mutation { createTask(locationId: "loc-a", title: "Mine", assigneeIds: ["alice"]) { id } }"#,
+    )
+    .await;
+    assert_eq!(total(&app), 0);
+
+    // Several members, from another unit too, the actor among them.
+    let data = run(
+        &app,
+        "alice",
+        r#"mutation { createTask(locationId: "loc-a", title: "Check radios", dueDate: "2030-03-04",
+            assigneeIds: ["alice", "bob", "carol"]) { id version } }"#,
+    )
+    .await;
+    let id = data["createTask"]["id"].as_str().unwrap().to_string();
+    let version = data["createTask"]["version"].clone();
+    assert_eq!(titles(&app, "bob"), vec!["Task assigned to you"]);
+    assert_eq!(titles(&app, "carol"), vec!["Task assigned to you"]);
+    assert_eq!(total(&app), 2);
+    let n = &inbox(&app, "bob")[0];
+    assert_eq!(n.source, "tasks");
+    assert_eq!(n.kind, "task.assigned");
+    assert_eq!(n.location_id.as_deref(), Some("loc-a"));
+    assert_eq!(n.target_type.as_deref(), Some("task"));
+    assert_eq!(n.target_id.as_deref(), Some(id.as_str()));
+    assert_eq!(n.body.as_deref(), Some("Check radios · Due Mon 4 Mar"));
+
+    // An edit tells only those it adds, and never the actor.
+    run(
+        &app,
+        "erin",
+        &format!(
+            r#"mutation {{ updateTask(id: "{id}", expectedVersion: {version},
+                assigneeIds: ["bob", "erin", "boss"]) {{ id }} }}"#
+        ),
+    )
+    .await;
+    assert_eq!(titles(&app, "boss"), vec!["Task assigned to you"]);
+    assert!(titles(&app, "erin").is_empty());
+    assert_eq!(titles(&app, "bob"), vec!["Task assigned to you"]);
+    assert_eq!(total(&app), 3);
+}
