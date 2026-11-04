@@ -31,6 +31,7 @@ pub mod notes;
 pub mod notifications;
 pub mod on_call;
 pub mod pagination;
+pub mod photos;
 pub mod query;
 pub mod reservations;
 pub mod self_sign_in;

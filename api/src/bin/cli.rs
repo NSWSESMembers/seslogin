@@ -63,6 +63,11 @@ enum Object {
         #[command(subcommand)]
         cmd: PeriodCmd,
     },
+    /// Tally's photo stream.
+    Photo {
+        #[command(subcommand)]
+        cmd: PhotoCmd,
+    },
     /// Activity categories.
     Category {
         #[command(subcommand)]
@@ -330,6 +335,15 @@ enum SessionCmd {
         #[arg(long, default_value_t = seslogin::session_retire::GRACE_S / 86_400)]
         grace_days: u64,
     },
+}
+
+#[derive(Subcommand, Debug)]
+enum PhotoCmd {
+    /// Soft-delete every photo whose time is up (30 days after it was added, or 7 days
+    /// after it was hidden) and remove its asset reference. This is the same pass the
+    /// checker Lambda runs daily. The stored image objects are left alone. WRITES to the
+    /// `photo` and `asset_ref` tables — pass the global `--dry-run` to preview instead.
+    Sweep,
 }
 
 #[derive(Subcommand, Debug)]
@@ -1513,6 +1527,14 @@ async fn run_cli() -> Result<()> {
         return run_session_retire_stale(&db_prefix, *grace_days, cli.dry_run).await;
     }
 
+    // And for sweeping expired photos.
+    if let Object::Photo {
+        cmd: PhotoCmd::Sweep,
+    } = &cli.object
+    {
+        return run_photo_sweep(&db_prefix, cli.dry_run).await;
+    }
+
     // And for wiping badge state.
     if let Object::Person {
         cmd: PersonCmd::ClearBadges { location },
@@ -1903,6 +1925,26 @@ async fn run_session_retire_stale(db_prefix: &str, grace_days: u64, dry_run: boo
     );
     if summary.has_errors() {
         return Err(anyhow!("session retirement finished with errors"));
+    }
+    Ok(())
+}
+
+async fn run_photo_sweep(db_prefix: &str, dry_run: bool) -> Result<()> {
+    let db = AuditingHandler::new(dynamodb::Handler::new(db_prefix, dry_run).await);
+    let report = seslogin::photos::sweep(&db, now_secs(), dry_run).await?;
+    println!(
+        "{} photo(s) due; {} {}{}",
+        report.due,
+        if dry_run { 0 } else { report.swept },
+        if dry_run { "swept (dry run)" } else { "swept" },
+        if report.has_errors() {
+            format!("; {} failed — see the log", report.failed)
+        } else {
+            String::new()
+        },
+    );
+    if report.has_errors() {
+        return Err(anyhow!("photo sweep finished with errors"));
     }
     Ok(())
 }
@@ -3357,6 +3399,11 @@ async fn run(db: &impl Handler, object: Object) -> Result<()> {
         // Handled in `main` before the shared read-only DB is opened.
         Object::Id { .. } => unreachable!("id is handled before DB setup"),
         Object::Ses { .. } => unreachable!("ses is handled before DB setup"),
+        // Handled in `main` before the shared read-only DB is opened.
+        Object::Photo { .. } => {
+            unreachable!("photo sweep is handled before the read-only DB is opened")
+        }
+
         Object::PeriodLink { .. } => {
             unreachable!("period-link is handled before the read-only DB is opened")
         }

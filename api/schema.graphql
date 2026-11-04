@@ -712,7 +712,8 @@ enum EventRepeat {
 }
 
 """
-The sizes an image is served at. A GraphQL enum `ImageVariant { THUMB DISPLAY FULL }`.
+A size of derived image: THUMB 400 px, DISPLAY 1440 px, FULL 2560 px on the long edge,
+never upscaled.
 """
 enum ImageVariant {
 	THUMB
@@ -1388,6 +1389,18 @@ type MutationRoot {
 	the image that was described.
 	"""
 	completeAssetUpload(id: ID!): Asset!
+	"""
+	Add a ready image the caller uploaded to a unit's photo stream. `NOT_FOUND` for
+	an unknown asset, `BAD_REQUEST` if it isn't complete or belongs to another unit,
+	`FORBIDDEN` if someone else uploaded it, `RATE_LIMITED` after 100 photos at the
+	unit in a Sydney day.
+	"""
+	createPhoto(locationId: ID!, assetId: ID!): Photo!
+	"""
+	Remove a photo from the stream for everyone now; it is deleted within seven days.
+	There is no undo. `NOT_FOUND` if it is unknown or already hidden.
+	"""
+	hidePhoto(id: ID!): Photo!
 	"""
 	Add a note to a location's shared notebook. Any member who can use the
 	unit in Tally may.
@@ -2257,6 +2270,45 @@ type PersonUnitAssignment {
 	updatedAt: Int
 }
 
+type Photo {
+	id: ID!
+	locationId: ID!
+	"""
+	The image. Its `url(variant:)` is what to show.
+	"""
+	asset: Asset!
+	"""
+	Unix seconds the photo was taken, as the phone read it from the original.
+	"""
+	takenAt: Int
+	"""
+	What the stream is ordered by: `takenAt`, else `createdAt`.
+	"""
+	sortTime: Int!
+	"""
+	Unix seconds the photo was added.
+	"""
+	createdAt: Int!
+	"""
+	Person ID of the member who added it; Tally shows the name from its directory.
+	"""
+	createdBy: ID
+	"""
+	Unix seconds after which the photo leaves the stream (30 days after it was added,
+	or sooner once hidden).
+	"""
+	expiresAt: Int!
+}
+
+type PhotoConnection {
+	nodes: [Photo!]!
+	"""
+	Pass as `after` for the next page; null when the page is empty. Opaque.
+	"""
+	endCursor: String
+	hasNextPage: Boolean!
+}
+
 type QueryRoot {
 	"""
 	Build and deployment information about this API server.
@@ -2835,6 +2887,16 @@ type TallyLocation {
 	The unit's task lists, by name.
 	"""
 	taskLists: [TaskList!]!
+	"""
+	The unit's photos, newest first by when they were taken (else when they were
+	added), for 30 days. `first` is at most 200. Pass the previous page's `endCursor`
+	as `after`. See `graphql::photos`.
+	"""
+	photos(first: Int = 60, after: String): PhotoConnection!
+	"""
+	How many more photos the unit may add today (100 a Sydney day), never below 0.
+	"""
+	photoUploadsRemainingToday: Int!
 	"""
 	The unit's notes (its shared notebook), most recently changed first.
 	`folderId` narrows to one of its note folders; without it every note at the

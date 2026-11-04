@@ -1474,6 +1474,35 @@ members signed in to Tally may, at any unit they can use (`require_asset_access`
 - **Locally:** `make dev-local` (`poem-local`) uses `mockstorage`: `uploadUrl` is
   `/dev/storage/upload`, served by `poem-local`, and files land in `MOCK_STORAGE_DIR`.
 
+## Photos
+
+Tally's Photos app: a unit's shared photo stream (`src/photos.rs` for the rules and the sweep,
+`src/graphql/photos.rs` for the API). A photo is a member's ready asset (see "Assets and
+uploads") shown to everyone who can use the unit in Tally (`require_photo_access`, via
+`require_member_location`); users, kiosks and API tokens are refused.
+
+- **Reading:** `TallyLocation.photos(first: Int = 60, after: String)` lists the unit's visible,
+  unexpired photos newest first by `sortTime` (`takenAt`, else `createdAt`), at most 200 a page
+  (`first` is clamped to 1..200). `endCursor` is opaque (the last photo's `sort_key`, base64);
+  a cursor we did not issue is `BAD_REQUEST`. `Photo.asset.url(variant:)` is the image.
+  `TallyLocation.photoUploadsRemainingToday` is 100 minus today's count, never below 0.
+- **Adding:** `createPhoto(locationId, assetId)`. The asset must exist (`NOT_FOUND`), be ready
+  and at that unit (`BAD_REQUEST`) and have been uploaded by the caller (`FORBIDDEN`). The unit's
+  daily counter (`counter#photo#<location>#<Sydney date>`, in `ephemeral_state`) is incremented
+  first; the 101st photo of a Sydney day is `RATE_LIMITED` ("This unit has added 100 photos
+  today. Try again tomorrow."). The photo and its `photo#<id>` asset reference are written in
+  one transaction; if the asset changed under us that is `BAD_REQUEST`.
+- **Hiding:** `hidePhoto(id)`, by any member who can use the photo's unit. The photo leaves the
+  stream for everyone immediately and its `expires_at` becomes at most 7 days after it was
+  hidden. There is no undo. A photo that is unknown, swept or already hidden is `NOT_FOUND`.
+- **Lifetime:** a photo is shown for 30 days after it was added (`db::PHOTO_LIFETIME_SECS`).
+- **The sweep:** `photos::sweep` soft-deletes every photo whose `expires_at` has passed and
+  removes its asset reference, so the future garbage collector can free the asset. It runs
+  daily in the checker Lambda (06:00 Sydney) after session retirement, audited as `system:
+  photo-sweep`; a failure is logged and neither stops session retirement nor the stale-sync
+  alert, and fails the invocation at the end. By hand: `cli photo sweep` (global `--dry-run`
+  to preview). The stored image objects are not deleted by the sweep.
+
 ## Media
 
 Members only ever receive **derived** images: `src/media.rs` turns an original in the asset

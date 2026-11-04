@@ -71,7 +71,8 @@ const PRESHRINK_RATIO: u32 = 3;
 pub const CACHE_FOREVER: &str = "public, max-age=31536000, immutable";
 pub const NO_STORE: &str = "no-store";
 
-/// The sizes an image is served at. A GraphQL enum `ImageVariant { THUMB DISPLAY FULL }`.
+/// A size of derived image: THUMB 400 px, DISPLAY 1440 px, FULL 2560 px on the long edge,
+/// never upscaled.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, async_graphql::Enum)]
 pub enum ImageVariant {
     Thumb,
