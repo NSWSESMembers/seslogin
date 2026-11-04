@@ -1,0 +1,20 @@
+{
+  "name": "SESLogin",
+  "short_name": "SESLogin",
+  "display": "standalone",
+  "scope": "/",
+  "theme_color": "#ef7229",
+  "background_color": "#ffffff",
+  "icons": [
+    {
+      "src": "/image/logo-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/image/logo-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
