@@ -382,6 +382,8 @@ Terraform uses the `seslogin` AWS profile by default (var `aws_profile`) — an 
 | DynamoDB | `db.rs` | `dynamodb.rs` | `mockdb.rs` (fails everything) |
 | SQS | `queue.rs` | `sqs.rs` | `mockqueue.rs` (records) |
 | SES email | `mail.rs` | `sesmail.rs` | `mockmail.rs` (logs) |
+
+Each email SES accepts is logged ("SES accepted email") with its recipient and `message_id`. What then happened to it (delivered, with the receiving server's SMTP response; bounced; rejected; delayed; complained about) is in the `/aws/events/seslogin-ses-events` log group, from every environment, matched by that ID (`infra/ses_events.tf`). Nothing after the receiving server accepts it, such as junk filtering or quarantine, is visible to us.
 | Kiosk realtime | `realtime.rs` | `ably.rs` | `mockrealtime.rs` (records) |
 
 Unlike `mockdb`, the queue, mail and realtime mocks *succeed* — they exist so the API can run with no AWS account (and, for realtime, no Ably account). The app reaches all four through `app::HasDb` / `app::HasQueues` / `app::HasMail` / `app::HasRealtime`, and `MyApp<DBH, Q, M, R>` is generic over each.
