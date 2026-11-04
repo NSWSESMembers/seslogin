@@ -29,7 +29,8 @@ impl Mailer {
             .subject(subject_content)
             .body(body)
             .build();
-        self.client
+        let output = self
+            .client
             .send_email()
             .destination(destination)
             .message(message)
@@ -38,6 +39,13 @@ impl Mailer {
             .send()
             .await
             .with_context(|| format!("failed to send email to {}", to))?;
+        // The message ID is what SES's delivery events (`infra/ses_events.tf`) carry,
+        // and the recipient's `Message-ID` header holds it too, as
+        // `<id@ap-southeast-2.amazonses.com>`, so their mail admins can trace it.
+        tracing::info!(
+            email = %crate::db::email_key(&to), subject, message_id = output.message_id(),
+            "SES accepted email"
+        );
         Ok(())
     }
 }
