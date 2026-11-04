@@ -12,7 +12,7 @@ use async_graphql::{Context, ID, SimpleObject};
 use std::sync::Arc;
 
 use super::error::{ApiError, ErrorCode};
-use crate::app::{App, HasDb};
+use crate::app::{App, HasDb, HasMail};
 use crate::auth::AuthInfo;
 use crate::db::{self, Handler as _};
 
@@ -127,4 +127,283 @@ pub(super) async fn delete<A: App + HasDb>(ctx: &Context<'_>, app: &A, id: &str)
     owned(ctx, app, id).await?;
     app.db().delete_webauthn_credential(id).await?;
     Ok(ID(id.to_string()))
+}
+
+// ── Adding a passkey from Tally ──────────────────────────────────────────────
+//
+// A passkey is made in a browser on SESLogin's own origin (its relying party), not
+// in the app, so Tally asks for a setup ticket (`startTallyPasskeySetup`) and opens
+// `/tally/passkey#<ticket>` on its SESLogin site. The page first proves an inbox:
+// it has a code emailed (`sendTallyPasskeySetupCode`) and enters it
+// (`verifyTallyPasskeySetupCode`), the same codes as Tally sign-in, to an email
+// that signs in as the ticket's member. Only then does it save the passkey
+// (`beginTallyPasskeySetup`, `finishTallyPasskeySetup`) and go back to the app at
+// the grant's own redirect URI with `passkey=saved`.
+//
+// The passkey is the SESLogin user's when the email the code went to is an enabled
+// user's, so it signs in to the admin site too, and the member's own (Tally only)
+// otherwise. That is what saving one after a sign-in code already does: the code
+// proves the inbox, and an email code to that inbox already signs in to the admin
+// site, so the Tally grant alone never mints a credential. The ticket is single use,
+// lasts ten minutes, and is refused once the grant that asked for it is revoked.
+
+/// The `ephemeral_state` kind of a setup ticket.
+pub const SETUP_STATE_KIND: &str = "tally_addpk";
+/// The `webauthn_state` kind of a registration challenge made with one.
+pub const SETUP_REGISTRATION_STATE_KIND: &str = "tally_addpk_reg";
+/// How long a setup ticket lasts.
+pub const SETUP_TTL_S: u64 = 10 * 60;
+/// What a passkey added from Tally is called, until its owner renames it.
+pub const ADDED_PASSKEY_NAME: &str = "Added in Tally";
+/// The answer to a ticket that is unknown, expired, used or whose grant is gone.
+pub const SETUP_EXPIRED: &str = "This link has expired. Go back to Tally and try again.";
+/// The answer to a wrong, expired or used-up code, or one for someone else.
+pub const SETUP_WRONG_CODE: &str =
+    "That code is wrong or has expired. Check it, or send a new one.";
+/// The answer to saving a passkey before the email is confirmed.
+pub const SETUP_UNVERIFIED: &str = "Confirm your email with a code first.";
+
+/// What a setup ticket stands for.
+#[derive(serde::Serialize, serde::Deserialize)]
+struct Setup {
+    person_id: String,
+    grant_id: String,
+    /// Set once a code to an email that signs in as this member was entered.
+    #[serde(default)]
+    verified: Option<Verified>,
+}
+
+/// The confirmed email, and the enabled user with it when there is one: whose the
+/// passkey will be.
+#[derive(serde::Serialize, serde::Deserialize)]
+struct Verified {
+    email: String,
+    user_id: Option<String>,
+}
+
+fn setup_state_id(ticket: &str) -> String {
+    format!("{SETUP_STATE_KIND}_{}", crate::auth::hash_token(ticket))
+}
+
+/// Body of `startTallyPasskeySetup`: a ticket for the member's grant.
+pub(super) async fn start_setup<A: App + HasDb>(ctx: &Context<'_>, app: &A) -> Result<String> {
+    let Some(AuthInfo::Member {
+        person_id,
+        grant_id,
+        ..
+    }) = ctx.data_opt::<AuthInfo>()
+    else {
+        return Err(ApiError::forbidden("Only available in Tally").into());
+    };
+    let ticket = crate::nonce::generate_nonce(32);
+    let payload = Setup {
+        person_id: person_id.clone(),
+        grant_id: grant_id.clone(),
+        verified: None,
+    };
+    app.db()
+        .put_ephemeral_state(
+            &setup_state_id(&ticket),
+            SETUP_STATE_KIND,
+            &serde_json::to_string(&payload)?,
+            crate::clock::now_sec() + SETUP_TTL_S,
+        )
+        .await?;
+    tracing::info!(person_id = %person_id, "tally passkeys: setup ticket issued");
+    Ok(ticket)
+}
+
+/// A live setup ticket: what it stands for, when it expires, its member and grant.
+struct ReadSetup {
+    setup: Setup,
+    expires_at: u64,
+    person: db::Person,
+    grant: db::OAuthGrant,
+}
+
+/// The ticket, while it and its member and grant are live.
+async fn read_setup<H: db::Handler>(db: &H, ticket: &str) -> Result<ReadSetup> {
+    let expired = || anyhow::Error::from(ApiError::bad_request(SETUP_EXPIRED));
+    let now = crate::clock::now_sec();
+    let Some(state) = db
+        .get_ephemeral_state(&setup_state_id(ticket))
+        .await?
+        .filter(|s| s.kind == SETUP_STATE_KIND && now < s.expires_at)
+    else {
+        tracing::info!("tally passkeys: setup ticket refused, unknown, used or expired");
+        return Err(expired());
+    };
+    let setup: Setup = serde_json::from_str(&state.payload)?;
+    let grant = db
+        .get_oauth_grant(&setup.grant_id)
+        .await?
+        .filter(|g| g.person_id.is_some() && g.expires_at > now);
+    let person = db
+        .get_persons(&[&setup.person_id])
+        .await?
+        .into_iter()
+        .next()
+        .flatten()
+        .filter(|p| p.deleted.is_none());
+    match (person, grant) {
+        (Some(person), Some(grant)) => Ok(ReadSetup {
+            setup,
+            expires_at: state.expires_at,
+            person,
+            grant,
+        }),
+        _ => {
+            tracing::info!(
+                person_id = %setup.person_id,
+                "tally passkeys: setup ticket refused, its member or grant is gone"
+            );
+            Err(expired())
+        }
+    }
+}
+
+/// Body of `sendTallyPasskeySetupCode`: emails a Tally sign-in code to `email` if it
+/// signs in as the ticket's member. Always `true` for a live ticket, so the answer
+/// says nothing about the email.
+pub(super) async fn send_setup_code<A: HasDb + HasMail>(
+    app: &A,
+    ticket: &str,
+    email: &str,
+) -> Result<bool> {
+    let read = read_setup(app.db(), ticket).await?;
+    let key = db::email_key(email);
+    match crate::tally_sign_in::identify(app.db(), email).await? {
+        Some(identity) if identity.person.id == read.person.id => {
+            crate::tally_sign_in::send_code(app, email).await?;
+        }
+        _ => tracing::info!(
+            email = %key, person_id = %read.person.id,
+            "tally passkeys: not sending a code, the email doesn't sign in as this member"
+        ),
+    }
+    Ok(true)
+}
+
+/// Body of `verifyTallyPasskeySetupCode`: redeems the code, and marks the ticket
+/// confirmed for that email (and its user, if it is an enabled user's).
+pub(super) async fn verify_setup_code<A: HasDb>(
+    app: &A,
+    ticket: &str,
+    email: &str,
+    code: &str,
+) -> Result<bool> {
+    let mut read = read_setup(app.db(), ticket).await?;
+    let identity = crate::tally_sign_in::redeem_code(app.db(), email, code.trim())
+        .await?
+        .filter(|i| i.person.id == read.person.id)
+        .ok_or_else(|| ApiError::bad_request(SETUP_WRONG_CODE))?;
+    let user_id = identity.user.map(|u| u.id);
+    tracing::info!(
+        email = %db::email_key(email), person_id = %read.person.id,
+        user_id = user_id.as_deref().unwrap_or("none"),
+        "tally passkeys: email confirmed for a setup"
+    );
+    read.setup.verified = Some(Verified {
+        email: db::email_key(email),
+        user_id,
+    });
+    app.db()
+        .put_ephemeral_state(
+            &setup_state_id(ticket),
+            SETUP_STATE_KIND,
+            &serde_json::to_string(&read.setup)?,
+            read.expires_at,
+        )
+        .await?;
+    Ok(true)
+}
+
+/// Whose the passkey will be, and the name their password manager shows it as:
+/// the confirmed email's user while still enabled, else the member.
+async fn setup_owner<H: db::Handler>(
+    db: &H,
+    read: &ReadSetup,
+) -> Result<(db::PasskeyOwner, String)> {
+    let verified = read
+        .setup
+        .verified
+        .as_ref()
+        .ok_or_else(|| ApiError::bad_request(SETUP_UNVERIFIED))?;
+    if let Some(user_id) = &verified.user_id {
+        let user = db
+            .get_users(&[user_id])
+            .await?
+            .into_iter()
+            .next()
+            .flatten()
+            .filter(|u| u.enabled);
+        if let Some(user) = user {
+            return Ok((db::PasskeyOwner::User(user.id), user.email));
+        }
+    }
+    Ok((
+        db::PasskeyOwner::Member(read.person.id.clone()),
+        verified.email.clone(),
+    ))
+}
+
+/// Body of `beginTallyPasskeySetup`.
+pub(super) async fn begin_setup<A: HasDb>(
+    app: &A,
+    webauthn: &webauthn_rs::prelude::Webauthn,
+    ticket: &str,
+) -> Result<crate::passkey::RegistrationChallenge> {
+    let read = read_setup(app.db(), ticket).await?;
+    let (owner, display_name) = setup_owner(app.db(), &read).await?;
+    crate::passkey::start_registration(
+        app.db(),
+        webauthn,
+        &owner,
+        &display_name,
+        SETUP_REGISTRATION_STATE_KIND,
+        &setup_state_id(ticket),
+    )
+    .await
+    .map_err(|e| {
+        tracing::info!(person_id = %read.person.id, "tally passkeys: starting setup failed: {e:#}");
+        ApiError::bad_request(e.to_string()).into()
+    })
+}
+
+/// Body of `finishTallyPasskeySetup`: saves the passkey, uses the ticket up and
+/// returns the URL to send the browser back to the app with.
+pub(super) async fn finish_setup<A: HasDb>(
+    app: &A,
+    webauthn: &webauthn_rs::prelude::Webauthn,
+    ticket: &str,
+    challenge_id: &str,
+    credential_json: &str,
+) -> Result<String> {
+    let read = read_setup(app.db(), ticket).await?;
+    let (owner, _) = setup_owner(app.db(), &read).await?;
+    let credential = crate::passkey::finish_registration(
+        app.db(),
+        webauthn,
+        challenge_id,
+        SETUP_REGISTRATION_STATE_KIND,
+        &setup_state_id(ticket),
+        credential_json,
+        &owner,
+        ADDED_PASSKEY_NAME,
+    )
+    .await
+    .map_err(|e| {
+        tracing::info!(person_id = %read.person.id, "tally passkeys: saving a passkey failed: {e:#}");
+        ApiError::bad_request("That passkey couldn't be saved. Please try again.")
+    })?;
+    app.db()
+        .delete_ephemeral_state(&setup_state_id(ticket))
+        .await?;
+    tracing::info!(
+        person_id = %read.person.id, passkey_id = %credential.id, owner = ?credential.owner,
+        "tally passkeys: added a passkey"
+    );
+    let mut url = url::Url::parse(&read.grant.redirect_uri)?;
+    url.query_pairs_mut().append_pair("passkey", "saved");
+    Ok(url.to_string())
 }

@@ -2730,6 +2730,86 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         super::tally_passkeys::delete(ctx, self.app.as_ref(), &id).await
     }
 
+    /// A single-use, 10-minute ticket for adding a passkey from Tally: Tally opens
+    /// `/tally/passkey#<ticket>` on its SESLogin site, which confirms an email with
+    /// a code (`sendTallyPasskeySetupCode`, `verifyTallyPasskeySetupCode`) and then
+    /// saves the passkey with `beginTallyPasskeySetup` and `finishTallyPasskeySetup`.
+    /// The passkey is the SESLogin user's when the confirmed email is an enabled
+    /// user's, else the member's own. Tally members only.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn start_tally_passkey_setup(&self, ctx: &Context<'_>) -> Result<String> {
+        super::tally_passkeys::start_setup(ctx, self.app.as_ref()).await
+    }
+
+    /// Email a Tally sign-in code to `email` for a ticket from
+    /// `startTallyPasskeySetup`, if that email signs in as the ticket's member.
+    /// Always `true` for a live ticket, so the answer says nothing about the email;
+    /// `BAD_REQUEST` once the ticket has expired, been used, or its Tally sign-in has
+    /// been revoked.
+    async fn send_tally_passkey_setup_code(
+        &self,
+        ctx: &Context<'_>,
+        ticket: String,
+        email: String,
+    ) -> Result<bool> {
+        require_not_oauth_grant(ctx, "Adding a passkey")?;
+        super::tally_passkeys::send_setup_code(&*self.app, &ticket, &email).await
+    }
+
+    /// Confirm the email for a passkey setup ticket with the code
+    /// `sendTallyPasskeySetupCode` sent. `BAD_REQUEST` for a wrong, expired or
+    /// used-up code.
+    async fn verify_tally_passkey_setup_code(
+        &self,
+        ctx: &Context<'_>,
+        ticket: String,
+        email: String,
+        code: String,
+    ) -> Result<bool> {
+        require_not_oauth_grant(ctx, "Adding a passkey")?;
+        super::tally_passkeys::verify_setup_code(&*self.app, &ticket, &email, &code).await
+    }
+
+    /// Start saving a passkey with a ticket from `startTallyPasskeySetup`, once its
+    /// email is confirmed (`BAD_REQUEST` before). Returns
+    /// the options for `navigator.credentials.create`. The ticket is the
+    /// authority; `BAD_REQUEST` once it has expired, been used, or its Tally
+    /// sign-in has been revoked.
+    async fn begin_tally_passkey_setup(
+        &self,
+        ctx: &Context<'_>,
+        ticket: String,
+    ) -> Result<PasskeyChallenge> {
+        require_not_oauth_grant(ctx, "Adding a passkey")?;
+        let webauthn = ctx.data_unchecked::<Arc<webauthn_rs::prelude::Webauthn>>();
+        let challenge = super::tally_passkeys::begin_setup(&*self.app, webauthn, &ticket).await?;
+        Ok(PasskeyChallenge {
+            challenge_id: challenge.challenge_id,
+            options_json: challenge.options_json,
+        })
+    }
+
+    /// Finish saving a passkey with a ticket from `startTallyPasskeySetup`. Uses
+    /// the ticket up and returns the URL to send the browser back to Tally with.
+    async fn finish_tally_passkey_setup(
+        &self,
+        ctx: &Context<'_>,
+        ticket: String,
+        challenge_id: String,
+        credential_json: String,
+    ) -> Result<String> {
+        require_not_oauth_grant(ctx, "Adding a passkey")?;
+        let webauthn = ctx.data_unchecked::<Arc<webauthn_rs::prelude::Webauthn>>();
+        super::tally_passkeys::finish_setup(
+            &*self.app,
+            webauthn,
+            &ticket,
+            &challenge_id,
+            &credential_json,
+        )
+        .await
+    }
+
     /// Add a task to a location's shared to-do list. Any member who can use the
     /// unit in Tally may. `dueDate` (`YYYY-MM-DD`, Sydney) hides the
     /// task until that day; a recurring task with no date is due today.

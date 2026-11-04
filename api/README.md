@@ -300,6 +300,28 @@ name trimmed, 1–100 characters; `deleteTallyPasskey(id)`). Tally members only
 (`graphql/tally_passkeys.rs`); anyone else's passkey is `NOT_FOUND`, like a
 missing one. Both writes are audited, as every passkey write is.
 
+Adding one happens in a browser, since a passkey belongs to the site's relying
+party, not the app. `startTallyPasskeySetup` (Tally members only) returns a
+single-use ticket: an `ephemeral_state` row (kind `tally_addpk`, stored by
+hash, 10 minutes) naming the member and their grant. Tally opens
+`/tally/passkey#<ticket>` on its SESLogin site (the fragment never reaches a
+server). The page first proves an inbox: `sendTallyPasskeySetupCode(ticket,
+email)` emails an ordinary Tally sign-in code (same `login_code` table, limits
+and expiry), but only if that email signs in as the ticket's member, answering
+`true` either way. `verifyTallyPasskeySetupCode(ticket, email, code)` redeems it
+and marks the ticket confirmed. Only then do `beginTallyPasskeySetup(ticket)` and
+`finishTallyPasskeySetup(ticket, challengeId, credentialJson)` work (`BAD_REQUEST`
+before). Finishing uses the ticket up and returns the grant's redirect URI with
+`passkey=saved`, which sends the browser back to the app. The ticket is refused
+(`BAD_REQUEST`) once expired, used, or its member or grant is gone, so revoking
+a sign-in also kills a ticket it asked for.
+
+The passkey, called "Added in Tally", is the **user's** when the confirmed
+email is an enabled SESLogin user's (it then signs in to the admin site too),
+and the **member's** own otherwise. That is the same rule as saving one after a
+sign-in code: the code proves the inbox, and a code to that inbox already signs
+in to the admin site, so the Tally grant alone never mints a credential.
+
 **App Store review.** `TALLY_REVIEW_SIGN_IN=<email>:<6 digits>` makes that one
 email always be sent that code instead of a random one, so a reviewer can sign
 in without the inbox. It is set on the prod and test APIs, to the same value
