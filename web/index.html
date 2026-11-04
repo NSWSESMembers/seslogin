@@ -14,6 +14,12 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="SESLogin" />
     <link rel="apple-touch-icon" href="/image/logo.png" />
+    <!-- The manifest deliberately has no `start_url`, so an installed app opens at the
+         page it was installed from: a kiosk's key and settings belong to its profile
+         (`/kiosk/:profile`), and a fixed start would open every install on the default
+         one. `scope` is the whole origin, so the kiosk's links to enrolment, the guide
+         or admin stay in the app. The meta tags above stay for older iPadOS. -->
+    <link rel="manifest" href="/manifest.webmanifest" />
     <meta name="seslogin-client-version" content="%VITE_CLIENT_VERSION%" />
     <title>SESLogin</title>
   </head>
