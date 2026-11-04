@@ -1222,6 +1222,13 @@ type MutationRoot {
 	"""
 	deleteTallyPasskey(id: ID!): ID!
 	"""
+	Sign one of the member's devices out of Tally (`TallyViewer.signIns`): its
+	grant is deleted, so it can't refresh, and its access token stops working.
+	This device's own may be revoked too. Returns its ID. Tally members only;
+	anyone else's sign-in is `NOT_FOUND`.
+	"""
+	revokeTallySignIn(id: ID!): ID!
+	"""
 	A single-use, 10-minute ticket for adding a passkey from Tally: Tally opens
 	`/tally/passkey#<ticket>` on its SESLogin site, which confirms an email with
 	a code (`sendTallyPasskeySetupCode`, `verifyTallyPasskeySetupCode`) and then
@@ -2829,6 +2836,33 @@ type TallyPasskey {
 }
 
 """
+A device the member is signed in to Tally on.
+"""
+type TallySignIn {
+	id: ID!
+	"""
+	The app, as SESLogin lists it ("Tally").
+	"""
+	clientName: String!
+	"""
+	When they signed in, Unix seconds.
+	"""
+	createdAt: Int!
+	"""
+	When it was last used, Unix seconds; null if never since signing in.
+	"""
+	lastUsedAt: Int
+	"""
+	When it signs out by itself if not used again, Unix seconds.
+	"""
+	refreshExpiresAt: Int!
+	"""
+	Whether it is the sign-in making this request: this device.
+	"""
+	isCurrent: Boolean!
+}
+
+"""
 What the sign-in page shows about the app that opened it.
 """
 type TallySignInRequest {
@@ -2902,6 +2936,11 @@ type TallyViewer {
 	in to the SESLogin site). See `graphql::tally_passkeys`.
 	"""
 	passkeys: [TallyPasskey!]!
+	"""
+	The devices the member is signed in to Tally on (one per sign-in), this one
+	first, then most recently used. See `graphql::tally_sign_ins`.
+	"""
+	signIns: [TallySignIn!]!
 }
 
 type Task {

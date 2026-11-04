@@ -38,6 +38,7 @@ pub mod shared_contacts;
 pub mod tally;
 pub mod tally_passkeys;
 pub mod tally_sign_in;
+pub mod tally_sign_ins;
 pub mod tasks;
 pub mod trophies;
 pub mod wifi;

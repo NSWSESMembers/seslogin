@@ -26,6 +26,7 @@ use super::query::Person;
 use super::reservations::{self, EquipmentReservation};
 use super::shared_contacts::{self, SharedContact};
 use super::tally_passkeys::{self, TallyPasskey};
+use super::tally_sign_ins::{self, TallySignIn};
 use super::tasks::{self, Task, TaskList, TaskView};
 use super::{LocationId, PersonId};
 use crate::app::{App, HasDb};
@@ -177,6 +178,12 @@ impl<A: App + HasDb + Send + Sync + 'static> TallyViewer<A> {
     /// in to the SESLogin site). See `graphql::tally_passkeys`.
     async fn passkeys(&self, ctx: &Context<'_>) -> Result<Vec<TallyPasskey>> {
         tally_passkeys::list::<A>(ctx).await
+    }
+
+    /// The devices the member is signed in to Tally on (one per sign-in), this one
+    /// first, then most recently used. See `graphql::tally_sign_ins`.
+    async fn sign_ins(&self, ctx: &Context<'_>) -> Result<Vec<TallySignIn>> {
+        tally_sign_ins::list::<A>(ctx).await
     }
 }
 
