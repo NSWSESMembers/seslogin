@@ -31,6 +31,8 @@ export const ENTITY_TYPE_LABELS = {
   CALENDAR: "Calendar",
   CALENDAR_EVENT: "Calendar event",
   LOCATION_SHARE: "Location share",
+  ASSET: "Upload",
+  PHOTO: "Photo",
 } as const;
 
 export type EntityTypeKey = keyof typeof ENTITY_TYPE_LABELS;

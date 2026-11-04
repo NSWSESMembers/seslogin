@@ -130,6 +130,8 @@ enum AuditEntityType {
 	CALENDAR
 	CALENDAR_EVENT
 	LOCATION_SHARE
+	ASSET
+	PHOTO
 }
 
 type AuditEntry {
