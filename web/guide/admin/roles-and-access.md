@@ -16,6 +16,7 @@ Every administrator account has a role at each unit it can see.
 | Get the daily email summary          |  Yes  |    Yes    |
 | Get the daily membership changes     |  Yes  |    Yes    |
 | Add, edit or delete activity entries |  Yes  |    No     |
+| Email a member a link to fix one     |  Yes  |    No     |
 | Add, edit or delete members          |  Yes  |    No     |
 | Set up, change or remove kiosks      |  Yes  |    No     |
 
