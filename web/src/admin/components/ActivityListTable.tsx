@@ -349,16 +349,15 @@ function Row<T extends ActivityListTable_period$key>({
             >
               Edit
             </ButtonLink>
-            {/* Still being trialled, so dev-tagged users only. The guest check is
-              the same as Edit's: a guest has no member record to email. */}
-            {isDev && period.personId != null && (
+            {/* A guest has no member record to email. */}
+            {period.personId != null && (
               <Button
                 size="row"
                 onClick={sendReminder}
                 disabled={isRemindInFlight}
                 title="Email this member a link to check and correct their time entry"
               >
-                {isRemindInFlight ? "Sending…" : "Remind"} [dev-only]
+                {isRemindInFlight ? "Sending…" : "Remind"}
               </Button>
             )}
             <Button
