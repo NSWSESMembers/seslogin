@@ -1002,6 +1002,7 @@ impl TryInto<db::Task> for Item {
             show_date: date_field(&self, "show_date")?
                 .ok_or_else(|| anyhow!("Task missing show_date"))?,
             recurrence,
+            assignee_ids: self.string_set_field("assignee_ids")?,
             open: self.has_field("open_location_id"),
             created_by: self.string_field("created_by")?,
             updated_by: self.string_field("updated_by")?,
@@ -6789,6 +6790,12 @@ impl db::Handler for Handler {
                     AttributeValue::S(r.unit.as_str().to_string()),
                 );
         }
+        if !task.assignee_ids.is_empty() {
+            put = put.item(
+                "assignee_ids",
+                AttributeValue::Ss(task.assignee_ids.to_vec()),
+            );
+        }
         if let Some(by) = task.created_by {
             put = put.item("created_by", AttributeValue::S(by.to_string()));
         }
@@ -6807,6 +6814,7 @@ impl db::Handler for Handler {
             due_date: task.due_date,
             show_date: task.show_date,
             recurrence: task.recurrence,
+            assignee_ids: task.assignee_ids.to_vec(),
             open: true,
             created_by: task.created_by.map(str::to_string),
             updated_by: None,
@@ -6837,6 +6845,7 @@ impl db::Handler for Handler {
                 due_date,
                 show_date,
                 recurrence,
+                assignee_ids,
                 by,
                 expected_version,
             } => {
@@ -6855,6 +6864,10 @@ impl db::Handler for Handler {
                 update.set_or_remove(
                     "recurrence_unit",
                     recurrence.map(|r| AttributeValue::S(r.unit.as_str().to_string())),
+                );
+                update.set_or_remove(
+                    "assignee_ids",
+                    (!assignee_ids.is_empty()).then(|| AttributeValue::Ss(assignee_ids.to_vec())),
                 );
                 update.set_or_remove("updated_by", by.map(|b| AttributeValue::S(b.to_string())));
                 Some(expected_version)

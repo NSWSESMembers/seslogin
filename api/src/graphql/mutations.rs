@@ -2711,6 +2711,8 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
     /// Add a task to a location's shared to-do list. Any member who can use the
     /// unit in Tally may. `dueDate` (`YYYY-MM-DD`, Sydney) hides the
     /// task until that day; a recurring task with no date is due today.
+    /// `assigneeIds` assigns it to members (by person ID, from any unit, at most 20),
+    /// who are notified; with none it is the whole unit's.
     #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn create_task(
         &self,
@@ -2721,6 +2723,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         list_id: Option<ID>,
         due_date: Option<String>,
         recurrence: Option<TaskRecurrenceInput>,
+        assignee_ids: Option<Vec<ID>>,
     ) -> Result<Task<A>> {
         tasks::create_task(
             ctx,
@@ -2732,14 +2735,17 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
                 list_id,
                 due_date,
                 recurrence,
+                assignee_ids,
             },
         )
         .await
     }
 
     /// Change an open task. Omitted arguments are left as they are; `null` clears
-    /// `description`, `listId`, `dueDate` or `recurrence`. Fails with `CONFLICT` if
-    /// the task is no longer at `expectedVersion`.
+    /// `description`, `listId`, `dueDate` or `recurrence`. `assigneeIds` replaces who
+    /// it is assigned to (an empty list unassigns everyone); members newly assigned
+    /// are notified. Fails with `CONFLICT` if the task is no longer at
+    /// `expectedVersion`.
     #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn update_task(
         &self,
@@ -2751,6 +2757,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         list_id: MaybeUndefined<ID>,
         due_date: MaybeUndefined<String>,
         recurrence: MaybeUndefined<TaskRecurrenceInput>,
+        assignee_ids: Option<Vec<ID>>,
     ) -> Result<Task<A>> {
         tasks::update_task(
             ctx,
@@ -2763,6 +2770,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
                 list_id,
                 due_date,
                 recurrence,
+                assignee_ids,
             },
         )
         .await

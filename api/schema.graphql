@@ -1212,14 +1212,18 @@ type MutationRoot {
 	Add a task to a location's shared to-do list. Any member who can use the
 	unit in Tally may. `dueDate` (`YYYY-MM-DD`, Sydney) hides the
 	task until that day; a recurring task with no date is due today.
+	`assigneeIds` assigns it to members (by person ID, from any unit, at most 20),
+	who are notified; with none it is the whole unit's.
 	"""
-	createTask(locationId: ID!, title: String!, description: String, listId: ID, dueDate: String, recurrence: TaskRecurrenceInput): Task!
+	createTask(locationId: ID!, title: String!, description: String, listId: ID, dueDate: String, recurrence: TaskRecurrenceInput, assigneeIds: [ID!]): Task!
 	"""
 	Change an open task. Omitted arguments are left as they are; `null` clears
-	`description`, `listId`, `dueDate` or `recurrence`. Fails with `CONFLICT` if
-	the task is no longer at `expectedVersion`.
+	`description`, `listId`, `dueDate` or `recurrence`. `assigneeIds` replaces who
+	it is assigned to (an empty list unassigns everyone); members newly assigned
+	are notified. Fails with `CONFLICT` if the task is no longer at
+	`expectedVersion`.
 	"""
-	updateTask(id: ID!, expectedVersion: Int!, title: String, description: String, listId: ID, dueDate: String, recurrence: TaskRecurrenceInput): Task!
+	updateTask(id: ID!, expectedVersion: Int!, title: String, description: String, listId: ID, dueDate: String, recurrence: TaskRecurrenceInput, assigneeIds: [ID!]): Task!
 	"""
 	Complete a task. A recurring task stays open, due again its interval after
 	today; any other task is done. Fails with `CONFLICT` if someone else completed
@@ -2858,6 +2862,20 @@ type Task {
 	"""
 	overdue: Boolean!
 	recurrence: TaskRecurrence
+	"""
+	The members the task is assigned to, by person ID, deleted ones included. Empty
+	when it is the whole unit's.
+	"""
+	assigneeIds: [ID!]!
+	"""
+	The members the task is assigned to, by name. Members deleted since are left
+	out, so this can be empty even when `assigneeIds` isn't.
+	"""
+	assignees: [Person!]!
+	"""
+	Whether the member asking is one of those it is assigned to.
+	"""
+	assignedToViewer: Boolean!
 	"""
 	False once a non-recurring task is completed, or any task deleted. A
 	recurring task stays open.

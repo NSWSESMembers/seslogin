@@ -633,6 +633,14 @@ A location's shared to-do list, used by the Tally app (`src/graphql/tasks.rs`, r
 - **Recurring tasks** (`recurrence: { every, unit: DAYS | WEEKS }`) always have a due date
   (today if none was given). Completing one moves it to `every` days/weeks after the day it
   was completed, and it stays open; completing any other task closes it.
+- **Assignees:** a task may be assigned to up to 20 members (`assigneeIds` on `createTask`
+  and `updateTask`, by person ID, from any unit, like an on-call role). With none it is the
+  whole unit's. Assigning changes nothing about who may see, edit or complete it: anyone at
+  the unit still can. `updateTask` without `assigneeIds` leaves them alone; given, it
+  replaces them (`[]` unassigns everyone), and a member already assigned may stay after
+  being deleted, but only live members can be added. `Task.assigneeIds` lists them all,
+  `Task.assignees` the live ones by name, and `Task.assignedToViewer` says whether the caller
+  is one. Members newly assigned get a notification (see "Notifications").
 - **Concurrency:** `updateTask` and `completeTask` take `expectedVersion`; if the task was
   changed or completed since (say, two people tapping Complete at once), the second gets a
   `CONFLICT` error rather than skipping an occurrence.
@@ -1306,14 +1314,15 @@ producers' API in `src/notifications.rs`, storage in SCHEMA.md's `notification` 
   | source         | kind                  | targetType     | When                                                                                                                                                                                                                             | Audience                                    | Title / body                                                                                                                                |
   | -------------- | --------------------- | -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
   | `reservations` | `reservation.for_you` | `reservation`  | `createEquipmentReservation`, or `updateEquipmentReservation`, adds members to `reserved_for_person_ids` (every member it is for, on create)                                                                                     | each added member other than the actor      | "Equipment reserved for you" / "<equipment names, sorted> · <Sun 25 Oct 09:00–11:00, Sydney time>" ("Equipment" if the names can't be read) |
+  | `tasks`        | `task.assigned`       | `task`         | `createTask`, or `updateTask`, adds members to `assignee_ids` (every assignee, on create)                                                                                                                                         | each added member other than the actor      | "Task assigned to you" / "<title>" or "<title> · Due <Mon 4 Mar>"                                                                          |
   | `oncall`       | `oncall.assigned`     | `on_call_role` | `createOnCallRole`, or `updateOnCallRole`, makes a person the primary when they were not, or adds them to the secondaries when they were not already there (moving primary to secondary counts; removals and reorderings do not) | that member, once per newly assigned member | "You're now primary for <role>" / "You're now a secondary for <role>"                                                                       |
 
   Equipment going into HAS_ISSUE, OUT_OF_SERVICE or MISSING used to tell the unit's users; it
   notifies nobody for now, while who among a unit's members should hear is rethought
   (`EquipmentStatus::attention_title` still holds the titles).
 
-  The acting member is never told (so a reservation you make for yourself, or an on-call role you
-  put yourself in, sends nothing).
+  The acting member is never told (so a reservation you make for yourself, a task you assign to
+  yourself, or an on-call role you put yourself in, sends nothing).
 
 - **Best-effort:** like the audit log, `notify` returns `()`: a failure is logged at `error!`
   and swallowed, because the thing it announces has already happened. The notification methods

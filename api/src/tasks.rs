@@ -7,16 +7,23 @@
 //! task, once completed, is due again `every` days or weeks after the day it was
 //! completed. A task is overdue the day after its due date — or, for a task that recurs
 //! weekly, only once it has been showing for a full week.
+//!
+//! A task may be assigned to one or more members, from any unit; one with nobody
+//! assigned is the whole unit's. Members newly assigned are told in their inbox
+//! ([`notify_assigned`], the one piece of I/O here).
 
 use chrono::{Days, NaiveDate, TimeZone, Utc};
 use chrono_tz::Australia::Sydney;
 
+use crate::app::HasDb;
 use crate::db::{Task, TaskRecurrence, TaskRecurrenceUnit};
+use crate::notifications::{Audience, NewNotification, notify};
 
 pub const MAX_TITLE_CHARS: usize = 200;
 pub const MAX_DESCRIPTION_CHARS: usize = 5000;
 pub const MAX_LIST_NAME_CHARS: usize = 100;
 pub const MAX_RECURRENCE_EVERY: u32 = 365;
+pub const MAX_ASSIGNEES: usize = 20;
 
 /// The Sydney calendar day a Unix timestamp falls on.
 pub fn sydney_date(unix_secs: u64) -> NaiveDate {
@@ -153,6 +160,56 @@ pub fn validate_recurrence(every: i32, unit: TaskRecurrenceUnit) -> Result<TaskR
     }
 }
 
+/// The members a task is assigned to, by person ID: at most [`MAX_ASSIGNEES`], with
+/// repeats dropped and the order otherwise kept. Empty means nobody in particular.
+pub fn validate_assignees<T: AsRef<str>>(ids: &[T]) -> Result<Vec<String>, String> {
+    let mut out: Vec<String> = Vec::new();
+    for id in ids {
+        let id = id.as_ref();
+        if !out.iter().any(|o| o == id) {
+            out.push(id.to_string());
+        }
+    }
+    if out.len() > MAX_ASSIGNEES {
+        return Err(format!(
+            "A task can be assigned to at most {MAX_ASSIGNEES} members"
+        ));
+    }
+    Ok(out)
+}
+
+/// The members in `new` who were not in `previous`: who a save should tell the task
+/// is now theirs. (`notify` itself leaves out the member making the save.)
+pub fn newly_assigned<'a>(previous: &[String], new: &'a [String]) -> Vec<&'a str> {
+    new.iter()
+        .map(String::as_str)
+        .filter(|p| !previous.iter().any(|q| q == p))
+        .collect()
+}
+
+/// Tell members `person_ids` they have been assigned `task`. Best-effort, like every
+/// notification.
+pub async fn notify_assigned(app: &(impl HasDb + Sync), task: &Task, person_ids: &[&str]) {
+    if person_ids.is_empty() {
+        return;
+    }
+    let mut notification = NewNotification::new("tasks", "task.assigned", "Task assigned to you")
+        .location(&task.location_id)
+        .target("task", &task.id);
+    notification = match task.due_date {
+        Some(due) => {
+            notification.body(&format!("{} · Due {}", task.title, due.format("%a %-d %b")))
+        }
+        None => notification.body(&task.title),
+    };
+    notify(
+        app,
+        notification,
+        Audience::Members(person_ids.iter().map(|p| p.to_string()).collect()),
+    )
+    .await;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -258,6 +315,26 @@ mod tests {
             validate_recurrence(2, TaskRecurrenceUnit::Weeks).unwrap(),
             FORTNIGHTLY
         );
+    }
+
+    #[test]
+    fn assignees_drop_repeats_and_are_capped() {
+        assert_eq!(
+            validate_assignees(&["b", "a", "b"]).unwrap(),
+            vec!["b".to_string(), "a".to_string()]
+        );
+        assert!(validate_assignees::<&str>(&[]).unwrap().is_empty());
+        let many: Vec<String> = (0..=MAX_ASSIGNEES).map(|i| i.to_string()).collect();
+        assert!(validate_assignees(&many[..MAX_ASSIGNEES]).is_ok());
+        assert!(validate_assignees(&many).is_err());
+    }
+
+    #[test]
+    fn only_members_not_already_assigned_are_newly_assigned() {
+        let previous = vec!["a".to_string(), "b".to_string()];
+        let new = vec!["b".to_string(), "c".to_string()];
+        assert_eq!(newly_assigned(&previous, &new), vec!["c"]);
+        assert!(newly_assigned(&new, &new).is_empty());
     }
 
     #[test]
