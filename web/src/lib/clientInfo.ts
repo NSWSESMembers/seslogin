@@ -65,10 +65,17 @@ export function resetClientInfo(): void {
 }
 
 function getDisplayMode(): string | undefined {
-  if (
-    typeof window === "undefined" ||
-    typeof window.matchMedia !== "function"
-  ) {
+  if (typeof window === "undefined") {
+    return undefined;
+  }
+  // iOS/iPadOS's own flag for a home-screen web app. With no web app manifest, Safari
+  // launches one from `apple-mobile-web-app-capable` alone, and `display-mode` then
+  // still matches `browser` — so without this every iPad kiosk app reports a tab.
+  const nav = navigator as Navigator & { standalone?: boolean };
+  if (nav.standalone === true) {
+    return "standalone";
+  }
+  if (typeof window.matchMedia !== "function") {
     return undefined;
   }
   const mode = DISPLAY_MODES.find(
