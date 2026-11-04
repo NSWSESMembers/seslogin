@@ -21,10 +21,17 @@ use seslogin::graphql;
 use seslogin::mockmail;
 use seslogin::mockqueue;
 use seslogin::mockrealtime;
+use seslogin::mockstorage;
 use seslogin::oauth_http;
 use seslogin::tally_sign_in;
 
-type App = MyApp<FakeDb, mockqueue::Handler, mockmail::Handler, mockrealtime::Handler>;
+type App = MyApp<
+    FakeDb,
+    mockqueue::Handler,
+    mockmail::Handler,
+    mockrealtime::Handler,
+    mockstorage::Handler,
+>;
 
 const REDIRECT: &str = "tally://oauth/callback";
 const DEV_REDIRECT: &str = "exp://192.168.1.20:8081/--/oauth/callback";

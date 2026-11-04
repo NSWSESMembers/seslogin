@@ -21,10 +21,17 @@ use seslogin::db::{self, Handler as _};
 use seslogin::mockmail;
 use seslogin::mockqueue;
 use seslogin::mockrealtime;
+use seslogin::mockstorage;
 use seslogin::oauth;
 use seslogin::offline_sync;
 
-type App = MyApp<common::FakeDb, mockqueue::Handler, mockmail::Handler, mockrealtime::Handler>;
+type App = MyApp<
+    common::FakeDb,
+    mockqueue::Handler,
+    mockmail::Handler,
+    mockrealtime::Handler,
+    mockstorage::Handler,
+>;
 
 const HOST: &str = "api.seslogin.com";
 

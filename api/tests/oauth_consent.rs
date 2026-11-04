@@ -44,6 +44,7 @@ type App = seslogin::app::MyApp<
     seslogin::mockqueue::Handler,
     seslogin::mockmail::Handler,
     seslogin::mockrealtime::Handler,
+    seslogin::mockstorage::Handler,
 >;
 
 async fn run(app: &Arc<App>, query: &str, vars: serde_json::Value) -> async_graphql::Response {

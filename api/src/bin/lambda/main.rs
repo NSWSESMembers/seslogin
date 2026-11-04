@@ -12,9 +12,11 @@ use seslogin::graphql;
 use seslogin::mail;
 use seslogin::queue;
 use seslogin::realtime;
+use seslogin::s3;
 use seslogin::server_secret::ServerSecret;
 use seslogin::sesmail;
 use seslogin::sqs;
+use seslogin::storage;
 use std::env;
 use std::sync::Arc;
 
@@ -37,7 +39,8 @@ async fn main() -> Result<(), Error> {
     let db_prefix = env::var("DB_PREFIX").expect("DB_PREFIX must be set for dynamodb backend");
     let db = AuditingHandler::new(dynamodb::Handler::new(&db_prefix, read_only).await);
     let realtime = ably::Publisher::from_env(db_prefix);
-    let app = Arc::new(app::new(db, key, 0, queues, mailer, realtime));
+    let storage = s3::Handler::from_env().await;
+    let app = Arc::new(app::new(db, key, 0, queues, mailer, realtime, storage));
     let webauthn = Arc::new(app::build_webauthn().expect("WebAuthn build failed"));
     let schema = graphql::build_schema(app.clone(), webauthn);
     let handler = handler::Handler::new(app, schema);

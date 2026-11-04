@@ -2120,10 +2120,15 @@ pub(super) async fn build_quick_pick<A: App + HasDb + Send + Sync + 'static>(
 mod leaderboard_rank_tests {
     use super::*;
     use crate::app::MyApp;
-    use crate::{mockdb, mockmail, mockqueue, mockrealtime};
+    use crate::{mockdb, mockmail, mockqueue, mockrealtime, mockstorage};
 
-    type TestApp =
-        MyApp<mockdb::Handler, mockqueue::Handler, mockmail::Handler, mockrealtime::Handler>;
+    type TestApp = MyApp<
+        mockdb::Handler,
+        mockqueue::Handler,
+        mockmail::Handler,
+        mockrealtime::Handler,
+        mockstorage::Handler,
+    >;
 
     fn ranks(badge_counts: &[i64]) -> Vec<i64> {
         let mut board: Vec<LocationBadgeLeaderboardEntry<TestApp>> = badge_counts

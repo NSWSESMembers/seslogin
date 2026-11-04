@@ -1411,6 +1411,27 @@ producers' API in `src/notifications.rs`, storage in SCHEMA.md's `notification` 
 }
 ```
 
+## Storage
+
+Uploaded files live in an S3 bucket, reached through `storage::Handler` (`src/storage.rs`)
+with the same trait / AWS impl / mock split as the queue: `s3::Handler` in `poem` and the API
+Lambda, `mockstorage::Handler` in `poem-local` and tests. The bucket is `ASSET_BUCKET`; unset or
+blank turns uploads off (`is_enabled()` is false, every call returns `storage::Error::Unavailable`)
+without affecting anything else.
+
+- **Keys:** `pending/{id}` (where an upload lands, expired by a lifecycle rule),
+  `originals/{id}` and `derived/{id}/{variant}.webp` (`storage::pending_key`,
+  `original_key`, `derived_key`).
+- **Uploads go straight to storage**, never through the API: `presign_post` returns a
+  `PresignedPost { url, fields, expires_at }`, a form the client posts (fields in order, then
+  the file as a part named `file`, last). S3 itself enforces the exact key, content type and
+  size. `aws-sdk-s3` cannot presign a POST, so `s3::sign_post` signs the policy by hand with
+  SigV4; its unit tests pin the signing key against AWS's published example and a full signature.
+- **Locally**, `mockstorage` returns the relative URL `/dev/storage/upload` and the fields
+  `key`, `Content-Type` and `policy` (an HMAC-signed token binding key, type, exact size and
+  expiry). `poem-local` serves that route: 204 on success, 400 with a short message otherwise.
+  Files go to `MOCK_STORAGE_DIR` (default `local/storage/`).
+
 ## WiFi networks
 
 The WiFi networks Tally's WiFi app shows signed-in members, with their passwords

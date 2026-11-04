@@ -644,10 +644,15 @@ mod verify_token_tests {
     use super::*;
     use crate::app::{self, MyApp};
     use crate::server_secret::ServerSecret;
-    use crate::{mockdb, mockmail, mockqueue, mockrealtime};
+    use crate::{mockdb, mockmail, mockqueue, mockrealtime, mockstorage};
 
-    fn app() -> MyApp<mockdb::Handler, mockqueue::Handler, mockmail::Handler, mockrealtime::Handler>
-    {
+    fn app() -> MyApp<
+        mockdb::Handler,
+        mockqueue::Handler,
+        mockmail::Handler,
+        mockrealtime::Handler,
+        mockstorage::Handler,
+    > {
         app::new(
             mockdb::Handler::new(),
             ServerSecret::new("test"),
@@ -655,6 +660,7 @@ mod verify_token_tests {
             mockqueue::Handler::new(),
             mockmail::Handler::new(),
             mockrealtime::Handler::new("test"),
+            mockstorage::Handler::in_memory(),
         )
     }
 
