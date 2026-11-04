@@ -31,6 +31,52 @@ type ApiToken {
 	lastUsedAt: Int
 }
 
+type Asset {
+	id: ID!
+	"""
+	`"image"`.
+	"""
+	kind: String!
+	contentType: String!
+	byteSize: Int!
+	width: Int
+	height: Int
+	"""
+	Unix seconds, from the original's metadata as the phone read it.
+	"""
+	takenAt: Int
+	createdAt: Int!
+	"""
+	Person ID of the member who uploaded it.
+	"""
+	createdBy: ID
+	"""
+	Whether the upload has been completed and the image can be shown.
+	"""
+	ready: Boolean!
+	"""
+	A relative `/media/...` URL for the image at `variant` (a normalised WebP), valid
+	for at least a day; null until the asset is ready.
+	"""
+	url(variant: ImageVariant!): String
+}
+
+type AssetUpload {
+	"""
+	The pending asset; pass its ID to `completeAssetUpload` once the file is posted.
+	"""
+	asset: Asset!
+	"""
+	May be relative: resolve it against the API origin.
+	"""
+	uploadUrl: String!
+	fields: [UploadField!]!
+	"""
+	Unix seconds after which the form stops working.
+	"""
+	expiresAt: Int!
+}
+
 """
 What a recorded write did to its entity.
 """
@@ -414,6 +460,27 @@ type CreateApiTokenResult {
 	secret: String!
 }
 
+input CreateAssetUploadInput {
+	locationId: ID!
+	"""
+	`image/jpeg` or `image/webp`.
+	"""
+	contentType: String!
+	"""
+	Exactly the size of the file to be posted, in bytes (at most 30 MiB).
+	"""
+	byteSize: Int!
+	filename: String
+	width: Int
+	height: Int
+	"""
+	Unix seconds, read from the original before any conversion.
+	"""
+	takenAt: Int
+	cameraMake: String
+	cameraModel: String
+}
+
 type DashboardCategoryPeriodSummary {
 	categoryId: String
 	categoryName: String!
@@ -642,6 +709,15 @@ enum EventRepeat {
 	Every week, on the weekday it starts.
 	"""
 	WEEKLY
+}
+
+"""
+The sizes an image is served at. A GraphQL enum `ImageVariant { THUMB DISPLAY FULL }`.
+"""
+enum ImageVariant {
+	THUMB
+	DISPLAY
+	FULL
 }
 
 """
@@ -1298,6 +1374,20 @@ type MutationRoot {
 	Delete a task list. Its tasks stay on the location. Returns its ID.
 	"""
 	deleteTaskList(id: ID!): ID!
+	"""
+	Start uploading a JPEG or WebP image from Tally: creates a pending asset and
+	returns a form to POST the file to (fields in order, then the file as a part
+	named `file` last). Call `completeAssetUpload` once it is posted. Fails
+	`RATE_LIMITED` after 200 uploads in a Sydney day, and `BAD_REQUEST` for a file
+	type or size that isn't accepted or on an environment with no upload storage.
+	"""
+	createAssetUpload(input: CreateAssetUploadInput!): AssetUpload!
+	"""
+	Check the file arrived intact and make the asset ready. Completing an asset that
+	is already ready returns it. `BAD_REQUEST` if the file hasn't arrived or isn't
+	the image that was described.
+	"""
+	completeAssetUpload(id: ID!): Asset!
 	"""
 	Add a note to a location's shared notebook. Any member who can use the
 	unit in Tally may.
@@ -3212,6 +3302,11 @@ type TrophyReign {
 	vacant.
 	"""
 	endedByValueLabel: String
+}
+
+type UploadField {
+	name: String!
+	value: String!
 }
 
 type User {

@@ -13,7 +13,7 @@ use serde_json::{Value, json};
 use super::super::args::{self, Field, Kind, ToolError};
 use super::super::{ToolCtx, ToolOutcome, rename_root};
 use super::{Effect, id_property, input_schema, tool};
-use crate::app::{App, HasDb, HasMail, HasQueues, HasRealtime};
+use crate::app::{App, HasDb, HasMail, HasQueues, HasRealtime, HasStorage};
 
 /// A `Person`'s fields, as the Members page shows them plus ids and times.
 const MEMBER_SELECTION: &str = "id firstName lastName memberNumber sesApiPersonId missingSince \
@@ -135,7 +135,7 @@ pub(super) fn catalogue() -> Vec<Value> {
 
 pub(super) async fn call<A>(ctx: &ToolCtx<'_, A>, name: &str, a: &Value) -> Option<ToolOutcome>
 where
-    A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static,
+    A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sync + 'static,
 {
     let result = match name {
         "list_members" => list_members(ctx, a).await,
@@ -165,7 +165,7 @@ fn contains_ci(haystack: &str, needle_lower: &str) -> bool {
 
 async fn list_members<A>(ctx: &ToolCtx<'_, A>, a: &Value) -> Result<Value, ToolError>
 where
-    A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static,
+    A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sync + 'static,
 {
     let location_id = args::str_arg(a, "locationId")?;
     let query = args::opt_str_arg(a, "query")?
@@ -205,7 +205,7 @@ where
 /// Fetch a member with their last period and check the caller may see them.
 async fn fetch_member<A>(ctx: &ToolCtx<'_, A>, id: &str) -> Result<Value, ToolError>
 where
-    A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static,
+    A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sync + 'static,
 {
     let doc = format!(
         "query McpMember($id: ID!) {{ person(id: $id) {{ {MEMBER_SELECTION} \
@@ -225,7 +225,7 @@ where
 /// secondary unit's admin.
 pub(super) async fn require_member_read<A>(ctx: &ToolCtx<'_, A>, id: &str) -> Result<(), ToolError>
 where
-    A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static,
+    A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sync + 'static,
 {
     ctx.graphql(
         "query McpMemberAccess($id: ID!) { person(id: $id) { id } }",
@@ -237,7 +237,7 @@ where
 
 async fn get_member<A>(ctx: &ToolCtx<'_, A>, a: &Value) -> Result<Value, ToolError>
 where
-    A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static,
+    A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sync + 'static,
 {
     let member = fetch_member(ctx, args::str_arg(a, "id")?).await?;
     Ok(json!({ "member": member }))
@@ -245,7 +245,7 @@ where
 
 async fn find_member_by_number<A>(ctx: &ToolCtx<'_, A>, a: &Value) -> Result<Value, ToolError>
 where
-    A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static,
+    A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sync + 'static,
 {
     let number = args::str_arg(a, "memberNumber")?;
     // The same message whether there is no such member or the caller can't see them,
@@ -268,7 +268,7 @@ where
 
 async fn create_member<A>(ctx: &ToolCtx<'_, A>, a: &Value) -> Result<Value, ToolError>
 where
-    A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static,
+    A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sync + 'static,
 {
     let doc = format!(
         "mutation McpCreateMember($locationId: ID!, $firstName: String!, $lastName: String!, \
@@ -288,7 +288,7 @@ where
 
 async fn update_member<A>(ctx: &ToolCtx<'_, A>, a: &Value) -> Result<Value, ToolError>
 where
-    A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static,
+    A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sync + 'static,
 {
     let id = args::str_arg(a, "id")?;
     // The mutation takes every field, so overlay the arguments on the current record.
@@ -320,7 +320,7 @@ where
 
 async fn delete_member<A>(ctx: &ToolCtx<'_, A>, a: &Value) -> Result<Value, ToolError>
 where
-    A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static,
+    A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sync + 'static,
 {
     let id = args::str_arg(a, "id")?;
     ctx.graphql(
@@ -333,7 +333,7 @@ where
 
 async fn sync_members<A>(ctx: &ToolCtx<'_, A>, a: &Value) -> Result<Value, ToolError>
 where
-    A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static,
+    A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sync + 'static,
 {
     let location_id = args::str_arg(a, "locationId")?;
     ctx.graphql(

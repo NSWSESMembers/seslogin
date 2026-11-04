@@ -1432,6 +1432,48 @@ without affecting anything else.
   expiry). `poem-local` serves that route: 204 on success, 400 with a short message otherwise.
   Files go to `MOCK_STORAGE_DIR` (default `local/storage/`).
 
+## Assets and uploads
+
+How a Tally member uploads an image (`src/assets.rs` for the rules, `src/graphql/assets.rs` for
+the API; storage is described under "Storage" and the served images under "Media"). Only
+members signed in to Tally may, at any unit they can use (`require_asset_access`, via
+`require_member_location`); users, kiosks and API tokens are refused.
+
+1. `createAssetUpload(input: { locationId, contentType, byteSize, filename, width, height,
+   takenAt, cameraMake, cameraModel })` validates the request, counts it against the member's
+   limit, creates a **pending** asset (`created_by` is the member's person ID) and returns
+   `{ asset, uploadUrl, fields, expiresAt }`.
+2. The client POSTs a `multipart/form-data` request to `uploadUrl` with each of `fields` **in
+   order** and the file as a part named `file` **last**. `uploadUrl` may be relative: resolve
+   it against the API origin (the origin of the GraphQL URL). The form works for 15 minutes
+   and storage itself enforces the key, content type and exact size. It answers 204.
+3. `completeAssetUpload(id)` checks the object arrived, is exactly `byteSize` bytes and starts
+   with the magic bytes of `contentType`, copies it to `originals/{id}`, deletes
+   `pending/{id}` and marks the asset **ready**. Completing a ready asset returns it again. A
+   missing file, wrong size or wrong magic bytes is `BAD_REQUEST` (the last two also delete the
+   pending file); the asset stays pending.
+
+`Asset.url(variant: THUMB | DISPLAY | FULL)` is a relative signed `/media/...` URL (see
+"Media"), null until the asset is ready. `Asset.createdBy` is the uploader's person ID.
+
+- **Accepted:** `image/jpeg` and `image/webp`, 1 byte to 30 MiB (31,457,280). Tally converts
+  HEIC to JPEG on the phone. `width`/`height` (1 to 20000), `takenAt` (not more than a day
+  ahead, not older than five years), `filename` (path stripped, 255 characters) and camera
+  make/model (100 characters) are hints: ones that don't fit are dropped, not refused. No GPS
+  is ever sent or stored.
+- **Limit:** 200 uploads per member per Sydney day, counted when `createAssetUpload` succeeds
+  validation (`assets::upload_counter_id`, a daily counter in `ephemeral_state`). The 201st
+  fails `RATE_LIMITED`: "You've uploaded the most files allowed today". `assets::daily_counter_id`
+  builds the id for any other daily counter.
+- **Errors:** `BAD_REQUEST` for an unaccepted type or size, an upload that hasn't arrived or
+  doesn't match, and storage not configured ("Uploads are not available on this environment",
+  when `ASSET_BUCKET` is unset); `FORBIDDEN` for the wrong kind of caller or unit; `NOT_FOUND`
+  for an unknown location or asset; `RATE_LIMITED` as above; `INTERNAL` if storage fails.
+- **Cleanup:** a pending asset's row expires after a day (DynamoDB TTL) and `pending/` objects
+  after a day (lifecycle rule). Nothing deletes a ready asset yet.
+- **Locally:** `make dev-local` (`poem-local`) uses `mockstorage`: `uploadUrl` is
+  `/dev/storage/upload`, served by `poem-local`, and files land in `MOCK_STORAGE_DIR`.
+
 ## Media
 
 Members only ever receive **derived** images: `src/media.rs` turns an original in the asset

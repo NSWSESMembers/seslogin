@@ -6,7 +6,7 @@ use serde_json::{Value, json};
 
 use super::super::args::{self, ToolError};
 use super::super::{ToolCtx, ToolOutcome, rename_root};
-use crate::app::{App, HasDb, HasMail, HasQueues, HasRealtime};
+use crate::app::{App, HasDb, HasMail, HasQueues, HasRealtime, HasStorage};
 
 /// A GraphQL `User` object's fields, as every tool that returns a user asks
 /// for them — kept as one literal so the tools' documents can't drift
@@ -231,7 +231,7 @@ pub(super) fn catalogue() -> Vec<Value> {
 
 pub(super) async fn call<A>(ctx: &ToolCtx<'_, A>, name: &str, a: &Value) -> Option<ToolOutcome>
 where
-    A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static,
+    A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sync + 'static,
 {
     let result = match name {
         "whoami" => whoami(ctx).await,
@@ -249,14 +249,14 @@ where
 
 async fn whoami<A>(ctx: &ToolCtx<'_, A>) -> Result<Value, ToolError>
 where
-    A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static,
+    A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sync + 'static,
 {
     ctx.graphql(&user_query(), json!({ "id": null })).await
 }
 
 async fn get_user<A>(ctx: &ToolCtx<'_, A>, a: &Value) -> Result<Value, ToolError>
 where
-    A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static,
+    A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sync + 'static,
 {
     let id = args::str_arg(a, "id")?;
     ctx.graphql(&user_query(), json!({ "id": id })).await
@@ -264,7 +264,7 @@ where
 
 async fn create_user<A>(ctx: &ToolCtx<'_, A>, a: &Value) -> Result<Value, ToolError>
 where
-    A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static,
+    A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sync + 'static,
 {
     let email = args::str_arg(a, "email")?;
     let is_super = args::bool_arg(a, "isSuper")?;
@@ -286,14 +286,14 @@ where
 /// The user as it is now, for merging an update over.
 async fn current_user<A>(ctx: &ToolCtx<'_, A>, id: &str) -> Result<Value, ToolError>
 where
-    A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static,
+    A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sync + 'static,
 {
     Ok(ctx.graphql(&user_query(), json!({ "id": id })).await?["user"].clone())
 }
 
 async fn update_user<A>(ctx: &ToolCtx<'_, A>, a: &Value) -> Result<Value, ToolError>
 where
-    A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static,
+    A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sync + 'static,
 {
     let id = args::str_arg(a, "id")?;
     let current = current_user(ctx, id).await?;
@@ -322,7 +322,7 @@ where
 
 async fn set_enabled<A>(ctx: &ToolCtx<'_, A>, a: &Value, enabled: bool) -> Result<Value, ToolError>
 where
-    A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static,
+    A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sync + 'static,
 {
     let id = args::str_arg(a, "id")?;
     let current = current_user(ctx, id).await?;
@@ -344,7 +344,7 @@ where
 
 async fn set_user_member<A>(ctx: &ToolCtx<'_, A>, a: &Value) -> Result<Value, ToolError>
 where
-    A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static,
+    A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sync + 'static,
 {
     let user_id = args::str_arg(a, "userId")?;
     // Required even to clear, so a forgotten argument can't silently unlink a member.

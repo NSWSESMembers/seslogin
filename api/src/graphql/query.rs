@@ -19,7 +19,7 @@ use xxhash_rust::xxh64::xxh64;
 
 use crate::app::App;
 use crate::app::HasDb;
-use crate::app::HasRealtime;
+use crate::app::{HasRealtime, HasStorage};
 use crate::auth::AuthInfo;
 use crate::badges;
 use crate::db;
@@ -4006,7 +4006,7 @@ fn make_ses_client() -> Result<ses_api::SesClient> {
 }
 
 #[Object]
-impl<A: App + HasDb + HasRealtime + Send + Sync + 'static> QueryRoot<A> {
+impl<A: App + HasDb + HasRealtime + HasStorage + Send + Sync + 'static> QueryRoot<A> {
     /// Build and deployment information about this API server.
     ///
     /// Deliberately unauthenticated — the only root field that is. The home page is

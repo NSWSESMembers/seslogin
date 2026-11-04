@@ -17,7 +17,7 @@ use crate::app::App;
 use crate::app::HasDb;
 use crate::app::HasMail;
 use crate::app::HasQueues;
-use crate::app::HasRealtime;
+use crate::app::{HasRealtime, HasStorage};
 use crate::auth;
 use crate::auth::AuthInfo;
 use crate::badge_store;
@@ -35,6 +35,7 @@ use crate::trophy_scan;
 use async_graphql::dataloader::DataLoader;
 use hex;
 
+use super::assets::{self, Asset, AssetUpload, CreateAssetUploadInput};
 use super::auth::{
     AuthGuard, AuthRequirement, require_location_access, require_location_write_access,
     require_not_oauth_grant, require_period_write_access, require_writable,
@@ -357,11 +358,15 @@ fn feedback_body(message: &str, user_id: &str, email: &str, site: &str) -> Strin
     )
 }
 
-pub struct MutationRoot<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync> {
+pub struct MutationRoot<
+    A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sync,
+> {
     pub(super) app: Arc<A>,
 }
 
-impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static> MutationRoot<A> {
+impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sync + 'static>
+    MutationRoot<A>
+{
     /// Validate the two per-location grant lists of a user: every location must exist,
     /// and no location may appear in both (a user is Admin or Read only at a location,
     /// never both).
@@ -1222,7 +1227,9 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
 }
 
 #[Object]
-impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static> MutationRoot<A> {
+impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sync + 'static>
+    MutationRoot<A>
+{
     /// Publish a kiosk's public key as a pending enrollment (public-key/QR flow). The
     /// kiosk re-submits every ~10 min while unenrolled; an admin then scans the kiosk's
     /// QR code to complete enrollment via [`enroll_session`]. Returns the server-computed
@@ -2930,6 +2937,28 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
     #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn delete_task_list(&self, ctx: &Context<'_>, id: ID) -> Result<ID> {
         tasks::delete_task_list(ctx, self.app.as_ref(), &id).await
+    }
+
+    /// Start uploading a JPEG or WebP image from Tally: creates a pending asset and
+    /// returns a form to POST the file to (fields in order, then the file as a part
+    /// named `file` last). Call `completeAssetUpload` once it is posted. Fails
+    /// `RATE_LIMITED` after 200 uploads in a Sydney day, and `BAD_REQUEST` for a file
+    /// type or size that isn't accepted or on an environment with no upload storage.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn create_asset_upload(
+        &self,
+        ctx: &Context<'_>,
+        input: CreateAssetUploadInput,
+    ) -> Result<AssetUpload<A>> {
+        assets::create_asset_upload(ctx, self.app.as_ref(), input).await
+    }
+
+    /// Check the file arrived intact and make the asset ready. Completing an asset that
+    /// is already ready returns it. `BAD_REQUEST` if the file hasn't arrived or isn't
+    /// the image that was described.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn complete_asset_upload(&self, ctx: &Context<'_>, id: ID) -> Result<Asset<A>> {
+        assets::complete_asset_upload(ctx, self.app.as_ref(), &id).await
     }
 
     /// Add a note to a location's shared notebook. Any member who can use the

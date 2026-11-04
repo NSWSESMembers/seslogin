@@ -1,6 +1,7 @@
 pub mod ably;
 pub mod activity_summary;
 pub mod app;
+pub mod assets;
 pub mod audit;
 pub mod auth;
 pub mod badge_congrats;

@@ -27,7 +27,7 @@ use serde_json::{Value, json};
 use super::super::args::{self, Field, Kind, ToolError};
 use super::super::{ToolCtx, ToolOutcome, rename_root};
 use super::{Effect, id_property, input_schema, tool};
-use crate::app::{App, HasDb, HasMail, HasQueues, HasRealtime};
+use crate::app::{App, HasDb, HasMail, HasQueues, HasRealtime, HasStorage};
 
 /// A `Session`'s fields, as the Kiosks page and its edit form show them. Never the
 /// public key; the fingerprint is the short hash the kiosk itself displays.
@@ -123,7 +123,7 @@ pub(super) fn catalogue() -> Vec<Value> {
 
 pub(super) async fn call<A>(ctx: &ToolCtx<'_, A>, name: &str, a: &Value) -> Option<ToolOutcome>
 where
-    A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static,
+    A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sync + 'static,
 {
     let result = match name {
         "list_kiosks" => list_kiosks(ctx, a).await,
@@ -137,7 +137,7 @@ where
 
 async fn list_kiosks<A>(ctx: &ToolCtx<'_, A>, a: &Value) -> Result<Value, ToolError>
 where
-    A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static,
+    A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sync + 'static,
 {
     let location_id = args::str_arg(a, "locationId")?;
     ctx.require_location_read(location_id)?;
@@ -157,7 +157,7 @@ where
 /// Fetch a kiosk and check the caller may see it.
 async fn fetch_kiosk<A>(ctx: &ToolCtx<'_, A>, id: &str) -> Result<Value, ToolError>
 where
-    A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static,
+    A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sync + 'static,
 {
     let doc = format!("query McpKiosk($id: ID!) {{ session(id: $id) {{ {KIOSK_SELECTION} }} }}");
     let data = ctx.graphql(&doc, json!({ "id": id })).await?;
@@ -168,7 +168,7 @@ where
 
 async fn get_kiosk<A>(ctx: &ToolCtx<'_, A>, a: &Value) -> Result<Value, ToolError>
 where
-    A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static,
+    A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sync + 'static,
 {
     let kiosk = fetch_kiosk(ctx, args::str_arg(a, "id")?).await?;
     Ok(json!({ "kiosk": kiosk }))
@@ -176,7 +176,7 @@ where
 
 async fn update_kiosk<A>(ctx: &ToolCtx<'_, A>, a: &Value) -> Result<Value, ToolError>
 where
-    A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static,
+    A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sync + 'static,
 {
     let id = args::str_arg(a, "id")?;
     if args::has_arg(a, "config") && !a["config"].is_object() {
@@ -216,7 +216,7 @@ where
 
 async fn delete_kiosk<A>(ctx: &ToolCtx<'_, A>, a: &Value) -> Result<Value, ToolError>
 where
-    A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static,
+    A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sync + 'static,
 {
     let id = args::str_arg(a, "id")?;
     ctx.graphql(
