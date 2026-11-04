@@ -37,6 +37,10 @@ const TallySignIn = lazyWithReload(
   "tally",
   () => import("./tally/TallySignIn"),
 );
+const TallyAddPasskey = lazyWithReload(
+  "tally",
+  () => import("./tally/TallyAddPasskey"),
+);
 const PeriodEdit = lazyWithReload(
   "period",
   () => import("./period/PeriodEdit"),
@@ -75,6 +79,10 @@ export default function Router() {
             {/* Tally sign-in - no SESLogin sign-in; the OAuth authorization page
                 for member sign-in clients (see api/src/tally_sign_in.rs). */}
             <Route path="/tally/sign-in" element={<TallySignIn />} />
+            {/* Adding a passkey from Tally's settings, authorised by the
+                single-use ticket in the URL fragment (see
+                api/src/graphql/tally_passkeys.rs). */}
+            <Route path="/tally/passkey" element={<TallyAddPasskey />} />
 
             {/* Admin routes - auth required at /admin/* */}
             <Route path="/admin/*" element={<AdminApp />} />

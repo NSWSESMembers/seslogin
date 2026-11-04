@@ -11,7 +11,8 @@ use std::sync::Arc;
 
 use async_graphql::{Request, Value};
 
-use common::{FakeDb, fake_app, seed_person};
+use common::passkey::SoftPasskey;
+use common::{FakeDb, fake_app, seed_grant, seed_person, seed_user};
 use seslogin::app::MyApp;
 use seslogin::auth::AuthInfo;
 use seslogin::db;
@@ -87,6 +88,15 @@ fn app() -> Arc<TestApp> {
         400,
     );
     seed_passkey(&app, "other-user", db::PasskeyOwner::User("u2".into()), 500);
+    // The Tally sign-in `member()` is signed in with.
+    let mut grant = seed_grant(&app, "grant", "u1", "Tally", seslogin::clock::now_sec());
+    grant.person_id = Some("p1".to_string());
+    grant.redirect_uri = "tally://oauth/callback".to_string();
+    app.db
+        .oauth_grants
+        .lock()
+        .unwrap()
+        .insert("grant".to_string(), grant);
     Arc::new(app)
 }
 
@@ -278,4 +288,240 @@ async fn only_members_signed_in_to_tally_may_use_them() {
     .await;
     assert!(!delete.errors.is_empty());
     assert_eq!(app.db.webauthn_credentials.lock().unwrap().len(), 5);
+}
+
+// ── Adding a passkey from Tally ──────────────────────────────────────────────
+
+async fn start_setup(app: &Arc<TestApp>) -> String {
+    let response = run(app, member(true), "mutation { startTallyPasskeySetup }").await;
+    json(&response)["startTallyPasskeySetup"]
+        .as_str()
+        .unwrap()
+        .to_string()
+}
+
+/// With no credentials, as the `/tally/passkey` page calls it.
+async fn run_anonymous(app: &Arc<TestApp>, query: &str) -> async_graphql::Response {
+    let schema = graphql::build_schema(app.clone(), webauthn());
+    let request = Request::new(query)
+        .data(app.clone())
+        .data(graphql::get_dataloader(app.clone()));
+    schema.execute(request).await
+}
+
+async fn begin_setup(app: &Arc<TestApp>, ticket: &str) -> async_graphql::Response {
+    run_anonymous(
+        app,
+        &format!(
+            r#"mutation {{ beginTallyPasskeySetup(ticket: "{ticket}") {{ challengeId optionsJson }} }}"#
+        ),
+    )
+    .await
+}
+
+async fn finish_setup(
+    app: &Arc<TestApp>,
+    ticket: &str,
+    challenge: &serde_json::Value,
+    passkey: &SoftPasskey,
+) -> async_graphql::Response {
+    let credential = passkey.register(challenge["optionsJson"].as_str().unwrap());
+    let query = format!(
+        r#"mutation($c: String!) {{ finishTallyPasskeySetup(ticket: "{ticket}", challengeId: "{}", credentialJson: $c) }}"#,
+        challenge["challengeId"].as_str().unwrap()
+    );
+    let schema = graphql::build_schema(app.clone(), webauthn());
+    let request = Request::new(query)
+        .variables(async_graphql::Variables::from_json(
+            serde_json::json!({ "c": credential }),
+        ))
+        .data(app.clone())
+        .data(graphql::get_dataloader(app.clone()));
+    schema.execute(request).await
+}
+
+/// p1's email, which is no user's; u1 (linked to p1) has `u1@example.com`; p2 is
+/// someone else, with their own email.
+fn seed_emails(app: &TestApp) {
+    app.db.persons.lock().unwrap().get_mut("p1").unwrap().email = Some("casey@example.com".into());
+    seed_user(app, "u1", true);
+    app.db
+        .users
+        .lock()
+        .unwrap()
+        .get_mut("u1")
+        .unwrap()
+        .person_id = Some("p1".into());
+    seed_person(app, "p2", "loc", "Other", "Person", "88888888", None);
+    app.db.persons.lock().unwrap().get_mut("p2").unwrap().email = Some("other@example.com".into());
+}
+
+/// The code in the last email sent to `to`, if any.
+fn last_code(app: &TestApp, to: &str) -> Option<String> {
+    let mail = app.mail.sent();
+    let email = mail.iter().rev().find(|m| m.to == to)?;
+    Some(
+        email
+            .body
+            .split("code is: ")
+            .nth(1)?
+            .chars()
+            .take(6)
+            .collect(),
+    )
+}
+
+async fn send_code(app: &Arc<TestApp>, ticket: &str, email: &str) -> async_graphql::Response {
+    run_anonymous(
+        app,
+        &format!(
+            r#"mutation {{ sendTallyPasskeySetupCode(ticket: "{ticket}", email: "{email}") }}"#
+        ),
+    )
+    .await
+}
+
+async fn verify_code(
+    app: &Arc<TestApp>,
+    ticket: &str,
+    email: &str,
+    code: &str,
+) -> async_graphql::Response {
+    run_anonymous(
+        app,
+        &format!(
+            r#"mutation {{ verifyTallyPasskeySetupCode(ticket: "{ticket}", email: "{email}", code: "{code}") }}"#
+        ),
+    )
+    .await
+}
+
+/// A ticket whose email is confirmed with a code sent to `email`.
+async fn confirmed_setup(app: &Arc<TestApp>, email: &str) -> String {
+    let ticket = start_setup(app).await;
+    assert_eq!(
+        json(&send_code(app, &ticket, email).await)["sendTallyPasskeySetupCode"],
+        true
+    );
+    let code = last_code(app, email).expect("a code was sent");
+    assert_eq!(
+        json(&verify_code(app, &ticket, email, &code).await)["verifyTallyPasskeySetupCode"],
+        true
+    );
+    ticket
+}
+
+async fn add_passkey(app: &Arc<TestApp>, ticket: &str, passkey: &SoftPasskey) -> serde_json::Value {
+    let challenge = json(&begin_setup(app, ticket).await)["beginTallyPasskeySetup"].clone();
+    json(&finish_setup(app, ticket, &challenge, passkey).await)["finishTallyPasskeySetup"].clone()
+}
+
+#[tokio::test]
+async fn an_email_that_is_no_users_adds_the_members_own_passkey() {
+    let app = app();
+    seed_emails(&app);
+    let ticket = confirmed_setup(&app, "casey@example.com").await;
+    let passkey = SoftPasskey::new("new-phone");
+    assert_eq!(
+        add_passkey(&app, &ticket, &passkey).await,
+        "tally://oauth/callback?passkey=saved"
+    );
+    let creds = app.db.webauthn_credentials.lock().unwrap();
+    let saved = &creds[&passkey.id()];
+    assert_eq!(saved.owner, db::PasskeyOwner::Member("p1".into()));
+    assert_eq!(saved.name, "Added in Tally");
+}
+
+#[tokio::test]
+async fn a_users_email_adds_the_users_passkey() {
+    let app = app();
+    seed_emails(&app);
+    let ticket = confirmed_setup(&app, "u1@example.com").await;
+    let passkey = SoftPasskey::new("new-laptop");
+    add_passkey(&app, &ticket, &passkey).await;
+    assert_eq!(
+        app.db.webauthn_credentials.lock().unwrap()[&passkey.id()].owner,
+        db::PasskeyOwner::User("u1".into())
+    );
+}
+
+#[tokio::test]
+async fn no_passkey_until_the_email_is_confirmed() {
+    let app = app();
+    seed_emails(&app);
+    let ticket = start_setup(&app).await;
+    assert_code(&begin_setup(&app, &ticket).await, "BAD_REQUEST");
+    json(&send_code(&app, &ticket, "casey@example.com").await);
+    assert_code(
+        &verify_code(&app, &ticket, "casey@example.com", "000000").await,
+        "BAD_REQUEST",
+    );
+    assert_code(&begin_setup(&app, &ticket).await, "BAD_REQUEST");
+}
+
+#[tokio::test]
+async fn no_code_goes_to_someone_elses_email() {
+    let app = app();
+    seed_emails(&app);
+    let ticket = start_setup(&app).await;
+    assert_eq!(
+        json(&send_code(&app, &ticket, "other@example.com").await)["sendTallyPasskeySetupCode"],
+        true
+    );
+    assert_eq!(last_code(&app, "other@example.com"), None);
+}
+
+#[tokio::test]
+async fn someone_elses_code_does_not_confirm_the_ticket() {
+    let app = app();
+    seed_emails(&app);
+    let ticket = start_setup(&app).await;
+    // p2 has a real code of their own, from signing in to Tally.
+    seslogin::tally_sign_in::send_code(app.as_ref(), "other@example.com")
+        .await
+        .unwrap();
+    let code = last_code(&app, "other@example.com").unwrap();
+    assert_code(
+        &verify_code(&app, &ticket, "other@example.com", &code).await,
+        "BAD_REQUEST",
+    );
+    assert_code(&begin_setup(&app, &ticket).await, "BAD_REQUEST");
+}
+
+#[tokio::test]
+async fn a_setup_ticket_is_single_use() {
+    let app = app();
+    seed_emails(&app);
+    let ticket = confirmed_setup(&app, "casey@example.com").await;
+    add_passkey(&app, &ticket, &SoftPasskey::new("one")).await;
+    assert_code(&begin_setup(&app, &ticket).await, "BAD_REQUEST");
+}
+
+#[tokio::test]
+async fn a_setup_ticket_dies_with_its_tally_sign_in() {
+    let app = app();
+    let ticket = start_setup(&app).await;
+    app.db.oauth_grants.lock().unwrap().remove("grant");
+    assert_code(
+        &send_code(&app, &ticket, "casey@example.com").await,
+        "BAD_REQUEST",
+    );
+    assert_code(&begin_setup(&app, &ticket).await, "BAD_REQUEST");
+}
+
+#[tokio::test]
+async fn an_unknown_setup_ticket_is_refused() {
+    let app = app();
+    assert_code(&begin_setup(&app, "made-up").await, "BAD_REQUEST");
+    assert_code(
+        &send_code(&app, "made-up", "casey@example.com").await,
+        "BAD_REQUEST",
+    );
+}
+
+#[tokio::test]
+async fn only_members_signed_in_to_tally_may_start_a_setup() {
+    let app = app();
+    let response = run_anonymous(&app, "mutation { startTallyPasskeySetup }").await;
+    assert!(!response.errors.is_empty());
 }

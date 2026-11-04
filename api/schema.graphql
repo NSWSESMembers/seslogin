@@ -1222,6 +1222,42 @@ type MutationRoot {
 	"""
 	deleteTallyPasskey(id: ID!): ID!
 	"""
+	A single-use, 10-minute ticket for adding a passkey from Tally: Tally opens
+	`/tally/passkey#<ticket>` on its SESLogin site, which confirms an email with
+	a code (`sendTallyPasskeySetupCode`, `verifyTallyPasskeySetupCode`) and then
+	saves the passkey with `beginTallyPasskeySetup` and `finishTallyPasskeySetup`.
+	The passkey is the SESLogin user's when the confirmed email is an enabled
+	user's, else the member's own. Tally members only.
+	"""
+	startTallyPasskeySetup: String!
+	"""
+	Email a Tally sign-in code to `email` for a ticket from
+	`startTallyPasskeySetup`, if that email signs in as the ticket's member.
+	Always `true` for a live ticket, so the answer says nothing about the email;
+	`BAD_REQUEST` once the ticket has expired, been used, or its Tally sign-in has
+	been revoked.
+	"""
+	sendTallyPasskeySetupCode(ticket: String!, email: String!): Boolean!
+	"""
+	Confirm the email for a passkey setup ticket with the code
+	`sendTallyPasskeySetupCode` sent. `BAD_REQUEST` for a wrong, expired or
+	used-up code.
+	"""
+	verifyTallyPasskeySetupCode(ticket: String!, email: String!, code: String!): Boolean!
+	"""
+	Start saving a passkey with a ticket from `startTallyPasskeySetup`, once its
+	email is confirmed (`BAD_REQUEST` before). Returns
+	the options for `navigator.credentials.create`. The ticket is the
+	authority; `BAD_REQUEST` once it has expired, been used, or its Tally
+	sign-in has been revoked.
+	"""
+	beginTallyPasskeySetup(ticket: String!): PasskeyChallenge!
+	"""
+	Finish saving a passkey with a ticket from `startTallyPasskeySetup`. Uses
+	the ticket up and returns the URL to send the browser back to Tally with.
+	"""
+	finishTallyPasskeySetup(ticket: String!, challengeId: String!, credentialJson: String!): String!
+	"""
 	Add a task to a location's shared to-do list. Any member who can use the
 	unit in Tally may. `dueDate` (`YYYY-MM-DD`, Sydney) hides the
 	task until that day; a recurring task with no date is due today.
