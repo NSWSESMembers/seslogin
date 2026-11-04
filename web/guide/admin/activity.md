@@ -59,6 +59,21 @@ after it.
 Every change is recorded in the [audit log](audit-log.md). If your unit exports to
 NITC, the change is sent to the NITC too — see [NITC export](nitc.md).
 
+## Asking a member to fix their own entry
+
+Rather than guessing a member's finish time, an Admin can email them a link to
+fix it themselves. Press **Remind** next to the entry and confirm. SESLogin
+emails the member at the address SES holds for them, and tells you which address
+it used.
+
+The link opens just that one entry, needs no sign-in, and works for 48 hours.
+The member enters when they finished and what they did, then saves. If the entry
+is still open, the email asks whether they forgot to sign out; if it's finished,
+it asks them to check it.
+
+You can send one reminder per entry every 15 minutes. **Remind** isn't offered
+for guests, and fails if SES has no email address for the member.
+
 ## Adding time by hand
 
 If a member forgot to use the kiosk altogether, record their time with **New
