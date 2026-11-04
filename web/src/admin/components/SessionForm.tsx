@@ -209,21 +209,22 @@ function getCategorySearchFromConfig(config: ConfigObject): boolean {
   return !!config.categorySearch;
 }
 
+// On by default: an absent key means on, so only turning it off is stored.
 function withConfirmVisitors(
   config: ConfigObject,
   enabled: boolean,
 ): ConfigObject {
   const next = { ...config };
   if (enabled) {
-    next.confirmVisitors = true;
-  } else {
     delete next.confirmVisitors;
+  } else {
+    next.confirmVisitors = false;
   }
   return next;
 }
 
 function getConfirmVisitorsFromConfig(config: ConfigObject): boolean {
-  return !!config.confirmVisitors;
+  return config.confirmVisitors !== false;
 }
 
 function withGamification(
