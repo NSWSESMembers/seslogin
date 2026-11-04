@@ -18,6 +18,7 @@ describe("clientHeaders", () => {
   afterEach(() => {
     resetClientInfo();
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
 
   it("always sends the version header alongside the info header", () => {
@@ -44,6 +45,27 @@ describe("clientHeaders", () => {
   it("reports the contact failure count from the registered source", () => {
     setContactFailureSource(() => 7);
     expect(parse().contactFailures).toBe(7);
+  });
+
+  /**
+   * A home-screen web app on iPadOS, launched without a manifest, still matches
+   * `(display-mode: browser)`; only `navigator.standalone` gives it away.
+   */
+  it("reports an iOS home-screen web app as standalone", () => {
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      matches: query === "(display-mode: browser)",
+    }));
+    expect(parse().displayMode).toBe("browser");
+
+    Object.defineProperty(navigator, "standalone", {
+      value: true,
+      configurable: true,
+    });
+    try {
+      expect(parse().displayMode).toBe("standalone");
+    } finally {
+      delete (navigator as Navigator & { standalone?: boolean }).standalone;
+    }
   });
 
   /**
