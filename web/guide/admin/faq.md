@@ -39,6 +39,8 @@ signed in at both. Entering their SES ID at either unit signs them out there.
 
 Find them under **Activity → Incomplete Periods**, press **Edit**, set the right
 end time and press **Save**. See [Correcting an entry](activity.md#correcting-an-entry).
+If you don't know when they left, press **Remind** to email them a link to fix it
+themselves; see [Asking a member to fix their own entry](activity.md#asking-a-member-to-fix-their-own-entry).
 If they come back to the kiosk more than 12 hours later, it offers to fix the
 entry for them.
 
