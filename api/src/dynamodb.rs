@@ -6433,6 +6433,18 @@ impl db::Handler for Handler {
         .await
     }
 
+    async fn list_oauth_grants_by_person(&self, person_id: &str) -> db::Result<Vec<OAuthGrant>> {
+        query_all("list_oauth_grants_by_person", || {
+            self.client
+                .query()
+                .table_name(self.table_name("oauth_grant"))
+                .index_name("person_id-index")
+                .key_condition_expression("person_id = :person_id")
+                .expression_attribute_values(":person_id", AttributeValue::S(person_id.to_string()))
+        })
+        .await
+    }
+
     async fn create_webauthn_credential(
         &self,
         id: &str,

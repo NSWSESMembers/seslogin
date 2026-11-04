@@ -3658,6 +3658,10 @@ impl<D: db::Handler> db::Handler for AuditingHandler<D> {
         self.inner.list_oauth_grants_by_user(user_id).await
     }
 
+    async fn list_oauth_grants_by_person(&self, person_id: &str) -> db::Result<Vec<OAuthGrant>> {
+        self.inner.list_oauth_grants_by_person(person_id).await
+    }
+
     async fn get_webauthn_credential(
         &self,
         id: &str,

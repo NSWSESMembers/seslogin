@@ -2799,6 +2799,13 @@ pub trait Handler: Sync {
         user_id: &str,
     ) -> impl Future<Output = Result<Vec<OAuthGrant>>> + Send;
 
+    /// Every grant naming this member (`person_id`): their Tally sign-ins, with or
+    /// without a user alongside. Through `person_id-index`.
+    fn list_oauth_grants_by_person(
+        &self,
+        person_id: &str,
+    ) -> impl Future<Output = Result<Vec<OAuthGrant>>> + Send;
+
     // ── WebAuthn passkey credentials ─────────────────────────────────────────
 
     fn create_webauthn_credential(

@@ -559,12 +559,26 @@ resource "aws_dynamodb_table" "prod_oauth_grant" {
     name = "user_id"
     type = "S"
   }
+  attribute {
+    name = "person_id"
+    type = "S"
+  }
 
   # Backs the "connected apps" list (a user's own grants).
   global_secondary_index {
     name = "user_id-index"
     key_schema {
       attribute_name = "user_id"
+      key_type       = "HASH"
+    }
+    projection_type = "ALL"
+  }
+
+  # A member's Tally sign-ins (grants naming a member), including those with no user.
+  global_secondary_index {
+    name = "person_id-index"
+    key_schema {
+      attribute_name = "person_id"
       key_type       = "HASH"
     }
     projection_type = "ALL"
