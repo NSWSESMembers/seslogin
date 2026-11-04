@@ -83,6 +83,14 @@ path = "src/bin/badge-congrats.rs"
 name = "badge-congrats-lambda"
 path = "src/bin/badge-congrats-lambda.rs"
 
+[[bin]]
+name = "open-period-notice"
+path = "src/bin/open-period-notice.rs"
+
+[[bin]]
+name = "open-period-notice-lambda"
+path = "src/bin/open-period-notice-lambda.rs"
+
 [dependencies]
 anyhow = "1.0.99"
 async-graphql = { version = "7.0.17", features = ["dataloader"] }

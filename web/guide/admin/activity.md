@@ -74,6 +74,11 @@ it asks them to check it.
 You can send one reminder per entry every 15 minutes. **Remind** isn't offered
 for guests, and fails if SES has no email address for the member.
 
+Some units also have SESLogin send the same email automatically to members who
+are still signed in after about 12 hours; see
+[Forgot to sign out](../kiosk/forgot-to-sign-out.md#getting-a-forgot-to-sign-out-email)
+for what members receive.
+
 ## Adding time by hand
 
 If a member forgot to use the kiosk altogether, record their time with **New

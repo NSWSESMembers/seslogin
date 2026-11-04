@@ -84,3 +84,26 @@ resource "aws_cloudwatch_metric_alarm" "dlq_not_empty" {
     QueueName = aws_sqs_queue.member_sync_dlq.name
   }
 }
+
+# This job mails members unattended, 14 times a day. A silent failure means
+# either nobody is being reminded or — worse, if it fails partway — an unknown
+# subset was. Either way it needs to reach a human rather than sit in the log.
+resource "aws_cloudwatch_metric_alarm" "open_period_notice_errors" {
+  alarm_name          = "seslogin-open-period-notice-errors"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 1
+  metric_name         = "Errors"
+  namespace           = "AWS/Lambda"
+  period              = 3600
+  statistic           = "Sum"
+  threshold           = 0
+  alarm_description   = "Open-period notice lambda is erroring — members may not be getting sign-out reminders"
+  treat_missing_data  = "notBreaching"
+
+  alarm_actions = [aws_sns_topic.member_sync_alerts.arn]
+  ok_actions    = [aws_sns_topic.member_sync_alerts.arn]
+
+  dimensions = {
+    FunctionName = aws_lambda_function.open_period_notice.function_name
+  }
+}

@@ -39,6 +39,29 @@ resource "aws_scheduler_schedule" "checker_daily" {
   }
 }
 
+resource "aws_scheduler_schedule" "open_period_notice_hourly" {
+  name       = "seslogin-open-period-notice-hourly"
+  group_name = "default"
+  state      = var.background_jobs_enabled ? "ENABLED" : "DISABLED"
+
+  flexible_time_window {
+    mode = "OFF"
+  }
+
+  # Hourly at :30 from 07:30 to 20:30 Sydney time — 14 runs a day. The window is
+  # daytime-only on purpose: this job emails members, and nobody should be woken
+  # by a reminder that they forgot to sign out. The job re-checks the hour itself
+  # so a manual invocation can't bypass it.
+  schedule_expression          = "cron(30 7-20 * * ? *)"
+  schedule_expression_timezone = "Australia/Sydney"
+
+  target {
+    arn      = aws_lambda_function.open_period_notice.arn
+    role_arn = aws_iam_role.scheduler.arn
+    input    = "{}"
+  }
+}
+
 resource "aws_scheduler_schedule" "activity_summary_nightly" {
   name       = "seslogin-activity-summary-nightly"
   group_name = "default"
