@@ -34,7 +34,7 @@ jobs:
 
       - name: Build worker lambdas
         working-directory: ./api
-        run: cargo lambda build --release --bin sync-members-lambda --bin dispatcher-lambda --bin checker-lambda --bin nitc-export-lambda --bin activity-summary-lambda --bin sync-locations-lambda --bin sync-directory-lambda --bin badge-nightly-lambda --bin badge-digest-lambda --bin change-digest-lambda --bin badge-congrats-lambda
+        run: cargo lambda build --release --bin sync-members-lambda --bin dispatcher-lambda --bin checker-lambda --bin nitc-export-lambda --bin activity-summary-lambda --bin sync-locations-lambda --bin sync-directory-lambda --bin badge-nightly-lambda --bin badge-digest-lambda --bin change-digest-lambda --bin badge-congrats-lambda --bin open-period-notice-lambda
 
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
@@ -58,3 +58,4 @@ jobs:
           cargo lambda deploy --binary-name badge-digest-lambda     seslogin-badge-digest
           cargo lambda deploy --binary-name change-digest-lambda    seslogin-change-digest
           cargo lambda deploy --binary-name badge-congrats-lambda   seslogin-badge-congrats
+          cargo lambda deploy --binary-name open-period-notice-lambda seslogin-open-period-notice

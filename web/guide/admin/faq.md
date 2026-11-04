@@ -42,7 +42,9 @@ end time and press **Save**. See [Correcting an entry](activity.md#correcting-an
 If you don't know when they left, press **Remind** to email them a link to fix it
 themselves; see [Asking a member to fix their own entry](activity.md#asking-a-member-to-fix-their-own-entry).
 If they come back to the kiosk more than 12 hours later, it offers to fix the
-entry for them.
+entry for them. Some units also have SESLogin email members who are still signed
+in after about 12 hours, with a link to enter their own finish time; see
+[Forgot to sign out](../kiosk/forgot-to-sign-out.md#getting-a-forgot-to-sign-out-email).
 
 ## A member isn't in our list
 
