@@ -774,6 +774,107 @@ Each member's in-app notification inbox (Tally), fanned out on write: an event n
 
 ---
 
+### `{prefix}asset`
+
+Uploaded files, scoped to a location: images now, other files later. One row per upload; the file itself is in the assets S3 bucket (`seslogin-assets-prod-<account>` for prod, preprod, qa and the workers, `seslogin-assets-test-<account>` for test; private, SSE-S3, no versioning; `infra/assets.tf`). The code that uses this table, `asset_ref` and `photo`, and the `counter#...` items below lands in later PRs; until then nothing reads or writes them.
+
+| Attribute | Type | Role          |
+| --------- | ---- | ------------- |
+| `id`      | S    | Hash key (PK) |
+
+No GSIs (a future garbage collector scans; there will be at most tens of thousands of rows).
+
+**TTL:** `expires_at`, set only while the asset is `pending`.
+
+**S3 key layout:**
+
+- `pending/<asset_id>` — where the client's presigned POST lands. Removed on completion, and by a bucket lifecycle rule after 1 day if the upload is never completed
+- `originals/<asset_id>` — copied here server-side when the upload is completed. Private and never served
+- `derived/<asset_id>/<variant>.webp` — normalised, metadata-stripped WebP at a fixed named size (`thumb`, `display`, `full`), written on first request. The only form members ever receive
+
+**Non-obvious attributes (not in table definition):**
+
+- `location_id` (S) — the unit it belongs to; only owners in this unit may reference it
+- `kind` (S) — `image` (later `file`)
+- `status` (S) — `pending` → `ready` (→ `deleting`, for the future garbage collector)
+- `content_type` (S) — `image/jpeg` or `image/webp`
+- `byte_size` (N) — declared at creation, verified at completion
+- `original_filename` (S, optional) — as picked, at most 255 characters, path stripped
+- `width`, `height` (N, optional) — the client's hint, 1 to 20000
+- `taken_at` (N, optional) — Unix seconds, from the original's EXIF; dropped if more than a day in the future or over 5 years old. GPS is never sent or stored
+- `camera_make`, `camera_model` (S, optional) — at most 100 characters each
+- `created_by` (S) — person ID of the uploading member
+- `created_at` (N); `completed_at` (N, optional) — Unix seconds; the latter is set on completion
+- `expires_at` (N, optional) — `created_at` + 1 day while `pending`; removed on completion
+
+---
+
+### `{prefix}asset_ref`
+
+Which owners use an asset, so a garbage collector can delete only assets nothing references. A reference is always written before or atomically with its owner and removed after or atomically with it: a stray reference only delays collection, a missing one would delete a live asset.
+
+| Attribute  | Type | Role                                                           |
+| ---------- | ---- | -------------------------------------------------------------- |
+| `asset_id` | S    | Hash key (PK)                                                  |
+| `owner`    | S    | Range key — `<owner_type>#<owner_id>`, e.g. `photo#<photo_id>` |
+
+No GSIs.
+
+**Non-obvious attributes (not in table definition):**
+
+- `location_id` (S) — the owner's (and the asset's) unit
+- `created_at` (N) — Unix seconds
+
+---
+
+### `{prefix}photo`
+
+A unit's photo stream in Tally: photos stay for 30 days, and a unit may add 100 per Sydney day (see the `counter#photo#...` items below). A photo is hidden by a member (no undo) and swept by a daily job, which soft-deletes it and removes its `asset_ref`.
+
+| Attribute             | Type | Role                                                                             |
+| --------------------- | ---- | -------------------------------------------------------------------------------- |
+| `id`                  | S    | Hash key (PK)                                                                    |
+| `visible_location_id` | S    | GSI hash key (`visible_location_id-sort_key-index`) — present only while visible |
+| `sort_key`            | S    | GSI range key — `<taken_at or created_at, zero-padded to 10 digits>#<id>`        |
+| `sweep`               | S    | GSI hash key (`sweep-expires_at-index`) — `"1"` until swept                      |
+| `expires_at`          | N    | GSI range key (`sweep-expires_at-index`)                                         |
+
+**GSIs:**
+
+| GSI                                  | Hash key              | Sort key     | Projection | Purpose                                                       |
+| ------------------------------------ | --------------------- | ------------ | ---------- | ------------------------------------------------------------- |
+| `visible_location_id-sort_key-index` | `visible_location_id` | `sort_key`   | ALL        | A unit's stream, newest first (unexpired rows only on read)   |
+| `sweep-expires_at-index`             | `sweep`               | `expires_at` | ALL        | Photos due for the sweep: `sweep = "1" AND expires_at <= now` |
+
+**No TTL.** `expires_at` is deliberately not a TTL attribute: expiry has to run application code to remove the photo's `asset_ref`.
+
+**Non-obvious attributes (not in table definition):**
+
+- `location_id` (S) — the unit
+- `asset_id` (S) — the photo's asset
+- `created_by` (S) — person ID of the member who added it
+- `created_at` (N) — Unix seconds, upload time
+- `taken_at` (N, optional) — Unix seconds, copied from the asset
+- `expires_at` (N) — `created_at` + 30 days; when hidden, becomes the earlier of itself and `hidden_at` + 7 days
+- `visible_location_id` (S, optional) — equal to `location_id` while visible; removed on hide and on sweep
+- `sweep` (S, optional) — `"1"` while not swept; removed on sweep
+- `hidden_at` (N, optional), `hidden_by` (S, optional) — Unix seconds and person ID
+- `deleted` (N, optional) — soft delete, set by the sweep
+- `v` (N) — version, starting at 1
+
+---
+
+### `{prefix}ephemeral_state`
+
+A generic key/value store with native TTL (`expires_at`). Items are namespaced by a `kind` discriminator: kiosk enrolment, WebAuthn challenges and the daily counters below.
+
+**Daily counters** (`kind` = `counter`) cap how much of something a person or unit can do in a Sydney day. The `id` is `counter#<name>#<key>#<YYYY-MM-DD>` (the Sydney date); `count` (N) is the number so far and `expires_at` is 3 days after the last increment. An increment is an UpdateItem `ADD count 1`, conditional on the item being new or `count` below the limit; a failed condition means "at the limit". Counters (arriving with the code that uses `asset` and `photo`):
+
+- `counter#photo#<location_id>#<date>` — photos added to a unit; limit 100
+- `counter#asset-upload#<person_id>#<date>` — uploads started by a member; limit 200
+
+---
+
 ### `{prefix}webauthn_credential`
 
 Passkeys. Each row belongs to exactly one owner: a user (`user_id`) or, for Tally sign-in, a member (`person_id`). The owner attribute that does not apply is omitted, so each GSI is sparse and holds only its own kind of passkey.
