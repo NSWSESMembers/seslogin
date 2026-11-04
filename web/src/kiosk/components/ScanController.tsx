@@ -76,7 +76,8 @@ export default function ScanController(props: {
   const guestsEnabled = !!session?.config?.guests;
   const quickPickCategories = !!session?.config?.quickPickCategories;
   const categorySearch = !!session?.config?.categorySearch;
-  const confirmVisitors = !!session?.config?.confirmVisitors;
+  // On unless explicitly turned off (see SessionForm).
+  const confirmVisitors = session?.config?.confirmVisitors !== false;
   const interfaceMode = interfaceModeFromConfig(session?.config?.interfaceMode);
   // Resolved once per config change rather than every render: the device
   // doesn't change under a running kiosk, and an auto guess that flipped

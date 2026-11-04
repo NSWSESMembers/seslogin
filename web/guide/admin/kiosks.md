@@ -77,8 +77,9 @@ You choose these when you set a kiosk up, and can change them later with
   Workshop - Participant come first and Workshop - Trainer, Trainer and Assessor
   last, so people who are unsure aren't steered into the instructor groups. On a
   touch kiosk, tapping the box brings up the keyboard.
-- **Confirm visitors**: before signing in a visitor (a member who doesn't belong
-  to your unit), the kiosk shows their name and primary unit and asks "Are you …?".
+- **Confirm visitors** (on unless you turn it off): before signing in a visitor
+  (a member who doesn't belong to your unit), the kiosk shows their name and
+  primary unit and asks "Are you …?".
   Most mistyped SES IDs belong to someone at another unit, so this stops people
   signing in as the wrong person. Members of your own unit, including those whose
   primary unit is another one but who also volunteer at yours, are signed in
@@ -119,9 +120,9 @@ they arrived, and they can then correct the times before signing back in.
 
 Members from other units can sign in at your kiosks. Their time appears in your
 unit's activity, with their unit shown under their name ("Visiting from" for a
-visitor, who doesn't belong to your unit). With
-[Confirm visitors](#options) turned on, the kiosk asks them to confirm who they
-are first.
+visitor, who doesn't belong to your unit). Unless you've turned
+[Confirm visitors](#options) off, the kiosk asks them to confirm who they are
+first.
 
 The [kiosk guide](../kiosk/quick-start.md) explains all this for members. Point
 your unit at it: it's at **/guide/kiosk** on the SESLogin site, and the home

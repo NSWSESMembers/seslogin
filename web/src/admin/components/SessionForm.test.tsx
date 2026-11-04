@@ -3,6 +3,7 @@ import { describe, it, expect, vi } from "vitest";
 import UserEvent from "@testing-library/user-event";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import SessionForm from "./SessionForm";
+import { NEW_SESSION_CONFIG } from "./sessionConfig";
 
 // The config is only in React state until the form is submitted, so the way to
 // see what an admin would save is to submit and read what the form posts.
@@ -128,14 +129,34 @@ describe("SessionForm Confirm visitors", () => {
     return JSON.parse(formData.get("config") as string);
   }
 
-  it("turns the option on", async () => {
-    const config = await toggleAndSave({ guests: true });
-    expect(config).toEqual({ guests: true, confirmVisitors: true });
+  it("is on when the config doesn't mention it", () => {
+    render(
+      <SessionForm
+        initialName="Kiosk"
+        initialConfig={NEW_SESSION_CONFIG}
+        initialHealthcheckUrl=""
+        isMutationInFlight={false}
+        onSubmit={vi.fn()}
+      />,
+    );
+    expect(
+      screen.getByRole("checkbox", { name: /Confirm visitors/ }),
+    ).toBeChecked();
   });
 
-  it("drops the key when turned off", async () => {
-    const config = await toggleAndSave({ confirmVisitors: true });
+  it("stores false when turned off", async () => {
+    const config = await toggleAndSave({ guests: true });
+    expect(config).toEqual({ guests: true, confirmVisitors: false });
+  });
+
+  it("drops the key when turned back on", async () => {
+    const config = await toggleAndSave({ confirmVisitors: false });
     expect(config).toEqual({});
+  });
+
+  it("turns off a config saved with it explicitly on", async () => {
+    const config = await toggleAndSave({ confirmVisitors: true });
+    expect(config).toEqual({ confirmVisitors: false });
   });
 });
 
