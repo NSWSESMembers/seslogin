@@ -2708,6 +2708,28 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         )?))
     }
 
+    /// Rename one of the passkeys that sign the signed-in member in to Tally
+    /// (`TallyViewer.passkeys`). Tally members only; anyone else's passkey is
+    /// `NOT_FOUND`.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn rename_tally_passkey(
+        &self,
+        ctx: &Context<'_>,
+        id: ID,
+        name: String,
+    ) -> Result<super::tally_passkeys::TallyPasskey> {
+        super::tally_passkeys::rename(ctx, self.app.as_ref(), &id, &name).await
+    }
+
+    /// Delete one of the passkeys that sign the signed-in member in to Tally
+    /// (`TallyViewer.passkeys`). A user's passkey then no longer signs in to the
+    /// SESLogin site either. Returns its ID. Tally members only; anyone else's
+    /// passkey is `NOT_FOUND`.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn delete_tally_passkey(&self, ctx: &Context<'_>, id: ID) -> Result<ID> {
+        super::tally_passkeys::delete(ctx, self.app.as_ref(), &id).await
+    }
+
     /// Add a task to a location's shared to-do list. Any member who can use the
     /// unit in Tally may. `dueDate` (`YYYY-MM-DD`, Sydney) hides the
     /// task until that day; a recurring task with no date is due today.

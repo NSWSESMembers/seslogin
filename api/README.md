@@ -292,6 +292,14 @@ already signs in there, so this hands out nothing new — and the member's
 otherwise. It is called "Saved at Tally sign-in". `completeTallySignIn` still
 works, for a page loaded before the offer existed.
 
+**Managing passkeys in Tally.** Tally's settings list the passkeys that sign the
+member in (`TallyViewer.passkeys`: the member's own and the riding-along user's,
+newest first, each with `signsInToSeslogin` true for the user's, which work on
+the admin site too) and rename or delete them (`renameTallyPasskey(id, name)`,
+name trimmed, 1–100 characters; `deleteTallyPasskey(id)`). Tally members only
+(`graphql/tally_passkeys.rs`); anyone else's passkey is `NOT_FOUND`, like a
+missing one. Both writes are audited, as every passkey write is.
+
 **App Store review.** `TALLY_REVIEW_SIGN_IN=<email>:<6 digits>` makes that one
 email always be sent that code instead of a random one, so a reviewer can sign
 in without the inbox. It is set on the prod and test APIs, to the same value

@@ -1209,6 +1209,19 @@ type MutationRoot {
 	revokeApiToken(id: ID!): Boolean!
 	updateSession(id: ID!, name: String!, config: String, healthcheckUrl: String): Session!
 	"""
+	Rename one of the passkeys that sign the signed-in member in to Tally
+	(`TallyViewer.passkeys`). Tally members only; anyone else's passkey is
+	`NOT_FOUND`.
+	"""
+	renameTallyPasskey(id: ID!, name: String!): TallyPasskey!
+	"""
+	Delete one of the passkeys that sign the signed-in member in to Tally
+	(`TallyViewer.passkeys`). A user's passkey then no longer signs in to the
+	SESLogin site either. Returns its ID. Tally members only; anyone else's
+	passkey is `NOT_FOUND`.
+	"""
+	deleteTallyPasskey(id: ID!): ID!
+	"""
 	Add a task to a location's shared to-do list. Any member who can use the
 	unit in Tally may. `dueDate` (`YYYY-MM-DD`, Sydney) hides the
 	task until that day; a recurring task with no date is due today.
@@ -2755,6 +2768,31 @@ type TallyLocation {
 }
 
 """
+A passkey that signs the member in to Tally. Never carries key material.
+"""
+type TallyPasskey {
+	id: ID!
+	"""
+	What its owner called it.
+	"""
+	name: String!
+	"""
+	Unix seconds.
+	"""
+	createdAt: Int!
+	"""
+	Unix seconds; null if it has never been used to sign in.
+	"""
+	lastUsedAt: Int
+	"""
+	Whether it is the passkey of the SESLogin user signed in alongside the
+	member, and so also signs in to the SESLogin site. False for the member's
+	own, which signs in to Tally only.
+	"""
+	signsInToSeslogin: Boolean!
+}
+
+"""
 What the sign-in page shows about the app that opened it.
 """
 type TallySignInRequest {
@@ -2822,6 +2860,12 @@ type TallyViewer {
 	member's own primary unit.
 	"""
 	locations: [TallyLocation!]!
+	"""
+	The passkeys that sign the member in to Tally, most recently added first: the
+	member's own, and those of the user signed in alongside them (which also sign
+	in to the SESLogin site). See `graphql::tally_passkeys`.
+	"""
+	passkeys: [TallyPasskey!]!
 }
 
 type Task {
