@@ -25,6 +25,7 @@ use super::on_call::{self, OnCallRole};
 use super::query::Person;
 use super::reservations::{self, EquipmentReservation};
 use super::shared_contacts::{self, SharedContact};
+use super::tally_passkeys::{self, TallyPasskey};
 use super::tasks::{self, Task, TaskList, TaskView};
 use super::{LocationId, PersonId};
 use crate::app::{App, HasDb};
@@ -169,6 +170,13 @@ impl<A: App + HasDb + Send + Sync + 'static> TallyViewer<A> {
         }
         locations.sort_by(|a, b| a.name.cmp(&b.name).then_with(|| a.id.cmp(&b.id)));
         Ok(locations.into_iter().map(TallyLocation::new).collect())
+    }
+
+    /// The passkeys that sign the member in to Tally, most recently added first: the
+    /// member's own, and those of the user signed in alongside them (which also sign
+    /// in to the SESLogin site). See `graphql::tally_passkeys`.
+    async fn passkeys(&self, ctx: &Context<'_>) -> Result<Vec<TallyPasskey>> {
+        tally_passkeys::list::<A>(ctx).await
     }
 }
 
