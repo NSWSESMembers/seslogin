@@ -364,6 +364,21 @@ The web page is `/admin/settings/connected-apps` (linked from the Settings
 submenu, beside Passkeys); a super user also sees and can revoke another
 user's grants from that user's edit page.
 
+### Tally sign-ins (list + sign out)
+
+Tally's settings list the devices a member is signed in on and can sign any of
+them out (`graphql/tally_sign_ins.rs`, Tally members only). Each Tally sign-in is
+its own grant, so one per device. `TallyViewer.signIns` lists the live grants
+naming the member (`oauth_grant`'s `person_id-index`) plus, when a user signed in
+alongside them, that user's grants that name a member (Tally ones, through
+`user_id-index`; that also covers a user since linked to another member). The
+user's connected apps (MCP clients) aren't listed, since those are managed here
+on the admin site. Each entry has `clientName`, `createdAt`, `lastUsedAt`,
+`refreshExpiresAt` and `isCurrent` (the grant making the request), with this
+device first, then most recently used. `revokeTallySignIn(id)` deletes the
+grant, this device's included, and returns its ID. Anyone else's grant, a
+connected app, or one past its expiry is `NOT_FOUND`.
+
 ## MCP interface
 
 `poem`/`poem-local` also serve an [MCP](https://modelcontextprotocol.io)

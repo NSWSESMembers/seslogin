@@ -2730,6 +2730,15 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         super::tally_passkeys::delete(ctx, self.app.as_ref(), &id).await
     }
 
+    /// Sign one of the member's devices out of Tally (`TallyViewer.signIns`): its
+    /// grant is deleted, so it can't refresh, and its access token stops working.
+    /// This device's own may be revoked too. Returns its ID. Tally members only;
+    /// anyone else's sign-in is `NOT_FOUND`.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn revoke_tally_sign_in(&self, ctx: &Context<'_>, id: ID) -> Result<ID> {
+        super::tally_sign_ins::revoke(ctx, self.app.as_ref(), &id).await
+    }
+
     /// A single-use, 10-minute ticket for adding a passkey from Tally: Tally opens
     /// `/tally/passkey#<ticket>` on its SESLogin site, which confirms an email with
     /// a code (`sendTallyPasskeySetupCode`, `verifyTallyPasskeySetupCode`) and then
