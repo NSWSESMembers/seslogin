@@ -81,6 +81,8 @@ pub enum AuditEntityType {
     Calendar,
     CalendarEvent,
     LocationShare,
+    Asset,
+    Photo,
 }
 
 impl From<db::AuditEntityType> for AuditEntityType {
@@ -112,6 +114,8 @@ impl From<db::AuditEntityType> for AuditEntityType {
             db::AuditEntityType::Calendar => Self::Calendar,
             db::AuditEntityType::CalendarEvent => Self::CalendarEvent,
             db::AuditEntityType::LocationShare => Self::LocationShare,
+            db::AuditEntityType::Asset => Self::Asset,
+            db::AuditEntityType::Photo => Self::Photo,
         }
     }
 }
@@ -145,6 +149,8 @@ impl From<AuditEntityType> for db::AuditEntityType {
             AuditEntityType::Calendar => Self::Calendar,
             AuditEntityType::CalendarEvent => Self::CalendarEvent,
             AuditEntityType::LocationShare => Self::LocationShare,
+            AuditEntityType::Asset => Self::Asset,
+            AuditEntityType::Photo => Self::Photo,
         }
     }
 }
