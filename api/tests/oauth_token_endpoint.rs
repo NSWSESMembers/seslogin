@@ -17,6 +17,7 @@ use seslogin::app::MyApp;
 use seslogin::mockmail;
 use seslogin::mockqueue;
 use seslogin::mockrealtime;
+use seslogin::mockstorage;
 use seslogin::oauth::{self, DEFAULT_SCOPE};
 use seslogin::oauth_http::{self, AuthCodePayload};
 
@@ -32,7 +33,13 @@ fn pkce_pair() -> (&'static str, &'static str) {
 /// Write an authorization code directly into `ephemeral_state`, as
 /// `approveOauthAuthorization` would, and return the plaintext code.
 async fn seed_code(
-    app: &MyApp<FakeDb, mockqueue::Handler, mockmail::Handler, mockrealtime::Handler>,
+    app: &MyApp<
+        FakeDb,
+        mockqueue::Handler,
+        mockmail::Handler,
+        mockrealtime::Handler,
+        mockstorage::Handler,
+    >,
     payload: AuthCodePayload,
 ) -> String {
     use seslogin::db::Handler as _;
@@ -55,7 +62,13 @@ async fn seed_code(
 }
 
 fn registration_client_id(
-    app: &MyApp<FakeDb, mockqueue::Handler, mockmail::Handler, mockrealtime::Handler>,
+    app: &MyApp<
+        FakeDb,
+        mockqueue::Handler,
+        mockmail::Handler,
+        mockrealtime::Handler,
+        mockstorage::Handler,
+    >,
     redirect_uri: &str,
 ) -> String {
     let registration = oauth::ClientRegistration {
@@ -331,7 +344,13 @@ const TALLY_REDIRECT_URI: &str = "tally://oauth/callback";
 /// Tally's code names member `person-1` (with `user-1` alongside), as Tally sign-in's
 /// does; any other client's names `user-1` alone, as the consent screen's does.
 async fn exchange(
-    app: &MyApp<FakeDb, mockqueue::Handler, mockmail::Handler, mockrealtime::Handler>,
+    app: &MyApp<
+        FakeDb,
+        mockqueue::Handler,
+        mockmail::Handler,
+        mockrealtime::Handler,
+        mockstorage::Handler,
+    >,
     client_id: &str,
     redirect_uri: &str,
     resource: Option<&str>,
@@ -347,7 +366,13 @@ async fn exchange(
 }
 
 async fn exchange_as(
-    app: &MyApp<FakeDb, mockqueue::Handler, mockmail::Handler, mockrealtime::Handler>,
+    app: &MyApp<
+        FakeDb,
+        mockqueue::Handler,
+        mockmail::Handler,
+        mockrealtime::Handler,
+        mockstorage::Handler,
+    >,
     client_id: &str,
     redirect_uri: &str,
     resource: Option<&str>,
@@ -376,7 +401,8 @@ async fn exchange_as(
 }
 
 /// `fake_app` with `user-1` and member `person-1`.
-fn app_with_member() -> MyApp<FakeDb, mockqueue::Handler, mockmail::Handler, mockrealtime::Handler>
+fn app_with_member()
+-> MyApp<FakeDb, mockqueue::Handler, mockmail::Handler, mockrealtime::Handler, mockstorage::Handler>
 {
     let app = fake_app();
     seed_user(&app, "user-1", true);
@@ -402,7 +428,13 @@ async fn only_a_member_sign_in_clients_codes_may_name_a_member() {
 }
 
 fn only_grant_resource(
-    app: &MyApp<FakeDb, mockqueue::Handler, mockmail::Handler, mockrealtime::Handler>,
+    app: &MyApp<
+        FakeDb,
+        mockqueue::Handler,
+        mockmail::Handler,
+        mockrealtime::Handler,
+        mockstorage::Handler,
+    >,
 ) -> String {
     let grants = app.db.oauth_grants.lock().unwrap();
     assert_eq!(grants.len(), 1);

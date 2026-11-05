@@ -17,21 +17,42 @@ use seslogin::mockdb;
 use seslogin::mockmail;
 use seslogin::mockqueue;
 use seslogin::mockrealtime;
+use seslogin::mockstorage;
 use seslogin::server_secret::ServerSecret;
 
 type TestSchema = async_graphql::Schema<
     graphql::QueryRoot<
-        MyApp<mockdb::Handler, mockqueue::Handler, mockmail::Handler, mockrealtime::Handler>,
+        MyApp<
+            mockdb::Handler,
+            mockqueue::Handler,
+            mockmail::Handler,
+            mockrealtime::Handler,
+            mockstorage::Handler,
+        >,
     >,
     graphql::MutationRoot<
-        MyApp<mockdb::Handler, mockqueue::Handler, mockmail::Handler, mockrealtime::Handler>,
+        MyApp<
+            mockdb::Handler,
+            mockqueue::Handler,
+            mockmail::Handler,
+            mockrealtime::Handler,
+            mockstorage::Handler,
+        >,
     >,
     async_graphql::EmptySubscription,
 >;
 
 struct Fixture {
     schema: TestSchema,
-    app: Arc<MyApp<mockdb::Handler, mockqueue::Handler, mockmail::Handler, mockrealtime::Handler>>,
+    app: Arc<
+        MyApp<
+            mockdb::Handler,
+            mockqueue::Handler,
+            mockmail::Handler,
+            mockrealtime::Handler,
+            mockstorage::Handler,
+        >,
+    >,
 }
 
 fn fixture() -> Fixture {
@@ -46,6 +67,7 @@ fn fixture() -> Fixture {
         mockqueue::Handler::new(),
         mockmail::Handler::new(),
         mockrealtime::Handler::new("test"),
+        mockstorage::Handler::in_memory(),
     ));
     // No HTTP relying-party check is exercised by these queries, so a minimal fixed
     // origin is fine here — unlike `export-schema.rs`, this must not depend on

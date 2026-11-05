@@ -599,10 +599,16 @@ mod tests {
     use crate::mockmail;
     use crate::mockqueue;
     use crate::mockrealtime;
+    use crate::mockstorage;
     use crate::server_secret::ServerSecret;
 
-    fn app() -> MyApp<mockdb::Handler, mockqueue::Handler, mockmail::Handler, mockrealtime::Handler>
-    {
+    fn app() -> MyApp<
+        mockdb::Handler,
+        mockqueue::Handler,
+        mockmail::Handler,
+        mockrealtime::Handler,
+        mockstorage::Handler,
+    > {
         let key = ServerSecret::new("test-secret");
         app::new(
             mockdb::Handler::new(),
@@ -611,6 +617,7 @@ mod tests {
             mockqueue::Handler::new(),
             mockmail::Handler::new(),
             mockrealtime::Handler::new("test"),
+            mockstorage::Handler::in_memory(),
         )
     }
 

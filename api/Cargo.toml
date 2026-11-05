@@ -92,6 +92,7 @@ aws-config = { version = "1.8.5", features = ["credentials-login"] }
 # unmaintained rustls 0.21 / rustls-webpki 0.101 stack (RUSTSEC-2026-0098/0099/0104).
 # `default-https-client` is the modern replacement; `rt-tokio` is the other default we need.
 aws-sdk-dynamodb = { version = "1.89.0", default-features = false, features = ["default-https-client", "rt-tokio"] }
+aws-sdk-s3 = { version = "1.89.0", default-features = false, features = ["default-https-client", "rt-tokio"] }
 aws-sdk-ses = { version = "1.89.0", default-features = false, features = ["default-https-client", "rt-tokio"] }
 aws-sdk-sns = { version = "1.89.0", default-features = false, features = ["default-https-client", "rt-tokio"] }
 aws-sdk-sqs = { version = "1.89.0", default-features = false, features = ["default-https-client", "rt-tokio"] }
@@ -107,7 +108,7 @@ flate2 = "1"
 hmac = "0.12"
 p256 = { version = "0.13", features = ["ecdsa"] }
 percent-encoding = "2.3"
-poem = "3.1.12"
+poem = { version = "3.1.12", features = ["multipart"] }
 rand = "0.10"
 sha2 = "0.10"
 subtle = "2"
@@ -139,3 +140,7 @@ debug = "line-tables-only"
 
 [profile.dev.package."*"]
 debug = false
+
+[dev-dependencies]
+# `poem::test::TestClient`, for the `/dev/storage/upload` route tests.
+poem = { version = "3.1.12", features = ["multipart", "test"] }

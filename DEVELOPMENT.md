@@ -372,6 +372,7 @@ web/.env.local.example web/.env.local` — but not `.env.secret`.
 | DynamoDB | **Real** — [DynamoDB Local](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/DynamoDBLocal.html) on **:8100** | The data layer is written against real DynamoDB semantics (GSI key validation, empty sets, `BatchGetItem` unprocessed keys). A stand-in that merely stored rows would hide the bugs this codebase actually hits. |
 | SQS | Mocked (`mockqueue`) | Every queue feeds a worker Lambda that needs real AWS regardless, so locally the honest behaviour is to log the message that would have been sent. |
 | SES (email) | Mocked (`mockmail`) | The message is logged in full, which is how you read your own login code. Set `MOCK_MAIL_DIR` in [local/local.env](local/local.env) to also write each one to a file — easier for HTML emails. |
+| S3 (asset uploads) | Mocked (`mockstorage`) | Objects are files under `local/storage/` (or `MOCK_STORAGE_DIR`), and an upload form posts to `poem-local`'s own `/dev/storage/upload` instead of S3. |
 | SQS queue URLs | Not needed | `poem` requires all three `*_QUEUE_URL` variables; `poem-local` never reads them, which is why it needs no `.env.secret`. |
 | SES headquarters API | Not available | `sync-members` / `sync-locations` / `nitc-export` need the real endpoint and credential. They aren't part of the local stack. |
 | Turnstile | Disabled | Already the case for all local dev. |

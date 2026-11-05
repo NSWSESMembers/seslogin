@@ -15,9 +15,15 @@ use common::{FakeDb, fake_app, seed_location};
 use seslogin::app::MyApp;
 use seslogin::auth::AuthInfo;
 use seslogin::graphql;
-use seslogin::{mockmail, mockqueue, mockrealtime};
+use seslogin::{mockmail, mockqueue, mockrealtime, mockstorage};
 
-type TestApp = MyApp<FakeDb, mockqueue::Handler, mockmail::Handler, mockrealtime::Handler>;
+type TestApp = MyApp<
+    FakeDb,
+    mockqueue::Handler,
+    mockmail::Handler,
+    mockrealtime::Handler,
+    mockstorage::Handler,
+>;
 
 fn webauthn() -> Arc<webauthn_rs::prelude::Webauthn> {
     Arc::new(
