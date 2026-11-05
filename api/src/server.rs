@@ -15,7 +15,7 @@ use poem::EndpointExt;
 use poem::endpoint::BoxEndpoint;
 use poem::http::{HeaderMap, StatusCode};
 use poem::middleware::Cors;
-use poem::web::Data;
+use poem::web::{Data, Path};
 use poem::{IntoResponse, Route, Server, get, handler, listener::TcpListener, post, web::Html};
 use std::env;
 use std::error::Error;
@@ -429,6 +429,38 @@ where
     builder.body(reply.body)
 }
 
+/// `GET /media/{asset_id}/{variant}`: derived images, served from the app's storage with
+/// the same code as the media Lambda ([`crate::media::serve`]). Local dev and the `poem`
+/// server have no CloudFront in front, so they answer it themselves.
+#[handler]
+async fn media_image<H, Q, M, R, S>(
+    app: Data<&SharedApp<H, Q, M, R, S>>,
+    Path((asset_id, variant)): Path<(String, String)>,
+    req: &poem::Request,
+) -> poem::Response
+where
+    H: db::Handler + Send + Sync + 'static,
+    Q: queue::Handler + Send + Sync + 'static,
+    M: mail::Handler + Send + Sync + 'static,
+    R: realtime::Handler + Send + Sync + 'static,
+    S: storage::Handler + Send + Sync + 'static,
+{
+    let reply = crate::media::serve(
+        &app.storage,
+        &asset_id,
+        &variant,
+        req.uri().query().unwrap_or(""),
+        crate::clock::now_sec(),
+        &app.server_secret,
+    )
+    .await;
+    poem::Response::builder()
+        .status(StatusCode::from_u16(reply.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR))
+        .header("Content-Type", reply.content_type)
+        .header("Cache-Control", reply.cache_control)
+        .body(reply.body)
+}
+
 #[handler]
 async fn mcp_method_not_allowed() -> impl IntoResponse {
     oauth_response(crate::mcp::method_not_allowed())
@@ -506,6 +538,12 @@ where
         .at(
             crate::offline_sync::SYNC_PATH,
             get(offline_sync::<H, Q, M, R, S> {
+                ..Default::default()
+            }),
+        )
+        .at(
+            "/media/:asset_id/:variant",
+            get(media_image::<H, Q, M, R, S> {
                 ..Default::default()
             }),
         )

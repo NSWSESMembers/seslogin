@@ -37,7 +37,7 @@ jobs:
 
       - name: Build API lambda
         working-directory: ./api
-        run: cargo lambda build --release --bin lambda
+        run: cargo lambda build --release --bin lambda --bin media-lambda
 
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
@@ -50,6 +50,10 @@ jobs:
       - name: Deploy seslogin-test-api
         working-directory: ./api
         run: cargo lambda deploy --binary-name lambda seslogin-test-api
+
+      - name: Deploy seslogin-test-media
+        working-directory: ./api
+        run: cargo lambda deploy --binary-name media-lambda seslogin-test-media
 
   deploy_web:
     needs: deploy_api

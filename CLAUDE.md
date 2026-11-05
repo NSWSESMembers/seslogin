@@ -225,9 +225,9 @@ Auto-deployment is split by branch, one workflow per branch under `.github/workf
 | `preprod` | Preprod API Lambda (`seslogin-preprod-api`) + web to `preprod.seslogin.com` |
 | `qa` | QA API Lambda (`seslogin-qa-api`) + web to `qa.seslogin.com` |
 | `test` | Test API Lambda (`seslogin-test-api`) + web to `test.seslogin.com` |
-| `workers` | Background/worker Lambdas: sync/dispatcher/checker/nitc-export/activity-summary/sync-locations/sync-directory/badge-nightly/badge-digest/change-digest/badge-congrats |
+| `workers` | Background/worker Lambdas: sync/dispatcher/checker/nitc-export/activity-summary/sync-locations/sync-directory/badge-nightly/badge-digest/change-digest/badge-congrats, plus the media Lambda (`seslogin-media`) |
 
-A release usually goes `test` (if it's risky) → `qa` → `preprod` → `prod`. The following Lambdas are only deployed from the `workers` branch, not from `test`, `qa`, `preprod` or `prod`, which each deploy only their API Lambda + web: sync (`seslogin-sync-members`), dispatcher (`seslogin-dispatcher`), checker (`seslogin-checker`), nitc-export (`seslogin-nitc-export`), activity-summary (`seslogin-activity-summary`), sync-locations (`seslogin-sync-locations`), sync-directory (`seslogin-sync-directory`), badge-nightly (`seslogin-badge-nightly`), badge-digest (`seslogin-badge-digest`), change-digest (`seslogin-change-digest`), and badge-congrats (`seslogin-badge-congrats`).
+A release usually goes `test` (if it's risky) → `qa` → `preprod` → `prod`. The following Lambdas are only deployed from the `workers` branch, not from `test`, `qa`, `preprod` or `prod`, which each deploy only their API Lambda + web: sync (`seslogin-sync-members`), dispatcher (`seslogin-dispatcher`), checker (`seslogin-checker`), nitc-export (`seslogin-nitc-export`), activity-summary (`seslogin-activity-summary`), sync-locations (`seslogin-sync-locations`), sync-directory (`seslogin-sync-directory`), badge-nightly (`seslogin-badge-nightly`), badge-digest (`seslogin-badge-digest`), change-digest (`seslogin-change-digest`), badge-congrats (`seslogin-badge-congrats`), and media (`seslogin-media`, the prod/preprod/qa image server). The test equivalent, `seslogin-test-media`, is deployed from `test` alongside `seslogin-test-api`.
 
 A new Lambda deployed by a workflow must also be added to the `github_lambda_deploy` policy in `infra/iam_oidc.tf` (and applied) before that workflow first runs, or its deploy step fails with AccessDenied.
 
@@ -386,6 +386,8 @@ Terraform uses the `seslogin` AWS profile by default (var `aws_profile`) — an 
 | Asset storage | `storage.rs` | `s3.rs` | `mockstorage.rs` (files in `MOCK_STORAGE_DIR`, or memory in tests) |
 
 Each email SES accepts is logged ("SES accepted email") with its recipient and `message_id`. What then happened to it (delivered, with the receiving server's SMTP response; bounced; rejected; delayed; complained about) is in the `/aws/events/seslogin-ses-events` log group, from every environment, matched by that ID (`infra/ses_events.tf`). Nothing after the receiving server accepts it, such as junk filtering or quarantine, is visible to us.
+
+**Derived images**: `api/src/media.rs` is the one implementation of `GET /media/{asset_id}/{variant}` (signed URLs, on-demand WebP derivation into the asset bucket). `poem` and `poem-local` mount it in-process; deployed, the separate media Lambda (`bin/media-lambda.rs`, no DynamoDB) serves it behind each CloudFront distribution's `/media/*`, and the API Lambda does not. **It must never return 403 or 404** (every distribution rewrites both to `/index.html` with a 200): use 400/401/410/422/500/503. Never use `/assets/*` for anything new: it is the web app's static files.
 
 Unlike `mockdb`, the queue, mail, realtime and storage mocks *succeed* — they exist so the API can run with no AWS account (and, for realtime, no Ably account). The app reaches all five through `app::HasDb` / `app::HasQueues` / `app::HasMail` / `app::HasRealtime` / `app::HasStorage`, and `MyApp<DBH, Q, M, R, S>` is generic over each.
 
