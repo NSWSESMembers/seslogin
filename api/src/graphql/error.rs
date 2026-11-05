@@ -25,6 +25,8 @@ pub enum ErrorCode {
     Conflict,
     /// An argument is malformed (e.g. a pagination cursor that is not one we issued).
     BadRequest,
+    /// The caller has hit a daily limit (e.g. uploads per member); trying again later works.
+    RateLimited,
     /// Anything else — an unclassified failure. Deliberately the default, so a
     /// resolver that doesn't opt in still gets a code rather than none.
     Internal,
@@ -38,6 +40,7 @@ impl ErrorCode {
             ErrorCode::Unauthenticated => "UNAUTHENTICATED",
             ErrorCode::Conflict => "CONFLICT",
             ErrorCode::BadRequest => "BAD_REQUEST",
+            ErrorCode::RateLimited => "RATE_LIMITED",
             ErrorCode::Internal => "INTERNAL",
         }
     }

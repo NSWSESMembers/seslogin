@@ -90,7 +90,7 @@ use std::time::Instant;
 use async_graphql::{EmptySubscription, Variables};
 use serde_json::{Value, json};
 
-use crate::app::{App, HasDb, HasMail, HasQueues, HasRealtime};
+use crate::app::{App, HasDb, HasMail, HasQueues, HasRealtime, HasStorage};
 use crate::auth::{self, AuthError, AuthInfo};
 use crate::base_url::{MCP_RESOURCE_PATH, api_base_url, api_resource};
 use crate::graphql::{self, ClientIp};
@@ -230,7 +230,7 @@ fn initialize_result(params: &Value) -> Value {
 /// execute GraphQL against, and who is calling.
 pub(crate) struct ToolCtx<'a, A>
 where
-    A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static,
+    A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sync + 'static,
 {
     app: &'a Arc<A>,
     schema: &'a McpSchema<A>,
@@ -240,7 +240,7 @@ where
 
 impl<A> ToolCtx<'_, A>
 where
-    A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static,
+    A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sync + 'static,
 {
     /// Run a fixed GraphQL document with the caller's `AuthInfo`, exactly as the
     /// GraphQL endpoint itself builds a request (`AuthInfo`, the app, `ClientIp`,
@@ -373,7 +373,7 @@ async fn dispatch_tool<A>(
     arguments: &Value,
 ) -> ToolOutcome
 where
-    A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static,
+    A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sync + 'static,
 {
     let ctx = ToolCtx {
         app,
@@ -404,7 +404,7 @@ pub async fn handle_post<A>(
     body: &[u8],
 ) -> HttpReply
 where
-    A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static,
+    A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sync + 'static,
 {
     let request_start = Instant::now();
     let api_base = api_base_url(host);

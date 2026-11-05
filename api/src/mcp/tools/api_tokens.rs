@@ -23,7 +23,7 @@ use serde_json::{Value, json};
 use super::super::args::{self, Field, Kind, TIME_FORMATS, ToolError};
 use super::super::{ToolCtx, ToolOutcome, rename_root};
 use super::{Effect, id_property, input_schema, tool};
-use crate::app::{App, HasDb, HasMail, HasQueues, HasRealtime};
+use crate::app::{App, HasDb, HasMail, HasQueues, HasRealtime, HasStorage};
 
 /// An `ApiToken`'s fields, as the API tokens pages show them. Never a secret or hash.
 const TOKEN_SELECTION: &str =
@@ -97,7 +97,7 @@ pub(super) fn catalogue() -> Vec<Value> {
 
 pub(super) async fn call<A>(ctx: &ToolCtx<'_, A>, name: &str, a: &Value) -> Option<ToolOutcome>
 where
-    A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static,
+    A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sync + 'static,
 {
     let result = match name {
         "list_api_tokens" => list_api_tokens(ctx).await,
@@ -111,7 +111,7 @@ where
 
 async fn list_api_tokens<A>(ctx: &ToolCtx<'_, A>) -> Result<Value, ToolError>
 where
-    A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static,
+    A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sync + 'static,
 {
     let doc = format!("query McpApiTokens {{ apiTokens {{ {TOKEN_SELECTION} }} }}");
     let data = ctx.graphql(&doc, json!({})).await?;
@@ -122,7 +122,7 @@ where
 
 async fn fetch_token<A>(ctx: &ToolCtx<'_, A>, id: &str) -> Result<Value, ToolError>
 where
-    A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static,
+    A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sync + 'static,
 {
     let doc =
         format!("query McpApiToken($id: ID!) {{ apiToken(id: $id) {{ {TOKEN_SELECTION} }} }}");
@@ -132,7 +132,7 @@ where
 
 async fn get_api_token<A>(ctx: &ToolCtx<'_, A>, a: &Value) -> Result<Value, ToolError>
 where
-    A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static,
+    A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sync + 'static,
 {
     let token = fetch_token(ctx, args::str_arg(a, "id")?).await?;
     Ok(json!({ "apiToken": token }))
@@ -140,7 +140,7 @@ where
 
 async fn update_api_token<A>(ctx: &ToolCtx<'_, A>, a: &Value) -> Result<Value, ToolError>
 where
-    A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static,
+    A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sync + 'static,
 {
     let id = args::str_arg(a, "id")?;
     if args::opt_str_arg(a, "name")?.is_some_and(|n| n.trim().is_empty()) {
@@ -173,7 +173,7 @@ where
 
 async fn revoke_api_token<A>(ctx: &ToolCtx<'_, A>, a: &Value) -> Result<Value, ToolError>
 where
-    A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static,
+    A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sync + 'static,
 {
     let id = args::str_arg(a, "id")?;
     ctx.graphql(

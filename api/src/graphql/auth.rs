@@ -297,6 +297,12 @@ pub(crate) fn require_equipment_access(ctx: &Context<'_>, location_id: &str) -> 
     require_member_location(ctx, location_id, "Equipment is only available in Tally")
 }
 
+/// Check the caller may upload and complete assets (photos and, later, files) for a
+/// location. See [`require_member_location`].
+pub(crate) fn require_asset_access(ctx: &Context<'_>, location_id: &str) -> Result<()> {
+    require_member_location(ctx, location_id, "Uploads are only available in Tally")
+}
+
 /// Check the caller may use a location's Calendar. See [`require_member_location`].
 pub(crate) fn require_calendar_access(ctx: &Context<'_>, location_id: &str) -> Result<()> {
     require_member_location(ctx, location_id, "The calendar is only available in Tally")

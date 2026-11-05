@@ -8,7 +8,7 @@
 use serde_json::{Value, json};
 
 use super::{ToolCtx, ToolOutcome};
-use crate::app::{App, HasDb, HasMail, HasQueues, HasRealtime};
+use crate::app::{App, HasDb, HasMail, HasQueues, HasRealtime, HasStorage};
 
 mod account;
 mod api_tokens;
@@ -39,7 +39,7 @@ pub(super) fn catalogue() -> Vec<Value> {
 /// Run the named tool, or `None` if no domain has it.
 pub(super) async fn call<A>(ctx: &ToolCtx<'_, A>, name: &str, args: &Value) -> Option<ToolOutcome>
 where
-    A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static,
+    A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sync + 'static,
 {
     if let Some(outcome) = users::call(ctx, name, args).await {
         return Some(outcome);

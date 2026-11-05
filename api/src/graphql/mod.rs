@@ -10,11 +10,12 @@ use crate::app::App;
 use crate::app::HasDb;
 use crate::app::HasMail;
 use crate::app::HasQueues;
-use crate::app::HasRealtime;
+use crate::app::{HasRealtime, HasStorage};
 use crate::auth::AuthInfo;
 use crate::request_metrics;
 use crate::telemetry::{self, OperationKind};
 
+pub mod assets;
 pub mod audit_log;
 pub mod auth;
 pub mod calendar;
@@ -103,6 +104,10 @@ pub struct TaskListId(pub String);
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct NoteFolderId(pub String);
+
+/// DataLoader key for [`assets::Asset`]'s row, used by anything that points at an asset.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct AssetId(pub String);
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct MapLayerId(pub String);
@@ -203,7 +208,9 @@ impl Extension for RequestMetricsExtImpl {
     }
 }
 
-pub fn build_schema<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>(
+pub fn build_schema<
+    A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sync + 'static,
+>(
     app: Arc<A>,
     webauthn: Arc<webauthn_rs::prelude::Webauthn>,
 ) -> Schema<QueryRoot<A>, MutationRoot<A>, EmptySubscription> {

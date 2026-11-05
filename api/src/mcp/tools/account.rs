@@ -36,7 +36,7 @@ use serde_json::{Value, json};
 use super::super::args::{self, ToolError};
 use super::super::{ToolCtx, ToolOutcome, rename_root};
 use super::{Effect, id_property, input_schema, tool};
-use crate::app::{App, HasDb, HasMail, HasQueues, HasRealtime};
+use crate::app::{App, HasDb, HasMail, HasQueues, HasRealtime, HasStorage};
 
 /// The `AuditEntityType` enum's values, as GraphQL names them.
 const ENTITY_TYPES: &[&str] = &[
@@ -244,7 +244,7 @@ pub(super) fn catalogue() -> Vec<Value> {
 
 pub(super) async fn call<A>(ctx: &ToolCtx<'_, A>, name: &str, a: &Value) -> Option<ToolOutcome>
 where
-    A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static,
+    A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sync + 'static,
 {
     let result = match name {
         "get_audit_log" => get_audit_log(ctx, a).await,
@@ -284,7 +284,7 @@ fn entity_types_arg(a: &Value) -> Result<Vec<String>, ToolError> {
 
 async fn get_audit_log<A>(ctx: &ToolCtx<'_, A>, a: &Value) -> Result<Value, ToolError>
 where
-    A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static,
+    A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sync + 'static,
 {
     let location_id = args::opt_str_arg(a, "locationId")?;
     let entity_types = entity_types_arg(a)?;
@@ -342,7 +342,7 @@ const SETTINGS_SELECTION: &str = "emailSummaryLocationIds disaggregateVirtualPer
 
 async fn update_my_settings<A>(ctx: &ToolCtx<'_, A>, a: &Value) -> Result<Value, ToolError>
 where
-    A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static,
+    A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sync + 'static,
 {
     // Read both arguments before changing anything, so a bad second one cannot leave
     // the first half-applied.
@@ -391,7 +391,7 @@ async fn user_field<A>(
     field_selection: &str,
 ) -> Result<Value, ToolError>
 where
-    A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static,
+    A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sync + 'static,
 {
     let user_id = args::opt_str_arg(a, "userId")?;
     let doc = format!("query McpUserField($id: ID) {{ user(id: $id) {{ id {field_selection} }} }}");
@@ -400,7 +400,7 @@ where
 
 async fn list_connected_apps<A>(ctx: &ToolCtx<'_, A>, a: &Value) -> Result<Value, ToolError>
 where
-    A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static,
+    A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sync + 'static,
 {
     let mut user = user_field(
         ctx,
@@ -421,7 +421,7 @@ where
 
 async fn revoke_connected_app<A>(ctx: &ToolCtx<'_, A>, a: &Value) -> Result<Value, ToolError>
 where
-    A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static,
+    A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sync + 'static,
 {
     let id = args::str_arg(a, "id")?;
     ctx.graphql(
@@ -440,7 +440,7 @@ where
 
 async fn list_passkeys<A>(ctx: &ToolCtx<'_, A>, a: &Value) -> Result<Value, ToolError>
 where
-    A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static,
+    A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sync + 'static,
 {
     let mut user = user_field(ctx, a, &format!("passkeys {{ {PASSKEY_SELECTION} }}")).await?;
     Ok(json!({ "passkeys": user["passkeys"].take() }))
@@ -448,7 +448,7 @@ where
 
 async fn rename_passkey<A>(ctx: &ToolCtx<'_, A>, a: &Value) -> Result<Value, ToolError>
 where
-    A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static,
+    A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sync + 'static,
 {
     let id = args::str_arg(a, "id")?;
     let name = args::str_arg(a, "name")?;
@@ -465,7 +465,7 @@ where
 
 async fn delete_passkey<A>(ctx: &ToolCtx<'_, A>, a: &Value) -> Result<Value, ToolError>
 where
-    A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static,
+    A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sync + 'static,
 {
     let id = args::str_arg(a, "id")?;
     ctx.graphql(
@@ -480,7 +480,7 @@ where
 
 async fn submit_feedback<A>(ctx: &ToolCtx<'_, A>, a: &Value) -> Result<Value, ToolError>
 where
-    A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static,
+    A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sync + 'static,
 {
     let subject = args::str_arg(a, "subject")?;
     let message = args::str_arg(a, "message")?;
