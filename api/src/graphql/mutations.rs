@@ -2832,6 +2832,8 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sy
     /// task until that day; a recurring task with no date is due today.
     /// `assigneeIds` assigns it to members (by person ID, from any unit, at most 20),
     /// who are notified; with none it is the whole unit's.
+    /// `photoAssetIds` attaches up to 10 photos, in order: ready images uploaded for this
+    /// unit (with `createAssetUpload`), or ones from its photo stream.
     #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn create_task(
         &self,
@@ -2843,6 +2845,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sy
         due_date: Option<String>,
         recurrence: Option<TaskRecurrenceInput>,
         assignee_ids: Option<Vec<ID>>,
+        photo_asset_ids: Option<Vec<ID>>,
     ) -> Result<Task<A>> {
         tasks::create_task(
             ctx,
@@ -2855,6 +2858,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sy
                 due_date,
                 recurrence,
                 assignee_ids,
+                photo_asset_ids,
             },
         )
         .await
@@ -2865,6 +2869,8 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sy
     /// it is assigned to (an empty list unassigns everyone); members newly assigned
     /// are notified. Fails with `CONFLICT` if the task is no longer at
     /// `expectedVersion`.
+    /// `photoAssetIds` replaces the attached photos (an empty list removes them all;
+    /// omitted, they are left as they are).
     #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn update_task(
         &self,
@@ -2877,6 +2883,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sy
         due_date: MaybeUndefined<String>,
         recurrence: MaybeUndefined<TaskRecurrenceInput>,
         assignee_ids: Option<Vec<ID>>,
+        photo_asset_ids: Option<Vec<ID>>,
     ) -> Result<Task<A>> {
         tasks::update_task(
             ctx,
@@ -2890,6 +2897,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sy
                 due_date,
                 recurrence,
                 assignee_ids,
+                photo_asset_ids,
             },
         )
         .await
@@ -3069,6 +3077,8 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sy
     /// Add a piece of equipment to a location's register, logged in `status` (in
     /// service unless given) with an optional `comment`. Any member who can use the
     /// unit in Tally may.
+    /// `photoAssetIds` attaches up to 10 photos, in order: ready images uploaded for this
+    /// unit (with `createAssetUpload`), or ones from its photo stream.
     #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn create_equipment(
         &self,
@@ -3079,6 +3089,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sy
         description: Option<String>,
         #[graphql(default_with = "EquipmentStatus::InService")] status: EquipmentStatus,
         comment: Option<String>,
+        photo_asset_ids: Option<Vec<ID>>,
     ) -> Result<Equipment<A>> {
         equipment::create_equipment(
             ctx,
@@ -3090,14 +3101,17 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sy
                 description,
                 status,
                 comment,
+                photo_asset_ids,
             },
         )
         .await
     }
 
-    /// Edit a piece of equipment's type, name or description; omitted arguments are
-    /// left as they are. The status is changed with `changeEquipmentStatus`. Fails with
-    /// `CONFLICT` if it is no longer at `expectedVersion`.
+    /// Edit a piece of equipment's type, name, description or photos; omitted arguments
+    /// are left as they are. The status is changed with `changeEquipmentStatus`. Fails
+    /// with `CONFLICT` if it is no longer at `expectedVersion`.
+    /// `photoAssetIds` replaces the attached photos (an empty list removes them all;
+    /// omitted, they are left as they are).
     #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn update_equipment(
         &self,
@@ -3107,6 +3121,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sy
         #[graphql(name = "type")] equipment_type: Option<EquipmentType>,
         name: Option<String>,
         description: Option<String>,
+        photo_asset_ids: Option<Vec<ID>>,
     ) -> Result<Equipment<A>> {
         equipment::update_equipment(
             ctx,
@@ -3117,6 +3132,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sy
                 equipment_type,
                 name,
                 description,
+                photo_asset_ids,
             },
         )
         .await
@@ -3230,6 +3246,8 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sy
 
     /// Add a pin to a location's shared map, optionally of a `type` (a plain pin
     /// without). Any member who can use the unit in Tally may.
+    /// `photoAssetIds` attaches up to 10 photos, in order: ready images uploaded for this
+    /// unit (with `createAssetUpload`), or ones from its photo stream.
     #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn create_map_pin(
         &self,
@@ -3242,6 +3260,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sy
         note: Option<String>,
         layer_id: Option<ID>,
         #[graphql(name = "type")] pin_type: Option<MapPinType>,
+        photo_asset_ids: Option<Vec<ID>>,
     ) -> Result<MapPin<A>> {
         map::create_map_pin(
             ctx,
@@ -3255,6 +3274,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sy
                 note,
                 layer_id,
                 pin_type,
+                photo_asset_ids,
             },
         )
         .await
@@ -3263,6 +3283,8 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sy
     /// Change a map pin. Omitted arguments are left as they are; `layerId: null` takes
     /// it off its layer and `type: null` makes it a plain pin. Fails with `CONFLICT` if the pin is no longer at
     /// `expectedVersion`.
+    /// `photoAssetIds` replaces the attached photos (an empty list removes them all;
+    /// omitted, they are left as they are).
     #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn update_map_pin(
         &self,
@@ -3276,6 +3298,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sy
         note: Option<String>,
         layer_id: MaybeUndefined<ID>,
         #[graphql(name = "type")] pin_type: MaybeUndefined<MapPinType>,
+        photo_asset_ids: Option<Vec<ID>>,
     ) -> Result<MapPin<A>> {
         map::update_map_pin(
             ctx,
@@ -3290,6 +3313,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sy
                 note,
                 layer_id,
                 pin_type,
+                photo_asset_ids,
             },
         )
         .await

@@ -709,6 +709,9 @@ pub struct Task {
     /// The members the task is assigned to, by person ID (from any unit, like an
     /// on-call role). Empty means nobody in particular: it is the whole unit's.
     pub assignee_ids: Vec<String>,
+    /// Photos attached to it, as ready asset IDs at its location, in the order shown (at
+    /// most [`MAX_ATTACHED_PHOTOS`]). Each has an `asset_ref` owned by it.
+    pub photo_asset_ids: Vec<String>,
     /// Whether the task is still to be done, i.e. it carries `open_location_id` and so
     /// is in `open_location_id-show_date-index`.
     pub open: bool,
@@ -735,6 +738,9 @@ impl HasID for Task {
 /// The fields of a task being created. See [`Task`].
 #[derive(Clone, Debug, PartialEq)]
 pub struct NewTask<'a> {
+    /// Made by the caller with [`new_id`], so the photos' `asset_ref`s, which name it, can
+    /// be written before it.
+    pub id: &'a str,
     pub location_id: &'a str,
     pub list_id: Option<&'a str>,
     pub title: &'a str,
@@ -743,6 +749,7 @@ pub struct NewTask<'a> {
     pub show_date: NaiveDate,
     pub recurrence: Option<TaskRecurrence>,
     pub assignee_ids: &'a [String],
+    pub photo_asset_ids: &'a [String],
     pub created_by: Option<&'a str>,
 }
 
@@ -780,6 +787,8 @@ pub enum TaskUpdateShape<'a> {
         recurrence: Option<TaskRecurrence>,
         /// Empty removes every assignee.
         assignee_ids: &'a [String],
+        /// Empty removes every photo.
+        photo_asset_ids: &'a [String],
         by: Option<&'a str>,
         expected_version: u64,
     },
@@ -926,6 +935,9 @@ pub struct Equipment {
     pub status_changed_at: u64,
     /// When someone last logged that they checked it.
     pub last_checked_at: Option<u64>,
+    /// Photos attached to it, as ready asset IDs at its location, in the order shown (at
+    /// most [`MAX_ATTACHED_PHOTOS`]). Each has an `asset_ref` owned by it.
+    pub photo_asset_ids: Vec<String>,
     pub created_by: Option<String>,
     pub updated_by: Option<String>,
     /// Bumped by every [`EquipmentUpdateShape`] write, not by log entries.
@@ -945,12 +957,16 @@ impl HasID for Equipment {
 /// to `status` with `comment`, is written with it.
 #[derive(Clone, Debug, PartialEq)]
 pub struct NewEquipment<'a> {
+    /// Made by the caller with [`new_id`], so the photos' `asset_ref`s, which name it, can
+    /// be written before it.
+    pub id: &'a str,
     pub location_id: &'a str,
     pub equipment_type: &'a str,
     pub name: &'a str,
     pub description: &'a str,
     pub status: &'a str,
     pub comment: &'a str,
+    pub photo_asset_ids: &'a [String],
     pub created_by: Option<&'a str>,
 }
 
@@ -964,6 +980,8 @@ pub enum EquipmentUpdateShape<'a> {
         equipment_type: &'a str,
         name: &'a str,
         description: &'a str,
+        /// Empty removes every photo.
+        photo_asset_ids: &'a [String],
         by: Option<&'a str>,
         expected_version: u64,
     },
@@ -1125,6 +1143,9 @@ pub struct MapPin {
     pub longitude: f64,
     pub address: String,
     pub note: String,
+    /// Photos attached to it, as ready asset IDs at its location, in the order shown (at
+    /// most [`MAX_ATTACHED_PHOTOS`]). Each has an `asset_ref` owned by it.
+    pub photo_asset_ids: Vec<String>,
     pub created_by: Option<String>,
     pub updated_by: Option<String>,
     pub version: u64,
@@ -1142,6 +1163,9 @@ impl HasID for MapPin {
 /// The fields of a map pin being created. See [`MapPin`].
 #[derive(Clone, Debug, PartialEq)]
 pub struct NewMapPin<'a> {
+    /// Made by the caller with [`new_id`], so the photos' `asset_ref`s, which name it, can
+    /// be written before it.
+    pub id: &'a str,
     pub location_id: &'a str,
     pub layer_id: Option<&'a str>,
     pub pin_type: Option<&'a str>,
@@ -1150,6 +1174,7 @@ pub struct NewMapPin<'a> {
     pub longitude: f64,
     pub address: &'a str,
     pub note: &'a str,
+    pub photo_asset_ids: &'a [String],
     pub created_by: Option<&'a str>,
 }
 
@@ -1169,6 +1194,8 @@ pub enum MapPinUpdateShape<'a> {
         longitude: f64,
         address: &'a str,
         note: &'a str,
+        /// Empty removes every photo.
+        photo_asset_ids: &'a [String],
         by: Option<&'a str>,
         expected_version: u64,
     },
@@ -2037,6 +2064,9 @@ pub const PHOTO_LIFETIME_SECS: u64 = 30 * 24 * 60 * 60;
 /// How long a hidden photo lingers before the sweep removes it: its `expires_at` becomes
 /// the earlier of itself and the time it was hidden plus this.
 pub const HIDDEN_PHOTO_GRACE_SECS: u64 = 7 * 24 * 60 * 60;
+
+/// The most photos a task, piece of equipment or map pin can have attached.
+pub const MAX_ATTACHED_PHOTOS: usize = 10;
 
 /// How long an asset may stay `pending` (its upload not completed) before DynamoDB's TTL
 /// removes the row.

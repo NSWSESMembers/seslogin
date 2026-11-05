@@ -351,6 +351,7 @@ The index is **sparse**: completing a non-recurring task, or deleting any task, 
 - `due_date` (S, optional) — the day the task was scheduled for. `show_date` is this, or the creation day when there is none
 - `recurrence_every` (N), `recurrence_unit` (S: `days` or `weeks`) — both present or both absent
 - `assignee_ids` (SS, optional) — person IDs of the members the task is assigned to, from any unit; absent when it is nobody's in particular (a String Set can't be empty). It may name members deleted since
+- `photo_asset_ids` (L of S, optional) — the photos attached to it: up to 10 IDs of `ready` `asset` rows at the same location, in the order shown. Absent when there are none. Each has an `asset_ref` owned by `task#<id>`, written before the row starts naming it and removed after it stops (or the row is deleted)
 - `v` (N) — version, bumped by every write; edits and completions are conditional on it, so two people completing the same task cannot both succeed
 - `completed_at` (N), `completed_by` (S) — a non-recurring task's completion, and the person ID of the member who completed it
 - `last_completed_at` (N), `last_completed_by` (S) — a recurring task's latest completion, and who by (person ID)
@@ -448,6 +449,7 @@ The pins on a location's shared map ("Map").
 - `latitude` / `longitude` (N) — WGS 84 degrees
 - `address` (S, optional) — free text, not geocoded; absent when empty
 - `note` (S, optional) — plain text; absent when empty
+- `photo_asset_ids` (L of S, optional) — the photos attached to it: up to 10 IDs of `ready` `asset` rows at the same location, in the order shown. Absent when there are none. Each has an `asset_ref` owned by `map_pin#<id>`, written before the row starts naming it and removed after it stops (or the row is deleted)
 - `v` (N) — version, bumped by every write; saves are conditional on it, so two people editing the same pin cannot silently overwrite each other
 - `created_by` / `updated_by` (S) — person IDs of the members who made and last changed it
 - `deleted` (N) — Unix seconds when soft-deleted; absent otherwise
@@ -559,6 +561,7 @@ A location's equipment register ("Equipment").
 - `status` (S) — `in_service`, `has_issue` (usable, but something needs fixing), `out_of_service`, `missing` or `borrowed`. Changed only together with a new `equipment_log` row, in one transaction conditional on the status it changes from
 - `status_changed_at` (N) — when the status last changed, or the equipment was added
 - `last_checked_at` (N, optional) — when someone last logged a check
+- `photo_asset_ids` (L of S, optional) — the photos attached to it: up to 10 IDs of `ready` `asset` rows at the same location, in the order shown. Absent when there are none. Each has an `asset_ref` owned by `equipment#<id>`, written before the row starts naming it and removed after it stops (or the row is deleted)
 - `v` (N) — version, bumped by every edit (not by log entries); edits are conditional on it
 - `created_by` / `updated_by` (S) — person IDs of the members who made and last changed it
 - `deleted` (N) — Unix seconds when soft-deleted; absent otherwise. The log is kept
@@ -817,6 +820,8 @@ Which owners use an asset, so a garbage collector can delete only assets nothing
 | ---------- | ---- | -------------------------------------------------------------- |
 | `asset_id` | S    | Hash key (PK)                                                  |
 | `owner`    | S    | Range key — `<owner_type>#<owner_id>`, e.g. `photo#<photo_id>` |
+
+Owner types: `photo`, and `task`, `equipment` and `map_pin` for the photos attached to them (their `photo_asset_ids`).
 
 No GSIs.
 

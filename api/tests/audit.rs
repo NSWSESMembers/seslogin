@@ -365,6 +365,8 @@ async fn a_person_move_records_both_locations() {
 fn new_task<'a>(title: &'a str, recurrence: Option<db::TaskRecurrence>) -> db::NewTask<'a> {
     let day = chrono::NaiveDate::from_ymd_opt(2026, 3, 2).unwrap();
     db::NewTask {
+        // Leaked so the borrowed id lives as long as the title.
+        id: Box::leak(db::new_id().into_boxed_str()),
         location_id: "loc-a",
         list_id: None,
         title,
@@ -373,6 +375,7 @@ fn new_task<'a>(title: &'a str, recurrence: Option<db::TaskRecurrence>) -> db::N
         show_date: day,
         recurrence,
         assignee_ids: &[],
+        photo_asset_ids: &[],
         created_by: Some("caller"),
     }
 }
@@ -602,12 +605,14 @@ async fn equipment_writes_and_log_entries_are_recorded_against_their_location() 
     let (equipment, _) = app
         .db
         .create_equipment(db::NewEquipment {
+            id: &db::new_id(),
             location_id: "loc-a",
             equipment_type: "vehicle",
             name: "Truck 1",
             description: "",
             status: "in_service",
             comment: "",
+            photo_asset_ids: &[],
             created_by: Some("caller"),
         })
         .await
@@ -619,6 +624,7 @@ async fn equipment_writes_and_log_entries_are_recorded_against_their_location() 
                 equipment_type: "vehicle",
                 name: "Truck 1",
                 description: "Isuzu",
+                photo_asset_ids: &[],
                 by: Some("caller"),
                 expected_version: equipment.version,
             },
@@ -772,6 +778,7 @@ async fn map_pin_writes_are_recorded_against_their_location() {
     let pin = app
         .db
         .create_map_pin(db::NewMapPin {
+            id: &db::new_id(),
             location_id: "loc-a",
             layer_id: None,
             pin_type: None,
@@ -780,6 +787,7 @@ async fn map_pin_writes_are_recorded_against_their_location() {
             longitude: 151.25,
             address: "",
             note: "",
+            photo_asset_ids: &[],
             created_by: Some("caller"),
         })
         .await
@@ -795,6 +803,7 @@ async fn map_pin_writes_are_recorded_against_their_location() {
                 longitude: 151.25,
                 address: "1 Example St",
                 note: "",
+                photo_asset_ids: &[],
                 by: Some("caller"),
                 expected_version: pin.version,
             },
@@ -813,6 +822,7 @@ async fn map_pin_writes_are_recorded_against_their_location() {
                 longitude: 0.0,
                 address: "",
                 note: "",
+                photo_asset_ids: &[],
                 by: Some("caller"),
                 expected_version: pin.version,
             },
@@ -1264,6 +1274,7 @@ async fn assigning_a_task_records_its_assignees() {
                 show_date: task.show_date,
                 recurrence: None,
                 assignee_ids: &assignees,
+                photo_asset_ids: &[],
                 by: Some("caller"),
                 expected_version: task.version,
             },

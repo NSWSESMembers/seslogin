@@ -16,6 +16,7 @@ use crate::request_metrics;
 use crate::telemetry::{self, OperationKind};
 
 pub mod assets;
+pub mod attached_photos;
 pub mod audit_log;
 pub mod auth;
 pub mod calendar;

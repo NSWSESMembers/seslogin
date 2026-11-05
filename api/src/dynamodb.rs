@@ -290,6 +290,32 @@ impl Item {
             Ok(vec![]) // missing field means empty set
         }
     }
+
+    /// Get an ordered list of strings (an `L` of `S`), erroring if it or any element is
+    /// of the wrong type. Missing or null is an empty Vec.
+    pub fn string_list_field(&self, field: &str) -> anyhow::Result<Vec<String>> {
+        match self.0.get(field) {
+            None => Ok(vec![]),
+            Some(v) if v.as_null().is_ok() => Ok(vec![]),
+            Some(v) => v
+                .as_l()
+                .map_err(|_| anyhow!("Item had list field of wrong type: {}", field))?
+                .iter()
+                .map(|e| {
+                    e.as_s()
+                        .cloned()
+                        .map_err(|_| anyhow!("Item had list field with a non-string: {}", field))
+                })
+                .collect(),
+        }
+    }
+}
+
+/// An ordered list of strings, as an `L` of `S`; `None` when empty, so the attribute is
+/// omitted (or removed) rather than stored empty.
+fn string_list_value(values: &[String]) -> Option<AttributeValue> {
+    (!values.is_empty())
+        .then(|| AttributeValue::L(values.iter().cloned().map(AttributeValue::S).collect()))
 }
 
 /// A row that could not be turned into its typed record.
@@ -1003,6 +1029,7 @@ impl TryInto<db::Task> for Item {
                 .ok_or_else(|| anyhow!("Task missing show_date"))?,
             recurrence,
             assignee_ids: self.string_set_field("assignee_ids")?,
+            photo_asset_ids: self.string_list_field("photo_asset_ids")?,
             open: self.has_field("open_location_id"),
             created_by: self.string_field("created_by")?,
             updated_by: self.string_field("updated_by")?,
@@ -1159,6 +1186,7 @@ impl TryInto<db::MapPin> for Item {
                 .ok_or_else(|| anyhow!("MapPin missing longitude"))?,
             address: self.string_field("address")?.unwrap_or_default(),
             note: self.string_field("note")?.unwrap_or_default(),
+            photo_asset_ids: self.string_list_field("photo_asset_ids")?,
             created_by: self.string_field("created_by")?,
             updated_by: self.string_field("updated_by")?,
             version: self.i64_field("v")?.unwrap_or(1) as u64,
@@ -1887,6 +1915,7 @@ impl TryInto<db::Equipment> for Item {
                 .map(|i| i as u64)
                 .unwrap_or(created_at),
             last_checked_at: self.i64_field("last_checked_at")?.map(|i| i as u64),
+            photo_asset_ids: self.string_list_field("photo_asset_ids")?,
             created_by: self.string_field("created_by")?,
             updated_by: self.string_field("updated_by")?,
             version: self.i64_field("v")?.unwrap_or(1) as u64,
@@ -7014,7 +7043,7 @@ impl db::Handler for Handler {
         if self.read_only {
             return Err(db::Error::MutationDisabled);
         }
-        let id = new_id();
+        let id = task.id.to_string();
         let now = crate::clock::now_sec();
         // Optional attributes are omitted when absent rather than stored as Null.
         let mut put = self
@@ -7060,6 +7089,9 @@ impl db::Handler for Handler {
                 AttributeValue::Ss(task.assignee_ids.to_vec()),
             );
         }
+        if let Some(photos) = string_list_value(task.photo_asset_ids) {
+            put = put.item("photo_asset_ids", photos);
+        }
         if let Some(by) = task.created_by {
             put = put.item("created_by", AttributeValue::S(by.to_string()));
         }
@@ -7079,6 +7111,7 @@ impl db::Handler for Handler {
             show_date: task.show_date,
             recurrence: task.recurrence,
             assignee_ids: task.assignee_ids.to_vec(),
+            photo_asset_ids: task.photo_asset_ids.to_vec(),
             open: true,
             created_by: task.created_by.map(str::to_string),
             updated_by: None,
@@ -7110,6 +7143,7 @@ impl db::Handler for Handler {
                 show_date,
                 recurrence,
                 assignee_ids,
+                photo_asset_ids,
                 by,
                 expected_version,
             } => {
@@ -7133,6 +7167,7 @@ impl db::Handler for Handler {
                     "assignee_ids",
                     (!assignee_ids.is_empty()).then(|| AttributeValue::Ss(assignee_ids.to_vec())),
                 );
+                update.set_or_remove("photo_asset_ids", string_list_value(photo_asset_ids));
                 update.set_or_remove("updated_by", by.map(|b| AttributeValue::S(b.to_string())));
                 Some(expected_version)
             }
@@ -7568,7 +7603,7 @@ impl db::Handler for Handler {
         if self.read_only {
             return Err(db::Error::MutationDisabled);
         }
-        let id = new_id();
+        let id = pin.id.to_string();
         let now = crate::clock::now_sec();
         // Optional attributes are omitted when absent rather than stored as Null.
         let mut put = self
@@ -7600,6 +7635,9 @@ impl db::Handler for Handler {
         if !pin.note.is_empty() {
             put = put.item("note", AttributeValue::S(pin.note.to_string()));
         }
+        if let Some(photos) = string_list_value(pin.photo_asset_ids) {
+            put = put.item("photo_asset_ids", photos);
+        }
         if let Some(by) = pin.created_by {
             put = put.item("created_by", AttributeValue::S(by.to_string()));
         }
@@ -7619,6 +7657,7 @@ impl db::Handler for Handler {
             longitude: pin.longitude,
             address: pin.address.to_string(),
             note: pin.note.to_string(),
+            photo_asset_ids: pin.photo_asset_ids.to_vec(),
             created_by: pin.created_by.map(str::to_string),
             updated_by: None,
             version: 1,
@@ -7649,6 +7688,7 @@ impl db::Handler for Handler {
                 longitude,
                 address,
                 note,
+                photo_asset_ids,
                 by,
                 expected_version,
             } => {
@@ -7671,6 +7711,7 @@ impl db::Handler for Handler {
                     "note",
                     (!note.is_empty()).then(|| AttributeValue::S(note.to_string())),
                 );
+                update.set_or_remove("photo_asset_ids", string_list_value(photo_asset_ids));
                 update.set_or_remove("updated_by", by.map(|b| AttributeValue::S(b.to_string())));
                 (
                     format!("{live} AND v = :expected_version"),
@@ -8478,7 +8519,7 @@ impl db::Handler for Handler {
         let now_us = crate::clock::now_us();
         let now = now_us / 1_000_000;
         let row = db::Equipment {
-            id: new_id(),
+            id: equipment.id.to_string(),
             location_id: equipment.location_id.to_string(),
             equipment_type: equipment.equipment_type.to_string(),
             name: equipment.name.to_string(),
@@ -8486,6 +8527,7 @@ impl db::Handler for Handler {
             status: equipment.status.to_string(),
             status_changed_at: now,
             last_checked_at: None,
+            photo_asset_ids: equipment.photo_asset_ids.to_vec(),
             created_by: equipment.created_by.map(str::to_string),
             updated_by: None,
             version: 1,
@@ -8532,6 +8574,9 @@ impl db::Handler for Handler {
                 AttributeValue::S(row.description.clone()),
             );
         }
+        if let Some(photos) = string_list_value(&row.photo_asset_ids) {
+            item.insert("photo_asset_ids".to_string(), photos);
+        }
         if let Some(by) = &row.created_by {
             item.insert("created_by".to_string(), AttributeValue::S(by.clone()));
         }
@@ -8576,6 +8621,7 @@ impl db::Handler for Handler {
                 equipment_type,
                 name,
                 description,
+                photo_asset_ids,
                 by,
                 expected_version,
             } => {
@@ -8588,6 +8634,7 @@ impl db::Handler for Handler {
                     "description",
                     (!description.is_empty()).then(|| AttributeValue::S(description.to_string())),
                 );
+                update.set_or_remove("photo_asset_ids", string_list_value(photo_asset_ids));
                 update.set_or_remove("updated_by", by.map(|b| AttributeValue::S(b.to_string())));
                 (
                     format!("{live} AND v = :expected_version"),
@@ -10044,8 +10091,8 @@ mod tests {
         AuditQueryPlan, Item, asset_item, asset_ref_item, audit_entries_from_items, audit_items,
         audit_query_plan, batch_get_backoff, client_info_attributes, contact_key, counter_count,
         hydrate_items, hydrate_items_lenient, nitc_event_key, photo_item, scan_cursor_from_key,
-        topic_date_key, trophy_holder_item, trophy_notice_item, trophy_reign_item,
-        unprocessed_keys_for, visible_photo_start_key,
+        string_list_value, topic_date_key, trophy_holder_item, trophy_notice_item,
+        trophy_reign_item, unprocessed_keys_for, visible_photo_start_key,
     };
     use crate::db;
     use crate::db::Category;
@@ -10846,6 +10893,21 @@ mod tests {
         let read: db::Asset = Item(item).try_into().unwrap();
         assert_eq!(read.expires_at, None);
         assert_eq!(read.camera_make, None);
+    }
+
+    #[test]
+    fn photo_asset_id_lists_keep_their_order_and_are_omitted_when_empty() {
+        assert_eq!(string_list_value(&[]), None);
+        let ids = vec!["b".to_string(), "a".to_string()];
+        let value = string_list_value(&ids).unwrap();
+        let item = Item(HashMap::from([("photo_asset_ids".to_string(), value)]));
+        assert_eq!(item.string_list_field("photo_asset_ids").unwrap(), ids);
+        assert!(item.string_list_field("missing").unwrap().is_empty());
+        let wrong = Item(HashMap::from([(
+            "photo_asset_ids".to_string(),
+            AttributeValue::Ss(ids.clone()),
+        )]));
+        assert!(wrong.string_list_field("photo_asset_ids").is_err());
     }
 
     #[test]

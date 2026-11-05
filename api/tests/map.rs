@@ -544,6 +544,7 @@ async fn a_pin_type_is_optional_and_unknown_ones_read_as_none() {
     let rec = app
         .db()
         .create_map_pin(NewMapPin {
+            id: &seslogin::db::new_id(),
             location_id: "loc-a",
             layer_id: None,
             pin_type: Some("volcano"),
@@ -552,6 +553,7 @@ async fn a_pin_type_is_optional_and_unknown_ones_read_as_none() {
             longitude: 0.0,
             address: "",
             note: "",
+            photo_asset_ids: &[],
             created_by: None,
         })
         .await
