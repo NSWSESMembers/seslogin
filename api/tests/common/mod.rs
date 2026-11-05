@@ -1563,7 +1563,7 @@ impl db::Handler for FakeDb {
     async fn create_task(&self, task: db::NewTask<'_>) -> db::Result<db::Task> {
         let now = seslogin::clock::now_sec();
         let row = db::Task {
-            id: db::new_id(),
+            id: task.id.to_string(),
             location_id: task.location_id.to_string(),
             list_id: task.list_id.map(str::to_string),
             title: task.title.to_string(),
@@ -1572,6 +1572,7 @@ impl db::Handler for FakeDb {
             show_date: task.show_date,
             recurrence: task.recurrence,
             assignee_ids: task.assignee_ids.to_vec(),
+            photo_asset_ids: task.photo_asset_ids.to_vec(),
             open: true,
             created_by: task.created_by.map(str::to_string),
             updated_by: None,
@@ -1607,6 +1608,7 @@ impl db::Handler for FakeDb {
                 show_date,
                 recurrence,
                 assignee_ids,
+                photo_asset_ids,
                 by,
                 expected_version,
             } => {
@@ -1614,6 +1616,7 @@ impl db::Handler for FakeDb {
                     return Err(not_found());
                 }
                 t.assignee_ids = assignee_ids.to_vec();
+                t.photo_asset_ids = photo_asset_ids.to_vec();
                 t.list_id = list_id.map(str::to_string);
                 t.title = title.to_string();
                 t.description = description.map(str::to_string);
@@ -1880,7 +1883,7 @@ impl db::Handler for FakeDb {
     ) -> db::Result<(db::Equipment, db::EquipmentLogEntry)> {
         let now = seslogin::clock::now_sec();
         let row = db::Equipment {
-            id: db::new_id(),
+            id: equipment.id.to_string(),
             location_id: equipment.location_id.to_string(),
             equipment_type: equipment.equipment_type.to_string(),
             name: equipment.name.to_string(),
@@ -1888,6 +1891,7 @@ impl db::Handler for FakeDb {
             status: equipment.status.to_string(),
             status_changed_at: now,
             last_checked_at: None,
+            photo_asset_ids: equipment.photo_asset_ids.to_vec(),
             created_by: equipment.created_by.map(str::to_string),
             updated_by: None,
             version: 1,
@@ -1935,12 +1939,14 @@ impl db::Handler for FakeDb {
                 equipment_type,
                 name,
                 description,
+                photo_asset_ids,
                 by,
                 expected_version,
             } => {
                 if e.version != expected_version {
                     return Err(not_found());
                 }
+                e.photo_asset_ids = photo_asset_ids.to_vec();
                 e.equipment_type = equipment_type.to_string();
                 e.name = name.to_string();
                 e.description = description.to_string();
@@ -2138,7 +2144,7 @@ impl db::Handler for FakeDb {
     async fn create_map_pin(&self, pin: db::NewMapPin<'_>) -> db::Result<db::MapPin> {
         let now = seslogin::clock::now_sec();
         let row = db::MapPin {
-            id: db::new_id(),
+            id: pin.id.to_string(),
             location_id: pin.location_id.to_string(),
             layer_id: pin.layer_id.map(str::to_string),
             pin_type: pin.pin_type.map(str::to_string),
@@ -2147,6 +2153,7 @@ impl db::Handler for FakeDb {
             longitude: pin.longitude,
             address: pin.address.to_string(),
             note: pin.note.to_string(),
+            photo_asset_ids: pin.photo_asset_ids.to_vec(),
             created_by: pin.created_by.map(str::to_string),
             updated_by: None,
             version: 1,
@@ -2182,12 +2189,14 @@ impl db::Handler for FakeDb {
                 longitude,
                 address,
                 note,
+                photo_asset_ids,
                 by,
                 expected_version,
             } => {
                 if p.version != expected_version {
                     return Err(not_found());
                 }
+                p.photo_asset_ids = photo_asset_ids.to_vec();
                 p.layer_id = layer_id.map(str::to_string);
                 p.pin_type = pin_type.map(str::to_string);
                 p.title = title.to_string();

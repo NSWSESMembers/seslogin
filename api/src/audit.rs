@@ -316,6 +316,12 @@ fn string_set(v: &[String]) -> Option<Value> {
     Some(json!(sorted))
 }
 
+/// An ordered list of strings as a JSON array, or absent when empty (an empty list is
+/// not stored). Unlike [`string_set`] the order is kept: reordering photos is a change.
+fn string_list(v: &[String]) -> Option<Value> {
+    (!v.is_empty()).then(|| json!(v))
+}
+
 fn map(v: &serde_json::Map<String, Value>) -> Option<Value> {
     Some(Value::Object(v.clone()))
 }
@@ -1076,6 +1082,7 @@ fn task_fields(t: &db::Task) -> Fields {
                 .map(|r| json!({ "every": r.every, "unit": r.unit.as_str() })),
         )
         .with("assignee_ids", string_set(&t.assignee_ids))
+        .with("photo_asset_ids", string_list(&t.photo_asset_ids))
         .with("completed_at", opt_num(t.completed_at))
         .with("last_completed_at", opt_num(t.last_completed_at))
 }
@@ -1179,6 +1186,7 @@ fn map_pin_fields(p: &db::MapPin) -> Fields {
         )
         .with("layer_id", opt_text(p.layer_id.as_deref()))
         .with("pin_type", opt_text(p.pin_type.as_deref()))
+        .with("photo_asset_ids", string_list(&p.photo_asset_ids))
 }
 
 pub fn map_pin_create_changes(p: &db::MapPin) -> Vec<AuditFieldChange> {
@@ -1372,6 +1380,7 @@ fn equipment_fields(e: &db::Equipment) -> Fields {
             "description",
             opt_text(Some(e.description.as_str()).filter(|d| !d.is_empty())),
         )
+        .with("photo_asset_ids", string_list(&e.photo_asset_ids))
 }
 
 /// A new piece of equipment, with the status it was added in.

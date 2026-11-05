@@ -533,6 +533,16 @@ type Equipment {
 	Plain text; empty when there is none.
 	"""
 	description: String!
+	"""
+	The attached photos (at most 10), in the order shown. Their `url(variant:)` is
+	what to show; one that can no longer be read is left out.
+	"""
+	photos: [Asset!]!
+	"""
+	The attached photos' asset IDs, in order: pass these back, changed, as
+	`photoAssetIds`.
+	"""
+	photoAssetIds: [ID!]!
 	status: EquipmentStatus!
 	"""
 	When the status last changed, or the equipment was added.
@@ -1072,6 +1082,16 @@ type MapPin {
 	A longer note about the place, plain text; empty when there is none.
 	"""
 	note: String!
+	"""
+	The attached photos (at most 10), in the order shown. Their `url(variant:)` is
+	what to show; one that can no longer be read is left out.
+	"""
+	photos: [Asset!]!
+	"""
+	The attached photos' asset IDs, in order: pass these back, changed, as
+	`photoAssetIds`.
+	"""
+	photoAssetIds: [ID!]!
 	locationId: ID!
 	location: Location!
 	"""
@@ -1349,16 +1369,20 @@ type MutationRoot {
 	task until that day; a recurring task with no date is due today.
 	`assigneeIds` assigns it to members (by person ID, from any unit, at most 20),
 	who are notified; with none it is the whole unit's.
+	`photoAssetIds` attaches up to 10 photos, in order: ready images uploaded for this
+	unit (with `createAssetUpload`), or ones from its photo stream.
 	"""
-	createTask(locationId: ID!, title: String!, description: String, listId: ID, dueDate: String, recurrence: TaskRecurrenceInput, assigneeIds: [ID!]): Task!
+	createTask(locationId: ID!, title: String!, description: String, listId: ID, dueDate: String, recurrence: TaskRecurrenceInput, assigneeIds: [ID!], photoAssetIds: [ID!]): Task!
 	"""
 	Change an open task. Omitted arguments are left as they are; `null` clears
 	`description`, `listId`, `dueDate` or `recurrence`. `assigneeIds` replaces who
 	it is assigned to (an empty list unassigns everyone); members newly assigned
 	are notified. Fails with `CONFLICT` if the task is no longer at
 	`expectedVersion`.
+	`photoAssetIds` replaces the attached photos (an empty list removes them all;
+	omitted, they are left as they are).
 	"""
-	updateTask(id: ID!, expectedVersion: Int!, title: String, description: String, listId: ID, dueDate: String, recurrence: TaskRecurrenceInput, assigneeIds: [ID!]): Task!
+	updateTask(id: ID!, expectedVersion: Int!, title: String, description: String, listId: ID, dueDate: String, recurrence: TaskRecurrenceInput, assigneeIds: [ID!], photoAssetIds: [ID!]): Task!
 	"""
 	Complete a task. A recurring task stays open, due again its interval after
 	today; any other task is done. Fails with `CONFLICT` if someone else completed
@@ -1426,14 +1450,18 @@ type MutationRoot {
 	Add a piece of equipment to a location's register, logged in `status` (in
 	service unless given) with an optional `comment`. Any member who can use the
 	unit in Tally may.
+	`photoAssetIds` attaches up to 10 photos, in order: ready images uploaded for this
+	unit (with `createAssetUpload`), or ones from its photo stream.
 	"""
-	createEquipment(locationId: ID!, type: EquipmentType!, name: String!, description: String, status: EquipmentStatus! = IN_SERVICE, comment: String): Equipment!
+	createEquipment(locationId: ID!, type: EquipmentType!, name: String!, description: String, status: EquipmentStatus! = IN_SERVICE, comment: String, photoAssetIds: [ID!]): Equipment!
 	"""
-	Edit a piece of equipment's type, name or description; omitted arguments are
-	left as they are. The status is changed with `changeEquipmentStatus`. Fails with
-	`CONFLICT` if it is no longer at `expectedVersion`.
+	Edit a piece of equipment's type, name, description or photos; omitted arguments
+	are left as they are. The status is changed with `changeEquipmentStatus`. Fails
+	with `CONFLICT` if it is no longer at `expectedVersion`.
+	`photoAssetIds` replaces the attached photos (an empty list removes them all;
+	omitted, they are left as they are).
 	"""
-	updateEquipment(id: ID!, expectedVersion: Int!, type: EquipmentType, name: String, description: String): Equipment!
+	updateEquipment(id: ID!, expectedVersion: Int!, type: EquipmentType, name: String, description: String, photoAssetIds: [ID!]): Equipment!
 	"""
 	Delete a piece of equipment. Returns its ID.
 	"""
@@ -1472,14 +1500,18 @@ type MutationRoot {
 	"""
 	Add a pin to a location's shared map, optionally of a `type` (a plain pin
 	without). Any member who can use the unit in Tally may.
+	`photoAssetIds` attaches up to 10 photos, in order: ready images uploaded for this
+	unit (with `createAssetUpload`), or ones from its photo stream.
 	"""
-	createMapPin(locationId: ID!, title: String!, latitude: Float!, longitude: Float!, address: String, note: String, layerId: ID, type: MapPinType): MapPin!
+	createMapPin(locationId: ID!, title: String!, latitude: Float!, longitude: Float!, address: String, note: String, layerId: ID, type: MapPinType, photoAssetIds: [ID!]): MapPin!
 	"""
 	Change a map pin. Omitted arguments are left as they are; `layerId: null` takes
 	it off its layer and `type: null` makes it a plain pin. Fails with `CONFLICT` if the pin is no longer at
 	`expectedVersion`.
+	`photoAssetIds` replaces the attached photos (an empty list removes them all;
+	omitted, they are left as they are).
 	"""
-	updateMapPin(id: ID!, expectedVersion: Int!, title: String, latitude: Float, longitude: Float, address: String, note: String, layerId: ID, type: MapPinType): MapPin!
+	updateMapPin(id: ID!, expectedVersion: Int!, title: String, latitude: Float, longitude: Float, address: String, note: String, layerId: ID, type: MapPinType, photoAssetIds: [ID!]): MapPin!
 	"""
 	Delete a map pin. Returns its ID.
 	"""
@@ -3145,6 +3177,16 @@ type Task {
 	out, so this can be empty even when `assigneeIds` isn't.
 	"""
 	assignees: [Person!]!
+	"""
+	The attached photos (at most 10), in the order shown. Their `url(variant:)` is
+	what to show; one that can no longer be read is left out.
+	"""
+	photos: [Asset!]!
+	"""
+	The attached photos' asset IDs, in order: pass these back, changed, as
+	`photoAssetIds`.
+	"""
+	photoAssetIds: [ID!]!
 	"""
 	Whether the member asking is one of those it is assigned to.
 	"""

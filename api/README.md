@@ -686,6 +686,7 @@ A location's shared to-do list, used by the Tally app (`src/graphql/tasks.rs`, r
   being deleted, but only live members can be added. `Task.assigneeIds` lists them all,
   `Task.assignees` the live ones by name, and `Task.assignedToViewer` says whether the caller
   is one. Members newly assigned get a notification (see "Notifications").
+- **Photos:** up to 10, through `photoAssetIds` on `createTask` and `updateTask`; see "Attached photos".
 - **Concurrency:** `updateTask` and `completeTask` take `expectedVersion`; if the task was
   changed or completed since (say, two people tapping Complete at once), the second gets a
   `CONFLICT` error rather than skipping an occurrence.
@@ -1003,6 +1004,7 @@ A location's equipment register, used by the Tally app (`src/graphql/equipment.r
   line (max 200 characters); `description` is trimmed plain text (max 5,000). `status` is
   `IN_SERVICE`, `HAS_ISSUE` (still usable, but something needs fixing), `OUT_OF_SERVICE`,
   `MISSING` or `BORROWED`.
+- **Photos:** up to 10, through `photoAssetIds` on `createEquipment` and `updateEquipment`; see "Attached photos".
 - **The log:** the status is never edited directly. `changeEquipmentStatus(id, status,
 comment)` changes it and logs the change with a comment saying why (required, max 1,000);
   `checkEquipment(id, comment)` logs that the caller checked it, comment optional, and leaves
@@ -1185,6 +1187,7 @@ A location's shared map of pins, used by the Tally app (`src/graphql/map.rs`, ru
   An absent address or note reads as `""`. `type` (`ACCESS`, `ENTRY`, `FLOOD` or `HAZARD`)
   says what the pin marks, which the app shows as an icon; null for a plain pin, and for a
   stored type this server doesn't know, so clients should cope with types being added.
+- **Photos:** up to 10, through `photoAssetIds` on `createMapPin` and `updateMapPin`; see "Attached photos".
 - **Writes:** `createMapPin`, `updateMapPin` (omitted arguments unchanged, `layerId: null`
   takes the pin off its layer, `type: null` makes it a plain pin), `deleteMapPin`, `createMapLayer`, `renameMapLayer`,
   `deleteMapLayer`. Deleting a layer leaves its pins on the location's map (`MapPin.layer`
@@ -1502,6 +1505,29 @@ uploads") shown to everyone who can use the unit in Tally (`require_photo_access
   photo-sweep`; a failure is logged and neither stops session retirement nor the stale-sync
   alert, and fails the invocation at the end. By hand: `cli photo sweep` (global `--dry-run`
   to preview). The stored image objects are not deleted by the sweep.
+
+## Attached photos
+
+Tasks, equipment and map pins can each carry up to 10 photos (`src/graphql/attached_photos.rs`;
+storage is each row's `photo_asset_ids` in SCHEMA.md). Access is the owner's own (`require_task_access`,
+`require_equipment_access`, `require_map_access`).
+
+- **Reading:** `Task.photos`, `Equipment.photos` and `MapPin.photos` are the attached assets in
+  order (`url(variant:)` is the image; one that can no longer be read is left out), and
+  `photoAssetIds` their IDs.
+- **Writing:** `photoAssetIds` on `createTask`/`updateTask`, `createEquipment`/`updateEquipment`
+  and `createMapPin`/`updateMapPin`. On an update, omitted leaves the photos alone and a list
+  replaces them, in that order (`[]` removes them all).
+- **What may be attached:** any ready image asset at the owner's unit: one the member just
+  uploaded (see "Assets and uploads"), or one from the unit's photo stream (`Photo.asset.id`),
+  whoever uploaded it. More than 10, the same asset twice, or an asset that is missing, not
+  ready or at another unit is `BAD_REQUEST`. A photo already attached may stay attached
+  whatever has become of its asset.
+- **References:** each attached asset has an `asset_ref` owned by `task#<id>`, `equipment#<id>`
+  or `map_pin#<id>`, written (checking the asset is ready at the unit) before the owner first
+  names it and removed after the owner stops naming it or is deleted. So a photo taken from
+  the stream stays attached after the stream's sweep drops its own reference. A reference left
+  behind by a failed write only delays the future garbage collector.
 
 ## Media
 

@@ -16,6 +16,8 @@ use async_graphql::dataloader::DataLoader;
 use async_graphql::{Context, Enum, ID, InputObject, MaybeUndefined, Object, SimpleObject};
 use std::sync::Arc;
 
+use super::assets::Asset;
+use super::attached_photos;
 use super::auth::require_task_access;
 use super::dataloader::DatabaseLoader;
 use super::error::{ApiError, ErrorCode};
@@ -195,6 +197,18 @@ impl<A: App + HasDb + Send + Sync + 'static> Task<A> {
             )
         });
         Ok(people)
+    }
+
+    /// The attached photos (at most 10), in the order shown. Their `url(variant:)` is
+    /// what to show; one that can no longer be read is left out.
+    async fn photos(&self, ctx: &Context<'_>) -> Result<Vec<Asset<A>>> {
+        attached_photos::load(ctx, &self.rec.photo_asset_ids).await
+    }
+
+    /// The attached photos' asset IDs, in order: pass these back, changed, as
+    /// `photoAssetIds`.
+    async fn photo_asset_ids(&self) -> Vec<ID> {
+        self.rec.photo_asset_ids.iter().cloned().map(ID).collect()
     }
 
     /// Whether the member asking is one of those it is assigned to.
@@ -439,6 +453,7 @@ pub(super) struct CreateTaskArgs {
     pub due_date: Option<String>,
     pub recurrence: Option<TaskRecurrenceInput>,
     pub assignee_ids: Option<Vec<ID>>,
+    pub photo_asset_ids: Option<Vec<ID>>,
 }
 
 pub(super) async fn create_task<A: App + HasDb + Send + Sync + 'static>(
@@ -464,11 +479,29 @@ pub(super) async fn create_task<A: App + HasDb + Send + Sync + 'static>(
     }
     let assignee_ids =
         assignees(app.db(), args.assignee_ids.as_deref().unwrap_or(&[]), &[]).await?;
+    let photo_asset_ids = attached_photos::validate(
+        app,
+        &args.location_id,
+        args.photo_asset_ids.as_deref().unwrap_or(&[]),
+        &[],
+    )
+    .await?;
     let today = tasks::today_sydney();
     let (due_date, show_date) = tasks::schedule(due_date, recurrence, today, today);
+    let id = db::new_id();
+    let photo_ids: Vec<&str> = photo_asset_ids.iter().map(String::as_str).collect();
+    attached_photos::add_refs(
+        app,
+        attached_photos::TASK,
+        &id,
+        &args.location_id,
+        &photo_ids,
+    )
+    .await?;
     let rec = app
         .db()
         .create_task(db::NewTask {
+            id: &id,
             location_id: &args.location_id,
             list_id: args.list_id.as_ref().map(|l| l.as_str()),
             title: &title,
@@ -477,6 +510,7 @@ pub(super) async fn create_task<A: App + HasDb + Send + Sync + 'static>(
             show_date,
             recurrence,
             assignee_ids: &assignee_ids,
+            photo_asset_ids: &photo_asset_ids,
             created_by: caller_id(ctx),
         })
         .await?;
@@ -494,6 +528,7 @@ pub(super) struct UpdateTaskArgs {
     pub due_date: MaybeUndefined<String>,
     pub recurrence: MaybeUndefined<TaskRecurrenceInput>,
     pub assignee_ids: Option<Vec<ID>>,
+    pub photo_asset_ids: Option<Vec<ID>>,
 }
 
 pub(super) async fn update_task<A: App + HasDb + Send + Sync + 'static>(
@@ -535,6 +570,20 @@ pub(super) async fn update_task<A: App + HasDb + Send + Sync + 'static>(
         Some(ids) => assignees(app.db(), ids, &rec.assignee_ids).await?,
         None => rec.assignee_ids.clone(),
     };
+    let photo_asset_ids = match &args.photo_asset_ids {
+        Some(ids) => {
+            attached_photos::validate(app, &rec.location_id, ids, &rec.photo_asset_ids).await?
+        }
+        None => rec.photo_asset_ids.clone(),
+    };
+    attached_photos::add_refs(
+        app,
+        attached_photos::TASK,
+        &rec.id,
+        &rec.location_id,
+        &attached_photos::added(&rec.photo_asset_ids, &photo_asset_ids),
+    )
+    .await?;
     let (due_date, show_date) = tasks::schedule(
         due_date,
         recurrence,
@@ -542,6 +591,7 @@ pub(super) async fn update_task<A: App + HasDb + Send + Sync + 'static>(
         tasks::today_sydney(),
     );
     let previous = rec.assignee_ids.clone();
+    let previous_photos = rec.photo_asset_ids.clone();
     let rec = app
         .db()
         .update_task(
@@ -554,12 +604,20 @@ pub(super) async fn update_task<A: App + HasDb + Send + Sync + 'static>(
                 show_date,
                 recurrence,
                 assignee_ids: &assignee_ids,
+                photo_asset_ids: &photo_asset_ids,
                 by: caller_id(ctx),
                 expected_version,
             },
         )
         .await
         .map_err(conflict)?;
+    attached_photos::drop_refs(
+        app,
+        attached_photos::TASK,
+        &rec.id,
+        &attached_photos::added(&rec.photo_asset_ids, &previous_photos),
+    )
+    .await;
     let told = tasks::newly_assigned(&previous, &rec.assignee_ids);
     tasks::notify_assigned(app, &rec, &told).await;
     Ok(Task::new(rec))
@@ -608,6 +666,13 @@ pub(super) async fn delete_task<A: App + HasDb + Send + Sync + 'static>(
             db::Error::NotFound(_) => ApiError::not_found("Task", id).into(),
             e => anyhow::Error::from(e),
         })?;
+    attached_photos::drop_refs(
+        app,
+        attached_photos::TASK,
+        &rec.id,
+        &attached_photos::added(&[], &rec.photo_asset_ids),
+    )
+    .await;
     Ok(ID(rec.id))
 }
 
