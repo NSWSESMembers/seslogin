@@ -5,16 +5,17 @@ use serde_json::{Value, json};
 use seslogin::audit::{self, AuditContext, AuditingHandler};
 use seslogin::db::Handler;
 use seslogin::dynamodb;
+use seslogin::photos;
 use seslogin::request_metrics::{self, RequestMetrics};
 use seslogin::session_retire;
 use std::sync::Arc;
 
 const STALE_THRESHOLD_SECS: u64 = 30 * 3600;
 
-/// The daily housekeeping run: retire dead kiosk sessions, then alert on locations
-/// whose member sync has gone stale. The two are independent — a failed retirement
-/// must not suppress the sync alert — so both always run, and the invocation fails
-/// afterwards if the retirement did.
+/// The daily housekeeping run: retire dead kiosk sessions, sweep expired photos, then
+/// alert on locations whose member sync has gone stale. The three are independent — a
+/// failed retirement or sweep must not suppress the others or the sync alert — so all
+/// always run, and the invocation fails afterwards if the retirement or the sweep did.
 async fn handler(_event: LambdaEvent<Value>) -> Result<Value, LambdaError> {
     let metrics = Arc::new(RequestMetrics::default());
     let result = request_metrics::METRICS
@@ -52,8 +53,30 @@ async fn handler(_event: LambdaEvent<Value>) -> Result<Value, LambdaError> {
                 tracing::error!("Session retirement failed: {e}");
             }
 
+            let swept = audit::scope(
+                AuditContext::system("photo-sweep"),
+                photos::sweep(&db, now, false),
+            )
+            .await
+            .map_err(anyhow::Error::from)
+            .and_then(|report| {
+                if report.has_errors() {
+                    Err(anyhow!(
+                        "photo sweep: {} swept, {} failed",
+                        report.swept,
+                        report.failed
+                    ))
+                } else {
+                    Ok(report.swept)
+                }
+            });
+            if let Err(e) = &swept {
+                tracing::error!("Photo sweep failed: {e}");
+            }
+
             let mut out = check_member_sync(&db, &sns_topic_arn, now).await?;
             out["sessions_retired"] = json!(retired?);
+            out["photos_swept"] = json!(swept?);
             Ok::<_, anyhow::Error>(out)
         })
         .await;

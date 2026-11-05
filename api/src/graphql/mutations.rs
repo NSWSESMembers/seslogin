@@ -49,6 +49,7 @@ use super::map::{self, MapLayer, MapPin, MapPinType};
 use super::notes::{self, Note, NoteFolder};
 use super::notifications::{self, MarkNotificationsReadPayload};
 use super::on_call::{self, OnCallRole};
+use super::photos::{self, Photo};
 use super::query::{QuickPick, build_quick_pick};
 use super::reservations::{self, EquipmentReservation};
 use super::self_sign_in::{open_period_at, require_linked_person, sign_in_location_id};
@@ -2959,6 +2960,27 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sy
     #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn complete_asset_upload(&self, ctx: &Context<'_>, id: ID) -> Result<Asset<A>> {
         assets::complete_asset_upload(ctx, self.app.as_ref(), &id).await
+    }
+
+    /// Add a ready image the caller uploaded to a unit's photo stream. `NOT_FOUND` for
+    /// an unknown asset, `BAD_REQUEST` if it isn't complete or belongs to another unit,
+    /// `FORBIDDEN` if someone else uploaded it, `RATE_LIMITED` after 100 photos at the
+    /// unit in a Sydney day.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn create_photo(
+        &self,
+        ctx: &Context<'_>,
+        location_id: ID,
+        asset_id: ID,
+    ) -> Result<Photo<A>> {
+        photos::create_photo(ctx, self.app.as_ref(), &location_id, &asset_id).await
+    }
+
+    /// Remove a photo from the stream for everyone now; it is deleted within seven days.
+    /// There is no undo. `NOT_FOUND` if it is unknown or already hidden.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn hide_photo(&self, ctx: &Context<'_>, id: ID) -> Result<Photo<A>> {
+        photos::hide_photo(ctx, self.app.as_ref(), &id).await
     }
 
     /// Add a note to a location's shared notebook. Any member who can use the

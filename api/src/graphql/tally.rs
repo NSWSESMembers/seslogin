@@ -22,6 +22,7 @@ use super::location_share::{self, LocationShare};
 use super::map::{self, MapLayer, MapPin};
 use super::notes::{self, Note, NoteFolder};
 use super::on_call::{self, OnCallRole};
+use super::photos::{self, PhotoConnection};
 use super::query::Person;
 use super::reservations::{self, EquipmentReservation};
 use super::shared_contacts::{self, SharedContact};
@@ -290,6 +291,23 @@ impl<A: App + HasDb + Send + Sync + 'static> TallyLocation<A> {
     /// The unit's task lists, by name.
     async fn task_lists(&self, ctx: &Context<'_>) -> Result<Vec<TaskList<A>>> {
         tasks::location_task_lists(ctx, &self.rec.id).await
+    }
+
+    /// The unit's photos, newest first by when they were taken (else when they were
+    /// added), for 30 days. `first` is at most 200. Pass the previous page's `endCursor`
+    /// as `after`. See `graphql::photos`.
+    async fn photos(
+        &self,
+        ctx: &Context<'_>,
+        #[graphql(default_with = "Some(60)")] first: Option<i64>,
+        after: Option<String>,
+    ) -> Result<PhotoConnection<A>> {
+        photos::location_photos(ctx, &self.rec.id, first, after).await
+    }
+
+    /// How many more photos the unit may add today (100 a Sydney day), never below 0.
+    async fn photo_uploads_remaining_today(&self, ctx: &Context<'_>) -> Result<i64> {
+        photos::uploads_remaining_today::<A>(ctx, &self.rec.id).await
     }
 
     /// The unit's notes (its shared notebook), most recently changed first.

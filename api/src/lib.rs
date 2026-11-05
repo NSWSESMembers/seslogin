@@ -47,6 +47,7 @@ pub mod offline_sync;
 pub mod on_call;
 pub mod passkey;
 pub mod period_link;
+pub mod photos;
 pub mod queue;
 pub mod realtime;
 pub mod request_metrics;
