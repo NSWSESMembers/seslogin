@@ -22,6 +22,7 @@ resource "aws_lambda_function" "test_api" {
       # from the test tables (a NITC export could reach Beacon).
       DB_BACKEND           = "dynamodb"
       DB_PREFIX            = var.db_prefix_test
+      ASSET_BUCKET         = aws_s3_bucket.assets_test.bucket
       READ_ONLY            = "false"
       TURNSTILE_SECRET_KEY = var.turnstile_secret_key_test
       ABLY_API_KEY         = var.ably_api_key

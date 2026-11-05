@@ -389,6 +389,43 @@ const TABLES: &[Table] = &[
         ttl: None,
     },
     Table {
+        name: "asset",
+        hash: "id",
+        range: None,
+        attrs: &[Attr("id", S)],
+        gsis: &[],
+        ttl: Some("expires_at"),
+    },
+    Table {
+        name: "asset_ref",
+        hash: "asset_id",
+        range: Some("owner"),
+        attrs: &[Attr("asset_id", S), Attr("owner", S)],
+        gsis: &[],
+        ttl: None,
+    },
+    Table {
+        name: "photo",
+        hash: "id",
+        range: None,
+        attrs: &[
+            Attr("id", S),
+            Attr("visible_location_id", S),
+            Attr("sort_key", S),
+            Attr("sweep", S),
+            Attr("expires_at", N),
+        ],
+        gsis: &[
+            all(
+                "visible_location_id-sort_key-index",
+                "visible_location_id",
+                Some("sort_key"),
+            ),
+            all("sweep-expires_at-index", "sweep", Some("expires_at")),
+        ],
+        ttl: None,
+    },
+    Table {
         name: "notification",
         hash: "person_id",
         range: Some("sk"),

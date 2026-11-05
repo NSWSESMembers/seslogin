@@ -1029,6 +1029,102 @@ resource "aws_dynamodb_table" "test_trophy" {
   }
 }
 
+# Assets: one row per uploaded file (image now, other files later), scoped to a
+# location. status goes pending -> ready; expires_at is a TTL set only while pending,
+# so an upload that is never completed disappears. The file itself is in the assets
+# bucket (assets.tf). Nothing else is indexed: the future garbage collector scans.
+resource "aws_dynamodb_table" "test_asset" {
+  name         = "${var.db_prefix_test}_asset"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "id"
+
+  attribute {
+    name = "id"
+    type = "S"
+  }
+
+  ttl {
+    attribute_name = "expires_at"
+    enabled        = true
+  }
+}
+
+# Asset references: one row per owner using an asset (owner = <type>#<id>, e.g.
+# photo#abc123), so a garbage collector can tell an unused asset from a live one.
+# Written before or with the owner and removed after or with it.
+resource "aws_dynamodb_table" "test_asset_ref" {
+  name         = "${var.db_prefix_test}_asset_ref"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "asset_id"
+  range_key    = "owner"
+
+  attribute {
+    name = "asset_id"
+    type = "S"
+  }
+  attribute {
+    name = "owner"
+    type = "S"
+  }
+}
+
+# Photos (Tally): a unit's 30-day photo stream. visible-location index lists the
+# stream newest first by sort_key; the sparse sweep index (sweep = "1" until swept)
+# finds photos due for removal. expires_at is deliberately NOT a TTL attribute: the
+# sweep has to run application code to remove the photo's asset reference.
+resource "aws_dynamodb_table" "test_photo" {
+  name         = "${var.db_prefix_test}_photo"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "id"
+
+  attribute {
+    name = "id"
+    type = "S"
+  }
+  attribute {
+    name = "visible_location_id"
+    type = "S"
+  }
+  attribute {
+    name = "sort_key"
+    type = "S"
+  }
+  attribute {
+    name = "sweep"
+    type = "S"
+  }
+  attribute {
+    name = "expires_at"
+    type = "N"
+  }
+
+  global_secondary_index {
+    name = "visible_location_id-sort_key-index"
+    key_schema {
+      attribute_name = "visible_location_id"
+      key_type       = "HASH"
+    }
+    key_schema {
+      attribute_name = "sort_key"
+      key_type       = "RANGE"
+    }
+    projection_type = "ALL"
+  }
+
+  global_secondary_index {
+    name = "sweep-expires_at-index"
+    key_schema {
+      attribute_name = "sweep"
+      key_type       = "HASH"
+    }
+    key_schema {
+      attribute_name = "expires_at"
+      key_type       = "RANGE"
+    }
+    projection_type = "ALL"
+  }
+}
+
 # ── Test API access to the test tables ────────────────────────────────────────
 # seslogin-test-api's DB_PREFIX is var.db_prefix_test, and its dynamodb-access
 # policy in dynamodb.tf is scoped to ${var.db_prefix_test}* only, so the test
