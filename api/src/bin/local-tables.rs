@@ -405,6 +405,14 @@ const TABLES: &[Table] = &[
         ttl: None,
     },
     Table {
+        name: "note_ref",
+        hash: "note_id",
+        range: Some("owner"),
+        attrs: &[Attr("note_id", S), Attr("owner", S)],
+        gsis: &[],
+        ttl: None,
+    },
+    Table {
         name: "photo",
         hash: "id",
         range: None,
