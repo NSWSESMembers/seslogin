@@ -21,6 +21,8 @@ use super::attached_photos;
 use super::auth::require_task_access;
 use super::dataloader::DatabaseLoader;
 use super::error::{ApiError, ErrorCode};
+use super::linked_notes;
+use super::notes::Note;
 use super::on_call::{check_people, load_people};
 use super::query::{Location, Person};
 use super::{LocationId, TaskListId};
@@ -209,6 +211,17 @@ impl<A: App + HasDb + Send + Sync + 'static> Task<A> {
     /// `photoAssetIds`.
     async fn photo_asset_ids(&self) -> Vec<ID> {
         self.rec.photo_asset_ids.iter().cloned().map(ID).collect()
+    }
+
+    /// The linked notes (at most 10), in the order shown. One that was deleted or can
+    /// no longer be read is left out.
+    async fn notes(&self, ctx: &Context<'_>) -> Result<Vec<Note<A>>> {
+        linked_notes::load(ctx, &self.rec.note_ids).await
+    }
+
+    /// The linked notes' IDs, in order: pass these back, changed, as `noteIds`.
+    async fn note_ids(&self) -> Vec<ID> {
+        self.rec.note_ids.iter().cloned().map(ID).collect()
     }
 
     /// Whether the member asking is one of those it is assigned to.
@@ -454,6 +467,7 @@ pub(super) struct CreateTaskArgs {
     pub recurrence: Option<TaskRecurrenceInput>,
     pub assignee_ids: Option<Vec<ID>>,
     pub photo_asset_ids: Option<Vec<ID>>,
+    pub note_ids: Option<Vec<ID>>,
 }
 
 pub(super) async fn create_task<A: App + HasDb + Send + Sync + 'static>(
@@ -486,6 +500,13 @@ pub(super) async fn create_task<A: App + HasDb + Send + Sync + 'static>(
         &[],
     )
     .await?;
+    let note_ids = linked_notes::validate(
+        app,
+        &args.location_id,
+        args.note_ids.as_deref().unwrap_or(&[]),
+        &[],
+    )
+    .await?;
     let today = tasks::today_sydney();
     let (due_date, show_date) = tasks::schedule(due_date, recurrence, today, today);
     let id = db::new_id();
@@ -496,6 +517,14 @@ pub(super) async fn create_task<A: App + HasDb + Send + Sync + 'static>(
         &id,
         &args.location_id,
         &photo_ids,
+    )
+    .await?;
+    linked_notes::add_refs(
+        app,
+        linked_notes::TASK,
+        &id,
+        &args.location_id,
+        &linked_notes::added(&[], &note_ids),
     )
     .await?;
     let rec = app
@@ -511,6 +540,7 @@ pub(super) async fn create_task<A: App + HasDb + Send + Sync + 'static>(
             recurrence,
             assignee_ids: &assignee_ids,
             photo_asset_ids: &photo_asset_ids,
+            note_ids: &note_ids,
             created_by: caller_id(ctx),
         })
         .await?;
@@ -529,6 +559,7 @@ pub(super) struct UpdateTaskArgs {
     pub recurrence: MaybeUndefined<TaskRecurrenceInput>,
     pub assignee_ids: Option<Vec<ID>>,
     pub photo_asset_ids: Option<Vec<ID>>,
+    pub note_ids: Option<Vec<ID>>,
 }
 
 pub(super) async fn update_task<A: App + HasDb + Send + Sync + 'static>(
@@ -576,12 +607,24 @@ pub(super) async fn update_task<A: App + HasDb + Send + Sync + 'static>(
         }
         None => rec.photo_asset_ids.clone(),
     };
+    let note_ids = match &args.note_ids {
+        Some(ids) => linked_notes::validate(app, &rec.location_id, ids, &rec.note_ids).await?,
+        None => rec.note_ids.clone(),
+    };
     attached_photos::add_refs(
         app,
         attached_photos::TASK,
         &rec.id,
         &rec.location_id,
         &attached_photos::added(&rec.photo_asset_ids, &photo_asset_ids),
+    )
+    .await?;
+    linked_notes::add_refs(
+        app,
+        linked_notes::TASK,
+        &rec.id,
+        &rec.location_id,
+        &linked_notes::added(&rec.note_ids, &note_ids),
     )
     .await?;
     let (due_date, show_date) = tasks::schedule(
@@ -592,6 +635,7 @@ pub(super) async fn update_task<A: App + HasDb + Send + Sync + 'static>(
     );
     let previous = rec.assignee_ids.clone();
     let previous_photos = rec.photo_asset_ids.clone();
+    let previous_notes = rec.note_ids.clone();
     let rec = app
         .db()
         .update_task(
@@ -605,6 +649,7 @@ pub(super) async fn update_task<A: App + HasDb + Send + Sync + 'static>(
                 recurrence,
                 assignee_ids: &assignee_ids,
                 photo_asset_ids: &photo_asset_ids,
+                note_ids: &note_ids,
                 by: caller_id(ctx),
                 expected_version,
             },
@@ -616,6 +661,13 @@ pub(super) async fn update_task<A: App + HasDb + Send + Sync + 'static>(
         attached_photos::TASK,
         &rec.id,
         &attached_photos::added(&rec.photo_asset_ids, &previous_photos),
+    )
+    .await;
+    linked_notes::drop_refs(
+        app,
+        linked_notes::TASK,
+        &rec.id,
+        &linked_notes::added(&rec.note_ids, &previous_notes),
     )
     .await;
     let told = tasks::newly_assigned(&previous, &rec.assignee_ids);
@@ -671,6 +723,13 @@ pub(super) async fn delete_task<A: App + HasDb + Send + Sync + 'static>(
         attached_photos::TASK,
         &rec.id,
         &attached_photos::added(&[], &rec.photo_asset_ids),
+    )
+    .await;
+    linked_notes::drop_refs(
+        app,
+        linked_notes::TASK,
+        &rec.id,
+        &linked_notes::added(&[], &rec.note_ids),
     )
     .await;
     Ok(ID(rec.id))

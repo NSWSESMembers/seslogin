@@ -365,6 +365,15 @@ type CalendarEvent {
 	locationId: ID!
 	location: Location!
 	"""
+	The linked notes (at most 10), in the order shown. One that was deleted or can
+	no longer be read is left out.
+	"""
+	notes: [Note!]!
+	"""
+	The linked notes' IDs, in order: pass these back, changed, as `noteIds`.
+	"""
+	noteIds: [ID!]!
+	"""
 	Bumped by every change; pass it back to `updateCalendarEvent`.
 	"""
 	version: Int!
@@ -543,6 +552,15 @@ type Equipment {
 	`photoAssetIds`.
 	"""
 	photoAssetIds: [ID!]!
+	"""
+	The linked notes (at most 10), in the order shown. One that was deleted or can
+	no longer be read is left out.
+	"""
+	notes: [Note!]!
+	"""
+	The linked notes' IDs, in order: pass these back, changed, as `noteIds`.
+	"""
+	noteIds: [ID!]!
 	status: EquipmentStatus!
 	"""
 	When the status last changed, or the equipment was added.
@@ -1092,6 +1110,15 @@ type MapPin {
 	`photoAssetIds`.
 	"""
 	photoAssetIds: [ID!]!
+	"""
+	The linked notes (at most 10), in the order shown. One that was deleted or can
+	no longer be read is left out.
+	"""
+	notes: [Note!]!
+	"""
+	The linked notes' IDs, in order: pass these back, changed, as `noteIds`.
+	"""
+	noteIds: [ID!]!
 	locationId: ID!
 	location: Location!
 	"""
@@ -1371,8 +1398,9 @@ type MutationRoot {
 	who are notified; with none it is the whole unit's.
 	`photoAssetIds` attaches up to 10 photos, in order: ready images uploaded for this
 	unit (with `createAssetUpload`), or ones from its photo stream.
+	`noteIds` links up to 10 of the unit's notes, in order (live notes only).
 	"""
-	createTask(locationId: ID!, title: String!, description: String, listId: ID, dueDate: String, recurrence: TaskRecurrenceInput, assigneeIds: [ID!], photoAssetIds: [ID!]): Task!
+	createTask(locationId: ID!, title: String!, description: String, listId: ID, dueDate: String, recurrence: TaskRecurrenceInput, assigneeIds: [ID!], photoAssetIds: [ID!], noteIds: [ID!]): Task!
 	"""
 	Change an open task. Omitted arguments are left as they are; `null` clears
 	`description`, `listId`, `dueDate` or `recurrence`. `assigneeIds` replaces who
@@ -1381,8 +1409,10 @@ type MutationRoot {
 	`expectedVersion`.
 	`photoAssetIds` replaces the attached photos (an empty list removes them all;
 	omitted, they are left as they are).
+	`noteIds` replaces the linked notes (an empty list unlinks them all; omitted, they
+	are left as they are). The notes themselves are never changed.
 	"""
-	updateTask(id: ID!, expectedVersion: Int!, title: String, description: String, listId: ID, dueDate: String, recurrence: TaskRecurrenceInput, assigneeIds: [ID!], photoAssetIds: [ID!]): Task!
+	updateTask(id: ID!, expectedVersion: Int!, title: String, description: String, listId: ID, dueDate: String, recurrence: TaskRecurrenceInput, assigneeIds: [ID!], photoAssetIds: [ID!], noteIds: [ID!]): Task!
 	"""
 	Complete a task. A recurring task stays open, due again its interval after
 	today; any other task is done. Fails with `CONFLICT` if someone else completed
@@ -1452,16 +1482,19 @@ type MutationRoot {
 	unit in Tally may.
 	`photoAssetIds` attaches up to 10 photos, in order: ready images uploaded for this
 	unit (with `createAssetUpload`), or ones from its photo stream.
+	`noteIds` links up to 10 of the unit's notes, in order (live notes only).
 	"""
-	createEquipment(locationId: ID!, type: EquipmentType!, name: String!, description: String, status: EquipmentStatus! = IN_SERVICE, comment: String, photoAssetIds: [ID!]): Equipment!
+	createEquipment(locationId: ID!, type: EquipmentType!, name: String!, description: String, status: EquipmentStatus! = IN_SERVICE, comment: String, photoAssetIds: [ID!], noteIds: [ID!]): Equipment!
 	"""
 	Edit a piece of equipment's type, name, description or photos; omitted arguments
 	are left as they are. The status is changed with `changeEquipmentStatus`. Fails
 	with `CONFLICT` if it is no longer at `expectedVersion`.
 	`photoAssetIds` replaces the attached photos (an empty list removes them all;
 	omitted, they are left as they are).
+	`noteIds` replaces the linked notes (an empty list unlinks them all; omitted, they
+	are left as they are). The notes themselves are never changed.
 	"""
-	updateEquipment(id: ID!, expectedVersion: Int!, type: EquipmentType, name: String, description: String, photoAssetIds: [ID!]): Equipment!
+	updateEquipment(id: ID!, expectedVersion: Int!, type: EquipmentType, name: String, description: String, photoAssetIds: [ID!], noteIds: [ID!]): Equipment!
 	"""
 	Delete a piece of equipment. Returns its ID.
 	"""
@@ -1502,16 +1535,19 @@ type MutationRoot {
 	without). Any member who can use the unit in Tally may.
 	`photoAssetIds` attaches up to 10 photos, in order: ready images uploaded for this
 	unit (with `createAssetUpload`), or ones from its photo stream.
+	`noteIds` links up to 10 of the unit's notes, in order (live notes only).
 	"""
-	createMapPin(locationId: ID!, title: String!, latitude: Float!, longitude: Float!, address: String, note: String, layerId: ID, type: MapPinType, photoAssetIds: [ID!]): MapPin!
+	createMapPin(locationId: ID!, title: String!, latitude: Float!, longitude: Float!, address: String, note: String, layerId: ID, type: MapPinType, photoAssetIds: [ID!], noteIds: [ID!]): MapPin!
 	"""
 	Change a map pin. Omitted arguments are left as they are; `layerId: null` takes
 	it off its layer and `type: null` makes it a plain pin. Fails with `CONFLICT` if the pin is no longer at
 	`expectedVersion`.
 	`photoAssetIds` replaces the attached photos (an empty list removes them all;
 	omitted, they are left as they are).
+	`noteIds` replaces the linked notes (an empty list unlinks them all; omitted, they
+	are left as they are). The notes themselves are never changed.
 	"""
-	updateMapPin(id: ID!, expectedVersion: Int!, title: String, latitude: Float, longitude: Float, address: String, note: String, layerId: ID, type: MapPinType, photoAssetIds: [ID!]): MapPin!
+	updateMapPin(id: ID!, expectedVersion: Int!, title: String, latitude: Float, longitude: Float, address: String, note: String, layerId: ID, type: MapPinType, photoAssetIds: [ID!], noteIds: [ID!]): MapPin!
 	"""
 	Delete a map pin. Returns its ID.
 	"""
@@ -1528,16 +1564,19 @@ type MutationRoot {
 	`startDate` and optionally `endDate` (`YYYY-MM-DD`, inclusive; default one day).
 	`repeat` makes it repeat daily or weekly, through `repeatUntil` or forever. Any
 	member who can use the unit in Tally may.
+	`noteIds` links up to 10 of the unit's notes, in order (live notes only).
 	"""
-	createCalendarEvent(locationId: ID!, calendarId: ID, title: String!, description: String, allDay: Boolean!, startTime: Int, endTime: Int, startDate: String, endDate: String, repeat: EventRepeat, repeatUntil: String): CalendarEvent!
+	createCalendarEvent(locationId: ID!, calendarId: ID, title: String!, description: String, allDay: Boolean!, startTime: Int, endTime: Int, startDate: String, endDate: String, repeat: EventRepeat, repeatUntil: String, noteIds: [ID!]): CalendarEvent!
 	"""
 	Change an event, every occurrence of it. Omitted arguments are left as they are:
 	`calendarId: null` takes it out of its calendar, `repeat: null` stops it
 	repeating and `repeatUntil: null` makes it repeat forever. Giving a new start
 	without an end keeps its length; changing `allDay` needs the new start. Fails
 	with `CONFLICT` if it is no longer at `expectedVersion`.
+	`noteIds` replaces the linked notes (an empty list unlinks them all; omitted, they
+	are left as they are). The notes themselves are never changed.
 	"""
-	updateCalendarEvent(id: ID!, expectedVersion: Int!, calendarId: ID, title: String, description: String, allDay: Boolean, startTime: Int, endTime: Int, startDate: String, endDate: String, repeat: EventRepeat, repeatUntil: String): CalendarEvent!
+	updateCalendarEvent(id: ID!, expectedVersion: Int!, calendarId: ID, title: String, description: String, allDay: Boolean, startTime: Int, endTime: Int, startDate: String, endDate: String, repeat: EventRepeat, repeatUntil: String, noteIds: [ID!]): CalendarEvent!
 	"""
 	Delete an event, every occurrence of it. Returns its ID.
 	"""
@@ -1582,15 +1621,18 @@ type MutationRoot {
 	Add an on-call role (e.g. Duty Officer) to a location, optionally with the people
 	in it. Anyone in it needs a primary. Any member who can use the unit in
 	Tally may.
+	`noteIds` links up to 10 of the unit's notes, in order (live notes only).
 	"""
-	createOnCallRole(locationId: ID!, name: String!, description: String, phone: String, primaryPersonId: ID, secondaryPersonIds: [ID!]): OnCallRole!
+	createOnCallRole(locationId: ID!, name: String!, description: String, phone: String, primaryPersonId: ID, secondaryPersonIds: [ID!], noteIds: [ID!]): OnCallRole!
 	"""
 	Change an on-call role, or who is in it. Omitted arguments are left as they are;
 	`phone: null` removes the number and `primaryPersonId: null` (with
 	`secondaryPersonIds: []`) empties the role. Fails with `CONFLICT` if the role is
 	no longer at `expectedVersion`.
+	`noteIds` replaces the linked notes (an empty list unlinks them all; omitted, they
+	are left as they are). The notes themselves are never changed.
 	"""
-	updateOnCallRole(id: ID!, expectedVersion: Int!, name: String, description: String, phone: String, primaryPersonId: ID, secondaryPersonIds: [ID!]): OnCallRole!
+	updateOnCallRole(id: ID!, expectedVersion: Int!, name: String, description: String, phone: String, primaryPersonId: ID, secondaryPersonIds: [ID!], noteIds: [ID!]): OnCallRole!
 	"""
 	Delete an on-call role. Returns its ID.
 	"""
@@ -1962,6 +2004,15 @@ type OnCallRole {
 	What the role is for, plain text; empty when there is none.
 	"""
 	description: String!
+	"""
+	The linked notes (at most 10), in the order shown. One that was deleted or can
+	no longer be read is left out.
+	"""
+	notes: [Note!]!
+	"""
+	The linked notes' IDs, in order: pass these back, changed, as `noteIds`.
+	"""
+	noteIds: [ID!]!
 	"""
 	A number that reaches whoever holds the role, e.g. a duty phone that diverts to
 	them; null when there is none. Kept as the unit wrote it.
@@ -3187,6 +3238,15 @@ type Task {
 	`photoAssetIds`.
 	"""
 	photoAssetIds: [ID!]!
+	"""
+	The linked notes (at most 10), in the order shown. One that was deleted or can
+	no longer be read is left out.
+	"""
+	notes: [Note!]!
+	"""
+	The linked notes' IDs, in order: pass these back, changed, as `noteIds`.
+	"""
+	noteIds: [ID!]!
 	"""
 	Whether the member asking is one of those it is assigned to.
 	"""

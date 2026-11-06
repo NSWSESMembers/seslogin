@@ -352,6 +352,7 @@ The index is **sparse**: completing a non-recurring task, or deleting any task, 
 - `recurrence_every` (N), `recurrence_unit` (S: `days` or `weeks`) — both present or both absent
 - `assignee_ids` (SS, optional) — person IDs of the members the task is assigned to, from any unit; absent when it is nobody's in particular (a String Set can't be empty). It may name members deleted since
 - `photo_asset_ids` (L of S, optional) — the photos attached to it: up to 10 IDs of `ready` `asset` rows at the same location, in the order shown. Absent when there are none. Each has an `asset_ref` owned by `task#<id>`, written before the row starts naming it and removed after it stops (or the row is deleted)
+- `note_ids` (L of S, optional) — the notes it links to: up to 10 IDs of live `note` rows at the same location, in the order shown. Absent when there are none. Each has a `note_ref` owned by `task#<id>`, written before the row starts naming it and removed after it stops (or the row is deleted). It may name a note deleted since
 - `v` (N) — version, bumped by every write; edits and completions are conditional on it, so two people completing the same task cannot both succeed
 - `completed_at` (N), `completed_by` (S) — a non-recurring task's completion, and the person ID of the member who completed it
 - `last_completed_at` (N), `last_completed_by` (S) — a recurring task's latest completion, and who by (person ID)
@@ -450,6 +451,7 @@ The pins on a location's shared map ("Map").
 - `address` (S, optional) — free text, not geocoded; absent when empty
 - `note` (S, optional) — plain text; absent when empty
 - `photo_asset_ids` (L of S, optional) — the photos attached to it: up to 10 IDs of `ready` `asset` rows at the same location, in the order shown. Absent when there are none. Each has an `asset_ref` owned by `map_pin#<id>`, written before the row starts naming it and removed after it stops (or the row is deleted)
+- `note_ids` (L of S, optional) — the notes it links to: up to 10 IDs of live `note` rows at the same location, in the order shown. Absent when there are none. Each has a `note_ref` owned by `map_pin#<id>`, written before the row starts naming it and removed after it stops (or the row is deleted). It may name a note deleted since
 - `v` (N) — version, bumped by every write; saves are conditional on it, so two people editing the same pin cannot silently overwrite each other
 - `created_by` / `updated_by` (S) — person IDs of the members who made and last changed it
 - `deleted` (N) — Unix seconds when soft-deleted; absent otherwise
@@ -498,6 +500,7 @@ A location's on-call roles ("On Call"), such as Duty Officer, and who holds each
 - `phone` (S, optional) — a number that reaches whoever holds the role, kept as written
 - `primary_person_id` (S, optional) — the `person` on call; absent while the role is empty
 - `secondary_person_ids` (SS, optional) — everyone else in the role; absent when there is nobody else, and never present without a primary. People may be from any location, and may since have been deleted (the API leaves them out)
+- `note_ids` (L of S, optional) — the notes it links to: up to 10 IDs of live `note` rows at the same location, in the order shown. Absent when there are none. Each has a `note_ref` owned by `on_call_role#<id>`, written before the row starts naming it and removed after it stops (or the row is deleted). It may name a note deleted since
 - `members_changed_at` (N, optional) — Unix seconds when the people in the role last changed; absent while it is empty
 - `v` (N) — version, bumped by every write; saves are conditional on it
 - `created_by` / `updated_by` (S) — person IDs of the members who made and last changed it
@@ -562,6 +565,7 @@ A location's equipment register ("Equipment").
 - `status_changed_at` (N) — when the status last changed, or the equipment was added
 - `last_checked_at` (N, optional) — when someone last logged a check
 - `photo_asset_ids` (L of S, optional) — the photos attached to it: up to 10 IDs of `ready` `asset` rows at the same location, in the order shown. Absent when there are none. Each has an `asset_ref` owned by `equipment#<id>`, written before the row starts naming it and removed after it stops (or the row is deleted)
+- `note_ids` (L of S, optional) — the notes it links to: up to 10 IDs of live `note` rows at the same location, in the order shown. Absent when there are none. Each has a `note_ref` owned by `equipment#<id>`, written before the row starts naming it and removed after it stops (or the row is deleted). It may name a note deleted since
 - `v` (N) — version, bumped by every edit (not by log entries); edits are conditional on it
 - `created_by` / `updated_by` (S) — person IDs of the members who made and last changed it
 - `deleted` (N) — Unix seconds when soft-deleted; absent otherwise. The log is kept
@@ -672,6 +676,7 @@ The events in a location's shared calendar ("Calendar"). An event is timed (inst
 - `calendar_id` (S, optional) — the `calendar` it is in; it may name a deleted calendar
 - `title` (S) — one line of plain text
 - `description` (S, optional) — plain text; absent when empty
+- `note_ids` (L of S, optional) — the notes it links to: up to 10 IDs of live `note` rows at the same location, in the order shown. Absent when there are none. Each has a `note_ref` owned by `calendar_event#<id>`, written before the row starts naming it and removed after it stops (or the row is deleted). It may name a note deleted since
 - `v` (N) — version, bumped by every write; edits are conditional on it
 - `created_by` / `updated_by` (S) — person IDs of the members who made and last changed it
 - `deleted` (N) — Unix seconds when soft-deleted; absent otherwise
@@ -834,7 +839,7 @@ No GSIs.
 
 ### `{prefix}note_ref`
 
-Reverse index of links from items to notes, so "which items link to this note" can be answered. Tasks, map pins, equipment, calendar events and on-call roles will each store an ordered `note_ids` list; the code that uses this table, and those lists, lands in a later PR. Until then nothing reads or writes it.
+Reverse index of links from items to notes, so "which items link to this note" can be answered. Tasks, map pins, equipment, calendar events and on-call roles each store an ordered `note_ids` list (up to 10 notes at their own location), and write a row here for each note they name. Rows are written and removed by `graphql/linked_notes.rs`; `db::Handler::list_note_refs` reads them by note (nothing exposes that in GraphQL yet). Like `asset_ref` they are plumbing, so writes to them are not audited (the owner's `note_ids` change is).
 
 Protocol: a reference is written before the owner first names the note and removed after the owner stops naming it or is deleted. A stray reference is therefore possible, so a reader must check that the owner still names the note before trusting a row.
 

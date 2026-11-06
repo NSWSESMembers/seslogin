@@ -85,6 +85,8 @@ pub(crate) struct FakeDb {
     pub(crate) assets: Mutex<HashMap<String, db::Asset>>,
     /// `asset_ref` rows, by (asset id, owner).
     pub(crate) asset_refs: Mutex<HashMap<(String, String), db::AssetRef>>,
+    /// `note_ref` rows, by (note id, owner).
+    pub(crate) note_refs: Mutex<HashMap<(String, String), db::NoteRef>>,
     pub(crate) photos: Mutex<HashMap<String, db::Photo>>,
     /// Daily counters by id, as (count, `expires_at`). Their TTL is not enforced.
     pub(crate) daily_counters: Mutex<HashMap<String, (u64, u64)>>,
@@ -1573,6 +1575,7 @@ impl db::Handler for FakeDb {
             recurrence: task.recurrence,
             assignee_ids: task.assignee_ids.to_vec(),
             photo_asset_ids: task.photo_asset_ids.to_vec(),
+            note_ids: task.note_ids.to_vec(),
             open: true,
             created_by: task.created_by.map(str::to_string),
             updated_by: None,
@@ -1609,6 +1612,7 @@ impl db::Handler for FakeDb {
                 recurrence,
                 assignee_ids,
                 photo_asset_ids,
+                note_ids,
                 by,
                 expected_version,
             } => {
@@ -1617,6 +1621,7 @@ impl db::Handler for FakeDb {
                 }
                 t.assignee_ids = assignee_ids.to_vec();
                 t.photo_asset_ids = photo_asset_ids.to_vec();
+                t.note_ids = note_ids.to_vec();
                 t.list_id = list_id.map(str::to_string);
                 t.title = title.to_string();
                 t.description = description.map(str::to_string);
@@ -1892,6 +1897,7 @@ impl db::Handler for FakeDb {
             status_changed_at: now,
             last_checked_at: None,
             photo_asset_ids: equipment.photo_asset_ids.to_vec(),
+            note_ids: equipment.note_ids.to_vec(),
             created_by: equipment.created_by.map(str::to_string),
             updated_by: None,
             version: 1,
@@ -1940,6 +1946,7 @@ impl db::Handler for FakeDb {
                 name,
                 description,
                 photo_asset_ids,
+                note_ids,
                 by,
                 expected_version,
             } => {
@@ -1947,6 +1954,7 @@ impl db::Handler for FakeDb {
                     return Err(not_found());
                 }
                 e.photo_asset_ids = photo_asset_ids.to_vec();
+                e.note_ids = note_ids.to_vec();
                 e.equipment_type = equipment_type.to_string();
                 e.name = name.to_string();
                 e.description = description.to_string();
@@ -2154,6 +2162,7 @@ impl db::Handler for FakeDb {
             address: pin.address.to_string(),
             note: pin.note.to_string(),
             photo_asset_ids: pin.photo_asset_ids.to_vec(),
+            note_ids: pin.note_ids.to_vec(),
             created_by: pin.created_by.map(str::to_string),
             updated_by: None,
             version: 1,
@@ -2190,6 +2199,7 @@ impl db::Handler for FakeDb {
                 address,
                 note,
                 photo_asset_ids,
+                note_ids,
                 by,
                 expected_version,
             } => {
@@ -2197,6 +2207,7 @@ impl db::Handler for FakeDb {
                     return Err(not_found());
                 }
                 p.photo_asset_ids = photo_asset_ids.to_vec();
+                p.note_ids = note_ids.to_vec();
                 p.layer_id = layer_id.map(str::to_string);
                 p.pin_type = pin_type.map(str::to_string);
                 p.title = title.to_string();
@@ -2373,7 +2384,7 @@ impl db::Handler for FakeDb {
     ) -> db::Result<db::CalendarEvent> {
         let now = seslogin::clock::now_sec();
         let row = db::CalendarEvent {
-            id: db::new_id(),
+            id: event.id.to_string(),
             location_id: event.location_id.to_string(),
             calendar_id: event.calendar_id.map(str::to_string),
             title: event.title.to_string(),
@@ -2381,6 +2392,7 @@ impl db::Handler for FakeDb {
             timing: event.timing,
             recurrence: event.recurrence,
             last_end: seslogin::calendar::last_end(event.timing, event.recurrence),
+            note_ids: event.note_ids.to_vec(),
             created_by: event.created_by.map(str::to_string),
             updated_by: None,
             version: 1,
@@ -2415,12 +2427,14 @@ impl db::Handler for FakeDb {
                 description,
                 timing,
                 recurrence,
+                note_ids,
                 by,
                 expected_version,
             } => {
                 if e.version != expected_version {
                     return Err(not_found());
                 }
+                e.note_ids = note_ids.to_vec();
                 e.calendar_id = calendar_id.map(str::to_string);
                 e.title = title.to_string();
                 e.description = description.to_string();
@@ -2461,7 +2475,7 @@ impl db::Handler for FakeDb {
     async fn create_on_call_role(&self, role: db::NewOnCallRole<'_>) -> db::Result<db::OnCallRole> {
         let now = seslogin::clock::now_sec();
         let row = db::OnCallRole {
-            id: db::new_id(),
+            id: role.id.to_string(),
             location_id: role.location_id.to_string(),
             name: role.name.to_string(),
             description: role.description.to_string(),
@@ -2469,6 +2483,7 @@ impl db::Handler for FakeDb {
             primary_person_id: role.primary_person_id.map(str::to_string),
             secondary_person_ids: role.secondary_person_ids.to_vec(),
             members_changed_at: role.primary_person_id.map(|_| now),
+            note_ids: role.note_ids.to_vec(),
             created_by: role.created_by.map(str::to_string),
             updated_by: None,
             version: 1,
@@ -2503,12 +2518,14 @@ impl db::Handler for FakeDb {
                 primary_person_id,
                 secondary_person_ids,
                 members_changed_at,
+                note_ids,
                 by,
                 expected_version,
             } => {
                 if r.version != expected_version {
                     return Err(not_found());
                 }
+                r.note_ids = note_ids.to_vec();
                 r.name = name.to_string();
                 r.description = description.to_string();
                 r.phone = phone.map(str::to_string);
@@ -2921,6 +2938,40 @@ impl db::Handler for FakeDb {
             .lock()
             .unwrap()
             .remove(&(asset_id.to_string(), owner.to_string()));
+        Ok(())
+    }
+
+    async fn list_note_refs(&self, note_id: &str) -> db::Result<Vec<db::NoteRef>> {
+        let mut refs: Vec<db::NoteRef> = self
+            .note_refs
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|r| r.note_id == note_id)
+            .cloned()
+            .collect();
+        refs.sort_by(|a, b| a.owner.cmp(&b.owner));
+        Ok(refs)
+    }
+
+    async fn put_note_ref(&self, note_id: &str, owner: &str, location_id: &str) -> db::Result<()> {
+        self.note_refs.lock().unwrap().insert(
+            (note_id.to_string(), owner.to_string()),
+            db::NoteRef {
+                note_id: note_id.to_string(),
+                owner: owner.to_string(),
+                location_id: location_id.to_string(),
+                created_at: seslogin::clock::now_sec(),
+            },
+        );
+        Ok(())
+    }
+
+    async fn delete_note_ref(&self, note_id: &str, owner: &str) -> db::Result<()> {
+        self.note_refs
+            .lock()
+            .unwrap()
+            .remove(&(note_id.to_string(), owner.to_string()));
         Ok(())
     }
 

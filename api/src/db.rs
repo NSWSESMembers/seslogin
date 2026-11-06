@@ -712,6 +712,9 @@ pub struct Task {
     /// Photos attached to it, as ready asset IDs at its location, in the order shown (at
     /// most [`MAX_ATTACHED_PHOTOS`]). Each has an `asset_ref` owned by it.
     pub photo_asset_ids: Vec<String>,
+    /// Notes linked to it, as IDs of live notes at its location, in the order shown (at
+    /// most [`MAX_LINKED_NOTES`]). Each has a `note_ref` owned by it.
+    pub note_ids: Vec<String>,
     /// Whether the task is still to be done, i.e. it carries `open_location_id` and so
     /// is in `open_location_id-show_date-index`.
     pub open: bool,
@@ -750,6 +753,7 @@ pub struct NewTask<'a> {
     pub recurrence: Option<TaskRecurrence>,
     pub assignee_ids: &'a [String],
     pub photo_asset_ids: &'a [String],
+    pub note_ids: &'a [String],
     pub created_by: Option<&'a str>,
 }
 
@@ -789,6 +793,8 @@ pub enum TaskUpdateShape<'a> {
         assignee_ids: &'a [String],
         /// Empty removes every photo.
         photo_asset_ids: &'a [String],
+        /// Empty removes every link.
+        note_ids: &'a [String],
         by: Option<&'a str>,
         expected_version: u64,
     },
@@ -938,6 +944,9 @@ pub struct Equipment {
     /// Photos attached to it, as ready asset IDs at its location, in the order shown (at
     /// most [`MAX_ATTACHED_PHOTOS`]). Each has an `asset_ref` owned by it.
     pub photo_asset_ids: Vec<String>,
+    /// Notes linked to it, as IDs of live notes at its location, in the order shown (at
+    /// most [`MAX_LINKED_NOTES`]). Each has a `note_ref` owned by it.
+    pub note_ids: Vec<String>,
     pub created_by: Option<String>,
     pub updated_by: Option<String>,
     /// Bumped by every [`EquipmentUpdateShape`] write, not by log entries.
@@ -967,6 +976,7 @@ pub struct NewEquipment<'a> {
     pub status: &'a str,
     pub comment: &'a str,
     pub photo_asset_ids: &'a [String],
+    pub note_ids: &'a [String],
     pub created_by: Option<&'a str>,
 }
 
@@ -982,6 +992,8 @@ pub enum EquipmentUpdateShape<'a> {
         description: &'a str,
         /// Empty removes every photo.
         photo_asset_ids: &'a [String],
+        /// Empty removes every link.
+        note_ids: &'a [String],
         by: Option<&'a str>,
         expected_version: u64,
     },
@@ -1146,6 +1158,9 @@ pub struct MapPin {
     /// Photos attached to it, as ready asset IDs at its location, in the order shown (at
     /// most [`MAX_ATTACHED_PHOTOS`]). Each has an `asset_ref` owned by it.
     pub photo_asset_ids: Vec<String>,
+    /// Notes linked to it, as IDs of live notes at its location, in the order shown (at
+    /// most [`MAX_LINKED_NOTES`]). Each has a `note_ref` owned by it.
+    pub note_ids: Vec<String>,
     pub created_by: Option<String>,
     pub updated_by: Option<String>,
     pub version: u64,
@@ -1175,6 +1190,7 @@ pub struct NewMapPin<'a> {
     pub address: &'a str,
     pub note: &'a str,
     pub photo_asset_ids: &'a [String],
+    pub note_ids: &'a [String],
     pub created_by: Option<&'a str>,
 }
 
@@ -1196,6 +1212,8 @@ pub enum MapPinUpdateShape<'a> {
         note: &'a str,
         /// Empty removes every photo.
         photo_asset_ids: &'a [String],
+        /// Empty removes every link.
+        note_ids: &'a [String],
         by: Option<&'a str>,
         expected_version: u64,
     },
@@ -1277,6 +1295,9 @@ pub struct CalendarEvent {
     pub timing: crate::calendar::Timing,
     pub recurrence: Option<crate::calendar::Recurrence>,
     pub last_end: u64,
+    /// Notes linked to it, as IDs of live notes at its location, in the order shown (at
+    /// most [`MAX_LINKED_NOTES`]). Each has a `note_ref` owned by it.
+    pub note_ids: Vec<String>,
     pub created_by: Option<String>,
     pub updated_by: Option<String>,
     /// Bumped by every [`CalendarEventUpdateShape`] write.
@@ -1295,12 +1316,16 @@ impl HasID for CalendarEvent {
 /// The fields of an event being created. See [`CalendarEvent`].
 #[derive(Clone, Debug, PartialEq)]
 pub struct NewCalendarEvent<'a> {
+    /// Made by the caller with [`new_id`], so the notes' `note_ref`s, which name it, can
+    /// be written before it.
+    pub id: &'a str,
     pub location_id: &'a str,
     pub calendar_id: Option<&'a str>,
     pub title: &'a str,
     pub description: &'a str,
     pub timing: crate::calendar::Timing,
     pub recurrence: Option<crate::calendar::Recurrence>,
+    pub note_ids: &'a [String],
     pub created_by: Option<&'a str>,
 }
 
@@ -1317,6 +1342,8 @@ pub enum CalendarEventUpdateShape<'a> {
         description: &'a str,
         timing: crate::calendar::Timing,
         recurrence: Option<crate::calendar::Recurrence>,
+        /// Empty removes every link.
+        note_ids: &'a [String],
         by: Option<&'a str>,
         expected_version: u64,
     },
@@ -1343,6 +1370,9 @@ pub struct OnCallRole {
     /// When the people in the role last changed, or when it was created with people in
     /// it. Absent while nobody has been put in it.
     pub members_changed_at: Option<u64>,
+    /// Notes linked to it, as IDs of live notes at its location, in the order shown (at
+    /// most [`MAX_LINKED_NOTES`]). Each has a `note_ref` owned by it.
+    pub note_ids: Vec<String>,
     pub created_by: Option<String>,
     pub updated_by: Option<String>,
     pub version: u64,
@@ -1360,12 +1390,16 @@ impl HasID for OnCallRole {
 /// The fields of an on-call role being created. See [`OnCallRole`].
 #[derive(Clone, Debug, PartialEq)]
 pub struct NewOnCallRole<'a> {
+    /// Made by the caller with [`new_id`], so the notes' `note_ref`s, which name it, can
+    /// be written before it.
+    pub id: &'a str,
     pub location_id: &'a str,
     pub name: &'a str,
     pub description: &'a str,
     pub phone: Option<&'a str>,
     pub primary_person_id: Option<&'a str>,
     pub secondary_person_ids: &'a [String],
+    pub note_ids: &'a [String],
     pub created_by: Option<&'a str>,
 }
 
@@ -1383,6 +1417,8 @@ pub enum OnCallRoleUpdateShape<'a> {
         primary_person_id: Option<&'a str>,
         secondary_person_ids: &'a [String],
         members_changed_at: Option<u64>,
+        /// Empty removes every link.
+        note_ids: &'a [String],
         by: Option<&'a str>,
         expected_version: u64,
     },
@@ -2068,6 +2104,10 @@ pub const HIDDEN_PHOTO_GRACE_SECS: u64 = 7 * 24 * 60 * 60;
 /// The most photos a task, piece of equipment or map pin can have attached.
 pub const MAX_ATTACHED_PHOTOS: usize = 10;
 
+/// The most notes a task, map pin, piece of equipment, calendar event or on-call role
+/// can link to.
+pub const MAX_LINKED_NOTES: usize = 10;
+
 /// How long an asset may stay `pending` (its upload not completed) before DynamoDB's TTL
 /// removes the row.
 pub const PENDING_ASSET_TTL_SECS: u64 = 24 * 60 * 60;
@@ -2187,6 +2227,21 @@ pub struct AssetRef {
 
 /// The `owner` of an [`AssetRef`], e.g. `photo#abc123`.
 pub fn asset_owner(owner_type: &str, owner_id: &str) -> String {
+    format!("{owner_type}#{owner_id}")
+}
+
+/// One owner's link to a note: a `note_ref` row. See SCHEMA.md.
+#[derive(Clone, Debug, PartialEq)]
+pub struct NoteRef {
+    pub note_id: String,
+    /// `<owner_type>#<owner_id>`; see [`note_owner`].
+    pub owner: String,
+    pub location_id: String,
+    pub created_at: u64,
+}
+
+/// The `owner` of a [`NoteRef`], e.g. `task#abc123`.
+pub fn note_owner(owner_type: &str, owner_id: &str) -> String {
     format!("{owner_type}#{owner_id}")
 }
 
@@ -3524,6 +3579,25 @@ pub trait Handler: Sync {
     fn delete_asset_ref(
         &self,
         asset_id: &str,
+        owner: &str,
+    ) -> impl Future<Output = Result<()>> + Send;
+
+    /// Every owner linking to the note. Strongly consistent. A row can be stray (see
+    /// SCHEMA.md's `note_ref`), so a reader must check the owner still names the note.
+    fn list_note_refs(&self, note_id: &str) -> impl Future<Output = Result<Vec<NoteRef>>> + Send;
+    /// Record that `owner` (see [`note_owner`]) links to the note. Writing a reference
+    /// that already exists is not an error. Unlike [`Handler::put_asset_ref`] it checks
+    /// nothing about the note: callers validate it first, and a note is never collected.
+    fn put_note_ref(
+        &self,
+        note_id: &str,
+        owner: &str,
+        location_id: &str,
+    ) -> impl Future<Output = Result<()>> + Send;
+    /// Remove an owner's reference. One that is already gone is not an error.
+    fn delete_note_ref(
+        &self,
+        note_id: &str,
         owner: &str,
     ) -> impl Future<Output = Result<()>> + Send;
 

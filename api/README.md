@@ -687,6 +687,7 @@ A location's shared to-do list, used by the Tally app (`src/graphql/tasks.rs`, r
   `Task.assignees` the live ones by name, and `Task.assignedToViewer` says whether the caller
   is one. Members newly assigned get a notification (see "Notifications").
 - **Photos:** up to 10, through `photoAssetIds` on `createTask` and `updateTask`; see "Attached photos".
+- **Linked notes:** up to 10, through `noteIds` on `createTask` and `updateTask`; see "Linked notes".
 - **Concurrency:** `updateTask` and `completeTask` take `expectedVersion`; if the task was
   changed or completed since (say, two people tapping Complete at once), the second gets a
   `CONFLICT` error rather than skipping an occurrence.
@@ -1005,6 +1006,7 @@ A location's equipment register, used by the Tally app (`src/graphql/equipment.r
   `IN_SERVICE`, `HAS_ISSUE` (still usable, but something needs fixing), `OUT_OF_SERVICE`,
   `MISSING` or `BORROWED`.
 - **Photos:** up to 10, through `photoAssetIds` on `createEquipment` and `updateEquipment`; see "Attached photos".
+- **Linked notes:** up to 10, through `noteIds` on `createEquipment` and `updateEquipment`; see "Linked notes".
 - **The log:** the status is never edited directly. `changeEquipmentStatus(id, status,
 comment)` changes it and logs the change with a comment saying why (required, max 1,000);
   `checkEquipment(id, comment)` logs that the caller checked it, comment optional, and leaves
@@ -1188,6 +1190,7 @@ A location's shared map of pins, used by the Tally app (`src/graphql/map.rs`, ru
   says what the pin marks, which the app shows as an icon; null for a plain pin, and for a
   stored type this server doesn't know, so clients should cope with types being added.
 - **Photos:** up to 10, through `photoAssetIds` on `createMapPin` and `updateMapPin`; see "Attached photos".
+- **Linked notes:** up to 10, through `noteIds` on `createMapPin` and `updateMapPin`; see "Linked notes".
 - **Writes:** `createMapPin`, `updateMapPin` (omitted arguments unchanged, `layerId: null`
   takes the pin off its layer, `type: null` makes it a plain pin), `deleteMapPin`, `createMapLayer`, `renameMapLayer`,
   `deleteMapLayer`. Deleting a layer leaves its pins on the location's map (`MapPin.layer`
@@ -1236,6 +1239,7 @@ later; for now a role just has the people in it now.
 - **Writes:** `createOnCallRole`, `updateOnCallRole` (omitted arguments unchanged, `phone: null`
   removes the number, `primaryPersonId: null, secondaryPersonIds: []` empties the role),
   `deleteOnCallRole`.
+- **Linked notes:** up to 10, through `noteIds` on `createOnCallRole` and `updateOnCallRole`; see "Linked notes".
 - **Concurrency:** `updateOnCallRole` takes `expectedVersion`; if someone else saved the role
   since it was read, the save fails with `CONFLICT`.
 
@@ -1528,6 +1532,36 @@ storage is each row's `photo_asset_ids` in SCHEMA.md). Access is the owner's own
   names it and removed after the owner stops naming it or is deleted. So a photo taken from
   the stream stays attached after the stream's sweep drops its own reference. A reference left
   behind by a failed write only delays the future garbage collector.
+
+## Linked notes
+
+Tasks, map pins, equipment, calendar events and on-call roles can each link to up to 10 of
+their unit's [notes](#notes) (`src/graphql/linked_notes.rs`; storage is each row's `note_ids`
+and the `note_ref` table in SCHEMA.md). Access is the owner's own (`require_task_access`,
+`require_map_access`, `require_equipment_access`, `require_calendar_access`,
+`require_on_call_access`). It follows "Attached photos" closely.
+
+- **Reading:** `notes` on `Task`, `MapPin`, `Equipment`, `CalendarEvent` and `OnCallRole` is
+  the linked notes in order (loaded through the `Note` dataloader; one that was deleted is left
+  out), and `noteIds` their IDs, deleted ones included.
+- **Writing:** `noteIds` on `createTask`/`updateTask`, `createMapPin`/`updateMapPin`,
+  `createEquipment`/`updateEquipment`, `createCalendarEvent`/`updateCalendarEvent` and
+  `createOnCallRole`/`updateOnCallRole`. On an update, omitted leaves the links alone and a list
+  replaces them, in that order (`[]` removes them all). `expectedVersion` and `CONFLICT` behave
+  as before.
+- **What may be linked:** a live (not deleted) note at the owner's unit. More than 10, the same
+  note twice, or a note that is missing, deleted or at another unit is `BAD_REQUEST`. A note
+  already linked may stay linked whatever has become of it (deleting a note does not unlink it;
+  it just stops showing in `notes`).
+- **The note is never touched:** linking, unlinking and deleting the owner leave the note, and
+  its version, as they were.
+- **References:** each link has a `note_ref` row, `(note_id, owner)` with `owner` one of
+  `task#<id>`, `equipment#<id>`, `map_pin#<id>`, `calendar_event#<id>` or `on_call_role#<id>`,
+  written before the owner first names the note and removed after the owner stops naming it or
+  is deleted (a failed removal is logged, not fatal). `db::Handler::list_note_refs(note_id)`
+  answers "which items link to this note"; because a failed write can leave a stray row, a reader
+  must check the owner still names the note. Nothing exposes that in GraphQL yet (a later
+  `Note.linkedFrom`). Not audited, like `asset_ref`; the owner's `note_ids` change is.
 
 ## Media
 
