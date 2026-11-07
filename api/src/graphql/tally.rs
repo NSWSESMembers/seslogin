@@ -20,6 +20,7 @@ use super::equipment::{self, Equipment};
 use super::error::ApiError;
 use super::location_share::{self, LocationShare};
 use super::map::{self, MapLayer, MapPin};
+use super::meetings::{self, Meeting};
 use super::notes::{self, Note, NoteFolder};
 use super::on_call::{self, OnCallRole};
 use super::photos::{self, PhotoConnection};
@@ -404,6 +405,29 @@ impl<A: App + HasDb + Send + Sync + 'static> TallyLocation<A> {
         to: i64,
     ) -> Result<Vec<CalendarEventOccurrence<A>>> {
         calendar::location_calendar_events(ctx, &self.rec.id, from, to).await
+    }
+
+    /// The unit's meetings (Agendas) scheduled from `startsAfter` (inclusive) to
+    /// `startsBefore` (exclusive), Unix seconds, either optional: oldest first, or
+    /// newest first with `newestFirst`. At most `limit` (default 50, at most 200).
+    /// See `graphql::meetings`.
+    async fn meetings(
+        &self,
+        ctx: &Context<'_>,
+        starts_after: Option<i64>,
+        starts_before: Option<i64>,
+        #[graphql(default = false)] newest_first: bool,
+        #[graphql(default = 50)] limit: i32,
+    ) -> Result<Vec<Meeting<A>>> {
+        meetings::location_meetings(
+            ctx,
+            &self.rec.id,
+            starts_after,
+            starts_before,
+            newest_first,
+            limit,
+        )
+        .await
     }
 
     /// Everyone sharing their position with the unit ("Locate"), most recently updated
