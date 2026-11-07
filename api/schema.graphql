@@ -42,6 +42,52 @@ type AgendaItem {
 	"""
 	position: Int!
 	"""
+	The linked tasks (at most 10), in the order shown. Deleted ones are left out.
+	"""
+	tasks: [Task!]!
+	"""
+	The linked tasks' IDs, in order, as stored: pass these back, changed, as `taskIds`.
+	"""
+	taskIds: [ID!]!
+	"""
+	The linked equipment (at most 10), in the order shown. Deleted ones are left out.
+	"""
+	equipment: [Equipment!]!
+	"""
+	The linked equipment's IDs, in order, as stored: pass these back, changed, as
+	`equipmentIds`.
+	"""
+	equipmentIds: [ID!]!
+	"""
+	The linked on-call roles (at most 10), in the order shown. Deleted ones are left
+	out.
+	"""
+	onCallRoles: [OnCallRole!]!
+	"""
+	The linked on-call roles' IDs, in order, as stored: pass these back, changed, as
+	`onCallRoleIds`.
+	"""
+	onCallRoleIds: [ID!]!
+	"""
+	The attached photos (at most 10), in the order shown. Their `url(variant:)` is
+	what to show; one that can no longer be read is left out.
+	"""
+	photos: [Asset!]!
+	"""
+	The attached photos' asset IDs, in order: pass these back, changed, as
+	`photoAssetIds`.
+	"""
+	photoAssetIds: [ID!]!
+	"""
+	The linked notes (at most 10), in the order shown. One that was deleted or can
+	no longer be read is left out.
+	"""
+	notes: [Note!]!
+	"""
+	The linked notes' IDs, in order: pass these back, changed, as `noteIds`.
+	"""
+	noteIds: [ID!]!
+	"""
 	Bumped by every change; pass it back to `updateAgendaItem`.
 	"""
 	version: Int!
@@ -1725,17 +1771,23 @@ type MutationRoot {
 	finishMeeting(id: ID!, expectedVersion: Int!): Meeting!
 	"""
 	Add a topic to a meeting's agenda (Agendas), at the end, at any status. `text`
-	(Markdown as in Notes) is what it is about and cannot be empty. `presenterId`
-	defaults to the caller; the presenter may be a member of any unit. Fails with
-	`NOT_FOUND` if the meeting is missing or deleted.
+	(Markdown as in Notes) is what it is about; a topic needs text or at least one
+	link. `presenterId` defaults to the caller; the presenter may be a member of any
+	unit. It may link up to ten each of the unit's tasks, equipment, on-call roles,
+	photos (ready image assets) and notes (`taskIds`, `equipmentIds`,
+	`onCallRoleIds`, `photoAssetIds`, `noteIds`), in the order given. Fails with
+	`NOT_FOUND` if the meeting is missing or deleted and `BAD_REQUEST` for a link
+	that is not usable or a topic with neither text nor a link.
 	"""
-	createAgendaItem(meetingId: ID!, text: String!, presenterId: ID): AgendaItem!
+	createAgendaItem(meetingId: ID!, text: String, presenterId: ID, taskIds: [ID!], equipmentIds: [ID!], onCallRoleIds: [ID!], photoAssetIds: [ID!], noteIds: [ID!]): AgendaItem!
 	"""
 	Change a topic. Omitted arguments are left as they are; the presenter cannot be
-	cleared, and `text` cannot be emptied. Fails with `CONFLICT` if it is no longer at
+	cleared. A list of links replaces the topic's (`[]` clears it); ones already
+	linked may stay whatever has become of them. A topic must keep text or at least
+	one link (else `BAD_REQUEST`). Fails with `CONFLICT` if it is no longer at
 	`expectedVersion`.
 	"""
-	updateAgendaItem(id: ID!, expectedVersion: Int!, text: String, presenterId: ID): AgendaItem!
+	updateAgendaItem(id: ID!, expectedVersion: Int!, text: String, presenterId: ID, taskIds: [ID!], equipmentIds: [ID!], onCallRoleIds: [ID!], photoAssetIds: [ID!], noteIds: [ID!]): AgendaItem!
 	"""
 	Delete a topic. Returns its ID.
 	"""

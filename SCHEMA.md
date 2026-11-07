@@ -740,7 +740,7 @@ The topics on a meeting's agenda ("agenda items"), each with one Markdown text b
 - `task_ids` / `equipment_ids` / `on_call_role_ids` (L of S, optional) — the tasks, equipment and on-call roles it links to: up to 10 IDs each, at the same location, in the order shown. Absent when there are none. They have no reverse tables, and may name something deleted since, which readers leave out
 - `photo_asset_ids` (L of S, optional) — the photos attached to it: up to 10 IDs of `asset` rows, in the order shown. Each has an `asset_ref` owned by `agenda_item#<id>`, written before the row starts naming it and removed after it stops (or the row is deleted)
 - `note_ids` (L of S, optional) — the notes it links to: up to 10 IDs of live `note` rows at the same location, in the order shown. Absent when there are none. Each has a `note_ref` owned by `agenda_item#<id>`, written before the row starts naming it and removed after it stops (or the row is deleted). It may name a note deleted since
-- The link attributes are written by later PRs; until then no row has them
+- The link attributes are written by `createAgendaItem`/`updateAgendaItem` (`graphql/agenda_items.rs`, `graphql/linked_items.rs`)
 - `v` (N) — version, bumped by every write; edits are conditional on it
 - `created_by` / `updated_by` (S) — person IDs of the members who made and last changed it
 - `deleted` (N) — Unix seconds when soft-deleted; absent otherwise
@@ -890,7 +890,7 @@ Which owners use an asset, so a garbage collector can delete only assets nothing
 | `asset_id` | S    | Hash key (PK)                                                  |
 | `owner`    | S    | Range key — `<owner_type>#<owner_id>`, e.g. `photo#<photo_id>` |
 
-Owner types: `photo`, and `task`, `equipment`, `map_pin` and (planned: used once agenda items can attach photos) `agenda_item` for the photos attached to them (their `photo_asset_ids`).
+Owner types: `photo`, and `task`, `equipment`, `map_pin` and `agenda_item` for the photos attached to them (their `photo_asset_ids`).
 
 No GSIs.
 
@@ -912,7 +912,7 @@ Protocol: a reference is written before the owner first names the note and remov
 | `note_id` | S    | Hash key (PK)                                                |
 | `owner`   | S    | Range key — `<owner_type>#<owner_id>`, e.g. `task#<task_id>` |
 
-Owner types: `task`, `equipment`, `map_pin`, `calendar_event`, `on_call_role` and (planned: used once agenda items can link notes) `agenda_item`, and `location_sop` for a unit's SOP notes, whose owner ID is `<location_id>:<PLACE>` (e.g. `location_sop#<location_id>:ON_CALL`), written by `graphql/sop_notes.rs` before the `location` row names the note and removed after it stops.
+Owner types: `task`, `equipment`, `map_pin`, `calendar_event`, `on_call_role` and `agenda_item`, and `location_sop` for a unit's SOP notes, whose owner ID is `<location_id>:<PLACE>` (e.g. `location_sop#<location_id>:ON_CALL`), written by `graphql/sop_notes.rs` before the `location` row names the note and removed after it stops.
 
 No GSIs.
 
