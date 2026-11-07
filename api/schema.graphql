@@ -1467,6 +1467,13 @@ type MutationRoot {
 	"""
 	updateNote(id: ID!, expectedVersion: Int!, title: String, content: String, folderId: ID): Note!
 	"""
+	Link one of the unit's notes as its standard operating procedure for a Tally
+	screen, replacing any note linked there, or unlink the place with `noteId: null`.
+	`BAD_REQUEST` if the note does not exist, is deleted or is another unit's. Any
+	member who can use the unit in Tally may. Returns the unit, for `sopNotes`.
+	"""
+	setSopNote(locationId: ID!, place: SopPlace!, noteId: ID): TallyLocation!
+	"""
 	Delete a note. Returns its ID.
 	"""
 	deleteNote(id: ID!): ID!
@@ -2923,6 +2930,37 @@ type SharedContact {
 	updatedBy: String
 }
 
+type SopNote {
+	place: SopPlace!
+	noteId: ID!
+	"""
+	The note itself, for its title and content.
+	"""
+	note: Note!
+}
+
+"""
+A screen in Tally that can show the unit's SOP note. More places may be added, so
+clients should cope with a value they don't know.
+"""
+enum SopPlace {
+	ON_CALL
+	"""
+	The equipment list.
+	"""
+	EQUIPMENT
+	"""
+	Shown when a member marks equipment as borrowed.
+	"""
+	EQUIPMENT_BORROWING
+	TASKS
+	CALENDAR
+	MAP
+	RESERVATIONS
+	NOTES
+	PHOTOS
+}
+
 """
 `submitFeedback`'s result: the Toolbox ticket the feedback became.
 """
@@ -3044,6 +3082,11 @@ type TallyLocation {
 	`graphql::on_call`.
 	"""
 	onCallRoles: [OnCallRole!]!
+	"""
+	The unit's standard operating procedure notes: one per Tally screen that has a
+	linked note that still exists, in a fixed order. See `graphql::sop_notes`.
+	"""
+	sopNotes: [SopNote!]!
 	"""
 	The contacts added by hand to the unit (its Duty Officer phone, …), by name. The
 	statewide ones are `Query.stateContacts`. See `graphql::shared_contacts`.

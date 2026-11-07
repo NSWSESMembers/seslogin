@@ -83,6 +83,7 @@ fn location(id: &str, name: &str) -> db::Location {
         ses_details: Default::default(),
         directory_details: Default::default(),
         accreditations: None,
+        sop_notes: Default::default(),
         created_at: 0,
         updated_at: 0,
     }

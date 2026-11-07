@@ -26,6 +26,7 @@ use super::photos::{self, PhotoConnection};
 use super::query::Person;
 use super::reservations::{self, EquipmentReservation};
 use super::shared_contacts::{self, SharedContact};
+use super::sop_notes;
 use super::tally_passkeys::{self, TallyPasskey};
 use super::tally_sign_ins::{self, TallySignIn};
 use super::tasks::{self, Task, TaskList, TaskView};
@@ -417,6 +418,12 @@ impl<A: App + HasDb + Send + Sync + 'static> TallyLocation<A> {
     /// `graphql::on_call`.
     async fn on_call_roles(&self, ctx: &Context<'_>) -> Result<Vec<OnCallRole<A>>> {
         on_call::location_on_call_roles(ctx, &self.rec.id).await
+    }
+
+    /// The unit's standard operating procedure notes: one per Tally screen that has a
+    /// linked note that still exists, in a fixed order. See `graphql::sop_notes`.
+    async fn sop_notes(&self, ctx: &Context<'_>) -> Result<Vec<sop_notes::SopNote<A>>> {
+        sop_notes::location_sop_notes(ctx, &self.rec).await
     }
 
     /// The contacts added by hand to the unit (its Duty Officer phone, …), by name. The

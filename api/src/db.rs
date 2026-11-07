@@ -487,6 +487,75 @@ pub enum LocationUpdateShape<'a> {
     Accreditations {
         accreditations: Option<&'a str>,
     },
+    /// Written only by Tally's `setSopNote`. Links the unit's note for one [`SopPlace`]
+    /// (`Some`), or unlinks it (`None`, which removes the attribute). Touches nothing else,
+    /// `updated_at` included, so a SOP link is not a change to what sync or the contact
+    /// feeds see of the unit.
+    SopNote {
+        place: SopPlace,
+        note_id: Option<&'a str>,
+    },
+}
+
+/// A place in Tally where a unit can show the note holding its standard operating
+/// procedure for that tool. Each unit links at most one note per place, stored on the
+/// `location` row as one attribute per place (see [`attribute`](Self::attribute)).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum SopPlace {
+    OnCall,
+    Equipment,
+    EquipmentBorrowing,
+    Tasks,
+    Calendar,
+    Map,
+    Reservations,
+    Notes,
+    Photos,
+}
+
+impl SopPlace {
+    /// Every place, in the order Tally lists them.
+    pub const ALL: [SopPlace; 9] = [
+        SopPlace::OnCall,
+        SopPlace::Equipment,
+        SopPlace::EquipmentBorrowing,
+        SopPlace::Tasks,
+        SopPlace::Calendar,
+        SopPlace::Map,
+        SopPlace::Reservations,
+        SopPlace::Notes,
+        SopPlace::Photos,
+    ];
+
+    /// The `location` attribute holding this place's note ID.
+    pub fn attribute(self) -> &'static str {
+        match self {
+            SopPlace::OnCall => "sop_note_on_call",
+            SopPlace::Equipment => "sop_note_equipment",
+            SopPlace::EquipmentBorrowing => "sop_note_equipment_borrowing",
+            SopPlace::Tasks => "sop_note_tasks",
+            SopPlace::Calendar => "sop_note_calendar",
+            SopPlace::Map => "sop_note_map",
+            SopPlace::Reservations => "sop_note_reservations",
+            SopPlace::Notes => "sop_note_notes",
+            SopPlace::Photos => "sop_note_photos",
+        }
+    }
+
+    /// The place's name as used in the `note_ref` owner and GraphQL (`ON_CALL`, …).
+    pub fn as_str(self) -> &'static str {
+        match self {
+            SopPlace::OnCall => "ON_CALL",
+            SopPlace::Equipment => "EQUIPMENT",
+            SopPlace::EquipmentBorrowing => "EQUIPMENT_BORROWING",
+            SopPlace::Tasks => "TASKS",
+            SopPlace::Calendar => "CALENDAR",
+            SopPlace::Map => "MAP",
+            SopPlace::Reservations => "RESERVATIONS",
+            SopPlace::Notes => "NOTES",
+            SopPlace::Photos => "PHOTOS",
+        }
+    }
 }
 
 /// Where a table scan left off. Scanning the base table returns a `LastEvaluatedKey`
@@ -1589,6 +1658,9 @@ pub struct Location {
     /// `[{"type", "status", "number", "note"}]` sorted by type. `None` for a location
     /// with no rows (every zone, and State Headquarters).
     pub accreditations: Option<String>,
+    /// The note each Tally place links as the unit's standard operating procedure
+    /// (note IDs, which may name a note deleted since). A place with none is absent.
+    pub sop_notes: std::collections::BTreeMap<SopPlace, String>,
     pub created_at: u64,
     pub updated_at: u64,
 }

@@ -883,9 +883,36 @@ fn location_fields(l: &Location) -> Fields {
         .with_ses_details(&l.ses_details)
         .with_directory_details(&l.directory_details)
         .with("accreditations", json_text(l.accreditations.as_deref()))
+        .with_sop_notes(&l.sop_notes)
+}
+
+fn sop_field(place: db::SopPlace) -> &'static str {
+    match place {
+        db::SopPlace::OnCall => "sopNote.ON_CALL",
+        db::SopPlace::Equipment => "sopNote.EQUIPMENT",
+        db::SopPlace::EquipmentBorrowing => "sopNote.EQUIPMENT_BORROWING",
+        db::SopPlace::Tasks => "sopNote.TASKS",
+        db::SopPlace::Calendar => "sopNote.CALENDAR",
+        db::SopPlace::Map => "sopNote.MAP",
+        db::SopPlace::Reservations => "sopNote.RESERVATIONS",
+        db::SopPlace::Notes => "sopNote.NOTES",
+        db::SopPlace::Photos => "sopNote.PHOTOS",
+    }
 }
 
 impl Fields {
+    /// One `sopNote.<PLACE>` field per place, so a link, a change of note and an unlink
+    /// each diff on exactly the place they touch.
+    fn with_sop_notes(mut self, notes: &std::collections::BTreeMap<db::SopPlace, String>) -> Self {
+        for place in db::SopPlace::ALL {
+            self.set(
+                sop_field(place),
+                opt_text(notes.get(&place).map(String::as_str)),
+            );
+        }
+        self
+    }
+
     fn with_ses_details(mut self, d: &db::LocationSesDetails) -> Self {
         self.set("code", opt_text(d.code.as_deref()));
         self.set("latitude", d.latitude.map(|v| json!(v)));
@@ -974,6 +1001,9 @@ pub fn location_update_changes(
         }
         db::LocationUpdateShape::Accreditations { accreditations } => {
             after.set("accreditations", json_text(*accreditations));
+        }
+        db::LocationUpdateShape::SopNote { place, note_id } => {
+            after.set(sop_field(*place), opt_text(*note_id));
         }
     }
     diff(&before, &after)
@@ -4824,6 +4854,7 @@ mod tests {
             ses_details: Default::default(),
             directory_details: Default::default(),
             accreditations: None,
+            sop_notes: Default::default(),
             created_at: 1,
             updated_at: 1,
         }

@@ -54,6 +54,8 @@ use super::query::{QuickPick, build_quick_pick};
 use super::reservations::{self, EquipmentReservation};
 use super::self_sign_in::{open_period_at, require_linked_person, sign_in_location_id};
 use super::shared_contacts::{self, SharedContact};
+use super::sop_notes;
+use super::tally::TallyLocation;
 use super::tasks::{self, Task, TaskList, TaskRecurrenceInput};
 use super::{
     ApiToken, Category, Location, NitcGroup, PasskeyInfo, Period, Person, PersonId, Session, User,
@@ -3047,6 +3049,21 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sy
             },
         )
         .await
+    }
+
+    /// Link one of the unit's notes as its standard operating procedure for a Tally
+    /// screen, replacing any note linked there, or unlink the place with `noteId: null`.
+    /// `BAD_REQUEST` if the note does not exist, is deleted or is another unit's. Any
+    /// member who can use the unit in Tally may. Returns the unit, for `sopNotes`.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn set_sop_note(
+        &self,
+        ctx: &Context<'_>,
+        location_id: ID,
+        place: sop_notes::SopPlace,
+        note_id: Option<ID>,
+    ) -> Result<TallyLocation<A>> {
+        sop_notes::set_sop_note(ctx, self.app.as_ref(), &location_id, place.into(), note_id).await
     }
 
     /// Delete a note. Returns its ID.
