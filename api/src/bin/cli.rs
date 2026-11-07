@@ -958,6 +958,7 @@ async fn show_locations(_db: &impl Handler, locs: &[Location]) {
             ses_details,
             directory_details,
             accreditations,
+            sop_notes,
             created_at,
             updated_at,
         } = l;
@@ -1000,6 +1001,18 @@ async fn show_locations(_db: &impl Handler, locs: &[Location]) {
             ("email", opt_str(&directory_details.email)),
             ("phone", opt_str(&directory_details.phone)),
             ("accreditations", opt_str(accreditations)),
+            (
+                "sop_notes",
+                if sop_notes.is_empty() {
+                    "-".to_string()
+                } else {
+                    sop_notes
+                        .iter()
+                        .map(|(place, id)| format!("{}={id}", place.as_str()))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                },
+            ),
             ("created_at", fmt_ts(*created_at)),
             ("updated_at", fmt_ts(*updated_at)),
         ]);

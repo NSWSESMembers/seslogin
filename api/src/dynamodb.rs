@@ -466,6 +466,15 @@ impl TryInto<Location> for Item {
                 phone: self.string_field("phone")?,
             },
             accreditations: self.string_field("accreditations")?,
+            sop_notes: {
+                let mut notes = std::collections::BTreeMap::new();
+                for place in db::SopPlace::ALL {
+                    if let Some(id) = self.string_field(place.attribute())? {
+                        notes.insert(place, id);
+                    }
+                }
+                notes
+            },
             created_at: self
                 .i64_field("created_at")?
                 .ok_or_else(|| anyhow!("Location missing created_at"))?
@@ -5238,6 +5247,7 @@ impl db::Handler for Handler {
             ses_details: db::LocationSesDetails::default(),
             directory_details: db::LocationDirectoryDetails::default(),
             accreditations: None,
+            sop_notes: Default::default(),
             created_at: now,
             updated_at: now,
         })
@@ -5414,6 +5424,16 @@ impl db::Handler for Handler {
                 )],
                 &[],
             ),
+            // Deliberately leaves `updated_at` alone: a SOP link is nothing sync sees.
+            db::LocationUpdateShape::SopNote { place, note_id } => {
+                let base = base.expression_attribute_names("#sop", place.attribute());
+                match note_id {
+                    Some(id) => base
+                        .update_expression("SET #sop = :sop")
+                        .expression_attribute_values(":sop", AttributeValue::S(id.to_string())),
+                    None => base.update_expression("REMOVE #sop"),
+                }
+            }
         };
 
         let new_name = match change {
@@ -5421,7 +5441,8 @@ impl db::Handler for Handler {
             | db::LocationUpdateShape::Name { name } => Some(name),
             db::LocationUpdateShape::LastSyncTime { .. }
             | db::LocationUpdateShape::SesDetails { .. }
-            | db::LocationUpdateShape::Accreditations { .. } => None,
+            | db::LocationUpdateShape::Accreditations { .. }
+            | db::LocationUpdateShape::SopNote { .. } => None,
         };
         let resp = req
             .return_values(aws_sdk_dynamodb::types::ReturnValue::UpdatedOld)
@@ -10303,6 +10324,40 @@ mod tests {
         let member: db::WebauthnCredential =
             passkey_row(&[("person_id", "p1")]).try_into().unwrap();
         assert_eq!(member.owner, db::PasskeyOwner::Member("p1".into()));
+    }
+
+    #[test]
+    fn a_location_hydrates_its_sop_notes_by_place() {
+        let s = |v: &str| AttributeValue::S(v.to_string());
+        let n = |v: &str| AttributeValue::N(v.to_string());
+        let location: db::Location = item(&[
+            ("id", s("loc")),
+            ("name", s("Unit")),
+            ("created_at", n("1")),
+            ("updated_at", n("2")),
+            ("sop_note_on_call", s("note-1")),
+            ("sop_note_equipment_borrowing", s("note-2")),
+        ])
+        .try_into()
+        .unwrap();
+        assert_eq!(
+            location.sop_notes,
+            [
+                (db::SopPlace::OnCall, "note-1".to_string()),
+                (db::SopPlace::EquipmentBorrowing, "note-2".to_string()),
+            ]
+            .into_iter()
+            .collect()
+        );
+
+        let bare: db::Location = item(&[
+            ("id", s("loc")),
+            ("created_at", n("1")),
+            ("updated_at", n("2")),
+        ])
+        .try_into()
+        .unwrap();
+        assert!(bare.sop_notes.is_empty());
     }
 
     #[test]

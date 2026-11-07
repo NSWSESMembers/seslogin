@@ -1010,6 +1010,7 @@ impl db::Handler for FakeDb {
             ses_details: Default::default(),
             directory_details: Default::default(),
             accreditations: None,
+            sop_notes: Default::default(),
             created_at: seslogin::clock::now_sec(),
             updated_at: seslogin::clock::now_sec(),
         };
@@ -1063,6 +1064,14 @@ impl db::Handler for FakeDb {
                     location.badge_emails_enabled = badge_emails;
                 }
             }
+            db::LocationUpdateShape::SopNote { place, note_id } => match note_id {
+                Some(id) => {
+                    location.sop_notes.insert(place, id.to_string());
+                }
+                None => {
+                    location.sop_notes.remove(&place);
+                }
+            },
             _ => return unsupported(),
         }
         Ok(())
@@ -3265,6 +3274,7 @@ pub(crate) fn seed_location(
             ses_details: Default::default(),
             directory_details: Default::default(),
             accreditations: None,
+            sop_notes: Default::default(),
             created_at: 0,
             updated_at: 0,
         },
