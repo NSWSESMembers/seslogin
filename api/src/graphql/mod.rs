@@ -39,6 +39,7 @@ pub mod reservations;
 pub mod self_sign_in;
 pub mod ses_details;
 pub mod shared_contacts;
+pub mod sop_notes;
 pub mod tally;
 pub mod tally_passkeys;
 pub mod tally_sign_in;

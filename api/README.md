@@ -1563,6 +1563,35 @@ and the `note_ref` table in SCHEMA.md). Access is the owner's own (`require_task
   must check the owner still names the note. Nothing exposes that in GraphQL yet (a later
   `Note.linkedFrom`). Not audited, like `asset_ref`; the owner's `note_ids` change is.
 
+## SOP notes
+
+A unit can link one of its [notes](#notes) per Tally screen as its standard operating
+procedure for that tool; Tally shows the note's title and first line at the top of the screen
+with an info icon (`src/graphql/sop_notes.rs`). The places (`SopPlace`) are `ON_CALL`,
+`EQUIPMENT` (the list), `EQUIPMENT_BORROWING` (shown when a member marks equipment as
+borrowed), `TASKS`, `CALENDAR`, `MAP`, `RESERVATIONS`, `NOTES` and `PHOTOS`.
+
+- **Storage:** one optional attribute per place on the unit's `location` row (`sop_note_on_call`,
+  `sop_note_equipment`, …, holding a note ID; see SCHEMA.md), `Location.sop_notes` in Rust. Absent
+  means nothing linked. It is written only by `LocationUpdateShape::SopNote`, which sets or
+  removes that one attribute and leaves `updated_at` (and so sync) alone.
+- **Reading:** `TallyLocation.sopNotes: [SopNote!]!`, one `{ place, noteId, note }` per place with a
+  linked note that still exists (the `Note` is loaded through its dataloader), in the order above.
+  A deleted note drops out; it is not unlinked.
+- **Writing:** `setSopNote(locationId: ID!, place: SopPlace!, noteId: ID): TallyLocation!` links
+  `noteId` at `place`, replacing any note linked there, or unlinks the place when `noteId` is null;
+  read `sopNotes` off the returned unit. Linking the note already linked, or unlinking an empty
+  place, is a successful no-op that writes nothing.
+- **Access:** `require_note_access` on the unit, for both: only an `AuthInfo::Member` at that unit
+  (users alone, kiosks, API tokens and edit links get `FORBIDDEN`). Any such member may link, not
+  just admins. There is no MCP tool.
+- **Errors:** a note that does not exist, is deleted or belongs to another unit is `BAD_REQUEST`
+  ("That note can't be linked. It may have been deleted."); a unit that does not exist is `NOT_FOUND`.
+- **References:** each link has a `note_ref` owned by `location_sop#<location_id>:<PLACE>`, written
+  before the location names the note and removed after it stops (a failed removal is logged, not
+  fatal), as in "Linked notes".
+- **Audit:** an update to the location with a `sopNote.<PLACE>` field diff, filed at that unit.
+
 ## Media
 
 Members only ever receive **derived** images: `src/media.rs` turns an original in the asset
