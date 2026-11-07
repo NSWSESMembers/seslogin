@@ -1,8 +1,8 @@
 //! Agendas: a location's meetings, used by the Tally app. This module holds the GraphQL
 //! type and the bodies of the `TallyLocation.meetings` / `Query.meeting` fields and the
 //! meeting mutations, which `tally.rs`, `query.rs` and `mutations.rs` call through thin
-//! resolvers. Storage is described in SCHEMA.md. A meeting's agenda items (topics)
-//! come in a later change.
+//! resolvers. Storage is described in SCHEMA.md. A meeting's agenda items (topics) are
+//! in `agenda_items.rs`.
 //!
 //! Access is [`require_meeting_access`] on the meeting's location throughout: any
 //! member who can use the unit in Tally, who may read and write every meeting of it,
@@ -14,6 +14,7 @@ use async_graphql::{Context, Enum, ID, Object};
 use std::sync::Arc;
 
 use super::LocationId;
+use super::agenda_items::AgendaItem;
 use super::auth::require_meeting_access;
 use super::dataloader::DatabaseLoader;
 use super::error::{ApiError, ErrorCode};
@@ -115,6 +116,11 @@ impl<A: App + HasDb + Send + Sync + 'static> Meeting<A> {
             .map_err(|e| anyhow!("Failed to load location via DataLoader: {}", e))?
             .flatten()
             .ok_or_else(|| anyhow!("Location with ID {} missing", self.rec.location_id))
+    }
+
+    /// The agenda's topics in order: by position, then when added. Live ones only.
+    async fn items(&self, ctx: &Context<'_>) -> Result<Vec<AgendaItem<A>>> {
+        super::agenda_items::meeting_items(ctx, &self.rec).await
     }
 
     /// Bumped by every change; pass it back to the update, start and finish mutations.
@@ -223,20 +229,24 @@ pub(super) async fn meeting<A: App + HasDb + Send + Sync + 'static>(
 
 // ── Writes ───────────────────────────────────────────────────────────────────
 
-fn first<T>(rows: Vec<Option<T>>) -> Option<T> {
+pub(super) fn first<T>(rows: Vec<Option<T>>) -> Option<T> {
     rows.into_iter().next().flatten()
 }
 
-fn bad_request(message: String) -> anyhow::Error {
+pub(super) fn bad_request(message: String) -> anyhow::Error {
     ApiError::bad_request(message).into()
 }
 
-fn caller_id<'a>(ctx: &'a Context<'_>) -> Option<&'a str> {
+pub(super) fn caller_id<'a>(ctx: &'a Context<'_>) -> Option<&'a str> {
     super::tally::member_id(ctx)
 }
 
 /// A live meeting the caller may change.
-async fn load_meeting(ctx: &Context<'_>, db: &impl Handler, id: &str) -> Result<db::Meeting> {
+pub(super) async fn load_meeting(
+    ctx: &Context<'_>,
+    db: &impl Handler,
+    id: &str,
+) -> Result<db::Meeting> {
     let rec = first(db.get_meetings(&[id]).await?)
         .filter(|m| m.deleted.is_none())
         .ok_or_else(|| ApiError::not_found("Meeting", id))?;
@@ -265,7 +275,7 @@ async fn apply(
     })
 }
 
-fn version_arg(expected_version: i32) -> u64 {
+pub(super) fn version_arg(expected_version: i32) -> u64 {
     u64::try_from(expected_version).unwrap_or(u64::MAX)
 }
 
