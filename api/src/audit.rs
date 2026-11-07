@@ -317,7 +317,7 @@ fn string_set(v: &[String]) -> Option<Value> {
 }
 
 /// An ordered list of strings as a JSON array, or absent when empty (an empty list is
-/// not stored). Unlike [`string_set`] the order is kept: reordering photos is a change.
+/// not stored). Unlike [`string_set`] the order is kept: reordering photos or linked notes is a change.
 fn string_list(v: &[String]) -> Option<Value> {
     (!v.is_empty()).then(|| json!(v))
 }
@@ -1083,6 +1083,7 @@ fn task_fields(t: &db::Task) -> Fields {
         )
         .with("assignee_ids", string_set(&t.assignee_ids))
         .with("photo_asset_ids", string_list(&t.photo_asset_ids))
+        .with("note_ids", string_list(&t.note_ids))
         .with("completed_at", opt_num(t.completed_at))
         .with("last_completed_at", opt_num(t.last_completed_at))
 }
@@ -1187,6 +1188,7 @@ fn map_pin_fields(p: &db::MapPin) -> Fields {
         .with("layer_id", opt_text(p.layer_id.as_deref()))
         .with("pin_type", opt_text(p.pin_type.as_deref()))
         .with("photo_asset_ids", string_list(&p.photo_asset_ids))
+        .with("note_ids", string_list(&p.note_ids))
 }
 
 pub fn map_pin_create_changes(p: &db::MapPin) -> Vec<AuditFieldChange> {
@@ -1277,6 +1279,7 @@ fn calendar_event_fields(e: &db::CalendarEvent) -> Fields {
                 .and_then(|r| r.until)
                 .map(|d| json!(format_date(d))),
         )
+        .with("note_ids", string_list(&e.note_ids))
 }
 
 pub fn calendar_event_create_changes(e: &db::CalendarEvent) -> Vec<AuditFieldChange> {
@@ -1312,6 +1315,7 @@ fn on_call_role_fields(r: &db::OnCallRole) -> Fields {
             opt_text(r.primary_person_id.as_deref()),
         )
         .with("secondary_person_ids", string_set(&r.secondary_person_ids))
+        .with("note_ids", string_list(&r.note_ids))
 }
 
 pub fn on_call_role_create_changes(r: &db::OnCallRole) -> Vec<AuditFieldChange> {
@@ -1381,6 +1385,7 @@ fn equipment_fields(e: &db::Equipment) -> Fields {
             opt_text(Some(e.description.as_str()).filter(|d| !d.is_empty())),
         )
         .with("photo_asset_ids", string_list(&e.photo_asset_ids))
+        .with("note_ids", string_list(&e.note_ids))
 }
 
 /// A new piece of equipment, with the status it was added in.
@@ -3083,7 +3088,7 @@ impl<D: db::Handler> db::Handler for AuditingHandler<D> {
     //     `create_photo`, `hide_photo` and `sweep_photo`: `complete_asset` is upload
     //     bookkeeping (the asset was audited when its upload began), `put_asset_ref` and
     //     `delete_asset_ref` are the plumbing of an owner's write, which is what is
-    //     audited, and the daily counters (`increment_daily_counter`,
+    //     audited (as are `put_note_ref` and `delete_note_ref`, a note link's), and the daily counters (`increment_daily_counter`,
     //     `get_daily_counter`) are rate-limit state with a TTL. Reads pass through.
     // The excluded *shapes* of audited methods (`AccessTime`, session `Info`,
     // `TouchLastUsed`, `LastSyncTime`) are handled inside those methods above.
@@ -3192,6 +3197,18 @@ impl<D: db::Handler> db::Handler for AuditingHandler<D> {
 
     async fn complete_asset(&self, id: &str, content_type: &str) -> db::Result<db::Asset> {
         self.inner.complete_asset(id, content_type).await
+    }
+
+    async fn list_note_refs(&self, note_id: &str) -> db::Result<Vec<db::NoteRef>> {
+        self.inner.list_note_refs(note_id).await
+    }
+
+    async fn put_note_ref(&self, note_id: &str, owner: &str, location_id: &str) -> db::Result<()> {
+        self.inner.put_note_ref(note_id, owner, location_id).await
+    }
+
+    async fn delete_note_ref(&self, note_id: &str, owner: &str) -> db::Result<()> {
+        self.inner.delete_note_ref(note_id, owner).await
     }
 
     async fn list_asset_refs(&self, asset_id: &str) -> db::Result<Vec<db::AssetRef>> {

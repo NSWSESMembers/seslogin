@@ -17,6 +17,8 @@ use std::sync::Arc;
 use super::auth::require_calendar_access;
 use super::dataloader::DatabaseLoader;
 use super::error::{ApiError, ErrorCode};
+use super::linked_notes;
+use super::notes::Note;
 use super::query::Location;
 use super::{CalendarId, LocationId};
 use crate::app::{App, HasDb};
@@ -275,6 +277,17 @@ impl<A: App + HasDb + Send + Sync + 'static> CalendarEvent<A> {
         load_location(ctx, &self.rec.location_id).await
     }
 
+    /// The linked notes (at most 10), in the order shown. One that was deleted or can
+    /// no longer be read is left out.
+    async fn notes(&self, ctx: &Context<'_>) -> Result<Vec<Note<A>>> {
+        linked_notes::load(ctx, &self.rec.note_ids).await
+    }
+
+    /// The linked notes' IDs, in order: pass these back, changed, as `noteIds`.
+    async fn note_ids(&self) -> Vec<ID> {
+        self.rec.note_ids.iter().cloned().map(ID).collect()
+    }
+
     /// Bumped by every change; pass it back to `updateCalendarEvent`.
     async fn version(&self) -> i32 {
         self.rec.version as i32
@@ -530,6 +543,7 @@ pub(super) struct CreateEventArgs {
     pub end_date: Option<String>,
     pub repeat: Option<EventRepeat>,
     pub repeat_until: Option<String>,
+    pub note_ids: Option<Vec<ID>>,
 }
 
 pub(super) async fn create_event<A: App + HasDb + Send + Sync + 'static>(
@@ -562,15 +576,33 @@ pub(super) async fn create_event<A: App + HasDb + Send + Sync + 'static>(
     if let Some(calendar_id) = &args.calendar_id {
         check_calendar_for(app.db(), calendar_id, &args.location_id).await?;
     }
+    let note_ids = linked_notes::validate(
+        app,
+        &args.location_id,
+        args.note_ids.as_deref().unwrap_or(&[]),
+        &[],
+    )
+    .await?;
+    let id = db::new_id();
+    linked_notes::add_refs(
+        app,
+        linked_notes::CALENDAR_EVENT,
+        &id,
+        &args.location_id,
+        &linked_notes::added(&[], &note_ids),
+    )
+    .await?;
     let rec = app
         .db()
         .create_calendar_event(db::NewCalendarEvent {
+            id: &id,
             location_id: &args.location_id,
             calendar_id: args.calendar_id.as_ref().map(|c| c.as_str()),
             title: &title,
             description: &description,
             timing,
             recurrence,
+            note_ids: &note_ids,
             created_by: caller_id(ctx),
         })
         .await?;
@@ -590,6 +622,7 @@ pub(super) struct UpdateEventArgs {
     pub end_date: Option<String>,
     pub repeat: MaybeUndefined<EventRepeat>,
     pub repeat_until: MaybeUndefined<String>,
+    pub note_ids: Option<Vec<ID>>,
 }
 
 pub(super) async fn update_event<A: App + HasDb + Send + Sync + 'static>(
@@ -652,6 +685,19 @@ pub(super) async fn update_event<A: App + HasDb + Send + Sync + 'static>(
             Some(c.to_string())
         }
     };
+    let note_ids = match &args.note_ids {
+        Some(ids) => linked_notes::validate(app, &rec.location_id, ids, &rec.note_ids).await?,
+        None => rec.note_ids.clone(),
+    };
+    linked_notes::add_refs(
+        app,
+        linked_notes::CALENDAR_EVENT,
+        &rec.id,
+        &rec.location_id,
+        &linked_notes::added(&rec.note_ids, &note_ids),
+    )
+    .await?;
+    let previous_notes = rec.note_ids.clone();
     let rec = app
         .db()
         .update_calendar_event(
@@ -662,6 +708,7 @@ pub(super) async fn update_event<A: App + HasDb + Send + Sync + 'static>(
                 description: &description,
                 timing,
                 recurrence,
+                note_ids: &note_ids,
                 by: caller_id(ctx),
                 expected_version,
             },
@@ -671,6 +718,13 @@ pub(super) async fn update_event<A: App + HasDb + Send + Sync + 'static>(
             db::Error::NotFound(_) => conflict(),
             e => e.into(),
         })?;
+    linked_notes::drop_refs(
+        app,
+        linked_notes::CALENDAR_EVENT,
+        &rec.id,
+        &linked_notes::added(&rec.note_ids, &previous_notes),
+    )
+    .await;
     Ok(CalendarEvent::new(rec))
 }
 
@@ -690,6 +744,13 @@ pub(super) async fn delete_event<A: App + HasDb + Send + Sync + 'static>(
             db::Error::NotFound(_) => ApiError::not_found("Calendar event", id).into(),
             e => anyhow::Error::from(e),
         })?;
+    linked_notes::drop_refs(
+        app,
+        linked_notes::CALENDAR_EVENT,
+        &rec.id,
+        &linked_notes::added(&[], &rec.note_ids),
+    )
+    .await;
     Ok(ID(rec.id))
 }
 

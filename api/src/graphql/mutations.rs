@@ -2834,6 +2834,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sy
     /// who are notified; with none it is the whole unit's.
     /// `photoAssetIds` attaches up to 10 photos, in order: ready images uploaded for this
     /// unit (with `createAssetUpload`), or ones from its photo stream.
+    /// `noteIds` links up to 10 of the unit's notes, in order (live notes only).
     #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn create_task(
         &self,
@@ -2846,6 +2847,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sy
         recurrence: Option<TaskRecurrenceInput>,
         assignee_ids: Option<Vec<ID>>,
         photo_asset_ids: Option<Vec<ID>>,
+        note_ids: Option<Vec<ID>>,
     ) -> Result<Task<A>> {
         tasks::create_task(
             ctx,
@@ -2859,6 +2861,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sy
                 recurrence,
                 assignee_ids,
                 photo_asset_ids,
+                note_ids,
             },
         )
         .await
@@ -2871,6 +2874,8 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sy
     /// `expectedVersion`.
     /// `photoAssetIds` replaces the attached photos (an empty list removes them all;
     /// omitted, they are left as they are).
+    /// `noteIds` replaces the linked notes (an empty list unlinks them all; omitted, they
+    /// are left as they are). The notes themselves are never changed.
     #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn update_task(
         &self,
@@ -2884,6 +2889,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sy
         recurrence: MaybeUndefined<TaskRecurrenceInput>,
         assignee_ids: Option<Vec<ID>>,
         photo_asset_ids: Option<Vec<ID>>,
+        note_ids: Option<Vec<ID>>,
     ) -> Result<Task<A>> {
         tasks::update_task(
             ctx,
@@ -2898,6 +2904,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sy
                 recurrence,
                 assignee_ids,
                 photo_asset_ids,
+                note_ids,
             },
         )
         .await
@@ -3079,6 +3086,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sy
     /// unit in Tally may.
     /// `photoAssetIds` attaches up to 10 photos, in order: ready images uploaded for this
     /// unit (with `createAssetUpload`), or ones from its photo stream.
+    /// `noteIds` links up to 10 of the unit's notes, in order (live notes only).
     #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn create_equipment(
         &self,
@@ -3090,6 +3098,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sy
         #[graphql(default_with = "EquipmentStatus::InService")] status: EquipmentStatus,
         comment: Option<String>,
         photo_asset_ids: Option<Vec<ID>>,
+        note_ids: Option<Vec<ID>>,
     ) -> Result<Equipment<A>> {
         equipment::create_equipment(
             ctx,
@@ -3102,6 +3111,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sy
                 status,
                 comment,
                 photo_asset_ids,
+                note_ids,
             },
         )
         .await
@@ -3112,6 +3122,8 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sy
     /// with `CONFLICT` if it is no longer at `expectedVersion`.
     /// `photoAssetIds` replaces the attached photos (an empty list removes them all;
     /// omitted, they are left as they are).
+    /// `noteIds` replaces the linked notes (an empty list unlinks them all; omitted, they
+    /// are left as they are). The notes themselves are never changed.
     #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn update_equipment(
         &self,
@@ -3122,6 +3134,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sy
         name: Option<String>,
         description: Option<String>,
         photo_asset_ids: Option<Vec<ID>>,
+        note_ids: Option<Vec<ID>>,
     ) -> Result<Equipment<A>> {
         equipment::update_equipment(
             ctx,
@@ -3133,6 +3146,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sy
                 name,
                 description,
                 photo_asset_ids,
+                note_ids,
             },
         )
         .await
@@ -3248,6 +3262,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sy
     /// without). Any member who can use the unit in Tally may.
     /// `photoAssetIds` attaches up to 10 photos, in order: ready images uploaded for this
     /// unit (with `createAssetUpload`), or ones from its photo stream.
+    /// `noteIds` links up to 10 of the unit's notes, in order (live notes only).
     #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn create_map_pin(
         &self,
@@ -3261,6 +3276,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sy
         layer_id: Option<ID>,
         #[graphql(name = "type")] pin_type: Option<MapPinType>,
         photo_asset_ids: Option<Vec<ID>>,
+        note_ids: Option<Vec<ID>>,
     ) -> Result<MapPin<A>> {
         map::create_map_pin(
             ctx,
@@ -3275,6 +3291,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sy
                 layer_id,
                 pin_type,
                 photo_asset_ids,
+                note_ids,
             },
         )
         .await
@@ -3285,6 +3302,8 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sy
     /// `expectedVersion`.
     /// `photoAssetIds` replaces the attached photos (an empty list removes them all;
     /// omitted, they are left as they are).
+    /// `noteIds` replaces the linked notes (an empty list unlinks them all; omitted, they
+    /// are left as they are). The notes themselves are never changed.
     #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn update_map_pin(
         &self,
@@ -3299,6 +3318,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sy
         layer_id: MaybeUndefined<ID>,
         #[graphql(name = "type")] pin_type: MaybeUndefined<MapPinType>,
         photo_asset_ids: Option<Vec<ID>>,
+        note_ids: Option<Vec<ID>>,
     ) -> Result<MapPin<A>> {
         map::update_map_pin(
             ctx,
@@ -3314,6 +3334,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sy
                 layer_id,
                 pin_type,
                 photo_asset_ids,
+                note_ids,
             },
         )
         .await
@@ -3356,6 +3377,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sy
     /// `startDate` and optionally `endDate` (`YYYY-MM-DD`, inclusive; default one day).
     /// `repeat` makes it repeat daily or weekly, through `repeatUntil` or forever. Any
     /// member who can use the unit in Tally may.
+    /// `noteIds` links up to 10 of the unit's notes, in order (live notes only).
     #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn create_calendar_event(
         &self,
@@ -3371,6 +3393,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sy
         end_date: Option<String>,
         repeat: Option<EventRepeat>,
         repeat_until: Option<String>,
+        note_ids: Option<Vec<ID>>,
     ) -> Result<CalendarEvent<A>> {
         calendar::create_event(
             ctx,
@@ -3387,6 +3410,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sy
                 end_date,
                 repeat,
                 repeat_until,
+                note_ids,
             },
         )
         .await
@@ -3397,6 +3421,8 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sy
     /// repeating and `repeatUntil: null` makes it repeat forever. Giving a new start
     /// without an end keeps its length; changing `allDay` needs the new start. Fails
     /// with `CONFLICT` if it is no longer at `expectedVersion`.
+    /// `noteIds` replaces the linked notes (an empty list unlinks them all; omitted, they
+    /// are left as they are). The notes themselves are never changed.
     #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn update_calendar_event(
         &self,
@@ -3413,6 +3439,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sy
         end_date: Option<String>,
         repeat: MaybeUndefined<EventRepeat>,
         repeat_until: MaybeUndefined<String>,
+        note_ids: Option<Vec<ID>>,
     ) -> Result<CalendarEvent<A>> {
         calendar::update_event(
             ctx,
@@ -3430,6 +3457,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sy
                 end_date,
                 repeat,
                 repeat_until,
+                note_ids,
             },
         )
         .await
@@ -3538,6 +3566,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sy
     /// Add an on-call role (e.g. Duty Officer) to a location, optionally with the people
     /// in it. Anyone in it needs a primary. Any member who can use the unit in
     /// Tally may.
+    /// `noteIds` links up to 10 of the unit's notes, in order (live notes only).
     #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn create_on_call_role(
         &self,
@@ -3548,6 +3577,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sy
         phone: Option<String>,
         primary_person_id: Option<ID>,
         secondary_person_ids: Option<Vec<ID>>,
+        note_ids: Option<Vec<ID>>,
     ) -> Result<OnCallRole<A>> {
         on_call::create_on_call_role(
             ctx,
@@ -3559,6 +3589,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sy
                 phone,
                 primary_person_id,
                 secondary_person_ids,
+                note_ids,
             },
         )
         .await
@@ -3568,6 +3599,8 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sy
     /// `phone: null` removes the number and `primaryPersonId: null` (with
     /// `secondaryPersonIds: []`) empties the role. Fails with `CONFLICT` if the role is
     /// no longer at `expectedVersion`.
+    /// `noteIds` replaces the linked notes (an empty list unlinks them all; omitted, they
+    /// are left as they are). The notes themselves are never changed.
     #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn update_on_call_role(
         &self,
@@ -3579,6 +3612,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sy
         phone: MaybeUndefined<String>,
         primary_person_id: MaybeUndefined<ID>,
         secondary_person_ids: Option<Vec<ID>>,
+        note_ids: Option<Vec<ID>>,
     ) -> Result<OnCallRole<A>> {
         on_call::update_on_call_role(
             ctx,
@@ -3591,6 +3625,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sy
                 phone,
                 primary_person_id,
                 secondary_person_ids,
+                note_ids,
             },
         )
         .await

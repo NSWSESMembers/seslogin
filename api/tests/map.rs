@@ -554,6 +554,7 @@ async fn a_pin_type_is_optional_and_unknown_ones_read_as_none() {
             address: "",
             note: "",
             photo_asset_ids: &[],
+            note_ids: &[],
             created_by: None,
         })
         .await

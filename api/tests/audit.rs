@@ -376,6 +376,7 @@ fn new_task<'a>(title: &'a str, recurrence: Option<db::TaskRecurrence>) -> db::N
         recurrence,
         assignee_ids: &[],
         photo_asset_ids: &[],
+        note_ids: &[],
         created_by: Some("caller"),
     }
 }
@@ -613,6 +614,7 @@ async fn equipment_writes_and_log_entries_are_recorded_against_their_location() 
             status: "in_service",
             comment: "",
             photo_asset_ids: &[],
+            note_ids: &[],
             created_by: Some("caller"),
         })
         .await
@@ -625,6 +627,7 @@ async fn equipment_writes_and_log_entries_are_recorded_against_their_location() 
                 name: "Truck 1",
                 description: "Isuzu",
                 photo_asset_ids: &[],
+                note_ids: &[],
                 by: Some("caller"),
                 expected_version: equipment.version,
             },
@@ -788,6 +791,7 @@ async fn map_pin_writes_are_recorded_against_their_location() {
             address: "",
             note: "",
             photo_asset_ids: &[],
+            note_ids: &[],
             created_by: Some("caller"),
         })
         .await
@@ -804,6 +808,7 @@ async fn map_pin_writes_are_recorded_against_their_location() {
                 address: "1 Example St",
                 note: "",
                 photo_asset_ids: &[],
+                note_ids: &[],
                 by: Some("caller"),
                 expected_version: pin.version,
             },
@@ -823,6 +828,7 @@ async fn map_pin_writes_are_recorded_against_their_location() {
                 address: "",
                 note: "",
                 photo_asset_ids: &[],
+                note_ids: &[],
                 by: Some("caller"),
                 expected_version: pin.version,
             },
@@ -977,12 +983,14 @@ async fn on_call_role_writes_are_recorded_against_their_location() {
     let role = app
         .db
         .create_on_call_role(db::NewOnCallRole {
+            id: &db::new_id(),
             location_id: "loc-a",
             name: "Duty Officer",
             description: "",
             phone: Some("0400 000 000"),
             primary_person_id: Some("alice"),
             secondary_person_ids: &[],
+            note_ids: &[],
             created_by: Some("caller"),
         })
         .await
@@ -998,6 +1006,7 @@ async fn on_call_role_writes_are_recorded_against_their_location() {
                 primary_person_id: Some("carol"),
                 secondary_person_ids: &secondaries,
                 members_changed_at: Some(1),
+                note_ids: &[],
                 by: Some("caller"),
                 expected_version: role.version,
             },
@@ -1039,6 +1048,7 @@ async fn calendar_event_writes_are_recorded_against_their_location() {
     let event = app
         .db
         .create_calendar_event(db::NewCalendarEvent {
+            id: &db::new_id(),
             location_id: "loc-a",
             calendar_id: None,
             title: "Training",
@@ -1048,6 +1058,7 @@ async fn calendar_event_writes_are_recorded_against_their_location() {
                 end: 2_000_003_600,
             },
             recurrence: None,
+            note_ids: &[],
             created_by: Some("caller"),
         })
         .await
@@ -1069,6 +1080,7 @@ async fn calendar_event_writes_are_recorded_against_their_location() {
                     repeat: Repeat::Weekly,
                     until: None,
                 }),
+                note_ids: &[],
                 by: Some("caller"),
                 expected_version: event.version,
             },
@@ -1085,6 +1097,7 @@ async fn calendar_event_writes_are_recorded_against_their_location() {
                 description: "",
                 timing: event.timing,
                 recurrence: None,
+                note_ids: &[],
                 by: Some("caller"),
                 expected_version: event.version,
             },
@@ -1275,6 +1288,7 @@ async fn assigning_a_task_records_its_assignees() {
                 recurrence: None,
                 assignee_ids: &assignees,
                 photo_asset_ids: &[],
+                note_ids: &[],
                 by: Some("caller"),
                 expected_version: task.version,
             },

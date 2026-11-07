@@ -1030,6 +1030,7 @@ impl TryInto<db::Task> for Item {
             recurrence,
             assignee_ids: self.string_set_field("assignee_ids")?,
             photo_asset_ids: self.string_list_field("photo_asset_ids")?,
+            note_ids: self.string_list_field("note_ids")?,
             open: self.has_field("open_location_id"),
             created_by: self.string_field("created_by")?,
             updated_by: self.string_field("updated_by")?,
@@ -1187,6 +1188,7 @@ impl TryInto<db::MapPin> for Item {
             address: self.string_field("address")?.unwrap_or_default(),
             note: self.string_field("note")?.unwrap_or_default(),
             photo_asset_ids: self.string_list_field("photo_asset_ids")?,
+            note_ids: self.string_list_field("note_ids")?,
             created_by: self.string_field("created_by")?,
             updated_by: self.string_field("updated_by")?,
             version: self.i64_field("v")?.unwrap_or(1) as u64,
@@ -1295,6 +1297,7 @@ impl TryInto<db::CalendarEvent> for Item {
                 .i64_field("last_end")?
                 .ok_or_else(|| anyhow!("CalendarEvent missing last_end"))?
                 as u64,
+            note_ids: self.string_list_field("note_ids")?,
             created_by: self.string_field("created_by")?,
             updated_by: self.string_field("updated_by")?,
             version: self.i64_field("v")?.unwrap_or(1) as u64,
@@ -1633,6 +1636,22 @@ impl TryInto<db::AssetRef> for Item {
     }
 }
 
+impl TryInto<db::NoteRef> for Item {
+    type Error = HydrationError;
+    fn try_into(self) -> Result<db::NoteRef, Self::Error> {
+        let s = |field: &str| -> Result<String, HydrationError> {
+            asset_field("NoteRef", field, self.string_field(field)?)
+        };
+        Ok(db::NoteRef {
+            note_id: s("note_id")?,
+            owner: s("owner")?,
+            location_id: s("location_id")?,
+            created_at: asset_field("NoteRef", "created_at", self.opt_i64_field("created_at")?)?
+                as u64,
+        })
+    }
+}
+
 impl TryInto<db::Photo> for Item {
     type Error = HydrationError;
     fn try_into(self) -> Result<db::Photo, Self::Error> {
@@ -1719,6 +1738,27 @@ fn asset_ref_item(asset_ref: &db::AssetRef) -> HashMap<String, AttributeValue> {
         (
             "created_at".to_string(),
             AttributeValue::N(asset_ref.created_at.to_string()),
+        ),
+    ])
+}
+
+fn note_ref_item(note_ref: &db::NoteRef) -> HashMap<String, AttributeValue> {
+    HashMap::from([
+        (
+            "note_id".to_string(),
+            AttributeValue::S(note_ref.note_id.clone()),
+        ),
+        (
+            "owner".to_string(),
+            AttributeValue::S(note_ref.owner.clone()),
+        ),
+        (
+            "location_id".to_string(),
+            AttributeValue::S(note_ref.location_id.clone()),
+        ),
+        (
+            "created_at".to_string(),
+            AttributeValue::N(note_ref.created_at.to_string()),
         ),
     ])
 }
@@ -1839,6 +1879,7 @@ impl TryInto<db::OnCallRole> for Item {
             primary_person_id: self.string_field("primary_person_id")?,
             secondary_person_ids: self.string_set_field("secondary_person_ids")?,
             members_changed_at: self.i64_field("members_changed_at")?.map(|i| i as u64),
+            note_ids: self.string_list_field("note_ids")?,
             created_by: self.string_field("created_by")?,
             updated_by: self.string_field("updated_by")?,
             version: self.i64_field("v")?.unwrap_or(1) as u64,
@@ -1916,6 +1957,7 @@ impl TryInto<db::Equipment> for Item {
                 .unwrap_or(created_at),
             last_checked_at: self.i64_field("last_checked_at")?.map(|i| i as u64),
             photo_asset_ids: self.string_list_field("photo_asset_ids")?,
+            note_ids: self.string_list_field("note_ids")?,
             created_by: self.string_field("created_by")?,
             updated_by: self.string_field("updated_by")?,
             version: self.i64_field("v")?.unwrap_or(1) as u64,
@@ -7092,6 +7134,9 @@ impl db::Handler for Handler {
         if let Some(photos) = string_list_value(task.photo_asset_ids) {
             put = put.item("photo_asset_ids", photos);
         }
+        if let Some(notes) = string_list_value(task.note_ids) {
+            put = put.item("note_ids", notes);
+        }
         if let Some(by) = task.created_by {
             put = put.item("created_by", AttributeValue::S(by.to_string()));
         }
@@ -7112,6 +7157,7 @@ impl db::Handler for Handler {
             recurrence: task.recurrence,
             assignee_ids: task.assignee_ids.to_vec(),
             photo_asset_ids: task.photo_asset_ids.to_vec(),
+            note_ids: task.note_ids.to_vec(),
             open: true,
             created_by: task.created_by.map(str::to_string),
             updated_by: None,
@@ -7144,6 +7190,7 @@ impl db::Handler for Handler {
                 recurrence,
                 assignee_ids,
                 photo_asset_ids,
+                note_ids,
                 by,
                 expected_version,
             } => {
@@ -7168,6 +7215,7 @@ impl db::Handler for Handler {
                     (!assignee_ids.is_empty()).then(|| AttributeValue::Ss(assignee_ids.to_vec())),
                 );
                 update.set_or_remove("photo_asset_ids", string_list_value(photo_asset_ids));
+                update.set_or_remove("note_ids", string_list_value(note_ids));
                 update.set_or_remove("updated_by", by.map(|b| AttributeValue::S(b.to_string())));
                 Some(expected_version)
             }
@@ -7638,6 +7686,9 @@ impl db::Handler for Handler {
         if let Some(photos) = string_list_value(pin.photo_asset_ids) {
             put = put.item("photo_asset_ids", photos);
         }
+        if let Some(notes) = string_list_value(pin.note_ids) {
+            put = put.item("note_ids", notes);
+        }
         if let Some(by) = pin.created_by {
             put = put.item("created_by", AttributeValue::S(by.to_string()));
         }
@@ -7658,6 +7709,7 @@ impl db::Handler for Handler {
             address: pin.address.to_string(),
             note: pin.note.to_string(),
             photo_asset_ids: pin.photo_asset_ids.to_vec(),
+            note_ids: pin.note_ids.to_vec(),
             created_by: pin.created_by.map(str::to_string),
             updated_by: None,
             version: 1,
@@ -7689,6 +7741,7 @@ impl db::Handler for Handler {
                 address,
                 note,
                 photo_asset_ids,
+                note_ids,
                 by,
                 expected_version,
             } => {
@@ -7712,6 +7765,7 @@ impl db::Handler for Handler {
                     (!note.is_empty()).then(|| AttributeValue::S(note.to_string())),
                 );
                 update.set_or_remove("photo_asset_ids", string_list_value(photo_asset_ids));
+                update.set_or_remove("note_ids", string_list_value(note_ids));
                 update.set_or_remove("updated_by", by.map(|b| AttributeValue::S(b.to_string())));
                 (
                     format!("{live} AND v = :expected_version"),
@@ -7990,7 +8044,7 @@ impl db::Handler for Handler {
         if self.read_only {
             return Err(db::Error::MutationDisabled);
         }
-        let id = new_id();
+        let id = e.id.to_string();
         let now = crate::clock::now_sec();
         // Optional attributes are omitted when absent rather than stored as Null.
         let mut put = self
@@ -8016,6 +8070,9 @@ impl db::Handler for Handler {
         if !e.description.is_empty() {
             put = put.item("description", AttributeValue::S(e.description.to_string()));
         }
+        if let Some(notes) = string_list_value(e.note_ids) {
+            put = put.item("note_ids", notes);
+        }
         if let Some(by) = e.created_by {
             put = put.item("created_by", AttributeValue::S(by.to_string()));
         }
@@ -8038,6 +8095,7 @@ impl db::Handler for Handler {
             timing: e.timing,
             recurrence: e.recurrence,
             last_end: crate::calendar::last_end(e.timing, e.recurrence),
+            note_ids: e.note_ids.to_vec(),
             created_by: e.created_by.map(str::to_string),
             updated_by: None,
             version: 1,
@@ -8066,6 +8124,7 @@ impl db::Handler for Handler {
                 description,
                 timing,
                 recurrence,
+                note_ids,
                 by,
                 expected_version,
             } => {
@@ -8081,6 +8140,7 @@ impl db::Handler for Handler {
                     "description",
                     (!description.is_empty()).then(|| AttributeValue::S(description.to_string())),
                 );
+                update.set_or_remove("note_ids", string_list_value(note_ids));
                 update.set_or_remove("updated_by", by.map(|b| AttributeValue::S(b.to_string())));
                 (
                     format!("{live} AND v = :expected_version"),
@@ -8149,7 +8209,7 @@ impl db::Handler for Handler {
         if self.read_only {
             return Err(db::Error::MutationDisabled);
         }
-        let id = new_id();
+        let id = role.id.to_string();
         let now = crate::clock::now_sec();
         let members_changed_at = role.primary_person_id.map(|_| now);
         // Optional attributes are omitted when absent rather than stored as Null, and a
@@ -8190,6 +8250,9 @@ impl db::Handler for Handler {
         if let Some(at) = members_changed_at {
             put = put.item("members_changed_at", AttributeValue::N(at.to_string()));
         }
+        if let Some(notes) = string_list_value(role.note_ids) {
+            put = put.item("note_ids", notes);
+        }
         if let Some(by) = role.created_by {
             put = put.item("created_by", AttributeValue::S(by.to_string()));
         }
@@ -8212,6 +8275,7 @@ impl db::Handler for Handler {
             primary_person_id: role.primary_person_id.map(str::to_string),
             secondary_person_ids: role.secondary_person_ids.to_vec(),
             members_changed_at,
+            note_ids: role.note_ids.to_vec(),
             created_by: role.created_by.map(str::to_string),
             updated_by: None,
             version: 1,
@@ -8241,6 +8305,7 @@ impl db::Handler for Handler {
                 primary_person_id,
                 secondary_person_ids,
                 members_changed_at,
+                note_ids,
                 by,
                 expected_version,
             } => {
@@ -8263,6 +8328,7 @@ impl db::Handler for Handler {
                     "members_changed_at",
                     members_changed_at.map(|t| AttributeValue::N(t.to_string())),
                 );
+                update.set_or_remove("note_ids", string_list_value(note_ids));
                 update.set_or_remove("updated_by", by.map(|b| AttributeValue::S(b.to_string())));
                 (
                     format!("{live} AND v = :expected_version"),
@@ -8528,6 +8594,7 @@ impl db::Handler for Handler {
             status_changed_at: now,
             last_checked_at: None,
             photo_asset_ids: equipment.photo_asset_ids.to_vec(),
+            note_ids: equipment.note_ids.to_vec(),
             created_by: equipment.created_by.map(str::to_string),
             updated_by: None,
             version: 1,
@@ -8577,6 +8644,9 @@ impl db::Handler for Handler {
         if let Some(photos) = string_list_value(&row.photo_asset_ids) {
             item.insert("photo_asset_ids".to_string(), photos);
         }
+        if let Some(notes) = string_list_value(&row.note_ids) {
+            item.insert("note_ids".to_string(), notes);
+        }
         if let Some(by) = &row.created_by {
             item.insert("created_by".to_string(), AttributeValue::S(by.clone()));
         }
@@ -8622,6 +8692,7 @@ impl db::Handler for Handler {
                 name,
                 description,
                 photo_asset_ids,
+                note_ids,
                 by,
                 expected_version,
             } => {
@@ -8635,6 +8706,7 @@ impl db::Handler for Handler {
                     (!description.is_empty()).then(|| AttributeValue::S(description.to_string())),
                 );
                 update.set_or_remove("photo_asset_ids", string_list_value(photo_asset_ids));
+                update.set_or_remove("note_ids", string_list_value(note_ids));
                 update.set_or_remove("updated_by", by.map(|b| AttributeValue::S(b.to_string())));
                 (
                     format!("{live} AND v = :expected_version"),
@@ -9665,6 +9737,58 @@ impl db::Handler for Handler {
         Ok(())
     }
 
+    async fn list_note_refs(&self, note_id: &str) -> db::Result<Vec<db::NoteRef>> {
+        query_all("list_note_refs", || {
+            self.client
+                .query()
+                .table_name(self.table_name("note_ref"))
+                .consistent_read(true)
+                .key_condition_expression("note_id = :note_id")
+                .expression_attribute_values(":note_id", AttributeValue::S(note_id.to_string()))
+        })
+        .await
+    }
+
+    async fn put_note_ref(&self, note_id: &str, owner: &str, location_id: &str) -> db::Result<()> {
+        if self.read_only {
+            return Err(db::Error::MutationDisabled);
+        }
+        let resp = self
+            .client
+            .put_item()
+            .table_name(self.table_name("note_ref"))
+            .set_item(Some(note_ref_item(&db::NoteRef {
+                note_id: note_id.to_string(),
+                owner: owner.to_string(),
+                location_id: location_id.to_string(),
+                created_at: crate::clock::now_sec(),
+            })))
+            .return_consumed_capacity(ReturnConsumedCapacity::Total)
+            .send()
+            .await
+            .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
+        record_capacity("put_note_ref", resp.consumed_capacity(), CapKind::Write);
+        Ok(())
+    }
+
+    async fn delete_note_ref(&self, note_id: &str, owner: &str) -> db::Result<()> {
+        if self.read_only {
+            return Err(db::Error::MutationDisabled);
+        }
+        let resp = self
+            .client
+            .delete_item()
+            .table_name(self.table_name("note_ref"))
+            .key("note_id", AttributeValue::S(note_id.to_string()))
+            .key("owner", AttributeValue::S(owner.to_string()))
+            .return_consumed_capacity(ReturnConsumedCapacity::Total)
+            .send()
+            .await
+            .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
+        record_capacity("delete_note_ref", resp.consumed_capacity(), CapKind::Write);
+        Ok(())
+    }
+
     async fn create_photo(&self, photo: db::NewPhoto<'_>) -> db::Result<db::Photo> {
         if self.read_only {
             return Err(db::Error::MutationDisabled);
@@ -10090,9 +10214,9 @@ mod tests {
     use super::{
         AuditQueryPlan, Item, asset_item, asset_ref_item, audit_entries_from_items, audit_items,
         audit_query_plan, batch_get_backoff, client_info_attributes, contact_key, counter_count,
-        hydrate_items, hydrate_items_lenient, nitc_event_key, photo_item, scan_cursor_from_key,
-        string_list_value, topic_date_key, trophy_holder_item, trophy_notice_item,
-        trophy_reign_item, unprocessed_keys_for, visible_photo_start_key,
+        hydrate_items, hydrate_items_lenient, nitc_event_key, note_ref_item, photo_item,
+        scan_cursor_from_key, string_list_value, topic_date_key, trophy_holder_item,
+        trophy_notice_item, trophy_reign_item, unprocessed_keys_for, visible_photo_start_key,
     };
     use crate::db;
     use crate::db::Category;
@@ -10922,6 +11046,20 @@ mod tests {
         assert_eq!(item["owner"], AttributeValue::S("photo#ph1".into()));
         let read: db::AssetRef = Item(item).try_into().unwrap();
         assert_eq!(read, asset_ref);
+    }
+
+    #[test]
+    fn note_ref_rows_round_trip() {
+        let note_ref = db::NoteRef {
+            note_id: "n1".into(),
+            owner: db::note_owner("task", "t1"),
+            location_id: "loc".into(),
+            created_at: 77,
+        };
+        let item = note_ref_item(&note_ref);
+        assert_eq!(item["owner"], AttributeValue::S("task#t1".into()));
+        let read: db::NoteRef = Item(item).try_into().unwrap();
+        assert_eq!(read, note_ref);
     }
 
     #[test]

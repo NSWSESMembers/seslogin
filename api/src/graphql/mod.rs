@@ -25,6 +25,7 @@ pub mod equipment;
 pub mod error;
 #[cfg(debug_assertions)]
 pub mod error_injection;
+pub mod linked_notes;
 pub mod location_share;
 pub mod map;
 pub mod mutations;
@@ -106,6 +107,10 @@ pub struct TaskListId(pub String);
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct NoteFolderId(pub String);
+
+/// DataLoader key for a [`notes::Note`]'s row, used by anything that links to a note.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct NoteId(pub String);
 
 /// DataLoader key for [`assets::Asset`]'s row, used by anything that points at an asset.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]

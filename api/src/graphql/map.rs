@@ -17,6 +17,8 @@ use super::attached_photos;
 use super::auth::require_map_access;
 use super::dataloader::DatabaseLoader;
 use super::error::{ApiError, ErrorCode};
+use super::linked_notes;
+use super::notes::Note;
 use super::query::Location;
 use super::{LocationId, MapLayerId};
 use crate::app::{App, HasDb};
@@ -136,6 +138,17 @@ impl<A: App + HasDb + Send + Sync + 'static> MapPin<A> {
     /// `photoAssetIds`.
     async fn photo_asset_ids(&self) -> Vec<ID> {
         self.rec.photo_asset_ids.iter().cloned().map(ID).collect()
+    }
+
+    /// The linked notes (at most 10), in the order shown. One that was deleted or can
+    /// no longer be read is left out.
+    async fn notes(&self, ctx: &Context<'_>) -> Result<Vec<Note<A>>> {
+        linked_notes::load(ctx, &self.rec.note_ids).await
+    }
+
+    /// The linked notes' IDs, in order: pass these back, changed, as `noteIds`.
+    async fn note_ids(&self) -> Vec<ID> {
+        self.rec.note_ids.iter().cloned().map(ID).collect()
     }
 
     async fn location_id(&self) -> ID {
@@ -326,6 +339,7 @@ pub(super) struct CreateMapPinArgs {
     pub layer_id: Option<ID>,
     pub pin_type: Option<MapPinType>,
     pub photo_asset_ids: Option<Vec<ID>>,
+    pub note_ids: Option<Vec<ID>>,
 }
 
 pub(super) async fn create_map_pin<A: App + HasDb + Send + Sync + 'static>(
@@ -352,6 +366,13 @@ pub(super) async fn create_map_pin<A: App + HasDb + Send + Sync + 'static>(
         &[],
     )
     .await?;
+    let note_ids = linked_notes::validate(
+        app,
+        &args.location_id,
+        args.note_ids.as_deref().unwrap_or(&[]),
+        &[],
+    )
+    .await?;
     let id = db::new_id();
     attached_photos::add_refs(
         app,
@@ -359,6 +380,14 @@ pub(super) async fn create_map_pin<A: App + HasDb + Send + Sync + 'static>(
         &id,
         &args.location_id,
         &attached_photos::added(&[], &photo_asset_ids),
+    )
+    .await?;
+    linked_notes::add_refs(
+        app,
+        linked_notes::MAP_PIN,
+        &id,
+        &args.location_id,
+        &linked_notes::added(&[], &note_ids),
     )
     .await?;
     let rec = app
@@ -374,6 +403,7 @@ pub(super) async fn create_map_pin<A: App + HasDb + Send + Sync + 'static>(
             address: &address,
             note: &note,
             photo_asset_ids: &photo_asset_ids,
+            note_ids: &note_ids,
             created_by: caller_id(ctx),
         })
         .await?;
@@ -391,6 +421,7 @@ pub(super) struct UpdateMapPinArgs {
     pub layer_id: MaybeUndefined<ID>,
     pub pin_type: MaybeUndefined<MapPinType>,
     pub photo_asset_ids: Option<Vec<ID>>,
+    pub note_ids: Option<Vec<ID>>,
 }
 
 pub(super) async fn update_map_pin<A: App + HasDb + Send + Sync + 'static>(
@@ -439,6 +470,10 @@ pub(super) async fn update_map_pin<A: App + HasDb + Send + Sync + 'static>(
         }
         None => rec.photo_asset_ids.clone(),
     };
+    let note_ids = match &args.note_ids {
+        Some(ids) => linked_notes::validate(app, &rec.location_id, ids, &rec.note_ids).await?,
+        None => rec.note_ids.clone(),
+    };
     attached_photos::add_refs(
         app,
         attached_photos::MAP_PIN,
@@ -447,7 +482,16 @@ pub(super) async fn update_map_pin<A: App + HasDb + Send + Sync + 'static>(
         &attached_photos::added(&rec.photo_asset_ids, &photo_asset_ids),
     )
     .await?;
+    linked_notes::add_refs(
+        app,
+        linked_notes::MAP_PIN,
+        &rec.id,
+        &rec.location_id,
+        &linked_notes::added(&rec.note_ids, &note_ids),
+    )
+    .await?;
     let previous_photos = rec.photo_asset_ids.clone();
+    let previous_notes = rec.note_ids.clone();
     let rec = app
         .db()
         .update_map_pin(
@@ -461,6 +505,7 @@ pub(super) async fn update_map_pin<A: App + HasDb + Send + Sync + 'static>(
                 address: &address,
                 note: &note,
                 photo_asset_ids: &photo_asset_ids,
+                note_ids: &note_ids,
                 by: caller_id(ctx),
                 expected_version,
             },
@@ -475,6 +520,13 @@ pub(super) async fn update_map_pin<A: App + HasDb + Send + Sync + 'static>(
         attached_photos::MAP_PIN,
         &rec.id,
         &attached_photos::added(&rec.photo_asset_ids, &previous_photos),
+    )
+    .await;
+    linked_notes::drop_refs(
+        app,
+        linked_notes::MAP_PIN,
+        &rec.id,
+        &linked_notes::added(&rec.note_ids, &previous_notes),
     )
     .await;
     Ok(MapPin::new(rec))
@@ -501,6 +553,13 @@ pub(super) async fn delete_map_pin<A: App + HasDb + Send + Sync + 'static>(
         attached_photos::MAP_PIN,
         &rec.id,
         &attached_photos::added(&[], &rec.photo_asset_ids),
+    )
+    .await;
+    linked_notes::drop_refs(
+        app,
+        linked_notes::MAP_PIN,
+        &rec.id,
+        &linked_notes::added(&[], &rec.note_ids),
     )
     .await;
     Ok(ID(rec.id))

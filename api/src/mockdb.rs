@@ -1139,6 +1139,23 @@ impl db::Handler for Handler {
         Self::unsupported()
     }
 
+    async fn list_note_refs(&self, _note_id: &str) -> db::Result<Vec<db::NoteRef>> {
+        Self::unsupported()
+    }
+
+    async fn put_note_ref(
+        &self,
+        _note_id: &str,
+        _owner: &str,
+        _location_id: &str,
+    ) -> db::Result<()> {
+        Self::unsupported()
+    }
+
+    async fn delete_note_ref(&self, _note_id: &str, _owner: &str) -> db::Result<()> {
+        Self::unsupported()
+    }
+
     async fn create_photo(&self, _photo: db::NewPhoto<'_>) -> db::Result<db::Photo> {
         Self::unsupported()
     }
