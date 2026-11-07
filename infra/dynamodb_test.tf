@@ -934,6 +934,66 @@ resource "aws_dynamodb_table" "test_calendar_event" {
   }
 }
 
+# A location's meetings (Tally Agendas). starts_at is the scheduled start, so the
+# location index lists a unit's meetings in date order and a window is one query.
+resource "aws_dynamodb_table" "test_meeting" {
+  name         = "${var.db_prefix_test}_meeting"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "id"
+
+  attribute {
+    name = "id"
+    type = "S"
+  }
+  attribute {
+    name = "location_id"
+    type = "S"
+  }
+  attribute {
+    name = "starts_at"
+    type = "N"
+  }
+
+  global_secondary_index {
+    name = "location_id-starts_at-index"
+    key_schema {
+      attribute_name = "location_id"
+      key_type       = "HASH"
+    }
+    key_schema {
+      attribute_name = "starts_at"
+      key_type       = "RANGE"
+    }
+    projection_type = "ALL"
+  }
+}
+
+# The agenda items (topics) of a meeting. The meeting index returns all of a
+# meeting's items; the API orders them by position in memory.
+resource "aws_dynamodb_table" "test_agenda_item" {
+  name         = "${var.db_prefix_test}_agenda_item"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "id"
+
+  attribute {
+    name = "id"
+    type = "S"
+  }
+  attribute {
+    name = "meeting_id"
+    type = "S"
+  }
+
+  global_secondary_index {
+    name = "meeting_id-index"
+    key_schema {
+      attribute_name = "meeting_id"
+      key_type       = "HASH"
+    }
+    projection_type = "ALL"
+  }
+}
+
 # Locate: one row per member sharing their position with a location's members,
 # keyed by person ID. Listed per location; the TTL removes a share 7 minutes after its
 # latest position, and reads skip any the TTL hasn't reached yet.

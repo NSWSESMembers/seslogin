@@ -338,6 +338,8 @@ const TRANSIENT_TABLES: &[&str] = &[
     "map_layer",
     "calendar",
     "calendar_event",
+    "meeting",
+    "agenda_item",
     "location_share",
     "notification",
     "trophy",

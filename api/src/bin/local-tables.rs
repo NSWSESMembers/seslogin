@@ -373,6 +373,26 @@ const TABLES: &[Table] = &[
         ttl: None,
     },
     Table {
+        name: "meeting",
+        hash: "id",
+        range: None,
+        attrs: &[Attr("id", S), Attr("location_id", S), Attr("starts_at", N)],
+        gsis: &[all(
+            "location_id-starts_at-index",
+            "location_id",
+            Some("starts_at"),
+        )],
+        ttl: None,
+    },
+    Table {
+        name: "agenda_item",
+        hash: "id",
+        range: None,
+        attrs: &[Attr("id", S), Attr("meeting_id", S)],
+        gsis: &[all("meeting_id-index", "meeting_id", None)],
+        ttl: None,
+    },
+    Table {
         name: "location_share",
         hash: "id",
         range: None,
