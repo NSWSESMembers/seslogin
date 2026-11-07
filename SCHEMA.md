@@ -832,6 +832,28 @@ No GSIs.
 
 ---
 
+### `{prefix}note_ref`
+
+Reverse index of links from items to notes, so "which items link to this note" can be answered. Tasks, map pins, equipment, calendar events and on-call roles will each store an ordered `note_ids` list; the code that uses this table, and those lists, lands in a later PR. Until then nothing reads or writes it.
+
+Protocol: a reference is written before the owner first names the note and removed after the owner stops naming it or is deleted. A stray reference is therefore possible, so a reader must check that the owner still names the note before trusting a row.
+
+| Attribute | Type | Role                                                         |
+| --------- | ---- | ------------------------------------------------------------ |
+| `note_id` | S    | Hash key (PK)                                                |
+| `owner`   | S    | Range key — `<owner_type>#<owner_id>`, e.g. `task#<task_id>` |
+
+Owner types: `task`, `equipment`, `map_pin`, `calendar_event` and `on_call_role`.
+
+No GSIs.
+
+**Non-obvious attributes (not in table definition):**
+
+- `location_id` (S) — the owner's (and the note's) unit
+- `created_at` (N) — Unix seconds
+
+---
+
 ### `{prefix}photo`
 
 A unit's photo stream in Tally: photos stay for 30 days, and a unit may add 100 per Sydney day (see the `counter#photo#...` items below). A photo is hidden by a member (no undo) and swept by a daily job, which soft-deletes it and removes its `asset_ref`.

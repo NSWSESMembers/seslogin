@@ -1068,6 +1068,26 @@ resource "aws_dynamodb_table" "test_asset_ref" {
   }
 }
 
+# Note references: one row per owner that links to a note (owner = <type>#<id>, e.g.
+# task#abc123), so "which items link to this note" can be answered. Written before
+# the owner first names the note and removed after it stops or is deleted; readers
+# must check the owner still names the note.
+resource "aws_dynamodb_table" "test_note_ref" {
+  name         = "${var.db_prefix_test}_note_ref"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "note_id"
+  range_key    = "owner"
+
+  attribute {
+    name = "note_id"
+    type = "S"
+  }
+  attribute {
+    name = "owner"
+    type = "S"
+  }
+}
+
 # Photos (Tally): a unit's 30-day photo stream. visible-location index lists the
 # stream newest first by sort_key; the sparse sweep index (sweep = "1" until swept)
 # finds photos due for removal. expires_at is deliberately NOT a TTL attribute: the

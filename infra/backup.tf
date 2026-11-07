@@ -55,6 +55,8 @@ locals {
     # themselves are in the assets bucket.
     aws_dynamodb_table.prod_asset,
     aws_dynamodb_table.prod_asset_ref,
+    # Reverse index of note links; rebuildable from the owners but slow to.
+    aws_dynamodb_table.prod_note_ref,
     aws_dynamodb_table.prod_photo,
   ]
 }
