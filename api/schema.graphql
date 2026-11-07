@@ -178,6 +178,8 @@ enum AuditEntityType {
 	LOCATION_SHARE
 	ASSET
 	PHOTO
+	MEETING
+	AGENDA_ITEM
 }
 
 type AuditEntry {

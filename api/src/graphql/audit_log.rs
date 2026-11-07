@@ -83,6 +83,8 @@ pub enum AuditEntityType {
     LocationShare,
     Asset,
     Photo,
+    Meeting,
+    AgendaItem,
 }
 
 impl From<db::AuditEntityType> for AuditEntityType {
@@ -116,6 +118,8 @@ impl From<db::AuditEntityType> for AuditEntityType {
             db::AuditEntityType::LocationShare => Self::LocationShare,
             db::AuditEntityType::Asset => Self::Asset,
             db::AuditEntityType::Photo => Self::Photo,
+            db::AuditEntityType::Meeting => Self::Meeting,
+            db::AuditEntityType::AgendaItem => Self::AgendaItem,
         }
     }
 }
@@ -151,6 +155,8 @@ impl From<AuditEntityType> for db::AuditEntityType {
             AuditEntityType::LocationShare => Self::LocationShare,
             AuditEntityType::Asset => Self::Asset,
             AuditEntityType::Photo => Self::Photo,
+            AuditEntityType::Meeting => Self::Meeting,
+            AuditEntityType::AgendaItem => Self::AgendaItem,
         }
     }
 }
