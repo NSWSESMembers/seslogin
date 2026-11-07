@@ -1,6 +1,7 @@
 pub mod ably;
 pub mod activity_summary;
 pub mod agenda_text;
+pub mod agendas;
 pub mod app;
 pub mod assets;
 pub mod audit;

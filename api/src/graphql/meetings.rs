@@ -123,6 +123,15 @@ impl<A: App + HasDb + Send + Sync + 'static> Meeting<A> {
         super::agenda_items::meeting_items(ctx, &self.rec).await
     }
 
+    /// The meeting's minutes as Markdown, for sharing, copying or saving as a note: the
+    /// title, unit and when, then each topic in order under a bare `## n.` heading:
+    /// its presenter, its text as written, and its linked tasks, equipment, on-call
+    /// roles, notes and a photo count. Only syntax Tally's notes show; also reads as
+    /// plain text. See `api/README.md`'s "Agendas".
+    async fn minutes(&self, ctx: &Context<'_>) -> Result<String> {
+        super::meeting_minutes::minutes::<A>(ctx, &self.rec).await
+    }
+
     /// Bumped by every change; pass it back to the update, start and finish mutations.
     async fn version(&self) -> i32 {
         self.rec.version as i32

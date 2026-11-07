@@ -207,7 +207,7 @@ fn require_content(text: &str, links: usize) -> Result<(), String> {
 }
 
 /// Sort by position, then when added, then ID.
-fn sort_items(items: &mut [db::AgendaItem]) {
+pub(super) fn sort_items(items: &mut [db::AgendaItem]) {
     items.sort_by(|a, b| (a.position, a.created_at, &a.id).cmp(&(b.position, b.created_at, &b.id)));
 }
 

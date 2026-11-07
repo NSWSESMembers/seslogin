@@ -1179,7 +1179,7 @@ mutation {
 Meeting agendas and minutes for Tally's Agendas app (`src/graphql/meetings.rs` and
 `src/graphql/agenda_items.rs`; storage in SCHEMA.md's `meeting` and `agenda_item` sections). This
 section covers **meetings**, their **topics** (agenda items) and the topics' links to tasks,
-equipment, on-call roles, photos and notes; the exported minutes come in a later change.
+equipment, on-call roles, photos and notes, and the meeting's exported **minutes**.
 
 - **Who:** any member signed in to Tally who can use the unit (`require_meeting_access`, through
   `require_member_location`: see "Tally (members)" above) may read and write every meeting of it,
@@ -1259,6 +1259,59 @@ mutation {
   }
 }
 ```
+
+### Minutes
+
+`Meeting.minutes: String!` is the meeting's minutes as Markdown, for Tally to show, share, copy
+and save as a note (`src/graphql/meeting_minutes.rs` gathers the data, `src/agendas.rs` renders
+it: a pure function with its own unit tests). It needs the same access as the meeting and is
+built fresh on every read; a deleted task, equipment, role, note or person is left out, as on
+`AgendaItem`. It uses only what Tally's note renderer shows (`#` and `##` headings, paragraphs,
+`- ` lists, `**bold**`, backslash escapes) and also reads as plain text pasted into an email:
+
+```text
+# Monthly unit meeting
+
+Test A Unit · Wed 18 Nov 2026, 7:32–8:41 pm
+
+## 1.
+Presented by Bob Brown
+
+Vehicle servicing schedule
+
+Annual service of KMA56. KMA56 to go in on 21 Nov.
+
+- Task: Book KMA56 service — Bob Brown, due 21 Nov 2026
+- Equipment: KMA56 — Has an issue
+- On call: Duty officer — Dana Dualunit (+ Al Adams)
+- Note: Service checklist
+- Photos: 2 attached
+
+## 2.
+Presented by Bob Brown
+
+Christmas BBQ date
+
+Sat 13 Dec, at the shed.
+```
+
+- **Header:** `# <title>`, then `<unit> · <when>` in Sydney time: "Planned for Wed 18 Nov 2026, 7:30 pm"
+  (the scheduled start) until it is started, "In progress since …" (the actual start) while it
+  runs, and "Wed 18 Nov 2026, 7:32–8:41 pm" once finished (both dates if it ran past midnight).
+  The meeting's description follows as a paragraph.
+- **Topics:** every topic, in agenda order, under a bare `## n.` heading, whatever the meeting's
+  status when it was added (there is no "other business" group). A topic has no title and its text
+  is shown in full, so the heading carries no name. Each topic has "Presented by <name>" (left out
+  if the presenter was deleted), its text, then its links as a bullet list. A meeting with no
+  topics says so.
+- **Text** is inserted exactly as the members wrote it (only line endings and surrounding blank
+  space are normalised), so its own Markdown shows as written, first line included. Everything
+  else a member typed (names, the meeting's title and description) is escaped so it cannot make
+  headings, lists, quotes or formatting of its own (for example, `# Budget` as a title shows as
+  typed).
+- **Links:** "Task: <title> — <assignees>, due <date> (done)", "Equipment: <name> — <status>"
+  (Tally's wording, e.g. "Has an issue"), "On call: <role> — <primary> (+ <secondaries>)" (or
+  "nobody"), "Note: <title>" and "Photos: n attached".
 
 ```graphql
 mutation {

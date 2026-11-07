@@ -30,6 +30,7 @@ pub mod linked_items;
 pub mod linked_notes;
 pub mod location_share;
 pub mod map;
+pub mod meeting_minutes;
 pub mod meetings;
 pub mod mutations;
 pub mod notes;
