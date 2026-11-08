@@ -1178,8 +1178,8 @@ mutation {
 
 Meeting agendas and minutes for Tally's Agendas app (`src/graphql/meetings.rs` and
 `src/graphql/agenda_items.rs`; storage in SCHEMA.md's `meeting` and `agenda_item` sections). This
-section covers **meetings** and their **topics** (agenda items); the topics' links to tasks,
-equipment, on-call roles, photos and notes, and the exported minutes come in later changes.
+section covers **meetings**, their **topics** (agenda items) and the topics' links to tasks,
+equipment, on-call roles, photos and notes; the exported minutes come in a later change.
 
 - **Who:** any member signed in to Tally who can use the unit (`require_meeting_access`, through
   `require_member_location`: see "Tally (members)" above) may read and write every meeting of it,
@@ -1217,19 +1217,35 @@ Topics have the same access as meetings (`require_meeting_access` on the topic's
   kept as written, at most 20,000 characters (only-whitespace counts as empty). Whatever needs a
   short name for a topic uses the first line of its text as plain text (cut to 100 characters
   and "…"; `src/agenda_text.rs`), the same rule as Tally's preview. A topic must have text
-  (`BAD_REQUEST` otherwise).
-- **Creating:** `createAgendaItem(meetingId, text, presenterId)`. The presenter defaults to the
+  or at least one link (`BAD_REQUEST` otherwise); `text` can be omitted on create when it links
+  something.
+- **Creating:** `createAgendaItem(meetingId, text, presenterId, …links)`. The presenter defaults to the
   caller and may be a live member of any unit (`NOT_FOUND` otherwise). The topic goes at the end
   (`position` = highest + 1), whatever the meeting's status: there is no difference between a
   topic added before and during the meeting. A missing or deleted meeting is `NOT_FOUND`.
-- **Updating:** `updateAgendaItem(id, expectedVersion, text, presenterId)`: omitted arguments are
+- **Updating:** `updateAgendaItem(id, expectedVersion, text, presenterId, …links)`: omitted arguments are
   unchanged, and the presenter cannot be cleared (the current presenter may stay even after being
   deleted). Stale `expectedVersion` is `CONFLICT`. `deleteAgendaItem(id)` returns the ID.
 - **Reordering** (at any meeting status): `reorderAgendaItems(meetingId, itemIds)` takes exactly the meeting's live topic
   IDs, each once, in the wanted order (otherwise `BAD_REQUEST`), renumbers them 1..n, writes only
   topics whose position changed (each conditional on the version just read; a topic changed in the
   meantime is `CONFLICT`) and returns them in the new order.
-- **Audit:** create, field changes, moves and deletes are each recorded against the topic.
+- **Audit:** create, field changes, moves and deletes are each recorded against the topic
+  (link changes included, as `task_ids`, `equipment_ids`, `on_call_role_ids`, `photo_asset_ids`
+  and `note_ids`).
+- **Links:** a topic links to up to 10 each of the unit's tasks, equipment, on-call roles, photos
+  and notes. `AgendaItem` has `tasks`/`taskIds`, `equipment`/`equipmentIds`,
+  `onCallRoles`/`onCallRoleIds`, `photos`/`photoAssetIds` and `notes`/`noteIds`: the object lists
+  are in order and leave out anything deleted or unreadable, the ID lists are as stored. Both
+  `createAgendaItem` and `updateAgendaItem` take `taskIds`, `equipmentIds`, `onCallRoleIds`,
+  `photoAssetIds` and `noteIds` (all optional `[ID!]`), so a topic and its first link can be made
+  in one call. On an update, omitted leaves a list alone and a list replaces it (`[]` clears it).
+  A task, piece of equipment or role (`src/graphql/linked_items.rs`) must exist, be live and belong
+  to the topic's unit when it is linked; more than 10, or the same one twice, is `BAD_REQUEST`; one
+  already linked may stay whatever has become of it. They have no reference rows. Photos follow
+  "Attached photos" and notes "Linked notes", with owner type `agenda_item`: refs are written
+  before the topic names the asset or note (the topic's ID is chosen first for this) and removed
+  after it stops naming it or is deleted. Linking never changes the thing linked.
 
 ```graphql
 mutation {
@@ -1607,15 +1623,15 @@ uploads") shown to everyone who can use the unit in Tally (`require_photo_access
 
 ## Attached photos
 
-Tasks, equipment and map pins can each carry up to 10 photos (`src/graphql/attached_photos.rs`;
+Tasks, equipment, map pins and agenda items can each carry up to 10 photos (`src/graphql/attached_photos.rs`;
 storage is each row's `photo_asset_ids` in SCHEMA.md). Access is the owner's own (`require_task_access`,
-`require_equipment_access`, `require_map_access`).
+`require_equipment_access`, `require_map_access`, `require_meeting_access`).
 
-- **Reading:** `Task.photos`, `Equipment.photos` and `MapPin.photos` are the attached assets in
+- **Reading:** `Task.photos`, `Equipment.photos`, `MapPin.photos` and `AgendaItem.photos` are the attached assets in
   order (`url(variant:)` is the image; one that can no longer be read is left out), and
   `photoAssetIds` their IDs.
 - **Writing:** `photoAssetIds` on `createTask`/`updateTask`, `createEquipment`/`updateEquipment`
-  and `createMapPin`/`updateMapPin`. On an update, omitted leaves the photos alone and a list
+  `createMapPin`/`updateMapPin` and `createAgendaItem`/`updateAgendaItem`. On an update, omitted leaves the photos alone and a list
   replaces them, in that order (`[]` removes them all).
 - **What may be attached:** any ready image asset at the owner's unit: one the member just
   uploaded (see "Assets and uploads"), or one from the unit's photo stream (`Photo.asset.id`),
@@ -1623,25 +1639,25 @@ storage is each row's `photo_asset_ids` in SCHEMA.md). Access is the owner's own
   ready or at another unit is `BAD_REQUEST`. A photo already attached may stay attached
   whatever has become of its asset.
 - **References:** each attached asset has an `asset_ref` owned by `task#<id>`, `equipment#<id>`
-  or `map_pin#<id>`, written (checking the asset is ready at the unit) before the owner first
+  `map_pin#<id>` or `agenda_item#<id>`, written (checking the asset is ready at the unit) before the owner first
   names it and removed after the owner stops naming it or is deleted. So a photo taken from
   the stream stays attached after the stream's sweep drops its own reference. A reference left
   behind by a failed write only delays the future garbage collector.
 
 ## Linked notes
 
-Tasks, map pins, equipment, calendar events and on-call roles can each link to up to 10 of
+Tasks, map pins, equipment, calendar events, on-call roles and agenda items can each link to up to 10 of
 their unit's [notes](#notes) (`src/graphql/linked_notes.rs`; storage is each row's `note_ids`
 and the `note_ref` table in SCHEMA.md). Access is the owner's own (`require_task_access`,
 `require_map_access`, `require_equipment_access`, `require_calendar_access`,
-`require_on_call_access`). It follows "Attached photos" closely.
+`require_on_call_access`, `require_meeting_access`). It follows "Attached photos" closely.
 
-- **Reading:** `notes` on `Task`, `MapPin`, `Equipment`, `CalendarEvent` and `OnCallRole` is
+- **Reading:** `notes` on `Task`, `MapPin`, `Equipment`, `CalendarEvent`, `OnCallRole` and `AgendaItem` is
   the linked notes in order (loaded through the `Note` dataloader; one that was deleted is left
   out), and `noteIds` their IDs, deleted ones included.
 - **Writing:** `noteIds` on `createTask`/`updateTask`, `createMapPin`/`updateMapPin`,
   `createEquipment`/`updateEquipment`, `createCalendarEvent`/`updateCalendarEvent` and
-  `createOnCallRole`/`updateOnCallRole`. On an update, omitted leaves the links alone and a list
+  `createOnCallRole`/`updateOnCallRole` and `createAgendaItem`/`updateAgendaItem`. On an update, omitted leaves the links alone and a list
   replaces them, in that order (`[]` removes them all). `expectedVersion` and `CONFLICT` behave
   as before.
 - **What may be linked:** a live (not deleted) note at the owner's unit. More than 10, the same
@@ -1651,7 +1667,7 @@ and the `note_ref` table in SCHEMA.md). Access is the owner's own (`require_task
 - **The note is never touched:** linking, unlinking and deleting the owner leave the note, and
   its version, as they were.
 - **References:** each link has a `note_ref` row, `(note_id, owner)` with `owner` one of
-  `task#<id>`, `equipment#<id>`, `map_pin#<id>`, `calendar_event#<id>` or `on_call_role#<id>`,
+  `task#<id>`, `equipment#<id>`, `map_pin#<id>`, `calendar_event#<id>`, `on_call_role#<id>` or `agenda_item#<id>`,
   written before the owner first names the note and removed after the owner stops naming it or
   is deleted (a failed removal is logged, not fatal). `db::Handler::list_note_refs(note_id)`
   answers "which items link to this note"; because a failed write can leave a stray row, a reader

@@ -3571,16 +3571,25 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sy
     }
 
     /// Add a topic to a meeting's agenda (Agendas), at the end, at any status. `text`
-    /// (Markdown as in Notes) is what it is about and cannot be empty. `presenterId`
-    /// defaults to the caller; the presenter may be a member of any unit. Fails with
-    /// `NOT_FOUND` if the meeting is missing or deleted.
+    /// (Markdown as in Notes) is what it is about; a topic needs text or at least one
+    /// link. `presenterId` defaults to the caller; the presenter may be a member of any
+    /// unit. It may link up to ten each of the unit's tasks, equipment, on-call roles,
+    /// photos (ready image assets) and notes (`taskIds`, `equipmentIds`,
+    /// `onCallRoleIds`, `photoAssetIds`, `noteIds`), in the order given. Fails with
+    /// `NOT_FOUND` if the meeting is missing or deleted and `BAD_REQUEST` for a link
+    /// that is not usable or a topic with neither text nor a link.
     #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn create_agenda_item(
         &self,
         ctx: &Context<'_>,
         meeting_id: ID,
-        text: String,
+        text: Option<String>,
         presenter_id: Option<ID>,
+        task_ids: Option<Vec<ID>>,
+        equipment_ids: Option<Vec<ID>>,
+        on_call_role_ids: Option<Vec<ID>>,
+        photo_asset_ids: Option<Vec<ID>>,
+        note_ids: Option<Vec<ID>>,
     ) -> Result<AgendaItem<A>> {
         agenda_items::create_agenda_item(
             ctx,
@@ -3589,13 +3598,20 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sy
                 meeting_id,
                 text,
                 presenter_id,
+                task_ids,
+                equipment_ids,
+                on_call_role_ids,
+                photo_asset_ids,
+                note_ids,
             },
         )
         .await
     }
 
     /// Change a topic. Omitted arguments are left as they are; the presenter cannot be
-    /// cleared, and `text` cannot be emptied. Fails with `CONFLICT` if it is no longer at
+    /// cleared. A list of links replaces the topic's (`[]` clears it); ones already
+    /// linked may stay whatever has become of them. A topic must keep text or at least
+    /// one link (else `BAD_REQUEST`). Fails with `CONFLICT` if it is no longer at
     /// `expectedVersion`.
     #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn update_agenda_item(
@@ -3605,6 +3621,11 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sy
         expected_version: i32,
         text: Option<String>,
         presenter_id: Option<ID>,
+        task_ids: Option<Vec<ID>>,
+        equipment_ids: Option<Vec<ID>>,
+        on_call_role_ids: Option<Vec<ID>>,
+        photo_asset_ids: Option<Vec<ID>>,
+        note_ids: Option<Vec<ID>>,
     ) -> Result<AgendaItem<A>> {
         agenda_items::update_agenda_item(
             ctx,
@@ -3614,6 +3635,11 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sy
                 expected_version,
                 text,
                 presenter_id,
+                task_ids,
+                equipment_ids,
+                on_call_role_ids,
+                photo_asset_ids,
+                note_ids,
             },
         )
         .await

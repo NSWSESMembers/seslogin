@@ -1,8 +1,11 @@
 //! Agendas: the topics (agenda items) of a meeting, used by the Tally app. This module
 //! holds the GraphQL type, `Meeting.items`, `Query.agendaItem` and the item mutations,
 //! which `meetings.rs`, `query.rs` and `mutations.rs` call through thin resolvers.
-//! Storage is described in SCHEMA.md. Links to tasks, equipment, on-call roles, photos
-//! and notes come in a later change.
+//! Storage is described in SCHEMA.md. A topic links to up to ten of the unit's tasks,
+//! equipment and on-call roles ([`super::linked_items`]), photos
+//! ([`super::attached_photos`], owner `agenda_item`) and notes ([`super::linked_notes`],
+//! owner `agenda_item`); each photo and note has a reference row written before the
+//! topic names it and removed after it stops (or the topic is deleted).
 //!
 //! Access is [`require_meeting_access`] on the item's location throughout, as for
 //! meetings. A topic's presenter is a member of any unit and defaults to whoever adds
@@ -14,11 +17,18 @@ use async_graphql::{Context, ID, Object};
 use std::collections::HashSet;
 use std::sync::Arc;
 
+use super::assets::Asset;
+use super::attached_photos;
 use super::auth::require_meeting_access;
 use super::dataloader::DatabaseLoader;
+use super::equipment::Equipment;
 use super::error::ApiError;
+use super::linked_items;
+use super::linked_notes;
 use super::meetings::{Meeting, bad_request, caller_id, first, load_meeting, version_arg};
-use super::on_call::{check_people, load_people};
+use super::notes::Note;
+use super::on_call::{OnCallRole, check_people, load_people};
+use super::tasks::Task;
 use super::{AgendaItemId, MeetingId};
 use crate::agenda_text::MAX_TEXT_CHARS;
 use crate::app::{App, HasDb};
@@ -88,6 +98,62 @@ impl<A: App + HasDb + Send + Sync + 'static> AgendaItem<A> {
         self.rec.position as i32
     }
 
+    /// The linked tasks (at most 10), in the order shown. Deleted ones are left out.
+    async fn tasks(&self, ctx: &Context<'_>) -> Result<Vec<Task<A>>> {
+        linked_items::load_tasks(ctx, &self.rec.task_ids).await
+    }
+
+    /// The linked tasks' IDs, in order, as stored: pass these back, changed, as `taskIds`.
+    async fn task_ids(&self) -> Vec<ID> {
+        self.rec.task_ids.iter().cloned().map(ID).collect()
+    }
+
+    /// The linked equipment (at most 10), in the order shown. Deleted ones are left out.
+    async fn equipment(&self, ctx: &Context<'_>) -> Result<Vec<Equipment<A>>> {
+        linked_items::load_equipment(ctx, &self.rec.equipment_ids).await
+    }
+
+    /// The linked equipment's IDs, in order, as stored: pass these back, changed, as
+    /// `equipmentIds`.
+    async fn equipment_ids(&self) -> Vec<ID> {
+        self.rec.equipment_ids.iter().cloned().map(ID).collect()
+    }
+
+    /// The linked on-call roles (at most 10), in the order shown. Deleted ones are left
+    /// out.
+    async fn on_call_roles(&self, ctx: &Context<'_>) -> Result<Vec<OnCallRole<A>>> {
+        linked_items::load_on_call_roles(ctx, &self.rec.on_call_role_ids).await
+    }
+
+    /// The linked on-call roles' IDs, in order, as stored: pass these back, changed, as
+    /// `onCallRoleIds`.
+    async fn on_call_role_ids(&self) -> Vec<ID> {
+        self.rec.on_call_role_ids.iter().cloned().map(ID).collect()
+    }
+
+    /// The attached photos (at most 10), in the order shown. Their `url(variant:)` is
+    /// what to show; one that can no longer be read is left out.
+    async fn photos(&self, ctx: &Context<'_>) -> Result<Vec<Asset<A>>> {
+        attached_photos::load(ctx, &self.rec.photo_asset_ids).await
+    }
+
+    /// The attached photos' asset IDs, in order: pass these back, changed, as
+    /// `photoAssetIds`.
+    async fn photo_asset_ids(&self) -> Vec<ID> {
+        self.rec.photo_asset_ids.iter().cloned().map(ID).collect()
+    }
+
+    /// The linked notes (at most 10), in the order shown. One that was deleted or can
+    /// no longer be read is left out.
+    async fn notes(&self, ctx: &Context<'_>) -> Result<Vec<Note<A>>> {
+        linked_notes::load(ctx, &self.rec.note_ids).await
+    }
+
+    /// The linked notes' IDs, in order: pass these back, changed, as `noteIds`.
+    async fn note_ids(&self) -> Vec<ID> {
+        self.rec.note_ids.iter().cloned().map(ID).collect()
+    }
+
     /// Bumped by every change; pass it back to `updateAgendaItem`.
     async fn version(&self) -> i32 {
         self.rec.version as i32
@@ -132,10 +198,10 @@ pub fn validate_text(text: &str) -> Result<String, String> {
     Ok(text.to_string())
 }
 
-/// An item must say something: it has text.
-fn require_content(text: &str) -> Result<(), String> {
-    if text.is_empty() {
-        return Err("A topic needs some text".to_string());
+/// An item must say something: it has text or at least one link (of any kind).
+fn require_content(text: &str, links: usize) -> Result<(), String> {
+    if text.is_empty() && links == 0 {
+        return Err("A topic needs some text or at least one link".to_string());
     }
     Ok(())
 }
@@ -211,8 +277,13 @@ fn conflict_item() -> anyhow::Error {
 
 pub(super) struct CreateAgendaItemArgs {
     pub meeting_id: ID,
-    pub text: String,
+    pub text: Option<String>,
     pub presenter_id: Option<ID>,
+    pub task_ids: Option<Vec<ID>>,
+    pub equipment_ids: Option<Vec<ID>>,
+    pub on_call_role_ids: Option<Vec<ID>>,
+    pub photo_asset_ids: Option<Vec<ID>>,
+    pub note_ids: Option<Vec<ID>>,
 }
 
 pub(super) async fn create_agenda_item<A: App + HasDb + Send + Sync + 'static>(
@@ -221,8 +292,7 @@ pub(super) async fn create_agenda_item<A: App + HasDb + Send + Sync + 'static>(
     args: CreateAgendaItemArgs,
 ) -> Result<AgendaItem<A>> {
     let meeting = load_meeting(ctx, app.db(), &args.meeting_id).await?;
-    let text = validate_text(&args.text).map_err(bad_request)?;
-    require_content(&text).map_err(bad_request)?;
+    let text = validate_text(args.text.as_deref().unwrap_or("")).map_err(bad_request)?;
     let presenter = match args.presenter_id {
         Some(id) => id.0,
         None => caller_id(ctx)
@@ -230,6 +300,42 @@ pub(super) async fn create_agenda_item<A: App + HasDb + Send + Sync + 'static>(
             .to_string(),
     };
     check_people(app.db(), &[presenter.as_str()], &[]).await?;
+    let loc = meeting.location_id.as_str();
+    let task_ids =
+        linked_items::validate_tasks(app, loc, args.task_ids.as_deref().unwrap_or(&[]), &[])
+            .await?;
+    let equipment_ids = linked_items::validate_equipment(
+        app,
+        loc,
+        args.equipment_ids.as_deref().unwrap_or(&[]),
+        &[],
+    )
+    .await?;
+    let on_call_role_ids = linked_items::validate_on_call_roles(
+        app,
+        loc,
+        args.on_call_role_ids.as_deref().unwrap_or(&[]),
+        &[],
+    )
+    .await?;
+    let photo_asset_ids = attached_photos::validate(
+        app,
+        loc,
+        args.photo_asset_ids.as_deref().unwrap_or(&[]),
+        &[],
+    )
+    .await?;
+    let note_ids =
+        linked_notes::validate(app, loc, args.note_ids.as_deref().unwrap_or(&[]), &[]).await?;
+    require_content(
+        &text,
+        task_ids.len()
+            + equipment_ids.len()
+            + on_call_role_ids.len()
+            + photo_asset_ids.len()
+            + note_ids.len(),
+    )
+    .map_err(bad_request)?;
     let position = app
         .db()
         .list_agenda_items(&meeting.id)
@@ -240,6 +346,22 @@ pub(super) async fn create_agenda_item<A: App + HasDb + Send + Sync + 'static>(
         .unwrap_or(0)
         + 1;
     let id = db::new_id();
+    attached_photos::add_refs(
+        app,
+        attached_photos::AGENDA_ITEM,
+        &id,
+        loc,
+        &attached_photos::added(&[], &photo_asset_ids),
+    )
+    .await?;
+    linked_notes::add_refs(
+        app,
+        linked_notes::AGENDA_ITEM,
+        &id,
+        loc,
+        &linked_notes::added(&[], &note_ids),
+    )
+    .await?;
     let rec = app
         .db()
         .create_agenda_item(db::NewAgendaItem {
@@ -249,11 +371,11 @@ pub(super) async fn create_agenda_item<A: App + HasDb + Send + Sync + 'static>(
             text: &text,
             presenter_id: &presenter,
             position,
-            task_ids: &[],
-            equipment_ids: &[],
-            on_call_role_ids: &[],
-            photo_asset_ids: &[],
-            note_ids: &[],
+            task_ids: &task_ids,
+            equipment_ids: &equipment_ids,
+            on_call_role_ids: &on_call_role_ids,
+            photo_asset_ids: &photo_asset_ids,
+            note_ids: &note_ids,
             created_by: caller_id(ctx),
         })
         .await?;
@@ -265,6 +387,11 @@ pub(super) struct UpdateAgendaItemArgs {
     pub expected_version: i32,
     pub text: Option<String>,
     pub presenter_id: Option<ID>,
+    pub task_ids: Option<Vec<ID>>,
+    pub equipment_ids: Option<Vec<ID>>,
+    pub on_call_role_ids: Option<Vec<ID>>,
+    pub photo_asset_ids: Option<Vec<ID>>,
+    pub note_ids: Option<Vec<ID>>,
 }
 
 pub(super) async fn update_agenda_item<A: App + HasDb + Send + Sync + 'static>(
@@ -281,7 +408,6 @@ pub(super) async fn update_agenda_item<A: App + HasDb + Send + Sync + 'static>(
         Some(t) => validate_text(t).map_err(bad_request)?,
         None => rec.text.clone(),
     };
-    require_content(&text).map_err(bad_request)?;
     let presenter = match &args.presenter_id {
         Some(id) => {
             // The current presenter may stay even if they have since been deleted.
@@ -290,22 +416,86 @@ pub(super) async fn update_agenda_item<A: App + HasDb + Send + Sync + 'static>(
         }
         None => rec.presenter_id.clone(),
     };
+    let loc = rec.location_id.as_str();
+    let task_ids = match &args.task_ids {
+        Some(ids) => linked_items::validate_tasks(app, loc, ids, &rec.task_ids).await?,
+        None => rec.task_ids.clone(),
+    };
+    let equipment_ids = match &args.equipment_ids {
+        Some(ids) => linked_items::validate_equipment(app, loc, ids, &rec.equipment_ids).await?,
+        None => rec.equipment_ids.clone(),
+    };
+    let on_call_role_ids = match &args.on_call_role_ids {
+        Some(ids) => {
+            linked_items::validate_on_call_roles(app, loc, ids, &rec.on_call_role_ids).await?
+        }
+        None => rec.on_call_role_ids.clone(),
+    };
+    let photo_asset_ids = match &args.photo_asset_ids {
+        Some(ids) => attached_photos::validate(app, loc, ids, &rec.photo_asset_ids).await?,
+        None => rec.photo_asset_ids.clone(),
+    };
+    let note_ids = match &args.note_ids {
+        Some(ids) => linked_notes::validate(app, loc, ids, &rec.note_ids).await?,
+        None => rec.note_ids.clone(),
+    };
+    require_content(
+        &text,
+        task_ids.len()
+            + equipment_ids.len()
+            + on_call_role_ids.len()
+            + photo_asset_ids.len()
+            + note_ids.len(),
+    )
+    .map_err(bad_request)?;
+    attached_photos::add_refs(
+        app,
+        attached_photos::AGENDA_ITEM,
+        &rec.id,
+        loc,
+        &attached_photos::added(&rec.photo_asset_ids, &photo_asset_ids),
+    )
+    .await?;
+    linked_notes::add_refs(
+        app,
+        linked_notes::AGENDA_ITEM,
+        &rec.id,
+        loc,
+        &linked_notes::added(&rec.note_ids, &note_ids),
+    )
+    .await?;
+    let previous_photos = rec.photo_asset_ids.clone();
+    let previous_notes = rec.note_ids.clone();
     let rec = apply(
         app.db(),
         &rec.id,
         db::AgendaItemUpdateShape::Fields {
             text: &text,
             presenter_id: &presenter,
-            task_ids: &rec.task_ids,
-            equipment_ids: &rec.equipment_ids,
-            on_call_role_ids: &rec.on_call_role_ids,
-            photo_asset_ids: &rec.photo_asset_ids,
-            note_ids: &rec.note_ids,
+            task_ids: &task_ids,
+            equipment_ids: &equipment_ids,
+            on_call_role_ids: &on_call_role_ids,
+            photo_asset_ids: &photo_asset_ids,
+            note_ids: &note_ids,
             by: caller_id(ctx),
             expected_version,
         },
     )
     .await?;
+    attached_photos::drop_refs(
+        app,
+        attached_photos::AGENDA_ITEM,
+        &rec.id,
+        &attached_photos::added(&rec.photo_asset_ids, &previous_photos),
+    )
+    .await;
+    linked_notes::drop_refs(
+        app,
+        linked_notes::AGENDA_ITEM,
+        &rec.id,
+        &linked_notes::added(&rec.note_ids, &previous_notes),
+    )
+    .await;
     Ok(AgendaItem::new(rec))
 }
 
@@ -325,6 +515,20 @@ pub(super) async fn delete_agenda_item<A: App + HasDb + Send + Sync + 'static>(
             db::Error::NotFound(_) => ApiError::not_found("Agenda item", id).into(),
             e => anyhow::Error::from(e),
         })?;
+    attached_photos::drop_refs(
+        app,
+        attached_photos::AGENDA_ITEM,
+        &rec.id,
+        &attached_photos::added(&[], &rec.photo_asset_ids),
+    )
+    .await;
+    linked_notes::drop_refs(
+        app,
+        linked_notes::AGENDA_ITEM,
+        &rec.id,
+        &linked_notes::added(&[], &rec.note_ids),
+    )
+    .await;
     Ok(ID(rec.id))
 }
 
@@ -383,8 +587,10 @@ mod tests {
     }
 
     #[test]
-    fn an_item_needs_text() {
-        assert!(require_content("").is_err());
-        assert!(require_content("Budget").is_ok());
+    fn an_item_needs_text_or_a_link() {
+        assert!(require_content("", 0).is_err());
+        assert!(require_content("Budget", 0).is_ok());
+        assert!(require_content("", 1).is_ok());
+        assert!(require_content("Budget", 3).is_ok());
     }
 }

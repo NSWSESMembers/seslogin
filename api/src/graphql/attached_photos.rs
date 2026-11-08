@@ -1,4 +1,4 @@
-//! Photos attached to a task, a piece of equipment or a map pin: up to
+//! Photos attached to a task, a piece of equipment, a map pin or an agenda item: up to
 //! [`db::MAX_ATTACHED_PHOTOS`] of the unit's ready image [assets](super::assets), in the
 //! order shown. Each is either uploaded for the purpose or one already in the unit's
 //! photo stream (which then outlives its 30 days in the stream, for as long as it stays
@@ -33,6 +33,8 @@ pub(super) const TASK: &str = "task";
 pub(super) const EQUIPMENT: &str = "equipment";
 /// The `asset_ref` owner type of a map pin's photos.
 pub(super) const MAP_PIN: &str = "map_pin";
+/// The `asset_ref` owner type of an agenda item's photos.
+pub(super) const AGENDA_ITEM: &str = "agenda_item";
 
 const UNAVAILABLE: &str = "That photo can't be attached. Try adding it again.";
 

@@ -1,5 +1,5 @@
-//! Notes linked from a task, a map pin, a piece of equipment, a calendar event or an
-//! on-call role: up to [`db::MAX_LINKED_NOTES`] of the same unit's [notes](super::notes),
+//! Notes linked from a task, a map pin, a piece of equipment, a calendar event, an
+//! on-call role or an agenda item: up to [`db::MAX_LINKED_NOTES`] of the same unit's [notes](super::notes),
 //! in the order shown. Linking never changes the note, and neither does unlinking or
 //! deleting the item that links to it.
 //!
@@ -38,6 +38,8 @@ pub(super) const MAP_PIN: &str = "map_pin";
 pub(super) const CALENDAR_EVENT: &str = "calendar_event";
 /// The `note_ref` owner type of an on-call role's linked notes.
 pub(super) const ON_CALL_ROLE: &str = "on_call_role";
+/// The `note_ref` owner type of an agenda item's linked notes.
+pub(super) const AGENDA_ITEM: &str = "agenda_item";
 
 const UNAVAILABLE: &str = "That note can't be linked. It may have been deleted.";
 
