@@ -145,6 +145,42 @@ pub fn format_when(starts_at: u64, started_at: Option<u64>, finished_at: Option<
     }
 }
 
+/// Tell the presenter of `item` at `meeting` that they are presenting:
+/// "You're presenting at <meeting>" / "<topic> · Wed 18 Nov 2026, 7:30 pm · <verb> <name>".
+/// `topic` is the item's name (the first line of its text, else its first link's name, else
+/// "Topic n": see [`crate::agenda_text::label`]). `verb` is "added by" for a new topic and
+/// "assigned by" when an existing topic's presenter changed. Best-effort, like every
+/// notification; `notify` itself leaves out the acting member, and callers skip the call when
+/// the presenter is the caller.
+pub async fn notify_presenter(
+    app: &(impl crate::app::HasDb + Sync),
+    meeting: &crate::db::Meeting,
+    item: &crate::db::AgendaItem,
+    topic: &str,
+    verb: &str,
+    by_name: &str,
+) {
+    let when = format!("{}, {}", day(meeting.starts_at), clock(meeting.starts_at));
+    let body = if by_name.is_empty() {
+        format!("{topic} · {when}")
+    } else {
+        format!("{topic} · {when} · {verb} {by_name}")
+    };
+    crate::notifications::notify(
+        app,
+        crate::notifications::NewNotification::new(
+            "agendas",
+            "agenda.presenter_assigned",
+            &format!("You're presenting at {}", meeting.title),
+        )
+        .location(&item.location_id)
+        .body(&body)
+        .target("agenda_item", &item.id),
+        crate::notifications::Audience::Members(vec![item.presenter_id.clone()]),
+    )
+    .await;
+}
+
 /// Escape one line of user text so Tally shows it as typed: `*`, `` ` ``, `~` and `[`
 /// always (they could open bold, code, strikethrough or a link), a backslash only where
 /// it would otherwise escape the next character, and a leading `#`, `>`, `-` or `+ `-style

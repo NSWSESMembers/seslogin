@@ -1219,14 +1219,21 @@ Topics have the same access as meetings (`require_meeting_access` on the topic's
   and "…"; `src/agenda_text.rs`), the same rule as Tally's preview. A topic must have text
   or at least one link (`BAD_REQUEST` otherwise); `text` can be omitted on create when it links
   something.
-- **Creating:** `createAgendaItem(meetingId, text, presenterId, …links)`. The presenter defaults to the
-  caller and may be a live member of any unit (`NOT_FOUND` otherwise). The topic goes at the end
-  (`position` = highest + 1), whatever the meeting's status: there is no difference between a
+- **Creating:** `createAgendaItem(meetingId, text, presenterId, …links)`. The presenter defaults
+  to the caller and may be a live member of any unit (`NOT_FOUND` otherwise). The topic goes at the
+  end (`position` = highest + 1), whatever the meeting's status: there is no difference between a
   topic added before and during the meeting. A missing or deleted meeting is `NOT_FOUND`.
-- **Updating:** `updateAgendaItem(id, expectedVersion, text, presenterId, …links)`: omitted arguments are
-  unchanged, and the presenter cannot be cleared (the current presenter may stay even after being
-  deleted). Stale `expectedVersion` is `CONFLICT`. `deleteAgendaItem(id)` returns the ID.
-- **Reordering** (at any meeting status): `reorderAgendaItems(meetingId, itemIds)` takes exactly the meeting's live topic
+- **Updating:** `updateAgendaItem(id, expectedVersion, text, presenterId, …links)`: omitted
+  arguments are unchanged, and the presenter cannot be cleared (the current presenter may stay even
+  after being deleted). Stale `expectedVersion` is `CONFLICT`. `deleteAgendaItem(id)` returns the
+  ID.
+- **Presenter notifications:** making another member the presenter, on `createAgendaItem` or by
+  changing it in `updateAgendaItem`, tells them in their Tally inbox (see "Notifications": source
+  `agendas`, kind `agenda.presenter_assigned`, target `agenda_item`; the body names the topic by
+  the first line of its text, else its first link's name, else "Topic n"). Best-effort: a failed
+  notification never fails the mutation, and presenting your own topic sends nothing.
+- **Reordering** (at any meeting status): `reorderAgendaItems(meetingId, itemIds)` takes exactly
+  the meeting's live topic
   IDs, each once, in the wanted order (otherwise `BAD_REQUEST`), renumbers them 1..n, writes only
   topics whose position changed (each conditional on the version just read; a topic changed in the
   meantime is `CONFLICT`) and returns them in the new order.
@@ -1532,6 +1539,7 @@ producers' API in `src/notifications.rs`, storage in SCHEMA.md's `notification` 
   | `reservations` | `reservation.for_you` | `reservation`  | `createEquipmentReservation`, or `updateEquipmentReservation`, adds members to `reserved_for_person_ids` (every member it is for, on create)                                                                                     | each added member other than the actor      | "Equipment reserved for you" / "<equipment names, sorted> · <Sun 25 Oct 09:00–11:00, Sydney time>" ("Equipment" if the names can't be read) |
   | `tasks`        | `task.assigned`       | `task`         | `createTask`, or `updateTask`, adds members to `assignee_ids` (every assignee, on create)                                                                                                                                         | each added member other than the actor      | "Task assigned to you" / "<title>" or "<title> · Due <Mon 4 Mar>"                                                                          |
   | `oncall`       | `oncall.assigned`     | `on_call_role` | `createOnCallRole`, or `updateOnCallRole`, makes a person the primary when they were not, or adds them to the secondaries when they were not already there (moving primary to secondary counts; removals and reorderings do not) | that member, once per newly assigned member | "You're now primary for <role>" / "You're now a secondary for <role>"                                                                       |
+  | `agendas`      | `agenda.presenter_assigned` | `agenda_item` | `createAgendaItem` with a `presenterId` other than the caller, or `updateAgendaItem` changing the presenter to someone other than the caller (no notification when the presenter is the caller, is unchanged, or the update leaves the presenter alone) | the new presenter | "You're presenting at <meeting title>" / "<topic> · <Wed 18 Nov 2026, 7:30 pm, Sydney time of the meeting's `startsAt`> · added by <caller name>" (`<topic>` is the first line of the topic's text as plain text, cut to 100 characters, else its first link's name, else "Topic n"; "assigned by" on an update; the " · … by …" part is left out if the caller's name can't be read) |
 
   Equipment going into HAS_ISSUE, OUT_OF_SERVICE or MISSING used to tell the unit's users; it
   notifies nobody for now, while who among a unit's members should hear is rethought

@@ -379,7 +379,68 @@ pub(super) async fn create_agenda_item<A: App + HasDb + Send + Sync + 'static>(
             created_by: caller_id(ctx),
         })
         .await?;
+    if caller_id(ctx) != Some(rec.presenter_id.as_str()) {
+        notify_presenter(ctx, app, &meeting, &rec, "added by").await;
+    }
     Ok(AgendaItem::new(rec))
+}
+
+/// Tell the item's presenter, who is not the caller, that they are presenting. The
+/// caller's name is read here and left out of the body if it can't be.
+async fn notify_presenter(
+    ctx: &Context<'_>,
+    app: &(impl HasDb + Sync),
+    meeting: &db::Meeting,
+    item: &db::AgendaItem,
+    verb: &str,
+) {
+    let by_name = match caller_id(ctx) {
+        Some(id) => match app.db().get_persons(&[id]).await {
+            Ok(people) => people
+                .into_iter()
+                .flatten()
+                .next()
+                .map(|p| super::tally::full_name(&p))
+                .unwrap_or_default(),
+            Err(_) => String::new(),
+        },
+        None => String::new(),
+    };
+    let link = if crate::agenda_text::preview(&item.text).is_none() {
+        first_link_name(app, item).await
+    } else {
+        None
+    };
+    let topic = crate::agenda_text::label(&item.text, link.as_deref(), item.position);
+    crate::agendas::notify_presenter(app, meeting, item, &topic, verb, &by_name).await;
+}
+
+/// The name of the item's first live link (tasks, then equipment, on-call roles and notes),
+/// for naming a topic that has no text. `None` if it has none or they can't be read.
+async fn first_link_name(app: &(impl HasDb + Sync), item: &db::AgendaItem) -> Option<String> {
+    let db = app.db();
+    let live = |deleted: Option<u64>| deleted.is_none();
+    if let Ok(rows) = db.get_tasks(&item.task_ids).await
+        && let Some(t) = rows.into_iter().flatten().find(|t| live(t.deleted))
+    {
+        return Some(t.title);
+    }
+    if let Ok(rows) = db.get_equipment(&item.equipment_ids).await
+        && let Some(e) = rows.into_iter().flatten().find(|e| live(e.deleted))
+    {
+        return Some(e.name);
+    }
+    if let Ok(rows) = db.get_on_call_roles(&item.on_call_role_ids).await
+        && let Some(r) = rows.into_iter().flatten().find(|r| live(r.deleted))
+    {
+        return Some(r.name);
+    }
+    if let Ok(rows) = db.get_notes(&item.note_ids).await
+        && let Some(n) = rows.into_iter().flatten().find(|n| live(n.deleted))
+    {
+        return Some(n.title);
+    }
+    None
 }
 
 pub(super) struct UpdateAgendaItemArgs {
@@ -466,6 +527,7 @@ pub(super) async fn update_agenda_item<A: App + HasDb + Send + Sync + 'static>(
     .await?;
     let previous_photos = rec.photo_asset_ids.clone();
     let previous_notes = rec.note_ids.clone();
+    let previous_presenter = rec.presenter_id.clone();
     let rec = apply(
         app.db(),
         &rec.id,
@@ -496,6 +558,16 @@ pub(super) async fn update_agenda_item<A: App + HasDb + Send + Sync + 'static>(
         &linked_notes::added(&rec.note_ids, &previous_notes),
     )
     .await;
+    if rec.presenter_id != previous_presenter
+        && caller_id(ctx) != Some(rec.presenter_id.as_str())
+        && let Ok(Some(meeting)) = app
+            .db()
+            .get_meetings(&[rec.meeting_id.as_str()])
+            .await
+            .map(first)
+    {
+        notify_presenter(ctx, app, &meeting, &rec, "assigned by").await;
+    }
     Ok(AgendaItem::new(rec))
 }
 
