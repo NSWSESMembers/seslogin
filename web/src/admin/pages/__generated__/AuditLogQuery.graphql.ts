@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<8418a8a96d3f80cb2d19768b96665424>>
+ * @generated SignedSource<<4db8f13389eff11c2223de9f44222166>>
  * @lightSyntaxTransform
  */
 
@@ -9,7 +9,7 @@
 
 import { ConcreteRequest } from 'relay-runtime';
 import { FragmentRefs } from "relay-runtime";
-export type AuditEntityType = "API_TOKEN" | "ASSET" | "CALENDAR" | "CALENDAR_EVENT" | "CATEGORY" | "EQUIPMENT" | "EQUIPMENT_LOG_ENTRY" | "EQUIPMENT_RESERVATION" | "LOCATION" | "LOCATION_SHARE" | "MAP_LAYER" | "MAP_PIN" | "NITC_GROUP" | "NITC_TAG" | "NOTE" | "NOTE_FOLDER" | "OAUTH_GRANT" | "ON_CALL_ROLE" | "PERIOD" | "PERSON" | "PHOTO" | "SESSION" | "SHARED_CONTACT" | "TASK" | "TASK_LIST" | "USER" | "USER_TOKEN" | "WEBAUTHN_CREDENTIAL" | "%future added value";
+export type AuditEntityType = "AGENDA_ITEM" | "API_TOKEN" | "ASSET" | "CALENDAR" | "CALENDAR_EVENT" | "CATEGORY" | "EQUIPMENT" | "EQUIPMENT_LOG_ENTRY" | "EQUIPMENT_RESERVATION" | "LOCATION" | "LOCATION_SHARE" | "MAP_LAYER" | "MAP_PIN" | "MEETING" | "NITC_GROUP" | "NITC_TAG" | "NOTE" | "NOTE_FOLDER" | "OAUTH_GRANT" | "ON_CALL_ROLE" | "PERIOD" | "PERSON" | "PHOTO" | "SESSION" | "SHARED_CONTACT" | "TASK" | "TASK_LIST" | "USER" | "USER_TOKEN" | "WEBAUTHN_CREDENTIAL" | "%future added value";
 export type AuditLogQuery$variables = {
   after?: string | null | undefined;
   all: boolean;

@@ -1025,7 +1025,7 @@ Access patterns: per-location newest-first (`Query` on `location_id-sk-index`) a
 - `ts` (N) — Unix seconds when the event happened
 - `event_id` (S) — shared by every item written for the same event
 - `action` (S) — `create`, `update`, `delete` or `restore`
-- `entity_type` (S) — `user`, `person`, `period`, `session`, `api_token`, `location`, `category`, `nitc_group`, `nitc_tag`, `user_token`, `oauth_grant`, `webauthn_credential`, `task`, `task_list`, `note`, `note_folder`, `map_pin`, `map_layer`, `on_call_role`, `shared_contact`, `equipment`, `equipment_log_entry`, `equipment_reservation`, `calendar`, `calendar_event` or `location_share`
+- `entity_type` (S) — `user`, `person`, `period`, `session`, `api_token`, `location`, `category`, `nitc_group`, `nitc_tag`, `user_token`, `oauth_grant`, `webauthn_credential`, `task`, `task_list`, `note`, `note_folder`, `map_pin`, `map_layer`, `on_call_role`, `shared_contact`, `equipment`, `equipment_log_entry`, `equipment_reservation`, `calendar`, `calendar_event`, `location_share`, `asset`, `photo`, `meeting` or `agenda_item`
 - `entity_id` (S) — ID of the entity changed
 - `entity_label` (S) — human-readable name of the entity at the time; omitted when unknown
 - `actor_kind` (S) — `user`, `member` (a member signed in to Tally), `session` (kiosk), `api_token`, `period_link`, `system` (a job or the CLI), `unauthenticated` or `unknown`

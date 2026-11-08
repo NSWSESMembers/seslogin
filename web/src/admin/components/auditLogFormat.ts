@@ -33,6 +33,8 @@ export const ENTITY_TYPE_LABELS = {
   LOCATION_SHARE: "Location share",
   ASSET: "Upload",
   PHOTO: "Photo",
+  MEETING: "Meeting",
+  AGENDA_ITEM: "Agenda item",
 } as const;
 
 export type EntityTypeKey = keyof typeof ENTITY_TYPE_LABELS;
