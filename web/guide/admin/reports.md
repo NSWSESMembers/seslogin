@@ -77,14 +77,15 @@ trophy cabinet and the members who have earned badges at your unit.
 
 ### Perpetual trophies
 
-The unit has twelve trophies, and each one has one holder at a time. Whoever beats
+The unit has thirteen trophies, and each one has one holder at a time. Whoever beats
 the holder takes it from them. Each card shows the trophy's shield, who holds it, their
 score and when they took it. The earlier holders list each one's best score while they held it,
 and the score it was taken with. Open **How to win it** to see exactly what it takes and who held
 it before.
 
 - Most trophies are worked out overnight, from the last 60 to 90 days of sign-ins.
-  The Chain counts a member's current weekly streak.
+  The Chain counts a member's current weekly streak, and The Sash every badge a
+  member has ever earned at your unit.
 - The Boomerang (the longest gap between sign-ins at your unit) and The Odometer
   (the furthest one of your members has signed in from their own units) can change
   hands as soon as a member signs in. A record stands for a year from the day it
@@ -96,6 +97,8 @@ it before.
   leads, or nobody holds it until someone qualifies. The Kettle and The Padlock take 3
   busy days to win, but once you hold one it's yours until someone overtakes you or you
   go 60 days without being first in (or last out) on a busy day.
+- The Sash, for the most badges, breaks a tie on the number of badges by gold
+  badges, then silver, then bronze. Level on all of those, the holder keeps it.
 - If a member leaves your unit, their trophies pass to whoever is next. If you delete
   or change the sign-in a Boomerang or Odometer claim rested on, the trophy goes back
   to the best claim that still stands.
@@ -107,6 +110,11 @@ The kiosk guide lists [every trophy and how to win it](../kiosk/badges.md#unit-t
 The table lists each member with a badge at your unit: how many they have, how many
 they earned in the last 7 days, and their latest. Select a name to see all of their
 badges.
+
+Members are ranked by how many badges they have. A tie is broken the same way as
+The Sash: more gold badges, then silver, then bronze. Members level on all of those
+share a place, with whoever got there first listed first. The badge leaderboards on
+the dashboard and the kiosk rank members the same way.
 
 ### Congratulations emails
 

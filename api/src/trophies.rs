@@ -2,7 +2,7 @@
 //! holder at a time. Whoever beats the holder takes it, and every change of hands is kept
 //! as a reign. See SCHEMA.md's `trophy` section for how they are stored.
 //!
-//! This module is the rules and nothing else: the twelve definitions, how each one scores
+//! This module is the rules and nothing else: the thirteen definitions, how each one scores
 //! a unit's members ([`standings`]), and whether the trophy changes hands ([`decide`]). It
 //! reads no database, so the nightly run (and a kiosk scan, for the two standing records)
 //! gathers the unit's activity and acts on what this decides.
@@ -21,9 +21,10 @@
 //!   vacant if nobody qualifies.
 //!
 //! House rules, here and in the callers: one holder per unit and trophy; ties go to the
-//! holder, and between challengers on the same score, whoever reached it first; a trophy
-//! goes vacant only when its holder stops being a member or a rolling lead's holder falls
-//! below its minimum with nobody qualifying to take it; only the unit's own members
+//! holder, and between challengers on the same score, whoever reached it first (The Sash
+//! first compares gold, then silver, then bronze badges: see [`Standing::tiebreak`]); a
+//! trophy goes vacant only when its holder stops being a member or a rolling lead's holder
+//! falls below its minimum with nobody qualifying to take it; only the unit's own members
 //! (primary or secondary) can hold one; and nothing rewards a long single shift, so every
 //! hours-based trophy counts a sign-in at most 12 hours.
 
@@ -76,6 +77,7 @@ pub enum ValueUnit {
     SignOuts,
     Days,
     Weeks,
+    Badges,
 }
 
 /// How a trophy scores. Kept apart from the definition's text so the rules can be tested
@@ -92,6 +94,7 @@ enum Measure {
     CategoryHours(&'static [&'static str]),
     AvailabilityDays,
     WeeklyStreak,
+    BadgeCount,
 }
 
 #[derive(Debug)]
@@ -110,7 +113,8 @@ pub struct TrophyDefinition {
     /// would otherwise keep emptying it (The Kettle, The Padlock).
     pub keep_minimum: f64,
     /// How far back scores (or claims) count, in days; `None` for The Chain, whose weekly
-    /// streak counts back from now for as long as it lasts.
+    /// streak counts back from now for as long as it lasts, and The Sash, which counts every
+    /// badge ever earned.
     pub window_days: Option<u64>,
     pub unit: ValueUnit,
     measure: Measure,
@@ -263,7 +267,37 @@ pub const TROPHIES: &[TrophyDefinition] = &[
         unit: ValueUnit::Weeks,
         measure: Measure::WeeklyStreak,
     },
+    TrophyDefinition {
+        id: "sash",
+        name: "The Sash",
+        tagline: "More badges than anyone else at the unit.",
+        rule: "Earned more badges at the unit than the holder, counting every badge you have ever earned here. On the same number, more gold badges wins, then more silver, then more bronze; if that's still level, the holder keeps it, and between challengers whoever got there first.",
+        kind: TrophyKind::Rolling,
+        minimum: 5.0,
+        keep_minimum: 5.0,
+        window_days: None,
+        unit: ValueUnit::Badges,
+        measure: Measure::BadgeCount,
+    },
 ];
+
+/// The tiers that break a tie on the number of badges, best first: for The Sash and the
+/// badge leaderboard. Starter, wildcard and passport stamp badges count towards the total
+/// but not the tie-break.
+const MEDAL_TIERS: [&str; 3] = ["gold", "silver", "bronze"];
+
+/// How many gold, silver and bronze badges are among `tiers`, in that order. Two members
+/// on the same number of badges are separated by this, compared like a medal table: more
+/// golds first, then silvers, then bronzes.
+pub fn medal_count<'a>(tiers: impl IntoIterator<Item = &'a str>) -> [u64; 3] {
+    let mut medals = [0_u64; 3];
+    for tier in tiers {
+        if let Some(i) = MEDAL_TIERS.iter().position(|t| *t == tier) {
+            medals[i] += 1;
+        }
+    }
+    medals
+}
 
 pub fn definition(id: &str) -> Option<&'static TrophyDefinition> {
     TROPHIES.iter().find(|t| t.id == id)
@@ -289,6 +323,7 @@ pub fn value_label(unit: ValueUnit, value: f64) -> String {
         ValueUnit::SignOuts => plural(whole, "sign-out", "sign-outs"),
         ValueUnit::Days => plural(whole, "day", "days"),
         ValueUnit::Weeks => plural(whole, "week", "weeks"),
+        ValueUnit::Badges => plural(whole, "badge", "badges"),
     }
 }
 
@@ -328,6 +363,17 @@ pub struct UnitActivity<'a> {
     pub boomerang_claims: &'a [Claim],
     /// The Odometer's claims: members' sign-ins at units that are none of theirs.
     pub odometer_claims: &'a [Claim],
+    /// The Sash's count: each member's badges earned at the unit, by person ID.
+    pub badge_awards: &'a HashMap<String, Vec<BadgeEarned>>,
+}
+
+/// One badge a member has earned at the unit, as The Sash sees it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct BadgeEarned {
+    /// `starter`, `bronze`, `silver`, `gold`, `wildcard`, …
+    pub tier: String,
+    /// Unix seconds.
+    pub awarded_at: u64,
 }
 
 /// A member's score for one trophy.
@@ -340,12 +386,30 @@ pub struct Standing {
     pub reached_at: u64,
     /// For a standing record, the period the claim rests on.
     pub period_id: Option<String>,
+    /// What separates two members on the same score, compared before `reached_at` and
+    /// bigger first. For The Sash: their gold, silver and bronze badge counts, so a tie
+    /// on the total goes to more golds, then silvers, then bronzes, like a medal table.
+    /// All zero for every other trophy, which leaves their ties to `reached_at`.
+    pub tiebreak: [u64; 3],
 }
 
-/// Every member's score for `trophy`, best first: highest score, then whoever reached it
-/// first, then by person ID so a rerun picks the same member. Members who score nothing
-/// are left out; so is everyone below the trophy's keep minimum, who could neither take it nor
-/// keep it.
+impl Standing {
+    /// Whether this standing strictly beats `other`: a higher score, or the same score
+    /// and a better tie-break. When both are level, neither beats the other, so ties stay
+    /// with the holder.
+    pub fn beats(&self, other: &Standing) -> bool {
+        match self.score.total_cmp(&other.score) {
+            std::cmp::Ordering::Greater => true,
+            std::cmp::Ordering::Less => false,
+            std::cmp::Ordering::Equal => self.tiebreak > other.tiebreak,
+        }
+    }
+}
+
+/// Every member's score for `trophy`, best first: highest score, then the better
+/// tie-break (The Sash's medal count), then whoever reached it first, then by person ID so
+/// a rerun picks the same member. Members who score nothing are left out; so is everyone
+/// below the trophy's keep minimum, who could neither take it nor keep it.
 pub fn standings(trophy: &TrophyDefinition, unit: &UnitActivity) -> Vec<Standing> {
     let since = trophy
         .window_days
@@ -481,6 +545,9 @@ pub fn standings(trophy: &TrophyDefinition, unit: &UnitActivity) -> Vec<Standing
         Measure::WeeklyStreak => {
             return weekly_streaks(trophy, unit.now, on_site());
         }
+        Measure::BadgeCount => {
+            return badge_counts(trophy, unit);
+        }
     }
     .into_iter()
     .map(|(person_id, (score, reached_at))| Standing {
@@ -488,6 +555,7 @@ pub fn standings(trophy: &TrophyDefinition, unit: &UnitActivity) -> Vec<Standing
         score,
         reached_at,
         period_id: None,
+        tiebreak: [0; 3],
     })
     .filter(|s| s.score >= trophy.keep_minimum)
     .collect::<Vec<_>>();
@@ -499,6 +567,7 @@ fn sort_standings(standings: &mut [Standing]) {
     standings.sort_by(|a, b| {
         b.score
             .total_cmp(&a.score)
+            .then(b.tiebreak.cmp(&a.tiebreak))
             .then(a.reached_at.cmp(&b.reached_at))
             .then(a.person_id.cmp(&b.person_id))
     });
@@ -528,6 +597,7 @@ fn best_claims(
             score: c.value,
             reached_at: c.at,
             period_id: Some(c.period_id.clone()),
+            tiebreak: [0; 3],
         })
         .collect();
     sort_standings(&mut standings);
@@ -603,6 +673,34 @@ fn weekly_streaks<'a>(
                 score: f64::from(run),
                 reached_at,
                 period_id: None,
+                tiebreak: [0; 3],
+            })
+        })
+        .filter(|s| s.score >= trophy.keep_minimum)
+        .collect();
+    sort_standings(&mut standings);
+    standings
+}
+
+/// Each member's badge count at the unit for The Sash, with their gold, silver and bronze
+/// counts as the tie-break. A member reaches their count when they earned the latest badge
+/// in it, so between members level on both, whoever got there first leads.
+fn badge_counts(trophy: &TrophyDefinition, unit: &UnitActivity) -> Vec<Standing> {
+    let mut standings: Vec<Standing> = unit
+        .badge_awards
+        .iter()
+        .filter(|(person_id, _)| unit.members.contains(*person_id))
+        .filter_map(|(person_id, awards)| {
+            let earned: Vec<&BadgeEarned> =
+                awards.iter().filter(|a| a.awarded_at <= unit.now).collect();
+            let reached_at = earned.iter().map(|a| a.awarded_at).max()?;
+            let tiebreak = medal_count(earned.iter().map(|a| a.tier.as_str()));
+            Some(Standing {
+                person_id: person_id.clone(),
+                score: earned.len() as f64,
+                reached_at,
+                period_id: None,
+                tiebreak,
             })
         })
         .filter(|s| s.score >= trophy.keep_minimum)
@@ -748,7 +846,7 @@ pub fn decide(
                 },
             },
             Some(own) => match best_other(&holder.person_id) {
-                Some(best) if best.score > own.score => Decision::Take {
+                Some(best) if best.beats(own) => Decision::Take {
                     to: best.clone(),
                     reason: Some(TrophyEndReason::Stolen),
                 },
@@ -850,6 +948,7 @@ mod tests {
         virtual_ids: HashSet<String>,
         boomerang: Vec<Claim>,
         odometer: Vec<Claim>,
+        badges: HashMap<String, Vec<BadgeEarned>>,
     }
 
     impl Unit {
@@ -861,6 +960,7 @@ mod tests {
                 virtual_ids: set(&["oOUqPfAMfMdv"]),
                 boomerang: vec![],
                 odometer: vec![],
+                badges: HashMap::new(),
             }
         }
 
@@ -872,6 +972,7 @@ mod tests {
                 virtual_category_ids: &self.virtual_ids,
                 boomerang_claims: &self.boomerang,
                 odometer_claims: &self.odometer,
+                badge_awards: &self.badges,
             };
             standings(definition(trophy).unwrap(), &activity)
                 .into_iter()
@@ -885,10 +986,10 @@ mod tests {
     }
 
     #[test]
-    fn twelve_trophies_with_distinct_ids() {
-        assert_eq!(TROPHIES.len(), 12);
+    fn thirteen_trophies_with_distinct_ids() {
+        assert_eq!(TROPHIES.len(), 13);
         let ids: HashSet<&str> = TROPHIES.iter().map(|t| t.id).collect();
-        assert_eq!(ids.len(), 12);
+        assert_eq!(ids.len(), 13);
         assert!(TROPHIES.iter().all(|t| t.name.starts_with("The ")));
     }
 
@@ -901,6 +1002,8 @@ mod tests {
         assert_eq!(value_label(ValueUnit::DaysAway, 212.7), "212 days away");
         assert_eq!(value_label(ValueUnit::Km, 411.6), "412 km");
         assert_eq!(value_label(ValueUnit::Weeks, 1.0), "1 week");
+        assert_eq!(value_label(ValueUnit::Badges, 1.0), "1 badge");
+        assert_eq!(value_label(ValueUnit::Badges, 23.0), "23 badges");
     }
 
     /// Four people in on each of three days, Alice first every time and Bob last out.
@@ -1101,6 +1204,7 @@ mod tests {
             score,
             reached_at,
             period_id: None,
+            tiebreak: [0; 3],
         }
     }
 
@@ -1352,5 +1456,122 @@ mod tests {
             unit.standings("odometer"),
             scores(&[("alice", 150.0), ("bob", 40.0)])
         );
+    }
+
+    /// `count` badges of `tier` for `person`, the first at `first` and one a day after.
+    fn earn(unit: &mut Unit, person: &str, tier: &str, count: u64, first: u64) {
+        let awards = unit.badges.entry(person.to_string()).or_default();
+        for i in 0..count {
+            awards.push(BadgeEarned {
+                tier: tier.to_string(),
+                awarded_at: first + i * DAY_SECONDS,
+            });
+        }
+    }
+
+    fn sash_standings(unit: &Unit) -> Vec<Standing> {
+        let activity = UnitActivity {
+            now: unit.now,
+            members: &unit.members,
+            periods: &unit.periods,
+            virtual_category_ids: &unit.virtual_ids,
+            boomerang_claims: &unit.boomerang,
+            odometer_claims: &unit.odometer,
+            badge_awards: &unit.badges,
+        };
+        standings(definition("sash").unwrap(), &activity)
+    }
+
+    #[test]
+    fn the_sash_counts_every_badge_at_the_unit_for_members_only() {
+        let now = at(30, 12, 0);
+        let mut unit = Unit::new(now, &["alice", "bob", "carol"], vec![]);
+        // Years ago still counts: there is no window.
+        earn(&mut unit, "alice", "starter", 6, now - 900 * DAY_SECONDS);
+        earn(&mut unit, "bob", "bronze", 7, at(1, 12, 0));
+        earn(&mut unit, "carol", "gold", 4, at(1, 12, 0)); // below the minimum of 5
+        earn(&mut unit, "visitor", "gold", 20, at(1, 12, 0)); // not a member here
+        earn(&mut unit, "alice", "gold", 1, now + DAY_SECONDS); // not yet earned
+        assert_eq!(
+            unit.standings("sash"),
+            scores(&[("bob", 7.0), ("alice", 6.0)])
+        );
+    }
+
+    #[test]
+    fn a_tie_on_the_sash_goes_to_gold_then_silver_then_bronze_then_first_there() {
+        let now = at(30, 12, 0);
+        let mut unit = Unit::new(now, &["alice", "bob", "dave", "erin", "frank"], vec![]);
+        // Everyone has 8 badges. Bob's 3 silvers beat Dave's 2 silvers and 6 bronzes.
+        earn(&mut unit, "alice", "gold", 1, at(1, 12, 0));
+        earn(&mut unit, "alice", "starter", 7, at(2, 12, 0));
+        earn(&mut unit, "bob", "silver", 3, at(1, 12, 0));
+        earn(&mut unit, "bob", "starter", 5, at(4, 12, 0));
+        // Dave and Erin are level on medals too: Dave's eighth came on day 6, Erin's on day 7.
+        earn(&mut unit, "dave", "silver", 2, at(1, 12, 0));
+        earn(&mut unit, "dave", "bronze", 6, at(1, 12, 0));
+        earn(&mut unit, "erin", "silver", 2, at(1, 12, 0));
+        earn(&mut unit, "erin", "bronze", 6, at(2, 12, 0));
+        // A wildcard counts towards Frank's total but not the tie-break, so Dave's and
+        // Erin's sixth bronze puts them ahead of him.
+        earn(&mut unit, "frank", "silver", 2, at(1, 12, 0));
+        earn(&mut unit, "frank", "bronze", 5, at(1, 12, 0));
+        earn(&mut unit, "frank", "wildcard", 1, at(1, 12, 0));
+        let order: Vec<(String, [u64; 3])> = sash_standings(&unit)
+            .into_iter()
+            .map(|s| (s.person_id, s.tiebreak))
+            .collect();
+        assert_eq!(
+            order,
+            vec![
+                ("alice".to_string(), [1, 0, 0]),
+                ("bob".to_string(), [0, 3, 0]),
+                ("dave".to_string(), [0, 2, 6]),
+                ("erin".to_string(), [0, 2, 6]),
+                ("frank".to_string(), [0, 2, 5]),
+            ]
+        );
+        assert!(sash_standings(&unit).iter().all(|s| s.score == 8.0));
+    }
+
+    #[test]
+    fn a_challenger_level_on_badges_takes_the_sash_only_with_better_medals() {
+        let sash = definition("sash").unwrap();
+        let now = at(30, 12, 0);
+        let holder = holder("alice", 8.0, now);
+        let alice = Standing {
+            tiebreak: [1, 2, 3],
+            ..standing("alice", 8.0, at(1, 12, 0))
+        };
+        // Level on everything: the holder keeps it, though Bob got there first.
+        let bob = Standing {
+            tiebreak: [1, 2, 3],
+            ..standing("bob", 8.0, at(1, 10, 0))
+        };
+        assert!(matches!(
+            decide(sash, Some(&holder), &[bob.clone(), alice.clone()], now),
+            Decision::Keep { .. }
+        ));
+        // One more silver for Bob and fewer bronzes still takes it.
+        let bob = Standing {
+            tiebreak: [1, 3, 0],
+            ..bob
+        };
+        assert_eq!(
+            decide(sash, Some(&holder), &[bob.clone(), alice.clone()], now),
+            Decision::Take {
+                to: bob.clone(),
+                reason: Some(TrophyEndReason::Stolen),
+            }
+        );
+        // But fewer badges never does, whatever their tier.
+        let carol = Standing {
+            tiebreak: [7, 0, 0],
+            ..standing("carol", 7.0, at(1, 12, 0))
+        };
+        assert!(matches!(
+            decide(sash, Some(&holder), &[alice, carol], now),
+            Decision::Keep { .. }
+        ));
     }
 }

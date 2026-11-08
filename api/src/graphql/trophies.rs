@@ -127,7 +127,7 @@ impl<A: App + HasDb + Send + Sync + 'static> Trophy<A> {
     }
 
     /// How far back scores or claims count, in days; null for The Chain, a current
-    /// streak.
+    /// streak, and The Sash, which counts every badge ever earned.
     async fn window_days(&self) -> Option<i32> {
         self.definition
             .window_days

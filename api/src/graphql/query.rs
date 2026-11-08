@@ -28,6 +28,7 @@ use crate::db::ListSessionsQuery;
 use crate::realtime;
 use crate::realtime::Handler as _;
 use crate::ses_api;
+use crate::trophies;
 
 use super::audit_log::{self, AuditEntityType, AuditEntryConnection};
 use super::auth::{
@@ -459,6 +460,9 @@ pub struct LocationBadgeLeaderboardEntry<A: App + HasDb + Send + Sync> {
     recent_badge_count_7d: i64,
     latest_badge_award_at: i64,
     tier_counts: Vec<BadgeTierCount>,
+    /// Gold, silver and bronze badges: breaks a tie on `badge_count`, as for The Sash
+    /// (`trophies::medal_count`).
+    medals: [u64; 3],
 }
 
 impl<A: App + HasDb + Send + Sync> LocationBadgeLeaderboardEntry<A> {
@@ -468,6 +472,7 @@ impl<A: App + HasDb + Send + Sync> LocationBadgeLeaderboardEntry<A> {
         recent_badge_count_7d: i64,
         latest_badge_award_at: i64,
         tier_counts: Vec<BadgeTierCount>,
+        medals: [u64; 3],
     ) -> Self {
         Self {
             _marker: Default::default(),
@@ -478,6 +483,7 @@ impl<A: App + HasDb + Send + Sync> LocationBadgeLeaderboardEntry<A> {
             recent_badge_count_7d,
             latest_badge_award_at,
             tier_counts,
+            medals,
         }
     }
 }
@@ -498,8 +504,11 @@ impl<A: App + HasDb + Send + Sync + 'static> LocationBadgeLeaderboardEntry<A> {
             .ok_or_else(|| anyhow!("Person with ID {} missing", self.person_id))
     }
 
-    /// 1-based place on the board. Members with the same badge count share a place,
-    /// and the next place skips past them (1, 1, 3), so it is not the row's index.
+    /// 1-based place on the board, ordered as The Sash is decided: most badges, then on
+    /// the same number more gold badges, then silver, then bronze. Members level on all
+    /// of those share a place, and the next place skips past them (1, 1, 3), so it is not
+    /// the row's index; within a shared place, whoever reached that count first is
+    /// listed first.
     async fn rank(&self) -> i64 {
         self.rank
     }
@@ -521,21 +530,37 @@ impl<A: App + HasDb + Send + Sync + 'static> LocationBadgeLeaderboardEntry<A> {
     }
 }
 
-/// Number a leaderboard already sorted by descending badge count, using standard
-/// competition ranking: a tie on badge count shares a place, and the following place
-/// skips the tied rows (1, 1, 3). The other sort keys still decide the order *within*
-/// a tie, but not the place.
+/// Order a leaderboard as The Sash is decided: most badges, then more gold, silver and
+/// bronze badges, then whoever reached their count first (their latest badge is the one
+/// that reached it), then by person ID so the order is stable.
+fn sort_leaderboard<A: App + HasDb + Send + Sync>(
+    leaderboard: &mut [LocationBadgeLeaderboardEntry<A>],
+) {
+    leaderboard.sort_by(|a, b| {
+        b.badge_count
+            .cmp(&a.badge_count)
+            .then_with(|| b.medals.cmp(&a.medals))
+            .then_with(|| a.latest_badge_award_at.cmp(&b.latest_badge_award_at))
+            .then_with(|| a.person_id.cmp(&b.person_id))
+    });
+}
+
+/// Number a leaderboard already sorted by [`sort_leaderboard`], using standard
+/// competition ranking: rows level on badge count and medals share a place, and the
+/// following place skips the tied rows (1, 1, 3). Who got there first still decides the
+/// order *within* a tie, but not the place.
 fn assign_leaderboard_ranks<A: App + HasDb + Send + Sync>(
     leaderboard: &mut [LocationBadgeLeaderboardEntry<A>],
 ) {
-    let mut previous: Option<(i64, i64)> = None;
+    let mut previous: Option<((i64, [u64; 3]), i64)> = None;
     for (idx, entry) in leaderboard.iter_mut().enumerate() {
+        let key = (entry.badge_count, entry.medals);
         let rank = match previous {
-            Some((count, rank)) if count == entry.badge_count => rank,
+            Some((previous_key, rank)) if previous_key == key => rank,
             _ => idx as i64 + 1,
         };
         entry.rank = rank;
-        previous = Some((entry.badge_count, rank));
+        previous = Some((key, rank));
     }
 }
 
@@ -2135,11 +2160,61 @@ mod leaderboard_rank_tests {
             .iter()
             .enumerate()
             .map(|(idx, &count)| {
-                LocationBadgeLeaderboardEntry::new(format!("p{idx}"), count, 0, 0, vec![])
+                LocationBadgeLeaderboardEntry::new(format!("p{idx}"), count, 0, 0, vec![], [0; 3])
             })
             .collect();
         assign_leaderboard_ranks(&mut board);
         board.iter().map(|entry| entry.rank).collect()
+    }
+
+    /// `(person, badge count, [gold, silver, bronze], latest award)`, in any order, sorted
+    /// and ranked as the API returns them.
+    fn board(rows: &[(&str, i64, [u64; 3], i64)]) -> Vec<(String, i64)> {
+        let mut board: Vec<LocationBadgeLeaderboardEntry<TestApp>> = rows
+            .iter()
+            .map(|&(person, count, medals, latest)| {
+                LocationBadgeLeaderboardEntry::new(
+                    person.to_string(),
+                    count,
+                    0,
+                    latest,
+                    vec![],
+                    medals,
+                )
+            })
+            .collect();
+        sort_leaderboard(&mut board);
+        assign_leaderboard_ranks(&mut board);
+        board.into_iter().map(|e| (e.person_id, e.rank)).collect()
+    }
+
+    fn placed(rows: &[(&str, i64)]) -> Vec<(String, i64)> {
+        rows.iter().map(|&(p, r)| (p.to_string(), r)).collect()
+    }
+
+    #[test]
+    fn a_tie_on_badges_is_split_by_gold_then_silver_then_bronze() {
+        assert_eq!(
+            board(&[
+                ("bronze", 8, [0, 2, 6], 100),
+                ("silver", 8, [0, 3, 0], 100),
+                ("gold", 8, [1, 0, 0], 100),
+                ("more", 9, [0, 0, 0], 100),
+            ]),
+            placed(&[("more", 1), ("gold", 2), ("silver", 3), ("bronze", 4)])
+        );
+    }
+
+    #[test]
+    fn level_on_medals_shares_a_place_with_whoever_got_there_first_listed_first() {
+        assert_eq!(
+            board(&[
+                ("later", 8, [1, 2, 3], 200),
+                ("earlier", 8, [1, 2, 3], 100),
+                ("behind", 8, [1, 2, 2], 50),
+            ]),
+            placed(&[("earlier", 1), ("later", 1), ("behind", 3)])
+        );
     }
 
     #[test]
@@ -3473,6 +3548,8 @@ impl<A: App + HasDb + Send + Sync> Location<A> {
                     .into_iter()
                     .map(|(tier, count)| BadgeTierCount { tier, count })
                     .collect();
+                let medals =
+                    trophies::medal_count(awards.iter().map(|award| award.badge.tier.as_str()));
 
                 Some(LocationBadgeLeaderboardEntry::new(
                     person.id,
@@ -3480,17 +3557,12 @@ impl<A: App + HasDb + Send + Sync> Location<A> {
                     recent_badge_count_7d,
                     latest_badge_award_at,
                     tier_counts,
+                    medals,
                 ))
             })
             .collect();
 
-        leaderboard.sort_by(|a, b| {
-            b.badge_count
-                .cmp(&a.badge_count)
-                .then_with(|| b.recent_badge_count_7d.cmp(&a.recent_badge_count_7d))
-                .then_with(|| b.latest_badge_award_at.cmp(&a.latest_badge_award_at))
-                .then_with(|| a.person_id.cmp(&b.person_id))
-        });
+        sort_leaderboard(&mut leaderboard);
         leaderboard.truncate(limit_usize.min(100));
         assign_leaderboard_ranks(&mut leaderboard);
 
