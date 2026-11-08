@@ -15,6 +15,7 @@ use crate::auth::AuthInfo;
 use crate::request_metrics;
 use crate::telemetry::{self, OperationKind};
 
+pub mod agenda_items;
 pub mod assets;
 pub mod attached_photos;
 pub mod audit_log;
@@ -126,6 +127,9 @@ pub struct CalendarId(pub String);
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct MeetingId(pub String);
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct AgendaItemId(pub String);
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct SessionId(pub ID);

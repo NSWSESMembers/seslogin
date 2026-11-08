@@ -11,8 +11,8 @@ use crate::db::Handler;
 
 use super::query::{Category, Location, Person, Session, User};
 use super::{
-    ApiTokenNameId, AssetId, CalendarId, CategoryId, LocationId, MapLayerId, MeetingId,
-    NitcEventId, NoteFolderId, NoteId, PersonId, SessionId, TaskListId, UserId,
+    AgendaItemId, ApiTokenNameId, AssetId, CalendarId, CategoryId, LocationId, MapLayerId,
+    MeetingId, NitcEventId, NoteFolderId, NoteId, PersonId, SessionId, TaskListId, UserId,
 };
 
 pub struct DatabaseLoader<A: App + HasDb + Send + Sync> {
@@ -253,6 +253,27 @@ impl<A: App + HasDb + Send + Sync + 'static> Loader<MeetingId> for DatabaseLoade
             .app
             .db()
             .get_meetings(&ids)
+            .await
+            .map_err(|e| Arc::new(anyhow!("DB error: {:?}", e)))?;
+        Ok(zip(keys.iter().cloned(), recs)
+            .filter_map(|(key, rec)| rec.map(|r| (key, r)))
+            .collect())
+    }
+}
+
+impl<A: App + HasDb + Send + Sync + 'static> Loader<AgendaItemId> for DatabaseLoader<A> {
+    type Value = db::AgendaItem;
+    type Error = Arc<anyhow::Error>;
+
+    async fn load(
+        &self,
+        keys: &[AgendaItemId],
+    ) -> std::result::Result<HashMap<AgendaItemId, db::AgendaItem>, Arc<anyhow::Error>> {
+        let ids = keys.iter().map(|k| k.0.as_str()).collect::<Vec<&str>>();
+        let recs = self
+            .app
+            .db()
+            .get_agenda_items(&ids)
             .await
             .map_err(|e| Arc::new(anyhow!("DB error: {:?}", e)))?;
         Ok(zip(keys.iter().cloned(), recs)

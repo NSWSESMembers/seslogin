@@ -19,6 +19,48 @@ type AblyTokenRequest {
 	mac: String!
 }
 
+type AgendaItem {
+	id: ID!
+	meetingId: ID!
+	meeting: Meeting!
+	locationId: ID!
+	"""
+	What the topic is about and what was minuted against it, Markdown as in Notes;
+	empty when there is none.
+	"""
+	text: String!
+	"""
+	The member presenting it; null if they have since been deleted.
+	"""
+	presenter: Person
+	"""
+	The presenter's person ID, even if they have since been deleted.
+	"""
+	presenterId: ID!
+	"""
+	1-based place on the agenda.
+	"""
+	position: Int!
+	"""
+	Bumped by every change; pass it back to `updateAgendaItem`.
+	"""
+	version: Int!
+	createdAt: Int!
+	"""
+	Name of the member who added the topic.
+	"""
+	createdBy: String
+	"""
+	Person ID of the member who added the topic.
+	"""
+	createdById: ID
+	updatedAt: Int!
+	"""
+	Name of the member who last changed the topic.
+	"""
+	updatedBy: String
+}
+
 type ApiToken {
 	id: ID!
 	name: String!
@@ -1200,6 +1242,10 @@ type Meeting {
 	locationId: ID!
 	location: Location!
 	"""
+	The agenda's topics in order: by position, then when added. Live ones only.
+	"""
+	items: [AgendaItem!]!
+	"""
 	Bumped by every change; pass it back to the update, start and finish mutations.
 	"""
 	version: Int!
@@ -1677,6 +1723,29 @@ type MutationRoot {
 	`BAD_REQUEST`. Fails with `CONFLICT` if it is no longer at `expectedVersion`.
 	"""
 	finishMeeting(id: ID!, expectedVersion: Int!): Meeting!
+	"""
+	Add a topic to a meeting's agenda (Agendas), at the end, at any status. `text`
+	(Markdown as in Notes) is what it is about and cannot be empty. `presenterId`
+	defaults to the caller; the presenter may be a member of any unit. Fails with
+	`NOT_FOUND` if the meeting is missing or deleted.
+	"""
+	createAgendaItem(meetingId: ID!, text: String!, presenterId: ID): AgendaItem!
+	"""
+	Change a topic. Omitted arguments are left as they are; the presenter cannot be
+	cleared, and `text` cannot be emptied. Fails with `CONFLICT` if it is no longer at
+	`expectedVersion`.
+	"""
+	updateAgendaItem(id: ID!, expectedVersion: Int!, text: String, presenterId: ID): AgendaItem!
+	"""
+	Delete a topic. Returns its ID.
+	"""
+	deleteAgendaItem(id: ID!): ID!
+	"""
+	Put a meeting's topics in the order of `itemIds`, which must name exactly its
+	live topics, each once (else `BAD_REQUEST`). Returns them in the new order.
+	Fails with `CONFLICT` if a topic changed while this ran.
+	"""
+	reorderAgendaItems(meetingId: ID!, itemIds: [ID!]!): [AgendaItem!]!
 	createCalendar(locationId: ID!, name: String!, color: CalendarColor!): Calendar!
 	"""
 	Rename a calendar or change its colour; omitted arguments are left as they are.
@@ -2590,6 +2659,10 @@ type QueryRoot {
 	One meeting (Agendas); null if it does not exist or was deleted.
 	"""
 	meeting(id: ID!): Meeting
+	"""
+	One agenda item (Agendas topic); null if it does not exist or was deleted.
+	"""
+	agendaItem(id: ID!): AgendaItem
 	"""
 	The caller's own location share while it still shows (until 7 minutes after its
 	latest position); null otherwise.

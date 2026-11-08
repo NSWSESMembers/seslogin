@@ -29,6 +29,7 @@ use crate::realtime;
 use crate::realtime::Handler as _;
 use crate::ses_api;
 
+use super::agenda_items::{self, AgendaItem};
 use super::audit_log::{self, AuditEntityType, AuditEntryConnection};
 use super::auth::{
     AuthGuard, AuthRequirement, can_write_location, require_location_access, require_person_access,
@@ -4288,6 +4289,12 @@ impl<A: App + HasDb + HasRealtime + HasStorage + Send + Sync + 'static> QueryRoo
     #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn meeting(&self, ctx: &Context<'_>, id: ID) -> Result<Option<Meeting<A>>> {
         meetings::meeting(ctx, &id).await
+    }
+
+    /// One agenda item (Agendas topic); null if it does not exist or was deleted.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn agenda_item(&self, ctx: &Context<'_>, id: ID) -> Result<Option<AgendaItem<A>>> {
+        agenda_items::agenda_item(ctx, &id).await
     }
 
     /// The caller's own location share while it still shows (until 7 minutes after its

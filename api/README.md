@@ -1176,10 +1176,10 @@ mutation {
 
 ## Agendas
 
-Meeting agendas and minutes for Tally's Agendas app (`src/graphql/meetings.rs`; storage in
-SCHEMA.md's `meeting` and `agenda_item` sections). This section covers **meetings**; a meeting's
-topics (agenda items), their links to tasks, equipment, on-call roles, photos and notes, and the
-exported minutes come in later changes.
+Meeting agendas and minutes for Tally's Agendas app (`src/graphql/meetings.rs` and
+`src/graphql/agenda_items.rs`; storage in SCHEMA.md's `meeting` and `agenda_item` sections). This
+section covers **meetings** and their **topics** (agenda items); the topics' links to tasks,
+equipment, on-call roles, photos and notes, and the exported minutes come in later changes.
 
 - **Who:** any member signed in to Tally who can use the unit (`require_meeting_access`, through
   `require_member_location`: see "Tally (members)" above) may read and write every meeting of it,
@@ -1203,6 +1203,46 @@ exported minutes come in later changes.
 - **Concurrency:** every update, start and finish takes `expectedVersion`; if someone else changed
   the meeting since it was read the call fails with `CONFLICT` rather than overwriting.
 - **Audit:** each write is recorded against the meeting (see CLAUDE.md's audit log).
+
+### Topics (agenda items)
+
+Topics have the same access as meetings (`require_meeting_access` on the topic's location).
+
+- **Reading:** `Meeting.items` lists a meeting's live topics ordered by `position`, then when
+  added, then ID. `Query.agendaItem(id)` reads one (null when missing or deleted). `AgendaItem`
+  has `meetingId`/`meeting`, `locationId`, `text`, `presenter` (the `Person`, null once deleted)
+  and `presenterId`, `position` (1-based), `version`, and `createdBy` (the member's name) /
+  `createdById` (their person ID, for "added by") / `updatedBy`.
+- **One text box:** a topic has no title or separate minutes, just `text`: Markdown as in Notes,
+  kept as written, at most 20,000 characters (only-whitespace counts as empty). Whatever needs a
+  short name for a topic uses the first line of its text as plain text (cut to 100 characters
+  and "…"; `src/agenda_text.rs`), the same rule as Tally's preview. A topic must have text
+  (`BAD_REQUEST` otherwise).
+- **Creating:** `createAgendaItem(meetingId, text, presenterId)`. The presenter defaults to the
+  caller and may be a live member of any unit (`NOT_FOUND` otherwise). The topic goes at the end
+  (`position` = highest + 1), whatever the meeting's status: there is no difference between a
+  topic added before and during the meeting. A missing or deleted meeting is `NOT_FOUND`.
+- **Updating:** `updateAgendaItem(id, expectedVersion, text, presenterId)`: omitted arguments are
+  unchanged, and the presenter cannot be cleared (the current presenter may stay even after being
+  deleted). Stale `expectedVersion` is `CONFLICT`. `deleteAgendaItem(id)` returns the ID.
+- **Reordering** (at any meeting status): `reorderAgendaItems(meetingId, itemIds)` takes exactly the meeting's live topic
+  IDs, each once, in the wanted order (otherwise `BAD_REQUEST`), renumbers them 1..n, writes only
+  topics whose position changed (each conditional on the version just read; a topic changed in the
+  meantime is `CONFLICT`) and returns them in the new order.
+- **Audit:** create, field changes, moves and deletes are each recorded against the topic.
+
+```graphql
+mutation {
+  createAgendaItem(meetingId: "…", text: "Budget\n\nAgreed to defer.") {
+    id
+    position
+    text
+    presenter {
+      id
+    }
+  }
+}
+```
 
 ```graphql
 mutation {

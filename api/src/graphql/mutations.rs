@@ -35,6 +35,7 @@ use crate::trophy_scan;
 use async_graphql::dataloader::DataLoader;
 use hex;
 
+use super::agenda_items::{self, AgendaItem};
 use super::assets::{self, Asset, AssetUpload, CreateAssetUploadInput};
 use super::auth::{
     AuthGuard, AuthRequirement, require_location_access, require_location_write_access,
@@ -3567,6 +3568,74 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sy
         expected_version: i32,
     ) -> Result<Meeting<A>> {
         meetings::finish_meeting(ctx, self.app.as_ref(), &id, expected_version).await
+    }
+
+    /// Add a topic to a meeting's agenda (Agendas), at the end, at any status. `text`
+    /// (Markdown as in Notes) is what it is about and cannot be empty. `presenterId`
+    /// defaults to the caller; the presenter may be a member of any unit. Fails with
+    /// `NOT_FOUND` if the meeting is missing or deleted.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn create_agenda_item(
+        &self,
+        ctx: &Context<'_>,
+        meeting_id: ID,
+        text: String,
+        presenter_id: Option<ID>,
+    ) -> Result<AgendaItem<A>> {
+        agenda_items::create_agenda_item(
+            ctx,
+            self.app.as_ref(),
+            agenda_items::CreateAgendaItemArgs {
+                meeting_id,
+                text,
+                presenter_id,
+            },
+        )
+        .await
+    }
+
+    /// Change a topic. Omitted arguments are left as they are; the presenter cannot be
+    /// cleared, and `text` cannot be emptied. Fails with `CONFLICT` if it is no longer at
+    /// `expectedVersion`.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn update_agenda_item(
+        &self,
+        ctx: &Context<'_>,
+        id: ID,
+        expected_version: i32,
+        text: Option<String>,
+        presenter_id: Option<ID>,
+    ) -> Result<AgendaItem<A>> {
+        agenda_items::update_agenda_item(
+            ctx,
+            self.app.as_ref(),
+            agenda_items::UpdateAgendaItemArgs {
+                id,
+                expected_version,
+                text,
+                presenter_id,
+            },
+        )
+        .await
+    }
+
+    /// Delete a topic. Returns its ID.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn delete_agenda_item(&self, ctx: &Context<'_>, id: ID) -> Result<ID> {
+        agenda_items::delete_agenda_item(ctx, self.app.as_ref(), &id).await
+    }
+
+    /// Put a meeting's topics in the order of `itemIds`, which must name exactly its
+    /// live topics, each once (else `BAD_REQUEST`). Returns them in the new order.
+    /// Fails with `CONFLICT` if a topic changed while this ran.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn reorder_agenda_items(
+        &self,
+        ctx: &Context<'_>,
+        meeting_id: ID,
+        item_ids: Vec<ID>,
+    ) -> Result<Vec<AgendaItem<A>>> {
+        agenda_items::reorder_agenda_items(ctx, self.app.as_ref(), &meeting_id, item_ids).await
     }
 
     #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
