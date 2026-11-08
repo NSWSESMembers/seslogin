@@ -172,6 +172,16 @@ function sortBadgesDescending(person: ReportPerson) {
   return [...person.badges].sort((a, b) => b.awardedAt - a.awardedAt);
 }
 
+// Breaks a tie on the number of badges like a medal table, as The Sash and the
+// API's badge leaderboard do: more gold, then silver, then bronze.
+const MEDAL_TIERS = ["gold", "silver", "bronze"];
+
+function medalCount(person: ReportPerson): number[] {
+  return MEDAL_TIERS.map(
+    (tier) => person.badges.filter((badge) => badge.tier === tier).length,
+  );
+}
+
 function countRecentAwards(person: ReportPerson, cutoffSeconds: number) {
   return person.badges.filter((badge) => badge.awardedAt >= cutoffSeconds)
     .length;
@@ -193,6 +203,7 @@ export default function ReportsBadges() {
             badges(locationId: $location) {
               id
               name
+              tier
               awardedAt
             }
           }
@@ -248,6 +259,7 @@ export default function ReportsBadges() {
     .map((person) => ({
       person,
       badges: sortBadgesDescending(person),
+      medals: medalCount(person),
       recentCount: countRecentAwards(person, RECENT_AWARDS_CUTOFF_SECONDS),
     }))
     .filter(({ badges }) => badges.length > 0)
@@ -255,12 +267,26 @@ export default function ReportsBadges() {
       if (b.badges.length !== a.badges.length) {
         return b.badges.length - a.badges.length;
       }
-      return b.badges[0].awardedAt - a.badges[0].awardedAt;
+      const medal = MEDAL_TIERS.findIndex(
+        (_, i) => a.medals[i] !== b.medals[i],
+      );
+      if (medal !== -1) {
+        return b.medals[medal] - a.medals[medal];
+      }
+      // Whoever reached their count first: their latest badge is the one that did.
+      if (a.badges[0].awardedAt !== b.badges[0].awardedAt) {
+        return a.badges[0].awardedAt - b.badges[0].awardedAt;
+      }
+      return a.person.id.localeCompare(b.person.id);
     });
 
-  // Members with the same badge count share a place (1, 1, 3), as on the
-  // dashboard and kiosk leaderboards; latest award only orders rows in a tie.
-  const ranks = competitionRanks(people, (entry) => entry.badges.length);
+  // Members level on badges and medals share a place (1, 1, 3), as on the
+  // dashboard and kiosk leaderboards; who got there first only orders rows in a
+  // tie.
+  const ranks = competitionRanks(
+    people,
+    (entry) => `${entry.badges.length}:${entry.medals.join(":")}`,
+  );
 
   const totalAwards = people.reduce(
     (sum, entry) => sum + entry.badges.length,

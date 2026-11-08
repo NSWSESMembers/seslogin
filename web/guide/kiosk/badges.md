@@ -32,6 +32,12 @@ Each badge has a tier: **Starter**, **Bronze**, **Silver** and **Gold** go from
 easiest to hardest. **Passport Stamps** are for visiting other units, and
 **Wildcard** badges are surprises for unusual moments.
 
+The kiosk's **badge leaderboard** ranks members by how many badges they've earned
+at the unit. People with the same number are ranked by
+[the same tie-break as The Sash](#the-sash-tie-break): more gold badges, then
+silver, then bronze. People level on all of those share a place, and whoever got
+there first is listed first.
+
 ## Sign-ins and sign-outs
 
 Counted at each unit.
@@ -290,7 +296,7 @@ a secret: keep signing in and out to find out.
 
 ## Unit trophies
 
-As well as your own badges, a unit with badges turned on has twelve trophies. Each
+As well as your own badges, a unit with badges turned on has thirteen trophies. Each
 one belongs to the unit and has one holder at a time. Beat the holder and you take
 it from them. Your unit's administrators can see who holds each one and who held it
 before.
@@ -299,6 +305,7 @@ before.
   other unit you belong to. Visitors can't.
 - **You have to beat the holder.** If you only match their score, they keep it. If
   two people beat the holder with the same score, whoever got there first takes it.
+  The Sash is different: see [the tie-break for The Sash](#the-sash-tie-break).
 - **A holder keeps a trophy until someone beats them**, or until their own score drops
   below the trophy's minimum. Then it passes to whoever leads, or nobody holds it until
   someone qualifies. If they leave the unit, it passes to whoever is next. The Kettle
@@ -328,6 +335,23 @@ before.
 | ![The Clipboard trophy](/image/badges/by-id/trophy-clipboard.svg) | The Clipboard | Spend more hours signed out to Administration in the last 60 days than the holder.                                                                                                                                                    | 4 hours            |
 | ![The Pager trophy](/image/badges/by-id/trophy-pager.svg)         | The Pager     | Use myAvailability, to set your availability or reply to a request, on more days in the last 60 days than the holder.                                                                                                                 | 4 days             |
 | ![The Chain trophy](/image/badges/by-id/trophy-chain.svg)         | The Chain     | Sign in at least once every week for longer than the holder's current run. Weeks run Monday to Sunday.                                                                                                                                | 4 weeks            |
+| ![The Sash trophy](/image/badges/by-id/trophy-sash.svg)           | The Sash      | Earn more badges at the unit than the holder, counting every badge you've ever earned there. See the tie-break below.                                                                                                                 | 5 badges           |
+
+### The Sash tie-break
+
+The Sash goes to whoever has earned the most badges at the unit. If you have the same
+number of badges as the holder, it's decided like a medal table:
+
+1. More **gold** badges wins.
+2. Still level, more **silver** badges wins.
+3. Still level, more **bronze** badges wins.
+4. Still level, the holder keeps it. Between two people trying to take it, whoever
+   reached that number of badges first takes it.
+
+Starter, wildcard and Passport Stamps badges count towards your total, but not the
+tie-break. The Sash is worked out overnight. The badge leaderboard uses the same
+tie-break, so whoever tops it normally holds The Sash. The holder keeps it on a
+full tie, though, even if someone level with them got there first.
 
 ## Congratulations emails
 

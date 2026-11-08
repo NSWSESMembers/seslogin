@@ -1006,8 +1006,11 @@ type LocationBadgeLeaderboardEntry {
 	personId: ID!
 	person: Person!
 	"""
-	1-based place on the board. Members with the same badge count share a place,
-	and the next place skips past them (1, 1, 3), so it is not the row's index.
+	1-based place on the board, ordered as The Sash is decided: most badges, then on
+	the same number more gold badges, then silver, then bronze. Members level on all
+	of those share a place, and the next place skips past them (1, 1, 3), so it is not
+	the row's index; within a shared place, whoever reached that count first is
+	listed first.
 	"""
 	rank: Int!
 	badgeCount: Int!
@@ -3620,7 +3623,7 @@ type Trophy {
 	minimumLabel: String
 	"""
 	How far back scores or claims count, in days; null for The Chain, a current
-	streak.
+	streak, and The Sash, which counts every badge ever earned.
 	"""
 	windowDays: Int
 	"""

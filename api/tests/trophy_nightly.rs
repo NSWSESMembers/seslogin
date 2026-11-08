@@ -320,3 +320,76 @@ async fn a_dry_run_writes_nothing() {
     assert!(app.db.trophy_holders.lock().unwrap().is_empty());
     assert!(app.db.trophy_notices.lock().unwrap().is_empty());
 }
+
+/// Gives `person` the badges `ids` at `location`, each a day after the last, from `first`.
+fn award_badges(app: &App, person: &str, location: &str, ids: &[&str], first: u64) {
+    let mut state = seslogin::badges::BadgeState::default();
+    let progress = state.locations.entry(location.to_string()).or_default();
+    for (i, id) in ids.iter().enumerate() {
+        progress.awarded_badge_ids.push(id.to_string());
+        progress
+            .awarded_badge_times
+            .insert(id.to_string(), first + i as u64 * DAY);
+    }
+    app.db
+        .persons
+        .lock()
+        .unwrap()
+        .get_mut(person)
+        .unwrap()
+        .badge_state = seslogin::badges::write_state(&state);
+}
+
+#[tokio::test]
+async fn the_sash_goes_to_the_most_badges_and_a_tie_to_more_gold() {
+    let app = setup();
+    let t = now();
+    // Five badges each at Unit A. Alice got there first with two silvers and a bronze,
+    // but Bob has a gold.
+    award_badges(
+        &app,
+        "alice",
+        "loc-a",
+        &[
+            "first-steps",
+            "checkin-momentum-builder",
+            "steady-strider",
+            "checkin-century-mark",
+            "clean-finish",
+        ],
+        t - 30 * DAY,
+    );
+    award_badges(
+        &app,
+        "bob",
+        "loc-a",
+        &[
+            "first-steps",
+            "legacy-legend",
+            "away-checkin-suitcase-stowaway",
+            "clean-finish",
+            "public-holiday-new-years-day",
+        ],
+        t - 20 * DAY,
+    );
+    // Carol has more at Unit A, from visits, but isn't a member there.
+    award_badges(
+        &app,
+        "carol",
+        "loc-a",
+        &[
+            "first-steps",
+            "checkin-momentum-builder",
+            "steady-strider",
+            "legacy-legend",
+            "clean-finish",
+            "checkin-century-mark",
+        ],
+        t - 20 * DAY,
+    );
+    run(&app, t).await;
+    let sash = holder(&app, "loc-a", "sash").expect("the sash is held");
+    assert_eq!(sash.person_id, "bob");
+    assert_eq!(sash.value, 5.0);
+    assert!(holder(&app, "loc-b", "sash").is_none());
+}

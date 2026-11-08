@@ -92,6 +92,7 @@ async fn evaluate(db: &impl db::Handler, unit: &Unit<'_>, dry_run: bool) -> Resu
 
     let boomerang = boomerang_claims(db, unit, &member_ids, &periods).await?;
     let odometer = odometer_claims(db, unit, &members, since).await?;
+    let badge_awards = badge_awards(unit, &members);
 
     let activity = trophies::UnitActivity {
         now: unit.now,
@@ -100,6 +101,7 @@ async fn evaluate(db: &impl db::Handler, unit: &Unit<'_>, dry_run: bool) -> Resu
         virtual_category_ids: unit.virtual_category_ids,
         boomerang_claims: &boomerang,
         odometer_claims: &odometer,
+        badge_awards: &badge_awards,
     };
     let holders: HashMap<String, db::TrophyHolder> = db
         .list_trophy_holders(unit.location_id)
@@ -146,6 +148,28 @@ async fn evaluate(db: &impl db::Handler, unit: &Unit<'_>, dry_run: bool) -> Resu
         }
     }
     Ok(changes)
+}
+
+/// The Sash's count: each member's badges earned at the unit, as the Badge Report's
+/// leaderboard counts them. The personal badges run first, so tonight's are included.
+fn badge_awards(
+    unit: &Unit<'_>,
+    members: &[db::Person],
+) -> HashMap<String, Vec<trophies::BadgeEarned>> {
+    members
+        .iter()
+        .filter_map(|m| {
+            let state = badges::read_state(&m.id, m.badge_state.as_deref())?;
+            let awards = badges::awards_in_range(&state, unit.location_id, 0, unit.now)
+                .into_iter()
+                .map(|a| trophies::BadgeEarned {
+                    tier: a.badge.tier,
+                    awarded_at: a.awarded_at,
+                })
+                .collect();
+            Some((m.id.clone(), awards))
+        })
+        .collect()
 }
 
 /// The holder as the rules see them. A standing record's claim is looked up afresh among

@@ -105,7 +105,7 @@ async fn lists_every_trophy_with_its_holder_and_history() {
     assert!(response.errors.is_empty(), "{:?}", response.errors);
     let data = response.data.into_json().unwrap();
     let trophies = data["location"]["trophies"].as_array().unwrap();
-    assert_eq!(trophies.len(), 12);
+    assert_eq!(trophies.len(), 13);
 
     let kettle = &trophies[0];
     assert_eq!(kettle["id"], "kettle");

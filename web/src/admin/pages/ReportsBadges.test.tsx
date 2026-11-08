@@ -39,7 +39,10 @@ function trophy(id: string, name: string, overrides = {}) {
   };
 }
 
-function renderPage(trophies: ReturnType<typeof trophy>[]) {
+function renderPage(
+  trophies: ReturnType<typeof trophy>[],
+  people: ReturnType<typeof member>[] = [],
+) {
   const environment: RelayMockEnvironment = createMockEnvironment();
   render(
     <RelayEnvironmentProvider environment={environment}>
@@ -53,11 +56,60 @@ function renderPage(trophies: ReturnType<typeof trophy>[]) {
   act(() => {
     environment.mock.resolveMostRecentOperation((op) =>
       MockPayloadGenerator.generate(op, {
-        Location: () => ({ id: "loc1", people: [], trophies }),
+        Location: () => ({ id: "loc1", people, trophies }),
       }),
     );
   });
 }
+
+/** A member with one badge of each tier in `tiers`, a day apart from `first`. */
+function member(id: string, firstName: string, tiers: string[], first = 0) {
+  return {
+    id,
+    firstName,
+    lastName: "Tester",
+    memberNumber: id,
+    badges: tiers.map((tier, i) => ({
+      id: `${id}-b${i}`,
+      name: `Badge ${i}`,
+      tier,
+      awardedAt: 1_780_000_000 + first + i * 86_400,
+    })),
+  };
+}
+
+describe("ReportsBadges members' badges", () => {
+  it("breaks a tie on badges by gold, silver, then bronze, then first there", async () => {
+    renderPage(
+      [],
+      [
+        member("p1", "Bronzes", ["bronze", "bronze", "starter"]),
+        member("p2", "Silver", ["silver", "starter", "starter"]),
+        member("p3", "Gold", ["gold", "starter", "starter"]),
+        member("p4", "Most", ["starter", "starter", "starter", "starter"]),
+        // Level with Bronzes on badges and medals, but got there later.
+        member("p5", "Later", ["bronze", "bronze", "wildcard"], 86_400),
+      ],
+    );
+    await screen.findByText("Most Tester");
+    const rows = screen
+      .getAllByRole("row")
+      .slice(1)
+      .map((row) =>
+        within(row)
+          .getAllByRole("cell")
+          .slice(0, 2)
+          .map((cell) => cell.textContent),
+      );
+    expect(rows).toEqual([
+      ["1", "Most Tester"],
+      ["2", "Gold Tester"],
+      ["3", "Silver Tester"],
+      ["4", "Bronzes Tester"],
+      ["4", "Later Tester"],
+    ]);
+  });
+});
 
 describe("ReportsBadges trophy cabinet", () => {
   it("shows each trophy's holder, and how to win a vacant one", async () => {

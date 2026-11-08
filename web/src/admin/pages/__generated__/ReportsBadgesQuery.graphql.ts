@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<6eac3eec2c556ec0da18b927faedcadb>>
+ * @generated SignedSource<<85f150fbcf0c5be812db2d0c3a74115d>>
  * @lightSyntaxTransform
  */
 
@@ -20,6 +20,7 @@ export type ReportsBadgesQuery$data = {
         readonly awardedAt: number;
         readonly id: string;
         readonly name: string;
+        readonly tier: string;
       }>;
       readonly firstName: string;
       readonly id: string;
@@ -139,6 +140,13 @@ v6 = {
       "selections": [
         (v2/*:: as any*/),
         (v5/*:: as any*/),
+        {
+          "alias": null,
+          "args": null,
+          "kind": "ScalarField",
+          "name": "tier",
+          "storageKey": null
+        },
         {
           "alias": null,
           "args": null,
@@ -403,16 +411,16 @@ return {
     ]
   },
   "params": {
-    "cacheID": "d7ce0c6c10479348c0a376052bde7c27",
+    "cacheID": "0e57fcc5e00729a7515b4c7c452382cb",
     "id": null,
     "metadata": {},
     "name": "ReportsBadgesQuery",
     "operationKind": "query",
-    "text": "query ReportsBadgesQuery(\n  $location: ID!\n) {\n  location(id: $location) {\n    id\n    people {\n      id\n      firstName\n      lastName\n      memberNumber\n      badges(locationId: $location) {\n        id\n        name\n        awardedAt\n      }\n    }\n    trophies {\n      id\n      name\n      tagline\n      rule\n      minimumLabel\n      holder {\n        id\n        firstName\n        lastName\n      }\n      valueLabel\n      heldSince\n      reigns(first: 5) {\n        holder {\n          firstName\n          lastName\n          id\n        }\n        valueLabel\n        startedAt\n        endedAt\n        endReason\n        endedBy {\n          firstName\n          lastName\n          id\n        }\n        endedByValueLabel\n      }\n    }\n  }\n}\n"
+    "text": "query ReportsBadgesQuery(\n  $location: ID!\n) {\n  location(id: $location) {\n    id\n    people {\n      id\n      firstName\n      lastName\n      memberNumber\n      badges(locationId: $location) {\n        id\n        name\n        tier\n        awardedAt\n      }\n    }\n    trophies {\n      id\n      name\n      tagline\n      rule\n      minimumLabel\n      holder {\n        id\n        firstName\n        lastName\n      }\n      valueLabel\n      heldSince\n      reigns(first: 5) {\n        holder {\n          firstName\n          lastName\n          id\n        }\n        valueLabel\n        startedAt\n        endedAt\n        endReason\n        endedBy {\n          firstName\n          lastName\n          id\n        }\n        endedByValueLabel\n      }\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "7828c9f3cc2226edd077d7fa11f774f8";
+(node as any).hash = "1790d42498b2432075a729934e26748a";
 
 export default node;

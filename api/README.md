@@ -567,7 +567,7 @@ label a visitor "Visiting from <unit>" and a member whose primary unit is elsewh
 
 ## Perpetual trophies
 
-Twelve badges that belong to a **unit**, not a member, each with exactly one holder at a
+Thirteen badges that belong to a **unit**, not a member, each with exactly one holder at a
 time (`src/trophies.rs`). Whoever beats the holder takes it, and every change of hands is
 kept as a reign in the `trophy` table (see SCHEMA.md). Two kinds:
 
@@ -576,7 +576,9 @@ kept as a reign in the `trophy` table (see SCHEMA.md). Two kinds:
   nearest of their own units). A claim counts for 365 days; a strictly bigger one takes
   the trophy. When the holder's claim ages out, the best claim still inside the window
   takes over, or the holder keeps it if there is none.
-- **Rolling leads** (the other ten), scored nightly over a trailing window. A challenger
+- **Rolling leads** (the other eleven), scored nightly over a trailing window (The
+  Chain counts a current weekly run, and The Sash every badge the member has earned at
+  the unit, with no window). A challenger
   must strictly beat the holder's current score and meet the minimum; a quiet holder
   keeps it until passed, or until their own score falls below the trophy's
   `keep_minimum` (`lapsed`; the same as its minimum except The Kettle and The Padlock,
@@ -589,7 +591,18 @@ history reads sensibly even when a rolling holder's score had fallen by the time
 it.
 
 Ties go to the holder, and between challengers on the same score, whoever reached it
-first. Only a unit's own members (primary or secondary) can hold its trophies. Every
+first. The Sash, most badges at the unit, breaks a tie on the count like a medal table
+before that: more gold badges, then silver, then bronze (`Standing::tiebreak`; starter,
+wildcard and passport stamp badges count towards the total only). A challenger level on
+the count takes it from the holder only with a better medal count; level on both, the
+holder keeps it. It counts what the Badge Report's leaderboard counts
+(`badges::awards_in_range` at the unit), so it is decided after the night's personal
+badges. The badge leaderboard (`Location.badgeLeaderboard`, on the dashboard and the
+kiosk) and the Badge Report's members table rank by the same rule, through
+`trophies::medal_count`: badges, then medals, then whoever reached their count first
+(their latest badge); `rank` is shared only by members level on badges and medals.
+
+Only a unit's own members (primary or secondary) can hold its trophies. Every
 hours-based trophy counts a sign-in at most 12 hours, so nothing rewards a long shift.
 
 `trophy_nightly::run`, at the end of `badge-nightly` (`seslogin-badge-nightly`), is the
