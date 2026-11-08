@@ -879,3 +879,41 @@ async fn an_item_needs_text_or_at_least_one_link() {
     let r = update(&app, &said, &format!(r#", text: "", taskIds: ["{task}"]"#)).await;
     assert_eq!(json(&r)["updateAgendaItem"]["version"], 2);
 }
+
+#[tokio::test]
+async fn a_presenter_notification_names_a_topic_with_no_text_by_its_first_link_else_its_number() {
+    let app = app();
+    let m = meeting(&app).await;
+    let task = task_at(&app, "loc-a", "Book service").await;
+    let photo = asset_at(&app, "loc-a", db::AssetStatus::Ready);
+    let create = |args: String| {
+        let (app, m) = (app.clone(), m.clone());
+        async move {
+            json(
+                &run(
+                    &app,
+                    member(),
+                    &format!(
+                        r#"mutation {{ createAgendaItem(meetingId: "{m}", presenterId: "bea" {args}) {{ id }} }}"#
+                    ),
+                )
+                .await,
+            );
+        }
+    };
+    create(format!(r#", taskIds: ["{task}"]"#)).await;
+    create(format!(r#", photoAssetIds: ["{photo}"]"#)).await;
+    let mut bodies: Vec<String> = app
+        .db
+        .notifications
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|n| n.person_id == "bea")
+        .filter_map(|n| n.body.clone())
+        .collect();
+    bodies.sort();
+    assert_eq!(bodies.len(), 2);
+    assert!(bodies[0].starts_with("Book service · "), "{bodies:?}");
+    assert!(bodies[1].starts_with("Topic 2 · "), "{bodies:?}");
+}

@@ -703,3 +703,71 @@ async fn each_write_leaves_an_audit_entry_for_the_topic() {
     );
     assert_eq!(entries.len(), 6, "{entries:?}");
 }
+
+/// The notifications stored for member `person_id`.
+fn inbox(app: &Arc<TestApp>, person_id: &str) -> Vec<db::NotificationRecord> {
+    app.db
+        .notifications
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|n| n.person_id == person_id)
+        .cloned()
+        .collect()
+}
+
+async fn upd(app: &Arc<TestApp>, item: &serde_json::Value, args: &str) -> serde_json::Value {
+    json(&update(app, item, args).await)["updateAgendaItem"].clone()
+}
+
+#[tokio::test]
+async fn making_someone_else_the_presenter_tells_them() {
+    let app = app();
+    let m = meeting_id(&app).await;
+
+    // Creating a topic presented by another member tells that member.
+    let item = add(
+        &app,
+        &m,
+        "# **Budget**\\n\\nDetails",
+        r#", presenterId: "bea""#,
+    )
+    .await;
+    let rows = inbox(&app, "bea");
+    assert_eq!(rows.len(), 1);
+    let n = &rows[0];
+    assert_eq!(n.source, "agendas");
+    assert_eq!(n.kind, "agenda.presenter_assigned");
+    assert_eq!(n.title, "You're presenting at Monthly");
+    assert_eq!(
+        n.body.as_deref(),
+        Some("Budget · Thu 1 Jan 1970, 10:16 am · added by Casey Caller")
+    );
+    assert_eq!(n.location_id.as_deref(), Some("loc-a"));
+    assert_eq!(n.target_type.as_deref(), Some("agenda_item"));
+    assert_eq!(n.target_id.as_deref(), item["id"].as_str());
+
+    // Presenting your own topic, by default or by name, tells nobody.
+    add(&app, &m, "Mine", "").await;
+    add(&app, &m, "Also mine", r#", presenterId: "caller""#).await;
+    assert!(inbox(&app, "caller").is_empty());
+    assert_eq!(inbox(&app, "bea").len(), 1);
+
+    // Changing the presenter tells the new one; other edits, or the same presenter, don't.
+    let own = add(&app, &m, "Roster", "").await;
+    let moved = upd(&app, &own, r#", presenterId: "al""#).await;
+    let rows = inbox(&app, "al");
+    assert_eq!(rows.len(), 1);
+    assert_eq!(
+        rows[0].body.as_deref(),
+        Some("Roster · Thu 1 Jan 1970, 10:16 am · assigned by Casey Caller")
+    );
+    assert_eq!(rows[0].target_id.as_deref(), own["id"].as_str());
+    let same = upd(&app, &moved, r#", presenterId: "al", text: "Roster 2""#).await;
+    let same = upd(&app, &same, r#", text: "Agreed""#).await;
+    assert_eq!(inbox(&app, "al").len(), 1);
+
+    // Taking a topic over yourself tells nobody.
+    upd(&app, &same, r#", presenterId: "caller""#).await;
+    assert!(inbox(&app, "caller").is_empty());
+}
