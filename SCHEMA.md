@@ -685,6 +685,69 @@ The events in a location's shared calendar ("Calendar"). An event is timed (inst
 
 ---
 
+### `{prefix}meeting`
+
+A location's meetings in Tally's Agendas app: a scheduled meeting with its agenda items (the `agenda_item` table) and minutes. The code that uses this table lands in later PRs; until then nothing reads or writes it.
+
+| Attribute     | Type | Role                                         |
+| ------------- | ---- | -------------------------------------------- |
+| `id`          | S    | Hash key (PK)                                |
+| `location_id` | S    | GSI hash key (`location_id-starts_at-index`) |
+| `starts_at`   | N    | GSI sort key (`location_id-starts_at-index`) |
+
+**GSIs:**
+
+| GSI                           | Hash key      | Sort key    | Projection | Purpose                                                                                                |
+| ----------------------------- | ------------- | ----------- | ---------- | ------------------------------------------------------------------------------------------------------ |
+| `location_id-starts_at-index` | `location_id` | `starts_at` | ALL        | A location's meetings in date order, so a window (upcoming, past) is one query; deleted ones are filtered out on read |
+
+**Non-obvious attributes (not in table definition):**
+
+- `starts_at` (N) — the scheduled start, Unix seconds
+- `title` (S) — one line of plain text
+- `description` (S, optional) — plain text (where, purpose); absent when empty
+- `started_at` (N, optional) — Unix seconds when the meeting was started; absent until then
+- `finished_at` (N, optional) — Unix seconds when it was finished; absent until then, and cleared when a finished meeting is started again
+- Status is not stored: no `started_at` is planned, `started_at` without `finished_at` is in progress, and `finished_at` is finished
+- `v` (N) — version, bumped by every write; edits are conditional on it
+- `created_by` / `updated_by` (S) — person IDs of the members who made and last changed it
+- `deleted` (N) — Unix seconds when soft-deleted; absent otherwise. Deleting a meeting soft-deletes only this row: its agenda items are left alone and become unreachable
+- `created_at` / `updated_at` (N)
+
+---
+
+### `{prefix}agenda_item`
+
+The topics on a meeting's agenda ("agenda items"), each with one Markdown text box. The code that uses this table lands in later PRs; until then nothing reads or writes it.
+
+| Attribute    | Type | Role                                  |
+| ------------ | ---- | ------------------------------------- |
+| `id`         | S    | Hash key (PK)                         |
+| `meeting_id` | S    | GSI hash key (`meeting_id-index`)     |
+
+**GSIs:**
+
+| GSI                | Hash key     | Sort key | Projection | Purpose                                                                                       |
+| ------------------ | ------------ | -------- | ---------- | --------------------------------------------------------------------------------------------- |
+| `meeting_id-index` | `meeting_id` | —        | ALL        | All of a meeting's items; deleted ones are filtered out on read and the API sorts by `position` in memory |
+
+**Non-obvious attributes (not in table definition):**
+
+- `location_id` (S) — the meeting's unit, copied from it
+- `text` (S, optional) — the item's single text box (what it is about, and the minutes taken against it), Markdown as in Notes, up to 20000 characters; absent when empty. An item with no text names at least one link
+- `presenter_id` (S) — person ID of the member presenting it; defaults to its creator
+- `position` (N) — integer, 1-based order on the agenda
+- `task_ids` / `equipment_ids` / `on_call_role_ids` (L of S, optional) — the tasks, equipment and on-call roles it links to: up to 10 IDs each, at the same location, in the order shown. Absent when there are none. They have no reverse tables, and may name something deleted since, which readers leave out
+- `photo_asset_ids` (L of S, optional) — the photos attached to it: up to 10 IDs of `asset` rows, in the order shown. Each has an `asset_ref` owned by `agenda_item#<id>`, written before the row starts naming it and removed after it stops (or the row is deleted)
+- `note_ids` (L of S, optional) — the notes it links to: up to 10 IDs of live `note` rows at the same location, in the order shown. Absent when there are none. Each has a `note_ref` owned by `agenda_item#<id>`, written before the row starts naming it and removed after it stops (or the row is deleted). It may name a note deleted since
+- The link attributes are written by later PRs; until then no row has them
+- `v` (N) — version, bumped by every write; edits are conditional on it
+- `created_by` / `updated_by` (S) — person IDs of the members who made and last changed it
+- `deleted` (N) — Unix seconds when soft-deleted; absent otherwise
+- `created_at` / `updated_at` (N)
+
+---
+
 ### `{prefix}location_share`
 
 Members sharing their phone's position with a location's members ("Locate"), for a fixed time. One row per member: starting another share replaces it, and stopping deletes it. Only the latest position is kept; there is no history.
@@ -827,7 +890,7 @@ Which owners use an asset, so a garbage collector can delete only assets nothing
 | `asset_id` | S    | Hash key (PK)                                                  |
 | `owner`    | S    | Range key — `<owner_type>#<owner_id>`, e.g. `photo#<photo_id>` |
 
-Owner types: `photo`, and `task`, `equipment` and `map_pin` for the photos attached to them (their `photo_asset_ids`).
+Owner types: `photo`, and `task`, `equipment`, `map_pin` and (planned: used once agenda items can attach photos) `agenda_item` for the photos attached to them (their `photo_asset_ids`).
 
 No GSIs.
 
@@ -849,7 +912,7 @@ Protocol: a reference is written before the owner first names the note and remov
 | `note_id` | S    | Hash key (PK)                                                |
 | `owner`   | S    | Range key — `<owner_type>#<owner_id>`, e.g. `task#<task_id>` |
 
-Owner types: `task`, `equipment`, `map_pin`, `calendar_event` and `on_call_role`, and `location_sop` for a unit's SOP notes, whose owner ID is `<location_id>:<PLACE>` (e.g. `location_sop#<location_id>:ON_CALL`), written by `graphql/sop_notes.rs` before the `location` row names the note and removed after it stops.
+Owner types: `task`, `equipment`, `map_pin`, `calendar_event`, `on_call_role` and (planned: used once agenda items can link notes) `agenda_item`, and `location_sop` for a unit's SOP notes, whose owner ID is `<location_id>:<PLACE>` (e.g. `location_sop#<location_id>:ON_CALL`), written by `graphql/sop_notes.rs` before the `location` row names the note and removed after it stops.
 
 No GSIs.
 
