@@ -1172,6 +1172,67 @@ type MarkNotificationsReadPayload {
 	unreadCount: Int!
 }
 
+type Meeting {
+	id: ID!
+	"""
+	One line of plain text.
+	"""
+	title: String!
+	"""
+	Plain text (where, what for); empty when there is none.
+	"""
+	description: String!
+	"""
+	When it is scheduled to start, Unix seconds.
+	"""
+	startsAt: Int!
+	"""
+	When it was started (Unix seconds); null until then. Kept when it is finished
+	and started again.
+	"""
+	startedAt: Int
+	"""
+	When it was finished (Unix seconds); null until then, and again once it is
+	started again.
+	"""
+	finishedAt: Int
+	status: MeetingStatus!
+	locationId: ID!
+	location: Location!
+	"""
+	Bumped by every change; pass it back to the update, start and finish mutations.
+	"""
+	version: Int!
+	createdAt: Int!
+	"""
+	Name of the member who added the meeting.
+	"""
+	createdBy: String
+	updatedAt: Int!
+	"""
+	Name of the member who last changed the meeting.
+	"""
+	updatedBy: String
+}
+
+"""
+Where a meeting is in its life.
+"""
+enum MeetingStatus {
+	"""
+	Not started yet.
+	"""
+	PLANNED
+	"""
+	Started and not finished.
+	"""
+	IN_PROGRESS
+	"""
+	Finished. Starting it again reopens it.
+	"""
+	FINISHED
+}
+
 type MemberCategoryPeriodSummary {
 	personId: ID!
 	person: Person!
@@ -1590,6 +1651,32 @@ type MutationRoot {
 	Delete an event, every occurrence of it. Returns its ID.
 	"""
 	deleteCalendarEvent(id: ID!): ID!
+	"""
+	Add a meeting (Agendas) to a unit, planned for `startsAt` (Unix seconds). Any
+	member who can use the unit in Tally may.
+	"""
+	createMeeting(locationId: ID!, title: String!, description: String, startsAt: Int!): Meeting!
+	"""
+	Change a meeting. Omitted arguments are left as they are. Fails with
+	`CONFLICT` if it is no longer at `expectedVersion`.
+	"""
+	updateMeeting(id: ID!, expectedVersion: Int!, title: String, description: String, startsAt: Int): Meeting!
+	"""
+	Delete a meeting. Returns its ID.
+	"""
+	deleteMeeting(id: ID!): ID!
+	"""
+	Start a meeting now: `startedAt` is set and its status becomes `IN_PROGRESS`. A
+	finished meeting is reopened, keeping its original `startedAt`. One already in
+	progress is refused with `BAD_REQUEST`. Fails with `CONFLICT` if it is no longer
+	at `expectedVersion`.
+	"""
+	startMeeting(id: ID!, expectedVersion: Int!): Meeting!
+	"""
+	Finish a meeting that is in progress. Any other status is refused with
+	`BAD_REQUEST`. Fails with `CONFLICT` if it is no longer at `expectedVersion`.
+	"""
+	finishMeeting(id: ID!, expectedVersion: Int!): Meeting!
 	createCalendar(locationId: ID!, name: String!, color: CalendarColor!): Calendar!
 	"""
 	Rename a calendar or change its colour; omitted arguments are left as they are.
@@ -2500,6 +2587,10 @@ type QueryRoot {
 	"""
 	calendarEvent(id: ID!): CalendarEvent
 	"""
+	One meeting (Agendas); null if it does not exist or was deleted.
+	"""
+	meeting(id: ID!): Meeting
+	"""
 	The caller's own location share while it still shows (until 7 minutes after its
 	latest position); null otherwise.
 	"""
@@ -3072,6 +3163,13 @@ type TallyLocation {
 	`event.calendarId`.
 	"""
 	calendarEvents(from: Int!, to: Int!): [CalendarEventOccurrence!]!
+	"""
+	The unit's meetings (Agendas) scheduled from `startsAfter` (inclusive) to
+	`startsBefore` (exclusive), Unix seconds, either optional: oldest first, or
+	newest first with `newestFirst`. At most `limit` (default 50, at most 200).
+	See `graphql::meetings`.
+	"""
+	meetings(startsAfter: Int, startsBefore: Int, newestFirst: Boolean! = false, limit: Int! = 50): [Meeting!]!
 	"""
 	Everyone sharing their position with the unit ("Locate"), most recently updated
 	first. A share shows until 7 minutes after its latest position, so this

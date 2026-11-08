@@ -38,6 +38,7 @@ use super::dataloader::DatabaseLoader;
 use super::equipment::{self, Equipment};
 use super::location_share::{self, LocationShare};
 use super::map::{self, MapPin};
+use super::meetings::{self, Meeting};
 use super::notes::{self, Note};
 use super::notifications::{self, NotificationConnection};
 use super::on_call::{self, OnCallRole};
@@ -4281,6 +4282,12 @@ impl<A: App + HasDb + HasRealtime + HasStorage + Send + Sync + 'static> QueryRoo
     #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn calendar_event(&self, ctx: &Context<'_>, id: ID) -> Result<Option<CalendarEvent<A>>> {
         calendar::calendar_event(ctx, &id).await
+    }
+
+    /// One meeting (Agendas); null if it does not exist or was deleted.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn meeting(&self, ctx: &Context<'_>, id: ID) -> Result<Option<Meeting<A>>> {
+        meetings::meeting(ctx, &id).await
     }
 
     /// The caller's own location share while it still shows (until 7 minutes after its

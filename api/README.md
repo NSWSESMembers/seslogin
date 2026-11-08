@@ -1174,6 +1174,61 @@ mutation {
 }
 ```
 
+## Agendas
+
+Meeting agendas and minutes for Tally's Agendas app (`src/graphql/meetings.rs`; storage in
+SCHEMA.md's `meeting` and `agenda_item` sections). This section covers **meetings**; a meeting's
+topics (agenda items), their links to tasks, equipment, on-call roles, photos and notes, and the
+exported minutes come in later changes.
+
+- **Who:** any member signed in to Tally who can use the unit (`require_meeting_access`, through
+  `require_member_location`: see "Tally (members)" above) may read and write every meeting of it,
+  finished ones included. Users on their own, kiosk sessions, API tokens and edit links are refused.
+  Authors are recorded by person ID (`createdBy` / `updatedBy` read as the member's name).
+- **Reading:** `TallyLocation.meetings(startsAfter, startsBefore, newestFirst, limit)` lists the
+  unit's live meetings scheduled in `[startsAfter, startsBefore)` (Unix seconds, either optional),
+  oldest first or newest first, at most `limit` (default 50, capped at 200). `Query.meeting(id)`
+  reads one (null when missing or deleted).
+- **Status:** `PLANNED` (never started), `IN_PROGRESS` (`startedAt` set, `finishedAt` not) or
+  `FINISHED` (`finishedAt` set), derived from the two timestamps.
+- **Writes:** `createMeeting(locationId, title, description, startsAt)`,
+  `updateMeeting(id, expectedVersion, title, description, startsAt)` (omitted
+  arguments unchanged), `deleteMeeting(id)`,
+  `startMeeting(id, expectedVersion)` and `finishMeeting(id, expectedVersion)`. The title is one
+  line of at most 200 characters; the description is at most 5,000.
+- **Start and finish:** `startMeeting` stamps `startedAt` now. On a `FINISHED` meeting it
+  **reopens** it (clears `finishedAt`, keeps the original `startedAt`); on one already
+  `IN_PROGRESS` it fails with `BAD_REQUEST`. `finishMeeting` works only from `IN_PROGRESS`
+  (otherwise `BAD_REQUEST`).
+- **Concurrency:** every update, start and finish takes `expectedVersion`; if someone else changed
+  the meeting since it was read the call fails with `CONFLICT` rather than overwriting.
+- **Audit:** each write is recorded against the meeting (see CLAUDE.md's audit log).
+
+```graphql
+mutation {
+  createMeeting(
+    locationId: "TestAUnit001"
+    title: "Monthly unit meeting"
+    description: "Unit hall"
+    startsAt: 1793000000
+  ) {
+    id
+    version
+    status
+  }
+}
+{
+  tallyLocation(id: "TestAUnit001") {
+    meetings(startsAfter: 1793000000, newestFirst: false, limit: 20) {
+      id
+      title
+      status
+      startsAt
+    }
+  }
+}
+```
+
 ## Map
 
 A location's shared map of pins, used by the Tally app (`src/graphql/map.rs`, rules in

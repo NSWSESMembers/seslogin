@@ -313,6 +313,11 @@ pub(crate) fn require_calendar_access(ctx: &Context<'_>, location_id: &str) -> R
     require_member_location(ctx, location_id, "The calendar is only available in Tally")
 }
 
+/// Check the caller may use a location's meetings (Agendas). See [`require_member_location`].
+pub(crate) fn require_meeting_access(ctx: &Context<'_>, location_id: &str) -> Result<()> {
+    require_member_location(ctx, location_id, "Agendas are only available in Tally")
+}
+
 /// Check the caller may use the shared contacts in `scope`. A location's contacts are
 /// like its other shared tools (see [`require_member_location`]). Statewide contacts can
 /// be read by every member signed in to Tally, but only changed (`write`) when the user

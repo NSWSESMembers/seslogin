@@ -46,6 +46,7 @@ use super::equipment::{self, Equipment, EquipmentStatus, EquipmentType};
 use super::error::{ApiError, ErrorCode};
 use super::location_share::{self, LocationShare, LocationSharePositionInput};
 use super::map::{self, MapLayer, MapPin, MapPinType};
+use super::meetings::{self, Meeting};
 use super::notes::{self, Note, NoteFolder};
 use super::notifications::{self, MarkNotificationsReadPayload};
 use super::on_call::{self, OnCallRole};
@@ -3484,6 +3485,88 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sy
     #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn delete_calendar_event(&self, ctx: &Context<'_>, id: ID) -> Result<ID> {
         calendar::delete_event(ctx, self.app.as_ref(), &id).await
+    }
+
+    /// Add a meeting (Agendas) to a unit, planned for `startsAt` (Unix seconds). Any
+    /// member who can use the unit in Tally may.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn create_meeting(
+        &self,
+        ctx: &Context<'_>,
+        location_id: ID,
+        title: String,
+        description: Option<String>,
+        starts_at: i64,
+    ) -> Result<Meeting<A>> {
+        meetings::create_meeting(
+            ctx,
+            self.app.as_ref(),
+            meetings::CreateMeetingArgs {
+                location_id,
+                title,
+                description,
+                starts_at,
+            },
+        )
+        .await
+    }
+
+    /// Change a meeting. Omitted arguments are left as they are. Fails with
+    /// `CONFLICT` if it is no longer at `expectedVersion`.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn update_meeting(
+        &self,
+        ctx: &Context<'_>,
+        id: ID,
+        expected_version: i32,
+        title: Option<String>,
+        description: Option<String>,
+        starts_at: Option<i64>,
+    ) -> Result<Meeting<A>> {
+        meetings::update_meeting(
+            ctx,
+            self.app.as_ref(),
+            meetings::UpdateMeetingArgs {
+                id,
+                expected_version,
+                title,
+                description,
+                starts_at,
+            },
+        )
+        .await
+    }
+
+    /// Delete a meeting. Returns its ID.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn delete_meeting(&self, ctx: &Context<'_>, id: ID) -> Result<ID> {
+        meetings::delete_meeting(ctx, self.app.as_ref(), &id).await
+    }
+
+    /// Start a meeting now: `startedAt` is set and its status becomes `IN_PROGRESS`. A
+    /// finished meeting is reopened, keeping its original `startedAt`. One already in
+    /// progress is refused with `BAD_REQUEST`. Fails with `CONFLICT` if it is no longer
+    /// at `expectedVersion`.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn start_meeting(
+        &self,
+        ctx: &Context<'_>,
+        id: ID,
+        expected_version: i32,
+    ) -> Result<Meeting<A>> {
+        meetings::start_meeting(ctx, self.app.as_ref(), &id, expected_version).await
+    }
+
+    /// Finish a meeting that is in progress. Any other status is refused with
+    /// `BAD_REQUEST`. Fails with `CONFLICT` if it is no longer at `expectedVersion`.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn finish_meeting(
+        &self,
+        ctx: &Context<'_>,
+        id: ID,
+        expected_version: i32,
+    ) -> Result<Meeting<A>> {
+        meetings::finish_meeting(ctx, self.app.as_ref(), &id, expected_version).await
     }
 
     #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]

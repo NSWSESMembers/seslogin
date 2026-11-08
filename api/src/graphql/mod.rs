@@ -28,6 +28,7 @@ pub mod error_injection;
 pub mod linked_notes;
 pub mod location_share;
 pub mod map;
+pub mod meetings;
 pub mod mutations;
 pub mod notes;
 pub mod notifications;
@@ -122,6 +123,9 @@ pub struct MapLayerId(pub String);
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct CalendarId(pub String);
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct MeetingId(pub String);
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct SessionId(pub ID);
