@@ -9,6 +9,7 @@ import { fetchQuery } from "relay-runtime";
 import startKioskSessionFetcher, {
   LIVE_SESSION_REFRESH_INTERVAL_MS,
   SESSION_REFRESH_INTERVAL_MS,
+  UNREACHABLE_RETRY_MS,
 } from "./KioskSessionFetcher";
 import {
   CLOCK_SKEW_RETRY_MS,
@@ -118,6 +119,43 @@ describe("startKioskSessionFetcher", () => {
     resolveNext();
     await settle();
     fetcher.refreshNow();
+    expect(fetchQuery).toHaveBeenCalledTimes(3);
+    fetcher.stop();
+  });
+});
+
+describe("startKioskSessionFetcher before the server has answered", () => {
+  function failNext() {
+    vi.mocked(fetchQuery).mockImplementationOnce(
+      () =>
+        ({
+          toPromise: () => Promise.reject(new Error("Failed to fetch")),
+        }) as unknown as ReturnType<typeof fetchQuery>,
+    );
+  }
+
+  it("retries soon and reports the failure, then polls as usual once answered", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const onFailure = vi.fn();
+    failNext();
+    const fetcher = startKioskSessionFetcher({
+      environment: {} as IEnvironment,
+      setSession: vi.fn(),
+      onFailure,
+    });
+    await settle();
+    expect(onFailure).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(UNREACHABLE_RETRY_MS);
+    expect(fetchQuery).toHaveBeenCalledTimes(2);
+    resolveNext();
+    await settle();
+
+    // Answered: a later failure waits for the ordinary poll.
+    failNext();
+    await vi.advanceTimersByTimeAsync(SESSION_REFRESH_INTERVAL_MS);
+    expect(fetchQuery).toHaveBeenCalledTimes(3);
+    await vi.advanceTimersByTimeAsync(UNREACHABLE_RETRY_MS);
     expect(fetchQuery).toHaveBeenCalledTimes(3);
     fetcher.stop();
   });
