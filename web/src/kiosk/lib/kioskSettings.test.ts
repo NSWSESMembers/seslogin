@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { markKeyEnrolled, readAppSettings } from "./kioskSettings";
+import {
+  markKeyEnrolled,
+  readAppSettings,
+  storedProfileName,
+} from "./kioskSettings";
 
 beforeEach(() => {
   localStorage.clear();
@@ -34,5 +38,12 @@ describe("kioskSettings", () => {
       authMode: "key",
       other: "kept",
     });
+  });
+
+  it("finds a stored profile whatever the URL's case", () => {
+    markKeyEnrolled("Default");
+    expect(storedProfileName("default")).toBe("Default");
+    expect(storedProfileName("DEFAULT")).toBe("Default");
+    expect(storedProfileName("lobby")).toBe("lobby");
   });
 });
