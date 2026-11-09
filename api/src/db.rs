@@ -629,6 +629,14 @@ pub enum SessionUpdateShape<'a> {
     ReleaseKey {
         fingerprint: &'a str,
     },
+    /// Bind another device's key to this session: an admin replacing the kiosk's computer from its QR code, so the
+    /// kiosk keeps its name, location and config. Clears `key_released_at`. Fails with [`Error::NotFound`] unless
+    /// the session is still `active`.
+    Rekey {
+        public_key: &'a str,
+        fingerprint: &'a str,
+        expires_at: u64,
+    },
     Delete,
     /// Hide a session that has been unusable for longer than its grace period (see
     /// [`crate::session_retire`]): remove `active`, so it leaves `active-location_id-index`,

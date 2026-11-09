@@ -239,3 +239,90 @@ async fn re_enrolling_a_live_kiosk_tells_its_old_session_to_refetch() {
         }
     );
 }
+
+/// A kiosk whose computer lost its key shows a QR code with a new one, and was also enrolled by mistake as a
+/// new session. Replacing moves the new key onto the original kiosk, keeping it, and releases the mistake.
+#[tokio::test]
+async fn replacing_a_kiosks_device_moves_the_new_key_onto_it() {
+    let app = app_with_session();
+    app.db.sessions.lock().unwrap().extend([
+        (
+            "sess-old".to_string(),
+            session("sess-old", "loc-a", Some("fp-old")),
+        ),
+        (
+            "sess-dup".to_string(),
+            session("sess-dup", "loc-a", Some("fp-new")),
+        ),
+    ]);
+    app.db
+        .put_ephemeral_state(
+            &seslogin::session_key::enroll_state_id("fp-new"),
+            seslogin::session_key::ENROLL_STATE_KIND,
+            r#"{"public_key":"pk-new","submitted_at":0}"#,
+            u64::MAX,
+        )
+        .await
+        .unwrap();
+
+    let response = run(
+        &app,
+        auth(&["loc-a"], &[]),
+        r#"mutation { replaceSessionDevice(id: "sess-old", keyFingerprint: "fp-new") { id name keyFingerprint } }"#,
+    )
+    .await;
+    assert_eq!(
+        json(&response)["replaceSessionDevice"],
+        serde_json::json!({"id": "sess-old", "name": "Front desk", "keyFingerprint": "fp-new"})
+    );
+
+    let sessions = app.db.sessions.lock().unwrap();
+    assert_eq!(sessions["sess-old"].public_key.as_deref(), Some("pk-new"));
+    assert_eq!(sessions["sess-dup"].key_fingerprint, None);
+    assert!(sessions["sess-dup"].key_released_at.is_some());
+    drop(sessions);
+
+    let channels: Vec<String> =
+        app.realtime
+            .published()
+            .iter()
+            .map(|e| match e {
+                Event::EnrollmentCompleted { channel, .. }
+                | Event::SessionChanged { channel, .. } => channel.clone(),
+                other => panic!("unexpected {other:?}"),
+            })
+            .collect();
+    assert_eq!(
+        channels,
+        vec![
+            "kiosk-enroll:test:fp-new",
+            "kiosk:test:session:sess-dup",
+            "kiosk:test:session:sess-old",
+        ]
+    );
+}
+
+#[tokio::test]
+async fn replacing_a_kiosks_device_needs_admin_at_its_location() {
+    let app = app_with_session();
+    app.db.sessions.lock().unwrap().insert(
+        "sess-old".to_string(),
+        session("sess-old", "loc-a", Some("fp-old")),
+    );
+
+    for caller in [auth(&["loc-b"], &[]), auth(&[], &["loc-a"])] {
+        let response = run(
+            &app,
+            caller,
+            r#"mutation { replaceSessionDevice(id: "sess-old", keyFingerprint: "fp-new") { id } }"#,
+        )
+        .await;
+        assert!(!response.errors.is_empty());
+    }
+    assert_eq!(
+        app.db.sessions.lock().unwrap()["sess-old"]
+            .key_fingerprint
+            .as_deref(),
+        Some("fp-old")
+    );
+}
