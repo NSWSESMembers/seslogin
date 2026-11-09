@@ -780,6 +780,13 @@ pub fn session_update_changes(
             after.set("key_expires_at", None);
             after.set("key_released_at", num(now));
         }
+        db::SessionUpdateShape::Rekey { expires_at, .. } => {
+            // The keys are redacted alike, so mark the move: else it reads like a reactivation.
+            after.set("key_replaced_at", num(now));
+            after.set("public_key", redacted());
+            after.set("key_expires_at", num(*expires_at));
+            after.set("key_released_at", None);
+        }
         db::SessionUpdateShape::Delete => {
             action = AuditAction::Delete;
             after.set("active", flag(false));
@@ -4156,6 +4163,10 @@ impl<D: db::Handler> db::Handler for AuditingHandler<D> {
         self.inner.delete_ephemeral_state(id).await
     }
 
+    async fn take_ephemeral_state(&self, id: &str) -> db::Result<Option<db::EphemeralState>> {
+        self.inner.take_ephemeral_state(id).await
+    }
+
     async fn list_nitc_tags(&self) -> db::Result<Vec<db::NitcTag>> {
         self.inner.list_nitc_tags().await
     }
@@ -4929,6 +4940,44 @@ mod tests {
         );
         assert_eq!(change(&changes, "public_key").before, Some(json!(REDACTED)));
         assert_eq!(change(&changes, "key_released_at").after, Some(json!(77)));
+
+        // A released leftover given a new device's key: key back, released stamp gone.
+        let mut released = session();
+        released.key_released_at = Some(77);
+        let (action, changes) = session_update_changes(
+            Some(&released),
+            &db::SessionUpdateShape::Rekey {
+                public_key: "pk2",
+                fingerprint: "fp2",
+                expires_at: 9000,
+            },
+            1,
+        );
+        assert_eq!(action, AuditAction::Update);
+        assert_eq!(
+            fields(&changes),
+            vec![
+                "public_key",
+                "key_expires_at",
+                "key_released_at",
+                "key_replaced_at"
+            ]
+        );
+        assert_eq!(change(&changes, "public_key").after, Some(json!(REDACTED)));
+
+        // A working kiosk moved to another computer: marked, not just a new expiry like a reactivation.
+        let (_, changes) = session_update_changes(
+            Some(&keyed),
+            &db::SessionUpdateShape::Rekey {
+                public_key: "pk2",
+                fingerprint: "fp2",
+                expires_at: 9000,
+            },
+            77,
+        );
+        assert_eq!(fields(&changes), vec!["key_expires_at", "key_replaced_at"]);
+        assert_eq!(change(&changes, "key_replaced_at").after, Some(json!(77)));
+        assert!(!serde_json::to_string(&changes).unwrap().contains("fp2"));
 
         let (action, changes) =
             session_update_changes(Some(&keyed), &db::SessionUpdateShape::Delete, 1);

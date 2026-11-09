@@ -629,6 +629,14 @@ pub enum SessionUpdateShape<'a> {
     ReleaseKey {
         fingerprint: &'a str,
     },
+    /// Bind another device's key to this session: an admin replacing the kiosk's computer from its QR code, so the
+    /// kiosk keeps its name, location and config. Clears `key_released_at`. Fails with [`Error::NotFound`] unless
+    /// the session is still `active`.
+    Rekey {
+        public_key: &'a str,
+        fingerprint: &'a str,
+        expires_at: u64,
+    },
     Delete,
     /// Hide a session that has been unusable for longer than its grace period (see
     /// [`crate::session_retire`]): remove `active`, so it leaves `active-location_id-index`,
@@ -3437,6 +3445,12 @@ pub trait Handler: Sync {
     ) -> impl Future<Output = Result<Option<EphemeralState>>> + Send;
 
     fn delete_ephemeral_state(&self, id: &str) -> impl Future<Output = Result<()>> + Send;
+
+    /// Delete a record and return it, or `None` if there was none. Of two concurrent takes, only one gets it.
+    fn take_ephemeral_state(
+        &self,
+        id: &str,
+    ) -> impl Future<Output = Result<Option<EphemeralState>>> + Send;
 
     // ── Tasks ─────────────────────────────────────────────────────────────────
 

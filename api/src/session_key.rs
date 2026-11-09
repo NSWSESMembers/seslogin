@@ -50,6 +50,11 @@ pub fn enroll_state_id(fingerprint: &str) -> String {
     format!("{ENROLL_STATE_KIND}_{fingerprint}")
 }
 
+/// Whether `state` is a pending enrollment that hasn't expired: the kiosk is on its QR screen.
+pub fn is_live_enrollment(state: &crate::db::EphemeralState, now: u64) -> bool {
+    state.kind == ENROLL_STATE_KIND && state.expires_at > now
+}
+
 /// JSON payload stored in the pending-enrollment `ephemeral_state` record.
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct EnrollPayload {

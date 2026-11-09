@@ -4966,6 +4966,36 @@ impl db::Handler for Handler {
                 );
                 Ok(Some(returned_version(resp.attributes())?))
             }
+            db::SessionUpdateShape::Rekey {
+                public_key,
+                fingerprint,
+                expires_at,
+            } => {
+                // Conditional on `active`: a deleted or retired kiosk can't be brought back this way.
+                let now = crate::clock::now_sec();
+                let resp = self
+                    .client
+                    .update_item()
+                    .table_name(self.table_name("session"))
+                    .key("id", AttributeValue::S(id.to_string()))
+                    .condition_expression("attribute_exists(active)")
+                    .update_expression(
+                        "SET public_key = :pk, key_fingerprint = :fp, key_expires_at = :exp, updated_at = :now \
+                         REMOVE key_released_at ADD v :one",
+                    )
+                    .expression_attribute_values(":pk", AttributeValue::S(public_key.to_string()))
+                    .expression_attribute_values(":fp", AttributeValue::S(fingerprint.to_string()))
+                    .expression_attribute_values(":exp", AttributeValue::N(expires_at.to_string()))
+                    .expression_attribute_values(":now", AttributeValue::N(now.to_string()))
+                    .expression_attribute_values(":one", AttributeValue::N("1".to_string()))
+                    .return_values(ReturnValue::UpdatedNew)
+                    .return_consumed_capacity(ReturnConsumedCapacity::Total)
+                    .send()
+                    .await
+                    .map_err(|e| map_update_err(e, format!("Session {id} is no longer active")))?;
+                record_capacity("rekey_session", resp.consumed_capacity(), CapKind::Write);
+                Ok(Some(returned_version(resp.attributes())?))
+            }
             db::SessionUpdateShape::Delete => {
                 // Removing `active` soft-deletes the session. Also drop the key fields so
                 // a disabled key-enrolled session releases its fingerprint (the GSI row
@@ -7139,6 +7169,31 @@ impl db::Handler for Handler {
             .await
             .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
         Ok(())
+    }
+
+    async fn take_ephemeral_state(&self, id: &str) -> db::Result<Option<EphemeralState>> {
+        if self.read_only {
+            return Err(db::Error::MutationDisabled);
+        }
+        // Deletes of one item are serialised, so only one concurrent caller gets the old item back.
+        let resp = self
+            .client
+            .delete_item()
+            .table_name(self.table_name("ephemeral_state"))
+            .key("id", AttributeValue::S(id.to_string()))
+            .return_values(ReturnValue::AllOld)
+            .return_consumed_capacity(ReturnConsumedCapacity::Total)
+            .send()
+            .await
+            .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
+        record_capacity(
+            "take_ephemeral_state",
+            resp.consumed_capacity(),
+            CapKind::Write,
+        );
+        let taken: Option<EphemeralState> =
+            resp.attributes.map(|a| Item(a).try_into()).transpose()?;
+        Ok(taken)
     }
 
     async fn get_tasks<T: AsRef<str> + Sync>(

@@ -681,6 +681,10 @@ impl db::Handler for Handler {
         Self::unsupported()
     }
 
+    async fn take_ephemeral_state(&self, _id: &str) -> db::Result<Option<db::EphemeralState>> {
+        Self::unsupported()
+    }
+
     async fn get_tasks<T: AsRef<str> + Sync>(
         &self,
         _ids: &[T],
