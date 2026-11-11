@@ -55,6 +55,7 @@ fn member_of(units: &[&str]) -> AuthInfo {
         is_super: false,
         user_location_ids: vec![],
         grant_id: "grant".to_string(),
+        scope: seslogin::oauth::DEFAULT_SCOPE.to_string(),
     }
 }
 
@@ -195,6 +196,7 @@ async fn members_of_the_unit_primary_or_secondary_can_use_its_meetings() {
         is_super: false,
         user_location_ids: vec!["loc-a".to_string()],
         grant_id: "grant".to_string(),
+        scope: seslogin::oauth::DEFAULT_SCOPE.to_string(),
     };
     let response = run(
         &app,
@@ -212,6 +214,7 @@ async fn members_of_the_unit_primary_or_secondary_can_use_its_meetings() {
         is_super: true,
         user_location_ids: vec![],
         grant_id: "grant".to_string(),
+        scope: seslogin::oauth::DEFAULT_SCOPE.to_string(),
     };
     let response = run(
         &app,

@@ -51,6 +51,7 @@ fn member(with_user: bool) -> AuthInfo {
         is_super: false,
         user_location_ids: vec![],
         grant_id: "here".to_string(),
+        scope: seslogin::oauth::DEFAULT_SCOPE.to_string(),
     }
 }
 
@@ -229,4 +230,27 @@ async fn only_members_signed_in_to_tally_may_revoke() {
     let response = run(&app, user, r#"mutation { revokeTallySignIn(id: "here") }"#).await;
     assert!(!response.errors.is_empty());
     assert!(app.db.oauth_grants.lock().unwrap().contains_key("here"));
+}
+
+#[tokio::test]
+async fn narrow_sign_in_grants_are_neither_listed_nor_revocable() {
+    let app = app();
+    seed_tally(&app, "machine", Some("p1"), Some("u1"), 0, Some(0));
+    app.db
+        .oauth_grants
+        .lock()
+        .unwrap()
+        .get_mut("machine")
+        .unwrap()
+        .scope = seslogin::oauth::TALLY_SIGN_IN_SCOPE.to_string();
+    let listed = ids(&app, member(true)).await;
+    assert!(listed.iter().all(|(id, _)| id != "machine"), "{listed:?}");
+    assert_eq!(listed.len(), 4);
+    let response = run(
+        &app,
+        member(true),
+        r#"mutation { revokeTallySignIn(id: "machine") }"#,
+    )
+    .await;
+    assert_eq!(code_of(&response).as_deref(), Some("NOT_FOUND"));
 }

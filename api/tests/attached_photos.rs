@@ -53,6 +53,7 @@ fn member() -> AuthInfo {
         is_super: false,
         user_location_ids: vec![],
         grant_id: "grant".to_string(),
+        scope: seslogin::oauth::DEFAULT_SCOPE.to_string(),
     }
 }
 

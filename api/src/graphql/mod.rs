@@ -40,6 +40,7 @@ pub mod pagination;
 pub mod photos;
 pub mod query;
 pub mod reservations;
+pub mod scope;
 pub mod self_sign_in;
 pub mod ses_details;
 pub mod shared_contacts;
@@ -240,7 +241,8 @@ pub fn build_schema<
     )
     .data(app.clone())
     .data(webauthn)
-    .extension(RequestMetricsExt);
+    .extension(RequestMetricsExt)
+    .extension(scope::TallySignInScope);
 
     // Dev-only resolver error injection. Compiled out of release builds entirely, so
     // it cannot be switched on in any deployed environment — every Lambda is a release

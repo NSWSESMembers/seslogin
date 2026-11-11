@@ -54,6 +54,7 @@ fn member() -> AuthInfo {
         is_super: false,
         user_location_ids: vec![],
         grant_id: "grant".to_string(),
+        scope: seslogin::oauth::DEFAULT_SCOPE.to_string(),
     }
 }
 
@@ -404,6 +405,7 @@ async fn only_members_of_the_unit_may_use_it() {
         is_super: false,
         user_location_ids: vec![],
         grant_id: "grant".to_string(),
+        scope: seslogin::oauth::DEFAULT_SCOPE.to_string(),
     };
     let response = run_as(&app, outsider.clone(), &mutation).await;
     assert_code(&response, "FORBIDDEN");

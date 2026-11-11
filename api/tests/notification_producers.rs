@@ -52,6 +52,7 @@ fn auth(id: &str) -> AuthInfo {
         is_super: id == "boss",
         user_location_ids: vec![],
         grant_id: "grant".to_string(),
+        scope: seslogin::oauth::DEFAULT_SCOPE.to_string(),
     }
 }
 

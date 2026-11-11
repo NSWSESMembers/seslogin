@@ -56,6 +56,7 @@ fn member(person_id: &str, primary: &str) -> AuthInfo {
         is_super: false,
         user_location_ids: vec![],
         grant_id: "grant".to_string(),
+        scope: seslogin::oauth::DEFAULT_SCOPE.to_string(),
     }
 }
 
@@ -486,6 +487,7 @@ async fn a_notification_about_a_location_the_caller_lost_is_hidden() {
         is_super: true,
         user_location_ids: vec![],
         grant_id: "grant".to_string(),
+        scope: seslogin::oauth::DEFAULT_SCOPE.to_string(),
     };
     assert_eq!(titles(&app, boss, "").await.len(), 3);
 }

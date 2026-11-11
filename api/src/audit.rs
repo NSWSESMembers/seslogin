@@ -4311,6 +4311,7 @@ mod tests {
             is_super: false,
             user_location_ids: vec![],
             grant_id: "g1".to_string(),
+            scope: crate::oauth::DEFAULT_SCOPE.to_string(),
         };
         assert_eq!(
             Actor::from_auth_info(Some(&member)),

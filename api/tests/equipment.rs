@@ -54,6 +54,7 @@ fn user(admin: &[&str], read_only: &[&str]) -> AuthInfo {
             ids
         },
         grant_id: "grant".to_string(),
+        scope: seslogin::oauth::DEFAULT_SCOPE.to_string(),
     }
 }
 
@@ -74,6 +75,7 @@ fn super_user() -> AuthInfo {
         is_super: true,
         user_location_ids: vec![],
         grant_id: "grant".to_string(),
+        scope: seslogin::oauth::DEFAULT_SCOPE.to_string(),
     }
 }
 

@@ -56,7 +56,10 @@ fn is_callers(grant: &db::OAuthGrant, person_id: &str, user_id: Option<&str>, no
     let tally = grant.person_id.is_some();
     let mine = grant.person_id.as_deref() == Some(person_id)
         || (user_id.is_some() && grant.user_id.as_deref() == user_id);
-    tally && mine && grant.expires_at > now && grant.refresh_expires_at > now
+    // The narrow sign-in grants are short-lived machine grants, one an hour; they are
+    // not devices the member signed in on, so they are neither listed nor revocable.
+    let machine = grant.scope == crate::oauth::TALLY_SIGN_IN_SCOPE;
+    tally && !machine && mine && grant.expires_at > now && grant.refresh_expires_at > now
 }
 
 /// Body of `TallyViewer.signIns`: most recently used first, this device first of all.

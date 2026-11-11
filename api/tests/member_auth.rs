@@ -316,6 +316,7 @@ fn super_member() -> AuthInfo {
         is_super: true,
         user_location_ids: vec!["loc-a".to_string(), "loc-b".to_string()],
         grant_id: "g1".to_string(),
+        scope: seslogin::oauth::DEFAULT_SCOPE.to_string(),
     }
 }
 
@@ -397,6 +398,7 @@ fn member_at(primary: &str, units: &[&str], is_super: bool) -> AuthInfo {
         is_super,
         user_location_ids: units.iter().map(|s| s.to_string()).collect(),
         grant_id: "g1".to_string(),
+        scope: seslogin::oauth::DEFAULT_SCOPE.to_string(),
     }
 }
 

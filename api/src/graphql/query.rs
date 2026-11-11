@@ -294,6 +294,8 @@ impl<A: App + HasDb + Send + Sync + 'static> User<A> {
             .await?
             .into_iter()
             .filter(|g| g.expires_at > now && g.refresh_expires_at > now)
+            // Tally's short-lived sign-in grants are not apps the user connected.
+            .filter(|g| g.scope != crate::oauth::TALLY_SIGN_IN_SCOPE)
             .collect::<Vec<_>>();
         grants.sort_by_key(|g| std::cmp::Reverse(g.created_at));
         Ok(grants.into_iter().map(OAuthGrant::new).collect())
