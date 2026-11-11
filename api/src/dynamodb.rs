@@ -7102,6 +7102,36 @@ impl db::Handler for Handler {
         Ok(())
     }
 
+    async fn create_ephemeral_state_if_absent(
+        &self,
+        id: &str,
+        kind: &str,
+        payload: &str,
+        expires_at: u64,
+    ) -> db::Result<bool> {
+        if self.read_only {
+            return Err(db::Error::MutationDisabled);
+        }
+        let result = self
+            .client
+            .put_item()
+            .table_name(self.table_name("ephemeral_state"))
+            .item("id", AttributeValue::S(id.to_string()))
+            .item("kind", AttributeValue::S(kind.to_string()))
+            .item("payload", AttributeValue::S(payload.to_string()))
+            .item("expires_at", AttributeValue::N(expires_at.to_string()))
+            .condition_expression("attribute_not_exists(id)")
+            .send()
+            .await;
+        match result {
+            Ok(_) => Ok(true),
+            Err(SdkError::ServiceError(se)) if se.err().is_conditional_check_failed_exception() => {
+                Ok(false)
+            }
+            Err(e) => Err(Error::Infrastructure(sdk_err_msg(e))),
+        }
+    }
+
     async fn get_ephemeral_state(&self, id: &str) -> db::Result<Option<EphemeralState>> {
         let resp = self
             .client

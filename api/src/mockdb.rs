@@ -673,6 +673,16 @@ impl db::Handler for Handler {
         Self::unsupported()
     }
 
+    async fn create_ephemeral_state_if_absent(
+        &self,
+        _id: &str,
+        _kind: &str,
+        _payload: &str,
+        _expires_at: u64,
+    ) -> db::Result<bool> {
+        Self::unsupported()
+    }
+
     async fn get_ephemeral_state(&self, _id: &str) -> db::Result<Option<db::EphemeralState>> {
         Self::unsupported()
     }

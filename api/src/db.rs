@@ -3431,6 +3431,17 @@ pub trait Handler: Sync {
         expires_at: u64,
     ) -> impl Future<Output = Result<()>> + Send;
 
+    /// Insert a record into the `ephemeral_state` table only if no item has this `id`.
+    /// `true` means it was created, `false` that one already existed (and is left
+    /// untouched). Atomic, so of two racing callers exactly one gets `true`.
+    fn create_ephemeral_state_if_absent(
+        &self,
+        id: &str,
+        kind: &str,
+        payload: &str,
+        expires_at: u64,
+    ) -> impl Future<Output = Result<bool>> + Send;
+
     fn get_ephemeral_state(
         &self,
         id: &str,

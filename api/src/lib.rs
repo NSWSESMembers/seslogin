@@ -64,6 +64,7 @@ pub mod session_retire;
 pub mod shared_contact;
 pub mod sqs;
 pub mod storage;
+pub mod tally_assertion;
 pub mod tally_sign_in;
 pub mod tasks;
 pub mod telemetry;

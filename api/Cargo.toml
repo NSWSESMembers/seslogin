@@ -112,7 +112,7 @@ flate2 = "1"
 hmac = "0.12"
 # JPEG and WebP decode only (the two accepted upload types); `webp` encodes the derived images.
 image = { version = "0.25", default-features = false, features = ["jpeg", "webp"] }
-p256 = { version = "0.13", features = ["ecdsa"] }
+p256 = { version = "0.13", features = ["ecdsa", "pkcs8"] }
 percent-encoding = "2.3"
 qcms = "0.3"
 poem = { version = "3.1.12", features = ["multipart"] }

@@ -969,6 +969,16 @@ A generic key/value store with native TTL (`expires_at`). Items are namespaced b
 - `counter#photo#<location_id>#<date>` — photos added to a unit; limit 100
 - `counter#asset-upload#<person_id>#<date>` — uploads started by a member; limit 200
 
+**Tally assertion ids** (`kind` = `tally_assertion`) record that a Tally-signed assertion (`jti`) has been used, so it can't be replayed. The `id` is `tally_assertion_jti_<sha256 hex of "<iss>|<jti>">` and `payload` is empty. The row is written with a PutItem conditional on `attribute_not_exists(id)`, so of two racing uses exactly one succeeds, and `expires_at` is the assertion's `exp` plus 60 seconds, after which the assertion would be refused as expired anyway.
+
+---
+
+### `{prefix}oauth_grant`
+
+An OAuth grant: the client, the member or user it acts for, the hashed access and refresh tokens (never the tokens), `scope`, `resource`, and `access_expires_at`, `refresh_expires_at` and `expires_at` (Unix seconds; native TTL on `expires_at`).
+
+Rows with `scope` = `tally_sign_in` come from Tally's signed assertion, not an authorization code. They name a member (`person_id`) and no user, and no refresh token was ever given out, so `refresh_expires_at` equals `access_expires_at`. `expires_at` equals `access_expires_at` too, so the row is deleted shortly after its one-hour access token expires. They are left out of connected-app and Tally sign-in listings.
+
 ---
 
 ### `{prefix}webauthn_credential`

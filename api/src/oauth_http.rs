@@ -15,16 +15,17 @@
 use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
-use tracing::warn;
+use tracing::{info, warn};
 
 use crate::app::{App, HasDb};
 use crate::auth::{AuthError, hash_token};
-use crate::base_url::api_base_url;
+use crate::base_url::{GRAPHQL_RESOURCE_PATH, api_base_url, api_resource};
 use crate::clock::now_sec;
 use crate::db;
 use crate::db::Handler;
-use crate::oauth::{self, ACCESS_TOKEN_LIFETIME_S, DEFAULT_SCOPE};
+use crate::oauth::{self, ACCESS_TOKEN_LIFETIME_S, DEFAULT_SCOPE, TALLY_SIGN_IN_SCOPE};
 use crate::oauth_clients::resolve_client;
+use crate::tally_assertion::{self, Config as AssertionConfig};
 
 /// A framework-agnostic HTTP response: enough for the three plain-JSON endpoints
 /// here, nothing more (no streaming, no multi-value headers beyond what a
@@ -137,7 +138,11 @@ pub fn metadata(host: Option<&str>) -> HttpReply {
             token_endpoint: format!("{api_base}/oauth/token"),
             registration_endpoint: format!("{api_base}/oauth/register"),
             response_types_supported: vec!["code"],
-            grant_types_supported: vec!["authorization_code", "refresh_token"],
+            grant_types_supported: vec![
+                "authorization_code",
+                "refresh_token",
+                tally_assertion::GRANT_TYPE,
+            ],
             code_challenge_methods_supported: vec!["S256"],
             token_endpoint_auth_methods_supported: vec!["none"],
             scopes_supported: vec![DEFAULT_SCOPE],
@@ -347,6 +352,20 @@ fn token_response(access_token: &str, refresh_token: &str, scope: &str) -> HttpR
     .no_store()
 }
 
+/// The success response of a grant with no refresh token (the Tally assertion grant).
+fn token_response_no_refresh(access_token: &str, scope: &str) -> HttpReply {
+    HttpReply::json(
+        200,
+        &serde_json::json!({
+            "access_token": access_token,
+            "token_type": "Bearer",
+            "expires_in": ACCESS_TOKEN_LIFETIME_S,
+            "scope": scope,
+        }),
+    )
+    .no_store()
+}
+
 /// `POST /oauth/token`, `application/x-www-form-urlencoded`. Dispatches on
 /// `grant_type` so a later `client_credentials` grant (see CLAUDE.md/plan) is
 /// just another arm here.
@@ -355,6 +374,9 @@ pub async fn token<A: App + HasDb>(app: &A, host: Option<&str>, body: &[u8]) -> 
     match params.get("grant_type").map(String::as_str) {
         Some("authorization_code") => token_authorization_code(app, host, &params).await,
         Some("refresh_token") => token_refresh(app, &params).await,
+        Some(tally_assertion::GRANT_TYPE) => {
+            token_jwt_bearer(app, host, &params, AssertionConfig::from_env().as_ref()).await
+        }
         Some(_) => error_reply(
             400,
             "unsupported_grant_type",
@@ -511,6 +533,134 @@ async fn token_authorization_code<A: App + HasDb>(
     }
 
     token_response(&access_token, &refresh_token, &scope)
+}
+
+/// The RFC 7523 JWT bearer grant, for the Tally app's signed assertion (see
+/// [`crate::tally_assertion`]). `config` is `None` when the grant is switched off.
+/// Everything wrong with an assertion is `invalid_grant`, described only generically:
+/// the reason is logged, not returned. The grant it creates is for the member alone
+/// (no user rides along), expires with its access token, and has no refresh token.
+pub async fn token_jwt_bearer<A: App + HasDb>(
+    app: &A,
+    host: Option<&str>,
+    params: &HashMap<String, String>,
+    config: Option<&AssertionConfig>,
+) -> HttpReply {
+    let Some(config) = config else {
+        return error_reply(
+            400,
+            "unsupported_grant_type",
+            "The JWT bearer grant is not enabled",
+        );
+    };
+    let (Some(assertion), Some(client_id)) = (params.get("assertion"), params.get("client_id"))
+    else {
+        return error_reply(
+            400,
+            "invalid_request",
+            "assertion and client_id are required",
+        );
+    };
+
+    let client = resolve_client(&app.server_secret().oauth_client_id_key(), client_id)
+        .filter(|c| c.member_sign_in);
+    let Some(client) = client else {
+        warn!(client_id, "tally assertion: not a member sign-in client");
+        return error_reply(401, "invalid_client", "Unknown client");
+    };
+    if params
+        .get("scope")
+        .is_some_and(|scope| scope != TALLY_SIGN_IN_SCOPE)
+    {
+        return error_reply(
+            400,
+            "invalid_scope",
+            "Only the tally_sign_in scope is available",
+        );
+    }
+    let api_base = api_base_url(host);
+    let resource = api_resource(host, GRAPHQL_RESOURCE_PATH);
+    if params.get("resource").is_some_and(|r| *r != resource)
+        || !client.allows_resource(&api_base, &resource)
+    {
+        return error_reply(
+            400,
+            "invalid_target",
+            "resource is not available to this client",
+        );
+    }
+
+    const INVALID: &str = "Invalid assertion";
+    let now = now_sec();
+    let claims = match tally_assertion::verify(config, assertion, &api_base, now) {
+        Ok(claims) => claims,
+        Err(reason) => {
+            warn!(?reason, "tally assertion: refused");
+            return error_reply(400, "invalid_grant", INVALID);
+        }
+    };
+    match tally_assertion::claim_jti(app.db(), &claims).await {
+        Ok(true) => {}
+        Ok(false) => {
+            warn!(sub = %claims.sub, jti = %claims.jti, "tally assertion: refused, already used");
+            return error_reply(400, "invalid_grant", INVALID);
+        }
+        Err(e) => return server_error("recording assertion id", e),
+    }
+
+    // Only the member: a user who shares the email must not add their units to a token
+    // that is meant to sign the member in and out.
+    let person = match crate::tally_sign_in::identify(app.db(), &claims.email).await {
+        Ok(Some(identity)) => identity.person,
+        Ok(None) => {
+            warn!(
+                sub = %claims.sub, jti = %claims.jti,
+                "tally assertion: refused, no member matches the email"
+            );
+            return error_reply(
+                400,
+                "invalid_grant",
+                "Your Tally email isn't on an SES member record",
+            );
+        }
+        Err(e) => return server_error("identifying member", e),
+    };
+
+    let subject = oauth::GrantSubject::Member {
+        person_id: person.id.clone(),
+        user_id: None,
+    };
+    let (mut grant, access_token, _refresh_token) = oauth::mint_grant(
+        &subject,
+        client_id,
+        &client.client_name,
+        "",
+        &resource,
+        TALLY_SIGN_IN_SCOPE,
+        now,
+    );
+    // The row goes with its access token (DynamoDB TTL), and the refresh token, which
+    // is never given out, is dead on arrival.
+    grant.expires_at = grant.access_expires_at;
+    grant.refresh_expires_at = grant.access_expires_at;
+    let actor = crate::audit::Actor::Member {
+        person_id: person.id.clone(),
+        via: Some(format!("oauth_client:{}", grant.client_id)),
+    };
+    let created = crate::audit::scope(
+        crate::audit::AuditContext::new(actor, None),
+        app.db().create_oauth_grant(&grant),
+    )
+    .await;
+    if let Err(e) = created {
+        return server_error("creating oauth grant", e);
+    }
+    info!(
+        sub = %claims.sub, jti = %claims.jti, person_id = %person.id, grant_id = %grant.id,
+        "tally assertion: issued a tally_sign_in token"
+    );
+
+    token_response_no_refresh(&access_token, TALLY_SIGN_IN_SCOPE)
 }
 
 async fn token_refresh<A: App + HasDb>(app: &A, params: &HashMap<String, String>) -> HttpReply {
@@ -801,6 +951,24 @@ mod tests {
         let reply = token(&app(), None, b"grant_type=client_credentials").await;
         assert_eq!(reply.status, 400);
         assert_eq!(body_of(&reply)["error"], "unsupported_grant_type");
+    }
+
+    #[tokio::test]
+    async fn the_jwt_bearer_grant_is_unsupported_when_not_configured() {
+        let params = HashMap::from([
+            ("assertion".to_string(), "a.b.c".to_string()),
+            ("client_id".to_string(), "tally".to_string()),
+        ]);
+        let reply = token_jwt_bearer(&app(), None, &params, None).await;
+        assert_eq!(reply.status, 400);
+        assert_eq!(body_of(&reply)["error"], "unsupported_grant_type");
+    }
+
+    #[test]
+    fn metadata_advertises_the_jwt_bearer_grant() {
+        let body = body_of(&metadata(Some("seslogin.com")));
+        let grants = body["grant_types_supported"].as_array().unwrap();
+        assert!(grants.iter().any(|g| g == tally_assertion::GRANT_TYPE));
     }
 
     #[tokio::test]

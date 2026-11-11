@@ -271,6 +271,29 @@ impl db::Handler for FakeDb {
         Ok(())
     }
 
+    async fn create_ephemeral_state_if_absent(
+        &self,
+        id: &str,
+        kind: &str,
+        payload: &str,
+        expires_at: u64,
+    ) -> db::Result<bool> {
+        let mut states = self.ephemeral_state.lock().unwrap();
+        if states.contains_key(id) {
+            return Ok(false);
+        }
+        states.insert(
+            id.to_string(),
+            EphemeralState {
+                id: id.to_string(),
+                kind: kind.to_string(),
+                payload: payload.to_string(),
+                expires_at,
+            },
+        );
+        Ok(true)
+    }
+
     async fn get_ephemeral_state(&self, id: &str) -> db::Result<Option<EphemeralState>> {
         Ok(self.ephemeral_state.lock().unwrap().get(id).cloned())
     }

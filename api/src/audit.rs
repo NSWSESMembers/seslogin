@@ -4148,6 +4148,18 @@ impl<D: db::Handler> db::Handler for AuditingHandler<D> {
             .await
     }
 
+    async fn create_ephemeral_state_if_absent(
+        &self,
+        id: &str,
+        kind: &str,
+        payload: &str,
+        expires_at: u64,
+    ) -> db::Result<bool> {
+        self.inner
+            .create_ephemeral_state_if_absent(id, kind, payload, expires_at)
+            .await
+    }
+
     async fn get_ephemeral_state(&self, id: &str) -> db::Result<Option<db::EphemeralState>> {
         self.inner.get_ephemeral_state(id).await
     }

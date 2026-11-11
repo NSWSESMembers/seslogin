@@ -27,8 +27,13 @@ resource "aws_lambda_function" "qa_api" {
       TOOLBOX_GRAPHQL_URL   = var.toolbox_graphql_url
       TOOLBOX_API_TOKEN     = var.toolbox_api_token
       WIFI_NETWORKS         = var.wifi_networks
-      WEBAUTHN_RP_ID        = "seslogin.com"
-      WEBAUTHN_RP_ORIGIN    = "https://qa.seslogin.com"
+      # Tally's signed assertion grant (api/README.md, "Tally assertion"); a blank
+      # TALLY_ASSERTION_KEYS turns it off.
+      TALLY_ASSERTION_KEYS          = var.tally_assertion_keys
+      TALLY_ASSERTION_ISSUER        = var.tally_assertion_issuer
+      TALLY_ASSERTION_EMAIL_DOMAINS = var.tally_assertion_email_domains
+      WEBAUTHN_RP_ID                = "seslogin.com"
+      WEBAUTHN_RP_ORIGIN            = "https://qa.seslogin.com"
       # Member-facing period edit links point at the canonical prod site, not the
       # qa frontend (qa shares prod's DB and emails real members).
       WEB_BASE_URL = "https://seslogin.com"

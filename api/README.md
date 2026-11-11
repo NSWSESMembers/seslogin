@@ -343,6 +343,28 @@ Locally (`make dev-local`) the seeded members have emails
 code is in the API log (and in `MOCK_MAIL_DIR`, if you set it).
 `testunit@seslogin.test` is a user with no member, so it is refused.
 
+### Tally assertion
+
+The Tally app (https://tally.sdunster.com) can get a member token without the
+browser flow above. It signs a two-minute ES256 JWT with an AWS KMS key, vouching
+for an inbox it verified with a code, and posts it to `/oauth/token` with
+`grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer`, `assertion`,
+`client_id=tally` and optionally `scope=tally_sign_in` and `resource`
+(`tally_assertion.rs`, `oauth_http::token_jwt_bearer`). The member is found by
+the email in it, as `tally_sign_in::identify` does, so it is for members on
+their SES service email. The reply is a `tally_sign_in` token (self sign-in
+only, `graphql/scope.rs`), for the member alone, with no refresh token and an
+hour to live. Every problem with the assertion is `invalid_grant`, described
+only as "Invalid assertion"; the reason is in the log (`tally assertion: ...`).
+Each `jti` works once (`ephemeral_state`, see SCHEMA.md).
+
+Configuration, all three required (`var.tally_assertion_*` in `infra/`):
+`TALLY_ASSERTION_KEYS` (JSON `[{"kid","spki"}]`, `spki` the base64 DER public
+key, as Tally's terraform outputs it), `TALLY_ASSERTION_ISSUER` and
+`TALLY_ASSERTION_EMAIL_DOMAINS` (comma-separated, matched exactly). Any blank
+turns the grant off (`unsupported_grant_type`), which is the kill switch;
+removing a key from the list retires it.
+
 ### Connected apps (list + revoke)
 
 Once a user has approved a client, `User.oauthGrants` (guarded the same way as
