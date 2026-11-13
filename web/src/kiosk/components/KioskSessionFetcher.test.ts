@@ -136,18 +136,20 @@ describe("startKioskSessionFetcher before the server has answered", () => {
 
   it("retries soon and reports the failure, then polls as usual once answered", async () => {
     vi.spyOn(console, "log").mockImplementation(() => {});
-    const onFailure = vi.fn();
+    const onUnreachable = vi.fn();
     failNext();
     const fetcher = startKioskSessionFetcher({
       environment: {} as IEnvironment,
       setSession: vi.fn(),
-      onFailure,
+      onUnreachable,
     });
     await settle();
-    expect(onFailure).toHaveBeenCalledTimes(1);
+    const retryAt = Date.now() + UNREACHABLE_RETRY_MS;
+    expect(onUnreachable.mock.calls).toEqual([[retryAt]]);
 
     await vi.advanceTimersByTimeAsync(UNREACHABLE_RETRY_MS);
     expect(fetchQuery).toHaveBeenCalledTimes(2);
+    expect(onUnreachable.mock.calls).toEqual([[retryAt], [null]]);
     resolveNext();
     await settle();
 
@@ -157,6 +159,8 @@ describe("startKioskSessionFetcher before the server has answered", () => {
     expect(fetchQuery).toHaveBeenCalledTimes(3);
     await vi.advanceTimersByTimeAsync(UNREACHABLE_RETRY_MS);
     expect(fetchQuery).toHaveBeenCalledTimes(3);
+    // ...and isn't reported: the kiosk is already on screen.
+    expect(onUnreachable).toHaveBeenCalledTimes(2);
     fetcher.stop();
   });
 });

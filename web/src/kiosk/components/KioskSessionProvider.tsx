@@ -61,7 +61,11 @@ export function KioskSessionProvider({ children }: { children: ReactNode }) {
   const environment = useRelayEnvironment();
   const [session, setSession] = useState<KioskSession | null>(null);
   const [isInitialFetchComplete, setIsInitialFetchComplete] = useState(false);
-  const [unreachable, setUnreachable] = useState(false);
+  // Set once the server is found unreachable: when the next try is due, or null
+  // while it's in flight.
+  const [unreachable, setUnreachable] = useState<{
+    retryAt: number | null;
+  } | null>(null);
 
   const fetcher = useRef<KioskSessionFetcher | null>(null);
 
@@ -97,7 +101,7 @@ export function KioskSessionProvider({ children }: { children: ReactNode }) {
     const started = startKioskSessionFetcher({
       environment,
       setSession: setSessionAndTrackInitialFetch,
-      onFailure: () => setUnreachable(true),
+      onUnreachable: (retryAt) => setUnreachable({ retryAt }),
       pushLive: pushLive.current,
     });
     fetcher.current = started;
@@ -121,7 +125,7 @@ export function KioskSessionProvider({ children }: { children: ReactNode }) {
       <LivePeriodsProvider>{children}</LivePeriodsProvider>
     </KioskRealtimeProvider>
   ) : unreachable ? (
-    <KioskUnreachable />
+    <KioskUnreachable retryAt={unreachable.retryAt} />
   ) : (
     <LoadingIndicator />
   );
@@ -134,7 +138,7 @@ export function KioskSessionProvider({ children }: { children: ReactNode }) {
 }
 
 /** Before the server has answered once, eg at boot before the network is up. */
-function KioskUnreachable() {
+function KioskUnreachable({ retryAt }: { retryAt: number | null }) {
   return (
     <Panel>
       <PanelBox>
@@ -144,7 +148,31 @@ function KioskUnreachable() {
           itself once it gets through. There's no need to scan a QR code or set
           it up again.
         </PanelIntro>
+        <div
+          role="status"
+          className="flex items-center gap-3 text-lg text-ink-panel"
+        >
+          <span className="inline-block size-6 animate-spin rounded-full border-[3px] border-line border-t-menu motion-reduce:animate-none" />
+          {retryAt === null ? (
+            "Trying again…"
+          ) : (
+            // Keyed so each wait starts counting from its own moment.
+            <RetryCountdown key={retryAt} retryAt={retryAt} />
+          )}
+        </div>
       </PanelBox>
     </Panel>
   );
+}
+
+function RetryCountdown({ retryAt }: { retryAt: number }) {
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  const secs = Math.max(1, Math.ceil((retryAt - now) / 1000));
+  return <>{`Waiting ${secs} sec${secs === 1 ? "" : "s"}…`}</>;
 }

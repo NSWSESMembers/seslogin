@@ -78,13 +78,15 @@ export interface KioskSessionFetcher {
 export default function startKioskSessionFetcher({
   environment,
   setSession,
-  onFailure,
+  onUnreachable,
   pushLive: initialPushLive = false,
 }: {
   environment: IEnvironment;
   setSession: (session: KioskSession | null) => void;
-  /** A refresh failed for any reason but the device's clock. */
-  onFailure?: () => void;
+  /** Before the server has first answered: a refresh failed for any reason but the
+   * device's clock and the next is due at `retryAt` (`Date.now()` milliseconds), or
+   * `null` once that next one is in flight. */
+  onUnreachable?: (retryAt: number | null) => void;
   /** Whether session changes are already being pushed when this starts. */
   pushLive?: boolean;
 }): KioskSessionFetcher {
@@ -97,6 +99,7 @@ export default function startKioskSessionFetcher({
   let refreshAgain = false;
   let pushLive = initialPushLive;
   let answered = false;
+  let failedUnanswered = false;
   // When the scheduled refresh is due, as `Date.now()` milliseconds.
   let dueAt: number | null = null;
 
@@ -131,6 +134,9 @@ export default function startKioskSessionFetcher({
     }
 
     inFlight = true;
+    if (failedUnanswered && !answered) {
+      onUnreachable?.(null);
+    }
     fetchQuery<KioskSessionFetcherQuery>(
       environment,
       kioskRefreshQuery,
@@ -181,11 +187,12 @@ export default function startKioskSessionFetcher({
           scheduleIn(CLOCK_SKEW_RETRY_MS);
           return;
         }
-        onFailure?.();
         if (!answered) {
           // Nothing on screen yet: try again soon, not at the next ordinary poll.
+          failedUnanswered = true;
           refreshAgain = false;
           scheduleIn(UNREACHABLE_RETRY_MS);
+          onUnreachable?.(dueAt);
           return;
         }
         scheduleNext();
