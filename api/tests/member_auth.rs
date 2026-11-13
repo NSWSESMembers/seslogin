@@ -21,10 +21,17 @@ use seslogin::mcp;
 use seslogin::mockmail;
 use seslogin::mockqueue;
 use seslogin::mockrealtime;
+use seslogin::mockstorage;
 use seslogin::oauth::{self, GrantSubject};
 use seslogin::oauth_http::{self, AuthCodePayload};
 
-type App = MyApp<FakeDb, mockqueue::Handler, mockmail::Handler, mockrealtime::Handler>;
+type App = MyApp<
+    FakeDb,
+    mockqueue::Handler,
+    mockmail::Handler,
+    mockrealtime::Handler,
+    mockstorage::Handler,
+>;
 
 const HOST: &str = "api.seslogin.com";
 const GRAPHQL: &str = "https://api.seslogin.com/graphql";
@@ -309,6 +316,7 @@ fn super_member() -> AuthInfo {
         is_super: true,
         user_location_ids: vec!["loc-a".to_string(), "loc-b".to_string()],
         grant_id: "g1".to_string(),
+        scope: seslogin::oauth::DEFAULT_SCOPE.to_string(),
     }
 }
 
@@ -390,6 +398,7 @@ fn member_at(primary: &str, units: &[&str], is_super: bool) -> AuthInfo {
         is_super,
         user_location_ids: units.iter().map(|s| s.to_string()).collect(),
         grant_id: "g1".to_string(),
+        scope: seslogin::oauth::DEFAULT_SCOPE.to_string(),
     }
 }
 

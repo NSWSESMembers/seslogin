@@ -458,11 +458,24 @@ resource "aws_dynamodb_table" "test_oauth_grant" {
     name = "user_id"
     type = "S"
   }
+  attribute {
+    name = "person_id"
+    type = "S"
+  }
 
   global_secondary_index {
     name = "user_id-index"
     key_schema {
       attribute_name = "user_id"
+      key_type       = "HASH"
+    }
+    projection_type = "ALL"
+  }
+
+  global_secondary_index {
+    name = "person_id-index"
+    key_schema {
+      attribute_name = "person_id"
       key_type       = "HASH"
     }
     projection_type = "ALL"
@@ -921,6 +934,66 @@ resource "aws_dynamodb_table" "test_calendar_event" {
   }
 }
 
+# A location's meetings (Tally Agendas). starts_at is the scheduled start, so the
+# location index lists a unit's meetings in date order and a window is one query.
+resource "aws_dynamodb_table" "test_meeting" {
+  name         = "${var.db_prefix_test}_meeting"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "id"
+
+  attribute {
+    name = "id"
+    type = "S"
+  }
+  attribute {
+    name = "location_id"
+    type = "S"
+  }
+  attribute {
+    name = "starts_at"
+    type = "N"
+  }
+
+  global_secondary_index {
+    name = "location_id-starts_at-index"
+    key_schema {
+      attribute_name = "location_id"
+      key_type       = "HASH"
+    }
+    key_schema {
+      attribute_name = "starts_at"
+      key_type       = "RANGE"
+    }
+    projection_type = "ALL"
+  }
+}
+
+# The agenda items (topics) of a meeting. The meeting index returns all of a
+# meeting's items; the API orders them by position in memory.
+resource "aws_dynamodb_table" "test_agenda_item" {
+  name         = "${var.db_prefix_test}_agenda_item"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "id"
+
+  attribute {
+    name = "id"
+    type = "S"
+  }
+  attribute {
+    name = "meeting_id"
+    type = "S"
+  }
+
+  global_secondary_index {
+    name = "meeting_id-index"
+    key_schema {
+      attribute_name = "meeting_id"
+      key_type       = "HASH"
+    }
+    projection_type = "ALL"
+  }
+}
+
 # Locate: one row per member sharing their position with a location's members,
 # keyed by person ID. Listed per location; the TTL removes a share 7 minutes after its
 # latest position, and reads skip any the TTL hasn't reached yet.
@@ -1013,6 +1086,122 @@ resource "aws_dynamodb_table" "test_trophy" {
   attribute {
     name = "sk"
     type = "S"
+  }
+}
+
+# Assets: one row per uploaded file (image now, other files later), scoped to a
+# location. status goes pending -> ready; expires_at is a TTL set only while pending,
+# so an upload that is never completed disappears. The file itself is in the assets
+# bucket (assets.tf). Nothing else is indexed: the future garbage collector scans.
+resource "aws_dynamodb_table" "test_asset" {
+  name         = "${var.db_prefix_test}_asset"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "id"
+
+  attribute {
+    name = "id"
+    type = "S"
+  }
+
+  ttl {
+    attribute_name = "expires_at"
+    enabled        = true
+  }
+}
+
+# Asset references: one row per owner using an asset (owner = <type>#<id>, e.g.
+# photo#abc123), so a garbage collector can tell an unused asset from a live one.
+# Written before or with the owner and removed after or with it.
+resource "aws_dynamodb_table" "test_asset_ref" {
+  name         = "${var.db_prefix_test}_asset_ref"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "asset_id"
+  range_key    = "owner"
+
+  attribute {
+    name = "asset_id"
+    type = "S"
+  }
+  attribute {
+    name = "owner"
+    type = "S"
+  }
+}
+
+# Note references: one row per owner that links to a note (owner = <type>#<id>, e.g.
+# task#abc123), so "which items link to this note" can be answered. Written before
+# the owner first names the note and removed after it stops or is deleted; readers
+# must check the owner still names the note.
+resource "aws_dynamodb_table" "test_note_ref" {
+  name         = "${var.db_prefix_test}_note_ref"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "note_id"
+  range_key    = "owner"
+
+  attribute {
+    name = "note_id"
+    type = "S"
+  }
+  attribute {
+    name = "owner"
+    type = "S"
+  }
+}
+
+# Photos (Tally): a unit's 30-day photo stream. visible-location index lists the
+# stream newest first by sort_key; the sparse sweep index (sweep = "1" until swept)
+# finds photos due for removal. expires_at is deliberately NOT a TTL attribute: the
+# sweep has to run application code to remove the photo's asset reference.
+resource "aws_dynamodb_table" "test_photo" {
+  name         = "${var.db_prefix_test}_photo"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "id"
+
+  attribute {
+    name = "id"
+    type = "S"
+  }
+  attribute {
+    name = "visible_location_id"
+    type = "S"
+  }
+  attribute {
+    name = "sort_key"
+    type = "S"
+  }
+  attribute {
+    name = "sweep"
+    type = "S"
+  }
+  attribute {
+    name = "expires_at"
+    type = "N"
+  }
+
+  global_secondary_index {
+    name = "visible_location_id-sort_key-index"
+    key_schema {
+      attribute_name = "visible_location_id"
+      key_type       = "HASH"
+    }
+    key_schema {
+      attribute_name = "sort_key"
+      key_type       = "RANGE"
+    }
+    projection_type = "ALL"
+  }
+
+  global_secondary_index {
+    name = "sweep-expires_at-index"
+    key_schema {
+      attribute_name = "sweep"
+      key_type       = "HASH"
+    }
+    key_schema {
+      attribute_name = "expires_at"
+      key_type       = "RANGE"
+    }
+    projection_type = "ALL"
   }
 }
 

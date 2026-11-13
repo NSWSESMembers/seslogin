@@ -55,6 +55,8 @@ resource "aws_iam_role_policy" "github_lambda_deploy" {
         aws_lambda_function.badge_digest.arn,
         aws_lambda_function.change_digest.arn,
         aws_lambda_function.badge_congrats.arn,
+        aws_lambda_function.media.arn,
+        aws_lambda_function.test_media.arn,
       ]
     }]
   })

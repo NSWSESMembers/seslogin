@@ -11,8 +11,8 @@ use crate::db::Handler;
 
 use super::query::{Category, Location, Person, Session, User};
 use super::{
-    ApiTokenNameId, CalendarId, CategoryId, LocationId, MapLayerId, NitcEventId, NoteFolderId,
-    PersonId, SessionId, TaskListId, UserId,
+    AgendaItemId, ApiTokenNameId, AssetId, CalendarId, CategoryId, LocationId, MapLayerId,
+    MeetingId, NitcEventId, NoteFolderId, NoteId, PersonId, SessionId, TaskListId, UserId,
 };
 
 pub struct DatabaseLoader<A: App + HasDb + Send + Sync> {
@@ -177,6 +177,48 @@ impl<A: App + HasDb + Send + Sync + 'static> Loader<NoteFolderId> for DatabaseLo
     }
 }
 
+impl<A: App + HasDb + Send + Sync + 'static> Loader<NoteId> for DatabaseLoader<A> {
+    type Value = db::Note;
+    type Error = Arc<anyhow::Error>;
+
+    async fn load(
+        &self,
+        keys: &[NoteId],
+    ) -> std::result::Result<HashMap<NoteId, db::Note>, Arc<anyhow::Error>> {
+        let ids = keys.iter().map(|k| k.0.as_str()).collect::<Vec<&str>>();
+        let recs = self
+            .app
+            .db()
+            .get_notes(&ids)
+            .await
+            .map_err(|e| Arc::new(anyhow!("DB error: {:?}", e)))?;
+        Ok(zip(keys.iter().cloned(), recs)
+            .filter_map(|(key, rec)| rec.map(|r| (key, r)))
+            .collect())
+    }
+}
+
+impl<A: App + HasDb + Send + Sync + 'static> Loader<AssetId> for DatabaseLoader<A> {
+    type Value = db::Asset;
+    type Error = Arc<anyhow::Error>;
+
+    async fn load(
+        &self,
+        keys: &[AssetId],
+    ) -> std::result::Result<HashMap<AssetId, db::Asset>, Arc<anyhow::Error>> {
+        let ids = keys.iter().map(|k| k.0.as_str()).collect::<Vec<&str>>();
+        let recs = self
+            .app
+            .db()
+            .get_assets(&ids)
+            .await
+            .map_err(|e| Arc::new(anyhow!("DB error: {:?}", e)))?;
+        Ok(zip(keys.iter().cloned(), recs)
+            .filter_map(|(key, rec)| rec.map(|r| (key, r)))
+            .collect())
+    }
+}
+
 impl<A: App + HasDb + Send + Sync + 'static> Loader<CalendarId> for DatabaseLoader<A> {
     type Value = db::Calendar;
     type Error = Arc<anyhow::Error>;
@@ -190,6 +232,48 @@ impl<A: App + HasDb + Send + Sync + 'static> Loader<CalendarId> for DatabaseLoad
             .app
             .db()
             .get_calendars(&ids)
+            .await
+            .map_err(|e| Arc::new(anyhow!("DB error: {:?}", e)))?;
+        Ok(zip(keys.iter().cloned(), recs)
+            .filter_map(|(key, rec)| rec.map(|r| (key, r)))
+            .collect())
+    }
+}
+
+impl<A: App + HasDb + Send + Sync + 'static> Loader<MeetingId> for DatabaseLoader<A> {
+    type Value = db::Meeting;
+    type Error = Arc<anyhow::Error>;
+
+    async fn load(
+        &self,
+        keys: &[MeetingId],
+    ) -> std::result::Result<HashMap<MeetingId, db::Meeting>, Arc<anyhow::Error>> {
+        let ids = keys.iter().map(|k| k.0.as_str()).collect::<Vec<&str>>();
+        let recs = self
+            .app
+            .db()
+            .get_meetings(&ids)
+            .await
+            .map_err(|e| Arc::new(anyhow!("DB error: {:?}", e)))?;
+        Ok(zip(keys.iter().cloned(), recs)
+            .filter_map(|(key, rec)| rec.map(|r| (key, r)))
+            .collect())
+    }
+}
+
+impl<A: App + HasDb + Send + Sync + 'static> Loader<AgendaItemId> for DatabaseLoader<A> {
+    type Value = db::AgendaItem;
+    type Error = Arc<anyhow::Error>;
+
+    async fn load(
+        &self,
+        keys: &[AgendaItemId],
+    ) -> std::result::Result<HashMap<AgendaItemId, db::AgendaItem>, Arc<anyhow::Error>> {
+        let ids = keys.iter().map(|k| k.0.as_str()).collect::<Vec<&str>>();
+        let recs = self
+            .app
+            .db()
+            .get_agenda_items(&ids)
             .await
             .map_err(|e| Arc::new(anyhow!("DB error: {:?}", e)))?;
         Ok(zip(keys.iter().cloned(), recs)

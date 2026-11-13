@@ -18,8 +18,15 @@ use seslogin::graphql;
 use seslogin::mockmail;
 use seslogin::mockqueue;
 use seslogin::mockrealtime;
+use seslogin::mockstorage;
 
-type TestApp = MyApp<FakeDb, mockqueue::Handler, mockmail::Handler, mockrealtime::Handler>;
+type TestApp = MyApp<
+    FakeDb,
+    mockqueue::Handler,
+    mockmail::Handler,
+    mockrealtime::Handler,
+    mockstorage::Handler,
+>;
 
 fn webauthn() -> Arc<webauthn_rs::prelude::Webauthn> {
     Arc::new(
@@ -44,6 +51,7 @@ fn member(person_id: &str, primary: &str, units: &[&str]) -> AuthInfo {
         is_super: false,
         user_location_ids: units.iter().map(|s| s.to_string()).collect(),
         grant_id: "grant".to_string(),
+        scope: seslogin::oauth::DEFAULT_SCOPE.to_string(),
     }
 }
 

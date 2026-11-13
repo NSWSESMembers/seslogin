@@ -19,6 +19,94 @@ type AblyTokenRequest {
 	mac: String!
 }
 
+type AgendaItem {
+	id: ID!
+	meetingId: ID!
+	meeting: Meeting!
+	locationId: ID!
+	"""
+	What the topic is about and what was minuted against it, Markdown as in Notes;
+	empty when there is none.
+	"""
+	text: String!
+	"""
+	The member presenting it; null if they have since been deleted.
+	"""
+	presenter: Person
+	"""
+	The presenter's person ID, even if they have since been deleted.
+	"""
+	presenterId: ID!
+	"""
+	1-based place on the agenda.
+	"""
+	position: Int!
+	"""
+	The linked tasks (at most 10), in the order shown. Deleted ones are left out.
+	"""
+	tasks: [Task!]!
+	"""
+	The linked tasks' IDs, in order, as stored: pass these back, changed, as `taskIds`.
+	"""
+	taskIds: [ID!]!
+	"""
+	The linked equipment (at most 10), in the order shown. Deleted ones are left out.
+	"""
+	equipment: [Equipment!]!
+	"""
+	The linked equipment's IDs, in order, as stored: pass these back, changed, as
+	`equipmentIds`.
+	"""
+	equipmentIds: [ID!]!
+	"""
+	The linked on-call roles (at most 10), in the order shown. Deleted ones are left
+	out.
+	"""
+	onCallRoles: [OnCallRole!]!
+	"""
+	The linked on-call roles' IDs, in order, as stored: pass these back, changed, as
+	`onCallRoleIds`.
+	"""
+	onCallRoleIds: [ID!]!
+	"""
+	The attached photos (at most 10), in the order shown. Their `url(variant:)` is
+	what to show; one that can no longer be read is left out.
+	"""
+	photos: [Asset!]!
+	"""
+	The attached photos' asset IDs, in order: pass these back, changed, as
+	`photoAssetIds`.
+	"""
+	photoAssetIds: [ID!]!
+	"""
+	The linked notes (at most 10), in the order shown. One that was deleted or can
+	no longer be read is left out.
+	"""
+	notes: [Note!]!
+	"""
+	The linked notes' IDs, in order: pass these back, changed, as `noteIds`.
+	"""
+	noteIds: [ID!]!
+	"""
+	Bumped by every change; pass it back to `updateAgendaItem`.
+	"""
+	version: Int!
+	createdAt: Int!
+	"""
+	Name of the member who added the topic.
+	"""
+	createdBy: String
+	"""
+	Person ID of the member who added the topic.
+	"""
+	createdById: ID
+	updatedAt: Int!
+	"""
+	Name of the member who last changed the topic.
+	"""
+	updatedBy: String
+}
+
 type ApiToken {
 	id: ID!
 	name: String!
@@ -29,6 +117,52 @@ type ApiToken {
 	expiresAt: Int
 	revokedAt: Int
 	lastUsedAt: Int
+}
+
+type Asset {
+	id: ID!
+	"""
+	`"image"`.
+	"""
+	kind: String!
+	contentType: String!
+	byteSize: Int!
+	width: Int
+	height: Int
+	"""
+	Unix seconds, from the original's metadata as the phone read it.
+	"""
+	takenAt: Int
+	createdAt: Int!
+	"""
+	Person ID of the member who uploaded it.
+	"""
+	createdBy: ID
+	"""
+	Whether the upload has been completed and the image can be shown.
+	"""
+	ready: Boolean!
+	"""
+	A relative `/media/...` URL for the image at `variant` (a normalised WebP), valid
+	for at least a day; null until the asset is ready.
+	"""
+	url(variant: ImageVariant!): String
+}
+
+type AssetUpload {
+	"""
+	The pending asset; pass its ID to `completeAssetUpload` once the file is posted.
+	"""
+	asset: Asset!
+	"""
+	May be relative: resolve it against the API origin.
+	"""
+	uploadUrl: String!
+	fields: [UploadField!]!
+	"""
+	Unix seconds after which the form stops working.
+	"""
+	expiresAt: Int!
 }
 
 """
@@ -130,6 +264,10 @@ enum AuditEntityType {
 	CALENDAR
 	CALENDAR_EVENT
 	LOCATION_SHARE
+	ASSET
+	PHOTO
+	MEETING
+	AGENDA_ITEM
 }
 
 type AuditEntry {
@@ -317,6 +455,15 @@ type CalendarEvent {
 	locationId: ID!
 	location: Location!
 	"""
+	The linked notes (at most 10), in the order shown. One that was deleted or can
+	no longer be read is left out.
+	"""
+	notes: [Note!]!
+	"""
+	The linked notes' IDs, in order: pass these back, changed, as `noteIds`.
+	"""
+	noteIds: [ID!]!
+	"""
 	Bumped by every change; pass it back to `updateCalendarEvent`.
 	"""
 	version: Int!
@@ -412,6 +559,27 @@ type CreateApiTokenResult {
 	secret: String!
 }
 
+input CreateAssetUploadInput {
+	locationId: ID!
+	"""
+	`image/jpeg` or `image/webp`.
+	"""
+	contentType: String!
+	"""
+	Exactly the size of the file to be posted, in bytes (at most 30 MiB).
+	"""
+	byteSize: Int!
+	filename: String
+	width: Int
+	height: Int
+	"""
+	Unix seconds, read from the original before any conversion.
+	"""
+	takenAt: Int
+	cameraMake: String
+	cameraModel: String
+}
+
 type DashboardCategoryPeriodSummary {
 	categoryId: String
 	categoryName: String!
@@ -464,6 +632,25 @@ type Equipment {
 	Plain text; empty when there is none.
 	"""
 	description: String!
+	"""
+	The attached photos (at most 10), in the order shown. Their `url(variant:)` is
+	what to show; one that can no longer be read is left out.
+	"""
+	photos: [Asset!]!
+	"""
+	The attached photos' asset IDs, in order: pass these back, changed, as
+	`photoAssetIds`.
+	"""
+	photoAssetIds: [ID!]!
+	"""
+	The linked notes (at most 10), in the order shown. One that was deleted or can
+	no longer be read is left out.
+	"""
+	notes: [Note!]!
+	"""
+	The linked notes' IDs, in order: pass these back, changed, as `noteIds`.
+	"""
+	noteIds: [ID!]!
 	status: EquipmentStatus!
 	"""
 	When the status last changed, or the equipment was added.
@@ -643,6 +830,16 @@ enum EventRepeat {
 }
 
 """
+A size of derived image: THUMB 400 px, DISPLAY 1440 px, FULL 2560 px on the long edge,
+never upscaled.
+"""
+enum ImageVariant {
+	THUMB
+	DISPLAY
+	FULL
+}
+
+"""
 A scalar that can represent any JSON value.
 """
 scalar JSON
@@ -809,8 +1006,11 @@ type LocationBadgeLeaderboardEntry {
 	personId: ID!
 	person: Person!
 	"""
-	1-based place on the board. Members with the same badge count share a place,
-	and the next place skips past them (1, 1, 3), so it is not the row's index.
+	1-based place on the board, ordered as The Sash is decided: most badges, then on
+	the same number more gold badges, then silver, then bronze. Members level on all
+	of those share a place, and the next place skips past them (1, 1, 3), so it is not
+	the row's index; within a shared place, whoever reached that count first is
+	listed first.
 	"""
 	rank: Int!
 	badgeCount: Int!
@@ -993,6 +1193,25 @@ type MapPin {
 	A longer note about the place, plain text; empty when there is none.
 	"""
 	note: String!
+	"""
+	The attached photos (at most 10), in the order shown. Their `url(variant:)` is
+	what to show; one that can no longer be read is left out.
+	"""
+	photos: [Asset!]!
+	"""
+	The attached photos' asset IDs, in order: pass these back, changed, as
+	`photoAssetIds`.
+	"""
+	photoAssetIds: [ID!]!
+	"""
+	The linked notes (at most 10), in the order shown. One that was deleted or can
+	no longer be read is left out.
+	"""
+	notes: [Note!]!
+	"""
+	The linked notes' IDs, in order: pass these back, changed, as `noteIds`.
+	"""
+	noteIds: [ID!]!
 	locationId: ID!
 	location: Location!
 	"""
@@ -1042,6 +1261,79 @@ type MarkNotificationsReadPayload {
 	"99+" above 99). Read from an index that can lag a moment behind the write.
 	"""
 	unreadCount: Int!
+}
+
+type Meeting {
+	id: ID!
+	"""
+	One line of plain text.
+	"""
+	title: String!
+	"""
+	Plain text (where, what for); empty when there is none.
+	"""
+	description: String!
+	"""
+	When it is scheduled to start, Unix seconds.
+	"""
+	startsAt: Int!
+	"""
+	When it was started (Unix seconds); null until then. Kept when it is finished
+	and started again.
+	"""
+	startedAt: Int
+	"""
+	When it was finished (Unix seconds); null until then, and again once it is
+	started again.
+	"""
+	finishedAt: Int
+	status: MeetingStatus!
+	locationId: ID!
+	location: Location!
+	"""
+	The agenda's topics in order: by position, then when added. Live ones only.
+	"""
+	items: [AgendaItem!]!
+	"""
+	The meeting's minutes as Markdown, for sharing, copying or saving as a note: the
+	title, unit and when, then each topic in order under a bare `## n.` heading:
+	its presenter, its text as written, and its linked tasks, equipment, on-call
+	roles, notes and a photo count. Only syntax Tally's notes show; also reads as
+	plain text. See `api/README.md`'s "Agendas".
+	"""
+	minutes: String!
+	"""
+	Bumped by every change; pass it back to the update, start and finish mutations.
+	"""
+	version: Int!
+	createdAt: Int!
+	"""
+	Name of the member who added the meeting.
+	"""
+	createdBy: String
+	updatedAt: Int!
+	"""
+	Name of the member who last changed the meeting.
+	"""
+	updatedBy: String
+}
+
+"""
+Where a meeting is in its life.
+"""
+enum MeetingStatus {
+	"""
+	Not started yet.
+	"""
+	PLANNED
+	"""
+	Started and not finished.
+	"""
+	IN_PROGRESS
+	"""
+	Finished. Starting it again reopens it.
+	"""
+	FINISHED
 }
 
 type MemberCategoryPeriodSummary {
@@ -1209,17 +1501,84 @@ type MutationRoot {
 	revokeApiToken(id: ID!): Boolean!
 	updateSession(id: ID!, name: String!, config: String, healthcheckUrl: String): Session!
 	"""
+	Rename one of the passkeys that sign the signed-in member in to Tally
+	(`TallyViewer.passkeys`). Tally members only; anyone else's passkey is
+	`NOT_FOUND`.
+	"""
+	renameTallyPasskey(id: ID!, name: String!): TallyPasskey!
+	"""
+	Delete one of the passkeys that sign the signed-in member in to Tally
+	(`TallyViewer.passkeys`). A user's passkey then no longer signs in to the
+	SESLogin site either. Returns its ID. Tally members only; anyone else's
+	passkey is `NOT_FOUND`.
+	"""
+	deleteTallyPasskey(id: ID!): ID!
+	"""
+	Sign one of the member's devices out of Tally (`TallyViewer.signIns`): its
+	grant is deleted, so it can't refresh, and its access token stops working.
+	This device's own may be revoked too. Returns its ID. Tally members only;
+	anyone else's sign-in is `NOT_FOUND`.
+	"""
+	revokeTallySignIn(id: ID!): ID!
+	"""
+	A single-use, 10-minute ticket for adding a passkey from Tally: Tally opens
+	`/tally/passkey#<ticket>` on its SESLogin site, which confirms an email with
+	a code (`sendTallyPasskeySetupCode`, `verifyTallyPasskeySetupCode`) and then
+	saves the passkey with `beginTallyPasskeySetup` and `finishTallyPasskeySetup`.
+	The passkey is the SESLogin user's when the confirmed email is an enabled
+	user's, else the member's own. Tally members only.
+	"""
+	startTallyPasskeySetup: String!
+	"""
+	Email a Tally sign-in code to `email` for a ticket from
+	`startTallyPasskeySetup`, if that email signs in as the ticket's member.
+	Always `true` for a live ticket, so the answer says nothing about the email;
+	`BAD_REQUEST` once the ticket has expired, been used, or its Tally sign-in has
+	been revoked.
+	"""
+	sendTallyPasskeySetupCode(ticket: String!, email: String!): Boolean!
+	"""
+	Confirm the email for a passkey setup ticket with the code
+	`sendTallyPasskeySetupCode` sent. `BAD_REQUEST` for a wrong, expired or
+	used-up code.
+	"""
+	verifyTallyPasskeySetupCode(ticket: String!, email: String!, code: String!): Boolean!
+	"""
+	Start saving a passkey with a ticket from `startTallyPasskeySetup`, once its
+	email is confirmed (`BAD_REQUEST` before). Returns
+	the options for `navigator.credentials.create`. The ticket is the
+	authority; `BAD_REQUEST` once it has expired, been used, or its Tally
+	sign-in has been revoked.
+	"""
+	beginTallyPasskeySetup(ticket: String!): PasskeyChallenge!
+	"""
+	Finish saving a passkey with a ticket from `startTallyPasskeySetup`. Uses
+	the ticket up and returns the URL to send the browser back to Tally with.
+	"""
+	finishTallyPasskeySetup(ticket: String!, challengeId: String!, credentialJson: String!): String!
+	"""
 	Add a task to a location's shared to-do list. Any member who can use the
 	unit in Tally may. `dueDate` (`YYYY-MM-DD`, Sydney) hides the
 	task until that day; a recurring task with no date is due today.
+	`assigneeIds` assigns it to members (by person ID, from any unit, at most 20),
+	who are notified; with none it is the whole unit's.
+	`photoAssetIds` attaches up to 10 photos, in order: ready images uploaded for this
+	unit (with `createAssetUpload`), or ones from its photo stream.
+	`noteIds` links up to 10 of the unit's notes, in order (live notes only).
 	"""
-	createTask(locationId: ID!, title: String!, description: String, listId: ID, dueDate: String, recurrence: TaskRecurrenceInput): Task!
+	createTask(locationId: ID!, title: String!, description: String, listId: ID, dueDate: String, recurrence: TaskRecurrenceInput, assigneeIds: [ID!], photoAssetIds: [ID!], noteIds: [ID!]): Task!
 	"""
 	Change an open task. Omitted arguments are left as they are; `null` clears
-	`description`, `listId`, `dueDate` or `recurrence`. Fails with `CONFLICT` if
-	the task is no longer at `expectedVersion`.
+	`description`, `listId`, `dueDate` or `recurrence`. `assigneeIds` replaces who
+	it is assigned to (an empty list unassigns everyone); members newly assigned
+	are notified. Fails with `CONFLICT` if the task is no longer at
+	`expectedVersion`.
+	`photoAssetIds` replaces the attached photos (an empty list removes them all;
+	omitted, they are left as they are).
+	`noteIds` replaces the linked notes (an empty list unlinks them all; omitted, they
+	are left as they are). The notes themselves are never changed.
 	"""
-	updateTask(id: ID!, expectedVersion: Int!, title: String, description: String, listId: ID, dueDate: String, recurrence: TaskRecurrenceInput): Task!
+	updateTask(id: ID!, expectedVersion: Int!, title: String, description: String, listId: ID, dueDate: String, recurrence: TaskRecurrenceInput, assigneeIds: [ID!], photoAssetIds: [ID!], noteIds: [ID!]): Task!
 	"""
 	Complete a task. A recurring task stays open, due again its interval after
 	today; any other task is done. Fails with `CONFLICT` if someone else completed
@@ -1237,6 +1596,32 @@ type MutationRoot {
 	"""
 	deleteTaskList(id: ID!): ID!
 	"""
+	Start uploading a JPEG or WebP image from Tally: creates a pending asset and
+	returns a form to POST the file to (fields in order, then the file as a part
+	named `file` last). Call `completeAssetUpload` once it is posted. Fails
+	`RATE_LIMITED` after 200 uploads in a Sydney day, and `BAD_REQUEST` for a file
+	type or size that isn't accepted or on an environment with no upload storage.
+	"""
+	createAssetUpload(input: CreateAssetUploadInput!): AssetUpload!
+	"""
+	Check the file arrived intact and make the asset ready. Completing an asset that
+	is already ready returns it. `BAD_REQUEST` if the file hasn't arrived or isn't
+	the image that was described.
+	"""
+	completeAssetUpload(id: ID!): Asset!
+	"""
+	Add a ready image the caller uploaded to a unit's photo stream. `NOT_FOUND` for
+	an unknown asset, `BAD_REQUEST` if it isn't complete or belongs to another unit,
+	`FORBIDDEN` if someone else uploaded it, `RATE_LIMITED` after 100 photos at the
+	unit in a Sydney day.
+	"""
+	createPhoto(locationId: ID!, assetId: ID!): Photo!
+	"""
+	Remove a photo from the stream for everyone now; it is deleted within seven days.
+	There is no undo. `NOT_FOUND` if it is unknown or already hidden.
+	"""
+	hidePhoto(id: ID!): Photo!
+	"""
 	Add a note to a location's shared notebook. Any member who can use the
 	unit in Tally may.
 	"""
@@ -1247,6 +1632,13 @@ type MutationRoot {
 	`expectedVersion`.
 	"""
 	updateNote(id: ID!, expectedVersion: Int!, title: String, content: String, folderId: ID): Note!
+	"""
+	Link one of the unit's notes as its standard operating procedure for a Tally
+	screen, replacing any note linked there, or unlink the place with `noteId: null`.
+	`BAD_REQUEST` if the note does not exist, is deleted or is another unit's. Any
+	member who can use the unit in Tally may. Returns the unit, for `sopNotes`.
+	"""
+	setSopNote(locationId: ID!, place: SopPlace!, noteId: ID): TallyLocation!
 	"""
 	Delete a note. Returns its ID.
 	"""
@@ -1261,14 +1653,21 @@ type MutationRoot {
 	Add a piece of equipment to a location's register, logged in `status` (in
 	service unless given) with an optional `comment`. Any member who can use the
 	unit in Tally may.
+	`photoAssetIds` attaches up to 10 photos, in order: ready images uploaded for this
+	unit (with `createAssetUpload`), or ones from its photo stream.
+	`noteIds` links up to 10 of the unit's notes, in order (live notes only).
 	"""
-	createEquipment(locationId: ID!, type: EquipmentType!, name: String!, description: String, status: EquipmentStatus! = IN_SERVICE, comment: String): Equipment!
+	createEquipment(locationId: ID!, type: EquipmentType!, name: String!, description: String, status: EquipmentStatus! = IN_SERVICE, comment: String, photoAssetIds: [ID!], noteIds: [ID!]): Equipment!
 	"""
-	Edit a piece of equipment's type, name or description; omitted arguments are
-	left as they are. The status is changed with `changeEquipmentStatus`. Fails with
-	`CONFLICT` if it is no longer at `expectedVersion`.
+	Edit a piece of equipment's type, name, description or photos; omitted arguments
+	are left as they are. The status is changed with `changeEquipmentStatus`. Fails
+	with `CONFLICT` if it is no longer at `expectedVersion`.
+	`photoAssetIds` replaces the attached photos (an empty list removes them all;
+	omitted, they are left as they are).
+	`noteIds` replaces the linked notes (an empty list unlinks them all; omitted, they
+	are left as they are). The notes themselves are never changed.
 	"""
-	updateEquipment(id: ID!, expectedVersion: Int!, type: EquipmentType, name: String, description: String): Equipment!
+	updateEquipment(id: ID!, expectedVersion: Int!, type: EquipmentType, name: String, description: String, photoAssetIds: [ID!], noteIds: [ID!]): Equipment!
 	"""
 	Delete a piece of equipment. Returns its ID.
 	"""
@@ -1307,14 +1706,21 @@ type MutationRoot {
 	"""
 	Add a pin to a location's shared map, optionally of a `type` (a plain pin
 	without). Any member who can use the unit in Tally may.
+	`photoAssetIds` attaches up to 10 photos, in order: ready images uploaded for this
+	unit (with `createAssetUpload`), or ones from its photo stream.
+	`noteIds` links up to 10 of the unit's notes, in order (live notes only).
 	"""
-	createMapPin(locationId: ID!, title: String!, latitude: Float!, longitude: Float!, address: String, note: String, layerId: ID, type: MapPinType): MapPin!
+	createMapPin(locationId: ID!, title: String!, latitude: Float!, longitude: Float!, address: String, note: String, layerId: ID, type: MapPinType, photoAssetIds: [ID!], noteIds: [ID!]): MapPin!
 	"""
 	Change a map pin. Omitted arguments are left as they are; `layerId: null` takes
 	it off its layer and `type: null` makes it a plain pin. Fails with `CONFLICT` if the pin is no longer at
 	`expectedVersion`.
+	`photoAssetIds` replaces the attached photos (an empty list removes them all;
+	omitted, they are left as they are).
+	`noteIds` replaces the linked notes (an empty list unlinks them all; omitted, they
+	are left as they are). The notes themselves are never changed.
 	"""
-	updateMapPin(id: ID!, expectedVersion: Int!, title: String, latitude: Float, longitude: Float, address: String, note: String, layerId: ID, type: MapPinType): MapPin!
+	updateMapPin(id: ID!, expectedVersion: Int!, title: String, latitude: Float, longitude: Float, address: String, note: String, layerId: ID, type: MapPinType, photoAssetIds: [ID!], noteIds: [ID!]): MapPin!
 	"""
 	Delete a map pin. Returns its ID.
 	"""
@@ -1331,20 +1737,78 @@ type MutationRoot {
 	`startDate` and optionally `endDate` (`YYYY-MM-DD`, inclusive; default one day).
 	`repeat` makes it repeat daily or weekly, through `repeatUntil` or forever. Any
 	member who can use the unit in Tally may.
+	`noteIds` links up to 10 of the unit's notes, in order (live notes only).
 	"""
-	createCalendarEvent(locationId: ID!, calendarId: ID, title: String!, description: String, allDay: Boolean!, startTime: Int, endTime: Int, startDate: String, endDate: String, repeat: EventRepeat, repeatUntil: String): CalendarEvent!
+	createCalendarEvent(locationId: ID!, calendarId: ID, title: String!, description: String, allDay: Boolean!, startTime: Int, endTime: Int, startDate: String, endDate: String, repeat: EventRepeat, repeatUntil: String, noteIds: [ID!]): CalendarEvent!
 	"""
 	Change an event, every occurrence of it. Omitted arguments are left as they are:
 	`calendarId: null` takes it out of its calendar, `repeat: null` stops it
 	repeating and `repeatUntil: null` makes it repeat forever. Giving a new start
 	without an end keeps its length; changing `allDay` needs the new start. Fails
 	with `CONFLICT` if it is no longer at `expectedVersion`.
+	`noteIds` replaces the linked notes (an empty list unlinks them all; omitted, they
+	are left as they are). The notes themselves are never changed.
 	"""
-	updateCalendarEvent(id: ID!, expectedVersion: Int!, calendarId: ID, title: String, description: String, allDay: Boolean, startTime: Int, endTime: Int, startDate: String, endDate: String, repeat: EventRepeat, repeatUntil: String): CalendarEvent!
+	updateCalendarEvent(id: ID!, expectedVersion: Int!, calendarId: ID, title: String, description: String, allDay: Boolean, startTime: Int, endTime: Int, startDate: String, endDate: String, repeat: EventRepeat, repeatUntil: String, noteIds: [ID!]): CalendarEvent!
 	"""
 	Delete an event, every occurrence of it. Returns its ID.
 	"""
 	deleteCalendarEvent(id: ID!): ID!
+	"""
+	Add a meeting (Agendas) to a unit, planned for `startsAt` (Unix seconds). Any
+	member who can use the unit in Tally may.
+	"""
+	createMeeting(locationId: ID!, title: String!, description: String, startsAt: Int!): Meeting!
+	"""
+	Change a meeting. Omitted arguments are left as they are. Fails with
+	`CONFLICT` if it is no longer at `expectedVersion`.
+	"""
+	updateMeeting(id: ID!, expectedVersion: Int!, title: String, description: String, startsAt: Int): Meeting!
+	"""
+	Delete a meeting. Returns its ID.
+	"""
+	deleteMeeting(id: ID!): ID!
+	"""
+	Start a meeting now: `startedAt` is set and its status becomes `IN_PROGRESS`. A
+	finished meeting is reopened, keeping its original `startedAt`. One already in
+	progress is refused with `BAD_REQUEST`. Fails with `CONFLICT` if it is no longer
+	at `expectedVersion`.
+	"""
+	startMeeting(id: ID!, expectedVersion: Int!): Meeting!
+	"""
+	Finish a meeting that is in progress. Any other status is refused with
+	`BAD_REQUEST`. Fails with `CONFLICT` if it is no longer at `expectedVersion`.
+	"""
+	finishMeeting(id: ID!, expectedVersion: Int!): Meeting!
+	"""
+	Add a topic to a meeting's agenda (Agendas), at the end, at any status. `text`
+	(Markdown as in Notes) is what it is about; a topic needs text or at least one
+	link. `presenterId` defaults to the caller; the presenter may be a member of any
+	unit. It may link up to ten each of the unit's tasks, equipment, on-call roles,
+	photos (ready image assets) and notes (`taskIds`, `equipmentIds`,
+	`onCallRoleIds`, `photoAssetIds`, `noteIds`), in the order given. Fails with
+	`NOT_FOUND` if the meeting is missing or deleted and `BAD_REQUEST` for a link
+	that is not usable or a topic with neither text nor a link.
+	"""
+	createAgendaItem(meetingId: ID!, text: String, presenterId: ID, taskIds: [ID!], equipmentIds: [ID!], onCallRoleIds: [ID!], photoAssetIds: [ID!], noteIds: [ID!]): AgendaItem!
+	"""
+	Change a topic. Omitted arguments are left as they are; the presenter cannot be
+	cleared. A list of links replaces the topic's (`[]` clears it); ones already
+	linked may stay whatever has become of them. A topic must keep text or at least
+	one link (else `BAD_REQUEST`). Fails with `CONFLICT` if it is no longer at
+	`expectedVersion`.
+	"""
+	updateAgendaItem(id: ID!, expectedVersion: Int!, text: String, presenterId: ID, taskIds: [ID!], equipmentIds: [ID!], onCallRoleIds: [ID!], photoAssetIds: [ID!], noteIds: [ID!]): AgendaItem!
+	"""
+	Delete a topic. Returns its ID.
+	"""
+	deleteAgendaItem(id: ID!): ID!
+	"""
+	Put a meeting's topics in the order of `itemIds`, which must name exactly its
+	live topics, each once (else `BAD_REQUEST`). Returns them in the new order.
+	Fails with `CONFLICT` if a topic changed while this ran.
+	"""
+	reorderAgendaItems(meetingId: ID!, itemIds: [ID!]!): [AgendaItem!]!
 	createCalendar(locationId: ID!, name: String!, color: CalendarColor!): Calendar!
 	"""
 	Rename a calendar or change its colour; omitted arguments are left as they are.
@@ -1385,15 +1849,18 @@ type MutationRoot {
 	Add an on-call role (e.g. Duty Officer) to a location, optionally with the people
 	in it. Anyone in it needs a primary. Any member who can use the unit in
 	Tally may.
+	`noteIds` links up to 10 of the unit's notes, in order (live notes only).
 	"""
-	createOnCallRole(locationId: ID!, name: String!, description: String, phone: String, primaryPersonId: ID, secondaryPersonIds: [ID!]): OnCallRole!
+	createOnCallRole(locationId: ID!, name: String!, description: String, phone: String, primaryPersonId: ID, secondaryPersonIds: [ID!], noteIds: [ID!]): OnCallRole!
 	"""
 	Change an on-call role, or who is in it. Omitted arguments are left as they are;
 	`phone: null` removes the number and `primaryPersonId: null` (with
 	`secondaryPersonIds: []`) empties the role. Fails with `CONFLICT` if the role is
 	no longer at `expectedVersion`.
+	`noteIds` replaces the linked notes (an empty list unlinks them all; omitted, they
+	are left as they are). The notes themselves are never changed.
 	"""
-	updateOnCallRole(id: ID!, expectedVersion: Int!, name: String, description: String, phone: String, primaryPersonId: ID, secondaryPersonIds: [ID!]): OnCallRole!
+	updateOnCallRole(id: ID!, expectedVersion: Int!, name: String, description: String, phone: String, primaryPersonId: ID, secondaryPersonIds: [ID!], noteIds: [ID!]): OnCallRole!
 	"""
 	Delete an on-call role. Returns its ID.
 	"""
@@ -1766,6 +2233,15 @@ type OnCallRole {
 	"""
 	description: String!
 	"""
+	The linked notes (at most 10), in the order shown. One that was deleted or can
+	no longer be read is left out.
+	"""
+	notes: [Note!]!
+	"""
+	The linked notes' IDs, in order: pass these back, changed, as `noteIds`.
+	"""
+	noteIds: [ID!]!
+	"""
 	A number that reaches whoever holds the role, e.g. a duty phone that diverts to
 	them; null when there is none. Kept as the unit wrote it.
 	"""
@@ -2105,6 +2581,45 @@ type PersonUnitAssignment {
 	updatedAt: Int
 }
 
+type Photo {
+	id: ID!
+	locationId: ID!
+	"""
+	The image. Its `url(variant:)` is what to show.
+	"""
+	asset: Asset!
+	"""
+	Unix seconds the photo was taken, as the phone read it from the original.
+	"""
+	takenAt: Int
+	"""
+	What the stream is ordered by: `takenAt`, else `createdAt`.
+	"""
+	sortTime: Int!
+	"""
+	Unix seconds the photo was added.
+	"""
+	createdAt: Int!
+	"""
+	Person ID of the member who added it; Tally shows the name from its directory.
+	"""
+	createdBy: ID
+	"""
+	Unix seconds after which the photo leaves the stream (30 days after it was added,
+	or sooner once hidden).
+	"""
+	expiresAt: Int!
+}
+
+type PhotoConnection {
+	nodes: [Photo!]!
+	"""
+	Pass as `after` for the next page; null when the page is empty. Opaque.
+	"""
+	endCursor: String
+	hasNextPage: Boolean!
+}
+
 type QueryRoot {
 	"""
 	Build and deployment information about this API server.
@@ -2203,6 +2718,14 @@ type QueryRoot {
 	One calendar event; null if it does not exist or was deleted.
 	"""
 	calendarEvent(id: ID!): CalendarEvent
+	"""
+	One meeting (Agendas); null if it does not exist or was deleted.
+	"""
+	meeting(id: ID!): Meeting
+	"""
+	One agenda item (Agendas topic); null if it does not exist or was deleted.
+	"""
+	agendaItem(id: ID!): AgendaItem
 	"""
 	The caller's own location share while it still shows (until 7 minutes after its
 	latest position); null otherwise.
@@ -2636,6 +3159,37 @@ type SharedContact {
 	updatedBy: String
 }
 
+type SopNote {
+	place: SopPlace!
+	noteId: ID!
+	"""
+	The note itself, for its title and content.
+	"""
+	note: Note!
+}
+
+"""
+A screen in Tally that can show the unit's SOP note. More places may be added, so
+clients should cope with a value they don't know.
+"""
+enum SopPlace {
+	ON_CALL
+	"""
+	The equipment list.
+	"""
+	EQUIPMENT
+	"""
+	Shown when a member marks equipment as borrowed.
+	"""
+	EQUIPMENT_BORROWING
+	TASKS
+	CALENDAR
+	MAP
+	RESERVATIONS
+	NOTES
+	PHOTOS
+}
+
 """
 `submitFeedback`'s result: the Toolbox ticket the feedback became.
 """
@@ -2683,6 +3237,16 @@ type TallyLocation {
 	The unit's task lists, by name.
 	"""
 	taskLists: [TaskList!]!
+	"""
+	The unit's photos, newest first by when they were taken (else when they were
+	added), for 30 days. `first` is at most 200. Pass the previous page's `endCursor`
+	as `after`. See `graphql::photos`.
+	"""
+	photos(first: Int = 60, after: String): PhotoConnection!
+	"""
+	How many more photos the unit may add today (100 a Sydney day), never below 0.
+	"""
+	photoUploadsRemainingToday: Int!
 	"""
 	The unit's notes (its shared notebook), most recently changed first.
 	`folderId` narrows to one of its note folders; without it every note at the
@@ -2736,6 +3300,13 @@ type TallyLocation {
 	"""
 	calendarEvents(from: Int!, to: Int!): [CalendarEventOccurrence!]!
 	"""
+	The unit's meetings (Agendas) scheduled from `startsAfter` (inclusive) to
+	`startsBefore` (exclusive), Unix seconds, either optional: oldest first, or
+	newest first with `newestFirst`. At most `limit` (default 50, at most 200).
+	See `graphql::meetings`.
+	"""
+	meetings(startsAfter: Int, startsBefore: Int, newestFirst: Boolean! = false, limit: Int! = 50): [Meeting!]!
+	"""
 	Everyone sharing their position with the unit ("Locate"), most recently updated
 	first. A share shows until 7 minutes after its latest position, so this
 	includes shares that have just ended (`active: false`). See
@@ -2748,10 +3319,67 @@ type TallyLocation {
 	"""
 	onCallRoles: [OnCallRole!]!
 	"""
+	The unit's standard operating procedure notes: one per Tally screen that has a
+	linked note that still exists, in a fixed order. See `graphql::sop_notes`.
+	"""
+	sopNotes: [SopNote!]!
+	"""
 	The contacts added by hand to the unit (its Duty Officer phone, …), by name. The
 	statewide ones are `Query.stateContacts`. See `graphql::shared_contacts`.
 	"""
 	sharedContacts: [SharedContact!]!
+}
+
+"""
+A passkey that signs the member in to Tally. Never carries key material.
+"""
+type TallyPasskey {
+	id: ID!
+	"""
+	What its owner called it.
+	"""
+	name: String!
+	"""
+	Unix seconds.
+	"""
+	createdAt: Int!
+	"""
+	Unix seconds; null if it has never been used to sign in.
+	"""
+	lastUsedAt: Int
+	"""
+	Whether it is the passkey of the SESLogin user signed in alongside the
+	member, and so also signs in to the SESLogin site. False for the member's
+	own, which signs in to Tally only.
+	"""
+	signsInToSeslogin: Boolean!
+}
+
+"""
+A device the member is signed in to Tally on.
+"""
+type TallySignIn {
+	id: ID!
+	"""
+	The app, as SESLogin lists it ("Tally").
+	"""
+	clientName: String!
+	"""
+	When they signed in, Unix seconds.
+	"""
+	createdAt: Int!
+	"""
+	When it was last used, Unix seconds; null if never since signing in.
+	"""
+	lastUsedAt: Int
+	"""
+	When it signs out by itself if not used again, Unix seconds.
+	"""
+	refreshExpiresAt: Int!
+	"""
+	Whether it is the sign-in making this request: this device.
+	"""
+	isCurrent: Boolean!
 }
 
 """
@@ -2822,6 +3450,17 @@ type TallyViewer {
 	member's own primary unit.
 	"""
 	locations: [TallyLocation!]!
+	"""
+	The passkeys that sign the member in to Tally, most recently added first: the
+	member's own, and those of the user signed in alongside them (which also sign
+	in to the SESLogin site). See `graphql::tally_passkeys`.
+	"""
+	passkeys: [TallyPasskey!]!
+	"""
+	The devices the member is signed in to Tally on (one per sign-in), this one
+	first, then most recently used. See `graphql::tally_sign_ins`.
+	"""
+	signIns: [TallySignIn!]!
 }
 
 type Task {
@@ -2858,6 +3497,39 @@ type Task {
 	"""
 	overdue: Boolean!
 	recurrence: TaskRecurrence
+	"""
+	The members the task is assigned to, by person ID, deleted ones included. Empty
+	when it is the whole unit's.
+	"""
+	assigneeIds: [ID!]!
+	"""
+	The members the task is assigned to, by name. Members deleted since are left
+	out, so this can be empty even when `assigneeIds` isn't.
+	"""
+	assignees: [Person!]!
+	"""
+	The attached photos (at most 10), in the order shown. Their `url(variant:)` is
+	what to show; one that can no longer be read is left out.
+	"""
+	photos: [Asset!]!
+	"""
+	The attached photos' asset IDs, in order: pass these back, changed, as
+	`photoAssetIds`.
+	"""
+	photoAssetIds: [ID!]!
+	"""
+	The linked notes (at most 10), in the order shown. One that was deleted or can
+	no longer be read is left out.
+	"""
+	notes: [Note!]!
+	"""
+	The linked notes' IDs, in order: pass these back, changed, as `noteIds`.
+	"""
+	noteIds: [ID!]!
+	"""
+	Whether the member asking is one of those it is assigned to.
+	"""
+	assignedToViewer: Boolean!
 	"""
 	False once a non-recurring task is completed, or any task deleted. A
 	recurring task stays open.
@@ -2951,7 +3623,7 @@ type Trophy {
 	minimumLabel: String
 	"""
 	How far back scores or claims count, in days; null for The Chain, a current
-	streak.
+	streak, and The Sash, which counts every badge ever earned.
 	"""
 	windowDays: Int
 	"""
@@ -3073,6 +3745,11 @@ type TrophyReign {
 	vacant.
 	"""
 	endedByValueLabel: String
+}
+
+type UploadField {
+	name: String!
+	value: String!
 }
 
 type User {

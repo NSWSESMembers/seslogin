@@ -17,6 +17,8 @@ use std::sync::Arc;
 use super::auth::require_on_call_access;
 use super::dataloader::DatabaseLoader;
 use super::error::{ApiError, ErrorCode};
+use super::linked_notes;
+use super::notes::Note;
 use super::query::{Location, Person};
 use super::{LocationId, PersonId};
 use crate::app::{App, HasDb};
@@ -70,6 +72,17 @@ impl<A: App + HasDb + Send + Sync + 'static> OnCallRole<A> {
     /// What the role is for, plain text; empty when there is none.
     async fn description(&self) -> &str {
         &self.rec.description
+    }
+
+    /// The linked notes (at most 10), in the order shown. One that was deleted or can
+    /// no longer be read is left out.
+    async fn notes(&self, ctx: &Context<'_>) -> Result<Vec<Note<A>>> {
+        linked_notes::load(ctx, &self.rec.note_ids).await
+    }
+
+    /// The linked notes' IDs, in order: pass these back, changed, as `noteIds`.
+    async fn note_ids(&self) -> Vec<ID> {
+        self.rec.note_ids.iter().cloned().map(ID).collect()
     }
 
     /// A number that reaches whoever holds the role, e.g. a duty phone that diverts to
@@ -286,6 +299,7 @@ pub(super) struct CreateOnCallRoleArgs {
     pub phone: Option<String>,
     pub primary_person_id: Option<ID>,
     pub secondary_person_ids: Option<Vec<ID>>,
+    pub note_ids: Option<Vec<ID>>,
 }
 
 pub(super) async fn create_on_call_role<A: App + HasDb + Send + Sync + 'static>(
@@ -312,15 +326,33 @@ pub(super) async fn create_on_call_role<A: App + HasDb + Send + Sync + 'static>(
     let everyone = members(primary, &secondaries);
     let everyone: Vec<&str> = everyone.iter().map(String::as_str).collect();
     check_people(app.db(), &everyone, &[]).await?;
+    let note_ids = linked_notes::validate(
+        app,
+        &args.location_id,
+        args.note_ids.as_deref().unwrap_or(&[]),
+        &[],
+    )
+    .await?;
+    let id = db::new_id();
+    linked_notes::add_refs(
+        app,
+        linked_notes::ON_CALL_ROLE,
+        &id,
+        &args.location_id,
+        &linked_notes::added(&[], &note_ids),
+    )
+    .await?;
     let rec = app
         .db()
         .create_on_call_role(db::NewOnCallRole {
+            id: &id,
             location_id: &args.location_id,
             name: &name,
             description: &description,
             phone: phone.as_deref(),
             primary_person_id: primary,
             secondary_person_ids: &secondaries,
+            note_ids: &note_ids,
             created_by: caller_id(ctx),
         })
         .await?;
@@ -336,6 +368,7 @@ pub(super) struct UpdateOnCallRoleArgs {
     pub phone: MaybeUndefined<String>,
     pub primary_person_id: MaybeUndefined<ID>,
     pub secondary_person_ids: Option<Vec<ID>>,
+    pub note_ids: Option<Vec<ID>>,
 }
 
 pub(super) async fn update_on_call_role<A: App + HasDb + Send + Sync + 'static>(
@@ -393,6 +426,20 @@ pub(super) async fn update_on_call_role<A: App + HasDb + Send + Sync + 'static>(
         Some(crate::clock::now_sec())
     };
 
+    let note_ids = match &args.note_ids {
+        Some(ids) => linked_notes::validate(app, &rec.location_id, ids, &rec.note_ids).await?,
+        None => rec.note_ids.clone(),
+    };
+    linked_notes::add_refs(
+        app,
+        linked_notes::ON_CALL_ROLE,
+        &rec.id,
+        &rec.location_id,
+        &linked_notes::added(&rec.note_ids, &note_ids),
+    )
+    .await?;
+    let previous_notes = rec.note_ids.clone();
+
     let previous = (
         rec.primary_person_id.clone(),
         rec.secondary_person_ids.clone(),
@@ -408,6 +455,7 @@ pub(super) async fn update_on_call_role<A: App + HasDb + Send + Sync + 'static>(
                 primary_person_id: primary.as_deref(),
                 secondary_person_ids: &secondaries,
                 members_changed_at,
+                note_ids: &note_ids,
                 by: caller_id(ctx),
                 expected_version,
             },
@@ -417,6 +465,13 @@ pub(super) async fn update_on_call_role<A: App + HasDb + Send + Sync + 'static>(
             db::Error::NotFound(_) => conflict(),
             e => e.into(),
         })?;
+    linked_notes::drop_refs(
+        app,
+        linked_notes::ON_CALL_ROLE,
+        &rec.id,
+        &linked_notes::added(&rec.note_ids, &previous_notes),
+    )
+    .await;
     notify_assigned(app, &rec, previous.0.as_deref(), &previous.1).await;
     Ok(OnCallRole::new(rec))
 }
@@ -437,5 +492,12 @@ pub(super) async fn delete_on_call_role<A: App + HasDb + Send + Sync + 'static>(
             db::Error::NotFound(_) => ApiError::not_found("On-call role", id).into(),
             e => anyhow::Error::from(e),
         })?;
+    linked_notes::drop_refs(
+        app,
+        linked_notes::ON_CALL_ROLE,
+        &rec.id,
+        &linked_notes::added(&[], &rec.note_ids),
+    )
+    .await;
     Ok(ID(rec.id))
 }

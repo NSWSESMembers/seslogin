@@ -19,9 +19,16 @@ use seslogin::graphql;
 use seslogin::mockmail;
 use seslogin::mockqueue;
 use seslogin::mockrealtime;
+use seslogin::mockstorage;
 use seslogin::tasks::{format_date, today_sydney};
 
-type TestApp = MyApp<FakeDb, mockqueue::Handler, mockmail::Handler, mockrealtime::Handler>;
+type TestApp = MyApp<
+    FakeDb,
+    mockqueue::Handler,
+    mockmail::Handler,
+    mockrealtime::Handler,
+    mockstorage::Handler,
+>;
 
 fn webauthn() -> Arc<webauthn_rs::prelude::Webauthn> {
     Arc::new(
@@ -49,6 +56,7 @@ fn user(admin: &[&str], read_only: &[&str]) -> AuthInfo {
             ids
         },
         grant_id: "grant".to_string(),
+        scope: seslogin::oauth::DEFAULT_SCOPE.to_string(),
     }
 }
 
@@ -69,6 +77,7 @@ fn super_user() -> AuthInfo {
         is_super: true,
         user_location_ids: vec![],
         grant_id: "grant".to_string(),
+        scope: seslogin::oauth::DEFAULT_SCOPE.to_string(),
     }
 }
 
@@ -531,4 +540,130 @@ async fn a_deleted_task_is_gone() {
     )
     .await;
     assert_code(&again, "NOT_FOUND");
+}
+
+#[tokio::test]
+async fn tasks_can_be_assigned_to_members_of_any_unit_and_unassigned() {
+    let app = app();
+    seed_person(&app, "pat", "loc-b", "Pat", "Other", "11111111", None);
+    seed_person(&app, "ash", "loc-a", "Ash", "Able", "22222222", None);
+    let fields = "id version assigneeIds assignedToViewer assignees { id firstName }";
+    let names = |t: &serde_json::Value| -> Vec<String> {
+        t["assignees"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|p| p["firstName"].as_str().unwrap().to_string())
+            .collect()
+    };
+
+    // Nobody by default.
+    let response = run(
+        &app,
+        admin(),
+        &format!(
+            r#"mutation {{ createTask(locationId: "loc-a", title: "Unassigned") {{ {fields} }} }}"#
+        ),
+    )
+    .await;
+    let task = json(&response)["createTask"].clone();
+    assert_eq!(task["assigneeIds"], serde_json::json!([]));
+    assert_eq!(task["assignedToViewer"], false);
+
+    // Several members, from another unit too, repeats dropped, listed by name.
+    let response = run(
+        &app,
+        admin(),
+        &format!(
+            r#"mutation {{ createTask(locationId: "loc-a", title: "Check radios",
+                assigneeIds: ["pat", "caller", "ash", "pat"]) {{ {fields} }} }}"#
+        ),
+    )
+    .await;
+    let task = json(&response)["createTask"].clone();
+    assert_eq!(names(&task), vec!["Ash", "Casey", "Pat"]);
+    assert_eq!(task["assignedToViewer"], true);
+    let id = task["id"].as_str().unwrap().to_string();
+
+    // An edit that doesn't mention assignees keeps them, even one deleted since.
+    app.db
+        .persons
+        .lock()
+        .unwrap()
+        .get_mut("pat")
+        .unwrap()
+        .deleted = Some(1);
+    let response = run(
+        &app,
+        admin(),
+        &format!(
+            r#"mutation {{ updateTask(id: "{id}", expectedVersion: {}, title: "Check all radios") {{ {fields} }} }}"#,
+            task["version"]
+        ),
+    )
+    .await;
+    let task = json(&response)["updateTask"].clone();
+    assert_eq!(task["assigneeIds"].as_array().unwrap().len(), 3);
+    assert_eq!(names(&task), vec!["Ash", "Casey"]);
+
+    // Keeping a deleted member while changing the others is allowed; adding one isn't.
+    let response = run(
+        &app,
+        admin(),
+        &format!(
+            r#"mutation {{ updateTask(id: "{id}", expectedVersion: {}, assigneeIds: ["pat", "ash"]) {{ {fields} }} }}"#,
+            task["version"]
+        ),
+    )
+    .await;
+    let task = json(&response)["updateTask"].clone();
+    assert_eq!(task["assignedToViewer"], false);
+    let response = run(
+        &app,
+        admin(),
+        r#"mutation { createTask(locationId: "loc-a", title: "X", assigneeIds: ["pat"]) { id } }"#,
+    )
+    .await;
+    assert_code(&response, "NOT_FOUND");
+
+    // An empty list unassigns everyone.
+    let response = run(
+        &app,
+        admin(),
+        &format!(
+            r#"mutation {{ updateTask(id: "{id}", expectedVersion: {}, assigneeIds: []) {{ {fields} }} }}"#,
+            task["version"]
+        ),
+    )
+    .await;
+    assert_eq!(
+        json(&response)["updateTask"]["assigneeIds"],
+        serde_json::json!([])
+    );
+}
+
+#[tokio::test]
+async fn assigning_an_unknown_member_or_too_many_is_refused() {
+    let app = app();
+    let response = run(
+        &app,
+        admin(),
+        r#"mutation { createTask(locationId: "loc-a", title: "X", assigneeIds: ["nobody"]) { id } }"#,
+    )
+    .await;
+    assert_code(&response, "NOT_FOUND");
+
+    let many: Vec<String> = (0..=seslogin::tasks::MAX_ASSIGNEES)
+        .map(|i| format!(r#""p{i}""#))
+        .collect();
+    let response = run(
+        &app,
+        admin(),
+        &format!(
+            r#"mutation {{ createTask(locationId: "loc-a", title: "X", assigneeIds: [{}]) {{ id }} }}"#,
+            many.join(", ")
+        ),
+    )
+    .await;
+    assert_code(&response, "BAD_REQUEST");
 }

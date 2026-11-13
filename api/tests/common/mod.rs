@@ -19,6 +19,7 @@ use seslogin::db::{self, EphemeralState, Location, OAuthGrant, OAuthGrantUpdateS
 use seslogin::mockmail;
 use seslogin::mockqueue;
 use seslogin::mockrealtime;
+use seslogin::mockstorage;
 use seslogin::server_secret::ServerSecret;
 
 #[allow(dead_code)] // see `seed_super_user`'s doc comment
@@ -75,15 +76,41 @@ pub(crate) struct FakeDb {
     pub(crate) map_layers: Mutex<HashMap<String, db::MapLayer>>,
     pub(crate) calendars: Mutex<HashMap<String, db::Calendar>>,
     pub(crate) calendar_events: Mutex<HashMap<String, db::CalendarEvent>>,
+    pub(crate) meetings: Mutex<HashMap<String, db::Meeting>>,
+    pub(crate) agenda_items: Mutex<HashMap<String, db::AgendaItem>>,
     /// Trophy holder rows, by (location, trophy).
     pub(crate) trophy_holders: Mutex<HashMap<(String, String), db::TrophyHolder>>,
     /// Finished trophy reigns, in the order they were written.
     pub(crate) trophy_reigns: Mutex<Vec<db::TrophyReign>>,
     /// Trophy notices not yet shown.
     pub(crate) trophy_notices: Mutex<Vec<db::TrophyNotice>>,
+    pub(crate) assets: Mutex<HashMap<String, db::Asset>>,
+    /// `asset_ref` rows, by (asset id, owner).
+    pub(crate) asset_refs: Mutex<HashMap<(String, String), db::AssetRef>>,
+    /// `note_ref` rows, by (note id, owner).
+    pub(crate) note_refs: Mutex<HashMap<(String, String), db::NoteRef>>,
+    pub(crate) photos: Mutex<HashMap<String, db::Photo>>,
+    /// Daily counters by id, as (count, `expires_at`). Their TTL is not enforced.
+    pub(crate) daily_counters: Mutex<HashMap<String, (u64, u64)>>,
 }
 
 impl FakeDb {
+    /// The condition check of the transactions that make something refer to an asset:
+    /// it must be `ready` and at `location_id`.
+    fn require_ready_asset(&self, asset_id: &str, location_id: &str) -> db::Result<()> {
+        let ready =
+            self.assets.lock().unwrap().get(asset_id).is_some_and(|a| {
+                a.status == db::AssetStatus::Ready && a.location_id == location_id
+            });
+        if ready {
+            Ok(())
+        } else {
+            Err(db::Error::NotFound(format!(
+                "Asset {asset_id} is not ready at location {location_id}"
+            )))
+        }
+    }
+
     fn stamp_contact(&self, id: &str) {
         self.contact_stamps
             .lock()
@@ -244,6 +271,29 @@ impl db::Handler for FakeDb {
         Ok(())
     }
 
+    async fn create_ephemeral_state_if_absent(
+        &self,
+        id: &str,
+        kind: &str,
+        payload: &str,
+        expires_at: u64,
+    ) -> db::Result<bool> {
+        let mut states = self.ephemeral_state.lock().unwrap();
+        if states.contains_key(id) {
+            return Ok(false);
+        }
+        states.insert(
+            id.to_string(),
+            EphemeralState {
+                id: id.to_string(),
+                kind: kind.to_string(),
+                payload: payload.to_string(),
+                expires_at,
+            },
+        );
+        Ok(true)
+    }
+
     async fn get_ephemeral_state(&self, id: &str) -> db::Result<Option<EphemeralState>> {
         Ok(self.ephemeral_state.lock().unwrap().get(id).cloned())
     }
@@ -306,6 +356,17 @@ impl db::Handler for FakeDb {
             .unwrap()
             .values()
             .filter(|g| g.user_id.as_deref() == Some(user_id))
+            .cloned()
+            .collect())
+    }
+
+    async fn list_oauth_grants_by_person(&self, person_id: &str) -> db::Result<Vec<OAuthGrant>> {
+        Ok(self
+            .oauth_grants
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|g| g.person_id.as_deref() == Some(person_id))
             .cloned()
             .collect())
     }
@@ -974,6 +1035,7 @@ impl db::Handler for FakeDb {
             ses_details: Default::default(),
             directory_details: Default::default(),
             accreditations: None,
+            sop_notes: Default::default(),
             created_at: seslogin::clock::now_sec(),
             updated_at: seslogin::clock::now_sec(),
         };
@@ -1027,6 +1089,14 @@ impl db::Handler for FakeDb {
                     location.badge_emails_enabled = badge_emails;
                 }
             }
+            db::LocationUpdateShape::SopNote { place, note_id } => match note_id {
+                Some(id) => {
+                    location.sop_notes.insert(place, id.to_string());
+                }
+                None => {
+                    location.sop_notes.remove(&place);
+                }
+            },
             _ => return unsupported(),
         }
         Ok(())
@@ -1529,7 +1599,7 @@ impl db::Handler for FakeDb {
     async fn create_task(&self, task: db::NewTask<'_>) -> db::Result<db::Task> {
         let now = seslogin::clock::now_sec();
         let row = db::Task {
-            id: db::new_id(),
+            id: task.id.to_string(),
             location_id: task.location_id.to_string(),
             list_id: task.list_id.map(str::to_string),
             title: task.title.to_string(),
@@ -1537,6 +1607,9 @@ impl db::Handler for FakeDb {
             due_date: task.due_date,
             show_date: task.show_date,
             recurrence: task.recurrence,
+            assignee_ids: task.assignee_ids.to_vec(),
+            photo_asset_ids: task.photo_asset_ids.to_vec(),
+            note_ids: task.note_ids.to_vec(),
             open: true,
             created_by: task.created_by.map(str::to_string),
             updated_by: None,
@@ -1571,12 +1644,18 @@ impl db::Handler for FakeDb {
                 due_date,
                 show_date,
                 recurrence,
+                assignee_ids,
+                photo_asset_ids,
+                note_ids,
                 by,
                 expected_version,
             } => {
                 if !live(t, expected_version) {
                     return Err(not_found());
                 }
+                t.assignee_ids = assignee_ids.to_vec();
+                t.photo_asset_ids = photo_asset_ids.to_vec();
+                t.note_ids = note_ids.to_vec();
                 t.list_id = list_id.map(str::to_string);
                 t.title = title.to_string();
                 t.description = description.map(str::to_string);
@@ -1843,7 +1922,7 @@ impl db::Handler for FakeDb {
     ) -> db::Result<(db::Equipment, db::EquipmentLogEntry)> {
         let now = seslogin::clock::now_sec();
         let row = db::Equipment {
-            id: db::new_id(),
+            id: equipment.id.to_string(),
             location_id: equipment.location_id.to_string(),
             equipment_type: equipment.equipment_type.to_string(),
             name: equipment.name.to_string(),
@@ -1851,6 +1930,8 @@ impl db::Handler for FakeDb {
             status: equipment.status.to_string(),
             status_changed_at: now,
             last_checked_at: None,
+            photo_asset_ids: equipment.photo_asset_ids.to_vec(),
+            note_ids: equipment.note_ids.to_vec(),
             created_by: equipment.created_by.map(str::to_string),
             updated_by: None,
             version: 1,
@@ -1898,12 +1979,16 @@ impl db::Handler for FakeDb {
                 equipment_type,
                 name,
                 description,
+                photo_asset_ids,
+                note_ids,
                 by,
                 expected_version,
             } => {
                 if e.version != expected_version {
                     return Err(not_found());
                 }
+                e.photo_asset_ids = photo_asset_ids.to_vec();
+                e.note_ids = note_ids.to_vec();
                 e.equipment_type = equipment_type.to_string();
                 e.name = name.to_string();
                 e.description = description.to_string();
@@ -2101,7 +2186,7 @@ impl db::Handler for FakeDb {
     async fn create_map_pin(&self, pin: db::NewMapPin<'_>) -> db::Result<db::MapPin> {
         let now = seslogin::clock::now_sec();
         let row = db::MapPin {
-            id: db::new_id(),
+            id: pin.id.to_string(),
             location_id: pin.location_id.to_string(),
             layer_id: pin.layer_id.map(str::to_string),
             pin_type: pin.pin_type.map(str::to_string),
@@ -2110,6 +2195,8 @@ impl db::Handler for FakeDb {
             longitude: pin.longitude,
             address: pin.address.to_string(),
             note: pin.note.to_string(),
+            photo_asset_ids: pin.photo_asset_ids.to_vec(),
+            note_ids: pin.note_ids.to_vec(),
             created_by: pin.created_by.map(str::to_string),
             updated_by: None,
             version: 1,
@@ -2145,12 +2232,16 @@ impl db::Handler for FakeDb {
                 longitude,
                 address,
                 note,
+                photo_asset_ids,
+                note_ids,
                 by,
                 expected_version,
             } => {
                 if p.version != expected_version {
                     return Err(not_found());
                 }
+                p.photo_asset_ids = photo_asset_ids.to_vec();
+                p.note_ids = note_ids.to_vec();
                 p.layer_id = layer_id.map(str::to_string);
                 p.pin_type = pin_type.map(str::to_string);
                 p.title = title.to_string();
@@ -2327,7 +2418,7 @@ impl db::Handler for FakeDb {
     ) -> db::Result<db::CalendarEvent> {
         let now = seslogin::clock::now_sec();
         let row = db::CalendarEvent {
-            id: db::new_id(),
+            id: event.id.to_string(),
             location_id: event.location_id.to_string(),
             calendar_id: event.calendar_id.map(str::to_string),
             title: event.title.to_string(),
@@ -2335,6 +2426,7 @@ impl db::Handler for FakeDb {
             timing: event.timing,
             recurrence: event.recurrence,
             last_end: seslogin::calendar::last_end(event.timing, event.recurrence),
+            note_ids: event.note_ids.to_vec(),
             created_by: event.created_by.map(str::to_string),
             updated_by: None,
             version: 1,
@@ -2369,12 +2461,14 @@ impl db::Handler for FakeDb {
                 description,
                 timing,
                 recurrence,
+                note_ids,
                 by,
                 expected_version,
             } => {
                 if e.version != expected_version {
                     return Err(not_found());
                 }
+                e.note_ids = note_ids.to_vec();
                 e.calendar_id = calendar_id.map(str::to_string);
                 e.title = title.to_string();
                 e.description = description.to_string();
@@ -2391,6 +2485,236 @@ impl db::Handler for FakeDb {
         e.version += 1;
         e.updated_at = now;
         Ok(e.clone())
+    }
+    async fn get_meetings<T: AsRef<str> + Sync>(
+        &self,
+        ids: &[T],
+    ) -> db::Result<Vec<Option<db::Meeting>>> {
+        let meetings = self.meetings.lock().unwrap();
+        Ok(ids
+            .iter()
+            .map(|id| meetings.get(id.as_ref()).cloned())
+            .collect())
+    }
+    async fn list_meetings(
+        &self,
+        location_id: &str,
+        starts_after: Option<u64>,
+        starts_before: Option<u64>,
+        newest_first: bool,
+        limit: usize,
+    ) -> db::Result<Vec<db::Meeting>> {
+        // The same as the `location_id-starts_at-index` key condition, in its order
+        // (ties broken by id, which DynamoDB leaves unspecified).
+        let mut rows: Vec<db::Meeting> = self
+            .meetings
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|m| {
+                m.location_id == location_id
+                    && m.deleted.is_none()
+                    && starts_after.is_none_or(|a| m.starts_at >= a)
+                    && starts_before.is_none_or(|b| m.starts_at < b)
+            })
+            .cloned()
+            .collect();
+        rows.sort_by(|a, b| (a.starts_at, &a.id).cmp(&(b.starts_at, &b.id)));
+        if newest_first {
+            rows.reverse();
+        }
+        rows.truncate(limit);
+        Ok(rows)
+    }
+    async fn create_meeting(&self, meeting: db::NewMeeting<'_>) -> db::Result<db::Meeting> {
+        let now = seslogin::clock::now_sec();
+        let row = db::Meeting {
+            id: db::new_id(),
+            location_id: meeting.location_id.to_string(),
+            title: meeting.title.to_string(),
+            description: meeting.description.to_string(),
+            starts_at: meeting.starts_at,
+            started_at: None,
+            finished_at: None,
+            created_by: meeting.created_by.map(str::to_string),
+            updated_by: None,
+            version: 1,
+            deleted: None,
+            created_at: now,
+            updated_at: now,
+        };
+        self.meetings
+            .lock()
+            .unwrap()
+            .insert(row.id.clone(), row.clone());
+        Ok(row)
+    }
+    async fn update_meeting(
+        &self,
+        id: &str,
+        change: db::MeetingUpdateShape<'_>,
+    ) -> db::Result<db::Meeting> {
+        let now = seslogin::clock::now_sec();
+        let mut meetings = self.meetings.lock().unwrap();
+        let not_found = || db::Error::NotFound(format!("Meeting {id} not found, or changed"));
+        // The same conditions as the DynamoDB `ConditionExpression`s.
+        let m = meetings
+            .get_mut(id)
+            .filter(|m| m.deleted.is_none())
+            .ok_or_else(not_found)?;
+        let by = match change {
+            db::MeetingUpdateShape::Fields {
+                title,
+                description,
+                starts_at,
+                by,
+                expected_version,
+            } => {
+                if m.version != expected_version {
+                    return Err(not_found());
+                }
+                m.title = title.to_string();
+                m.description = description.to_string();
+                m.starts_at = starts_at;
+                by
+            }
+            db::MeetingUpdateShape::Start {
+                at,
+                by,
+                expected_version,
+            } => {
+                if m.version != expected_version {
+                    return Err(not_found());
+                }
+                m.started_at = Some(at);
+                m.finished_at = None;
+                by
+            }
+            db::MeetingUpdateShape::Finish {
+                at,
+                by,
+                expected_version,
+            } => {
+                if m.version != expected_version {
+                    return Err(not_found());
+                }
+                m.finished_at = Some(at);
+                by
+            }
+            db::MeetingUpdateShape::Delete { by } => {
+                m.deleted = Some(now);
+                by
+            }
+        };
+        m.updated_by = by.map(str::to_string);
+        m.version += 1;
+        m.updated_at = now;
+        Ok(m.clone())
+    }
+    async fn get_agenda_items<T: AsRef<str> + Sync>(
+        &self,
+        ids: &[T],
+    ) -> db::Result<Vec<Option<db::AgendaItem>>> {
+        let items = self.agenda_items.lock().unwrap();
+        Ok(ids
+            .iter()
+            .map(|id| items.get(id.as_ref()).cloned())
+            .collect())
+    }
+    async fn list_agenda_items(&self, meeting_id: &str) -> db::Result<Vec<db::AgendaItem>> {
+        Ok(self
+            .agenda_items
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|i| i.meeting_id == meeting_id && i.deleted.is_none())
+            .cloned()
+            .collect())
+    }
+    async fn create_agenda_item(&self, item: db::NewAgendaItem<'_>) -> db::Result<db::AgendaItem> {
+        let now = seslogin::clock::now_sec();
+        let row = db::AgendaItem {
+            id: item.id.to_string(),
+            meeting_id: item.meeting_id.to_string(),
+            location_id: item.location_id.to_string(),
+            text: item.text.to_string(),
+            presenter_id: item.presenter_id.to_string(),
+            position: item.position,
+            task_ids: item.task_ids.to_vec(),
+            equipment_ids: item.equipment_ids.to_vec(),
+            on_call_role_ids: item.on_call_role_ids.to_vec(),
+            photo_asset_ids: item.photo_asset_ids.to_vec(),
+            note_ids: item.note_ids.to_vec(),
+            created_by: item.created_by.map(str::to_string),
+            updated_by: None,
+            version: 1,
+            deleted: None,
+            created_at: now,
+            updated_at: now,
+        };
+        self.agenda_items
+            .lock()
+            .unwrap()
+            .insert(row.id.clone(), row.clone());
+        Ok(row)
+    }
+    async fn update_agenda_item(
+        &self,
+        id: &str,
+        change: db::AgendaItemUpdateShape<'_>,
+    ) -> db::Result<db::AgendaItem> {
+        let now = seslogin::clock::now_sec();
+        let mut items = self.agenda_items.lock().unwrap();
+        let not_found = || db::Error::NotFound(format!("Agenda item {id} not found, or changed"));
+        // The same conditions as the DynamoDB `ConditionExpression`s.
+        let i = items
+            .get_mut(id)
+            .filter(|i| i.deleted.is_none())
+            .ok_or_else(not_found)?;
+        let by = match change {
+            db::AgendaItemUpdateShape::Fields {
+                text,
+                presenter_id,
+                task_ids,
+                equipment_ids,
+                on_call_role_ids,
+                photo_asset_ids,
+                note_ids,
+                by,
+                expected_version,
+            } => {
+                if i.version != expected_version {
+                    return Err(not_found());
+                }
+                i.text = text.to_string();
+                i.presenter_id = presenter_id.to_string();
+                i.task_ids = task_ids.to_vec();
+                i.equipment_ids = equipment_ids.to_vec();
+                i.on_call_role_ids = on_call_role_ids.to_vec();
+                i.photo_asset_ids = photo_asset_ids.to_vec();
+                i.note_ids = note_ids.to_vec();
+                by
+            }
+            db::AgendaItemUpdateShape::Position {
+                position,
+                by,
+                expected_version,
+            } => {
+                if i.version != expected_version {
+                    return Err(not_found());
+                }
+                i.position = position;
+                by
+            }
+            db::AgendaItemUpdateShape::Delete { by } => {
+                i.deleted = Some(now);
+                by
+            }
+        };
+        i.updated_by = by.map(str::to_string);
+        i.version += 1;
+        i.updated_at = now;
+        Ok(i.clone())
     }
     async fn get_on_call_roles<T: AsRef<str> + Sync>(
         &self,
@@ -2415,7 +2739,7 @@ impl db::Handler for FakeDb {
     async fn create_on_call_role(&self, role: db::NewOnCallRole<'_>) -> db::Result<db::OnCallRole> {
         let now = seslogin::clock::now_sec();
         let row = db::OnCallRole {
-            id: db::new_id(),
+            id: role.id.to_string(),
             location_id: role.location_id.to_string(),
             name: role.name.to_string(),
             description: role.description.to_string(),
@@ -2423,6 +2747,7 @@ impl db::Handler for FakeDb {
             primary_person_id: role.primary_person_id.map(str::to_string),
             secondary_person_ids: role.secondary_person_ids.to_vec(),
             members_changed_at: role.primary_person_id.map(|_| now),
+            note_ids: role.note_ids.to_vec(),
             created_by: role.created_by.map(str::to_string),
             updated_by: None,
             version: 1,
@@ -2457,12 +2782,14 @@ impl db::Handler for FakeDb {
                 primary_person_id,
                 secondary_person_ids,
                 members_changed_at,
+                note_ids,
                 by,
                 expected_version,
             } => {
                 if r.version != expected_version {
                     return Err(not_found());
                 }
+                r.note_ids = note_ids.to_vec();
                 r.name = name.to_string();
                 r.description = description.to_string();
                 r.phone = phone.map(str::to_string);
@@ -2785,6 +3112,284 @@ impl db::Handler for FakeDb {
             .retain(|n| !notices.contains(n));
         Ok(())
     }
+    async fn create_asset(&self, asset: db::NewAsset<'_>) -> db::Result<db::Asset> {
+        let now = seslogin::clock::now_sec();
+        let row = db::Asset {
+            id: db::new_id(),
+            location_id: asset.location_id.to_string(),
+            kind: asset.kind,
+            status: db::AssetStatus::Pending,
+            content_type: asset.content_type.to_string(),
+            byte_size: asset.byte_size,
+            original_filename: asset.original_filename.map(str::to_string),
+            width: asset.width,
+            height: asset.height,
+            taken_at: asset.taken_at,
+            camera_make: asset.camera_make.map(str::to_string),
+            camera_model: asset.camera_model.map(str::to_string),
+            created_by: asset.created_by.to_string(),
+            created_at: now,
+            completed_at: None,
+            expires_at: Some(now + db::PENDING_ASSET_TTL_SECS),
+        };
+        self.assets
+            .lock()
+            .unwrap()
+            .insert(row.id.clone(), row.clone());
+        Ok(row)
+    }
+
+    async fn get_assets<T: AsRef<str> + Sync>(
+        &self,
+        ids: &[T],
+    ) -> db::Result<Vec<Option<db::Asset>>> {
+        let assets = self.assets.lock().unwrap();
+        Ok(ids
+            .iter()
+            .map(|id| assets.get(id.as_ref()).cloned())
+            .collect())
+    }
+
+    async fn complete_asset(&self, id: &str, content_type: &str) -> db::Result<db::Asset> {
+        let mut assets = self.assets.lock().unwrap();
+        // The same condition as the DynamoDB update.
+        let asset = assets
+            .get_mut(id)
+            .filter(|a| a.status == db::AssetStatus::Pending)
+            .ok_or_else(|| db::Error::NotFound(format!("Asset {id} not found, or not pending")))?;
+        asset.status = db::AssetStatus::Ready;
+        asset.content_type = content_type.to_string();
+        asset.completed_at = Some(seslogin::clock::now_sec());
+        asset.expires_at = None;
+        Ok(asset.clone())
+    }
+
+    async fn list_asset_refs(&self, asset_id: &str) -> db::Result<Vec<db::AssetRef>> {
+        let mut refs: Vec<db::AssetRef> = self
+            .asset_refs
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|r| r.asset_id == asset_id)
+            .cloned()
+            .collect();
+        refs.sort_by(|a, b| a.owner.cmp(&b.owner));
+        Ok(refs)
+    }
+
+    async fn put_asset_ref(
+        &self,
+        asset_id: &str,
+        owner: &str,
+        location_id: &str,
+    ) -> db::Result<()> {
+        // The same condition check as the DynamoDB transaction.
+        self.require_ready_asset(asset_id, location_id)?;
+        self.asset_refs.lock().unwrap().insert(
+            (asset_id.to_string(), owner.to_string()),
+            db::AssetRef {
+                asset_id: asset_id.to_string(),
+                owner: owner.to_string(),
+                location_id: location_id.to_string(),
+                created_at: seslogin::clock::now_sec(),
+            },
+        );
+        Ok(())
+    }
+
+    async fn delete_asset_ref(&self, asset_id: &str, owner: &str) -> db::Result<()> {
+        self.asset_refs
+            .lock()
+            .unwrap()
+            .remove(&(asset_id.to_string(), owner.to_string()));
+        Ok(())
+    }
+
+    async fn list_note_refs(&self, note_id: &str) -> db::Result<Vec<db::NoteRef>> {
+        let mut refs: Vec<db::NoteRef> = self
+            .note_refs
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|r| r.note_id == note_id)
+            .cloned()
+            .collect();
+        refs.sort_by(|a, b| a.owner.cmp(&b.owner));
+        Ok(refs)
+    }
+
+    async fn put_note_ref(&self, note_id: &str, owner: &str, location_id: &str) -> db::Result<()> {
+        self.note_refs.lock().unwrap().insert(
+            (note_id.to_string(), owner.to_string()),
+            db::NoteRef {
+                note_id: note_id.to_string(),
+                owner: owner.to_string(),
+                location_id: location_id.to_string(),
+                created_at: seslogin::clock::now_sec(),
+            },
+        );
+        Ok(())
+    }
+
+    async fn delete_note_ref(&self, note_id: &str, owner: &str) -> db::Result<()> {
+        self.note_refs
+            .lock()
+            .unwrap()
+            .remove(&(note_id.to_string(), owner.to_string()));
+        Ok(())
+    }
+
+    async fn create_photo(&self, photo: db::NewPhoto<'_>) -> db::Result<db::Photo> {
+        self.require_ready_asset(photo.asset_id, photo.location_id)?;
+        let now = seslogin::clock::now_sec();
+        let row = db::Photo {
+            id: db::new_id(),
+            location_id: photo.location_id.to_string(),
+            asset_id: photo.asset_id.to_string(),
+            created_by: photo.created_by.to_string(),
+            created_at: now,
+            taken_at: photo.taken_at,
+            expires_at: now + db::PHOTO_LIFETIME_SECS,
+            visible_location_id: Some(photo.location_id.to_string()),
+            hidden_at: None,
+            hidden_by: None,
+            deleted: None,
+            version: 1,
+        };
+        self.photos
+            .lock()
+            .unwrap()
+            .insert(row.id.clone(), row.clone());
+        self.asset_refs.lock().unwrap().insert(
+            (row.asset_id.clone(), db::asset_owner("photo", &row.id)),
+            db::AssetRef {
+                asset_id: row.asset_id.clone(),
+                owner: db::asset_owner("photo", &row.id),
+                location_id: row.location_id.clone(),
+                created_at: now,
+            },
+        );
+        Ok(row)
+    }
+
+    async fn get_photos<T: AsRef<str> + Sync>(
+        &self,
+        ids: &[T],
+    ) -> db::Result<Vec<Option<db::Photo>>> {
+        let photos = self.photos.lock().unwrap();
+        Ok(ids
+            .iter()
+            .map(|id| photos.get(id.as_ref()).cloned())
+            .collect())
+    }
+
+    async fn list_visible_photos(
+        &self,
+        location_id: &str,
+        after_sort_key: Option<&str>,
+        limit: usize,
+        now: u64,
+    ) -> db::Result<(Vec<db::Photo>, bool)> {
+        if let Some(key) = after_sort_key
+            && db::photo_id_from_sort_key(key).is_none()
+        {
+            return Err(db::Error::TypeConversion(format!(
+                "Invalid photo cursor {key:?}"
+            )));
+        }
+        let mut photos: Vec<db::Photo> = self
+            .photos
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|p| p.visible_location_id.as_deref() == Some(location_id))
+            .filter(|p| p.deleted.is_none() && p.expires_at > now)
+            .filter(|p| after_sort_key.is_none_or(|after| p.sort_key().as_str() < after))
+            .cloned()
+            .collect();
+        photos.sort_by_key(|p| std::cmp::Reverse(p.sort_key()));
+        let has_more = photos.len() > limit;
+        photos.truncate(limit);
+        Ok((photos, has_more))
+    }
+
+    async fn hide_photo(&self, id: &str, hidden_by: &str, now: u64) -> db::Result<db::Photo> {
+        let mut photos = self.photos.lock().unwrap();
+        // The same condition as the DynamoDB update.
+        let photo = photos
+            .get_mut(id)
+            .filter(|p| p.visible_location_id.is_some() && p.deleted.is_none())
+            .ok_or_else(|| {
+                db::Error::NotFound(format!("Photo {id} not found, or no longer visible"))
+            })?;
+        photo.hidden_at = Some(now);
+        photo.hidden_by = Some(hidden_by.to_string());
+        photo.expires_at = db::hidden_photo_expires_at(photo.expires_at, now);
+        photo.visible_location_id = None;
+        photo.version += 1;
+        Ok(photo.clone())
+    }
+
+    async fn list_photos_due_for_sweep(
+        &self,
+        now: u64,
+        limit: usize,
+    ) -> db::Result<Vec<db::Photo>> {
+        let mut photos: Vec<db::Photo> = self
+            .photos
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|p| p.deleted.is_none() && p.expires_at <= now)
+            .cloned()
+            .collect();
+        photos.sort_by(|a, b| (a.expires_at, &a.id).cmp(&(b.expires_at, &b.id)));
+        photos.truncate(limit);
+        Ok(photos)
+    }
+
+    async fn sweep_photo(&self, id: &str, now: u64) -> db::Result<()> {
+        let mut photos = self.photos.lock().unwrap();
+        let photo = photos
+            .get_mut(id)
+            .filter(|p| p.deleted.is_none())
+            .ok_or_else(|| {
+                db::Error::NotFound(format!("Photo {id} not found, or already swept"))
+            })?;
+        photo.deleted = Some(now);
+        photo.visible_location_id = None;
+        photo.version += 1;
+        self.asset_refs
+            .lock()
+            .unwrap()
+            .remove(&(photo.asset_id.clone(), db::asset_owner("photo", id)));
+        Ok(())
+    }
+
+    async fn increment_daily_counter(
+        &self,
+        id: &str,
+        limit: u64,
+        expires_at: u64,
+    ) -> db::Result<Option<u64>> {
+        let mut counters = self.daily_counters.lock().unwrap();
+        let entry = counters.entry(id.to_string()).or_insert((0, expires_at));
+        // The same condition as the DynamoDB update: a new counter or one below the limit.
+        if entry.0 >= limit {
+            return Ok(None);
+        }
+        *entry = (entry.0 + 1, expires_at);
+        Ok(Some(entry.0))
+    }
+
+    async fn get_daily_counter(&self, id: &str) -> db::Result<u64> {
+        Ok(self
+            .daily_counters
+            .lock()
+            .unwrap()
+            .get(id)
+            .map_or(0, |(count, _)| *count))
+    }
     async fn put_audit_entry(&self, entry: &db::AuditEntry) -> db::Result<()> {
         if self.fail_audit_writes.load(Ordering::SeqCst) {
             return Err(db::Error::Infrastructure(
@@ -2849,7 +3454,8 @@ impl db::Handler for FakeDb {
 
 #[allow(dead_code)] // see `seed_super_user`'s doc comment
 pub(crate) fn fake_app()
--> MyApp<FakeDb, mockqueue::Handler, mockmail::Handler, mockrealtime::Handler> {
+-> MyApp<FakeDb, mockqueue::Handler, mockmail::Handler, mockrealtime::Handler, mockstorage::Handler>
+{
     let key = ServerSecret::new("test-secret");
     app::new(
         FakeDb::default(),
@@ -2858,11 +3464,18 @@ pub(crate) fn fake_app()
         mockqueue::Handler::new(),
         mockmail::Handler::new(),
         mockrealtime::Handler::new("test"),
+        mockstorage::Handler::in_memory(),
     )
 }
 
 pub(crate) fn seed_user(
-    app: &MyApp<FakeDb, mockqueue::Handler, mockmail::Handler, mockrealtime::Handler>,
+    app: &MyApp<
+        FakeDb,
+        mockqueue::Handler,
+        mockmail::Handler,
+        mockrealtime::Handler,
+        mockstorage::Handler,
+    >,
     id: &str,
     enabled: bool,
 ) {
@@ -2891,7 +3504,13 @@ pub(crate) fn seed_user(
 /// looks locations up by id via `get_locations`).
 #[allow(dead_code)] // see `seed_super_user`'s doc comment
 pub(crate) fn seed_location(
-    app: &MyApp<FakeDb, mockqueue::Handler, mockmail::Handler, mockrealtime::Handler>,
+    app: &MyApp<
+        FakeDb,
+        mockqueue::Handler,
+        mockmail::Handler,
+        mockrealtime::Handler,
+        mockstorage::Handler,
+    >,
     id: &str,
     name: &str,
 ) {
@@ -2910,6 +3529,7 @@ pub(crate) fn seed_location(
             ses_details: Default::default(),
             directory_details: Default::default(),
             accreditations: None,
+            sop_notes: Default::default(),
             created_at: 0,
             updated_at: 0,
         },
@@ -2919,7 +3539,13 @@ pub(crate) fn seed_location(
 /// Insert a [`db::Person`] directly. `ses_api_person_id` set means member sync owns them.
 #[allow(dead_code)] // see `seed_super_user`'s doc comment
 pub(crate) fn seed_person(
-    app: &MyApp<FakeDb, mockqueue::Handler, mockmail::Handler, mockrealtime::Handler>,
+    app: &MyApp<
+        FakeDb,
+        mockqueue::Handler,
+        mockmail::Handler,
+        mockrealtime::Handler,
+        mockstorage::Handler,
+    >,
     id: &str,
     location_id: &str,
     first_name: &str,
@@ -2960,7 +3586,13 @@ pub(crate) fn seed_person(
 /// helper — `cargo test`'s dead-code lint is per binary.
 #[allow(dead_code)]
 pub(crate) fn seed_super_user(
-    app: &MyApp<FakeDb, mockqueue::Handler, mockmail::Handler, mockrealtime::Handler>,
+    app: &MyApp<
+        FakeDb,
+        mockqueue::Handler,
+        mockmail::Handler,
+        mockrealtime::Handler,
+        mockstorage::Handler,
+    >,
     id: &str,
     enabled: bool,
 ) {
@@ -2979,7 +3611,13 @@ pub(crate) fn seed_super_user(
 /// fields, not the OAuth flow that produces a grant.
 #[allow(dead_code)] // see `seed_super_user`'s doc comment
 pub(crate) fn seed_grant(
-    app: &MyApp<FakeDb, mockqueue::Handler, mockmail::Handler, mockrealtime::Handler>,
+    app: &MyApp<
+        FakeDb,
+        mockqueue::Handler,
+        mockmail::Handler,
+        mockrealtime::Handler,
+        mockstorage::Handler,
+    >,
     id: &str,
     user_id: &str,
     client_name: &str,
@@ -3013,7 +3651,13 @@ pub(crate) fn seed_grant(
 /// Insert a [`db::Category`] directly.
 #[allow(dead_code)] // see `seed_super_user`'s doc comment
 pub(crate) fn seed_category(
-    app: &MyApp<FakeDb, mockqueue::Handler, mockmail::Handler, mockrealtime::Handler>,
+    app: &MyApp<
+        FakeDb,
+        mockqueue::Handler,
+        mockmail::Handler,
+        mockrealtime::Handler,
+        mockstorage::Handler,
+    >,
     id: &str,
     name: &str,
     enabled: bool,
@@ -3040,7 +3684,13 @@ pub(crate) fn seed_category(
 /// open when `end_time` is `None`.
 #[allow(dead_code)] // see `seed_super_user`'s doc comment
 pub(crate) fn seed_period(
-    app: &MyApp<FakeDb, mockqueue::Handler, mockmail::Handler, mockrealtime::Handler>,
+    app: &MyApp<
+        FakeDb,
+        mockqueue::Handler,
+        mockmail::Handler,
+        mockrealtime::Handler,
+        mockstorage::Handler,
+    >,
     period: db::Period,
 ) {
     app.db

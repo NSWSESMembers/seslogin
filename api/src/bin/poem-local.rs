@@ -21,6 +21,7 @@ use seslogin::local_dev;
 use seslogin::mockmail;
 use seslogin::mockqueue;
 use seslogin::mockrealtime;
+use seslogin::mockstorage;
 use seslogin::server;
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -30,22 +31,25 @@ fn main() -> Result<(), Box<dyn Error>> {
 async fn run() -> Result<(), Box<dyn Error>> {
     let startup = server::init()?;
     tracing::warn!(
-        "poem-local: SQS, SES and Ably are mocked. Queue messages and realtime kiosk \
-         events will be logged and dropped, and email will be logged instead of sent."
+        "poem-local: SQS, SES, Ably and S3 are mocked. Queue messages and realtime kiosk \
+         events will be logged and dropped, email will be logged instead of sent, and \
+         uploaded files go to a local directory."
     );
     let db = AuditingHandler::new(
         dynamodb::Handler::new(&startup.db_prefix, !startup.cli.enable_mutations).await,
     );
     let realtime = mockrealtime::Handler::new(startup.db_prefix.clone());
     let mail = mockmail::Handler::from_env();
-    let dev_routes = local_dev::dev_routes(&startup.db_prefix, mail.clone());
+    let storage = mockstorage::Handler::from_env();
+    let dev_routes = local_dev::dev_routes(&startup.db_prefix, mail.clone(), storage.clone());
     server::run(
         startup,
         db,
         mockqueue::Handler::new(),
         mail,
         realtime,
-        dev_routes,
+        storage,
+        Some(dev_routes),
     )
     .await
 }

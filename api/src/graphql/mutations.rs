@@ -17,7 +17,7 @@ use crate::app::App;
 use crate::app::HasDb;
 use crate::app::HasMail;
 use crate::app::HasQueues;
-use crate::app::HasRealtime;
+use crate::app::{HasRealtime, HasStorage};
 use crate::auth;
 use crate::auth::AuthInfo;
 use crate::badge_store;
@@ -35,6 +35,8 @@ use crate::trophy_scan;
 use async_graphql::dataloader::DataLoader;
 use hex;
 
+use super::agenda_items::{self, AgendaItem};
+use super::assets::{self, Asset, AssetUpload, CreateAssetUploadInput};
 use super::auth::{
     AuthGuard, AuthRequirement, require_location_access, require_location_write_access,
     require_not_oauth_grant, require_period_write_access, require_writable,
@@ -45,13 +47,17 @@ use super::equipment::{self, Equipment, EquipmentStatus, EquipmentType};
 use super::error::{ApiError, ErrorCode};
 use super::location_share::{self, LocationShare, LocationSharePositionInput};
 use super::map::{self, MapLayer, MapPin, MapPinType};
+use super::meetings::{self, Meeting};
 use super::notes::{self, Note, NoteFolder};
 use super::notifications::{self, MarkNotificationsReadPayload};
 use super::on_call::{self, OnCallRole};
+use super::photos::{self, Photo};
 use super::query::{QuickPick, build_quick_pick};
 use super::reservations::{self, EquipmentReservation};
 use super::self_sign_in::{open_period_at, require_linked_person, sign_in_location_id};
 use super::shared_contacts::{self, SharedContact};
+use super::sop_notes;
+use super::tally::TallyLocation;
 use super::tasks::{self, Task, TaskList, TaskRecurrenceInput};
 use super::{
     ApiToken, Category, Location, NitcGroup, PasskeyInfo, Period, Person, PersonId, Session, User,
@@ -357,11 +363,15 @@ fn feedback_body(message: &str, user_id: &str, email: &str, site: &str) -> Strin
     )
 }
 
-pub struct MutationRoot<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync> {
+pub struct MutationRoot<
+    A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sync,
+> {
     pub(super) app: Arc<A>,
 }
 
-impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static> MutationRoot<A> {
+impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sync + 'static>
+    MutationRoot<A>
+{
     /// Validate the two per-location grant lists of a user: every location must exist,
     /// and no location may appear in both (a user is Admin or Read only at a location,
     /// never both).
@@ -1222,7 +1232,9 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
 }
 
 #[Object]
-impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static> MutationRoot<A> {
+impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sync + 'static>
+    MutationRoot<A>
+{
     /// Publish a kiosk's public key as a pending enrollment (public-key/QR flow). The
     /// kiosk re-submits every ~10 min while unenrolled; an admin then scans the kiosk's
     /// QR code to complete enrollment via [`enroll_session`]. Returns the server-computed
@@ -2708,9 +2720,125 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         )?))
     }
 
+    /// Rename one of the passkeys that sign the signed-in member in to Tally
+    /// (`TallyViewer.passkeys`). Tally members only; anyone else's passkey is
+    /// `NOT_FOUND`.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn rename_tally_passkey(
+        &self,
+        ctx: &Context<'_>,
+        id: ID,
+        name: String,
+    ) -> Result<super::tally_passkeys::TallyPasskey> {
+        super::tally_passkeys::rename(ctx, self.app.as_ref(), &id, &name).await
+    }
+
+    /// Delete one of the passkeys that sign the signed-in member in to Tally
+    /// (`TallyViewer.passkeys`). A user's passkey then no longer signs in to the
+    /// SESLogin site either. Returns its ID. Tally members only; anyone else's
+    /// passkey is `NOT_FOUND`.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn delete_tally_passkey(&self, ctx: &Context<'_>, id: ID) -> Result<ID> {
+        super::tally_passkeys::delete(ctx, self.app.as_ref(), &id).await
+    }
+
+    /// Sign one of the member's devices out of Tally (`TallyViewer.signIns`): its
+    /// grant is deleted, so it can't refresh, and its access token stops working.
+    /// This device's own may be revoked too. Returns its ID. Tally members only;
+    /// anyone else's sign-in is `NOT_FOUND`.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn revoke_tally_sign_in(&self, ctx: &Context<'_>, id: ID) -> Result<ID> {
+        super::tally_sign_ins::revoke(ctx, self.app.as_ref(), &id).await
+    }
+
+    /// A single-use, 10-minute ticket for adding a passkey from Tally: Tally opens
+    /// `/tally/passkey#<ticket>` on its SESLogin site, which confirms an email with
+    /// a code (`sendTallyPasskeySetupCode`, `verifyTallyPasskeySetupCode`) and then
+    /// saves the passkey with `beginTallyPasskeySetup` and `finishTallyPasskeySetup`.
+    /// The passkey is the SESLogin user's when the confirmed email is an enabled
+    /// user's, else the member's own. Tally members only.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn start_tally_passkey_setup(&self, ctx: &Context<'_>) -> Result<String> {
+        super::tally_passkeys::start_setup(ctx, self.app.as_ref()).await
+    }
+
+    /// Email a Tally sign-in code to `email` for a ticket from
+    /// `startTallyPasskeySetup`, if that email signs in as the ticket's member.
+    /// Always `true` for a live ticket, so the answer says nothing about the email;
+    /// `BAD_REQUEST` once the ticket has expired, been used, or its Tally sign-in has
+    /// been revoked.
+    async fn send_tally_passkey_setup_code(
+        &self,
+        ctx: &Context<'_>,
+        ticket: String,
+        email: String,
+    ) -> Result<bool> {
+        require_not_oauth_grant(ctx, "Adding a passkey")?;
+        super::tally_passkeys::send_setup_code(&*self.app, &ticket, &email).await
+    }
+
+    /// Confirm the email for a passkey setup ticket with the code
+    /// `sendTallyPasskeySetupCode` sent. `BAD_REQUEST` for a wrong, expired or
+    /// used-up code.
+    async fn verify_tally_passkey_setup_code(
+        &self,
+        ctx: &Context<'_>,
+        ticket: String,
+        email: String,
+        code: String,
+    ) -> Result<bool> {
+        require_not_oauth_grant(ctx, "Adding a passkey")?;
+        super::tally_passkeys::verify_setup_code(&*self.app, &ticket, &email, &code).await
+    }
+
+    /// Start saving a passkey with a ticket from `startTallyPasskeySetup`, once its
+    /// email is confirmed (`BAD_REQUEST` before). Returns
+    /// the options for `navigator.credentials.create`. The ticket is the
+    /// authority; `BAD_REQUEST` once it has expired, been used, or its Tally
+    /// sign-in has been revoked.
+    async fn begin_tally_passkey_setup(
+        &self,
+        ctx: &Context<'_>,
+        ticket: String,
+    ) -> Result<PasskeyChallenge> {
+        require_not_oauth_grant(ctx, "Adding a passkey")?;
+        let webauthn = ctx.data_unchecked::<Arc<webauthn_rs::prelude::Webauthn>>();
+        let challenge = super::tally_passkeys::begin_setup(&*self.app, webauthn, &ticket).await?;
+        Ok(PasskeyChallenge {
+            challenge_id: challenge.challenge_id,
+            options_json: challenge.options_json,
+        })
+    }
+
+    /// Finish saving a passkey with a ticket from `startTallyPasskeySetup`. Uses
+    /// the ticket up and returns the URL to send the browser back to Tally with.
+    async fn finish_tally_passkey_setup(
+        &self,
+        ctx: &Context<'_>,
+        ticket: String,
+        challenge_id: String,
+        credential_json: String,
+    ) -> Result<String> {
+        require_not_oauth_grant(ctx, "Adding a passkey")?;
+        let webauthn = ctx.data_unchecked::<Arc<webauthn_rs::prelude::Webauthn>>();
+        super::tally_passkeys::finish_setup(
+            &*self.app,
+            webauthn,
+            &ticket,
+            &challenge_id,
+            &credential_json,
+        )
+        .await
+    }
+
     /// Add a task to a location's shared to-do list. Any member who can use the
     /// unit in Tally may. `dueDate` (`YYYY-MM-DD`, Sydney) hides the
     /// task until that day; a recurring task with no date is due today.
+    /// `assigneeIds` assigns it to members (by person ID, from any unit, at most 20),
+    /// who are notified; with none it is the whole unit's.
+    /// `photoAssetIds` attaches up to 10 photos, in order: ready images uploaded for this
+    /// unit (with `createAssetUpload`), or ones from its photo stream.
+    /// `noteIds` links up to 10 of the unit's notes, in order (live notes only).
     #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn create_task(
         &self,
@@ -2721,6 +2849,9 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         list_id: Option<ID>,
         due_date: Option<String>,
         recurrence: Option<TaskRecurrenceInput>,
+        assignee_ids: Option<Vec<ID>>,
+        photo_asset_ids: Option<Vec<ID>>,
+        note_ids: Option<Vec<ID>>,
     ) -> Result<Task<A>> {
         tasks::create_task(
             ctx,
@@ -2732,14 +2863,23 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
                 list_id,
                 due_date,
                 recurrence,
+                assignee_ids,
+                photo_asset_ids,
+                note_ids,
             },
         )
         .await
     }
 
     /// Change an open task. Omitted arguments are left as they are; `null` clears
-    /// `description`, `listId`, `dueDate` or `recurrence`. Fails with `CONFLICT` if
-    /// the task is no longer at `expectedVersion`.
+    /// `description`, `listId`, `dueDate` or `recurrence`. `assigneeIds` replaces who
+    /// it is assigned to (an empty list unassigns everyone); members newly assigned
+    /// are notified. Fails with `CONFLICT` if the task is no longer at
+    /// `expectedVersion`.
+    /// `photoAssetIds` replaces the attached photos (an empty list removes them all;
+    /// omitted, they are left as they are).
+    /// `noteIds` replaces the linked notes (an empty list unlinks them all; omitted, they
+    /// are left as they are). The notes themselves are never changed.
     #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn update_task(
         &self,
@@ -2751,6 +2891,9 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         list_id: MaybeUndefined<ID>,
         due_date: MaybeUndefined<String>,
         recurrence: MaybeUndefined<TaskRecurrenceInput>,
+        assignee_ids: Option<Vec<ID>>,
+        photo_asset_ids: Option<Vec<ID>>,
+        note_ids: Option<Vec<ID>>,
     ) -> Result<Task<A>> {
         tasks::update_task(
             ctx,
@@ -2763,6 +2906,9 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
                 list_id,
                 due_date,
                 recurrence,
+                assignee_ids,
+                photo_asset_ids,
+                note_ids,
             },
         )
         .await
@@ -2811,6 +2957,49 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
     #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn delete_task_list(&self, ctx: &Context<'_>, id: ID) -> Result<ID> {
         tasks::delete_task_list(ctx, self.app.as_ref(), &id).await
+    }
+
+    /// Start uploading a JPEG or WebP image from Tally: creates a pending asset and
+    /// returns a form to POST the file to (fields in order, then the file as a part
+    /// named `file` last). Call `completeAssetUpload` once it is posted. Fails
+    /// `RATE_LIMITED` after 200 uploads in a Sydney day, and `BAD_REQUEST` for a file
+    /// type or size that isn't accepted or on an environment with no upload storage.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn create_asset_upload(
+        &self,
+        ctx: &Context<'_>,
+        input: CreateAssetUploadInput,
+    ) -> Result<AssetUpload<A>> {
+        assets::create_asset_upload(ctx, self.app.as_ref(), input).await
+    }
+
+    /// Check the file arrived intact and make the asset ready. Completing an asset that
+    /// is already ready returns it. `BAD_REQUEST` if the file hasn't arrived or isn't
+    /// the image that was described.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn complete_asset_upload(&self, ctx: &Context<'_>, id: ID) -> Result<Asset<A>> {
+        assets::complete_asset_upload(ctx, self.app.as_ref(), &id).await
+    }
+
+    /// Add a ready image the caller uploaded to a unit's photo stream. `NOT_FOUND` for
+    /// an unknown asset, `BAD_REQUEST` if it isn't complete or belongs to another unit,
+    /// `FORBIDDEN` if someone else uploaded it, `RATE_LIMITED` after 100 photos at the
+    /// unit in a Sydney day.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn create_photo(
+        &self,
+        ctx: &Context<'_>,
+        location_id: ID,
+        asset_id: ID,
+    ) -> Result<Photo<A>> {
+        photos::create_photo(ctx, self.app.as_ref(), &location_id, &asset_id).await
+    }
+
+    /// Remove a photo from the stream for everyone now; it is deleted within seven days.
+    /// There is no undo. `NOT_FOUND` if it is unknown or already hidden.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn hide_photo(&self, ctx: &Context<'_>, id: ID) -> Result<Photo<A>> {
+        photos::hide_photo(ctx, self.app.as_ref(), &id).await
     }
 
     /// Add a note to a location's shared notebook. Any member who can use the
@@ -2864,6 +3053,21 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         .await
     }
 
+    /// Link one of the unit's notes as its standard operating procedure for a Tally
+    /// screen, replacing any note linked there, or unlink the place with `noteId: null`.
+    /// `BAD_REQUEST` if the note does not exist, is deleted or is another unit's. Any
+    /// member who can use the unit in Tally may. Returns the unit, for `sopNotes`.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn set_sop_note(
+        &self,
+        ctx: &Context<'_>,
+        location_id: ID,
+        place: sop_notes::SopPlace,
+        note_id: Option<ID>,
+    ) -> Result<TallyLocation<A>> {
+        sop_notes::set_sop_note(ctx, self.app.as_ref(), &location_id, place.into(), note_id).await
+    }
+
     /// Delete a note. Returns its ID.
     #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn delete_note(&self, ctx: &Context<'_>, id: ID) -> Result<ID> {
@@ -2899,6 +3103,9 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
     /// Add a piece of equipment to a location's register, logged in `status` (in
     /// service unless given) with an optional `comment`. Any member who can use the
     /// unit in Tally may.
+    /// `photoAssetIds` attaches up to 10 photos, in order: ready images uploaded for this
+    /// unit (with `createAssetUpload`), or ones from its photo stream.
+    /// `noteIds` links up to 10 of the unit's notes, in order (live notes only).
     #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn create_equipment(
         &self,
@@ -2909,6 +3116,8 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         description: Option<String>,
         #[graphql(default_with = "EquipmentStatus::InService")] status: EquipmentStatus,
         comment: Option<String>,
+        photo_asset_ids: Option<Vec<ID>>,
+        note_ids: Option<Vec<ID>>,
     ) -> Result<Equipment<A>> {
         equipment::create_equipment(
             ctx,
@@ -2920,14 +3129,20 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
                 description,
                 status,
                 comment,
+                photo_asset_ids,
+                note_ids,
             },
         )
         .await
     }
 
-    /// Edit a piece of equipment's type, name or description; omitted arguments are
-    /// left as they are. The status is changed with `changeEquipmentStatus`. Fails with
-    /// `CONFLICT` if it is no longer at `expectedVersion`.
+    /// Edit a piece of equipment's type, name, description or photos; omitted arguments
+    /// are left as they are. The status is changed with `changeEquipmentStatus`. Fails
+    /// with `CONFLICT` if it is no longer at `expectedVersion`.
+    /// `photoAssetIds` replaces the attached photos (an empty list removes them all;
+    /// omitted, they are left as they are).
+    /// `noteIds` replaces the linked notes (an empty list unlinks them all; omitted, they
+    /// are left as they are). The notes themselves are never changed.
     #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn update_equipment(
         &self,
@@ -2937,6 +3152,8 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         #[graphql(name = "type")] equipment_type: Option<EquipmentType>,
         name: Option<String>,
         description: Option<String>,
+        photo_asset_ids: Option<Vec<ID>>,
+        note_ids: Option<Vec<ID>>,
     ) -> Result<Equipment<A>> {
         equipment::update_equipment(
             ctx,
@@ -2947,6 +3164,8 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
                 equipment_type,
                 name,
                 description,
+                photo_asset_ids,
+                note_ids,
             },
         )
         .await
@@ -3060,6 +3279,9 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
 
     /// Add a pin to a location's shared map, optionally of a `type` (a plain pin
     /// without). Any member who can use the unit in Tally may.
+    /// `photoAssetIds` attaches up to 10 photos, in order: ready images uploaded for this
+    /// unit (with `createAssetUpload`), or ones from its photo stream.
+    /// `noteIds` links up to 10 of the unit's notes, in order (live notes only).
     #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn create_map_pin(
         &self,
@@ -3072,6 +3294,8 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         note: Option<String>,
         layer_id: Option<ID>,
         #[graphql(name = "type")] pin_type: Option<MapPinType>,
+        photo_asset_ids: Option<Vec<ID>>,
+        note_ids: Option<Vec<ID>>,
     ) -> Result<MapPin<A>> {
         map::create_map_pin(
             ctx,
@@ -3085,6 +3309,8 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
                 note,
                 layer_id,
                 pin_type,
+                photo_asset_ids,
+                note_ids,
             },
         )
         .await
@@ -3093,6 +3319,10 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
     /// Change a map pin. Omitted arguments are left as they are; `layerId: null` takes
     /// it off its layer and `type: null` makes it a plain pin. Fails with `CONFLICT` if the pin is no longer at
     /// `expectedVersion`.
+    /// `photoAssetIds` replaces the attached photos (an empty list removes them all;
+    /// omitted, they are left as they are).
+    /// `noteIds` replaces the linked notes (an empty list unlinks them all; omitted, they
+    /// are left as they are). The notes themselves are never changed.
     #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn update_map_pin(
         &self,
@@ -3106,6 +3336,8 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         note: Option<String>,
         layer_id: MaybeUndefined<ID>,
         #[graphql(name = "type")] pin_type: MaybeUndefined<MapPinType>,
+        photo_asset_ids: Option<Vec<ID>>,
+        note_ids: Option<Vec<ID>>,
     ) -> Result<MapPin<A>> {
         map::update_map_pin(
             ctx,
@@ -3120,6 +3352,8 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
                 note,
                 layer_id,
                 pin_type,
+                photo_asset_ids,
+                note_ids,
             },
         )
         .await
@@ -3162,6 +3396,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
     /// `startDate` and optionally `endDate` (`YYYY-MM-DD`, inclusive; default one day).
     /// `repeat` makes it repeat daily or weekly, through `repeatUntil` or forever. Any
     /// member who can use the unit in Tally may.
+    /// `noteIds` links up to 10 of the unit's notes, in order (live notes only).
     #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn create_calendar_event(
         &self,
@@ -3177,6 +3412,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         end_date: Option<String>,
         repeat: Option<EventRepeat>,
         repeat_until: Option<String>,
+        note_ids: Option<Vec<ID>>,
     ) -> Result<CalendarEvent<A>> {
         calendar::create_event(
             ctx,
@@ -3193,6 +3429,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
                 end_date,
                 repeat,
                 repeat_until,
+                note_ids,
             },
         )
         .await
@@ -3203,6 +3440,8 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
     /// repeating and `repeatUntil: null` makes it repeat forever. Giving a new start
     /// without an end keeps its length; changing `allDay` needs the new start. Fails
     /// with `CONFLICT` if it is no longer at `expectedVersion`.
+    /// `noteIds` replaces the linked notes (an empty list unlinks them all; omitted, they
+    /// are left as they are). The notes themselves are never changed.
     #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn update_calendar_event(
         &self,
@@ -3219,6 +3458,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         end_date: Option<String>,
         repeat: MaybeUndefined<EventRepeat>,
         repeat_until: MaybeUndefined<String>,
+        note_ids: Option<Vec<ID>>,
     ) -> Result<CalendarEvent<A>> {
         calendar::update_event(
             ctx,
@@ -3236,6 +3476,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
                 end_date,
                 repeat,
                 repeat_until,
+                note_ids,
             },
         )
         .await
@@ -3245,6 +3486,182 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
     #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn delete_calendar_event(&self, ctx: &Context<'_>, id: ID) -> Result<ID> {
         calendar::delete_event(ctx, self.app.as_ref(), &id).await
+    }
+
+    /// Add a meeting (Agendas) to a unit, planned for `startsAt` (Unix seconds). Any
+    /// member who can use the unit in Tally may.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn create_meeting(
+        &self,
+        ctx: &Context<'_>,
+        location_id: ID,
+        title: String,
+        description: Option<String>,
+        starts_at: i64,
+    ) -> Result<Meeting<A>> {
+        meetings::create_meeting(
+            ctx,
+            self.app.as_ref(),
+            meetings::CreateMeetingArgs {
+                location_id,
+                title,
+                description,
+                starts_at,
+            },
+        )
+        .await
+    }
+
+    /// Change a meeting. Omitted arguments are left as they are. Fails with
+    /// `CONFLICT` if it is no longer at `expectedVersion`.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn update_meeting(
+        &self,
+        ctx: &Context<'_>,
+        id: ID,
+        expected_version: i32,
+        title: Option<String>,
+        description: Option<String>,
+        starts_at: Option<i64>,
+    ) -> Result<Meeting<A>> {
+        meetings::update_meeting(
+            ctx,
+            self.app.as_ref(),
+            meetings::UpdateMeetingArgs {
+                id,
+                expected_version,
+                title,
+                description,
+                starts_at,
+            },
+        )
+        .await
+    }
+
+    /// Delete a meeting. Returns its ID.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn delete_meeting(&self, ctx: &Context<'_>, id: ID) -> Result<ID> {
+        meetings::delete_meeting(ctx, self.app.as_ref(), &id).await
+    }
+
+    /// Start a meeting now: `startedAt` is set and its status becomes `IN_PROGRESS`. A
+    /// finished meeting is reopened, keeping its original `startedAt`. One already in
+    /// progress is refused with `BAD_REQUEST`. Fails with `CONFLICT` if it is no longer
+    /// at `expectedVersion`.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn start_meeting(
+        &self,
+        ctx: &Context<'_>,
+        id: ID,
+        expected_version: i32,
+    ) -> Result<Meeting<A>> {
+        meetings::start_meeting(ctx, self.app.as_ref(), &id, expected_version).await
+    }
+
+    /// Finish a meeting that is in progress. Any other status is refused with
+    /// `BAD_REQUEST`. Fails with `CONFLICT` if it is no longer at `expectedVersion`.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn finish_meeting(
+        &self,
+        ctx: &Context<'_>,
+        id: ID,
+        expected_version: i32,
+    ) -> Result<Meeting<A>> {
+        meetings::finish_meeting(ctx, self.app.as_ref(), &id, expected_version).await
+    }
+
+    /// Add a topic to a meeting's agenda (Agendas), at the end, at any status. `text`
+    /// (Markdown as in Notes) is what it is about; a topic needs text or at least one
+    /// link. `presenterId` defaults to the caller; the presenter may be a member of any
+    /// unit. It may link up to ten each of the unit's tasks, equipment, on-call roles,
+    /// photos (ready image assets) and notes (`taskIds`, `equipmentIds`,
+    /// `onCallRoleIds`, `photoAssetIds`, `noteIds`), in the order given. Fails with
+    /// `NOT_FOUND` if the meeting is missing or deleted and `BAD_REQUEST` for a link
+    /// that is not usable or a topic with neither text nor a link.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn create_agenda_item(
+        &self,
+        ctx: &Context<'_>,
+        meeting_id: ID,
+        text: Option<String>,
+        presenter_id: Option<ID>,
+        task_ids: Option<Vec<ID>>,
+        equipment_ids: Option<Vec<ID>>,
+        on_call_role_ids: Option<Vec<ID>>,
+        photo_asset_ids: Option<Vec<ID>>,
+        note_ids: Option<Vec<ID>>,
+    ) -> Result<AgendaItem<A>> {
+        agenda_items::create_agenda_item(
+            ctx,
+            self.app.as_ref(),
+            agenda_items::CreateAgendaItemArgs {
+                meeting_id,
+                text,
+                presenter_id,
+                task_ids,
+                equipment_ids,
+                on_call_role_ids,
+                photo_asset_ids,
+                note_ids,
+            },
+        )
+        .await
+    }
+
+    /// Change a topic. Omitted arguments are left as they are; the presenter cannot be
+    /// cleared. A list of links replaces the topic's (`[]` clears it); ones already
+    /// linked may stay whatever has become of them. A topic must keep text or at least
+    /// one link (else `BAD_REQUEST`). Fails with `CONFLICT` if it is no longer at
+    /// `expectedVersion`.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn update_agenda_item(
+        &self,
+        ctx: &Context<'_>,
+        id: ID,
+        expected_version: i32,
+        text: Option<String>,
+        presenter_id: Option<ID>,
+        task_ids: Option<Vec<ID>>,
+        equipment_ids: Option<Vec<ID>>,
+        on_call_role_ids: Option<Vec<ID>>,
+        photo_asset_ids: Option<Vec<ID>>,
+        note_ids: Option<Vec<ID>>,
+    ) -> Result<AgendaItem<A>> {
+        agenda_items::update_agenda_item(
+            ctx,
+            self.app.as_ref(),
+            agenda_items::UpdateAgendaItemArgs {
+                id,
+                expected_version,
+                text,
+                presenter_id,
+                task_ids,
+                equipment_ids,
+                on_call_role_ids,
+                photo_asset_ids,
+                note_ids,
+            },
+        )
+        .await
+    }
+
+    /// Delete a topic. Returns its ID.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn delete_agenda_item(&self, ctx: &Context<'_>, id: ID) -> Result<ID> {
+        agenda_items::delete_agenda_item(ctx, self.app.as_ref(), &id).await
+    }
+
+    /// Put a meeting's topics in the order of `itemIds`, which must name exactly its
+    /// live topics, each once (else `BAD_REQUEST`). Returns them in the new order.
+    /// Fails with `CONFLICT` if a topic changed while this ran.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
+    async fn reorder_agenda_items(
+        &self,
+        ctx: &Context<'_>,
+        meeting_id: ID,
+        item_ids: Vec<ID>,
+    ) -> Result<Vec<AgendaItem<A>>> {
+        agenda_items::reorder_agenda_items(ctx, self.app.as_ref(), &meeting_id, item_ids).await
     }
 
     #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
@@ -3344,6 +3761,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
     /// Add an on-call role (e.g. Duty Officer) to a location, optionally with the people
     /// in it. Anyone in it needs a primary. Any member who can use the unit in
     /// Tally may.
+    /// `noteIds` links up to 10 of the unit's notes, in order (live notes only).
     #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn create_on_call_role(
         &self,
@@ -3354,6 +3772,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         phone: Option<String>,
         primary_person_id: Option<ID>,
         secondary_person_ids: Option<Vec<ID>>,
+        note_ids: Option<Vec<ID>>,
     ) -> Result<OnCallRole<A>> {
         on_call::create_on_call_role(
             ctx,
@@ -3365,6 +3784,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
                 phone,
                 primary_person_id,
                 secondary_person_ids,
+                note_ids,
             },
         )
         .await
@@ -3374,6 +3794,8 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
     /// `phone: null` removes the number and `primaryPersonId: null` (with
     /// `secondaryPersonIds: []`) empties the role. Fails with `CONFLICT` if the role is
     /// no longer at `expectedVersion`.
+    /// `noteIds` replaces the linked notes (an empty list unlinks them all; omitted, they
+    /// are left as they are). The notes themselves are never changed.
     #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn update_on_call_role(
         &self,
@@ -3385,6 +3807,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         phone: MaybeUndefined<String>,
         primary_person_id: MaybeUndefined<ID>,
         secondary_person_ids: Option<Vec<ID>>,
+        note_ids: Option<Vec<ID>>,
     ) -> Result<OnCallRole<A>> {
         on_call::update_on_call_role(
             ctx,
@@ -3397,6 +3820,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
                 phone,
                 primary_person_id,
                 secondary_person_ids,
+                note_ids,
             },
         )
         .await

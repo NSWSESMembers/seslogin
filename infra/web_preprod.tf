@@ -93,6 +93,19 @@ resource "aws_cloudfront_distribution" "preprod" {
     }
   }
 
+  # Derived images (/media/*), served by the media Lambda. Same Function URL
+  # constraints as the API origin above.
+  origin {
+    origin_id   = "preprod-media-lambda"
+    domain_name = trimsuffix(trimprefix(aws_lambda_function_url.media.function_url, "https://"), "/")
+    custom_origin_config {
+      http_port              = 80
+      https_port             = 443
+      origin_protocol_policy = "https-only"
+      origin_ssl_protocols   = ["TLSv1.2"]
+    }
+  }
+
   default_cache_behavior {
     target_origin_id       = "preprod-web-s3"
     viewer_protocol_policy = "redirect-to-https"
@@ -169,6 +182,22 @@ resource "aws_cloudfront_distribution" "preprod" {
     cache_policy_id            = aws_cloudfront_cache_policy.api_get.id
     origin_request_policy_id   = aws_cloudfront_origin_request_policy.api.id
     response_headers_policy_id = aws_cloudfront_response_headers_policy.preprod_oauth_mcp_cors.id
+  }
+
+  # Derived images. The path is signed (api/src/media.rs), so the query string is in
+  # the cache key (aws_cloudfront_cache_policy.media, defined in web_test.tf). The
+  # custom_error_response blocks below are distribution-wide, so the media code never
+  # returns 403/404 (400/401/410/422/500/503 only). Ordered behaviours match in
+  # order and nothing above this pattern overlaps /media/*.
+  ordered_cache_behavior {
+    path_pattern             = "/media/*"
+    target_origin_id         = "preprod-media-lambda"
+    viewer_protocol_policy   = "https-only"
+    allowed_methods          = ["GET", "HEAD"]
+    cached_methods           = ["GET", "HEAD"]
+    compress                 = false
+    cache_policy_id          = aws_cloudfront_cache_policy.media.id
+    origin_request_policy_id = aws_cloudfront_origin_request_policy.api.id
   }
 
   # OAC returns 403 (not 404) for missing S3 keys — catch both for SPA routing

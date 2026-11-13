@@ -10,11 +10,14 @@ use crate::app::App;
 use crate::app::HasDb;
 use crate::app::HasMail;
 use crate::app::HasQueues;
-use crate::app::HasRealtime;
+use crate::app::{HasRealtime, HasStorage};
 use crate::auth::AuthInfo;
 use crate::request_metrics;
 use crate::telemetry::{self, OperationKind};
 
+pub mod agenda_items;
+pub mod assets;
+pub mod attached_photos;
 pub mod audit_log;
 pub mod auth;
 pub mod calendar;
@@ -23,20 +26,29 @@ pub mod equipment;
 pub mod error;
 #[cfg(debug_assertions)]
 pub mod error_injection;
+pub mod linked_items;
+pub mod linked_notes;
 pub mod location_share;
 pub mod map;
+pub mod meeting_minutes;
+pub mod meetings;
 pub mod mutations;
 pub mod notes;
 pub mod notifications;
 pub mod on_call;
 pub mod pagination;
+pub mod photos;
 pub mod query;
 pub mod reservations;
+pub mod scope;
 pub mod self_sign_in;
 pub mod ses_details;
 pub mod shared_contacts;
+pub mod sop_notes;
 pub mod tally;
+pub mod tally_passkeys;
 pub mod tally_sign_in;
+pub mod tally_sign_ins;
 pub mod tasks;
 pub mod trophies;
 pub mod wifi;
@@ -102,11 +114,25 @@ pub struct TaskListId(pub String);
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct NoteFolderId(pub String);
 
+/// DataLoader key for a [`notes::Note`]'s row, used by anything that links to a note.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct NoteId(pub String);
+
+/// DataLoader key for [`assets::Asset`]'s row, used by anything that points at an asset.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct AssetId(pub String);
+
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct MapLayerId(pub String);
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct CalendarId(pub String);
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct MeetingId(pub String);
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct AgendaItemId(pub String);
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct SessionId(pub ID);
@@ -201,7 +227,9 @@ impl Extension for RequestMetricsExtImpl {
     }
 }
 
-pub fn build_schema<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>(
+pub fn build_schema<
+    A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sync + 'static,
+>(
     app: Arc<A>,
     webauthn: Arc<webauthn_rs::prelude::Webauthn>,
 ) -> Schema<QueryRoot<A>, MutationRoot<A>, EmptySubscription> {
@@ -213,7 +241,8 @@ pub fn build_schema<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + 
     )
     .data(app.clone())
     .data(webauthn)
-    .extension(RequestMetricsExt);
+    .extension(RequestMetricsExt)
+    .extension(scope::TallySignInScope);
 
     // Dev-only resolver error injection. Compiled out of release builds entirely, so
     // it cannot be switched on in any deployed environment — every Lambda is a release

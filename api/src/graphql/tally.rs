@@ -20,11 +20,16 @@ use super::equipment::{self, Equipment};
 use super::error::ApiError;
 use super::location_share::{self, LocationShare};
 use super::map::{self, MapLayer, MapPin};
+use super::meetings::{self, Meeting};
 use super::notes::{self, Note, NoteFolder};
 use super::on_call::{self, OnCallRole};
+use super::photos::{self, PhotoConnection};
 use super::query::Person;
 use super::reservations::{self, EquipmentReservation};
 use super::shared_contacts::{self, SharedContact};
+use super::sop_notes;
+use super::tally_passkeys::{self, TallyPasskey};
+use super::tally_sign_ins::{self, TallySignIn};
 use super::tasks::{self, Task, TaskList, TaskView};
 use super::{LocationId, PersonId};
 use crate::app::{App, HasDb};
@@ -170,6 +175,19 @@ impl<A: App + HasDb + Send + Sync + 'static> TallyViewer<A> {
         locations.sort_by(|a, b| a.name.cmp(&b.name).then_with(|| a.id.cmp(&b.id)));
         Ok(locations.into_iter().map(TallyLocation::new).collect())
     }
+
+    /// The passkeys that sign the member in to Tally, most recently added first: the
+    /// member's own, and those of the user signed in alongside them (which also sign
+    /// in to the SESLogin site). See `graphql::tally_passkeys`.
+    async fn passkeys(&self, ctx: &Context<'_>) -> Result<Vec<TallyPasskey>> {
+        tally_passkeys::list::<A>(ctx).await
+    }
+
+    /// The devices the member is signed in to Tally on (one per sign-in), this one
+    /// first, then most recently used. See `graphql::tally_sign_ins`.
+    async fn sign_ins(&self, ctx: &Context<'_>) -> Result<Vec<TallySignIn>> {
+        tally_sign_ins::list::<A>(ctx).await
+    }
 }
 
 /// Body of `Query.tallyViewer`.
@@ -277,6 +295,23 @@ impl<A: App + HasDb + Send + Sync + 'static> TallyLocation<A> {
         tasks::location_task_lists(ctx, &self.rec.id).await
     }
 
+    /// The unit's photos, newest first by when they were taken (else when they were
+    /// added), for 30 days. `first` is at most 200. Pass the previous page's `endCursor`
+    /// as `after`. See `graphql::photos`.
+    async fn photos(
+        &self,
+        ctx: &Context<'_>,
+        #[graphql(default_with = "Some(60)")] first: Option<i64>,
+        after: Option<String>,
+    ) -> Result<PhotoConnection<A>> {
+        photos::location_photos(ctx, &self.rec.id, first, after).await
+    }
+
+    /// How many more photos the unit may add today (100 a Sydney day), never below 0.
+    async fn photo_uploads_remaining_today(&self, ctx: &Context<'_>) -> Result<i64> {
+        photos::uploads_remaining_today::<A>(ctx, &self.rec.id).await
+    }
+
     /// The unit's notes (its shared notebook), most recently changed first.
     /// `folderId` narrows to one of its note folders; without it every note at the
     /// unit is listed, whichever folder it is in. `search` keeps notes whose title
@@ -372,6 +407,29 @@ impl<A: App + HasDb + Send + Sync + 'static> TallyLocation<A> {
         calendar::location_calendar_events(ctx, &self.rec.id, from, to).await
     }
 
+    /// The unit's meetings (Agendas) scheduled from `startsAfter` (inclusive) to
+    /// `startsBefore` (exclusive), Unix seconds, either optional: oldest first, or
+    /// newest first with `newestFirst`. At most `limit` (default 50, at most 200).
+    /// See `graphql::meetings`.
+    async fn meetings(
+        &self,
+        ctx: &Context<'_>,
+        starts_after: Option<i64>,
+        starts_before: Option<i64>,
+        #[graphql(default = false)] newest_first: bool,
+        #[graphql(default = 50)] limit: i32,
+    ) -> Result<Vec<Meeting<A>>> {
+        meetings::location_meetings(
+            ctx,
+            &self.rec.id,
+            starts_after,
+            starts_before,
+            newest_first,
+            limit,
+        )
+        .await
+    }
+
     /// Everyone sharing their position with the unit ("Locate"), most recently updated
     /// first. A share shows until 7 minutes after its latest position, so this
     /// includes shares that have just ended (`active: false`). See
@@ -384,6 +442,12 @@ impl<A: App + HasDb + Send + Sync + 'static> TallyLocation<A> {
     /// `graphql::on_call`.
     async fn on_call_roles(&self, ctx: &Context<'_>) -> Result<Vec<OnCallRole<A>>> {
         on_call::location_on_call_roles(ctx, &self.rec.id).await
+    }
+
+    /// The unit's standard operating procedure notes: one per Tally screen that has a
+    /// linked note that still exists, in a fixed order. See `graphql::sop_notes`.
+    async fn sop_notes(&self, ctx: &Context<'_>) -> Result<Vec<sop_notes::SopNote<A>>> {
+        sop_notes::location_sop_notes(ctx, &self.rec).await
     }
 
     /// The contacts added by hand to the unit (its Duty Officer phone, …), by name. The

@@ -297,9 +297,25 @@ pub(crate) fn require_equipment_access(ctx: &Context<'_>, location_id: &str) -> 
     require_member_location(ctx, location_id, "Equipment is only available in Tally")
 }
 
+/// Check the caller may upload and complete assets (photos and, later, files) for a
+/// location. See [`require_member_location`].
+pub(crate) fn require_asset_access(ctx: &Context<'_>, location_id: &str) -> Result<()> {
+    require_member_location(ctx, location_id, "Uploads are only available in Tally")
+}
+
+/// Check the caller may see and add to a location's Photos. See [`require_member_location`].
+pub(crate) fn require_photo_access(ctx: &Context<'_>, location_id: &str) -> Result<()> {
+    require_member_location(ctx, location_id, "Photos are only available in Tally")
+}
+
 /// Check the caller may use a location's Calendar. See [`require_member_location`].
 pub(crate) fn require_calendar_access(ctx: &Context<'_>, location_id: &str) -> Result<()> {
     require_member_location(ctx, location_id, "The calendar is only available in Tally")
+}
+
+/// Check the caller may use a location's meetings (Agendas). See [`require_member_location`].
+pub(crate) fn require_meeting_access(ctx: &Context<'_>, location_id: &str) -> Result<()> {
+    require_member_location(ctx, location_id, "Agendas are only available in Tally")
 }
 
 /// Check the caller may use the shared contacts in `scope`. A location's contacts are

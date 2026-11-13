@@ -224,6 +224,7 @@ fn source_label(entry: &AuditEntry, labels: &HashMap<String, String>) -> String 
             Some("directory-sync") => "Directory sync".into(),
             Some("location-sync") => "Location sync".into(),
             Some("session-retire") => "Kiosk retirement".into(),
+            Some("photo-sweep") => "Photo sweep".into(),
             Some("cli") => "Command line".into(),
             Some(other) => other.replace(['-', '_'], " "),
             None => "System".into(),

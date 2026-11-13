@@ -24,7 +24,7 @@ use serde_json::{Map, Value, json};
 use super::super::args::{self, Field, Kind, TIME_FORMATS, ToolError};
 use super::super::{ToolCtx, ToolOutcome, rename_root};
 use super::{Effect, id_property, input_schema, members, tool};
-use crate::app::{App, HasDb, HasMail, HasQueues, HasRealtime};
+use crate::app::{App, HasDb, HasMail, HasQueues, HasRealtime, HasStorage};
 
 /// A `Period`'s fields, as the Activity pages show them. The person is trimmed to
 /// name, member number and primary unit (never their email), and the sessions to the
@@ -208,7 +208,7 @@ pub(super) fn catalogue() -> Vec<Value> {
 
 pub(super) async fn call<A>(ctx: &ToolCtx<'_, A>, name: &str, a: &Value) -> Option<ToolOutcome>
 where
-    A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static,
+    A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sync + 'static,
 {
     let result = match name {
         "list_periods" => list_periods(ctx, a).await,
@@ -245,7 +245,7 @@ fn period_page(mut connection: Value) -> Value {
 
 async fn list_periods<A>(ctx: &ToolCtx<'_, A>, a: &Value) -> Result<Value, ToolError>
 where
-    A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static,
+    A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sync + 'static,
 {
     let location_id = args::str_arg(a, "locationId")?;
     let start = args::opt_time_arg(a, "start")?;
@@ -288,7 +288,7 @@ where
 
 async fn list_member_periods<A>(ctx: &ToolCtx<'_, A>, a: &Value) -> Result<Value, ToolError>
 where
-    A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static,
+    A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sync + 'static,
 {
     let member_id = args::str_arg(a, "memberId")?;
     let (first, after) = page_args(a)?;
@@ -324,7 +324,7 @@ where
 /// Fetch a period and check the caller may see it.
 async fn fetch_period<A>(ctx: &ToolCtx<'_, A>, id: &str) -> Result<Value, ToolError>
 where
-    A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static,
+    A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sync + 'static,
 {
     let doc = format!("query McpPeriod($id: ID!) {{ period(id: $id) {{ {PERIOD_SELECTION} }} }}");
     let data = ctx.graphql(&doc, json!({ "id": id })).await?;
@@ -335,7 +335,7 @@ where
 
 async fn get_period<A>(ctx: &ToolCtx<'_, A>, a: &Value) -> Result<Value, ToolError>
 where
-    A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static,
+    A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sync + 'static,
 {
     let period = fetch_period(ctx, args::str_arg(a, "id")?).await?;
     Ok(json!({ "period": period }))
@@ -343,7 +343,7 @@ where
 
 async fn create_period<A>(ctx: &ToolCtx<'_, A>, a: &Value) -> Result<Value, ToolError>
 where
-    A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static,
+    A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sync + 'static,
 {
     let doc = format!(
         "mutation McpCreatePeriod($personId: ID!, $locationId: ID!, $categoryId: ID!, \
@@ -373,7 +373,7 @@ fn require_value(vars: &Map<String, Value>, name: &str, why: &str) -> Result<(),
 
 async fn update_period<A>(ctx: &ToolCtx<'_, A>, a: &Value) -> Result<Value, ToolError>
 where
-    A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static,
+    A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sync + 'static,
 {
     let id = args::str_arg(a, "id")?;
     // Both mutations take every field, so overlay the arguments on the current record.
@@ -451,7 +451,7 @@ where
 
 async fn delete_period<A>(ctx: &ToolCtx<'_, A>, a: &Value) -> Result<Value, ToolError>
 where
-    A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static,
+    A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sync + 'static,
 {
     let id = args::str_arg(a, "id")?;
     ctx.graphql(
@@ -464,7 +464,7 @@ where
 
 async fn send_period_edit_link<A>(ctx: &ToolCtx<'_, A>, a: &Value) -> Result<Value, ToolError>
 where
-    A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static,
+    A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sync + 'static,
 {
     let id = args::str_arg(a, "id")?;
     let data = ctx

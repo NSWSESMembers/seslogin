@@ -103,6 +103,9 @@ pub enum AuthInfo {
         /// That user's units, either role. Empty when there is no user.
         user_location_ids: Vec<String>,
         grant_id: String,
+        /// The grant's scope. [`crate::oauth::TALLY_SIGN_IN_SCOPE`] limits the caller to
+        /// self sign-in (see `graphql::scope`).
+        scope: String,
     },
     /// A single-period edit link (`slp_`), sent to a member by SMS/email so they can
     /// correct one of their own time entries. Deliberately carries no location grants
@@ -183,6 +186,14 @@ pub enum CallerType {
     Member,
     #[default]
     Unauthenticated,
+}
+
+impl AuthInfo {
+    /// A member whose grant is limited to attendance self sign-in
+    /// ([`crate::oauth::TALLY_SIGN_IN_SCOPE`]); `graphql::scope` holds it to an allowlist.
+    pub fn is_tally_sign_in_only(&self) -> bool {
+        matches!(self, AuthInfo::Member { scope, .. } if scope == crate::oauth::TALLY_SIGN_IN_SCOPE)
+    }
 }
 
 impl CallerType {
@@ -644,10 +655,15 @@ mod verify_token_tests {
     use super::*;
     use crate::app::{self, MyApp};
     use crate::server_secret::ServerSecret;
-    use crate::{mockdb, mockmail, mockqueue, mockrealtime};
+    use crate::{mockdb, mockmail, mockqueue, mockrealtime, mockstorage};
 
-    fn app() -> MyApp<mockdb::Handler, mockqueue::Handler, mockmail::Handler, mockrealtime::Handler>
-    {
+    fn app() -> MyApp<
+        mockdb::Handler,
+        mockqueue::Handler,
+        mockmail::Handler,
+        mockrealtime::Handler,
+        mockstorage::Handler,
+    > {
         app::new(
             mockdb::Handler::new(),
             ServerSecret::new("test"),
@@ -655,6 +671,7 @@ mod verify_token_tests {
             mockqueue::Handler::new(),
             mockmail::Handler::new(),
             mockrealtime::Handler::new("test"),
+            mockstorage::Handler::in_memory(),
         )
     }
 

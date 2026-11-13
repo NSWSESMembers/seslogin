@@ -39,6 +39,11 @@ pub const REFRESH_TOKEN_PREFIX: &str = "slrt_";
 /// slot in later without a shape change.
 pub const DEFAULT_SCOPE: &str = "seslogin";
 
+/// A member grant limited to attendance self sign-in, issued by the Tally assertion
+/// grant. Enforced by `graphql::scope`; such grants are short-lived and one per
+/// hour, so they are left out of every list of a person's grants.
+pub const TALLY_SIGN_IN_SCOPE: &str = "tally_sign_in";
+
 pub const ACCESS_TOKEN_LIFETIME_S: u64 = 60 * 60; // 1h
 /// Sliding window: every successful refresh pushes this forward, capped at
 /// [`GRANT_ABSOLUTE_LIFETIME_S`] from the grant's creation.
@@ -323,6 +328,7 @@ pub(crate) async fn grant_auth_info<A: App + HasDb>(
             })
             .unwrap_or_default(),
         grant_id: grant.id.clone(),
+        scope: grant.scope.clone(),
     })
 }
 

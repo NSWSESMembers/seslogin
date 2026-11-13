@@ -290,6 +290,32 @@ impl Item {
             Ok(vec![]) // missing field means empty set
         }
     }
+
+    /// Get an ordered list of strings (an `L` of `S`), erroring if it or any element is
+    /// of the wrong type. Missing or null is an empty Vec.
+    pub fn string_list_field(&self, field: &str) -> anyhow::Result<Vec<String>> {
+        match self.0.get(field) {
+            None => Ok(vec![]),
+            Some(v) if v.as_null().is_ok() => Ok(vec![]),
+            Some(v) => v
+                .as_l()
+                .map_err(|_| anyhow!("Item had list field of wrong type: {}", field))?
+                .iter()
+                .map(|e| {
+                    e.as_s()
+                        .cloned()
+                        .map_err(|_| anyhow!("Item had list field with a non-string: {}", field))
+                })
+                .collect(),
+        }
+    }
+}
+
+/// An ordered list of strings, as an `L` of `S`; `None` when empty, so the attribute is
+/// omitted (or removed) rather than stored empty.
+fn string_list_value(values: &[String]) -> Option<AttributeValue> {
+    (!values.is_empty())
+        .then(|| AttributeValue::L(values.iter().cloned().map(AttributeValue::S).collect()))
 }
 
 /// A row that could not be turned into its typed record.
@@ -440,6 +466,15 @@ impl TryInto<Location> for Item {
                 phone: self.string_field("phone")?,
             },
             accreditations: self.string_field("accreditations")?,
+            sop_notes: {
+                let mut notes = std::collections::BTreeMap::new();
+                for place in db::SopPlace::ALL {
+                    if let Some(id) = self.string_field(place.attribute())? {
+                        notes.insert(place, id);
+                    }
+                }
+                notes
+            },
             created_at: self
                 .i64_field("created_at")?
                 .ok_or_else(|| anyhow!("Location missing created_at"))?
@@ -1002,6 +1037,9 @@ impl TryInto<db::Task> for Item {
             show_date: date_field(&self, "show_date")?
                 .ok_or_else(|| anyhow!("Task missing show_date"))?,
             recurrence,
+            assignee_ids: self.string_set_field("assignee_ids")?,
+            photo_asset_ids: self.string_list_field("photo_asset_ids")?,
+            note_ids: self.string_list_field("note_ids")?,
             open: self.has_field("open_location_id"),
             created_by: self.string_field("created_by")?,
             updated_by: self.string_field("updated_by")?,
@@ -1158,6 +1196,8 @@ impl TryInto<db::MapPin> for Item {
                 .ok_or_else(|| anyhow!("MapPin missing longitude"))?,
             address: self.string_field("address")?.unwrap_or_default(),
             note: self.string_field("note")?.unwrap_or_default(),
+            photo_asset_ids: self.string_list_field("photo_asset_ids")?,
+            note_ids: self.string_list_field("note_ids")?,
             created_by: self.string_field("created_by")?,
             updated_by: self.string_field("updated_by")?,
             version: self.i64_field("v")?.unwrap_or(1) as u64,
@@ -1266,6 +1306,7 @@ impl TryInto<db::CalendarEvent> for Item {
                 .i64_field("last_end")?
                 .ok_or_else(|| anyhow!("CalendarEvent missing last_end"))?
                 as u64,
+            note_ids: self.string_list_field("note_ids")?,
             created_by: self.string_field("created_by")?,
             updated_by: self.string_field("updated_by")?,
             version: self.i64_field("v")?.unwrap_or(1) as u64,
@@ -1277,6 +1318,77 @@ impl TryInto<db::CalendarEvent> for Item {
             updated_at: self
                 .i64_field("updated_at")?
                 .ok_or_else(|| anyhow!("CalendarEvent missing updated_at"))?
+                as u64,
+        })
+    }
+}
+
+impl TryInto<db::Meeting> for Item {
+    type Error = HydrationError;
+    fn try_into(self) -> Result<db::Meeting, Self::Error> {
+        Ok(db::Meeting {
+            id: self.id()?,
+            location_id: self
+                .string_field("location_id")?
+                .ok_or_else(|| anyhow!("Meeting missing location_id"))?,
+            title: self.string_field("title")?.unwrap_or_default(),
+            description: self.string_field("description")?.unwrap_or_default(),
+            starts_at: self
+                .i64_field("starts_at")?
+                .ok_or_else(|| anyhow!("Meeting missing starts_at"))? as u64,
+            started_at: self.i64_field("started_at")?.map(|i| i as u64),
+            finished_at: self.i64_field("finished_at")?.map(|i| i as u64),
+            created_by: self.string_field("created_by")?,
+            updated_by: self.string_field("updated_by")?,
+            version: self.i64_field("v")?.unwrap_or(1) as u64,
+            deleted: self.i64_field("deleted")?.map(|i| i as u64),
+            created_at: self
+                .i64_field("created_at")?
+                .ok_or_else(|| anyhow!("Meeting missing created_at"))?
+                as u64,
+            updated_at: self
+                .i64_field("updated_at")?
+                .ok_or_else(|| anyhow!("Meeting missing updated_at"))?
+                as u64,
+        })
+    }
+}
+
+impl TryInto<db::AgendaItem> for Item {
+    type Error = HydrationError;
+    fn try_into(self) -> Result<db::AgendaItem, Self::Error> {
+        Ok(db::AgendaItem {
+            id: self.id()?,
+            meeting_id: self
+                .string_field("meeting_id")?
+                .ok_or_else(|| anyhow!("AgendaItem missing meeting_id"))?,
+            location_id: self
+                .string_field("location_id")?
+                .ok_or_else(|| anyhow!("AgendaItem missing location_id"))?,
+            text: self.string_field("text")?.unwrap_or_default(),
+            presenter_id: self
+                .string_field("presenter_id")?
+                .ok_or_else(|| anyhow!("AgendaItem missing presenter_id"))?,
+            position: self
+                .i64_field("position")?
+                .ok_or_else(|| anyhow!("AgendaItem missing position"))?
+                as u64,
+            task_ids: self.string_list_field("task_ids")?,
+            equipment_ids: self.string_list_field("equipment_ids")?,
+            on_call_role_ids: self.string_list_field("on_call_role_ids")?,
+            photo_asset_ids: self.string_list_field("photo_asset_ids")?,
+            note_ids: self.string_list_field("note_ids")?,
+            created_by: self.string_field("created_by")?,
+            updated_by: self.string_field("updated_by")?,
+            version: self.i64_field("v")?.unwrap_or(1) as u64,
+            deleted: self.i64_field("deleted")?.map(|i| i as u64),
+            created_at: self
+                .i64_field("created_at")?
+                .ok_or_else(|| anyhow!("AgendaItem missing created_at"))?
+                as u64,
+            updated_at: self
+                .i64_field("updated_at")?
+                .ok_or_else(|| anyhow!("AgendaItem missing updated_at"))?
                 as u64,
         })
     }
@@ -1531,6 +1643,270 @@ fn trophy_notice_item(notice: &db::TrophyNotice) -> HashMap<String, AttributeVal
     item
 }
 
+/// Read a required field of an `asset`, `asset_ref` or `photo` row, naming the row kind
+/// if it is missing.
+fn asset_field<T>(kind: &str, field: &str, value: Option<T>) -> Result<T, HydrationError> {
+    Ok(value.ok_or_else(|| anyhow!("{kind} row missing {field}"))?)
+}
+
+impl Item {
+    /// [`Item::i64_field`], except that a `Null` attribute reads as absent, like a
+    /// missing one.
+    fn opt_i64_field(&self, field: &str) -> anyhow::Result<Option<i64>> {
+        match self.0.get(field) {
+            Some(AttributeValue::Null(_)) => Ok(None),
+            _ => self.i64_field(field),
+        }
+    }
+}
+
+impl TryInto<db::Asset> for Item {
+    type Error = HydrationError;
+    fn try_into(self) -> Result<db::Asset, Self::Error> {
+        let s = |field: &str| -> Result<String, HydrationError> {
+            asset_field("Asset", field, self.string_field(field)?)
+        };
+        let n = |field: &str| -> Result<u64, HydrationError> {
+            Ok(asset_field("Asset", field, self.opt_i64_field(field)?)? as u64)
+        };
+        let opt_n = |field: &str| -> Result<Option<u64>, HydrationError> {
+            Ok(self.opt_i64_field(field)?.map(|i| i as u64))
+        };
+        let opt_dim = |field: &str| -> Result<Option<u32>, HydrationError> {
+            Ok(opt_n(field)?.and_then(|i| u32::try_from(i).ok()))
+        };
+        let kind = s("kind")?;
+        let status = s("status")?;
+        Ok(db::Asset {
+            id: self.id()?,
+            location_id: s("location_id")?,
+            kind: db::AssetKind::parse(&kind)
+                .ok_or_else(|| anyhow!("Asset has unknown kind {kind}"))?,
+            status: db::AssetStatus::parse(&status)
+                .ok_or_else(|| anyhow!("Asset has unknown status {status}"))?,
+            content_type: s("content_type")?,
+            byte_size: n("byte_size")?,
+            original_filename: self.string_field("original_filename")?,
+            width: opt_dim("width")?,
+            height: opt_dim("height")?,
+            taken_at: opt_n("taken_at")?,
+            camera_make: self.string_field("camera_make")?,
+            camera_model: self.string_field("camera_model")?,
+            created_by: s("created_by")?,
+            created_at: n("created_at")?,
+            completed_at: opt_n("completed_at")?,
+            expires_at: opt_n("expires_at")?,
+        })
+    }
+}
+
+impl TryInto<db::AssetRef> for Item {
+    type Error = HydrationError;
+    fn try_into(self) -> Result<db::AssetRef, Self::Error> {
+        let s = |field: &str| -> Result<String, HydrationError> {
+            asset_field("AssetRef", field, self.string_field(field)?)
+        };
+        Ok(db::AssetRef {
+            asset_id: s("asset_id")?,
+            owner: s("owner")?,
+            location_id: s("location_id")?,
+            created_at: asset_field("AssetRef", "created_at", self.opt_i64_field("created_at")?)?
+                as u64,
+        })
+    }
+}
+
+impl TryInto<db::NoteRef> for Item {
+    type Error = HydrationError;
+    fn try_into(self) -> Result<db::NoteRef, Self::Error> {
+        let s = |field: &str| -> Result<String, HydrationError> {
+            asset_field("NoteRef", field, self.string_field(field)?)
+        };
+        Ok(db::NoteRef {
+            note_id: s("note_id")?,
+            owner: s("owner")?,
+            location_id: s("location_id")?,
+            created_at: asset_field("NoteRef", "created_at", self.opt_i64_field("created_at")?)?
+                as u64,
+        })
+    }
+}
+
+impl TryInto<db::Photo> for Item {
+    type Error = HydrationError;
+    fn try_into(self) -> Result<db::Photo, Self::Error> {
+        let s = |field: &str| -> Result<String, HydrationError> {
+            asset_field("Photo", field, self.string_field(field)?)
+        };
+        let n = |field: &str| -> Result<u64, HydrationError> {
+            Ok(asset_field("Photo", field, self.opt_i64_field(field)?)? as u64)
+        };
+        let opt_n = |field: &str| -> Result<Option<u64>, HydrationError> {
+            Ok(self.opt_i64_field(field)?.map(|i| i as u64))
+        };
+        Ok(db::Photo {
+            id: self.id()?,
+            location_id: s("location_id")?,
+            asset_id: s("asset_id")?,
+            created_by: s("created_by")?,
+            created_at: n("created_at")?,
+            taken_at: opt_n("taken_at")?,
+            expires_at: n("expires_at")?,
+            visible_location_id: self.string_field("visible_location_id")?,
+            hidden_at: opt_n("hidden_at")?,
+            hidden_by: self.string_field("hidden_by")?,
+            deleted: opt_n("deleted")?,
+            version: opt_n("v")?.unwrap_or(1),
+        })
+    }
+}
+
+/// The item for an asset. Absent optionals are omitted, never Null; `expires_at` (the
+/// TTL) is present only while the asset is pending.
+fn asset_item(asset: &db::Asset) -> HashMap<String, AttributeValue> {
+    let s = |v: &str| AttributeValue::S(v.to_string());
+    let n = |v: u64| AttributeValue::N(v.to_string());
+    let mut item = HashMap::from([
+        ("id".to_string(), s(&asset.id)),
+        ("location_id".to_string(), s(&asset.location_id)),
+        ("kind".to_string(), s(asset.kind.as_str())),
+        ("status".to_string(), s(asset.status.as_str())),
+        ("content_type".to_string(), s(&asset.content_type)),
+        ("byte_size".to_string(), n(asset.byte_size)),
+        ("created_by".to_string(), s(&asset.created_by)),
+        ("created_at".to_string(), n(asset.created_at)),
+    ]);
+    let optional_text = [
+        ("original_filename", &asset.original_filename),
+        ("camera_make", &asset.camera_make),
+        ("camera_model", &asset.camera_model),
+    ];
+    for (name, value) in optional_text {
+        if let Some(value) = value {
+            item.insert(name.to_string(), s(value));
+        }
+    }
+    let optional_number = [
+        ("width", asset.width.map(u64::from)),
+        ("height", asset.height.map(u64::from)),
+        ("taken_at", asset.taken_at),
+        ("completed_at", asset.completed_at),
+        ("expires_at", asset.expires_at),
+    ];
+    for (name, value) in optional_number {
+        if let Some(value) = value {
+            item.insert(name.to_string(), n(value));
+        }
+    }
+    item
+}
+
+fn asset_ref_item(asset_ref: &db::AssetRef) -> HashMap<String, AttributeValue> {
+    HashMap::from([
+        (
+            "asset_id".to_string(),
+            AttributeValue::S(asset_ref.asset_id.clone()),
+        ),
+        (
+            "owner".to_string(),
+            AttributeValue::S(asset_ref.owner.clone()),
+        ),
+        (
+            "location_id".to_string(),
+            AttributeValue::S(asset_ref.location_id.clone()),
+        ),
+        (
+            "created_at".to_string(),
+            AttributeValue::N(asset_ref.created_at.to_string()),
+        ),
+    ])
+}
+
+fn note_ref_item(note_ref: &db::NoteRef) -> HashMap<String, AttributeValue> {
+    HashMap::from([
+        (
+            "note_id".to_string(),
+            AttributeValue::S(note_ref.note_id.clone()),
+        ),
+        (
+            "owner".to_string(),
+            AttributeValue::S(note_ref.owner.clone()),
+        ),
+        (
+            "location_id".to_string(),
+            AttributeValue::S(note_ref.location_id.clone()),
+        ),
+        (
+            "created_at".to_string(),
+            AttributeValue::N(note_ref.created_at.to_string()),
+        ),
+    ])
+}
+
+/// The item for a photo. `visible_location_id` is present only while it is visible and
+/// `sweep` only until it is swept, which is what keeps those two indexes sparse; other
+/// absent optionals are omitted, never Null.
+fn photo_item(photo: &db::Photo) -> HashMap<String, AttributeValue> {
+    let s = |v: &str| AttributeValue::S(v.to_string());
+    let n = |v: u64| AttributeValue::N(v.to_string());
+    let mut item = HashMap::from([
+        ("id".to_string(), s(&photo.id)),
+        ("location_id".to_string(), s(&photo.location_id)),
+        ("asset_id".to_string(), s(&photo.asset_id)),
+        ("created_by".to_string(), s(&photo.created_by)),
+        ("created_at".to_string(), n(photo.created_at)),
+        ("sort_key".to_string(), s(&photo.sort_key())),
+        ("expires_at".to_string(), n(photo.expires_at)),
+        ("v".to_string(), n(photo.version)),
+    ]);
+    if photo.deleted.is_none() {
+        item.insert("sweep".to_string(), s("1"));
+    }
+    if let Some(visible) = &photo.visible_location_id {
+        item.insert("visible_location_id".to_string(), s(visible));
+    }
+    for (name, value) in [
+        ("taken_at", photo.taken_at),
+        ("hidden_at", photo.hidden_at),
+        ("deleted", photo.deleted),
+    ] {
+        if let Some(value) = value {
+            item.insert(name.to_string(), n(value));
+        }
+    }
+    if let Some(by) = &photo.hidden_by {
+        item.insert("hidden_by".to_string(), s(by));
+    }
+    item
+}
+
+/// The `count` of a daily counter item (see SCHEMA.md), or `None` if it has none.
+fn counter_count(item: HashMap<String, AttributeValue>) -> Option<u64> {
+    item.get("count")?.as_n().ok()?.parse().ok()
+}
+
+/// The `ExclusiveStartKey` for continuing a `visible_location_id-sort_key-index` query
+/// after the photo with this `sort_key`: a global secondary index needs the table's key
+/// as well as its own.
+fn visible_photo_start_key(
+    location_id: &str,
+    sort_key: &str,
+) -> db::Result<HashMap<String, AttributeValue>> {
+    let id = db::photo_id_from_sort_key(sort_key)
+        .ok_or_else(|| Error::TypeConversion(format!("Invalid photo cursor {sort_key:?}")))?;
+    Ok(HashMap::from([
+        ("id".to_string(), AttributeValue::S(id.to_string())),
+        (
+            "visible_location_id".to_string(),
+            AttributeValue::S(location_id.to_string()),
+        ),
+        (
+            "sort_key".to_string(),
+            AttributeValue::S(sort_key.to_string()),
+        ),
+    ]))
+}
+
 /// The item for a notification. `unread_person_id` is present only while unread, which is
 /// what keeps `unread-index` sparse; other absent optionals are omitted, never Null.
 fn notification_item(n: &db::NotificationRecord) -> HashMap<String, AttributeValue> {
@@ -1583,6 +1959,7 @@ impl TryInto<db::OnCallRole> for Item {
             primary_person_id: self.string_field("primary_person_id")?,
             secondary_person_ids: self.string_set_field("secondary_person_ids")?,
             members_changed_at: self.i64_field("members_changed_at")?.map(|i| i as u64),
+            note_ids: self.string_list_field("note_ids")?,
             created_by: self.string_field("created_by")?,
             updated_by: self.string_field("updated_by")?,
             version: self.i64_field("v")?.unwrap_or(1) as u64,
@@ -1659,6 +2036,8 @@ impl TryInto<db::Equipment> for Item {
                 .map(|i| i as u64)
                 .unwrap_or(created_at),
             last_checked_at: self.i64_field("last_checked_at")?.map(|i| i as u64),
+            photo_asset_ids: self.string_list_field("photo_asset_ids")?,
+            note_ids: self.string_list_field("note_ids")?,
             created_by: self.string_field("created_by")?,
             updated_by: self.string_field("updated_by")?,
             version: self.i64_field("v")?.unwrap_or(1) as u64,
@@ -1824,6 +2203,27 @@ pub struct Handler {
 impl Handler {
     fn table_name(&self, name: &str) -> String {
         format!("{}_{}", self.table_prefix, name)
+    }
+
+    /// The `ConditionCheck` that an asset is `ready` and at `location_id`, for a
+    /// transaction that makes something refer to it.
+    fn asset_ready_check(
+        &self,
+        asset_id: &str,
+        location_id: &str,
+    ) -> db::Result<aws_sdk_dynamodb::types::ConditionCheck> {
+        aws_sdk_dynamodb::types::ConditionCheck::builder()
+            .table_name(self.table_name("asset"))
+            .key("id", AttributeValue::S(asset_id.to_string()))
+            .condition_expression("#status = :ready AND location_id = :location_id")
+            .expression_attribute_names("#status", "status")
+            .expression_attribute_values(
+                ":ready",
+                AttributeValue::S(db::AssetStatus::Ready.as_str().to_string()),
+            )
+            .expression_attribute_values(":location_id", AttributeValue::S(location_id.to_string()))
+            .build()
+            .map_err(|e| Error::Infrastructure(e.to_string()))
     }
 
     /// The `trophy` rows in a unit's partition whose `sk` starts with `prefix`, in `sk`
@@ -4918,6 +5318,7 @@ impl db::Handler for Handler {
             ses_details: db::LocationSesDetails::default(),
             directory_details: db::LocationDirectoryDetails::default(),
             accreditations: None,
+            sop_notes: Default::default(),
             created_at: now,
             updated_at: now,
         })
@@ -5094,6 +5495,16 @@ impl db::Handler for Handler {
                 )],
                 &[],
             ),
+            // Deliberately leaves `updated_at` alone: a SOP link is nothing sync sees.
+            db::LocationUpdateShape::SopNote { place, note_id } => {
+                let base = base.expression_attribute_names("#sop", place.attribute());
+                match note_id {
+                    Some(id) => base
+                        .update_expression("SET #sop = :sop")
+                        .expression_attribute_values(":sop", AttributeValue::S(id.to_string())),
+                    None => base.update_expression("REMOVE #sop"),
+                }
+            }
         };
 
         let new_name = match change {
@@ -5101,7 +5512,8 @@ impl db::Handler for Handler {
             | db::LocationUpdateShape::Name { name } => Some(name),
             db::LocationUpdateShape::LastSyncTime { .. }
             | db::LocationUpdateShape::SesDetails { .. }
-            | db::LocationUpdateShape::Accreditations { .. } => None,
+            | db::LocationUpdateShape::Accreditations { .. }
+            | db::LocationUpdateShape::SopNote { .. } => None,
         };
         let resp = req
             .return_values(aws_sdk_dynamodb::types::ReturnValue::UpdatedOld)
@@ -6432,6 +6844,18 @@ impl db::Handler for Handler {
         .await
     }
 
+    async fn list_oauth_grants_by_person(&self, person_id: &str) -> db::Result<Vec<OAuthGrant>> {
+        query_all("list_oauth_grants_by_person", || {
+            self.client
+                .query()
+                .table_name(self.table_name("oauth_grant"))
+                .index_name("person_id-index")
+                .key_condition_expression("person_id = :person_id")
+                .expression_attribute_values(":person_id", AttributeValue::S(person_id.to_string()))
+        })
+        .await
+    }
+
     async fn create_webauthn_credential(
         &self,
         id: &str,
@@ -6678,6 +7102,36 @@ impl db::Handler for Handler {
         Ok(())
     }
 
+    async fn create_ephemeral_state_if_absent(
+        &self,
+        id: &str,
+        kind: &str,
+        payload: &str,
+        expires_at: u64,
+    ) -> db::Result<bool> {
+        if self.read_only {
+            return Err(db::Error::MutationDisabled);
+        }
+        let result = self
+            .client
+            .put_item()
+            .table_name(self.table_name("ephemeral_state"))
+            .item("id", AttributeValue::S(id.to_string()))
+            .item("kind", AttributeValue::S(kind.to_string()))
+            .item("payload", AttributeValue::S(payload.to_string()))
+            .item("expires_at", AttributeValue::N(expires_at.to_string()))
+            .condition_expression("attribute_not_exists(id)")
+            .send()
+            .await;
+        match result {
+            Ok(_) => Ok(true),
+            Err(SdkError::ServiceError(se)) if se.err().is_conditional_check_failed_exception() => {
+                Ok(false)
+            }
+            Err(e) => Err(Error::Infrastructure(sdk_err_msg(e))),
+        }
+    }
+
     async fn get_ephemeral_state(&self, id: &str) -> db::Result<Option<EphemeralState>> {
         let resp = self
             .client
@@ -6693,10 +7147,14 @@ impl db::Handler for Handler {
             resp.consumed_capacity(),
             CapKind::Read,
         );
-        match resp.item {
-            Some(item) => Ok(Some(Item(item).try_into()?)),
-            None => Ok(None),
+        let Some(item) = resp.item.map(Item) else {
+            return Ok(None);
+        };
+        // A daily counter shares the table but has no payload; it is not a record.
+        if matches!(item.0.get("kind"), Some(AttributeValue::S(kind)) if kind == db::COUNTER_KIND) {
+            return Ok(None);
         }
+        Ok(Some(item.try_into()?))
     }
 
     async fn delete_ephemeral_state(&self, id: &str) -> db::Result<()> {
@@ -6749,7 +7207,7 @@ impl db::Handler for Handler {
         if self.read_only {
             return Err(db::Error::MutationDisabled);
         }
-        let id = new_id();
+        let id = task.id.to_string();
         let now = crate::clock::now_sec();
         // Optional attributes are omitted when absent rather than stored as Null.
         let mut put = self
@@ -6789,6 +7247,18 @@ impl db::Handler for Handler {
                     AttributeValue::S(r.unit.as_str().to_string()),
                 );
         }
+        if !task.assignee_ids.is_empty() {
+            put = put.item(
+                "assignee_ids",
+                AttributeValue::Ss(task.assignee_ids.to_vec()),
+            );
+        }
+        if let Some(photos) = string_list_value(task.photo_asset_ids) {
+            put = put.item("photo_asset_ids", photos);
+        }
+        if let Some(notes) = string_list_value(task.note_ids) {
+            put = put.item("note_ids", notes);
+        }
         if let Some(by) = task.created_by {
             put = put.item("created_by", AttributeValue::S(by.to_string()));
         }
@@ -6807,6 +7277,9 @@ impl db::Handler for Handler {
             due_date: task.due_date,
             show_date: task.show_date,
             recurrence: task.recurrence,
+            assignee_ids: task.assignee_ids.to_vec(),
+            photo_asset_ids: task.photo_asset_ids.to_vec(),
+            note_ids: task.note_ids.to_vec(),
             open: true,
             created_by: task.created_by.map(str::to_string),
             updated_by: None,
@@ -6837,6 +7310,9 @@ impl db::Handler for Handler {
                 due_date,
                 show_date,
                 recurrence,
+                assignee_ids,
+                photo_asset_ids,
+                note_ids,
                 by,
                 expected_version,
             } => {
@@ -6856,6 +7332,12 @@ impl db::Handler for Handler {
                     "recurrence_unit",
                     recurrence.map(|r| AttributeValue::S(r.unit.as_str().to_string())),
                 );
+                update.set_or_remove(
+                    "assignee_ids",
+                    (!assignee_ids.is_empty()).then(|| AttributeValue::Ss(assignee_ids.to_vec())),
+                );
+                update.set_or_remove("photo_asset_ids", string_list_value(photo_asset_ids));
+                update.set_or_remove("note_ids", string_list_value(note_ids));
                 update.set_or_remove("updated_by", by.map(|b| AttributeValue::S(b.to_string())));
                 Some(expected_version)
             }
@@ -7291,7 +7773,7 @@ impl db::Handler for Handler {
         if self.read_only {
             return Err(db::Error::MutationDisabled);
         }
-        let id = new_id();
+        let id = pin.id.to_string();
         let now = crate::clock::now_sec();
         // Optional attributes are omitted when absent rather than stored as Null.
         let mut put = self
@@ -7323,6 +7805,12 @@ impl db::Handler for Handler {
         if !pin.note.is_empty() {
             put = put.item("note", AttributeValue::S(pin.note.to_string()));
         }
+        if let Some(photos) = string_list_value(pin.photo_asset_ids) {
+            put = put.item("photo_asset_ids", photos);
+        }
+        if let Some(notes) = string_list_value(pin.note_ids) {
+            put = put.item("note_ids", notes);
+        }
         if let Some(by) = pin.created_by {
             put = put.item("created_by", AttributeValue::S(by.to_string()));
         }
@@ -7342,6 +7830,8 @@ impl db::Handler for Handler {
             longitude: pin.longitude,
             address: pin.address.to_string(),
             note: pin.note.to_string(),
+            photo_asset_ids: pin.photo_asset_ids.to_vec(),
+            note_ids: pin.note_ids.to_vec(),
             created_by: pin.created_by.map(str::to_string),
             updated_by: None,
             version: 1,
@@ -7372,6 +7862,8 @@ impl db::Handler for Handler {
                 longitude,
                 address,
                 note,
+                photo_asset_ids,
+                note_ids,
                 by,
                 expected_version,
             } => {
@@ -7394,6 +7886,8 @@ impl db::Handler for Handler {
                     "note",
                     (!note.is_empty()).then(|| AttributeValue::S(note.to_string())),
                 );
+                update.set_or_remove("photo_asset_ids", string_list_value(photo_asset_ids));
+                update.set_or_remove("note_ids", string_list_value(note_ids));
                 update.set_or_remove("updated_by", by.map(|b| AttributeValue::S(b.to_string())));
                 (
                     format!("{live} AND v = :expected_version"),
@@ -7672,7 +8166,7 @@ impl db::Handler for Handler {
         if self.read_only {
             return Err(db::Error::MutationDisabled);
         }
-        let id = new_id();
+        let id = e.id.to_string();
         let now = crate::clock::now_sec();
         // Optional attributes are omitted when absent rather than stored as Null.
         let mut put = self
@@ -7698,6 +8192,9 @@ impl db::Handler for Handler {
         if !e.description.is_empty() {
             put = put.item("description", AttributeValue::S(e.description.to_string()));
         }
+        if let Some(notes) = string_list_value(e.note_ids) {
+            put = put.item("note_ids", notes);
+        }
         if let Some(by) = e.created_by {
             put = put.item("created_by", AttributeValue::S(by.to_string()));
         }
@@ -7720,6 +8217,7 @@ impl db::Handler for Handler {
             timing: e.timing,
             recurrence: e.recurrence,
             last_end: crate::calendar::last_end(e.timing, e.recurrence),
+            note_ids: e.note_ids.to_vec(),
             created_by: e.created_by.map(str::to_string),
             updated_by: None,
             version: 1,
@@ -7748,6 +8246,7 @@ impl db::Handler for Handler {
                 description,
                 timing,
                 recurrence,
+                note_ids,
                 by,
                 expected_version,
             } => {
@@ -7763,6 +8262,7 @@ impl db::Handler for Handler {
                     "description",
                     (!description.is_empty()).then(|| AttributeValue::S(description.to_string())),
                 );
+                update.set_or_remove("note_ids", string_list_value(note_ids));
                 update.set_or_remove("updated_by", by.map(|b| AttributeValue::S(b.to_string())));
                 (
                     format!("{live} AND v = :expected_version"),
@@ -7804,6 +8304,384 @@ impl db::Handler for Handler {
         Ok(hydrate_item(resp.attributes.unwrap_or_default())?)
     }
 
+    async fn get_meetings<T: AsRef<str> + Sync>(
+        &self,
+        ids: &[T],
+    ) -> db::Result<Vec<Option<db::Meeting>>> {
+        self.get_records("meeting", ids).await
+    }
+
+    async fn list_meetings(
+        &self,
+        location_id: &str,
+        starts_after: Option<u64>,
+        starts_before: Option<u64>,
+        newest_first: bool,
+        limit: usize,
+    ) -> db::Result<Vec<db::Meeting>> {
+        // `starts_after` is inclusive and `starts_before` exclusive; a key condition
+        // takes one comparison on the sort key, so a window is a BETWEEN.
+        let mut condition = "location_id = :location_id".to_string();
+        let mut values = vec![(":location_id", AttributeValue::S(location_id.to_string()))];
+        match (starts_after, starts_before) {
+            (_, Some(0)) => return Ok(Vec::new()),
+            (Some(after), Some(before)) => {
+                condition.push_str(" AND starts_at BETWEEN :after AND :before");
+                values.push((":after", AttributeValue::N(after.to_string())));
+                values.push((":before", AttributeValue::N((before - 1).to_string())));
+            }
+            (Some(after), None) => {
+                condition.push_str(" AND starts_at >= :after");
+                values.push((":after", AttributeValue::N(after.to_string())));
+            }
+            (None, Some(before)) => {
+                condition.push_str(" AND starts_at < :before");
+                values.push((":before", AttributeValue::N(before.to_string())));
+            }
+            (None, None) => {}
+        }
+        let mut meetings: Vec<db::Meeting> = Vec::new();
+        let mut exclusive_start_key = None;
+        while meetings.len() < limit {
+            // `Limit` counts rows read before the filter drops the deleted ones, so a
+            // page can come back short with more to read: keep going until there are
+            // enough or the index runs out.
+            let page_size = limit.saturating_sub(meetings.len()).max(25);
+            let mut query = self
+                .client
+                .query()
+                .table_name(self.table_name("meeting"))
+                .index_name("location_id-starts_at-index")
+                .key_condition_expression(&condition)
+                .filter_expression("attribute_not_exists(deleted)")
+                .scan_index_forward(!newest_first)
+                .limit(i32::try_from(page_size).unwrap_or(i32::MAX))
+                .set_exclusive_start_key(exclusive_start_key.take())
+                .return_consumed_capacity(ReturnConsumedCapacity::Total);
+            for (name, value) in &values {
+                query = query.expression_attribute_values(*name, value.clone());
+            }
+            let resp = query
+                .send()
+                .await
+                .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
+            record_capacity("list_meetings", resp.consumed_capacity(), CapKind::Read);
+            meetings.extend(hydrate_items::<db::Meeting>(resp.items)?);
+            exclusive_start_key = resp.last_evaluated_key;
+            if exclusive_start_key.is_none() {
+                break;
+            }
+        }
+        meetings.truncate(limit);
+        Ok(meetings)
+    }
+
+    async fn create_meeting(&self, m: db::NewMeeting<'_>) -> db::Result<db::Meeting> {
+        if self.read_only {
+            return Err(db::Error::MutationDisabled);
+        }
+        let id = new_id();
+        let now = crate::clock::now_sec();
+        // Optional attributes are omitted when absent rather than stored as Null.
+        let mut put = self
+            .client
+            .put_item()
+            .table_name(self.table_name("meeting"))
+            .item("id", AttributeValue::S(id.clone()))
+            .item("location_id", AttributeValue::S(m.location_id.to_string()))
+            .item("title", AttributeValue::S(m.title.to_string()))
+            .item("starts_at", AttributeValue::N(m.starts_at.to_string()))
+            .item("v", AttributeValue::N("1".to_string()))
+            .item("created_at", AttributeValue::N(now.to_string()))
+            .item("updated_at", AttributeValue::N(now.to_string()))
+            .condition_expression("attribute_not_exists(id)")
+            .return_consumed_capacity(ReturnConsumedCapacity::Total);
+        if !m.description.is_empty() {
+            put = put.item("description", AttributeValue::S(m.description.to_string()));
+        }
+        if let Some(by) = m.created_by {
+            put = put.item("created_by", AttributeValue::S(by.to_string()));
+        }
+        let resp = put
+            .send()
+            .await
+            .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
+        record_capacity("create_meeting", resp.consumed_capacity(), CapKind::Write);
+        Ok(db::Meeting {
+            id,
+            location_id: m.location_id.to_string(),
+            title: m.title.to_string(),
+            description: m.description.to_string(),
+            starts_at: m.starts_at,
+            started_at: None,
+            finished_at: None,
+            created_by: m.created_by.map(str::to_string),
+            updated_by: None,
+            version: 1,
+            deleted: None,
+            created_at: now,
+            updated_at: now,
+        })
+    }
+
+    async fn update_meeting(
+        &self,
+        id: &str,
+        change: db::MeetingUpdateShape<'_>,
+    ) -> db::Result<db::Meeting> {
+        if self.read_only {
+            return Err(db::Error::MutationDisabled);
+        }
+        let now = crate::clock::now_sec();
+        let mut update = UpdateExpr::default();
+        update.set("updated_at", AttributeValue::N(now.to_string()));
+        let (by, expected_version) = match change {
+            db::MeetingUpdateShape::Fields {
+                title,
+                description,
+                starts_at,
+                by,
+                expected_version,
+            } => {
+                update.set("title", AttributeValue::S(title.to_string()));
+                update.set("starts_at", AttributeValue::N(starts_at.to_string()));
+                update.set_or_remove(
+                    "description",
+                    (!description.is_empty()).then(|| AttributeValue::S(description.to_string())),
+                );
+                (by, Some(expected_version))
+            }
+            db::MeetingUpdateShape::Start {
+                at,
+                by,
+                expected_version,
+            } => {
+                update.set("started_at", AttributeValue::N(at.to_string()));
+                // Starting a finished meeting reopens it.
+                update.remove("finished_at");
+                (by, Some(expected_version))
+            }
+            db::MeetingUpdateShape::Finish {
+                at,
+                by,
+                expected_version,
+            } => {
+                update.set("finished_at", AttributeValue::N(at.to_string()));
+                (by, Some(expected_version))
+            }
+            db::MeetingUpdateShape::Delete { by } => {
+                update.set("deleted", AttributeValue::N(now.to_string()));
+                (by, None)
+            }
+        };
+        update.set_or_remove("updated_by", by.map(|b| AttributeValue::S(b.to_string())));
+        let live = "attribute_exists(id) AND attribute_not_exists(deleted)";
+        let condition = match expected_version {
+            Some(_) => format!("{live} AND v = :expected_version"),
+            None => live.to_string(),
+        };
+
+        let mut builder = self
+            .client
+            .update_item()
+            .table_name(self.table_name("meeting"))
+            .key("id", AttributeValue::S(id.to_string()))
+            .update_expression(update.expression("ADD v :one"))
+            .set_expression_attribute_names(Some(update.names))
+            .set_expression_attribute_values(Some(update.values))
+            .expression_attribute_values(":one", AttributeValue::N("1".to_string()))
+            .condition_expression(condition)
+            .return_values(ReturnValue::AllNew)
+            .return_consumed_capacity(ReturnConsumedCapacity::Total);
+        if let Some(v) = expected_version {
+            builder = builder
+                .expression_attribute_values(":expected_version", AttributeValue::N(v.to_string()));
+        }
+        let resp = builder
+            .send()
+            .await
+            .map_err(|e| map_update_err(e, format!("Meeting {id} not found, or changed")))?;
+        record_capacity("update_meeting", resp.consumed_capacity(), CapKind::Write);
+        Ok(hydrate_item(resp.attributes.unwrap_or_default())?)
+    }
+
+    async fn get_agenda_items<T: AsRef<str> + Sync>(
+        &self,
+        ids: &[T],
+    ) -> db::Result<Vec<Option<db::AgendaItem>>> {
+        self.get_records("agenda_item", ids).await
+    }
+
+    async fn list_agenda_items(&self, meeting_id: &str) -> db::Result<Vec<db::AgendaItem>> {
+        query_all("list_agenda_items", || {
+            self.client
+                .query()
+                .table_name(self.table_name("agenda_item"))
+                .index_name("meeting_id-index")
+                .key_condition_expression("meeting_id = :meeting_id")
+                .filter_expression("attribute_not_exists(deleted)")
+                .expression_attribute_values(
+                    ":meeting_id",
+                    AttributeValue::S(meeting_id.to_string()),
+                )
+        })
+        .await
+    }
+
+    async fn create_agenda_item(&self, i: db::NewAgendaItem<'_>) -> db::Result<db::AgendaItem> {
+        if self.read_only {
+            return Err(db::Error::MutationDisabled);
+        }
+        let id = i.id.to_string();
+        let now = crate::clock::now_sec();
+        // Optional attributes are omitted when absent rather than stored as Null.
+        let mut put = self
+            .client
+            .put_item()
+            .table_name(self.table_name("agenda_item"))
+            .item("id", AttributeValue::S(id.clone()))
+            .item("meeting_id", AttributeValue::S(i.meeting_id.to_string()))
+            .item("location_id", AttributeValue::S(i.location_id.to_string()))
+            .item(
+                "presenter_id",
+                AttributeValue::S(i.presenter_id.to_string()),
+            )
+            .item("position", AttributeValue::N(i.position.to_string()))
+            .item("v", AttributeValue::N("1".to_string()))
+            .item("created_at", AttributeValue::N(now.to_string()))
+            .item("updated_at", AttributeValue::N(now.to_string()))
+            .condition_expression("attribute_not_exists(id)")
+            .return_consumed_capacity(ReturnConsumedCapacity::Total);
+        if !i.text.is_empty() {
+            put = put.item("text", AttributeValue::S(i.text.to_string()));
+        }
+        for (attr, ids) in [
+            ("task_ids", i.task_ids),
+            ("equipment_ids", i.equipment_ids),
+            ("on_call_role_ids", i.on_call_role_ids),
+            ("photo_asset_ids", i.photo_asset_ids),
+            ("note_ids", i.note_ids),
+        ] {
+            if let Some(list) = string_list_value(ids) {
+                put = put.item(attr, list);
+            }
+        }
+        if let Some(by) = i.created_by {
+            put = put.item("created_by", AttributeValue::S(by.to_string()));
+        }
+        let resp = put
+            .send()
+            .await
+            .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
+        record_capacity(
+            "create_agenda_item",
+            resp.consumed_capacity(),
+            CapKind::Write,
+        );
+        Ok(db::AgendaItem {
+            id,
+            meeting_id: i.meeting_id.to_string(),
+            location_id: i.location_id.to_string(),
+            text: i.text.to_string(),
+            presenter_id: i.presenter_id.to_string(),
+            position: i.position,
+            task_ids: i.task_ids.to_vec(),
+            equipment_ids: i.equipment_ids.to_vec(),
+            on_call_role_ids: i.on_call_role_ids.to_vec(),
+            photo_asset_ids: i.photo_asset_ids.to_vec(),
+            note_ids: i.note_ids.to_vec(),
+            created_by: i.created_by.map(str::to_string),
+            updated_by: None,
+            version: 1,
+            deleted: None,
+            created_at: now,
+            updated_at: now,
+        })
+    }
+
+    async fn update_agenda_item(
+        &self,
+        id: &str,
+        change: db::AgendaItemUpdateShape<'_>,
+    ) -> db::Result<db::AgendaItem> {
+        if self.read_only {
+            return Err(db::Error::MutationDisabled);
+        }
+        let now = crate::clock::now_sec();
+        let mut update = UpdateExpr::default();
+        update.set("updated_at", AttributeValue::N(now.to_string()));
+        let (by, expected_version) = match change {
+            db::AgendaItemUpdateShape::Fields {
+                text,
+                presenter_id,
+                task_ids,
+                equipment_ids,
+                on_call_role_ids,
+                photo_asset_ids,
+                note_ids,
+                by,
+                expected_version,
+            } => {
+                update.set("presenter_id", AttributeValue::S(presenter_id.to_string()));
+                update.set_or_remove(
+                    "text",
+                    (!text.is_empty()).then(|| AttributeValue::S(text.to_string())),
+                );
+                update.set_or_remove("task_ids", string_list_value(task_ids));
+                update.set_or_remove("equipment_ids", string_list_value(equipment_ids));
+                update.set_or_remove("on_call_role_ids", string_list_value(on_call_role_ids));
+                update.set_or_remove("photo_asset_ids", string_list_value(photo_asset_ids));
+                update.set_or_remove("note_ids", string_list_value(note_ids));
+                (by, Some(expected_version))
+            }
+            db::AgendaItemUpdateShape::Position {
+                position,
+                by,
+                expected_version,
+            } => {
+                update.set("position", AttributeValue::N(position.to_string()));
+                (by, Some(expected_version))
+            }
+            db::AgendaItemUpdateShape::Delete { by } => {
+                update.set("deleted", AttributeValue::N(now.to_string()));
+                (by, None)
+            }
+        };
+        update.set_or_remove("updated_by", by.map(|b| AttributeValue::S(b.to_string())));
+        let live = "attribute_exists(id) AND attribute_not_exists(deleted)";
+        let condition = match expected_version {
+            Some(_) => format!("{live} AND v = :expected_version"),
+            None => live.to_string(),
+        };
+
+        let mut builder = self
+            .client
+            .update_item()
+            .table_name(self.table_name("agenda_item"))
+            .key("id", AttributeValue::S(id.to_string()))
+            .update_expression(update.expression("ADD v :one"))
+            .set_expression_attribute_names(Some(update.names))
+            .set_expression_attribute_values(Some(update.values))
+            .expression_attribute_values(":one", AttributeValue::N("1".to_string()))
+            .condition_expression(condition)
+            .return_values(ReturnValue::AllNew)
+            .return_consumed_capacity(ReturnConsumedCapacity::Total);
+        if let Some(v) = expected_version {
+            builder = builder
+                .expression_attribute_values(":expected_version", AttributeValue::N(v.to_string()));
+        }
+        let resp = builder
+            .send()
+            .await
+            .map_err(|e| map_update_err(e, format!("Agenda item {id} not found, or changed")))?;
+        record_capacity(
+            "update_agenda_item",
+            resp.consumed_capacity(),
+            CapKind::Write,
+        );
+        Ok(hydrate_item(resp.attributes.unwrap_or_default())?)
+    }
+
     async fn get_on_call_roles<T: AsRef<str> + Sync>(
         &self,
         ids: &[T],
@@ -7831,7 +8709,7 @@ impl db::Handler for Handler {
         if self.read_only {
             return Err(db::Error::MutationDisabled);
         }
-        let id = new_id();
+        let id = role.id.to_string();
         let now = crate::clock::now_sec();
         let members_changed_at = role.primary_person_id.map(|_| now);
         // Optional attributes are omitted when absent rather than stored as Null, and a
@@ -7872,6 +8750,9 @@ impl db::Handler for Handler {
         if let Some(at) = members_changed_at {
             put = put.item("members_changed_at", AttributeValue::N(at.to_string()));
         }
+        if let Some(notes) = string_list_value(role.note_ids) {
+            put = put.item("note_ids", notes);
+        }
         if let Some(by) = role.created_by {
             put = put.item("created_by", AttributeValue::S(by.to_string()));
         }
@@ -7894,6 +8775,7 @@ impl db::Handler for Handler {
             primary_person_id: role.primary_person_id.map(str::to_string),
             secondary_person_ids: role.secondary_person_ids.to_vec(),
             members_changed_at,
+            note_ids: role.note_ids.to_vec(),
             created_by: role.created_by.map(str::to_string),
             updated_by: None,
             version: 1,
@@ -7923,6 +8805,7 @@ impl db::Handler for Handler {
                 primary_person_id,
                 secondary_person_ids,
                 members_changed_at,
+                note_ids,
                 by,
                 expected_version,
             } => {
@@ -7945,6 +8828,7 @@ impl db::Handler for Handler {
                     "members_changed_at",
                     members_changed_at.map(|t| AttributeValue::N(t.to_string())),
                 );
+                update.set_or_remove("note_ids", string_list_value(note_ids));
                 update.set_or_remove("updated_by", by.map(|b| AttributeValue::S(b.to_string())));
                 (
                     format!("{live} AND v = :expected_version"),
@@ -8201,7 +9085,7 @@ impl db::Handler for Handler {
         let now_us = crate::clock::now_us();
         let now = now_us / 1_000_000;
         let row = db::Equipment {
-            id: new_id(),
+            id: equipment.id.to_string(),
             location_id: equipment.location_id.to_string(),
             equipment_type: equipment.equipment_type.to_string(),
             name: equipment.name.to_string(),
@@ -8209,6 +9093,8 @@ impl db::Handler for Handler {
             status: equipment.status.to_string(),
             status_changed_at: now,
             last_checked_at: None,
+            photo_asset_ids: equipment.photo_asset_ids.to_vec(),
+            note_ids: equipment.note_ids.to_vec(),
             created_by: equipment.created_by.map(str::to_string),
             updated_by: None,
             version: 1,
@@ -8255,6 +9141,12 @@ impl db::Handler for Handler {
                 AttributeValue::S(row.description.clone()),
             );
         }
+        if let Some(photos) = string_list_value(&row.photo_asset_ids) {
+            item.insert("photo_asset_ids".to_string(), photos);
+        }
+        if let Some(notes) = string_list_value(&row.note_ids) {
+            item.insert("note_ids".to_string(), notes);
+        }
         if let Some(by) = &row.created_by {
             item.insert("created_by".to_string(), AttributeValue::S(by.clone()));
         }
@@ -8299,6 +9191,8 @@ impl db::Handler for Handler {
                 equipment_type,
                 name,
                 description,
+                photo_asset_ids,
+                note_ids,
                 by,
                 expected_version,
             } => {
@@ -8311,6 +9205,8 @@ impl db::Handler for Handler {
                     "description",
                     (!description.is_empty()).then(|| AttributeValue::S(description.to_string())),
                 );
+                update.set_or_remove("photo_asset_ids", string_list_value(photo_asset_ids));
+                update.set_or_remove("note_ids", string_list_value(note_ids));
                 update.set_or_remove("updated_by", by.map(|b| AttributeValue::S(b.to_string())));
                 (
                     format!("{live} AND v = :expected_version"),
@@ -9189,6 +10085,540 @@ impl db::Handler for Handler {
         Ok(())
     }
 
+    async fn create_asset(&self, asset: db::NewAsset<'_>) -> db::Result<db::Asset> {
+        if self.read_only {
+            return Err(db::Error::MutationDisabled);
+        }
+        let now = crate::clock::now_sec();
+        let row = db::Asset {
+            id: new_id(),
+            location_id: asset.location_id.to_string(),
+            kind: asset.kind,
+            status: db::AssetStatus::Pending,
+            content_type: asset.content_type.to_string(),
+            byte_size: asset.byte_size,
+            original_filename: asset.original_filename.map(str::to_string),
+            width: asset.width,
+            height: asset.height,
+            taken_at: asset.taken_at,
+            camera_make: asset.camera_make.map(str::to_string),
+            camera_model: asset.camera_model.map(str::to_string),
+            created_by: asset.created_by.to_string(),
+            created_at: now,
+            completed_at: None,
+            expires_at: Some(now + db::PENDING_ASSET_TTL_SECS),
+        };
+        let resp = self
+            .client
+            .put_item()
+            .table_name(self.table_name("asset"))
+            .set_item(Some(asset_item(&row)))
+            .condition_expression("attribute_not_exists(id)")
+            .return_consumed_capacity(ReturnConsumedCapacity::Total)
+            .send()
+            .await
+            .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
+        record_capacity("create_asset", resp.consumed_capacity(), CapKind::Write);
+        Ok(row)
+    }
+
+    async fn get_assets<T: AsRef<str> + Sync>(
+        &self,
+        ids: &[T],
+    ) -> db::Result<Vec<Option<db::Asset>>> {
+        self.get_records("asset", ids).await
+    }
+
+    async fn complete_asset(&self, id: &str, content_type: &str) -> db::Result<db::Asset> {
+        if self.read_only {
+            return Err(db::Error::MutationDisabled);
+        }
+        let now = crate::clock::now_sec();
+        let mut update = UpdateExpr::default();
+        update.set(
+            "status",
+            AttributeValue::S(db::AssetStatus::Ready.as_str().to_string()),
+        );
+        update.set("completed_at", AttributeValue::N(now.to_string()));
+        update.set("content_type", AttributeValue::S(content_type.to_string()));
+        // No longer pending, so no longer due for the TTL.
+        update.remove("expires_at");
+        let resp = self
+            .client
+            .update_item()
+            .table_name(self.table_name("asset"))
+            .key("id", AttributeValue::S(id.to_string()))
+            .update_expression(update.expression(""))
+            .set_expression_attribute_names(Some(update.names))
+            .set_expression_attribute_values(Some(update.values))
+            .expression_attribute_values(
+                ":pending",
+                AttributeValue::S(db::AssetStatus::Pending.as_str().to_string()),
+            )
+            .condition_expression("attribute_exists(id) AND #status = :pending")
+            .return_values(ReturnValue::AllNew)
+            .return_consumed_capacity(ReturnConsumedCapacity::Total)
+            .send()
+            .await
+            .map_err(|e| map_update_err(e, format!("Asset {id} not found, or not pending")))?;
+        record_capacity("complete_asset", resp.consumed_capacity(), CapKind::Write);
+        Ok(hydrate_item(resp.attributes.unwrap_or_default())?)
+    }
+
+    async fn list_asset_refs(&self, asset_id: &str) -> db::Result<Vec<db::AssetRef>> {
+        query_all("list_asset_refs", || {
+            self.client
+                .query()
+                .table_name(self.table_name("asset_ref"))
+                .consistent_read(true)
+                .key_condition_expression("asset_id = :asset_id")
+                .expression_attribute_values(":asset_id", AttributeValue::S(asset_id.to_string()))
+        })
+        .await
+    }
+
+    async fn put_asset_ref(
+        &self,
+        asset_id: &str,
+        owner: &str,
+        location_id: &str,
+    ) -> db::Result<()> {
+        if self.read_only {
+            return Err(db::Error::MutationDisabled);
+        }
+        let build_err =
+            |e: aws_sdk_dynamodb::error::BuildError| Error::Infrastructure(e.to_string());
+        let check = self.asset_ready_check(asset_id, location_id)?;
+        let put = aws_sdk_dynamodb::types::Put::builder()
+            .table_name(self.table_name("asset_ref"))
+            .set_item(Some(asset_ref_item(&db::AssetRef {
+                asset_id: asset_id.to_string(),
+                owner: owner.to_string(),
+                location_id: location_id.to_string(),
+                created_at: crate::clock::now_sec(),
+            })))
+            .build()
+            .map_err(build_err)?;
+        let resp = self
+            .client
+            .transact_write_items()
+            .transact_items(TransactWriteItem::builder().condition_check(check).build())
+            .transact_items(TransactWriteItem::builder().put(put).build())
+            .return_consumed_capacity(ReturnConsumedCapacity::Total)
+            .send()
+            .await
+            .map_err(|e| {
+                map_transact_err(
+                    e,
+                    format!("Asset {asset_id} is not ready at location {location_id}"),
+                )
+            })?;
+        for capacity in resp.consumed_capacity() {
+            record_capacity("put_asset_ref", Some(capacity), CapKind::Write);
+        }
+        Ok(())
+    }
+
+    async fn delete_asset_ref(&self, asset_id: &str, owner: &str) -> db::Result<()> {
+        if self.read_only {
+            return Err(db::Error::MutationDisabled);
+        }
+        let resp = self
+            .client
+            .delete_item()
+            .table_name(self.table_name("asset_ref"))
+            .key("asset_id", AttributeValue::S(asset_id.to_string()))
+            .key("owner", AttributeValue::S(owner.to_string()))
+            .return_consumed_capacity(ReturnConsumedCapacity::Total)
+            .send()
+            .await
+            .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
+        record_capacity("delete_asset_ref", resp.consumed_capacity(), CapKind::Write);
+        Ok(())
+    }
+
+    async fn list_note_refs(&self, note_id: &str) -> db::Result<Vec<db::NoteRef>> {
+        query_all("list_note_refs", || {
+            self.client
+                .query()
+                .table_name(self.table_name("note_ref"))
+                .consistent_read(true)
+                .key_condition_expression("note_id = :note_id")
+                .expression_attribute_values(":note_id", AttributeValue::S(note_id.to_string()))
+        })
+        .await
+    }
+
+    async fn put_note_ref(&self, note_id: &str, owner: &str, location_id: &str) -> db::Result<()> {
+        if self.read_only {
+            return Err(db::Error::MutationDisabled);
+        }
+        let resp = self
+            .client
+            .put_item()
+            .table_name(self.table_name("note_ref"))
+            .set_item(Some(note_ref_item(&db::NoteRef {
+                note_id: note_id.to_string(),
+                owner: owner.to_string(),
+                location_id: location_id.to_string(),
+                created_at: crate::clock::now_sec(),
+            })))
+            .return_consumed_capacity(ReturnConsumedCapacity::Total)
+            .send()
+            .await
+            .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
+        record_capacity("put_note_ref", resp.consumed_capacity(), CapKind::Write);
+        Ok(())
+    }
+
+    async fn delete_note_ref(&self, note_id: &str, owner: &str) -> db::Result<()> {
+        if self.read_only {
+            return Err(db::Error::MutationDisabled);
+        }
+        let resp = self
+            .client
+            .delete_item()
+            .table_name(self.table_name("note_ref"))
+            .key("note_id", AttributeValue::S(note_id.to_string()))
+            .key("owner", AttributeValue::S(owner.to_string()))
+            .return_consumed_capacity(ReturnConsumedCapacity::Total)
+            .send()
+            .await
+            .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
+        record_capacity("delete_note_ref", resp.consumed_capacity(), CapKind::Write);
+        Ok(())
+    }
+
+    async fn create_photo(&self, photo: db::NewPhoto<'_>) -> db::Result<db::Photo> {
+        if self.read_only {
+            return Err(db::Error::MutationDisabled);
+        }
+        let build_err =
+            |e: aws_sdk_dynamodb::error::BuildError| Error::Infrastructure(e.to_string());
+        let now = crate::clock::now_sec();
+        let row = db::Photo {
+            id: new_id(),
+            location_id: photo.location_id.to_string(),
+            asset_id: photo.asset_id.to_string(),
+            created_by: photo.created_by.to_string(),
+            created_at: now,
+            taken_at: photo.taken_at,
+            expires_at: now + db::PHOTO_LIFETIME_SECS,
+            visible_location_id: Some(photo.location_id.to_string()),
+            hidden_at: None,
+            hidden_by: None,
+            deleted: None,
+            version: 1,
+        };
+        // The asset must be ready and the unit's, and the reference goes in with the
+        // photo, so a photo never exists without one.
+        let check = self.asset_ready_check(photo.asset_id, photo.location_id)?;
+        let put_photo = aws_sdk_dynamodb::types::Put::builder()
+            .table_name(self.table_name("photo"))
+            .set_item(Some(photo_item(&row)))
+            .condition_expression("attribute_not_exists(id)")
+            .build()
+            .map_err(build_err)?;
+        let put_ref = aws_sdk_dynamodb::types::Put::builder()
+            .table_name(self.table_name("asset_ref"))
+            .set_item(Some(asset_ref_item(&db::AssetRef {
+                asset_id: row.asset_id.clone(),
+                owner: db::asset_owner("photo", &row.id),
+                location_id: row.location_id.clone(),
+                created_at: now,
+            })))
+            .build()
+            .map_err(build_err)?;
+        let resp = self
+            .client
+            .transact_write_items()
+            .transact_items(TransactWriteItem::builder().condition_check(check).build())
+            .transact_items(TransactWriteItem::builder().put(put_photo).build())
+            .transact_items(TransactWriteItem::builder().put(put_ref).build())
+            .return_consumed_capacity(ReturnConsumedCapacity::Total)
+            .send()
+            .await
+            .map_err(|e| {
+                map_transact_err(
+                    e,
+                    format!(
+                        "Asset {} is not ready at location {}",
+                        photo.asset_id, photo.location_id
+                    ),
+                )
+            })?;
+        for capacity in resp.consumed_capacity() {
+            record_capacity("create_photo", Some(capacity), CapKind::Write);
+        }
+        Ok(row)
+    }
+
+    async fn get_photos<T: AsRef<str> + Sync>(
+        &self,
+        ids: &[T],
+    ) -> db::Result<Vec<Option<db::Photo>>> {
+        self.get_records("photo", ids).await
+    }
+
+    async fn list_visible_photos(
+        &self,
+        location_id: &str,
+        after_sort_key: Option<&str>,
+        limit: usize,
+        now: u64,
+    ) -> db::Result<(Vec<db::Photo>, bool)> {
+        // One more than asked for, to know whether another page follows.
+        let wanted = limit.saturating_add(1);
+        let mut exclusive_start_key = after_sort_key
+            .map(|key| visible_photo_start_key(location_id, key))
+            .transpose()?;
+        let mut photos: Vec<db::Photo> = Vec::new();
+        loop {
+            // `Limit` counts rows read before the filter drops the expired ones, so a
+            // page can come back short with more to read: keep going until there are
+            // enough or the index runs out.
+            let page_size = wanted.saturating_sub(photos.len()).max(25);
+            let resp = self
+                .client
+                .query()
+                .table_name(self.table_name("photo"))
+                .index_name("visible_location_id-sort_key-index")
+                .key_condition_expression("visible_location_id = :location_id")
+                .filter_expression("#expires_at > :now")
+                .expression_attribute_names("#expires_at", "expires_at")
+                .expression_attribute_values(
+                    ":location_id",
+                    AttributeValue::S(location_id.to_string()),
+                )
+                .expression_attribute_values(":now", AttributeValue::N(now.to_string()))
+                .scan_index_forward(false)
+                .limit(i32::try_from(page_size).unwrap_or(i32::MAX))
+                .set_exclusive_start_key(exclusive_start_key.take())
+                .return_consumed_capacity(ReturnConsumedCapacity::Total)
+                .send()
+                .await
+                .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
+            record_capacity(
+                "list_visible_photos",
+                resp.consumed_capacity(),
+                CapKind::Read,
+            );
+            photos.extend(hydrate_items::<db::Photo>(resp.items)?);
+            exclusive_start_key = resp.last_evaluated_key;
+            if exclusive_start_key.is_none() || photos.len() >= wanted {
+                break;
+            }
+        }
+        let has_more = photos.len() > limit;
+        photos.truncate(limit);
+        Ok((photos, has_more))
+    }
+
+    async fn hide_photo(&self, id: &str, hidden_by: &str, now: u64) -> db::Result<db::Photo> {
+        if self.read_only {
+            return Err(db::Error::MutationDisabled);
+        }
+        // DynamoDB can't take the earlier of two values in an update, so read the expiry
+        // and make the write conditional on the row not having changed since.
+        let current = self
+            .get_photos(&[id])
+            .await?
+            .into_iter()
+            .next()
+            .flatten()
+            .ok_or_else(|| Error::NotFound(format!("Photo {id} not found")))?;
+        let mut update = UpdateExpr::default();
+        update.set("hidden_at", AttributeValue::N(now.to_string()));
+        update.set("hidden_by", AttributeValue::S(hidden_by.to_string()));
+        update.set(
+            "expires_at",
+            AttributeValue::N(db::hidden_photo_expires_at(current.expires_at, now).to_string()),
+        );
+        // Out of the stream.
+        update.remove("visible_location_id");
+        let resp = self
+            .client
+            .update_item()
+            .table_name(self.table_name("photo"))
+            .key("id", AttributeValue::S(id.to_string()))
+            .update_expression(update.expression("ADD v :one"))
+            .set_expression_attribute_names(Some(update.names))
+            .set_expression_attribute_values(Some(update.values))
+            .expression_attribute_values(":one", AttributeValue::N("1".to_string()))
+            .expression_attribute_values(
+                ":expected_version",
+                AttributeValue::N(current.version.to_string()),
+            )
+            .condition_expression(
+                "attribute_exists(visible_location_id) AND attribute_not_exists(deleted) \
+                 AND v = :expected_version",
+            )
+            .return_values(ReturnValue::AllNew)
+            .return_consumed_capacity(ReturnConsumedCapacity::Total)
+            .send()
+            .await
+            .map_err(|e| {
+                map_update_err(e, format!("Photo {id} not found, or no longer visible"))
+            })?;
+        record_capacity("hide_photo", resp.consumed_capacity(), CapKind::Write);
+        Ok(hydrate_item(resp.attributes.unwrap_or_default())?)
+    }
+
+    async fn list_photos_due_for_sweep(
+        &self,
+        now: u64,
+        limit: usize,
+    ) -> db::Result<Vec<db::Photo>> {
+        let mut photos: Vec<db::Photo> = Vec::new();
+        let mut exclusive_start_key = None;
+        while photos.len() < limit {
+            let resp = self
+                .client
+                .query()
+                .table_name(self.table_name("photo"))
+                .index_name("sweep-expires_at-index")
+                .key_condition_expression("#sweep = :one AND #expires_at <= :now")
+                .expression_attribute_names("#sweep", "sweep")
+                .expression_attribute_names("#expires_at", "expires_at")
+                .expression_attribute_values(":one", AttributeValue::S("1".to_string()))
+                .expression_attribute_values(":now", AttributeValue::N(now.to_string()))
+                .limit(i32::try_from(limit - photos.len()).unwrap_or(i32::MAX))
+                .set_exclusive_start_key(exclusive_start_key.take())
+                .return_consumed_capacity(ReturnConsumedCapacity::Total)
+                .send()
+                .await
+                .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
+            record_capacity(
+                "list_photos_due_for_sweep",
+                resp.consumed_capacity(),
+                CapKind::Read,
+            );
+            photos.extend(hydrate_items::<db::Photo>(resp.items)?);
+            exclusive_start_key = resp.last_evaluated_key;
+            if exclusive_start_key.is_none() {
+                break;
+            }
+        }
+        photos.truncate(limit);
+        Ok(photos)
+    }
+
+    async fn sweep_photo(&self, id: &str, now: u64) -> db::Result<()> {
+        if self.read_only {
+            return Err(db::Error::MutationDisabled);
+        }
+        let build_err =
+            |e: aws_sdk_dynamodb::error::BuildError| Error::Infrastructure(e.to_string());
+        let not_found = || Error::NotFound(format!("Photo {id} not found, or already swept"));
+        // The reference to remove is named by the photo's asset.
+        let photo = self
+            .get_photos(&[id])
+            .await?
+            .into_iter()
+            .next()
+            .flatten()
+            .filter(|p| p.deleted.is_none())
+            .ok_or_else(not_found)?;
+        let mut update = UpdateExpr::default();
+        update.set("deleted", AttributeValue::N(now.to_string()));
+        update.remove("sweep");
+        update.remove("visible_location_id");
+        let update = aws_sdk_dynamodb::types::Update::builder()
+            .table_name(self.table_name("photo"))
+            .key("id", AttributeValue::S(id.to_string()))
+            .update_expression(update.expression("ADD v :one"))
+            .set_expression_attribute_names(Some(update.names))
+            .set_expression_attribute_values(Some(update.values))
+            .expression_attribute_values(":one", AttributeValue::N("1".to_string()))
+            .condition_expression("attribute_exists(id) AND attribute_not_exists(deleted)")
+            .build()
+            .map_err(build_err)?;
+        let delete_ref = aws_sdk_dynamodb::types::Delete::builder()
+            .table_name(self.table_name("asset_ref"))
+            .key("asset_id", AttributeValue::S(photo.asset_id.clone()))
+            .key(
+                "owner",
+                AttributeValue::S(db::asset_owner("photo", &photo.id)),
+            )
+            .build()
+            .map_err(build_err)?;
+        let resp = self
+            .client
+            .transact_write_items()
+            .transact_items(TransactWriteItem::builder().update(update).build())
+            .transact_items(TransactWriteItem::builder().delete(delete_ref).build())
+            .return_consumed_capacity(ReturnConsumedCapacity::Total)
+            .send()
+            .await
+            .map_err(|e| map_transact_err(e, not_found().to_string()))?;
+        for capacity in resp.consumed_capacity() {
+            record_capacity("sweep_photo", Some(capacity), CapKind::Write);
+        }
+        Ok(())
+    }
+
+    async fn increment_daily_counter(
+        &self,
+        id: &str,
+        limit: u64,
+        expires_at: u64,
+    ) -> db::Result<Option<u64>> {
+        if self.read_only {
+            return Err(db::Error::MutationDisabled);
+        }
+        let result = self
+            .client
+            .update_item()
+            .table_name(self.table_name("ephemeral_state"))
+            .key("id", AttributeValue::S(id.to_string()))
+            .update_expression("ADD #count :one SET #kind = :kind, #expires_at = :expires_at")
+            .expression_attribute_names("#count", "count")
+            .expression_attribute_names("#kind", "kind")
+            .expression_attribute_names("#expires_at", "expires_at")
+            .expression_attribute_values(":one", AttributeValue::N("1".to_string()))
+            .expression_attribute_values(":kind", AttributeValue::S(db::COUNTER_KIND.to_string()))
+            .expression_attribute_values(":expires_at", AttributeValue::N(expires_at.to_string()))
+            .expression_attribute_values(":limit", AttributeValue::N(limit.to_string()))
+            .condition_expression("attribute_not_exists(#count) OR #count < :limit")
+            .return_values(ReturnValue::UpdatedNew)
+            .return_consumed_capacity(ReturnConsumedCapacity::Total)
+            .send()
+            .await;
+        let resp = match result {
+            Ok(resp) => resp,
+            // At the limit.
+            Err(ref e) if is_conditional_check_failed(e) => return Ok(None),
+            Err(e) => return Err(Error::Infrastructure(sdk_err_msg(e))),
+        };
+        record_capacity(
+            "increment_daily_counter",
+            resp.consumed_capacity(),
+            CapKind::Write,
+        );
+        counter_count(resp.attributes.unwrap_or_default())
+            .ok_or_else(|| Error::Integrity(format!("Counter {id} has no count")))
+            .map(Some)
+    }
+
+    async fn get_daily_counter(&self, id: &str) -> db::Result<u64> {
+        let resp = self
+            .client
+            .get_item()
+            .table_name(self.table_name("ephemeral_state"))
+            .key("id", AttributeValue::S(id.to_string()))
+            .consistent_read(true)
+            .return_consumed_capacity(ReturnConsumedCapacity::Total)
+            .send()
+            .await
+            .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
+        record_capacity("get_daily_counter", resp.consumed_capacity(), CapKind::Read);
+        match resp.item {
+            Some(item) => counter_count(item)
+                .ok_or_else(|| Error::Integrity(format!("Counter {id} has no count"))),
+            None => Ok(0),
+        }
+    }
+
     async fn put_audit_entry(&self, entry: &db::AuditEntry) -> db::Result<()> {
         if self.read_only {
             return Err(db::Error::MutationDisabled);
@@ -9282,10 +10712,11 @@ impl db::Handler for Handler {
 #[cfg(test)]
 mod tests {
     use super::{
-        AuditQueryPlan, Item, audit_entries_from_items, audit_items, audit_query_plan,
-        batch_get_backoff, client_info_attributes, contact_key, hydrate_items,
-        hydrate_items_lenient, nitc_event_key, scan_cursor_from_key, topic_date_key,
-        trophy_holder_item, trophy_notice_item, trophy_reign_item, unprocessed_keys_for,
+        AuditQueryPlan, Item, asset_item, asset_ref_item, audit_entries_from_items, audit_items,
+        audit_query_plan, batch_get_backoff, client_info_attributes, contact_key, counter_count,
+        hydrate_items, hydrate_items_lenient, nitc_event_key, note_ref_item, photo_item,
+        scan_cursor_from_key, string_list_value, topic_date_key, trophy_holder_item,
+        trophy_notice_item, trophy_reign_item, unprocessed_keys_for, visible_photo_start_key,
     };
     use crate::db;
     use crate::db::Category;
@@ -9372,6 +10803,138 @@ mod tests {
         let member: db::WebauthnCredential =
             passkey_row(&[("person_id", "p1")]).try_into().unwrap();
         assert_eq!(member.owner, db::PasskeyOwner::Member("p1".into()));
+    }
+
+    #[test]
+    fn a_location_hydrates_its_sop_notes_by_place() {
+        let s = |v: &str| AttributeValue::S(v.to_string());
+        let n = |v: &str| AttributeValue::N(v.to_string());
+        let location: db::Location = item(&[
+            ("id", s("loc")),
+            ("name", s("Unit")),
+            ("created_at", n("1")),
+            ("updated_at", n("2")),
+            ("sop_note_on_call", s("note-1")),
+            ("sop_note_equipment_borrowing", s("note-2")),
+        ])
+        .try_into()
+        .unwrap();
+        assert_eq!(
+            location.sop_notes,
+            [
+                (db::SopPlace::OnCall, "note-1".to_string()),
+                (db::SopPlace::EquipmentBorrowing, "note-2".to_string()),
+            ]
+            .into_iter()
+            .collect()
+        );
+
+        let bare: db::Location = item(&[
+            ("id", s("loc")),
+            ("created_at", n("1")),
+            ("updated_at", n("2")),
+        ])
+        .try_into()
+        .unwrap();
+        assert!(bare.sop_notes.is_empty());
+    }
+
+    #[test]
+    fn a_meeting_hydrates_with_only_its_required_attributes() {
+        let s = |v: &str| AttributeValue::S(v.to_string());
+        let n = |v: &str| AttributeValue::N(v.to_string());
+        let bare: db::Meeting = item(&[
+            ("id", s("m1")),
+            ("location_id", s("loc")),
+            ("title", s("Monthly meeting")),
+            ("starts_at", n("1700000000")),
+            ("created_at", n("1")),
+            ("updated_at", n("2")),
+        ])
+        .try_into()
+        .unwrap();
+        assert_eq!(bare.status(), db::MeetingStatus::Planned);
+        assert_eq!(bare.version, 1);
+        assert!(bare.description.is_empty());
+
+        let full: db::Meeting = item(&[
+            ("id", s("m1")),
+            ("location_id", s("loc")),
+            ("title", s("Monthly meeting")),
+            ("starts_at", n("1700000000")),
+            ("started_at", n("1700000060")),
+            ("v", n("4")),
+            ("created_at", n("1")),
+            ("updated_at", n("2")),
+        ])
+        .try_into()
+        .unwrap();
+        assert_eq!(full.status(), db::MeetingStatus::InProgress);
+        assert_eq!(full.version, 4);
+
+        let missing_start: Result<db::Meeting, _> = item(&[
+            ("id", s("m1")),
+            ("location_id", s("loc")),
+            ("created_at", n("1")),
+            ("updated_at", n("2")),
+        ])
+        .try_into();
+        assert!(missing_start.is_err());
+    }
+
+    #[test]
+    fn an_agenda_item_hydrates_with_only_its_required_attributes() {
+        let s = |v: &str| AttributeValue::S(v.to_string());
+        let n = |v: &str| AttributeValue::N(v.to_string());
+        let bare: db::AgendaItem = item(&[
+            ("id", s("a1")),
+            ("meeting_id", s("m1")),
+            ("location_id", s("loc")),
+            ("presenter_id", s("p1")),
+            ("position", n("2")),
+            ("created_at", n("1")),
+            ("updated_at", n("2")),
+        ])
+        .try_into()
+        .unwrap();
+        assert_eq!(bare.position, 2);
+        assert!(bare.text.is_empty() && bare.task_ids.is_empty());
+        assert!(bare.photo_asset_ids.is_empty() && bare.note_ids.is_empty());
+
+        let full: db::AgendaItem = item(&[
+            ("id", s("a1")),
+            ("meeting_id", s("m1")),
+            ("location_id", s("loc")),
+            ("presenter_id", s("p1")),
+            ("position", n("2")),
+            ("text", s("Budget\n\nAgreed.")),
+            ("task_ids", AttributeValue::L(vec![s("t1")])),
+            ("equipment_ids", AttributeValue::L(vec![s("e1")])),
+            ("on_call_role_ids", AttributeValue::L(vec![s("r1")])),
+            ("photo_asset_ids", AttributeValue::L(vec![s("x1")])),
+            ("note_ids", AttributeValue::L(vec![s("n1")])),
+            ("created_at", n("1")),
+            ("updated_at", n("2")),
+        ])
+        .try_into()
+        .unwrap();
+        assert_eq!(full.text, "Budget\n\nAgreed.");
+        assert_eq!(
+            (
+                full.task_ids,
+                full.equipment_ids,
+                full.on_call_role_ids,
+                full.photo_asset_ids,
+                full.note_ids
+            ),
+            (
+                vec!["t1".to_string()],
+                vec!["e1".to_string()],
+                vec!["r1".to_string()],
+                vec!["x1".to_string()],
+                vec!["n1".to_string()]
+            )
+        );
     }
 
     #[test]
@@ -10007,5 +11570,202 @@ mod tests {
             db::trophy_reign_sk(&reign(999_999_999)) < db::trophy_reign_sk(&reign(1_000_000_000))
         );
         assert!(db::trophy_reign_sk(&reign(5)).starts_with(&db::trophy_reign_prefix("owl")));
+    }
+
+    #[test]
+    fn asset_rows_round_trip() {
+        let mut asset = db::Asset {
+            id: "a1".into(),
+            location_id: "loc".into(),
+            kind: db::AssetKind::Image,
+            status: db::AssetStatus::Pending,
+            content_type: "image/jpeg".into(),
+            byte_size: 123_456,
+            original_filename: None,
+            width: None,
+            height: None,
+            taken_at: None,
+            camera_make: None,
+            camera_model: None,
+            created_by: "p1".into(),
+            created_at: 1_700_000_000,
+            completed_at: None,
+            expires_at: Some(1_700_086_400),
+        };
+        let item = asset_item(&asset);
+        for absent in [
+            "original_filename",
+            "width",
+            "height",
+            "taken_at",
+            "camera_make",
+            "camera_model",
+            "completed_at",
+        ] {
+            assert!(!item.contains_key(absent), "{absent}: absent, never Null");
+        }
+        assert_eq!(item["status"], AttributeValue::S("pending".into()));
+        let read: db::Asset = Item(item).try_into().unwrap();
+        assert_eq!(read, asset);
+
+        // Once complete the TTL attribute is gone, not Null.
+        asset.status = db::AssetStatus::Ready;
+        asset.expires_at = None;
+        asset.completed_at = Some(1_700_000_100);
+        asset.original_filename = Some("IMG_0001.jpg".into());
+        asset.width = Some(4032);
+        asset.height = Some(3024);
+        asset.taken_at = Some(1_699_990_000);
+        asset.camera_make = Some("Apple".into());
+        asset.camera_model = Some("iPhone 15".into());
+        let item = asset_item(&asset);
+        assert!(!item.contains_key("expires_at"));
+        let read: db::Asset = Item(item).try_into().unwrap();
+        assert_eq!(read, asset);
+    }
+
+    #[test]
+    fn asset_hydration_treats_null_like_missing() {
+        let mut item = asset_item(&db::Asset {
+            id: "a1".into(),
+            location_id: "loc".into(),
+            kind: db::AssetKind::Image,
+            status: db::AssetStatus::Ready,
+            content_type: "image/webp".into(),
+            byte_size: 1,
+            original_filename: None,
+            width: None,
+            height: None,
+            taken_at: None,
+            camera_make: None,
+            camera_model: None,
+            created_by: "p1".into(),
+            created_at: 5,
+            completed_at: None,
+            expires_at: None,
+        });
+        item.insert("expires_at".into(), AttributeValue::Null(true));
+        item.insert("camera_make".into(), AttributeValue::Null(true));
+        let read: db::Asset = Item(item).try_into().unwrap();
+        assert_eq!(read.expires_at, None);
+        assert_eq!(read.camera_make, None);
+    }
+
+    #[test]
+    fn photo_asset_id_lists_keep_their_order_and_are_omitted_when_empty() {
+        assert_eq!(string_list_value(&[]), None);
+        let ids = vec!["b".to_string(), "a".to_string()];
+        let value = string_list_value(&ids).unwrap();
+        let item = Item(HashMap::from([("photo_asset_ids".to_string(), value)]));
+        assert_eq!(item.string_list_field("photo_asset_ids").unwrap(), ids);
+        assert!(item.string_list_field("missing").unwrap().is_empty());
+        let wrong = Item(HashMap::from([(
+            "photo_asset_ids".to_string(),
+            AttributeValue::Ss(ids.clone()),
+        )]));
+        assert!(wrong.string_list_field("photo_asset_ids").is_err());
+    }
+
+    #[test]
+    fn asset_ref_rows_round_trip() {
+        let asset_ref = db::AssetRef {
+            asset_id: "a1".into(),
+            owner: db::asset_owner("photo", "ph1"),
+            location_id: "loc".into(),
+            created_at: 77,
+        };
+        let item = asset_ref_item(&asset_ref);
+        assert_eq!(item["owner"], AttributeValue::S("photo#ph1".into()));
+        let read: db::AssetRef = Item(item).try_into().unwrap();
+        assert_eq!(read, asset_ref);
+    }
+
+    #[test]
+    fn note_ref_rows_round_trip() {
+        let note_ref = db::NoteRef {
+            note_id: "n1".into(),
+            owner: db::note_owner("task", "t1"),
+            location_id: "loc".into(),
+            created_at: 77,
+        };
+        let item = note_ref_item(&note_ref);
+        assert_eq!(item["owner"], AttributeValue::S("task#t1".into()));
+        let read: db::NoteRef = Item(item).try_into().unwrap();
+        assert_eq!(read, note_ref);
+    }
+
+    #[test]
+    fn photo_rows_round_trip_and_keep_their_indexes_sparse() {
+        let photo = db::Photo {
+            id: "ph1".into(),
+            location_id: "loc".into(),
+            asset_id: "a1".into(),
+            created_by: "p1".into(),
+            created_at: 1_700_000_000,
+            taken_at: Some(1_699_000_000),
+            expires_at: 1_702_592_000,
+            visible_location_id: Some("loc".into()),
+            hidden_at: None,
+            hidden_by: None,
+            deleted: None,
+            version: 1,
+        };
+        let item = photo_item(&photo);
+        assert_eq!(item["sort_key"], AttributeValue::S("1699000000#ph1".into()));
+        assert_eq!(item["sweep"], AttributeValue::S("1".into()));
+        assert_eq!(item["visible_location_id"], AttributeValue::S("loc".into()));
+        for absent in ["hidden_at", "hidden_by", "deleted"] {
+            assert!(!item.contains_key(absent), "{absent}: absent, never Null");
+        }
+        let read: db::Photo = Item(item).try_into().unwrap();
+        assert_eq!(read, photo);
+
+        // Hidden: out of the stream index, still due for the sweep.
+        let hidden = db::Photo {
+            visible_location_id: None,
+            hidden_at: Some(1_700_100_000),
+            hidden_by: Some("p2".into()),
+            version: 2,
+            ..photo.clone()
+        };
+        let item = photo_item(&hidden);
+        assert!(!item.contains_key("visible_location_id"));
+        assert!(item.contains_key("sweep"));
+        let read: db::Photo = Item(item).try_into().unwrap();
+        assert_eq!(read, hidden);
+
+        // Swept: out of both indexes.
+        let swept = db::Photo {
+            deleted: Some(1_800_000_000),
+            version: 3,
+            ..hidden
+        };
+        let item = photo_item(&swept);
+        assert!(!item.contains_key("visible_location_id"));
+        assert!(!item.contains_key("sweep"));
+        let read: db::Photo = Item(item).try_into().unwrap();
+        assert_eq!(read, swept);
+    }
+
+    #[test]
+    fn the_stream_cursor_names_the_table_and_index_keys() {
+        let key = visible_photo_start_key("loc", "1699000000#ph1").unwrap();
+        assert_eq!(key["id"], AttributeValue::S("ph1".into()));
+        assert_eq!(key["visible_location_id"], AttributeValue::S("loc".into()));
+        assert_eq!(key["sort_key"], AttributeValue::S("1699000000#ph1".into()));
+        assert!(matches!(
+            visible_photo_start_key("loc", "garbage"),
+            Err(db::Error::TypeConversion(_))
+        ));
+    }
+
+    #[test]
+    fn a_counter_is_read_from_its_count() {
+        let item = HashMap::from([
+            ("id".to_string(), AttributeValue::S("counter#x#y#d".into())),
+            ("count".to_string(), AttributeValue::N("42".into())),
+        ]);
+        assert_eq!(counter_count(item), Some(42));
+        assert_eq!(counter_count(HashMap::new()), None);
     }
 }

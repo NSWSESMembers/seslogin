@@ -48,9 +48,18 @@ locals {
     aws_dynamodb_table.prod_equipment_reservation,
     aws_dynamodb_table.prod_calendar,
     aws_dynamodb_table.prod_calendar_event,
+    aws_dynamodb_table.prod_meeting,
+    aws_dynamodb_table.prod_agenda_item,
     # Holders can be worked out again from periods, but the reign history can't:
     # it records who held each trophy when.
     aws_dynamodb_table.prod_trophy,
+    # Assets and photos are the only record of who uploaded what; the files
+    # themselves are in the assets bucket.
+    aws_dynamodb_table.prod_asset,
+    aws_dynamodb_table.prod_asset_ref,
+    # Reverse index of note links; rebuildable from the owners but slow to.
+    aws_dynamodb_table.prod_note_ref,
+    aws_dynamodb_table.prod_photo,
   ]
 }
 

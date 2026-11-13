@@ -106,6 +106,24 @@ variable "tally_review_sign_in" {
   default     = ""
 }
 
+variable "tally_assertion_keys" {
+  description = "The public keys Tally signs its sign-in assertions with, as JSON `[{\"kid\":\"...\",\"spki\":\"<base64 DER public key>\"}]`: Tally's terraform outputs `seslogin_assertion_key_id` and `seslogin_assertion_public_key`. Blank turns the assertion grant off (api/README.md, \"Tally assertion\")."
+  type        = string
+  default     = ""
+}
+
+variable "tally_assertion_issuer" {
+  description = "The `iss` a Tally sign-in assertion must carry."
+  type        = string
+  default     = "https://tally.sdunster.com"
+}
+
+variable "tally_assertion_email_domains" {
+  description = "Comma-separated email domains a Tally sign-in assertion may be for, matched exactly (the SES service email domains)."
+  type        = string
+  default     = "ses.nsw.gov.au,one.ses.nsw.gov.au,member.ses.nsw.gov.au"
+}
+
 variable "db_prefix" {
   description = "DynamoDB table name prefix for the production environment (e.g. seslogin_prod_)"
   type        = string

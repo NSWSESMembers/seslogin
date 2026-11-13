@@ -100,6 +100,9 @@ export async function keyInfoFromKeyPair(
 export async function getOrCreateKioskKey(
   profile: string,
 ): Promise<KioskKeyInfo> {
+  // Best-effort storage can be evicted under disk pressure (eg a large OS update), which strands the kiosk
+  // on its QR code with a new key. Persistent storage isn't; the browser may still refuse.
+  void navigator.storage?.persist?.().catch(() => {});
   const db = await openDb();
   const existing = (await idbGet(db, profile)) as CryptoKeyPair | undefined;
   if (existing?.privateKey && existing?.publicKey) {

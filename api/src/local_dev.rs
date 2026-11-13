@@ -123,15 +123,83 @@ pub async fn dynamodb_client() -> aws_sdk_dynamodb::Client {
 
 /// `/dev/*` shortcuts for the web dev bar (web/src/dev/DevBar.tsx), mounted by `poem-local` only.
 ///
-/// Off unless the server is on `seslogin_local` at a local endpoint; every request must come from this machine.
+/// The shortcuts are off unless the server is on `seslogin_local` at a local endpoint; every request must come from this machine.
 /// Data writes run the `local-seed`, `cli` and `badge-nightly` binaries, so each shortcut is the command it replaces.
-pub fn dev_routes(db_prefix: &str, mail: crate::mockmail::Handler) -> Option<BoxEndpoint<'static>> {
-    if !dev_routes_allowed(db_prefix, require_local_dynamodb_endpoint()) {
+///
+/// `/dev/storage/upload` is mounted regardless, and is not limited to this machine: the upload form that
+/// [`crate::mockstorage`] hands out names it, and a phone on the LAN running Tally has to reach it. What
+/// protects it is the form's signed policy, not the caller's address (see [`storage_upload`]).
+pub fn dev_routes(
+    db_prefix: &str,
+    mail: crate::mockmail::Handler,
+    storage: crate::mockstorage::Handler,
+) -> BoxEndpoint<'static> {
+    let mut route = Route::new().at("/storage/upload", post(storage_upload).data(storage));
+    if dev_routes_allowed(db_prefix, require_local_dynamodb_endpoint()) {
+        tracing::warn!("dev routes on at /dev, localhost callers only");
+        route = route.nest("/", routes(mail));
+    } else {
         tracing::info!("dev routes off: they need DB_PREFIX=seslogin_local on a local DynamoDB");
-        return None;
     }
-    tracing::warn!("dev routes on at /dev, localhost callers only");
-    Some(routes(mail))
+    route.boxed()
+}
+
+/// The mock storage upload endpoint: what an S3 presigned POST is for the real thing.
+///
+/// Takes the form [`crate::mockstorage::Handler::presign_post`] described, as multipart, with the file part
+/// last. Answers 204 when the key, content type and exact size match the policy it was signed with and it
+/// has not expired, else 400 with a short message. Never 403 or 404, which CloudFront would rewrite to the web
+/// app's `index.html` in any deployed setup (`/dev` never reaches one, but the convention is kept).
+#[handler]
+async fn storage_upload(
+    storage: Data<&crate::mockstorage::Handler>,
+    multipart: Option<poem::web::Multipart>,
+) -> poem::Response {
+    let bad = |message: String| {
+        poem::Response::builder()
+            .status(StatusCode::BAD_REQUEST)
+            .content_type("text/plain; charset=utf-8")
+            .body(message)
+    };
+    let Some(mut multipart) = multipart else {
+        return bad("expected a multipart/form-data body".to_string());
+    };
+    let mut fields = std::collections::HashMap::new();
+    let mut file = None;
+    loop {
+        let field = match multipart.next_field().await {
+            Ok(Some(field)) => field,
+            Ok(None) => break,
+            Err(e) => return bad(format!("bad form: {e}")),
+        };
+        let name = field.name().unwrap_or_default().to_string();
+        if name == "file" {
+            match field.bytes().await {
+                Ok(bytes) => file = Some(bytes),
+                Err(e) => return bad(format!("bad file part: {e}")),
+            }
+            // Like S3, ignore anything after the file.
+            break;
+        }
+        match field.text().await {
+            Ok(text) => {
+                fields.insert(name, text);
+            }
+            Err(e) => return bad(format!("bad form field {name}: {e}")),
+        }
+    }
+    let Some(file) = file else {
+        return bad("missing file part".to_string());
+    };
+    match storage
+        .accept_upload(&fields, file, crate::clock::now_sec())
+        .await
+    {
+        Ok(()) => poem::Response::builder()
+            .status(StatusCode::NO_CONTENT)
+            .finish(),
+        Err(message) => bad(message),
+    }
 }
 
 /// Every `/dev` route, behind [`local_only`].
@@ -483,6 +551,192 @@ mod tests {
         }
     }
 
+    /// The upload form `mockstorage` presigns, posted to the real route as a client would.
+    async fn post_upload(
+        storage: &crate::mockstorage::Handler,
+        change: impl Fn(&str, String) -> Option<String>,
+        file: Vec<u8>,
+    ) -> StatusCode {
+        use crate::storage::Handler as _;
+        use poem::test::{TestClient, TestForm};
+        let post = storage
+            .presign_post(
+                "pending/abc",
+                "image/jpeg",
+                4,
+                std::time::Duration::from_secs(900),
+            )
+            .await
+            .unwrap();
+        assert_eq!(post.url, "/dev/storage/upload");
+        let mut form = TestForm::new();
+        for (name, value) in post.fields {
+            if let Some(value) = change(&name, value) {
+                form = form.text(name, value);
+            }
+        }
+        let route = Route::new().nest(
+            "/dev",
+            dev_routes("not_local", Default::default(), storage.clone()),
+        );
+        let resp = TestClient::new(route)
+            .post("/dev/storage/upload")
+            .multipart(form.bytes("file", file))
+            .send()
+            .await;
+        resp.0.status()
+    }
+
+    #[tokio::test]
+    async fn storage_upload_stores_a_matching_form() {
+        use crate::storage::Handler as _;
+        let storage = crate::mockstorage::Handler::in_memory();
+        let code = post_upload(&storage, |_, v| Some(v), vec![1, 2, 3, 4]).await;
+        assert_eq!(code, StatusCode::NO_CONTENT);
+        assert_eq!(
+            storage.get("pending/abc").await.unwrap().unwrap(),
+            [1, 2, 3, 4]
+        );
+    }
+
+    #[tokio::test]
+    async fn storage_upload_refuses_a_form_that_does_not_match() {
+        use crate::storage::Handler as _;
+        let storage = crate::mockstorage::Handler::in_memory();
+        let same = |_: &str, v: String| Some(v);
+        let cases: Vec<(&str, StatusCode)> = vec![
+            (
+                "wrong size",
+                post_upload(&storage, same, vec![1, 2, 3]).await,
+            ),
+            (
+                "wrong key",
+                post_upload(
+                    &storage,
+                    |n, v| {
+                        Some(if n == "key" {
+                            "pending/other".into()
+                        } else {
+                            v
+                        })
+                    },
+                    vec![1, 2, 3, 4],
+                )
+                .await,
+            ),
+            (
+                "wrong type",
+                post_upload(
+                    &storage,
+                    |n, v| {
+                        Some(if n == "Content-Type" {
+                            "image/webp".into()
+                        } else {
+                            v
+                        })
+                    },
+                    vec![1, 2, 3, 4],
+                )
+                .await,
+            ),
+            (
+                "no policy",
+                post_upload(
+                    &storage,
+                    |n, v| (n != "policy").then_some(v),
+                    vec![1, 2, 3, 4],
+                )
+                .await,
+            ),
+            (
+                "forged policy",
+                post_upload(
+                    &storage,
+                    |n, v| Some(if n == "policy" { format!("x{v}") } else { v }),
+                    vec![1, 2, 3, 4],
+                )
+                .await,
+            ),
+        ];
+        for (what, code) in cases {
+            assert_eq!(code, StatusCode::BAD_REQUEST, "{what}");
+        }
+        assert_eq!(storage.head("pending/abc").await.unwrap(), None);
+    }
+
+    #[tokio::test]
+    async fn storage_upload_refuses_an_expired_form() {
+        use crate::storage::Handler as _;
+        use poem::test::{TestClient, TestForm};
+        let storage = crate::mockstorage::Handler::in_memory();
+        // A form already past its expiry when it is presigned.
+        let post = storage
+            .presign_post(
+                "pending/abc",
+                "image/jpeg",
+                4,
+                std::time::Duration::from_secs(0),
+            )
+            .await
+            .unwrap();
+        let mut form = TestForm::new();
+        for (name, value) in post.fields {
+            form = form.text(name, value);
+        }
+        let route = Route::new().nest(
+            "/dev",
+            dev_routes("not_local", Default::default(), storage.clone()),
+        );
+        let resp = TestClient::new(route)
+            .post("/dev/storage/upload")
+            .multipart(form.bytes("file", vec![1, 2, 3, 4]))
+            .send()
+            .await;
+        assert_eq!(resp.0.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(storage.head("pending/abc").await.unwrap(), None);
+    }
+
+    /// The other `/dev` routes stay local-only (and absent off the local tables), the upload route does not.
+    #[tokio::test]
+    async fn storage_upload_is_mounted_even_when_the_other_dev_routes_are_off() {
+        use poem::test::TestClient;
+        let route = Route::new().nest(
+            "/dev",
+            dev_routes(
+                "seslogin_test",
+                Default::default(),
+                crate::mockstorage::Handler::in_memory(),
+            ),
+        );
+        let client = TestClient::new(route);
+        let resp = client.post("/dev/seed").send().await;
+        assert_ne!(resp.0.status(), StatusCode::NO_CONTENT);
+        let resp = client.post("/dev/storage/upload").send().await;
+        assert_eq!(resp.0.status(), StatusCode::BAD_REQUEST);
+    }
+
+    /// With the other routes on, nesting them at `/` beside the upload route reaches both.
+    #[tokio::test]
+    async fn upload_route_coexists_with_the_local_only_routes() {
+        use poem::test::TestClient;
+        let route = Route::new()
+            .at(
+                "/storage/upload",
+                post(storage_upload).data(crate::mockstorage::Handler::in_memory()),
+            )
+            .nest("/", routes(Default::default()));
+        let client = TestClient::new(route);
+        // No socket address in a test client, so the local-only guard refuses: the route exists.
+        assert_eq!(
+            client.post("/seed").send().await.0.status(),
+            StatusCode::FORBIDDEN
+        );
+        assert_eq!(
+            client.post("/storage/upload").send().await.0.status(),
+            StatusCode::BAD_REQUEST
+        );
+    }
+
     #[test]
     fn relative_times_resolve_from_the_seeding_moment_in_sydney() {
         // Sunday 25 Oct 2026, 20:00 Sydney (AEDT, UTC+11).
@@ -525,7 +779,7 @@ mod tests {
         let poem = src("src/bin/poem.rs");
         assert!(!poem.contains("dev_routes") && !poem.contains("local_dev"));
         assert!(
-            poem.contains("realtime, None).await"),
+            poem.contains("storage, None).await"),
             "poem.rs must pass no dev routes"
         );
         let lambda_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/bin/lambda");

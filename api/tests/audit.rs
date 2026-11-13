@@ -19,10 +19,16 @@ use seslogin::graphql::{self, ClientIp};
 use seslogin::mockmail;
 use seslogin::mockqueue;
 use seslogin::mockrealtime;
+use seslogin::mockstorage;
 use seslogin::server_secret::ServerSecret;
 
-type TestApp =
-    MyApp<AuditingHandler<FakeDb>, mockqueue::Handler, mockmail::Handler, mockrealtime::Handler>;
+type TestApp = MyApp<
+    AuditingHandler<FakeDb>,
+    mockqueue::Handler,
+    mockmail::Handler,
+    mockrealtime::Handler,
+    mockstorage::Handler,
+>;
 
 const IP: &str = "203.0.113.7";
 
@@ -58,6 +64,7 @@ fn app() -> Arc<TestApp> {
         mockqueue::Handler::new(),
         mockmail::Handler::new(),
         mockrealtime::Handler::new("test"),
+        mockstorage::Handler::in_memory(),
     );
     let fake = app.db.inner();
     fake.locations.lock().unwrap().insert(
@@ -75,6 +82,7 @@ fn app() -> Arc<TestApp> {
             ses_details: Default::default(),
             directory_details: Default::default(),
             accreditations: None,
+            sop_notes: Default::default(),
             created_at: 0,
             updated_at: 0,
         },
@@ -358,6 +366,8 @@ async fn a_person_move_records_both_locations() {
 fn new_task<'a>(title: &'a str, recurrence: Option<db::TaskRecurrence>) -> db::NewTask<'a> {
     let day = chrono::NaiveDate::from_ymd_opt(2026, 3, 2).unwrap();
     db::NewTask {
+        // Leaked so the borrowed id lives as long as the title.
+        id: Box::leak(db::new_id().into_boxed_str()),
         location_id: "loc-a",
         list_id: None,
         title,
@@ -365,6 +375,9 @@ fn new_task<'a>(title: &'a str, recurrence: Option<db::TaskRecurrence>) -> db::N
         due_date: Some(day),
         show_date: day,
         recurrence,
+        assignee_ids: &[],
+        photo_asset_ids: &[],
+        note_ids: &[],
         created_by: Some("caller"),
     }
 }
@@ -594,12 +607,15 @@ async fn equipment_writes_and_log_entries_are_recorded_against_their_location() 
     let (equipment, _) = app
         .db
         .create_equipment(db::NewEquipment {
+            id: &db::new_id(),
             location_id: "loc-a",
             equipment_type: "vehicle",
             name: "Truck 1",
             description: "",
             status: "in_service",
             comment: "",
+            photo_asset_ids: &[],
+            note_ids: &[],
             created_by: Some("caller"),
         })
         .await
@@ -611,6 +627,8 @@ async fn equipment_writes_and_log_entries_are_recorded_against_their_location() 
                 equipment_type: "vehicle",
                 name: "Truck 1",
                 description: "Isuzu",
+                photo_asset_ids: &[],
+                note_ids: &[],
                 by: Some("caller"),
                 expected_version: equipment.version,
             },
@@ -764,6 +782,7 @@ async fn map_pin_writes_are_recorded_against_their_location() {
     let pin = app
         .db
         .create_map_pin(db::NewMapPin {
+            id: &db::new_id(),
             location_id: "loc-a",
             layer_id: None,
             pin_type: None,
@@ -772,6 +791,8 @@ async fn map_pin_writes_are_recorded_against_their_location() {
             longitude: 151.25,
             address: "",
             note: "",
+            photo_asset_ids: &[],
+            note_ids: &[],
             created_by: Some("caller"),
         })
         .await
@@ -787,6 +808,8 @@ async fn map_pin_writes_are_recorded_against_their_location() {
                 longitude: 151.25,
                 address: "1 Example St",
                 note: "",
+                photo_asset_ids: &[],
+                note_ids: &[],
                 by: Some("caller"),
                 expected_version: pin.version,
             },
@@ -805,6 +828,8 @@ async fn map_pin_writes_are_recorded_against_their_location() {
                 longitude: 0.0,
                 address: "",
                 note: "",
+                photo_asset_ids: &[],
+                note_ids: &[],
                 by: Some("caller"),
                 expected_version: pin.version,
             },
@@ -959,12 +984,14 @@ async fn on_call_role_writes_are_recorded_against_their_location() {
     let role = app
         .db
         .create_on_call_role(db::NewOnCallRole {
+            id: &db::new_id(),
             location_id: "loc-a",
             name: "Duty Officer",
             description: "",
             phone: Some("0400 000 000"),
             primary_person_id: Some("alice"),
             secondary_person_ids: &[],
+            note_ids: &[],
             created_by: Some("caller"),
         })
         .await
@@ -980,6 +1007,7 @@ async fn on_call_role_writes_are_recorded_against_their_location() {
                 primary_person_id: Some("carol"),
                 secondary_person_ids: &secondaries,
                 members_changed_at: Some(1),
+                note_ids: &[],
                 by: Some("caller"),
                 expected_version: role.version,
             },
@@ -1021,6 +1049,7 @@ async fn calendar_event_writes_are_recorded_against_their_location() {
     let event = app
         .db
         .create_calendar_event(db::NewCalendarEvent {
+            id: &db::new_id(),
             location_id: "loc-a",
             calendar_id: None,
             title: "Training",
@@ -1030,6 +1059,7 @@ async fn calendar_event_writes_are_recorded_against_their_location() {
                 end: 2_000_003_600,
             },
             recurrence: None,
+            note_ids: &[],
             created_by: Some("caller"),
         })
         .await
@@ -1051,6 +1081,7 @@ async fn calendar_event_writes_are_recorded_against_their_location() {
                     repeat: Repeat::Weekly,
                     until: None,
                 }),
+                note_ids: &[],
                 by: Some("caller"),
                 expected_version: event.version,
             },
@@ -1067,6 +1098,7 @@ async fn calendar_event_writes_are_recorded_against_their_location() {
                 description: "",
                 timing: event.timing,
                 recurrence: None,
+                note_ids: &[],
                 by: Some("caller"),
                 expected_version: event.version,
             },
@@ -1234,4 +1266,41 @@ async fn notifications_are_stored_and_read_without_auditing() {
         0
     );
     assert!(app.db.inner().audit_entries().is_empty());
+}
+
+#[tokio::test]
+async fn assigning_a_task_records_its_assignees() {
+    let app = app();
+    let task = app
+        .db
+        .create_task(new_task("Check the radios", None))
+        .await
+        .unwrap();
+    let assignees = vec!["bob".to_string(), "alice".to_string()];
+    app.db
+        .update_task(
+            &task.id,
+            db::TaskUpdateShape::Fields {
+                list_id: None,
+                title: &task.title,
+                description: None,
+                due_date: task.due_date,
+                show_date: task.show_date,
+                recurrence: None,
+                assignee_ids: &assignees,
+                photo_asset_ids: &[],
+                note_ids: &[],
+                by: Some("caller"),
+                expected_version: task.version,
+            },
+        )
+        .await
+        .unwrap();
+    let entries = app.db.inner().audit_entries();
+    assert_eq!(entries.len(), 2);
+    assert_eq!(changed_fields(&entries[1]), vec!["assignee_ids"]);
+    assert_eq!(
+        entries[1].changes[0].after,
+        Some(serde_json::json!(["alice", "bob"]))
+    );
 }

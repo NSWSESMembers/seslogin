@@ -139,6 +139,14 @@ export default function KioskStatusDialog({
   // render, the React Compiler would cache them like any other no-input call.
   const [{ now, uptimeSecs, screenSize }, setTick] = useState(readTick);
   const [reEnrollShown, setReEnrollShown] = useState(false);
+  const [persisted, setPersisted] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    navigator.storage
+      ?.persisted?.()
+      .then(setPersisted)
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     const intervalId = window.setInterval(
@@ -308,6 +316,17 @@ export default function KioskStatusDialog({
         )}
         <Row label="Profile">
           <Mono>{profile}</Mono>
+        </Row>
+        <Row label="Storage">
+          {persisted === null ? (
+            "unknown"
+          ) : persisted ? (
+            "persistent"
+          ) : (
+            <span className="text-amber-700 dark:text-amber-400">
+              may be cleared by the browser
+            </span>
+          )}
         </Row>
 
         <Row label="Version">

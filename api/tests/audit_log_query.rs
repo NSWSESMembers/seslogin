@@ -20,10 +20,16 @@ use seslogin::graphql::{self, ClientIp};
 use seslogin::mockmail;
 use seslogin::mockqueue;
 use seslogin::mockrealtime;
+use seslogin::mockstorage;
 use seslogin::server_secret::ServerSecret;
 
-type TestApp =
-    MyApp<AuditingHandler<FakeDb>, mockqueue::Handler, mockmail::Handler, mockrealtime::Handler>;
+type TestApp = MyApp<
+    AuditingHandler<FakeDb>,
+    mockqueue::Handler,
+    mockmail::Handler,
+    mockrealtime::Handler,
+    mockstorage::Handler,
+>;
 
 const IP: &str = "203.0.113.7";
 const BASE_TS: u64 = 1_700_000_000;
@@ -77,6 +83,7 @@ fn location(id: &str, name: &str) -> db::Location {
         ses_details: Default::default(),
         directory_details: Default::default(),
         accreditations: None,
+        sop_notes: Default::default(),
         created_at: 0,
         updated_at: 0,
     }
@@ -234,6 +241,7 @@ async fn populated_app() -> (Arc<TestApp>, String) {
         mockqueue::Handler::new(),
         mockmail::Handler::new(),
         mockrealtime::Handler::new("test"),
+        mockstorage::Handler::in_memory(),
     );
     let fake = app.db.inner();
     fake.locations
@@ -852,6 +860,7 @@ async fn multi_unit_app() -> Arc<TestApp> {
         mockqueue::Handler::new(),
         mockmail::Handler::new(),
         mockrealtime::Handler::new("test"),
+        mockstorage::Handler::in_memory(),
     );
     let fake = app.db.inner();
     for (id, name) in [

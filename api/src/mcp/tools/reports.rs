@@ -21,7 +21,7 @@ use serde_json::{Value, json};
 use super::super::args::{self, TIME_FORMATS, ToolError};
 use super::super::{ToolCtx, ToolOutcome};
 use super::{Effect, id_property, input_schema, tool};
-use crate::app::{App, HasDb, HasMail, HasQueues, HasRealtime};
+use crate::app::{App, HasDb, HasMail, HasQueues, HasRealtime, HasStorage};
 
 /// The fields of a `Person` a report row shows: enough to read the report without
 /// another lookup. The primary unit matters because a location's activity includes
@@ -215,7 +215,7 @@ pub(super) fn catalogue() -> Vec<Value> {
 
 pub(super) async fn call<A>(ctx: &ToolCtx<'_, A>, name: &str, a: &Value) -> Option<ToolOutcome>
 where
-    A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static,
+    A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sync + 'static,
 {
     let result = match name {
         "get_dashboard" => get_dashboard(ctx, a).await,
@@ -228,7 +228,7 @@ where
 
 async fn get_dashboard<A>(ctx: &ToolCtx<'_, A>, a: &Value) -> Result<Value, ToolError>
 where
-    A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static,
+    A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sync + 'static,
 {
     let location_id = args::str_arg(a, "locationId")?;
     let as_of = args::opt_time_arg(a, "asOf")?;
@@ -250,7 +250,7 @@ where
 
 async fn summarize_activity<A>(ctx: &ToolCtx<'_, A>, a: &Value) -> Result<Value, ToolError>
 where
-    A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static,
+    A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sync + 'static,
 {
     let location_id = args::str_arg(a, "locationId")?;
     let start = args::time_arg(a, "start")?;
@@ -317,7 +317,7 @@ where
 
 async fn members_last_seen<A>(ctx: &ToolCtx<'_, A>, a: &Value) -> Result<Value, ToolError>
 where
-    A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static,
+    A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sync + 'static,
 {
     let location_id = args::str_arg(a, "locationId")?;
     let sort = args::opt_str_arg(a, "sort")?.unwrap_or("recent");

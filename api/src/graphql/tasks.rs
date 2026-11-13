@@ -6,7 +6,9 @@
 //!
 //! Access is [`require_task_access`] on the task's (or list's) location throughout:
 //! any member who can use the unit in Tally. Who made or completed a task is recorded
-//! by person ID and shown as the member's name. Dates go in and come out
+//! by person ID and shown as the member's name. A task may be assigned to members, by
+//! person ID from any unit (like an on-call role); those newly assigned are notified.
+//! Dates go in and come out
 //! as Sydney-local `YYYY-MM-DD` strings.
 
 use anyhow::{Result, anyhow};
@@ -14,10 +16,15 @@ use async_graphql::dataloader::DataLoader;
 use async_graphql::{Context, Enum, ID, InputObject, MaybeUndefined, Object, SimpleObject};
 use std::sync::Arc;
 
+use super::assets::Asset;
+use super::attached_photos;
 use super::auth::require_task_access;
 use super::dataloader::DatabaseLoader;
 use super::error::{ApiError, ErrorCode};
-use super::query::Location;
+use super::linked_notes;
+use super::notes::Note;
+use super::on_call::{check_people, load_people};
+use super::query::{Location, Person};
 use super::{LocationId, TaskListId};
 use crate::app::{App, HasDb};
 use crate::db::{self, Handler};
@@ -172,6 +179,54 @@ impl<A: App + HasDb + Send + Sync + 'static> Task<A> {
             every: r.every as i32,
             unit: r.unit.into(),
         })
+    }
+
+    /// The members the task is assigned to, by person ID, deleted ones included. Empty
+    /// when it is the whole unit's.
+    async fn assignee_ids(&self) -> Vec<ID> {
+        self.rec.assignee_ids.iter().cloned().map(ID).collect()
+    }
+
+    /// The members the task is assigned to, by name. Members deleted since are left
+    /// out, so this can be empty even when `assigneeIds` isn't.
+    async fn assignees(&self, ctx: &Context<'_>) -> Result<Vec<Person<A>>> {
+        let mut people = load_people(ctx, &self.rec.assignee_ids).await?;
+        people.sort_by_cached_key(|p| {
+            (
+                p.rec.first_name.to_lowercase(),
+                p.rec.last_name.to_lowercase(),
+                p.rec.id.clone(),
+            )
+        });
+        Ok(people)
+    }
+
+    /// The attached photos (at most 10), in the order shown. Their `url(variant:)` is
+    /// what to show; one that can no longer be read is left out.
+    async fn photos(&self, ctx: &Context<'_>) -> Result<Vec<Asset<A>>> {
+        attached_photos::load(ctx, &self.rec.photo_asset_ids).await
+    }
+
+    /// The attached photos' asset IDs, in order: pass these back, changed, as
+    /// `photoAssetIds`.
+    async fn photo_asset_ids(&self) -> Vec<ID> {
+        self.rec.photo_asset_ids.iter().cloned().map(ID).collect()
+    }
+
+    /// The linked notes (at most 10), in the order shown. One that was deleted or can
+    /// no longer be read is left out.
+    async fn notes(&self, ctx: &Context<'_>) -> Result<Vec<Note<A>>> {
+        linked_notes::load(ctx, &self.rec.note_ids).await
+    }
+
+    /// The linked notes' IDs, in order: pass these back, changed, as `noteIds`.
+    async fn note_ids(&self) -> Vec<ID> {
+        self.rec.note_ids.iter().cloned().map(ID).collect()
+    }
+
+    /// Whether the member asking is one of those it is assigned to.
+    async fn assigned_to_viewer(&self, ctx: &Context<'_>) -> bool {
+        caller_id(ctx).is_some_and(|me| self.rec.assignee_ids.iter().any(|p| p == me))
     }
 
     /// False once a non-recurring task is completed, or any task deleted. A
@@ -373,6 +428,16 @@ async fn check_list_for(db: &impl Handler, list_id: &str, location_id: &str) -> 
     }
 }
 
+/// The members a task is being assigned to, validated. Those not in `already` (who
+/// may stay assigned after they are deleted) must exist and be live.
+async fn assignees(db: &impl Handler, ids: &[ID], already: &[String]) -> Result<Vec<String>> {
+    let ids = tasks::validate_assignees(ids).map_err(bad_request)?;
+    let new: Vec<&str> = ids.iter().map(String::as_str).collect();
+    let already: Vec<&str> = already.iter().map(String::as_str).collect();
+    check_people(db, &new, &already).await?;
+    Ok(ids)
+}
+
 /// A write that lost a race: the task was completed or changed since it was read.
 fn conflict(e: db::Error) -> anyhow::Error {
     match e {
@@ -400,6 +465,9 @@ pub(super) struct CreateTaskArgs {
     pub list_id: Option<ID>,
     pub due_date: Option<String>,
     pub recurrence: Option<TaskRecurrenceInput>,
+    pub assignee_ids: Option<Vec<ID>>,
+    pub photo_asset_ids: Option<Vec<ID>>,
+    pub note_ids: Option<Vec<ID>>,
 }
 
 pub(super) async fn create_task<A: App + HasDb + Send + Sync + 'static>(
@@ -423,11 +491,46 @@ pub(super) async fn create_task<A: App + HasDb + Send + Sync + 'static>(
     if let Some(list_id) = &args.list_id {
         check_list_for(app.db(), list_id, &args.location_id).await?;
     }
+    let assignee_ids =
+        assignees(app.db(), args.assignee_ids.as_deref().unwrap_or(&[]), &[]).await?;
+    let photo_asset_ids = attached_photos::validate(
+        app,
+        &args.location_id,
+        args.photo_asset_ids.as_deref().unwrap_or(&[]),
+        &[],
+    )
+    .await?;
+    let note_ids = linked_notes::validate(
+        app,
+        &args.location_id,
+        args.note_ids.as_deref().unwrap_or(&[]),
+        &[],
+    )
+    .await?;
     let today = tasks::today_sydney();
     let (due_date, show_date) = tasks::schedule(due_date, recurrence, today, today);
+    let id = db::new_id();
+    let photo_ids: Vec<&str> = photo_asset_ids.iter().map(String::as_str).collect();
+    attached_photos::add_refs(
+        app,
+        attached_photos::TASK,
+        &id,
+        &args.location_id,
+        &photo_ids,
+    )
+    .await?;
+    linked_notes::add_refs(
+        app,
+        linked_notes::TASK,
+        &id,
+        &args.location_id,
+        &linked_notes::added(&[], &note_ids),
+    )
+    .await?;
     let rec = app
         .db()
         .create_task(db::NewTask {
+            id: &id,
             location_id: &args.location_id,
             list_id: args.list_id.as_ref().map(|l| l.as_str()),
             title: &title,
@@ -435,9 +538,14 @@ pub(super) async fn create_task<A: App + HasDb + Send + Sync + 'static>(
             due_date,
             show_date,
             recurrence,
+            assignee_ids: &assignee_ids,
+            photo_asset_ids: &photo_asset_ids,
+            note_ids: &note_ids,
             created_by: caller_id(ctx),
         })
         .await?;
+    let told = tasks::newly_assigned(&[], &rec.assignee_ids);
+    tasks::notify_assigned(app, &rec, &told).await;
     Ok(Task::new(rec))
 }
 
@@ -449,6 +557,9 @@ pub(super) struct UpdateTaskArgs {
     pub list_id: MaybeUndefined<ID>,
     pub due_date: MaybeUndefined<String>,
     pub recurrence: MaybeUndefined<TaskRecurrenceInput>,
+    pub assignee_ids: Option<Vec<ID>>,
+    pub photo_asset_ids: Option<Vec<ID>>,
+    pub note_ids: Option<Vec<ID>>,
 }
 
 pub(super) async fn update_task<A: App + HasDb + Send + Sync + 'static>(
@@ -486,12 +597,45 @@ pub(super) async fn update_task<A: App + HasDb + Send + Sync + 'static>(
         MaybeUndefined::Null => None,
         MaybeUndefined::Value(d) => Some(parse_due_date(d)?),
     };
+    let assignee_ids = match &args.assignee_ids {
+        Some(ids) => assignees(app.db(), ids, &rec.assignee_ids).await?,
+        None => rec.assignee_ids.clone(),
+    };
+    let photo_asset_ids = match &args.photo_asset_ids {
+        Some(ids) => {
+            attached_photos::validate(app, &rec.location_id, ids, &rec.photo_asset_ids).await?
+        }
+        None => rec.photo_asset_ids.clone(),
+    };
+    let note_ids = match &args.note_ids {
+        Some(ids) => linked_notes::validate(app, &rec.location_id, ids, &rec.note_ids).await?,
+        None => rec.note_ids.clone(),
+    };
+    attached_photos::add_refs(
+        app,
+        attached_photos::TASK,
+        &rec.id,
+        &rec.location_id,
+        &attached_photos::added(&rec.photo_asset_ids, &photo_asset_ids),
+    )
+    .await?;
+    linked_notes::add_refs(
+        app,
+        linked_notes::TASK,
+        &rec.id,
+        &rec.location_id,
+        &linked_notes::added(&rec.note_ids, &note_ids),
+    )
+    .await?;
     let (due_date, show_date) = tasks::schedule(
         due_date,
         recurrence,
         tasks::sydney_date(rec.created_at),
         tasks::today_sydney(),
     );
+    let previous = rec.assignee_ids.clone();
+    let previous_photos = rec.photo_asset_ids.clone();
+    let previous_notes = rec.note_ids.clone();
     let rec = app
         .db()
         .update_task(
@@ -503,12 +647,31 @@ pub(super) async fn update_task<A: App + HasDb + Send + Sync + 'static>(
                 due_date,
                 show_date,
                 recurrence,
+                assignee_ids: &assignee_ids,
+                photo_asset_ids: &photo_asset_ids,
+                note_ids: &note_ids,
                 by: caller_id(ctx),
                 expected_version,
             },
         )
         .await
         .map_err(conflict)?;
+    attached_photos::drop_refs(
+        app,
+        attached_photos::TASK,
+        &rec.id,
+        &attached_photos::added(&rec.photo_asset_ids, &previous_photos),
+    )
+    .await;
+    linked_notes::drop_refs(
+        app,
+        linked_notes::TASK,
+        &rec.id,
+        &linked_notes::added(&rec.note_ids, &previous_notes),
+    )
+    .await;
+    let told = tasks::newly_assigned(&previous, &rec.assignee_ids);
+    tasks::notify_assigned(app, &rec, &told).await;
     Ok(Task::new(rec))
 }
 
@@ -555,6 +718,20 @@ pub(super) async fn delete_task<A: App + HasDb + Send + Sync + 'static>(
             db::Error::NotFound(_) => ApiError::not_found("Task", id).into(),
             e => anyhow::Error::from(e),
         })?;
+    attached_photos::drop_refs(
+        app,
+        attached_photos::TASK,
+        &rec.id,
+        &attached_photos::added(&[], &rec.photo_asset_ids),
+    )
+    .await;
+    linked_notes::drop_refs(
+        app,
+        linked_notes::TASK,
+        &rec.id,
+        &linked_notes::added(&[], &rec.note_ids),
+    )
+    .await;
     Ok(ID(rec.id))
 }
 

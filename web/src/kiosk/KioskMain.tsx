@@ -10,6 +10,7 @@ import { useParams } from "react-router";
 import { setKioskProfile, setContactFailureSource } from "../lib/clientInfo";
 import { getKioskServerStatus } from "./lib/kioskServerStatus";
 import { startWakeLock } from "./lib/wakeLock";
+import { storedProfileName } from "./lib/kioskSettings";
 
 // Only the kiosk polls the server on a timer, so only the kiosk has a failure count
 // worth reporting. Registered at module scope so it is in place before the first
@@ -18,7 +19,7 @@ setContactFailureSource(() => getKioskServerStatus().failureCount);
 
 export default function KioskMain() {
   const params = useParams();
-  const profile = params.profile || "default";
+  const profile = storedProfileName(params.profile || "default");
   // Registered eagerly during render rather than in an effect: the enrollment and
   // session-refresh requests can go out before effects have run, and a snapshot
   // missing the profile is exactly the one that would confuse whoever is debugging

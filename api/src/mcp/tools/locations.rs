@@ -16,7 +16,7 @@ use serde_json::{Value, json};
 use super::super::args::{self, Field, Kind, TIME_FORMATS, ToolError};
 use super::super::{ToolCtx, ToolOutcome, rename_root};
 use super::{Effect, id_property, input_schema, tool};
-use crate::app::{App, HasDb, HasMail, HasQueues, HasRealtime};
+use crate::app::{App, HasDb, HasMail, HasQueues, HasRealtime, HasStorage};
 
 /// The fields `list_locations` returns for each location.
 const LOCATION_LIST_SELECTION: &str =
@@ -134,7 +134,7 @@ pub(super) fn catalogue() -> Vec<Value> {
 
 pub(super) async fn call<A>(ctx: &ToolCtx<'_, A>, name: &str, a: &Value) -> Option<ToolOutcome>
 where
-    A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static,
+    A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sync + 'static,
 {
     let result = match name {
         "list_locations" => list_locations(ctx).await,
@@ -148,7 +148,7 @@ where
 
 async fn list_locations<A>(ctx: &ToolCtx<'_, A>) -> Result<Value, ToolError>
 where
-    A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static,
+    A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sync + 'static,
 {
     if ctx.is_super() {
         let doc = format!("query McpLocations {{ locations {{ {LOCATION_LIST_SELECTION} }} }}");
@@ -167,7 +167,7 @@ where
 
 async fn get_location<A>(ctx: &ToolCtx<'_, A>, a: &Value) -> Result<Value, ToolError>
 where
-    A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static,
+    A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sync + 'static,
 {
     let id = args::str_arg(a, "id")?;
     ctx.require_location_read(id)?;
@@ -182,7 +182,7 @@ where
 
 async fn create_location<A>(ctx: &ToolCtx<'_, A>, a: &Value) -> Result<Value, ToolError>
 where
-    A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static,
+    A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sync + 'static,
 {
     let name = args::str_arg(a, "name")?;
     if name.trim().is_empty() {
@@ -198,7 +198,7 @@ where
 
 async fn update_location<A>(ctx: &ToolCtx<'_, A>, a: &Value) -> Result<Value, ToolError>
 where
-    A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static,
+    A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sync + 'static,
 {
     let id = args::str_arg(a, "id")?;
     if args::opt_str_arg(a, "name")?.is_some_and(|n| n.trim().is_empty()) {

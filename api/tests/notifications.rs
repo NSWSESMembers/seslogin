@@ -22,9 +22,16 @@ use seslogin::graphql;
 use seslogin::mockmail;
 use seslogin::mockqueue;
 use seslogin::mockrealtime;
+use seslogin::mockstorage;
 use seslogin::notifications::{Audience, NewNotification, notify};
 
-type TestApp = MyApp<FakeDb, mockqueue::Handler, mockmail::Handler, mockrealtime::Handler>;
+type TestApp = MyApp<
+    FakeDb,
+    mockqueue::Handler,
+    mockmail::Handler,
+    mockrealtime::Handler,
+    mockstorage::Handler,
+>;
 
 fn webauthn() -> Arc<webauthn_rs::prelude::Webauthn> {
     Arc::new(
@@ -49,6 +56,7 @@ fn member(person_id: &str, primary: &str) -> AuthInfo {
         is_super: false,
         user_location_ids: vec![],
         grant_id: "grant".to_string(),
+        scope: seslogin::oauth::DEFAULT_SCOPE.to_string(),
     }
 }
 
@@ -479,6 +487,7 @@ async fn a_notification_about_a_location_the_caller_lost_is_hidden() {
         is_super: true,
         user_location_ids: vec![],
         grant_id: "grant".to_string(),
+        scope: seslogin::oauth::DEFAULT_SCOPE.to_string(),
     };
     assert_eq!(titles(&app, boss, "").await.len(), 3);
 }

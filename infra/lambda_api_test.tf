@@ -22,13 +22,19 @@ resource "aws_lambda_function" "test_api" {
       # from the test tables (a NITC export could reach Beacon).
       DB_BACKEND           = "dynamodb"
       DB_PREFIX            = var.db_prefix_test
+      ASSET_BUCKET         = aws_s3_bucket.assets_test.bucket
       READ_ONLY            = "false"
       TURNSTILE_SECRET_KEY = var.turnstile_secret_key_test
       ABLY_API_KEY         = var.ably_api_key
       TOOLBOX_GRAPHQL_URL  = var.toolbox_graphql_url
       TOOLBOX_API_TOKEN    = var.toolbox_api_token
       WIFI_NETWORKS        = var.wifi_networks
-      TALLY_REVIEW_SIGN_IN = var.tally_review_sign_in
+      # Tally's signed assertion grant (api/README.md, "Tally assertion"); a blank
+      # TALLY_ASSERTION_KEYS turns it off.
+      TALLY_ASSERTION_KEYS          = var.tally_assertion_keys
+      TALLY_ASSERTION_ISSUER        = var.tally_assertion_issuer
+      TALLY_ASSERTION_EMAIL_DOMAINS = var.tally_assertion_email_domains
+      TALLY_REVIEW_SIGN_IN          = var.tally_review_sign_in
       # Emailed on each sign-in as the review account, so a leaked code is noticed.
       TALLY_REVIEW_NOTIFY_TO = "me@sdunster.com"
       WEBAUTHN_RP_ID         = "seslogin.com"

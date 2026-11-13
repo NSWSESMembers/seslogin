@@ -32,6 +32,10 @@ name = "checker-lambda"
 path = "src/bin/checker-lambda.rs"
 
 [[bin]]
+name = "media-lambda"
+path = "src/bin/media-lambda.rs"
+
+[[bin]]
 name = "cli"
 path = "src/bin/cli.rs"
 
@@ -92,6 +96,7 @@ aws-config = { version = "1.8.5", features = ["credentials-login"] }
 # unmaintained rustls 0.21 / rustls-webpki 0.101 stack (RUSTSEC-2026-0098/0099/0104).
 # `default-https-client` is the modern replacement; `rt-tokio` is the other default we need.
 aws-sdk-dynamodb = { version = "1.89.0", default-features = false, features = ["default-https-client", "rt-tokio"] }
+aws-sdk-s3 = { version = "1.89.0", default-features = false, features = ["default-https-client", "rt-tokio"] }
 aws-sdk-ses = { version = "1.89.0", default-features = false, features = ["default-https-client", "rt-tokio"] }
 aws-sdk-sns = { version = "1.89.0", default-features = false, features = ["default-https-client", "rt-tokio"] }
 aws-sdk-sqs = { version = "1.89.0", default-features = false, features = ["default-https-client", "rt-tokio"] }
@@ -105,13 +110,17 @@ form_urlencoded = "1"
 hex = "0.4.3"
 flate2 = "1"
 hmac = "0.12"
-p256 = { version = "0.13", features = ["ecdsa"] }
+# JPEG and WebP decode only (the two accepted upload types); `webp` encodes the derived images.
+image = { version = "0.25", default-features = false, features = ["jpeg", "webp"] }
+p256 = { version = "0.13", features = ["ecdsa", "pkcs8"] }
 percent-encoding = "2.3"
-poem = "3.1.12"
+qcms = "0.3"
+poem = { version = "3.1.12", features = ["multipart"] }
 rand = "0.10"
 sha2 = "0.10"
 subtle = "2"
 tokio = { version = "1.47.1", features = ["full"] }
+webp = { version = "0.3", default-features = false }
 uuid = { version = "1.18.0", features = ["v4", "v5"] }
 webauthn-rs = { version = "0.5", features = ["danger-allow-state-serialisation", "preview-features", "resident-key-support"] }
 # Vendored OpenSSL: webauthn-rs pulls in openssl-sys; building it from source
@@ -139,3 +148,7 @@ debug = "line-tables-only"
 
 [profile.dev.package."*"]
 debug = false
+
+[dev-dependencies]
+# `poem::test::TestClient`, for the `/dev/storage/upload` route tests.
+poem = { version = "3.1.12", features = ["multipart", "test"] }

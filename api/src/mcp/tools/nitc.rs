@@ -23,7 +23,7 @@ use serde_json::{Value, json};
 use super::super::args::{self, Field, Kind, ToolError};
 use super::super::{ToolCtx, ToolOutcome, rename_root};
 use super::{Effect, id_property, input_schema, tool};
-use crate::app::{App, HasDb, HasMail, HasQueues, HasRealtime};
+use crate::app::{App, HasDb, HasMail, HasQueues, HasRealtime, HasStorage};
 
 /// A `NitcGroup`'s fields, as the NITC groups pages show them.
 const GROUP_SELECTION: &str = "id nitcType sesTags { id name primaryActivityName } \
@@ -131,7 +131,7 @@ pub(super) fn catalogue() -> Vec<Value> {
 
 pub(super) async fn call<A>(ctx: &ToolCtx<'_, A>, name: &str, a: &Value) -> Option<ToolOutcome>
 where
-    A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static,
+    A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sync + 'static,
 {
     let result = match name {
         "list_nitc_groups" => list_nitc_groups(ctx).await,
@@ -160,7 +160,7 @@ fn attach_categories(groups: &mut [Value], categories: &[Value]) {
 
 async fn list_nitc_groups<A>(ctx: &ToolCtx<'_, A>) -> Result<Value, ToolError>
 where
-    A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static,
+    A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sync + 'static,
 {
     let doc = format!(
         "query McpNitcGroups {{ nitcGroups {{ {GROUP_SELECTION} }} \
@@ -177,7 +177,7 @@ where
 /// Fetch a group (super user only, by its resolver) with the categories using it.
 async fn fetch_group<A>(ctx: &ToolCtx<'_, A>, id: &str) -> Result<Value, ToolError>
 where
-    A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static,
+    A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sync + 'static,
 {
     let doc = format!(
         "query McpNitcGroup($id: ID!) {{ nitcGroup(id: $id) {{ {GROUP_SELECTION} }} \
@@ -193,7 +193,7 @@ where
 
 async fn get_nitc_group<A>(ctx: &ToolCtx<'_, A>, a: &Value) -> Result<Value, ToolError>
 where
-    A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static,
+    A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sync + 'static,
 {
     let group = fetch_group(ctx, args::str_arg(a, "id")?).await?;
     Ok(json!({ "nitcGroup": group }))
@@ -203,7 +203,7 @@ where
 /// the mutation would store any number.
 async fn check_tag_ids<A>(ctx: &ToolCtx<'_, A>, ids: &[i32]) -> Result<(), ToolError>
 where
-    A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static,
+    A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sync + 'static,
 {
     if ids.is_empty() {
         return Ok(());
@@ -239,7 +239,7 @@ fn check_type(a: &Value) -> Result<(), ToolError> {
 
 async fn create_nitc_group<A>(ctx: &ToolCtx<'_, A>, a: &Value) -> Result<Value, ToolError>
 where
-    A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static,
+    A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sync + 'static,
 {
     let nitc_type = args::str_arg(a, "nitcType")?;
     check_type(a)?;
@@ -265,7 +265,7 @@ where
 
 async fn update_nitc_group<A>(ctx: &ToolCtx<'_, A>, a: &Value) -> Result<Value, ToolError>
 where
-    A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static,
+    A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sync + 'static,
 {
     let id = args::str_arg(a, "id")?;
     check_type(a)?;
@@ -306,7 +306,7 @@ where
 
 async fn delete_nitc_group<A>(ctx: &ToolCtx<'_, A>, a: &Value) -> Result<Value, ToolError>
 where
-    A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static,
+    A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sync + 'static,
 {
     let id = args::str_arg(a, "id")?;
     ctx.graphql(
@@ -319,7 +319,7 @@ where
 
 async fn list_ses_nonincident_tags<A>(ctx: &ToolCtx<'_, A>) -> Result<Value, ToolError>
 where
-    A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static,
+    A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sync + 'static,
 {
     let data = ctx
         .graphql(
@@ -332,7 +332,7 @@ where
 
 async fn list_ses_reference_data<A>(ctx: &ToolCtx<'_, A>) -> Result<Value, ToolError>
 where
-    A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static,
+    A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sync + 'static,
 {
     let data = ctx
         .graphql(

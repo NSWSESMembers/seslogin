@@ -22,8 +22,15 @@ use seslogin::graphql;
 use seslogin::mockmail;
 use seslogin::mockqueue;
 use seslogin::mockrealtime::{self, Event};
+use seslogin::mockstorage;
 
-type TestApp = MyApp<FakeDb, mockqueue::Handler, mockmail::Handler, mockrealtime::Handler>;
+type TestApp = MyApp<
+    FakeDb,
+    mockqueue::Handler,
+    mockmail::Handler,
+    mockrealtime::Handler,
+    mockstorage::Handler,
+>;
 
 fn webauthn() -> Arc<webauthn_rs::prelude::Webauthn> {
     Arc::new(
@@ -65,6 +72,7 @@ fn user(id: &str) -> AuthInfo {
         is_super: false,
         user_location_ids: vec![],
         grant_id: "grant-1".to_string(),
+        scope: seslogin::oauth::DEFAULT_SCOPE.to_string(),
     }
 }
 
@@ -452,6 +460,7 @@ fn alice_with(units: &[&str], is_super: bool) -> AuthInfo {
         is_super,
         user_location_ids: units.iter().map(|u| u.to_string()).collect(),
         grant_id,
+        scope: seslogin::oauth::DEFAULT_SCOPE.to_string(),
     }
 }
 
@@ -729,4 +738,64 @@ async fn conditional_write_conflicts_on_stale_version_or_ended_period() {
         .await
         .unwrap_err();
     assert!(matches!(err, db::Error::Conflict(_)), "{err:?}");
+}
+
+/// `user("alice-user")` on a grant of the given scope.
+fn alice_with_scope(scope: &str) -> AuthInfo {
+    let AuthInfo::Member {
+        person_id,
+        location_id,
+        member_location_ids,
+        user_id,
+        is_super,
+        user_location_ids,
+        grant_id,
+        ..
+    } = user("alice-user")
+    else {
+        unreachable!()
+    };
+    AuthInfo::Member {
+        person_id,
+        location_id,
+        member_location_ids,
+        user_id,
+        is_super,
+        user_location_ids,
+        grant_id,
+        scope: scope.to_string(),
+    }
+}
+
+#[tokio::test]
+async fn a_tally_sign_in_scope_is_held_to_the_allowlist_end_to_end() {
+    let app = app();
+    let narrow = || alice_with_scope(seslogin::oauth::TALLY_SIGN_IN_SCOPE);
+
+    // Allowed: runs as for any member.
+    let response = run(&app, narrow(), STATUS).await;
+    assert_eq!(
+        json(&response)["selfSignInStatus"]["person"]["id"],
+        "p-alice"
+    );
+
+    // Refused before anything runs, even though the member could normally read it.
+    for query in [
+        "{ tallyViewer { passkeys { id } } }",
+        "{ categories { id } tallyViewer { signIns { id } } }",
+        "{ __schema { types { name } } }",
+    ] {
+        let response = run(&app, narrow(), query).await;
+        assert_eq!(code_of(&response).as_deref(), Some("FORBIDDEN"), "{query}");
+        assert!(response.data == Value::Null, "{query}");
+    }
+
+    // The same document is fine for a default-scope member.
+    let response = run(
+        &app,
+        user("alice-user"),
+        "{ tallyViewer { passkeys { id } } }",
+    )
+    .await;
+    assert!(response.errors.is_empty(), "{:?}", response.errors);
 }

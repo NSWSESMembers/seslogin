@@ -316,6 +316,12 @@ fn string_set(v: &[String]) -> Option<Value> {
     Some(json!(sorted))
 }
 
+/// An ordered list of strings as a JSON array, or absent when empty (an empty list is
+/// not stored). Unlike [`string_set`] the order is kept: reordering photos or linked notes is a change.
+fn string_list(v: &[String]) -> Option<Value> {
+    (!v.is_empty()).then(|| json!(v))
+}
+
 fn map(v: &serde_json::Map<String, Value>) -> Option<Value> {
     Some(Value::Object(v.clone()))
 }
@@ -877,9 +883,36 @@ fn location_fields(l: &Location) -> Fields {
         .with_ses_details(&l.ses_details)
         .with_directory_details(&l.directory_details)
         .with("accreditations", json_text(l.accreditations.as_deref()))
+        .with_sop_notes(&l.sop_notes)
+}
+
+fn sop_field(place: db::SopPlace) -> &'static str {
+    match place {
+        db::SopPlace::OnCall => "sopNote.ON_CALL",
+        db::SopPlace::Equipment => "sopNote.EQUIPMENT",
+        db::SopPlace::EquipmentBorrowing => "sopNote.EQUIPMENT_BORROWING",
+        db::SopPlace::Tasks => "sopNote.TASKS",
+        db::SopPlace::Calendar => "sopNote.CALENDAR",
+        db::SopPlace::Map => "sopNote.MAP",
+        db::SopPlace::Reservations => "sopNote.RESERVATIONS",
+        db::SopPlace::Notes => "sopNote.NOTES",
+        db::SopPlace::Photos => "sopNote.PHOTOS",
+    }
 }
 
 impl Fields {
+    /// One `sopNote.<PLACE>` field per place, so a link, a change of note and an unlink
+    /// each diff on exactly the place they touch.
+    fn with_sop_notes(mut self, notes: &std::collections::BTreeMap<db::SopPlace, String>) -> Self {
+        for place in db::SopPlace::ALL {
+            self.set(
+                sop_field(place),
+                opt_text(notes.get(&place).map(String::as_str)),
+            );
+        }
+        self
+    }
+
     fn with_ses_details(mut self, d: &db::LocationSesDetails) -> Self {
         self.set("code", opt_text(d.code.as_deref()));
         self.set("latitude", d.latitude.map(|v| json!(v)));
@@ -968,6 +1001,9 @@ pub fn location_update_changes(
         }
         db::LocationUpdateShape::Accreditations { accreditations } => {
             after.set("accreditations", json_text(*accreditations));
+        }
+        db::LocationUpdateShape::SopNote { place, note_id } => {
+            after.set(sop_field(*place), opt_text(*note_id));
         }
     }
     diff(&before, &after)
@@ -1075,6 +1111,9 @@ fn task_fields(t: &db::Task) -> Fields {
             t.recurrence
                 .map(|r| json!({ "every": r.every, "unit": r.unit.as_str() })),
         )
+        .with("assignee_ids", string_set(&t.assignee_ids))
+        .with("photo_asset_ids", string_list(&t.photo_asset_ids))
+        .with("note_ids", string_list(&t.note_ids))
         .with("completed_at", opt_num(t.completed_at))
         .with("last_completed_at", opt_num(t.last_completed_at))
 }
@@ -1178,6 +1217,8 @@ fn map_pin_fields(p: &db::MapPin) -> Fields {
         )
         .with("layer_id", opt_text(p.layer_id.as_deref()))
         .with("pin_type", opt_text(p.pin_type.as_deref()))
+        .with("photo_asset_ids", string_list(&p.photo_asset_ids))
+        .with("note_ids", string_list(&p.note_ids))
 }
 
 pub fn map_pin_create_changes(p: &db::MapPin) -> Vec<AuditFieldChange> {
@@ -1268,6 +1309,7 @@ fn calendar_event_fields(e: &db::CalendarEvent) -> Fields {
                 .and_then(|r| r.until)
                 .map(|d| json!(format_date(d))),
         )
+        .with("note_ids", string_list(&e.note_ids))
 }
 
 pub fn calendar_event_create_changes(e: &db::CalendarEvent) -> Vec<AuditFieldChange> {
@@ -1283,6 +1325,79 @@ pub fn calendar_event_update_changes(
         Fields::default()
     } else {
         calendar_event_fields(after)
+    };
+    diff(&before, &after)
+}
+
+// ── Agendas ──────────────────────────────────────────────────────────────────
+
+/// Everything about a meeting a person decides, and when it was started and finished.
+/// The version and timestamps are bookkeeping.
+fn meeting_fields(m: &db::Meeting) -> Fields {
+    Fields::default()
+        .with("title", text(&m.title))
+        .with(
+            "description",
+            opt_text(Some(m.description.as_str()).filter(|d| !d.is_empty())),
+        )
+        .with("starts_at", num(m.starts_at))
+        .with("started_at", opt_num(m.started_at))
+        .with("finished_at", opt_num(m.finished_at))
+}
+
+pub fn meeting_create_changes(m: &db::Meeting) -> Vec<AuditFieldChange> {
+    creation(&meeting_fields(m))
+}
+
+pub fn meeting_update_changes(
+    before: Option<&db::Meeting>,
+    after: &db::Meeting,
+) -> Vec<AuditFieldChange> {
+    let before = before.map(meeting_fields).unwrap_or_default();
+    let after = if after.deleted.is_some() {
+        Fields::default()
+    } else {
+        meeting_fields(after)
+    };
+    diff(&before, &after)
+}
+
+/// Everything about an agenda item a person decides, including its text and links.
+fn agenda_item_fields(i: &db::AgendaItem) -> Fields {
+    Fields::default()
+        .with("meeting_id", text(&i.meeting_id))
+        .with(
+            "text",
+            opt_text(Some(i.text.as_str()).filter(|t| !t.is_empty())),
+        )
+        .with("presenter_id", text(&i.presenter_id))
+        .with("position", num(i.position))
+        .with("task_ids", string_list(&i.task_ids))
+        .with("equipment_ids", string_list(&i.equipment_ids))
+        .with("on_call_role_ids", string_list(&i.on_call_role_ids))
+        .with("photo_asset_ids", string_list(&i.photo_asset_ids))
+        .with("note_ids", string_list(&i.note_ids))
+}
+
+/// An agenda item's audit label: the first line of its text, else "Topic n" (the audit
+/// log doesn't look up its links' names).
+fn agenda_item_label(i: &db::AgendaItem) -> String {
+    crate::agenda_text::label(&i.text, None, i.position)
+}
+
+pub fn agenda_item_create_changes(i: &db::AgendaItem) -> Vec<AuditFieldChange> {
+    creation(&agenda_item_fields(i))
+}
+
+pub fn agenda_item_update_changes(
+    before: Option<&db::AgendaItem>,
+    after: &db::AgendaItem,
+) -> Vec<AuditFieldChange> {
+    let before = before.map(agenda_item_fields).unwrap_or_default();
+    let after = if after.deleted.is_some() {
+        Fields::default()
+    } else {
+        agenda_item_fields(after)
     };
     diff(&before, &after)
 }
@@ -1303,6 +1418,7 @@ fn on_call_role_fields(r: &db::OnCallRole) -> Fields {
             opt_text(r.primary_person_id.as_deref()),
         )
         .with("secondary_person_ids", string_set(&r.secondary_person_ids))
+        .with("note_ids", string_list(&r.note_ids))
 }
 
 pub fn on_call_role_create_changes(r: &db::OnCallRole) -> Vec<AuditFieldChange> {
@@ -1371,6 +1487,8 @@ fn equipment_fields(e: &db::Equipment) -> Fields {
             "description",
             opt_text(Some(e.description.as_str()).filter(|d| !d.is_empty())),
         )
+        .with("photo_asset_ids", string_list(&e.photo_asset_ids))
+        .with("note_ids", string_list(&e.note_ids))
 }
 
 /// A new piece of equipment, with the status it was added in.
@@ -1460,6 +1578,57 @@ pub fn location_share_create_changes(s: &db::LocationShare) -> Vec<AuditFieldCha
 
 pub fn location_share_delete_changes(s: &db::LocationShare) -> Vec<AuditFieldChange> {
     removal(&location_share_fields(s))
+}
+
+// ── Assets and photos ────────────────────────────────────────────────────────
+
+/// Everything about an uploaded asset worth recording. Status and the TTL are
+/// bookkeeping, and no GPS is ever held.
+fn asset_fields(a: &db::Asset) -> Fields {
+    Fields::default()
+        .with("kind", text(a.kind.as_str()))
+        .with("content_type", text(&a.content_type))
+        .with("byte_size", num(a.byte_size))
+        .with(
+            "original_filename",
+            opt_text(a.original_filename.as_deref()),
+        )
+        .with("width", opt_num(a.width.map(u64::from)))
+        .with("height", opt_num(a.height.map(u64::from)))
+        .with("taken_at", opt_num(a.taken_at))
+        .with("camera_make", opt_text(a.camera_make.as_deref()))
+        .with("camera_model", opt_text(a.camera_model.as_deref()))
+        .with("created_by", text(&a.created_by))
+}
+
+pub fn asset_create_changes(a: &db::Asset) -> Vec<AuditFieldChange> {
+    creation(&asset_fields(a))
+}
+
+/// Everything about a photo worth recording: what it is and who added it. Hiding adds
+/// `hidden_at` and `hidden_by`; the version and expiry are bookkeeping.
+fn photo_fields(p: &db::Photo) -> Fields {
+    Fields::default()
+        .with("asset_id", text(&p.asset_id))
+        .with("created_by", text(&p.created_by))
+        .with("taken_at", opt_num(p.taken_at))
+        .with("hidden_at", opt_num(p.hidden_at))
+        .with("hidden_by", opt_text(p.hidden_by.as_deref()))
+}
+
+pub fn photo_create_changes(p: &db::Photo) -> Vec<AuditFieldChange> {
+    creation(&photo_fields(p))
+}
+
+/// The diff of hiding a photo, from the photo as it was (if it could be read) to how
+/// the write left it.
+pub fn photo_hide_changes(before: Option<&db::Photo>, after: &db::Photo) -> Vec<AuditFieldChange> {
+    let before = before.map(photo_fields).unwrap_or_default();
+    diff(&before, &photo_fields(after))
+}
+
+pub fn photo_sweep_changes(before: &db::Photo) -> Vec<AuditFieldChange> {
+    removal(&photo_fields(before))
 }
 
 // ── Credentials and grants ───────────────────────────────────────────────────
@@ -2904,6 +3073,85 @@ impl<D: db::Handler> db::Handler for AuditingHandler<D> {
         Ok(after)
     }
 
+    async fn create_meeting(&self, meeting: db::NewMeeting<'_>) -> db::Result<db::Meeting> {
+        let meeting = self.inner.create_meeting(meeting).await?;
+        self.record_create(
+            AuditEntityType::Meeting,
+            &meeting.id,
+            Some(meeting.title.clone()),
+            vec![meeting.location_id.clone()],
+            meeting_create_changes(&meeting),
+        )
+        .await;
+        Ok(meeting)
+    }
+
+    async fn update_meeting(
+        &self,
+        id: &str,
+        change: db::MeetingUpdateShape<'_>,
+    ) -> db::Result<db::Meeting> {
+        let action = match change {
+            db::MeetingUpdateShape::Delete { .. } => AuditAction::Delete,
+            db::MeetingUpdateShape::Fields { .. }
+            | db::MeetingUpdateShape::Start { .. }
+            | db::MeetingUpdateShape::Finish { .. } => AuditAction::Update,
+        };
+        let before = self.before("meeting", id, first(self.inner.get_meetings(&[id]).await));
+        let after = self.inner.update_meeting(id, change).await?;
+        self.record(Recorded {
+            entity_type: AuditEntityType::Meeting,
+            entity_id: id,
+            action,
+            label: Some(after.title.clone()),
+            location_ids: vec![after.location_id.clone()],
+            changes: meeting_update_changes(before.as_ref(), &after),
+        })
+        .await;
+        Ok(after)
+    }
+
+    async fn create_agenda_item(&self, item: db::NewAgendaItem<'_>) -> db::Result<db::AgendaItem> {
+        let item = self.inner.create_agenda_item(item).await?;
+        self.record_create(
+            AuditEntityType::AgendaItem,
+            &item.id,
+            Some(agenda_item_label(&item)),
+            vec![item.location_id.clone()],
+            agenda_item_create_changes(&item),
+        )
+        .await;
+        Ok(item)
+    }
+
+    async fn update_agenda_item(
+        &self,
+        id: &str,
+        change: db::AgendaItemUpdateShape<'_>,
+    ) -> db::Result<db::AgendaItem> {
+        let action = match change {
+            db::AgendaItemUpdateShape::Delete { .. } => AuditAction::Delete,
+            db::AgendaItemUpdateShape::Fields { .. }
+            | db::AgendaItemUpdateShape::Position { .. } => AuditAction::Update,
+        };
+        let before = self.before(
+            "agenda item",
+            id,
+            first(self.inner.get_agenda_items(&[id]).await),
+        );
+        let after = self.inner.update_agenda_item(id, change).await?;
+        self.record(Recorded {
+            entity_type: AuditEntityType::AgendaItem,
+            entity_id: id,
+            action,
+            label: Some(agenda_item_label(&after)),
+            location_ids: vec![after.location_id.clone()],
+            changes: agenda_item_update_changes(before.as_ref(), &after),
+        })
+        .await;
+        Ok(after)
+    }
+
     async fn put_location_share(&self, share: &db::LocationShare) -> db::Result<()> {
         self.inner.put_location_share(share).await?;
         self.record_create(
@@ -2936,6 +3184,66 @@ impl<D: db::Handler> db::Handler for AuditingHandler<D> {
         Ok(removed)
     }
 
+    async fn create_asset(&self, asset: db::NewAsset<'_>) -> db::Result<db::Asset> {
+        let asset = self.inner.create_asset(asset).await?;
+        self.record_create(
+            AuditEntityType::Asset,
+            &asset.id,
+            asset.original_filename.clone(),
+            vec![asset.location_id.clone()],
+            asset_create_changes(&asset),
+        )
+        .await;
+        Ok(asset)
+    }
+
+    async fn create_photo(&self, photo: db::NewPhoto<'_>) -> db::Result<db::Photo> {
+        let photo = self.inner.create_photo(photo).await?;
+        self.record_create(
+            AuditEntityType::Photo,
+            &photo.id,
+            None,
+            vec![photo.location_id.clone()],
+            photo_create_changes(&photo),
+        )
+        .await;
+        Ok(photo)
+    }
+
+    async fn hide_photo(&self, id: &str, hidden_by: &str, now: u64) -> db::Result<db::Photo> {
+        let before = self.before("photo", id, first(self.inner.get_photos(&[id]).await));
+        let after = self.inner.hide_photo(id, hidden_by, now).await?;
+        self.record(Recorded {
+            entity_type: AuditEntityType::Photo,
+            entity_id: id,
+            action: AuditAction::Update,
+            label: None,
+            location_ids: vec![after.location_id.clone()],
+            changes: photo_hide_changes(before.as_ref(), &after),
+        })
+        .await;
+        Ok(after)
+    }
+
+    async fn sweep_photo(&self, id: &str, now: u64) -> db::Result<()> {
+        let before = self.before("photo", id, first(self.inner.get_photos(&[id]).await));
+        self.inner.sweep_photo(id, now).await?;
+        // Without the before-read there is nothing to say which unit it belonged to.
+        let Some(before) = before else {
+            return Ok(());
+        };
+        self.record(Recorded {
+            entity_type: AuditEntityType::Photo,
+            entity_id: id,
+            action: AuditAction::Delete,
+            label: None,
+            location_ids: vec![before.location_id.clone()],
+            changes: photo_sweep_changes(&before),
+        })
+        .await;
+        Ok(())
+    }
+
     // ── Deliberately not audited ─────────────────────────────────────────────
     //
     // Bookkeeping that is not a business change, or that is high-volume plumbing:
@@ -2958,6 +3266,12 @@ impl<D: db::Handler> db::Handler for AuditingHandler<D> {
     //   * the trophy methods (`write_trophy`, `delete_trophy_notices`): perpetual
     //     trophies are worked out from periods, like person `BadgeState`, and the
     //     period writes they follow from are audited. Reads pass through.
+    //   * the asset methods other than `create_asset` and the photo methods other than
+    //     `create_photo`, `hide_photo` and `sweep_photo`: `complete_asset` is upload
+    //     bookkeeping (the asset was audited when its upload began), `put_asset_ref` and
+    //     `delete_asset_ref` are the plumbing of an owner's write, which is what is
+    //     audited (as are `put_note_ref` and `delete_note_ref`, a note link's), and the daily counters (`increment_daily_counter`,
+    //     `get_daily_counter`) are rate-limit state with a TTL. Reads pass through.
     // The excluded *shapes* of audited methods (`AccessTime`, session `Info`,
     // `TouchLastUsed`, `LastSyncTime`) are handled inside those methods above.
     // `put_audit_entry` itself must of course not recurse into auditing.
@@ -3054,6 +3368,88 @@ impl<D: db::Handler> db::Handler for AuditingHandler<D> {
 
     async fn delete_trophy_notices(&self, notices: &[db::TrophyNotice]) -> db::Result<()> {
         self.inner.delete_trophy_notices(notices).await
+    }
+
+    async fn get_assets<T: AsRef<str> + Sync>(
+        &self,
+        ids: &[T],
+    ) -> db::Result<Vec<Option<db::Asset>>> {
+        self.inner.get_assets(ids).await
+    }
+
+    async fn complete_asset(&self, id: &str, content_type: &str) -> db::Result<db::Asset> {
+        self.inner.complete_asset(id, content_type).await
+    }
+
+    async fn list_note_refs(&self, note_id: &str) -> db::Result<Vec<db::NoteRef>> {
+        self.inner.list_note_refs(note_id).await
+    }
+
+    async fn put_note_ref(&self, note_id: &str, owner: &str, location_id: &str) -> db::Result<()> {
+        self.inner.put_note_ref(note_id, owner, location_id).await
+    }
+
+    async fn delete_note_ref(&self, note_id: &str, owner: &str) -> db::Result<()> {
+        self.inner.delete_note_ref(note_id, owner).await
+    }
+
+    async fn list_asset_refs(&self, asset_id: &str) -> db::Result<Vec<db::AssetRef>> {
+        self.inner.list_asset_refs(asset_id).await
+    }
+
+    async fn put_asset_ref(
+        &self,
+        asset_id: &str,
+        owner: &str,
+        location_id: &str,
+    ) -> db::Result<()> {
+        self.inner.put_asset_ref(asset_id, owner, location_id).await
+    }
+
+    async fn delete_asset_ref(&self, asset_id: &str, owner: &str) -> db::Result<()> {
+        self.inner.delete_asset_ref(asset_id, owner).await
+    }
+
+    async fn get_photos<T: AsRef<str> + Sync>(
+        &self,
+        ids: &[T],
+    ) -> db::Result<Vec<Option<db::Photo>>> {
+        self.inner.get_photos(ids).await
+    }
+
+    async fn list_visible_photos(
+        &self,
+        location_id: &str,
+        after_sort_key: Option<&str>,
+        limit: usize,
+        now: u64,
+    ) -> db::Result<(Vec<db::Photo>, bool)> {
+        self.inner
+            .list_visible_photos(location_id, after_sort_key, limit, now)
+            .await
+    }
+
+    async fn list_photos_due_for_sweep(
+        &self,
+        now: u64,
+        limit: usize,
+    ) -> db::Result<Vec<db::Photo>> {
+        self.inner.list_photos_due_for_sweep(now, limit).await
+    }
+
+    async fn increment_daily_counter(
+        &self,
+        id: &str,
+        limit: u64,
+        expires_at: u64,
+    ) -> db::Result<Option<u64>> {
+        self.inner
+            .increment_daily_counter(id, limit, expires_at)
+            .await
+    }
+
+    async fn get_daily_counter(&self, id: &str) -> db::Result<u64> {
+        self.inner.get_daily_counter(id).await
     }
 
     async fn put_audit_entry(&self, entry: &AuditEntry) -> db::Result<()> {
@@ -3504,6 +3900,43 @@ impl<D: db::Handler> db::Handler for AuditingHandler<D> {
             .await
     }
 
+    async fn get_meetings<T: AsRef<str> + Sync>(
+        &self,
+        ids: &[T],
+    ) -> db::Result<Vec<Option<db::Meeting>>> {
+        self.inner.get_meetings(ids).await
+    }
+
+    async fn list_meetings(
+        &self,
+        location_id: &str,
+        starts_after: Option<u64>,
+        starts_before: Option<u64>,
+        newest_first: bool,
+        limit: usize,
+    ) -> db::Result<Vec<db::Meeting>> {
+        self.inner
+            .list_meetings(
+                location_id,
+                starts_after,
+                starts_before,
+                newest_first,
+                limit,
+            )
+            .await
+    }
+
+    async fn get_agenda_items<T: AsRef<str> + Sync>(
+        &self,
+        ids: &[T],
+    ) -> db::Result<Vec<Option<db::AgendaItem>>> {
+        self.inner.get_agenda_items(ids).await
+    }
+
+    async fn list_agenda_items(&self, meeting_id: &str) -> db::Result<Vec<db::AgendaItem>> {
+        self.inner.list_agenda_items(meeting_id).await
+    }
+
     async fn get_on_call_roles<T: AsRef<str> + Sync>(
         &self,
         ids: &[T],
@@ -3657,6 +4090,10 @@ impl<D: db::Handler> db::Handler for AuditingHandler<D> {
         self.inner.list_oauth_grants_by_user(user_id).await
     }
 
+    async fn list_oauth_grants_by_person(&self, person_id: &str) -> db::Result<Vec<OAuthGrant>> {
+        self.inner.list_oauth_grants_by_person(person_id).await
+    }
+
     async fn get_webauthn_credential(
         &self,
         id: &str,
@@ -3708,6 +4145,18 @@ impl<D: db::Handler> db::Handler for AuditingHandler<D> {
     ) -> db::Result<()> {
         self.inner
             .put_ephemeral_state(id, kind, payload, expires_at)
+            .await
+    }
+
+    async fn create_ephemeral_state_if_absent(
+        &self,
+        id: &str,
+        kind: &str,
+        payload: &str,
+        expires_at: u64,
+    ) -> db::Result<bool> {
+        self.inner
+            .create_ephemeral_state_if_absent(id, kind, payload, expires_at)
             .await
     }
 
@@ -3874,6 +4323,7 @@ mod tests {
             is_super: false,
             user_location_ids: vec![],
             grant_id: "g1".to_string(),
+            scope: crate::oauth::DEFAULT_SCOPE.to_string(),
         };
         assert_eq!(
             Actor::from_auth_info(Some(&member)),
@@ -4606,6 +5056,7 @@ mod tests {
             ses_details: Default::default(),
             directory_details: Default::default(),
             accreditations: None,
+            sop_notes: Default::default(),
             created_at: 1,
             updated_at: 1,
         }
@@ -4932,6 +5383,10 @@ mod tests {
             (AuditEntityType::Calendar, "calendar"),
             (AuditEntityType::CalendarEvent, "calendar_event"),
             (AuditEntityType::LocationShare, "location_share"),
+            (AuditEntityType::Asset, "asset"),
+            (AuditEntityType::Photo, "photo"),
+            (AuditEntityType::Meeting, "meeting"),
+            (AuditEntityType::AgendaItem, "agenda_item"),
         ];
         for (entity, name) in entity_types {
             assert_eq!(entity.as_str(), name);

@@ -82,6 +82,7 @@ No GSIs. Locations are always fetched by ID or via a full-table Scan (the table 
 - `nitc_enabled` (N) — Unix timestamp NITC export starts from; `0`/absent means off (legacy rows may still hold a Bool, which reads as off)
 - `nitc_complete_on_export` (Bool) — only written as `false`, for locations that want their exported NITCs left incomplete in SES; absent (the default) means they are marked completed
 - `enabled` (Bool)
+- `sop_note_on_call`, `sop_note_equipment`, `sop_note_equipment_borrowing`, `sop_note_tasks`, `sop_note_calendar`, `sop_note_map`, `sop_note_reservations`, `sop_note_notes`, `sop_note_photos` (S, each optional) — the note the unit links as its standard operating procedure for that Tally screen (`db::SopPlace`). Set or removed by Tally's `setSopNote` alone (never written as Null, and without touching `updated_at`), so location sync and admin edits leave them be. May name a note deleted since. Each has a `note_ref` owned by `location_sop#<location_id>:<PLACE>`
 
 Written only by location sync (`api/src/location_sync.rs`), each omitted when SES has no value:
 
@@ -350,6 +351,9 @@ The index is **sparse**: completing a non-recurring task, or deleting any task, 
 - `title` (S), `description` (S, optional)
 - `due_date` (S, optional) — the day the task was scheduled for. `show_date` is this, or the creation day when there is none
 - `recurrence_every` (N), `recurrence_unit` (S: `days` or `weeks`) — both present or both absent
+- `assignee_ids` (SS, optional) — person IDs of the members the task is assigned to, from any unit; absent when it is nobody's in particular (a String Set can't be empty). It may name members deleted since
+- `photo_asset_ids` (L of S, optional) — the photos attached to it: up to 10 IDs of `ready` `asset` rows at the same location, in the order shown. Absent when there are none. Each has an `asset_ref` owned by `task#<id>`, written before the row starts naming it and removed after it stops (or the row is deleted)
+- `note_ids` (L of S, optional) — the notes it links to: up to 10 IDs of live `note` rows at the same location, in the order shown. Absent when there are none. Each has a `note_ref` owned by `task#<id>`, written before the row starts naming it and removed after it stops (or the row is deleted). It may name a note deleted since
 - `v` (N) — version, bumped by every write; edits and completions are conditional on it, so two people completing the same task cannot both succeed
 - `completed_at` (N), `completed_by` (S) — a non-recurring task's completion, and the person ID of the member who completed it
 - `last_completed_at` (N), `last_completed_by` (S) — a recurring task's latest completion, and who by (person ID)
@@ -447,6 +451,8 @@ The pins on a location's shared map ("Map").
 - `latitude` / `longitude` (N) — WGS 84 degrees
 - `address` (S, optional) — free text, not geocoded; absent when empty
 - `note` (S, optional) — plain text; absent when empty
+- `photo_asset_ids` (L of S, optional) — the photos attached to it: up to 10 IDs of `ready` `asset` rows at the same location, in the order shown. Absent when there are none. Each has an `asset_ref` owned by `map_pin#<id>`, written before the row starts naming it and removed after it stops (or the row is deleted)
+- `note_ids` (L of S, optional) — the notes it links to: up to 10 IDs of live `note` rows at the same location, in the order shown. Absent when there are none. Each has a `note_ref` owned by `map_pin#<id>`, written before the row starts naming it and removed after it stops (or the row is deleted). It may name a note deleted since
 - `v` (N) — version, bumped by every write; saves are conditional on it, so two people editing the same pin cannot silently overwrite each other
 - `created_by` / `updated_by` (S) — person IDs of the members who made and last changed it
 - `deleted` (N) — Unix seconds when soft-deleted; absent otherwise
@@ -495,6 +501,7 @@ A location's on-call roles ("On Call"), such as Duty Officer, and who holds each
 - `phone` (S, optional) — a number that reaches whoever holds the role, kept as written
 - `primary_person_id` (S, optional) — the `person` on call; absent while the role is empty
 - `secondary_person_ids` (SS, optional) — everyone else in the role; absent when there is nobody else, and never present without a primary. People may be from any location, and may since have been deleted (the API leaves them out)
+- `note_ids` (L of S, optional) — the notes it links to: up to 10 IDs of live `note` rows at the same location, in the order shown. Absent when there are none. Each has a `note_ref` owned by `on_call_role#<id>`, written before the row starts naming it and removed after it stops (or the row is deleted). It may name a note deleted since
 - `members_changed_at` (N, optional) — Unix seconds when the people in the role last changed; absent while it is empty
 - `v` (N) — version, bumped by every write; saves are conditional on it
 - `created_by` / `updated_by` (S) — person IDs of the members who made and last changed it
@@ -558,6 +565,8 @@ A location's equipment register ("Equipment").
 - `status` (S) — `in_service`, `has_issue` (usable, but something needs fixing), `out_of_service`, `missing` or `borrowed`. Changed only together with a new `equipment_log` row, in one transaction conditional on the status it changes from
 - `status_changed_at` (N) — when the status last changed, or the equipment was added
 - `last_checked_at` (N, optional) — when someone last logged a check
+- `photo_asset_ids` (L of S, optional) — the photos attached to it: up to 10 IDs of `ready` `asset` rows at the same location, in the order shown. Absent when there are none. Each has an `asset_ref` owned by `equipment#<id>`, written before the row starts naming it and removed after it stops (or the row is deleted)
+- `note_ids` (L of S, optional) — the notes it links to: up to 10 IDs of live `note` rows at the same location, in the order shown. Absent when there are none. Each has a `note_ref` owned by `equipment#<id>`, written before the row starts naming it and removed after it stops (or the row is deleted). It may name a note deleted since
 - `v` (N) — version, bumped by every edit (not by log entries); edits are conditional on it
 - `created_by` / `updated_by` (S) — person IDs of the members who made and last changed it
 - `deleted` (N) — Unix seconds when soft-deleted; absent otherwise. The log is kept
@@ -668,6 +677,70 @@ The events in a location's shared calendar ("Calendar"). An event is timed (inst
 - `calendar_id` (S, optional) — the `calendar` it is in; it may name a deleted calendar
 - `title` (S) — one line of plain text
 - `description` (S, optional) — plain text; absent when empty
+- `note_ids` (L of S, optional) — the notes it links to: up to 10 IDs of live `note` rows at the same location, in the order shown. Absent when there are none. Each has a `note_ref` owned by `calendar_event#<id>`, written before the row starts naming it and removed after it stops (or the row is deleted). It may name a note deleted since
+- `v` (N) — version, bumped by every write; edits are conditional on it
+- `created_by` / `updated_by` (S) — person IDs of the members who made and last changed it
+- `deleted` (N) — Unix seconds when soft-deleted; absent otherwise
+- `created_at` / `updated_at` (N)
+
+---
+
+### `{prefix}meeting`
+
+A location's meetings in Tally's Agendas app: a scheduled meeting with its agenda items (the `agenda_item` table) and minutes. The code that uses this table lands in later PRs; until then nothing reads or writes it.
+
+| Attribute     | Type | Role                                         |
+| ------------- | ---- | -------------------------------------------- |
+| `id`          | S    | Hash key (PK)                                |
+| `location_id` | S    | GSI hash key (`location_id-starts_at-index`) |
+| `starts_at`   | N    | GSI sort key (`location_id-starts_at-index`) |
+
+**GSIs:**
+
+| GSI                           | Hash key      | Sort key    | Projection | Purpose                                                                                                |
+| ----------------------------- | ------------- | ----------- | ---------- | ------------------------------------------------------------------------------------------------------ |
+| `location_id-starts_at-index` | `location_id` | `starts_at` | ALL        | A location's meetings in date order, so a window (upcoming, past) is one query; deleted ones are filtered out on read |
+
+**Non-obvious attributes (not in table definition):**
+
+- `starts_at` (N) — the scheduled start, Unix seconds
+- `title` (S) — one line of plain text
+- `description` (S, optional) — plain text (where, purpose); absent when empty
+- `started_at` (N, optional) — Unix seconds when the meeting was started; absent until then
+- `finished_at` (N, optional) — Unix seconds when it was finished; absent until then, and cleared when a finished meeting is started again
+- Status is not stored: no `started_at` is planned, `started_at` without `finished_at` is in progress, and `finished_at` is finished
+- `v` (N) — version, bumped by every write; edits are conditional on it
+- `created_by` / `updated_by` (S) — person IDs of the members who made and last changed it
+- `deleted` (N) — Unix seconds when soft-deleted; absent otherwise. Deleting a meeting soft-deletes only this row: its agenda items are left alone and become unreachable
+- `created_at` / `updated_at` (N)
+
+---
+
+### `{prefix}agenda_item`
+
+The topics on a meeting's agenda ("agenda items"), each with one Markdown text box. The code that uses this table lands in later PRs; until then nothing reads or writes it.
+
+| Attribute    | Type | Role                                  |
+| ------------ | ---- | ------------------------------------- |
+| `id`         | S    | Hash key (PK)                         |
+| `meeting_id` | S    | GSI hash key (`meeting_id-index`)     |
+
+**GSIs:**
+
+| GSI                | Hash key     | Sort key | Projection | Purpose                                                                                       |
+| ------------------ | ------------ | -------- | ---------- | --------------------------------------------------------------------------------------------- |
+| `meeting_id-index` | `meeting_id` | —        | ALL        | All of a meeting's items; deleted ones are filtered out on read and the API sorts by `position` in memory |
+
+**Non-obvious attributes (not in table definition):**
+
+- `location_id` (S) — the meeting's unit, copied from it
+- `text` (S, optional) — the item's single text box (what it is about, and the minutes taken against it), Markdown as in Notes, up to 20000 characters; absent when empty. An item with no text names at least one link
+- `presenter_id` (S) — person ID of the member presenting it; defaults to its creator
+- `position` (N) — integer, 1-based order on the agenda
+- `task_ids` / `equipment_ids` / `on_call_role_ids` (L of S, optional) — the tasks, equipment and on-call roles it links to: up to 10 IDs each, at the same location, in the order shown. Absent when there are none. They have no reverse tables, and may name something deleted since, which readers leave out
+- `photo_asset_ids` (L of S, optional) — the photos attached to it: up to 10 IDs of `asset` rows, in the order shown. Each has an `asset_ref` owned by `agenda_item#<id>`, written before the row starts naming it and removed after it stops (or the row is deleted)
+- `note_ids` (L of S, optional) — the notes it links to: up to 10 IDs of live `note` rows at the same location, in the order shown. Absent when there are none. Each has a `note_ref` owned by `agenda_item#<id>`, written before the row starts naming it and removed after it stops (or the row is deleted). It may name a note deleted since
+- The link attributes are written by `createAgendaItem`/`updateAgendaItem` (`graphql/agenda_items.rs`, `graphql/linked_items.rs`)
 - `v` (N) — version, bumped by every write; edits are conditional on it
 - `created_by` / `updated_by` (S) — person IDs of the members who made and last changed it
 - `deleted` (N) — Unix seconds when soft-deleted; absent otherwise
@@ -773,6 +846,141 @@ Each member's in-app notification inbox (Tally), fanned out on write: an event n
 
 ---
 
+### `{prefix}asset`
+
+Uploaded files, scoped to a location: images now, other files later. One row per upload; the file itself is in the assets S3 bucket (`seslogin-assets-prod-<account>` for prod, preprod, qa and the workers, `seslogin-assets-test-<account>` for test; private, SSE-S3, no versioning; `infra/assets.tf`). The code that uses this table, `asset_ref` and `photo`, and the `counter#...` items below lands in later PRs; until then nothing reads or writes them.
+
+| Attribute | Type | Role          |
+| --------- | ---- | ------------- |
+| `id`      | S    | Hash key (PK) |
+
+No GSIs (a future garbage collector scans; there will be at most tens of thousands of rows).
+
+**TTL:** `expires_at`, set only while the asset is `pending`.
+
+**S3 key layout:**
+
+- `pending/<asset_id>` — where the client's presigned POST lands. Removed on completion, and by a bucket lifecycle rule after 1 day if the upload is never completed
+- `originals/<asset_id>` — copied here server-side when the upload is completed. Private and never served
+- `derived/<asset_id>/<variant>.webp` — normalised, metadata-stripped WebP at a fixed named size (`thumb`, `display`, `full`), written on first request. The only form members ever receive
+
+**Non-obvious attributes (not in table definition):**
+
+- `location_id` (S) — the unit it belongs to; only owners in this unit may reference it
+- `kind` (S) — `image` (later `file`)
+- `status` (S) — `pending` → `ready` (→ `deleting`, for the future garbage collector)
+- `content_type` (S) — `image/jpeg` or `image/webp`
+- `byte_size` (N) — declared at creation, verified at completion
+- `original_filename` (S, optional) — as picked, at most 255 characters, path stripped
+- `width`, `height` (N, optional) — the client's hint, 1 to 20000
+- `taken_at` (N, optional) — Unix seconds, from the original's EXIF; dropped if more than a day in the future or over 5 years old. GPS is never sent or stored
+- `camera_make`, `camera_model` (S, optional) — at most 100 characters each
+- `created_by` (S) — person ID of the uploading member
+- `created_at` (N); `completed_at` (N, optional) — Unix seconds; the latter is set on completion
+- `expires_at` (N, optional) — `created_at` + 1 day while `pending`; removed on completion
+
+---
+
+### `{prefix}asset_ref`
+
+Which owners use an asset, so a garbage collector can delete only assets nothing references. A reference is always written before or atomically with its owner and removed after or atomically with it: a stray reference only delays collection, a missing one would delete a live asset.
+
+| Attribute  | Type | Role                                                           |
+| ---------- | ---- | -------------------------------------------------------------- |
+| `asset_id` | S    | Hash key (PK)                                                  |
+| `owner`    | S    | Range key — `<owner_type>#<owner_id>`, e.g. `photo#<photo_id>` |
+
+Owner types: `photo`, and `task`, `equipment`, `map_pin` and `agenda_item` for the photos attached to them (their `photo_asset_ids`).
+
+No GSIs.
+
+**Non-obvious attributes (not in table definition):**
+
+- `location_id` (S) — the owner's (and the asset's) unit
+- `created_at` (N) — Unix seconds
+
+---
+
+### `{prefix}note_ref`
+
+Reverse index of links from items to notes, so "which items link to this note" can be answered. Tasks, map pins, equipment, calendar events and on-call roles each store an ordered `note_ids` list (up to 10 notes at their own location), and write a row here for each note they name. Rows are written and removed by `graphql/linked_notes.rs`; `db::Handler::list_note_refs` reads them by note (nothing exposes that in GraphQL yet). Like `asset_ref` they are plumbing, so writes to them are not audited (the owner's `note_ids` change is).
+
+Protocol: a reference is written before the owner first names the note and removed after the owner stops naming it or is deleted. A stray reference is therefore possible, so a reader must check that the owner still names the note before trusting a row.
+
+| Attribute | Type | Role                                                         |
+| --------- | ---- | ------------------------------------------------------------ |
+| `note_id` | S    | Hash key (PK)                                                |
+| `owner`   | S    | Range key — `<owner_type>#<owner_id>`, e.g. `task#<task_id>` |
+
+Owner types: `task`, `equipment`, `map_pin`, `calendar_event`, `on_call_role` and `agenda_item`, and `location_sop` for a unit's SOP notes, whose owner ID is `<location_id>:<PLACE>` (e.g. `location_sop#<location_id>:ON_CALL`), written by `graphql/sop_notes.rs` before the `location` row names the note and removed after it stops.
+
+No GSIs.
+
+**Non-obvious attributes (not in table definition):**
+
+- `location_id` (S) — the owner's (and the note's) unit
+- `created_at` (N) — Unix seconds
+
+---
+
+### `{prefix}photo`
+
+A unit's photo stream in Tally: photos stay for 30 days, and a unit may add 100 per Sydney day (see the `counter#photo#...` items below). A photo is hidden by a member (no undo) and swept by a daily job, which soft-deletes it and removes its `asset_ref`.
+
+| Attribute             | Type | Role                                                                             |
+| --------------------- | ---- | -------------------------------------------------------------------------------- |
+| `id`                  | S    | Hash key (PK)                                                                    |
+| `visible_location_id` | S    | GSI hash key (`visible_location_id-sort_key-index`) — present only while visible |
+| `sort_key`            | S    | GSI range key — `<taken_at or created_at, zero-padded to 10 digits>#<id>`        |
+| `sweep`               | S    | GSI hash key (`sweep-expires_at-index`) — `"1"` until swept                      |
+| `expires_at`          | N    | GSI range key (`sweep-expires_at-index`)                                         |
+
+**GSIs:**
+
+| GSI                                  | Hash key              | Sort key     | Projection | Purpose                                                       |
+| ------------------------------------ | --------------------- | ------------ | ---------- | ------------------------------------------------------------- |
+| `visible_location_id-sort_key-index` | `visible_location_id` | `sort_key`   | ALL        | A unit's stream, newest first (unexpired rows only on read)   |
+| `sweep-expires_at-index`             | `sweep`               | `expires_at` | ALL        | Photos due for the sweep: `sweep = "1" AND expires_at <= now` |
+
+**No TTL.** `expires_at` is deliberately not a TTL attribute: expiry has to run application code to remove the photo's `asset_ref`.
+
+**Non-obvious attributes (not in table definition):**
+
+- `location_id` (S) — the unit
+- `asset_id` (S) — the photo's asset
+- `created_by` (S) — person ID of the member who added it
+- `created_at` (N) — Unix seconds, upload time
+- `taken_at` (N, optional) — Unix seconds, copied from the asset
+- `expires_at` (N) — `created_at` + 30 days; when hidden, becomes the earlier of itself and `hidden_at` + 7 days
+- `visible_location_id` (S, optional) — equal to `location_id` while visible; removed on hide and on sweep
+- `sweep` (S, optional) — `"1"` while not swept; removed on sweep
+- `hidden_at` (N, optional), `hidden_by` (S, optional) — Unix seconds and person ID
+- `deleted` (N, optional) — soft delete, set by the sweep
+- `v` (N) — version, starting at 1
+
+---
+
+### `{prefix}ephemeral_state`
+
+A generic key/value store with native TTL (`expires_at`). Items are namespaced by a `kind` discriminator: kiosk enrolment, WebAuthn challenges and the daily counters below.
+
+**Daily counters** (`kind` = `counter`) cap how much of something a person or unit can do in a Sydney day. The `id` is `counter#<name>#<key>#<YYYY-MM-DD>` (the Sydney date); `count` (N) is the number so far and `expires_at` is 3 days after the last increment. An increment is an UpdateItem `ADD count 1`, conditional on the item being new or `count` below the limit; a failed condition means "at the limit". Counters (arriving with the code that uses `asset` and `photo`):
+
+- `counter#photo#<location_id>#<date>` — photos added to a unit; limit 100
+- `counter#asset-upload#<person_id>#<date>` — uploads started by a member; limit 200
+
+**Tally assertion ids** (`kind` = `tally_assertion`) record that a Tally-signed assertion (`jti`) has been used, so it can't be replayed. The `id` is `tally_assertion_jti_<sha256 hex of "<iss>|<jti>">` and `payload` is empty. The row is written with a PutItem conditional on `attribute_not_exists(id)`, so of two racing uses exactly one succeeds, and `expires_at` is the assertion's `exp` plus 60 seconds, after which the assertion would be refused as expired anyway.
+
+---
+
+### `{prefix}oauth_grant`
+
+An OAuth grant: the client, the member or user it acts for, the hashed access and refresh tokens (never the tokens), `scope`, `resource`, and `access_expires_at`, `refresh_expires_at` and `expires_at` (Unix seconds; native TTL on `expires_at`).
+
+Rows with `scope` = `tally_sign_in` come from Tally's signed assertion, not an authorization code. They name a member (`person_id`) and no user, and no refresh token was ever given out, so `refresh_expires_at` equals `access_expires_at`. `expires_at` equals `access_expires_at` too, so the row is deleted shortly after its one-hour access token expires. They are left out of connected-app and Tally sign-in listings.
+
+---
+
 ### `{prefix}webauthn_credential`
 
 Passkeys. Each row belongs to exactly one owner: a user (`user_id`) or, for Tally sign-in, a member (`person_id`). The owner attribute that does not apply is omitted, so each GSI is sparse and holds only its own kind of passkey.
@@ -827,7 +1035,7 @@ Access patterns: per-location newest-first (`Query` on `location_id-sk-index`) a
 - `ts` (N) — Unix seconds when the event happened
 - `event_id` (S) — shared by every item written for the same event
 - `action` (S) — `create`, `update`, `delete` or `restore`
-- `entity_type` (S) — `user`, `person`, `period`, `session`, `api_token`, `location`, `category`, `nitc_group`, `nitc_tag`, `user_token`, `oauth_grant`, `webauthn_credential`, `task`, `task_list`, `note`, `note_folder`, `map_pin`, `map_layer`, `on_call_role`, `shared_contact`, `equipment`, `equipment_log_entry`, `equipment_reservation`, `calendar`, `calendar_event` or `location_share`
+- `entity_type` (S) — `user`, `person`, `period`, `session`, `api_token`, `location`, `category`, `nitc_group`, `nitc_tag`, `user_token`, `oauth_grant`, `webauthn_credential`, `task`, `task_list`, `note`, `note_folder`, `map_pin`, `map_layer`, `on_call_role`, `shared_contact`, `equipment`, `equipment_log_entry`, `equipment_reservation`, `calendar`, `calendar_event`, `location_share`, `asset`, `photo`, `meeting` or `agenda_item`
 - `entity_id` (S) — ID of the entity changed
 - `entity_label` (S) — human-readable name of the entity at the time; omitted when unknown
 - `actor_kind` (S) — `user`, `member` (a member signed in to Tally), `session` (kiosk), `api_token`, `period_link`, `system` (a job or the CLI), `unauthenticated` or `unknown`

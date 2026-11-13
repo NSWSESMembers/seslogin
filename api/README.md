@@ -292,6 +292,36 @@ already signs in there, so this hands out nothing new — and the member's
 otherwise. It is called "Saved at Tally sign-in". `completeTallySignIn` still
 works, for a page loaded before the offer existed.
 
+**Managing passkeys in Tally.** Tally's settings list the passkeys that sign the
+member in (`TallyViewer.passkeys`: the member's own and the riding-along user's,
+newest first, each with `signsInToSeslogin` true for the user's, which work on
+the admin site too) and rename or delete them (`renameTallyPasskey(id, name)`,
+name trimmed, 1–100 characters; `deleteTallyPasskey(id)`). Tally members only
+(`graphql/tally_passkeys.rs`); anyone else's passkey is `NOT_FOUND`, like a
+missing one. Both writes are audited, as every passkey write is.
+
+Adding one happens in a browser, since a passkey belongs to the site's relying
+party, not the app. `startTallyPasskeySetup` (Tally members only) returns a
+single-use ticket: an `ephemeral_state` row (kind `tally_addpk`, stored by
+hash, 10 minutes) naming the member and their grant. Tally opens
+`/tally/passkey#<ticket>` on its SESLogin site (the fragment never reaches a
+server). The page first proves an inbox: `sendTallyPasskeySetupCode(ticket,
+email)` emails an ordinary Tally sign-in code (same `login_code` table, limits
+and expiry), but only if that email signs in as the ticket's member, answering
+`true` either way. `verifyTallyPasskeySetupCode(ticket, email, code)` redeems it
+and marks the ticket confirmed. Only then do `beginTallyPasskeySetup(ticket)` and
+`finishTallyPasskeySetup(ticket, challengeId, credentialJson)` work (`BAD_REQUEST`
+before). Finishing uses the ticket up and returns the grant's redirect URI with
+`passkey=saved`, which sends the browser back to the app. The ticket is refused
+(`BAD_REQUEST`) once expired, used, or its member or grant is gone, so revoking
+a sign-in also kills a ticket it asked for.
+
+The passkey, called "Added in Tally", is the **user's** when the confirmed
+email is an enabled SESLogin user's (it then signs in to the admin site too),
+and the **member's** own otherwise. That is the same rule as saving one after a
+sign-in code: the code proves the inbox, and a code to that inbox already signs
+in to the admin site, so the Tally grant alone never mints a credential.
+
 **App Store review.** `TALLY_REVIEW_SIGN_IN=<email>:<6 digits>` makes that one
 email always be sent that code instead of a random one, so a reviewer can sign
 in without the inbox. It is set on the prod and test APIs, to the same value
@@ -313,6 +343,28 @@ Locally (`make dev-local`) the seeded members have emails
 code is in the API log (and in `MOCK_MAIL_DIR`, if you set it).
 `testunit@seslogin.test` is a user with no member, so it is refused.
 
+### Tally assertion
+
+The Tally app (https://tally.sdunster.com) can get a member token without the
+browser flow above. It signs a two-minute ES256 JWT with an AWS KMS key, vouching
+for an inbox it verified with a code, and posts it to `/oauth/token` with
+`grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer`, `assertion`,
+`client_id=tally` and optionally `scope=tally_sign_in` and `resource`
+(`tally_assertion.rs`, `oauth_http::token_jwt_bearer`). The member is found by
+the email in it, as `tally_sign_in::identify` does, so it is for members on
+their SES service email. The reply is a `tally_sign_in` token (self sign-in
+only, `graphql/scope.rs`), for the member alone, with no refresh token and an
+hour to live. Every problem with the assertion is `invalid_grant`, described
+only as "Invalid assertion"; the reason is in the log (`tally assertion: ...`).
+Each `jti` works once (`ephemeral_state`, see SCHEMA.md).
+
+Configuration, all three required (`var.tally_assertion_*` in `infra/`):
+`TALLY_ASSERTION_KEYS` (JSON `[{"kid","spki"}]`, `spki` the base64 DER public
+key, as Tally's terraform outputs it), `TALLY_ASSERTION_ISSUER` and
+`TALLY_ASSERTION_EMAIL_DOMAINS` (comma-separated, matched exactly). Any blank
+turns the grant off (`unsupported_grant_type`), which is the kill switch;
+removing a key from the list retires it.
+
 ### Connected apps (list + revoke)
 
 Once a user has approved a client, `User.oauthGrants` (guarded the same way as
@@ -333,6 +385,21 @@ app to be reconnected.
 The web page is `/admin/settings/connected-apps` (linked from the Settings
 submenu, beside Passkeys); a super user also sees and can revoke another
 user's grants from that user's edit page.
+
+### Tally sign-ins (list + sign out)
+
+Tally's settings list the devices a member is signed in on and can sign any of
+them out (`graphql/tally_sign_ins.rs`, Tally members only). Each Tally sign-in is
+its own grant, so one per device. `TallyViewer.signIns` lists the live grants
+naming the member (`oauth_grant`'s `person_id-index`) plus, when a user signed in
+alongside them, that user's grants that name a member (Tally ones, through
+`user_id-index`; that also covers a user since linked to another member). The
+user's connected apps (MCP clients) aren't listed, since those are managed here
+on the admin site. Each entry has `clientName`, `createdAt`, `lastUsedAt`,
+`refreshExpiresAt` and `isCurrent` (the grant making the request), with this
+device first, then most recently used. `revokeTallySignIn(id)` deletes the
+grant, this device's included, and returns its ID. Anyone else's grant, a
+connected app, or one past its expiry is `NOT_FOUND`.
 
 ## MCP interface
 
@@ -522,7 +589,7 @@ label a visitor "Visiting from <unit>" and a member whose primary unit is elsewh
 
 ## Perpetual trophies
 
-Twelve badges that belong to a **unit**, not a member, each with exactly one holder at a
+Thirteen badges that belong to a **unit**, not a member, each with exactly one holder at a
 time (`src/trophies.rs`). Whoever beats the holder takes it, and every change of hands is
 kept as a reign in the `trophy` table (see SCHEMA.md). Two kinds:
 
@@ -531,7 +598,9 @@ kept as a reign in the `trophy` table (see SCHEMA.md). Two kinds:
   nearest of their own units). A claim counts for 365 days; a strictly bigger one takes
   the trophy. When the holder's claim ages out, the best claim still inside the window
   takes over, or the holder keeps it if there is none.
-- **Rolling leads** (the other ten), scored nightly over a trailing window. A challenger
+- **Rolling leads** (the other eleven), scored nightly over a trailing window (The
+  Chain counts a current weekly run, and The Sash every badge the member has earned at
+  the unit, with no window). A challenger
   must strictly beat the holder's current score and meet the minimum; a quiet holder
   keeps it until passed, or until their own score falls below the trophy's
   `keep_minimum` (`lapsed`; the same as its minimum except The Kettle and The Padlock,
@@ -544,7 +613,18 @@ history reads sensibly even when a rolling holder's score had fallen by the time
 it.
 
 Ties go to the holder, and between challengers on the same score, whoever reached it
-first. Only a unit's own members (primary or secondary) can hold its trophies. Every
+first. The Sash, most badges at the unit, breaks a tie on the count like a medal table
+before that: more gold badges, then silver, then bronze (`Standing::tiebreak`; starter,
+wildcard and passport stamp badges count towards the total only). A challenger level on
+the count takes it from the holder only with a better medal count; level on both, the
+holder keeps it. It counts what the Badge Report's leaderboard counts
+(`badges::awards_in_range` at the unit), so it is decided after the night's personal
+badges. The badge leaderboard (`Location.badgeLeaderboard`, on the dashboard and the
+kiosk) and the Badge Report's members table rank by the same rule, through
+`trophies::medal_count`: badges, then medals, then whoever reached their count first
+(their latest badge); `rank` is shared only by members level on badges and medals.
+
+Only a unit's own members (primary or secondary) can hold its trophies. Every
 hours-based trophy counts a sign-in at most 12 hours, so nothing rewards a long shift.
 
 `trophy_nightly::run`, at the end of `badge-nightly` (`seslogin-badge-nightly`), is the
@@ -633,6 +713,16 @@ A location's shared to-do list, used by the Tally app (`src/graphql/tasks.rs`, r
 - **Recurring tasks** (`recurrence: { every, unit: DAYS | WEEKS }`) always have a due date
   (today if none was given). Completing one moves it to `every` days/weeks after the day it
   was completed, and it stays open; completing any other task closes it.
+- **Assignees:** a task may be assigned to up to 20 members (`assigneeIds` on `createTask`
+  and `updateTask`, by person ID, from any unit, like an on-call role). With none it is the
+  whole unit's. Assigning changes nothing about who may see, edit or complete it: anyone at
+  the unit still can. `updateTask` without `assigneeIds` leaves them alone; given, it
+  replaces them (`[]` unassigns everyone), and a member already assigned may stay after
+  being deleted, but only live members can be added. `Task.assigneeIds` lists them all,
+  `Task.assignees` the live ones by name, and `Task.assignedToViewer` says whether the caller
+  is one. Members newly assigned get a notification (see "Notifications").
+- **Photos:** up to 10, through `photoAssetIds` on `createTask` and `updateTask`; see "Attached photos".
+- **Linked notes:** up to 10, through `noteIds` on `createTask` and `updateTask`; see "Linked notes".
 - **Concurrency:** `updateTask` and `completeTask` take `expectedVersion`; if the task was
   changed or completed since (say, two people tapping Complete at once), the second gets a
   `CONFLICT` error rather than skipping an occurrence.
@@ -950,6 +1040,8 @@ A location's equipment register, used by the Tally app (`src/graphql/equipment.r
   line (max 200 characters); `description` is trimmed plain text (max 5,000). `status` is
   `IN_SERVICE`, `HAS_ISSUE` (still usable, but something needs fixing), `OUT_OF_SERVICE`,
   `MISSING` or `BORROWED`.
+- **Photos:** up to 10, through `photoAssetIds` on `createEquipment` and `updateEquipment`; see "Attached photos".
+- **Linked notes:** up to 10, through `noteIds` on `createEquipment` and `updateEquipment`; see "Linked notes".
 - **The log:** the status is never edited directly. `changeEquipmentStatus(id, status,
 comment)` changes it and logs the change with a comment saying why (required, max 1,000);
   `checkEquipment(id, comment)` logs that the caller checked it, comment optional, and leaves
@@ -1117,6 +1209,177 @@ mutation {
 }
 ```
 
+## Agendas
+
+Meeting agendas and minutes for Tally's Agendas app (`src/graphql/meetings.rs` and
+`src/graphql/agenda_items.rs`; storage in SCHEMA.md's `meeting` and `agenda_item` sections). This
+section covers **meetings**, their **topics** (agenda items) and the topics' links to tasks,
+equipment, on-call roles, photos and notes, and the meeting's exported **minutes**.
+
+- **Who:** any member signed in to Tally who can use the unit (`require_meeting_access`, through
+  `require_member_location`: see "Tally (members)" above) may read and write every meeting of it,
+  finished ones included. Users on their own, kiosk sessions, API tokens and edit links are refused.
+  Authors are recorded by person ID (`createdBy` / `updatedBy` read as the member's name).
+- **Reading:** `TallyLocation.meetings(startsAfter, startsBefore, newestFirst, limit)` lists the
+  unit's live meetings scheduled in `[startsAfter, startsBefore)` (Unix seconds, either optional),
+  oldest first or newest first, at most `limit` (default 50, capped at 200). `Query.meeting(id)`
+  reads one (null when missing or deleted).
+- **Status:** `PLANNED` (never started), `IN_PROGRESS` (`startedAt` set, `finishedAt` not) or
+  `FINISHED` (`finishedAt` set), derived from the two timestamps.
+- **Writes:** `createMeeting(locationId, title, description, startsAt)`,
+  `updateMeeting(id, expectedVersion, title, description, startsAt)` (omitted
+  arguments unchanged), `deleteMeeting(id)`,
+  `startMeeting(id, expectedVersion)` and `finishMeeting(id, expectedVersion)`. The title is one
+  line of at most 200 characters; the description is at most 5,000.
+- **Start and finish:** `startMeeting` stamps `startedAt` now. On a `FINISHED` meeting it
+  **reopens** it (clears `finishedAt`, keeps the original `startedAt`); on one already
+  `IN_PROGRESS` it fails with `BAD_REQUEST`. `finishMeeting` works only from `IN_PROGRESS`
+  (otherwise `BAD_REQUEST`).
+- **Concurrency:** every update, start and finish takes `expectedVersion`; if someone else changed
+  the meeting since it was read the call fails with `CONFLICT` rather than overwriting.
+- **Audit:** each write is recorded against the meeting (see CLAUDE.md's audit log).
+
+### Topics (agenda items)
+
+Topics have the same access as meetings (`require_meeting_access` on the topic's location).
+
+- **Reading:** `Meeting.items` lists a meeting's live topics ordered by `position`, then when
+  added, then ID. `Query.agendaItem(id)` reads one (null when missing or deleted). `AgendaItem`
+  has `meetingId`/`meeting`, `locationId`, `text`, `presenter` (the `Person`, null once deleted)
+  and `presenterId`, `position` (1-based), `version`, and `createdBy` (the member's name) /
+  `createdById` (their person ID, for "added by") / `updatedBy`.
+- **One text box:** a topic has no title or separate minutes, just `text`: Markdown as in Notes,
+  kept as written, at most 20,000 characters (only-whitespace counts as empty). Whatever needs a
+  short name for a topic uses the first line of its text as plain text (cut to 100 characters
+  and "…"; `src/agenda_text.rs`), the same rule as Tally's preview. A topic must have text
+  or at least one link (`BAD_REQUEST` otherwise); `text` can be omitted on create when it links
+  something.
+- **Creating:** `createAgendaItem(meetingId, text, presenterId, …links)`. The presenter defaults
+  to the caller and may be a live member of any unit (`NOT_FOUND` otherwise). The topic goes at the
+  end (`position` = highest + 1), whatever the meeting's status: there is no difference between a
+  topic added before and during the meeting. A missing or deleted meeting is `NOT_FOUND`.
+- **Updating:** `updateAgendaItem(id, expectedVersion, text, presenterId, …links)`: omitted
+  arguments are unchanged, and the presenter cannot be cleared (the current presenter may stay even
+  after being deleted). Stale `expectedVersion` is `CONFLICT`. `deleteAgendaItem(id)` returns the
+  ID.
+- **Presenter notifications:** making another member the presenter, on `createAgendaItem` or by
+  changing it in `updateAgendaItem`, tells them in their Tally inbox (see "Notifications": source
+  `agendas`, kind `agenda.presenter_assigned`, target `agenda_item`; the body names the topic by
+  the first line of its text, else its first link's name, else "Topic n"). Best-effort: a failed
+  notification never fails the mutation, and presenting your own topic sends nothing.
+- **Reordering** (at any meeting status): `reorderAgendaItems(meetingId, itemIds)` takes exactly
+  the meeting's live topic
+  IDs, each once, in the wanted order (otherwise `BAD_REQUEST`), renumbers them 1..n, writes only
+  topics whose position changed (each conditional on the version just read; a topic changed in the
+  meantime is `CONFLICT`) and returns them in the new order.
+- **Audit:** create, field changes, moves and deletes are each recorded against the topic
+  (link changes included, as `task_ids`, `equipment_ids`, `on_call_role_ids`, `photo_asset_ids`
+  and `note_ids`).
+- **Links:** a topic links to up to 10 each of the unit's tasks, equipment, on-call roles, photos
+  and notes. `AgendaItem` has `tasks`/`taskIds`, `equipment`/`equipmentIds`,
+  `onCallRoles`/`onCallRoleIds`, `photos`/`photoAssetIds` and `notes`/`noteIds`: the object lists
+  are in order and leave out anything deleted or unreadable, the ID lists are as stored. Both
+  `createAgendaItem` and `updateAgendaItem` take `taskIds`, `equipmentIds`, `onCallRoleIds`,
+  `photoAssetIds` and `noteIds` (all optional `[ID!]`), so a topic and its first link can be made
+  in one call. On an update, omitted leaves a list alone and a list replaces it (`[]` clears it).
+  A task, piece of equipment or role (`src/graphql/linked_items.rs`) must exist, be live and belong
+  to the topic's unit when it is linked; more than 10, or the same one twice, is `BAD_REQUEST`; one
+  already linked may stay whatever has become of it. They have no reference rows. Photos follow
+  "Attached photos" and notes "Linked notes", with owner type `agenda_item`: refs are written
+  before the topic names the asset or note (the topic's ID is chosen first for this) and removed
+  after it stops naming it or is deleted. Linking never changes the thing linked.
+
+```graphql
+mutation {
+  createAgendaItem(meetingId: "…", text: "Budget\n\nAgreed to defer.") {
+    id
+    position
+    text
+    presenter {
+      id
+    }
+  }
+}
+```
+
+### Minutes
+
+`Meeting.minutes: String!` is the meeting's minutes as Markdown, for Tally to show, share, copy
+and save as a note (`src/graphql/meeting_minutes.rs` gathers the data, `src/agendas.rs` renders
+it: a pure function with its own unit tests). It needs the same access as the meeting and is
+built fresh on every read; a deleted task, equipment, role, note or person is left out, as on
+`AgendaItem`. It uses only what Tally's note renderer shows (`#` and `##` headings, paragraphs,
+`- ` lists, `**bold**`, backslash escapes) and also reads as plain text pasted into an email:
+
+```text
+# Monthly unit meeting
+
+Test A Unit · Wed 18 Nov 2026, 7:32–8:41 pm
+
+## 1.
+Presented by Bob Brown
+
+Vehicle servicing schedule
+
+Annual service of KMA56. KMA56 to go in on 21 Nov.
+
+- Task: Book KMA56 service — Bob Brown, due 21 Nov 2026
+- Equipment: KMA56 — Has an issue
+- On call: Duty officer — Dana Dualunit (+ Al Adams)
+- Note: Service checklist
+- Photos: 2 attached
+
+## 2.
+Presented by Bob Brown
+
+Christmas BBQ date
+
+Sat 13 Dec, at the shed.
+```
+
+- **Header:** `# <title>`, then `<unit> · <when>` in Sydney time: "Planned for Wed 18 Nov 2026, 7:30 pm"
+  (the scheduled start) until it is started, "In progress since …" (the actual start) while it
+  runs, and "Wed 18 Nov 2026, 7:32–8:41 pm" once finished (both dates if it ran past midnight).
+  The meeting's description follows as a paragraph.
+- **Topics:** every topic, in agenda order, under a bare `## n.` heading, whatever the meeting's
+  status when it was added (there is no "other business" group). A topic has no title and its text
+  is shown in full, so the heading carries no name. Each topic has "Presented by <name>" (left out
+  if the presenter was deleted), its text, then its links as a bullet list. A meeting with no
+  topics says so.
+- **Text** is inserted exactly as the members wrote it (only line endings and surrounding blank
+  space are normalised), so its own Markdown shows as written, first line included. Everything
+  else a member typed (names, the meeting's title and description) is escaped so it cannot make
+  headings, lists, quotes or formatting of its own (for example, `# Budget` as a title shows as
+  typed).
+- **Links:** "Task: <title> — <assignees>, due <date> (done)", "Equipment: <name> — <status>"
+  (Tally's wording, e.g. "Has an issue"), "On call: <role> — <primary> (+ <secondaries>)" (or
+  "nobody"), "Note: <title>" and "Photos: n attached".
+
+```graphql
+mutation {
+  createMeeting(
+    locationId: "TestAUnit001"
+    title: "Monthly unit meeting"
+    description: "Unit hall"
+    startsAt: 1793000000
+  ) {
+    id
+    version
+    status
+  }
+}
+{
+  tallyLocation(id: "TestAUnit001") {
+    meetings(startsAfter: 1793000000, newestFirst: false, limit: 20) {
+      id
+      title
+      status
+      startsAt
+    }
+  }
+}
+```
+
 ## Map
 
 A location's shared map of pins, used by the Tally app (`src/graphql/map.rs`, rules in
@@ -1132,6 +1395,8 @@ A location's shared map of pins, used by the Tally app (`src/graphql/map.rs`, ru
   An absent address or note reads as `""`. `type` (`ACCESS`, `ENTRY`, `FLOOD` or `HAZARD`)
   says what the pin marks, which the app shows as an icon; null for a plain pin, and for a
   stored type this server doesn't know, so clients should cope with types being added.
+- **Photos:** up to 10, through `photoAssetIds` on `createMapPin` and `updateMapPin`; see "Attached photos".
+- **Linked notes:** up to 10, through `noteIds` on `createMapPin` and `updateMapPin`; see "Linked notes".
 - **Writes:** `createMapPin`, `updateMapPin` (omitted arguments unchanged, `layerId: null`
   takes the pin off its layer, `type: null` makes it a plain pin), `deleteMapPin`, `createMapLayer`, `renameMapLayer`,
   `deleteMapLayer`. Deleting a layer leaves its pins on the location's map (`MapPin.layer`
@@ -1180,6 +1445,7 @@ later; for now a role just has the people in it now.
 - **Writes:** `createOnCallRole`, `updateOnCallRole` (omitted arguments unchanged, `phone: null`
   removes the number, `primaryPersonId: null, secondaryPersonIds: []` empties the role),
   `deleteOnCallRole`.
+- **Linked notes:** up to 10, through `noteIds` on `createOnCallRole` and `updateOnCallRole`; see "Linked notes".
 - **Concurrency:** `updateOnCallRole` takes `expectedVersion`; if someone else saved the role
   since it was read, the save fails with `CONFLICT`.
 
@@ -1306,14 +1572,16 @@ producers' API in `src/notifications.rs`, storage in SCHEMA.md's `notification` 
   | source         | kind                  | targetType     | When                                                                                                                                                                                                                             | Audience                                    | Title / body                                                                                                                                |
   | -------------- | --------------------- | -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
   | `reservations` | `reservation.for_you` | `reservation`  | `createEquipmentReservation`, or `updateEquipmentReservation`, adds members to `reserved_for_person_ids` (every member it is for, on create)                                                                                     | each added member other than the actor      | "Equipment reserved for you" / "<equipment names, sorted> · <Sun 25 Oct 09:00–11:00, Sydney time>" ("Equipment" if the names can't be read) |
+  | `tasks`        | `task.assigned`       | `task`         | `createTask`, or `updateTask`, adds members to `assignee_ids` (every assignee, on create)                                                                                                                                         | each added member other than the actor      | "Task assigned to you" / "<title>" or "<title> · Due <Mon 4 Mar>"                                                                          |
   | `oncall`       | `oncall.assigned`     | `on_call_role` | `createOnCallRole`, or `updateOnCallRole`, makes a person the primary when they were not, or adds them to the secondaries when they were not already there (moving primary to secondary counts; removals and reorderings do not) | that member, once per newly assigned member | "You're now primary for <role>" / "You're now a secondary for <role>"                                                                       |
+  | `agendas`      | `agenda.presenter_assigned` | `agenda_item` | `createAgendaItem` with a `presenterId` other than the caller, or `updateAgendaItem` changing the presenter to someone other than the caller (no notification when the presenter is the caller, is unchanged, or the update leaves the presenter alone) | the new presenter | "You're presenting at <meeting title>" / "<topic> · <Wed 18 Nov 2026, 7:30 pm, Sydney time of the meeting's `startsAt`> · added by <caller name>" (`<topic>` is the first line of the topic's text as plain text, cut to 100 characters, else its first link's name, else "Topic n"; "assigned by" on an update; the " · … by …" part is left out if the caller's name can't be read) |
 
   Equipment going into HAS_ISSUE, OUT_OF_SERVICE or MISSING used to tell the unit's users; it
   notifies nobody for now, while who among a unit's members should hear is rethought
   (`EquipmentStatus::attention_title` still holds the titles).
 
-  The acting member is never told (so a reservation you make for yourself, or an on-call role you
-  put yourself in, sends nothing).
+  The acting member is never told (so a reservation you make for yourself, a task you assign to
+  yourself, or an on-call role you put yourself in, sends nothing).
 
 - **Best-effort:** like the audit log, `notify` returns `()`: a failure is logged at `error!`
   and swallowed, because the thing it announces has already happened. The notification methods
@@ -1356,6 +1624,211 @@ producers' API in `src/notifications.rs`, storage in SCHEMA.md's `notification` 
   myUnreadNotificationCount
 }
 ```
+
+## Storage
+
+Uploaded files live in an S3 bucket, reached through `storage::Handler` (`src/storage.rs`)
+with the same trait / AWS impl / mock split as the queue: `s3::Handler` in `poem` and the API
+Lambda, `mockstorage::Handler` in `poem-local` and tests. The bucket is `ASSET_BUCKET`; unset or
+blank turns uploads off (`is_enabled()` is false, every call returns `storage::Error::Unavailable`)
+without affecting anything else.
+
+- **Keys:** `pending/{id}` (where an upload lands, expired by a lifecycle rule),
+  `originals/{id}` and `derived/{id}/{variant}.webp` (`storage::pending_key`,
+  `original_key`, `derived_key`).
+- **Uploads go straight to storage**, never through the API: `presign_post` returns a
+  `PresignedPost { url, fields, expires_at }`, a form the client posts (fields in order, then
+  the file as a part named `file`, last). S3 itself enforces the exact key, content type and
+  size. `aws-sdk-s3` cannot presign a POST, so `s3::sign_post` signs the policy by hand with
+  SigV4; its unit tests pin the signing key against AWS's published example and a full signature.
+- **Locally**, `mockstorage` returns the relative URL `/dev/storage/upload` and the fields
+  `key`, `Content-Type` and `policy` (an HMAC-signed token binding key, type, exact size and
+  expiry). `poem-local` serves that route: 204 on success, 400 with a short message otherwise.
+  Files go to `MOCK_STORAGE_DIR` (default `local/storage/`).
+
+## Assets and uploads
+
+How a Tally member uploads an image (`src/assets.rs` for the rules, `src/graphql/assets.rs` for
+the API; storage is described under "Storage" and the served images under "Media"). Only
+members signed in to Tally may, at any unit they can use (`require_asset_access`, via
+`require_member_location`); users, kiosks and API tokens are refused.
+
+1. `createAssetUpload(input: { locationId, contentType, byteSize, filename, width, height,
+   takenAt, cameraMake, cameraModel })` validates the request, counts it against the member's
+   limit, creates a **pending** asset (`created_by` is the member's person ID) and returns
+   `{ asset, uploadUrl, fields, expiresAt }`.
+2. The client POSTs a `multipart/form-data` request to `uploadUrl` with each of `fields` **in
+   order** and the file as a part named `file` **last**. `uploadUrl` may be relative: resolve
+   it against the API origin (the origin of the GraphQL URL). The form works for 15 minutes
+   and storage itself enforces the key, content type and exact size. It answers 204.
+3. `completeAssetUpload(id)` checks the object arrived, is exactly `byteSize` bytes and starts
+   with the magic bytes of `contentType`, copies it to `originals/{id}`, deletes
+   `pending/{id}` and marks the asset **ready**. Completing a ready asset returns it again. A
+   missing file, wrong size or wrong magic bytes is `BAD_REQUEST` (the last two also delete the
+   pending file); the asset stays pending.
+
+`Asset.url(variant: THUMB | DISPLAY | FULL)` is a relative signed `/media/...` URL (see
+"Media"), null until the asset is ready. `Asset.createdBy` is the uploader's person ID.
+
+- **Accepted:** `image/jpeg` and `image/webp`, 1 byte to 30 MiB (31,457,280). Tally converts
+  HEIC to JPEG on the phone. `width`/`height` (1 to 20000), `takenAt` (not more than a day
+  ahead, not older than five years), `filename` (path stripped, 255 characters) and camera
+  make/model (100 characters) are hints: ones that don't fit are dropped, not refused. No GPS
+  is ever sent or stored.
+- **Limit:** 200 uploads per member per Sydney day, counted when `createAssetUpload` succeeds
+  validation (`assets::upload_counter_id`, a daily counter in `ephemeral_state`). The 201st
+  fails `RATE_LIMITED`: "You've uploaded the most files allowed today". `assets::daily_counter_id`
+  builds the id for any other daily counter.
+- **Errors:** `BAD_REQUEST` for an unaccepted type or size, an upload that hasn't arrived or
+  doesn't match, and storage not configured ("Uploads are not available on this environment",
+  when `ASSET_BUCKET` is unset); `FORBIDDEN` for the wrong kind of caller or unit; `NOT_FOUND`
+  for an unknown location or asset; `RATE_LIMITED` as above; `INTERNAL` if storage fails.
+- **Cleanup:** a pending asset's row expires after a day (DynamoDB TTL) and `pending/` objects
+  after a day (lifecycle rule). Nothing deletes a ready asset yet.
+- **Locally:** `make dev-local` (`poem-local`) uses `mockstorage`: `uploadUrl` is
+  `/dev/storage/upload`, served by `poem-local`, and files land in `MOCK_STORAGE_DIR`.
+
+## Photos
+
+Tally's Photos app: a unit's shared photo stream (`src/photos.rs` for the rules and the sweep,
+`src/graphql/photos.rs` for the API). A photo is a member's ready asset (see "Assets and
+uploads") shown to everyone who can use the unit in Tally (`require_photo_access`, via
+`require_member_location`); users, kiosks and API tokens are refused.
+
+- **Reading:** `TallyLocation.photos(first: Int = 60, after: String)` lists the unit's visible,
+  unexpired photos newest first by `sortTime` (`takenAt`, else `createdAt`), at most 200 a page
+  (`first` is clamped to 1..200). `endCursor` is opaque (the last photo's `sort_key`, base64);
+  a cursor we did not issue is `BAD_REQUEST`. `Photo.asset.url(variant:)` is the image.
+  `TallyLocation.photoUploadsRemainingToday` is 100 minus today's count, never below 0.
+- **Adding:** `createPhoto(locationId, assetId)`. The asset must exist (`NOT_FOUND`), be ready
+  and at that unit (`BAD_REQUEST`) and have been uploaded by the caller (`FORBIDDEN`). The unit's
+  daily counter (`counter#photo#<location>#<Sydney date>`, in `ephemeral_state`) is incremented
+  first; the 101st photo of a Sydney day is `RATE_LIMITED` ("This unit has added 100 photos
+  today. Try again tomorrow."). The photo and its `photo#<id>` asset reference are written in
+  one transaction; if the asset changed under us that is `BAD_REQUEST`.
+- **Hiding:** `hidePhoto(id)`, by any member who can use the photo's unit. The photo leaves the
+  stream for everyone immediately and its `expires_at` becomes at most 7 days after it was
+  hidden. There is no undo. A photo that is unknown, swept or already hidden is `NOT_FOUND`.
+- **Lifetime:** a photo is shown for 30 days after it was added (`db::PHOTO_LIFETIME_SECS`).
+- **The sweep:** `photos::sweep` soft-deletes every photo whose `expires_at` has passed and
+  removes its asset reference, so the future garbage collector can free the asset. It runs
+  daily in the checker Lambda (06:00 Sydney) after session retirement, audited as `system:
+  photo-sweep`; a failure is logged and neither stops session retirement nor the stale-sync
+  alert, and fails the invocation at the end. By hand: `cli photo sweep` (global `--dry-run`
+  to preview). The stored image objects are not deleted by the sweep.
+
+## Attached photos
+
+Tasks, equipment, map pins and agenda items can each carry up to 10 photos (`src/graphql/attached_photos.rs`;
+storage is each row's `photo_asset_ids` in SCHEMA.md). Access is the owner's own (`require_task_access`,
+`require_equipment_access`, `require_map_access`, `require_meeting_access`).
+
+- **Reading:** `Task.photos`, `Equipment.photos`, `MapPin.photos` and `AgendaItem.photos` are the attached assets in
+  order (`url(variant:)` is the image; one that can no longer be read is left out), and
+  `photoAssetIds` their IDs.
+- **Writing:** `photoAssetIds` on `createTask`/`updateTask`, `createEquipment`/`updateEquipment`
+  `createMapPin`/`updateMapPin` and `createAgendaItem`/`updateAgendaItem`. On an update, omitted leaves the photos alone and a list
+  replaces them, in that order (`[]` removes them all).
+- **What may be attached:** any ready image asset at the owner's unit: one the member just
+  uploaded (see "Assets and uploads"), or one from the unit's photo stream (`Photo.asset.id`),
+  whoever uploaded it. More than 10, the same asset twice, or an asset that is missing, not
+  ready or at another unit is `BAD_REQUEST`. A photo already attached may stay attached
+  whatever has become of its asset.
+- **References:** each attached asset has an `asset_ref` owned by `task#<id>`, `equipment#<id>`
+  `map_pin#<id>` or `agenda_item#<id>`, written (checking the asset is ready at the unit) before the owner first
+  names it and removed after the owner stops naming it or is deleted. So a photo taken from
+  the stream stays attached after the stream's sweep drops its own reference. A reference left
+  behind by a failed write only delays the future garbage collector.
+
+## Linked notes
+
+Tasks, map pins, equipment, calendar events, on-call roles and agenda items can each link to up to 10 of
+their unit's [notes](#notes) (`src/graphql/linked_notes.rs`; storage is each row's `note_ids`
+and the `note_ref` table in SCHEMA.md). Access is the owner's own (`require_task_access`,
+`require_map_access`, `require_equipment_access`, `require_calendar_access`,
+`require_on_call_access`, `require_meeting_access`). It follows "Attached photos" closely.
+
+- **Reading:** `notes` on `Task`, `MapPin`, `Equipment`, `CalendarEvent`, `OnCallRole` and `AgendaItem` is
+  the linked notes in order (loaded through the `Note` dataloader; one that was deleted is left
+  out), and `noteIds` their IDs, deleted ones included.
+- **Writing:** `noteIds` on `createTask`/`updateTask`, `createMapPin`/`updateMapPin`,
+  `createEquipment`/`updateEquipment`, `createCalendarEvent`/`updateCalendarEvent` and
+  `createOnCallRole`/`updateOnCallRole` and `createAgendaItem`/`updateAgendaItem`. On an update, omitted leaves the links alone and a list
+  replaces them, in that order (`[]` removes them all). `expectedVersion` and `CONFLICT` behave
+  as before.
+- **What may be linked:** a live (not deleted) note at the owner's unit. More than 10, the same
+  note twice, or a note that is missing, deleted or at another unit is `BAD_REQUEST`. A note
+  already linked may stay linked whatever has become of it (deleting a note does not unlink it;
+  it just stops showing in `notes`).
+- **The note is never touched:** linking, unlinking and deleting the owner leave the note, and
+  its version, as they were.
+- **References:** each link has a `note_ref` row, `(note_id, owner)` with `owner` one of
+  `task#<id>`, `equipment#<id>`, `map_pin#<id>`, `calendar_event#<id>`, `on_call_role#<id>` or `agenda_item#<id>`,
+  written before the owner first names the note and removed after the owner stops naming it or
+  is deleted (a failed removal is logged, not fatal). `db::Handler::list_note_refs(note_id)`
+  answers "which items link to this note"; because a failed write can leave a stray row, a reader
+  must check the owner still names the note. Nothing exposes that in GraphQL yet (a later
+  `Note.linkedFrom`). Not audited, like `asset_ref`; the owner's `note_ids` change is.
+
+## SOP notes
+
+A unit can link one of its [notes](#notes) per Tally screen as its standard operating
+procedure for that tool; Tally shows the note's title and first line at the top of the screen
+with an info icon (`src/graphql/sop_notes.rs`). The places (`SopPlace`) are `ON_CALL`,
+`EQUIPMENT` (the list), `EQUIPMENT_BORROWING` (shown when a member marks equipment as
+borrowed), `TASKS`, `CALENDAR`, `MAP`, `RESERVATIONS`, `NOTES` and `PHOTOS`.
+
+- **Storage:** one optional attribute per place on the unit's `location` row (`sop_note_on_call`,
+  `sop_note_equipment`, …, holding a note ID; see SCHEMA.md), `Location.sop_notes` in Rust. Absent
+  means nothing linked. It is written only by `LocationUpdateShape::SopNote`, which sets or
+  removes that one attribute and leaves `updated_at` (and so sync) alone.
+- **Reading:** `TallyLocation.sopNotes: [SopNote!]!`, one `{ place, noteId, note }` per place with a
+  linked note that still exists (the `Note` is loaded through its dataloader), in the order above.
+  A deleted note drops out; it is not unlinked.
+- **Writing:** `setSopNote(locationId: ID!, place: SopPlace!, noteId: ID): TallyLocation!` links
+  `noteId` at `place`, replacing any note linked there, or unlinks the place when `noteId` is null;
+  read `sopNotes` off the returned unit. Linking the note already linked, or unlinking an empty
+  place, is a successful no-op that writes nothing.
+- **Access:** `require_note_access` on the unit, for both: only an `AuthInfo::Member` at that unit
+  (users alone, kiosks, API tokens and edit links get `FORBIDDEN`). Any such member may link, not
+  just admins. There is no MCP tool.
+- **Errors:** a note that does not exist, is deleted or belongs to another unit is `BAD_REQUEST`
+  ("That note can't be linked. It may have been deleted."); a unit that does not exist is `NOT_FOUND`.
+- **References:** each link has a `note_ref` owned by `location_sop#<location_id>:<PLACE>`, written
+  before the location names the note and removed after it stops (a failed removal is logged, not
+  fatal), as in "Linked notes".
+- **Audit:** an update to the location with a `sopNote.<PLACE>` field diff, filed at that unit.
+
+## Media
+
+Members only ever receive **derived** images: `src/media.rs` turns an original in the asset
+bucket into a normalised WebP at one of three sizes, on the first request for it.
+
+- **Variants** (`media::ImageVariant`, GraphQL `ImageVariant { THUMB DISPLAY FULL }`): `thumb`
+  400, `display` 1440, `full` 2560 pixels on the long edge. Never upscaled.
+- **Pipeline** (`media::derive`): decode JPEG or WebP under a 100-megapixel / 768 MiB limit,
+  resize (a cheap pre-shrink first for big sources, then Catmull-Rom), apply the EXIF
+  orientation, convert an embedded ICC profile to sRGB (`qcms`), encode lossy WebP at quality
+  80. The output has no metadata at all, so no GPS. It runs in `spawn_blocking`.
+- **Storage:** the result is written to `derived/{id}/{variant}.webp` and served from there
+  next time. Originals are never served. A failed write is logged and the image still returned.
+- **URL** (`media::media_path(asset_id, variant, now, &secret)`): relative,
+  `/media/{asset_id}/{variant}?e={expires}&s={sig}`; clients resolve it against the API origin.
+  `expires = (floor(now / 86400) + 2) * 86400`, so the URL is identical for a whole UTC day
+  (CDN and app caches hit) and valid for 1 to 2 days from when it was minted. `sig` is the first
+  16 bytes of HMAC-SHA256 over `"{id}/{variant}/{expires}"` (base64url, no padding), keyed by
+  `ServerSecret::media_url_key()` (its own derivation of `JWT_SECRET`).
+- **Responses** (`media::serve`): 200 `image/webp` with `Cache-Control: public, max-age=31536000,
+  immutable`; 400 unknown variant or malformed path; 401 bad, missing or expired signature; 410
+  no original; 422 the original cannot be decoded; 500 storage or encoding failed; 503 no
+  `ASSET_BUCKET`. Every error is `no-store`. **Never 403 or 404**: every CloudFront distribution
+  rewrites those to `/index.html` with a 200.
+- **Where it runs:** `poem` and `poem-local` serve `/media/*` in-process from the app's storage
+  and secret (local dev has no CloudFront). Deployed, the API Lambda does not; CloudFront routes
+  `/media/*` to the media Lambda (`bin/media-lambda.rs`: `ASSET_BUCKET` + `JWT_SECRET`, no
+  DynamoDB, 2048 MB): `seslogin-media` for prod, preprod and qa (prod bucket, deployed from
+  `workers`) and `seslogin-test-media` for test (deployed from `test`). The behaviour's cache
+  policy puts all query strings in the key (`aws_cloudfront_cache_policy.media`).
 
 ## WiFi networks
 
