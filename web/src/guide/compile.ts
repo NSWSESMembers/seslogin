@@ -8,8 +8,8 @@
  * page or heading that doesn't exist) are errors, and fail the build.
  */
 import { Marked, Renderer, type Token, type Tokens } from "marked";
-import type { GuidePage, GuideSection } from "./types";
-import { GUIDE_BASE, GUIDE_IDS, RESERVED_SLUGS } from "./constants";
+import type { GuidePage, GuideSection } from "./types.ts";
+import { GUIDE_BASE, GUIDE_IDS, RESERVED_SLUGS } from "./constants.ts";
 
 export interface GuideSource {
   /** The guide (folder under web/guide) the page belongs to, e.g. "admin". */
