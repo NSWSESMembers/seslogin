@@ -7,6 +7,12 @@ import {
 } from "react";
 import { useRelayEnvironment } from "react-relay";
 import LoadingIndicator from "../../components/LoadingIndicator";
+import {
+  Panel,
+  PanelBox,
+  PanelIntro,
+  PanelTitle,
+} from "../../components/ui/Panel";
 import { KioskSessionContext, type KioskSession } from "./KioskSessionContext";
 import startKioskSessionFetcher, {
   type KioskSessionFetcher,
@@ -55,6 +61,7 @@ export function KioskSessionProvider({ children }: { children: ReactNode }) {
   const environment = useRelayEnvironment();
   const [session, setSession] = useState<KioskSession | null>(null);
   const [isInitialFetchComplete, setIsInitialFetchComplete] = useState(false);
+  const [unreachable, setUnreachable] = useState(false);
 
   const fetcher = useRef<KioskSessionFetcher | null>(null);
 
@@ -90,6 +97,7 @@ export function KioskSessionProvider({ children }: { children: ReactNode }) {
     const started = startKioskSessionFetcher({
       environment,
       setSession: setSessionAndTrackInitialFetch,
+      onFailure: () => setUnreachable(true),
       pushLive: pushLive.current,
     });
     fetcher.current = started;
@@ -112,6 +120,8 @@ export function KioskSessionProvider({ children }: { children: ReactNode }) {
       />
       <LivePeriodsProvider>{children}</LivePeriodsProvider>
     </KioskRealtimeProvider>
+  ) : unreachable ? (
+    <KioskUnreachable />
   ) : (
     <LoadingIndicator />
   );
@@ -120,5 +130,21 @@ export function KioskSessionProvider({ children }: { children: ReactNode }) {
     <KioskSessionContext.Provider value={{ session }}>
       {body}
     </KioskSessionContext.Provider>
+  );
+}
+
+/** Before the server has answered once, eg at boot before the network is up. */
+function KioskUnreachable() {
+  return (
+    <Panel>
+      <PanelBox>
+        <PanelTitle>Can't reach SESLogin</PanelTitle>
+        <PanelIntro>
+          Check this computer's internet connection. The kiosk carries on by
+          itself once it gets through. There's no need to scan a QR code or set
+          it up again.
+        </PanelIntro>
+      </PanelBox>
+    </Panel>
   );
 }
