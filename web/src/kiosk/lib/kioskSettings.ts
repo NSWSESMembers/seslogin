@@ -13,6 +13,21 @@ export type AppSettingsStorage = {
   [key: string]: unknown;
 };
 
+/**
+ * The stored profile `profile` names, matched case-insensitively, else `profile` itself. Each profile has its own
+ * key, so `/kiosk/Default` for a kiosk enrolled as `/kiosk/default` would otherwise start a new one, on its QR code.
+ */
+export function storedProfileName(profile: string): string {
+  const wanted = `${SETTINGS_PREFIX}${profile}`.toLowerCase();
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (key?.toLowerCase() === wanted) {
+      return key.slice(SETTINGS_PREFIX.length);
+    }
+  }
+  return profile;
+}
+
 /** The persisted settings for a kiosk profile (`/kiosk/:profile`). */
 export function readAppSettings(profile: string): AppSettingsStorage {
   let settingsJson = localStorage.getItem(`${SETTINGS_PREFIX}${profile}`);
