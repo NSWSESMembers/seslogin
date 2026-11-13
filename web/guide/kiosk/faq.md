@@ -27,6 +27,14 @@ If you can, open the computer's date and time settings and turn on **Set time
 automatically**; otherwise let your unit's administrators know. The kiosk carries
 on by itself once the clock is right — don't scan its QR code or set it up again.
 
+## The kiosk says it can't reach SESLogin
+
+The computer isn't connected to the internet, or SESLogin isn't answering. This
+often happens for a minute after the computer starts up. The kiosk keeps trying
+and carries on by itself once it gets through, so there's no need to scan its QR
+code or set it up again. If it doesn't clear, check the computer's network
+connection or let your unit's administrators know.
+
 ## Can I use another unit's kiosk?
 
 Yes. See [Signing in at another unit](signing-in.md#signing-in-at-another-unit).

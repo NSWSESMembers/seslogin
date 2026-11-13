@@ -9,6 +9,7 @@ import { fetchQuery } from "relay-runtime";
 import startKioskSessionFetcher, {
   LIVE_SESSION_REFRESH_INTERVAL_MS,
   SESSION_REFRESH_INTERVAL_MS,
+  UNREACHABLE_RETRY_MS,
 } from "./KioskSessionFetcher";
 import {
   CLOCK_SKEW_RETRY_MS,
@@ -119,6 +120,47 @@ describe("startKioskSessionFetcher", () => {
     await settle();
     fetcher.refreshNow();
     expect(fetchQuery).toHaveBeenCalledTimes(3);
+    fetcher.stop();
+  });
+});
+
+describe("startKioskSessionFetcher before the server has answered", () => {
+  function failNext() {
+    vi.mocked(fetchQuery).mockImplementationOnce(
+      () =>
+        ({
+          toPromise: () => Promise.reject(new Error("Failed to fetch")),
+        }) as unknown as ReturnType<typeof fetchQuery>,
+    );
+  }
+
+  it("retries soon and reports the failure, then polls as usual once answered", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const onUnreachable = vi.fn();
+    failNext();
+    const fetcher = startKioskSessionFetcher({
+      environment: {} as IEnvironment,
+      setSession: vi.fn(),
+      onUnreachable,
+    });
+    await settle();
+    const retryAt = Date.now() + UNREACHABLE_RETRY_MS;
+    expect(onUnreachable.mock.calls).toEqual([[retryAt]]);
+
+    await vi.advanceTimersByTimeAsync(UNREACHABLE_RETRY_MS);
+    expect(fetchQuery).toHaveBeenCalledTimes(2);
+    expect(onUnreachable.mock.calls).toEqual([[retryAt], [null]]);
+    resolveNext();
+    await settle();
+
+    // Answered: a later failure waits for the ordinary poll.
+    failNext();
+    await vi.advanceTimersByTimeAsync(SESSION_REFRESH_INTERVAL_MS);
+    expect(fetchQuery).toHaveBeenCalledTimes(3);
+    await vi.advanceTimersByTimeAsync(UNREACHABLE_RETRY_MS);
+    expect(fetchQuery).toHaveBeenCalledTimes(3);
+    // ...and isn't reported: the kiosk is already on screen.
+    expect(onUnreachable).toHaveBeenCalledTimes(2);
     fetcher.stop();
   });
 });

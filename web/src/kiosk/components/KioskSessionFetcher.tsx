@@ -36,6 +36,9 @@ export const LIVE_SESSION_REFRESH_INTERVAL_MS = DEV
     ? 15 * 60 * 1000 // prod: 15 minutes
     : 2 * 60 * 1000; // preprod, qa, test: 2 minutes
 
+/** How often it retries until the server first answers, eg at boot before the network is up. */
+export const UNREACHABLE_RETRY_MS = 15 * 1000;
+
 // `environment` is handed to setEnvironmentInfo() whole rather than read field by
 // field, so the lint rule can't see the usage. See the same disable in
 // admin/components/UserInfoProvider.tsx.
@@ -75,10 +78,15 @@ export interface KioskSessionFetcher {
 export default function startKioskSessionFetcher({
   environment,
   setSession,
+  onUnreachable,
   pushLive: initialPushLive = false,
 }: {
   environment: IEnvironment;
   setSession: (session: KioskSession | null) => void;
+  /** Before the server has first answered: a refresh failed for any reason but the
+   * device's clock and the next is due at `retryAt` (`Date.now()` milliseconds), or
+   * `null` once that next one is in flight. */
+  onUnreachable?: (retryAt: number | null) => void;
   /** Whether session changes are already being pushed when this starts. */
   pushLive?: boolean;
 }): KioskSessionFetcher {
@@ -90,6 +98,8 @@ export default function startKioskSessionFetcher({
   // follows as soon as it lands.
   let refreshAgain = false;
   let pushLive = initialPushLive;
+  let answered = false;
+  let failedUnanswered = false;
   // When the scheduled refresh is due, as `Date.now()` milliseconds.
   let dueAt: number | null = null;
 
@@ -124,6 +134,9 @@ export default function startKioskSessionFetcher({
     }
 
     inFlight = true;
+    if (failedUnanswered && !answered) {
+      onUnreachable?.(null);
+    }
     fetchQuery<KioskSessionFetcherQuery>(
       environment,
       kioskRefreshQuery,
@@ -133,6 +146,7 @@ export default function startKioskSessionFetcher({
       .toPromise()
       .then((response) => {
         inFlight = false;
+        answered = true;
         recordServerContactSuccess(response?.session?.keyExpiresAt ?? null);
         if (isCancelled) {
           return;
@@ -171,6 +185,14 @@ export default function startKioskSessionFetcher({
           // use shortly after someone fixes it rather than at the next ordinary poll.
           refreshAgain = false;
           scheduleIn(CLOCK_SKEW_RETRY_MS);
+          return;
+        }
+        if (!answered) {
+          // Nothing on screen yet: try again soon, not at the next ordinary poll.
+          failedUnanswered = true;
+          refreshAgain = false;
+          scheduleIn(UNREACHABLE_RETRY_MS);
+          onUnreachable?.(dueAt);
           return;
         }
         scheduleNext();
