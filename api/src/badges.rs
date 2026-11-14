@@ -2501,6 +2501,58 @@ pub fn award_if_missing(
     Some(award_from_definition(definition, now_sec).badge)
 }
 
+/// New Ground, the passport stamp for a first sign-in at `location_id`, unless the
+/// member already holds it there.
+fn award_new_ground(
+    location_state: &mut LocationBadgeProgress,
+    location_id: &str,
+    now_sec: u64,
+) -> Option<BadgeAward> {
+    let badge_id = first_signin_location_badge_id(location_id);
+    if location_state
+        .awarded_badge_ids
+        .iter()
+        .any(|id| id == &badge_id)
+    {
+        return None;
+    }
+    location_state.awarded_badge_ids.push(badge_id.clone());
+    location_state
+        .awarded_badge_times
+        .insert(badge_id.clone(), now_sec);
+    dynamic_badge_from_id(&badge_id)
+}
+
+/// Credit a sign-in at a unit that is not taking part in badges, by a member visiting
+/// from one that is, towards the passport stamps: New Ground for a first sign-in
+/// there, and the unit counting towards Hat Trick and Unit Hopper (which count the units
+/// with a sign-in). Only the sign-in count is kept for the unit; nothing else a sign-in
+/// feeds (away and weekend counts, easter eggs, the last sign-in time) is touched, so no
+/// other badge is earned there, bar the distance badges, which the caller credits with
+/// `apply_away_distance` as for any visit. If the unit later switches badges on, its own counters
+/// carry on from these sign-ins.
+pub fn apply_passport_check_in(
+    state: &mut BadgeState,
+    location_id: &str,
+    now_sec: u64,
+) -> Vec<BadgeAward> {
+    let location_state = state.locations.entry(location_id.to_string()).or_default();
+    location_state.check_in_count = location_state.check_in_count.saturating_add(1);
+    let mut awarded = Vec::new();
+    if location_state.check_in_count == 1 {
+        awarded.extend(award_new_ground(location_state, location_id, now_sec));
+    }
+    // On a sign-in, the only person-wide rule that can fire is the distinct-units one.
+    awarded.extend(award_person_wide_badges(
+        state,
+        location_id,
+        &BadgeEvent::CheckIn,
+        None,
+        now_sec,
+    ));
+    awarded
+}
+
 pub fn apply_event(
     state: &mut BadgeState,
     location_id: &str,
@@ -2519,20 +2571,7 @@ pub fn apply_event(
             location_state.check_in_count = location_state.check_in_count.saturating_add(1);
             location_state.last_check_in_at = Some(now_sec);
             if location_state.check_in_count == 1 {
-                let badge_id = first_signin_location_badge_id(location_id);
-                if !location_state
-                    .awarded_badge_ids
-                    .iter()
-                    .any(|id| id == &badge_id)
-                {
-                    location_state.awarded_badge_ids.push(badge_id.clone());
-                    location_state
-                        .awarded_badge_times
-                        .insert(badge_id.clone(), now_sec);
-                    if let Some(badge) = dynamic_badge_from_id(&badge_id) {
-                        awarded.push(badge);
-                    }
-                }
+                awarded.extend(award_new_ground(location_state, location_id, now_sec));
             }
 
             if is_visiting {
@@ -3691,6 +3730,42 @@ mod tests {
                 .iter()
                 .all(|id| id != "away-unit-hopper" && id != "away-hat-trick")
         );
+    }
+
+    #[test]
+    fn a_passport_check_in_earns_only_the_passport_stamps() {
+        let mut state = BadgeState::default();
+        let ids = |awarded: Vec<BadgeAward>| -> Vec<String> {
+            awarded.into_iter().map(|badge| badge.id).collect()
+        };
+        // Two units of their own, with badges on.
+        for location_id in ["home-1", "home-2"] {
+            apply_event(
+                &mut state,
+                location_id,
+                BadgeEvent::CheckIn,
+                0,
+                false,
+                None,
+                None,
+            );
+        }
+        let first = ids(apply_passport_check_in(&mut state, "away-1", 10));
+        assert_eq!(
+            first,
+            vec![
+                first_signin_location_badge_id("away-1"),
+                "away-hat-trick".to_string()
+            ]
+        );
+        // A second sign-in there earns nothing new.
+        assert!(apply_passport_check_in(&mut state, "away-1", 20).is_empty());
+
+        let away = &state.locations["away-1"];
+        assert_eq!(away.check_in_count, 2);
+        assert_eq!(away.away_check_in_count, 0);
+        assert_eq!(away.weekend_check_in_count, 0);
+        assert_eq!(away.last_check_in_at, None);
     }
 
     #[test]
