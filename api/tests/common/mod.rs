@@ -899,6 +899,19 @@ impl db::Handler for FakeDb {
                 session.key_expires_at = None;
                 session.key_released_at = Some(0);
             }
+            db::SessionUpdateShape::Rekey {
+                public_key,
+                fingerprint,
+                expires_at,
+            } => {
+                if !session.active {
+                    return Err(db::Error::NotFound(format!("session {id} is not active")));
+                }
+                session.public_key = Some(public_key.to_string());
+                session.key_fingerprint = Some(fingerprint.to_string());
+                session.key_expires_at = Some(expires_at);
+                session.key_released_at = None;
+            }
             db::SessionUpdateShape::Delete => {
                 session.active = false;
                 session.key_fingerprint = None;

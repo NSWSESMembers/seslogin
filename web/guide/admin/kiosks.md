@@ -155,6 +155,20 @@ and the computer has to be [set up again](#setting-up-a-kiosk). Very old kiosks
 set up with a six-digit setup code (rather than a QR code) can't be reactivated
 at all — set them up again instead.
 
+### When a working kiosk shows its QR code again
+
+If a kiosk shows its QR code but **Reactivate** isn't offered next to it, its
+computer has lost what tied it to the kiosk. This happens when the browser's data
+is cleared (by a browser or system update, a privacy setting, or a different
+browser profile), or when the browser opens a different address for SESLogin.
+
+Scan the QR code as when [setting up a kiosk](#setting-up-a-kiosk), but choose
+**Replace an existing kiosk**, then the unit and the kiosk this computer was.
+Press **Replace kiosk**. The kiosk keeps its name and settings, and switches over
+by itself within a few seconds.
+
+To stop it happening again, see [Keeping a kiosk running](#keeping-a-kiosk-running).
+
 ### If the kiosk says its clock is wrong
 
 Every kiosk checks in using the computer's clock, so a computer whose date or time
@@ -184,7 +198,11 @@ don't need it, or leave it: it's removed automatically after two weeks.
 - Set the computer to set its time automatically. A kiosk whose clock is more
   than five minutes out can't sign anyone in or out (see
   [If the kiosk says its clock is wrong](#if-the-kiosk-says-its-clock-is-wrong)).
-- Make the browser open the SESLogin kiosk page when the computer starts.
+- Make the browser open the SESLogin kiosk page when the computer starts, at
+  exactly the address the kiosk was set up on. The kiosk is tied to that address
+  in that browser, so another address or browser shows a QR code again.
+- Don't let the browser clear its data when it closes, and don't use a private
+  (InPrivate or Incognito) or guest window. Clearing it unties the kiosk.
 - On Windows, Chrome has a kiosk mode that runs full-screen with no browser
   controls — [this guide](https://superuser.com/a/1363172) explains how.
 - On a Raspberry Pi, [FullPageOS](https://github.com/guysoft/FullPageOS/) boots

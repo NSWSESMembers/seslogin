@@ -3,8 +3,8 @@
 //! A kiosk is a `Session` record: a device that signs members in and out at a
 //! location. These mirror the admin Kiosks page (`SessionsList`, `SessionsEdit`).
 //!
-//! **Deliberately not exposed:** enrolling a kiosk, `pendingEnrollmentKey` and
-//! `reactivateSession`. A device is only bound to a location by a person scanning its
+//! **Deliberately not exposed:** enrolling a kiosk, `pendingEnrollmentKey`,
+//! `reactivateSession` and `replaceSessionDevice`. A device is only bound to a location by a person scanning its
 //! QR code in the browser, so the descriptions point the user to the admin site's
 //! Kiosks page for those.
 //!

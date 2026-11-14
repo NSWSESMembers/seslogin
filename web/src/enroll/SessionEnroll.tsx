@@ -1,7 +1,7 @@
-import { graphql, useMutation } from "react-relay";
+import { graphql, useLazyLoadQuery, useMutation } from "react-relay";
 import { TextLink } from "../components/ui/TextLink";
 import { useSearchParams } from "react-router";
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import SessionForm from "../admin/components/SessionForm";
 import { NEW_SESSION_CONFIG } from "../admin/components/sessionConfig";
 import { useUserInfo } from "../admin/components/useUserInfo";
@@ -15,6 +15,14 @@ import {
 } from "../components/ui/Panel";
 import type { SessionEnrollQuery } from "./__generated__/SessionEnrollQuery.graphql";
 import type { SessionEnrollMutation } from "./__generated__/SessionEnrollMutation.graphql";
+import type { SessionEnrollReplaceMutation } from "./__generated__/SessionEnrollReplaceMutation.graphql";
+import type { SessionEnrollKiosksQuery } from "./__generated__/SessionEnrollKiosksQuery.graphql";
+import { FormField } from "../components/ui/FormField";
+import { OptionList, OptionRow } from "../components/ui/OptionList";
+import Select from "../components/ui/Select";
+import { Button } from "../components/ui/Button";
+import LoadingIndicator from "../components/LoadingIndicator";
+import { formatFullDateTime } from "../lib/time";
 
 /**
  * Standalone page reached by scanning a kiosk's enrollment QR code (see EnrollApp.tsx
@@ -23,7 +31,8 @@ import type { SessionEnrollMutation } from "./__generated__/SessionEnrollMutatio
  * creates a key-bound session via `enrollSession`.
  *
  * A device already enrolled as another kiosk can simply be enrolled again: the server
- * retires the old kiosk. This page says nothing about that kiosk — it may belong to a
+ * retires the old kiosk. Or it can replace an existing kiosk the admin manages, which keeps that kiosk's name and
+ * settings: for a computer that lost its key, so shows a QR code again. This page says nothing about that kiosk — it may belong to a
  * location this admin has no access to, and the QR code is not a way to look it up.
  */
 export default function SessionEnroll() {
@@ -49,6 +58,7 @@ function SessionEnrollForm({ fingerprint }: { fingerprint: string }) {
     .filter((loc) => loc.enabled)
     .sort((a, b) => a.name.localeCompare(b.name));
   const [enrolled, setEnrolled] = useState(false);
+  const [replacing, setReplacing] = useState(false);
 
   const data = useRetryableLazyLoadQuery<SessionEnrollQuery>(
     graphql`
@@ -152,17 +162,184 @@ function SessionEnrollForm({ fingerprint }: { fingerprint: string }) {
           automatically, no code required.
         </PanelIntro>
 
-        <SessionForm
-          initialName=""
-          initialConfig={NEW_SESSION_CONFIG}
-          initialHealthcheckUrl=""
-          locations={enabledLocations}
-          showHealthcheckUrl={false}
-          isMutationInFlight={isMutationInFlight}
-          onSubmit={handleSubmit}
-        />
+        <OptionList role="radiogroup" aria-label="New or replacement">
+          <OptionRow
+            input={
+              <input
+                type="radio"
+                name="replacing"
+                checked={!replacing}
+                onChange={() => setReplacing(false)}
+                className="mt-0.5"
+              />
+            }
+            title="New kiosk"
+            description="set this computer up as a kiosk of its own"
+          />
+          <OptionRow
+            input={
+              <input
+                type="radio"
+                name="replacing"
+                checked={replacing}
+                onChange={() => setReplacing(true)}
+                className="mt-0.5"
+              />
+            }
+            title="Replace an existing kiosk"
+            description="this computer takes over a kiosk that's already set up, keeping its name and settings; use it when a kiosk that was working shows its QR code again"
+          />
+        </OptionList>
+
+        {replacing ? (
+          <ReplaceKioskForm
+            fingerprint={fingerprint}
+            locations={enabledLocations}
+            onReplaced={() => setEnrolled(true)}
+          />
+        ) : (
+          <SessionForm
+            initialName=""
+            initialConfig={NEW_SESSION_CONFIG}
+            initialHealthcheckUrl=""
+            locations={enabledLocations}
+            showHealthcheckUrl={false}
+            isMutationInFlight={isMutationInFlight}
+            onSubmit={handleSubmit}
+          />
+        )}
       </PanelBox>
     </Panel>
+  );
+}
+
+/** Pick a location, then one of its kiosks for this computer to take over. */
+function ReplaceKioskForm({
+  fingerprint,
+  locations,
+  onReplaced,
+}: {
+  fingerprint: string;
+  locations: ReadonlyArray<{ readonly id: string; readonly name: string }>;
+  onReplaced: () => void;
+}) {
+  const { notifyError } = useNotify();
+  const [locationId, setLocationId] = useState("");
+  const [commitReplace, isReplaceInFlight] =
+    useMutation<SessionEnrollReplaceMutation>(graphql`
+      mutation SessionEnrollReplaceMutation(
+        $id: ID!
+        $keyFingerprint: String!
+      ) {
+        replaceSessionDevice(id: $id, keyFingerprint: $keyFingerprint) {
+          id
+          keyEnrolled
+          keyExpiresAt
+          keyReleasedAt
+          reactivatable
+        }
+      }
+    `);
+
+  async function handleSubmit(formData: FormData) {
+    const id = formData.get("sessionId")?.toString() || "";
+    try {
+      await new Promise((resolve, reject) => {
+        commitReplace({
+          variables: { id, keyFingerprint: fingerprint },
+          onCompleted: resolve,
+          onError: reject,
+        });
+      });
+    } catch (err) {
+      notifyError(err, "Couldn't replace kiosk");
+      return;
+    }
+    onReplaced();
+  }
+
+  return (
+    <form action={handleSubmit} className="mt-4 flex flex-col gap-4">
+      <FormField label={<label htmlFor="replaceLocationId">Location</label>}>
+        <Select
+          id="replaceLocationId"
+          required
+          value={locationId}
+          onChange={(e) => setLocationId(e.target.value)}
+        >
+          <option value="" disabled>
+            Select a location…
+          </option>
+          {locations.map((location) => (
+            <option key={location.id} value={location.id}>
+              {location.name}
+            </option>
+          ))}
+        </Select>
+      </FormField>
+      {locationId && (
+        <Suspense fallback={<LoadingIndicator />}>
+          <KioskChoice locationId={locationId} />
+        </Suspense>
+      )}
+      <Button type="submit" disabled={!locationId || isReplaceInFlight}>
+        Replace kiosk
+      </Button>
+    </form>
+  );
+}
+
+function KioskChoice({ locationId }: { locationId: string }) {
+  const data = useLazyLoadQuery<SessionEnrollKiosksQuery>(
+    graphql`
+      query SessionEnrollKiosksQuery($location: ID!) @throwOnFieldError {
+        location(id: $location) {
+          viewerCanEdit
+          sessions {
+            id
+            name
+            lastContact
+          }
+        }
+      }
+    `,
+    { location: locationId },
+  );
+  const sessions = data.location?.viewerCanEdit ? data.location.sessions : [];
+
+  if (sessions.length === 0) {
+    return (
+      <p className="m-0 text-ink-muted">
+        No kiosks you can replace at this location.
+      </p>
+    );
+  }
+
+  return (
+    <FormField label={<span>Kiosk</span>}>
+      <OptionList role="radiogroup" aria-label="Kiosk">
+        {sessions.map((session) => (
+          <OptionRow
+            key={session.id}
+            input={
+              <input
+                type="radio"
+                name="sessionId"
+                value={session.id}
+                required
+                className="mt-0.5"
+              />
+            }
+            title={session.name}
+            description={
+              session.lastContact
+                ? `last seen ${formatFullDateTime(new Date(session.lastContact * 1000))}`
+                : "never seen"
+            }
+          />
+        ))}
+      </OptionList>
+    </FormField>
   );
 }
 
