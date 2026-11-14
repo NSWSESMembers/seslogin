@@ -470,6 +470,65 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sy
             .any(|unit| unit.gamification_enabled))
     }
 
+    /// The visiting member a sign-in at `location` should credit with the passport stamps
+    /// and distance badges alone (`apply_passport_check_in`), or `None`: only when `location` is not
+    /// taking part in badges, is none of the member's units, and at least one of their
+    /// units is taking part. A unit that is not taking part still counts towards a
+    /// visitor's passport and distance badges, though it shows no badges itself.
+    async fn passport_badge_member(
+        &self,
+        location: &db::Location,
+        person_id: &str,
+    ) -> Result<Option<db::Person>> {
+        if location.gamification_enabled {
+            return Ok(None);
+        }
+        let Some(person) = self
+            .app
+            .db()
+            .get_persons(&[person_id])
+            .await?
+            .into_iter()
+            .next()
+            .flatten()
+        else {
+            return Ok(None);
+        };
+        Ok(self
+            .passport_applies(&person, location)
+            .await?
+            .then_some(person))
+    }
+
+    /// `passport_badge_member` for a member already read.
+    async fn passport_applies(&self, person: &db::Person, location: &db::Location) -> Result<bool> {
+        Ok(!location.gamification_enabled
+            && !person.is_member_of(&location.id)
+            && self.member_gamification_enabled(person, location).await?)
+    }
+
+    /// Record a visitor's sign-in at a unit not taking part (see `passport_badge_member`):
+    /// the passport stamps, and the distance badges when both ends have coordinates.
+    /// Anything earned is left undisplayed, to be celebrated at the member's next scan at
+    /// a kiosk that shows badges.
+    async fn apply_passport_check_in(
+        &self,
+        person: &db::Person,
+        location: &db::Location,
+        at: u64,
+    ) -> Result<()> {
+        let away_distance_km = self.away_distance_km(person, location).await?;
+        badge_store::update(self.app.db(), person, |_, state| {
+            let _ = badges::apply_passport_check_in(state, &location.id, at);
+            if let Some(km) = away_distance_km {
+                let _ = badges::apply_away_distance(state, &location.id, km, at);
+            }
+            Some(())
+        })
+        .await?;
+        Ok(())
+    }
+
     /// How far `location` is from the nearest of the member's units that has
     /// coordinates, for the distance badges, or `None` when `location` or all of those
     /// units have none.
@@ -534,6 +593,14 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sy
                 .kiosk_badge_member(session_id, &location, person_id)
                 .await?
             else {
+                if matches!(event, badges::BadgeEvent::CheckIn)
+                    && let Some(person) = self.passport_badge_member(&location, person_id).await?
+                {
+                    // This kiosk doesn't celebrate badges, so any stamp waits for one
+                    // that does.
+                    self.apply_passport_check_in(&person, &location, crate::clock::now_sec())
+                        .await?;
+                }
                 return Ok(vec![]);
             };
             // Kiosks don't list virtual categories, but a quick-pick can still offer one
@@ -709,6 +776,10 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sy
     ) {
         let result = async {
             if !location.gamification_enabled {
+                if !category.is_virtual && self.passport_applies(person, location).await? {
+                    self.apply_passport_check_in(person, location, start_time)
+                        .await?;
+                }
                 return Ok(());
             }
             if !self.member_gamification_enabled(person, location).await? {
