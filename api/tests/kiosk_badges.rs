@@ -1,6 +1,7 @@
 //! Kiosk scans earn badges only when the kiosk's location, the kiosk itself (its
 //! `gamification` config key) and at least one of the member's units (primary or secondary) have gamification on;
-//! otherwise a scan does no badge work at all. `scanSignOut` keeps its pre-badge
+//! otherwise a scan does no badge work at all, except that a visitor from a unit taking part
+//! still collects passport stamps and distance badges at a location that is not. `scanSignOut` keeps its pre-badge
 //! `Period` result, and a kiosk that celebrates badges signs out with
 //! `scanSignOutWithBadges` instead.
 //!
@@ -162,6 +163,7 @@ async fn no_badge_work_unless_all_three_switches_are_on() {
     for switches in [
         Switches {
             kiosk_location: false,
+            primary_location: false,
             ..ALL_ON
         },
         Switches {
@@ -396,4 +398,133 @@ async fn a_visitor_whose_only_participating_unit_is_secondary_still_earns() {
     let (_, awarded) = sign_in(&app, true).await;
     assert!(awarded.unwrap().contains(&"first-steps".to_string()));
     assert_eq!(away_check_ins(&app, "loc-a"), 1);
+}
+
+fn awarded_ids(app: &TestApp) -> Vec<String> {
+    let state = seslogin::badges::read_state("bob", badge_state(app).as_deref()).unwrap();
+    state
+        .locations
+        .values()
+        .flat_map(|l| l.awarded_badge_ids.clone())
+        .collect()
+}
+
+#[tokio::test]
+async fn a_visit_to_a_unit_not_taking_part_still_stamps_the_passport() {
+    // Bob's Unit B is taking part; the kiosk's Unit A, and the kiosk, are not.
+    let app = app(Switches {
+        kiosk_location: false,
+        kiosk: false,
+        primary_location: true,
+    });
+    let (period_id, awarded) = sign_in(&app, true).await;
+    // This kiosk shows no badges.
+    assert_eq!(awarded, Some(vec![]));
+    let state = seslogin::badges::read_state("bob", badge_state(&app).as_deref()).unwrap();
+    let unit_a = &state.locations["loc-a"];
+    assert_eq!(unit_a.check_in_count, 1);
+    assert_eq!(
+        unit_a.awarded_badge_ids,
+        vec!["first-signin-location-loc-a".to_string()]
+    );
+    assert!(unit_a.displayed_badge_ids.is_empty());
+
+    // The sign-out does no badge work there.
+    run(
+        &app,
+        &format!(
+            "mutation {{ scanSignOutWithBadges({}) {{ awardedBadges {{ id }} }} }}",
+            sign_out_args(&period_id)
+        ),
+    )
+    .await;
+    let state = seslogin::badges::read_state("bob", badge_state(&app).as_deref()).unwrap();
+    assert_eq!(state.locations["loc-a"].sign_out_count, 0);
+    assert_eq!(awarded_ids(&app).len(), 1);
+}
+
+#[tokio::test]
+async fn no_passport_stamp_at_a_unit_not_taking_part_that_is_the_members_own() {
+    // Unit A is Bob's secondary unit: signing in there is not a visit.
+    let app = app(Switches {
+        kiosk_location: false,
+        kiosk: false,
+        primary_location: true,
+    });
+    give_bob_secondary(&app, "loc-a");
+    sign_in(&app, true).await;
+    assert_eq!(badge_state(&app), None);
+}
+
+#[tokio::test]
+async fn no_passport_stamp_when_no_unit_of_the_members_is_taking_part() {
+    let app = app(Switches {
+        kiosk_location: false,
+        kiosk: false,
+        primary_location: false,
+    });
+    sign_in(&app, true).await;
+    assert_eq!(badge_state(&app), None);
+}
+
+#[tokio::test]
+async fn a_passport_stamp_is_celebrated_at_the_next_kiosk_that_shows_badges() {
+    let app = app(Switches {
+        kiosk_location: false,
+        kiosk: false,
+        primary_location: true,
+    });
+    let (period_id, _) = sign_in(&app, true).await;
+    run(
+        &app,
+        &format!(
+            "mutation {{ scanSignOut({}) {{ id }} }}",
+            sign_out_args(&period_id)
+        ),
+    )
+    .await;
+    // Unit A and its kiosk switch badges on.
+    app.db
+        .locations
+        .lock()
+        .unwrap()
+        .get_mut("loc-a")
+        .unwrap()
+        .gamification_enabled = true;
+    app.db
+        .sessions
+        .lock()
+        .unwrap()
+        .get_mut("kiosk-1")
+        .unwrap()
+        .config
+        .insert("gamification".to_string(), true.into());
+    let (_, awarded) = sign_in(&app, true).await;
+    let awarded = awarded.unwrap();
+    assert!(
+        awarded.contains(&"first-signin-location-loc-a".to_string()),
+        "{awarded:?}"
+    );
+}
+
+#[tokio::test]
+async fn a_visit_to_a_unit_not_taking_part_still_earns_the_distance_badges() {
+    let app = app(Switches {
+        kiosk_location: false,
+        kiosk: false,
+        primary_location: true,
+    });
+    // Bob's Unit B in Sydney; the kiosk's Unit A in Wagga Wagga, ~370 km away.
+    set_coordinates(&app, "loc-b", -33.8679, 151.2073);
+    set_coordinates(&app, "loc-a", -35.1082, 147.3598);
+    let (_, awarded) = sign_in(&app, true).await;
+    assert_eq!(awarded, Some(vec![]));
+    let ids = awarded_ids(&app);
+    for id in [
+        "first-signin-location-loc-a",
+        "away-over-the-range",
+        "away-long-haul",
+    ] {
+        assert!(ids.contains(&id.to_string()), "{ids:?}");
+    }
 }

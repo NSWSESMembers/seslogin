@@ -12,7 +12,8 @@ badge and what earns it.
 
 - **Your unit has to take part.** Badges count when a unit you belong to, the unit
   you sign in at and that unit's kiosk all have badges turned on. If you don't see
-  any badges, ask your unit's administrators.
+  any badges, ask your unit's administrators. Passport Stamps and the distance
+  badges are the exception: see [Visiting other units](#visiting-other-units).
 - **Most badges are earned at each unit.** Counts are kept separately for each
   unit you sign in at. So 25 sign-ins means 25 at one unit, and you can earn the
   same badge again at another unit. The badges that count across every unit say so.
@@ -111,7 +112,11 @@ volunteer at counts as your own, so signing in there isn't one.
 | ![Over the Range badge](/image/badges/by-id/away-over-the-range.svg)               | Over the Range    | Sign in at a unit 100 km or more from the nearest unit you belong to, in a straight line. Counts across every unit. | Bronze          |
 | ![Long Haul badge](/image/badges/by-id/away-long-haul.svg)                         | Long Haul         | Sign in at a unit 250 km or more from the nearest unit you belong to, in a straight line. Counts across every unit. | Silver          |
 
-Units only count towards Hat Trick and Unit Hopper if they have badges turned on.
+Passport Stamps and the distance badges (Over the Range and Long Haul) only need
+badges turned on at a unit you belong to. You still earn them when you visit a unit
+that doesn't have badges turned on, and that unit counts towards Hat Trick and Unit
+Hopper. Its kiosk doesn't show badges, so you'll see them the next time you scan at
+a kiosk that does. None of the other badges count there.
 
 ## Special days
 

@@ -88,8 +88,10 @@ You choose these when you set a kiosk up, and can change them later with
   members' badges, and shows a member any badge they've just earned, and any of the
   unit's trophies they've taken or lost since their last scan. Only offered
   when your unit has badges turned on, which SESLogin's administrators do for
-  you; it counts only for members who belong to a unit that has them on too. The kiosk guide
-  lists [every badge and how to earn it](../kiosk/badges.md).
+  you; it counts only for members who belong to a unit that has them on too. If your
+  unit doesn't have badges turned on, members visiting from a unit that does still
+  collect their Passport Stamps and distance badges when they sign in at your
+  kiosks, which don't show them. The kiosk guide lists [every badge and how to earn it](../kiosk/badges.md).
 
 ### Other settings
 
