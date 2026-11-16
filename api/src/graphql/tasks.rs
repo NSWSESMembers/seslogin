@@ -27,7 +27,7 @@ use super::on_call::{check_people, load_people};
 use super::query::{Location, Person};
 use super::{LocationId, TaskListId};
 use crate::app::{App, HasDb};
-use crate::db::{self, Handler};
+use crate::db::{self, Handler, TaskStore};
 use crate::tasks;
 
 /// Which of a location's open tasks to list.

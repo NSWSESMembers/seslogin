@@ -7,7 +7,7 @@ use std::sync::Arc;
 use crate::app::App;
 use crate::app::HasDb;
 use crate::db;
-use crate::db::Handler;
+use crate::db::{Handler, TaskStore};
 
 use super::query::{Category, Location, Person, Session, User};
 use super::{

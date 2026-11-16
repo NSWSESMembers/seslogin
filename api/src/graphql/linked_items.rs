@@ -20,7 +20,7 @@ use super::error::ApiError;
 use super::on_call::OnCallRole;
 use super::tasks::Task;
 use crate::app::{App, HasDb};
-use crate::db::Handler as _;
+use crate::db::{Handler as _, TaskStore as _};
 
 /// The most tasks, pieces of equipment or on-call roles one topic may link.
 pub const MAX_LINKED_ITEMS: usize = 10;
