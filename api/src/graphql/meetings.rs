@@ -21,7 +21,7 @@ use super::error::{ApiError, ErrorCode};
 use super::query::Location;
 use crate::app::{App, HasDb};
 use crate::clock;
-use crate::db::{self, Handler};
+use crate::db::{self, AgendaStore, Handler};
 
 /// The longest title, in characters.
 pub const MAX_TITLE_CHARS: usize = 200;
