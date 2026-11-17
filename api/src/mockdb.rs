@@ -7,6 +7,7 @@ mod agendas;
 mod calendar;
 mod equipment;
 mod location_shares;
+mod login_codes;
 mod map;
 mod notes;
 mod notifications;
@@ -534,28 +535,6 @@ impl db::Handler for Handler {
         &self,
         _page: db::ListTestPaginationPage,
     ) -> db::Result<Vec<db::TestPaginationRow>> {
-        Self::unsupported()
-    }
-
-    async fn put_login_code(
-        &self,
-        _email: &str,
-        _code_hash: &str,
-        _expires_at: u64,
-        _last_sent_at: u64,
-    ) -> db::Result<()> {
-        Self::unsupported()
-    }
-
-    async fn get_login_code(&self, _email: &str) -> db::Result<Option<db::LoginCode>> {
-        Self::unsupported()
-    }
-
-    async fn delete_login_code(&self, _email: &str) -> db::Result<()> {
-        Self::unsupported()
-    }
-
-    async fn increment_login_code_attempts(&self, _email: &str) -> db::Result<()> {
         Self::unsupported()
     }
 
