@@ -7,6 +7,7 @@ mod calendar;
 mod equipment;
 mod map;
 mod notes;
+mod on_call;
 mod tasks;
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -747,32 +748,6 @@ impl db::Handler for Handler {
         _id: &str,
         _change: db::AgendaItemUpdateShape<'_>,
     ) -> db::Result<db::AgendaItem> {
-        Self::unsupported()
-    }
-
-    async fn get_on_call_roles<T: AsRef<str> + Sync>(
-        &self,
-        _ids: &[T],
-    ) -> db::Result<Vec<Option<db::OnCallRole>>> {
-        Self::unsupported()
-    }
-
-    async fn list_on_call_roles(&self, _location_id: &str) -> db::Result<Vec<db::OnCallRole>> {
-        Self::unsupported()
-    }
-
-    async fn create_on_call_role(
-        &self,
-        _role: db::NewOnCallRole<'_>,
-    ) -> db::Result<db::OnCallRole> {
-        Self::unsupported()
-    }
-
-    async fn update_on_call_role(
-        &self,
-        _id: &str,
-        _change: db::OnCallRoleUpdateShape<'_>,
-    ) -> db::Result<db::OnCallRole> {
         Self::unsupported()
     }
 

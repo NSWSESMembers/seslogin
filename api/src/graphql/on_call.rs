@@ -22,7 +22,7 @@ use super::notes::Note;
 use super::query::{Location, Person};
 use super::{LocationId, PersonId};
 use crate::app::{App, HasDb};
-use crate::db::{self, Handler};
+use crate::db::{self, Handler, OnCallStore};
 use crate::notifications::{Audience, NewNotification, notify};
 use crate::on_call;
 

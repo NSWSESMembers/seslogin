@@ -17,7 +17,7 @@ use crate::agendas::{
     format_due, format_when, render_minutes,
 };
 use crate::app::{App, HasDb};
-use crate::db::{self, EquipmentStore, Handler, NoteStore, TaskStore};
+use crate::db::{self, EquipmentStore, Handler, NoteStore, OnCallStore, TaskStore};
 
 /// The live linked rows of one kind, in the order of `ids`.
 fn live<T>(rows: Vec<Option<T>>, deleted: impl Fn(&T) -> bool) -> Vec<T> {
