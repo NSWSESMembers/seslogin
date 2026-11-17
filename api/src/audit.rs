@@ -35,6 +35,7 @@ use tracing::{error, warn};
 mod agendas;
 mod calendar;
 mod equipment;
+mod location_shares;
 mod map;
 mod notes;
 mod on_call;
@@ -51,6 +52,7 @@ pub use equipment::{
     equipment_create_changes, equipment_log_entry_changes, equipment_reservation_create_changes,
     equipment_reservation_update_changes, equipment_update_changes,
 };
+pub use location_shares::{location_share_create_changes, location_share_delete_changes};
 pub use map::{map_layer_update_changes, map_pin_create_changes, map_pin_update_changes};
 pub use notes::{note_create_changes, note_folder_update_changes, note_update_changes};
 pub use on_call::{on_call_role_create_changes, on_call_role_update_changes};
@@ -1122,25 +1124,6 @@ fn date(v: Option<chrono::NaiveDate>) -> Option<Value> {
     v.map(|d| Value::String(d.format("%Y-%m-%d").to_string()))
 }
 
-// ── Locate ───────────────────────────────────────────────────────────────────
-
-/// What a person decided about a location share: how long, and how often. Positions
-/// are left out: they change every minute or so, and the audit log is kept forever.
-fn location_share_fields(s: &db::LocationShare) -> Fields {
-    Fields::default()
-        .with("started_at", num(s.started_at))
-        .with("ends_at", num(s.ends_at))
-        .with("interval_secs", num(s.interval_secs))
-}
-
-pub fn location_share_create_changes(s: &db::LocationShare) -> Vec<AuditFieldChange> {
-    creation(&location_share_fields(s))
-}
-
-pub fn location_share_delete_changes(s: &db::LocationShare) -> Vec<AuditFieldChange> {
-    removal(&location_share_fields(s))
-}
-
 // ── Assets and photos ────────────────────────────────────────────────────────
 
 /// Everything about an uploaded asset worth recording. Status and the TTL are
@@ -2116,38 +2099,6 @@ impl<D: db::Handler> db::Handler for AuditingHandler<D> {
         Ok(())
     }
 
-    async fn put_location_share(&self, share: &db::LocationShare) -> db::Result<()> {
-        self.inner.put_location_share(share).await?;
-        self.record_create(
-            AuditEntityType::LocationShare,
-            &share.person_id,
-            None,
-            vec![share.location_id.clone()],
-            location_share_create_changes(share),
-        )
-        .await;
-        Ok(())
-    }
-
-    async fn delete_location_share(
-        &self,
-        person_id: &str,
-    ) -> db::Result<Option<db::LocationShare>> {
-        let removed = self.inner.delete_location_share(person_id).await?;
-        if let Some(share) = &removed {
-            self.record(Recorded {
-                entity_type: AuditEntityType::LocationShare,
-                entity_id: person_id,
-                action: AuditAction::Delete,
-                label: None,
-                location_ids: vec![share.location_id.clone()],
-                changes: location_share_delete_changes(share),
-            })
-            .await;
-        }
-        Ok(removed)
-    }
-
     async fn create_asset(&self, asset: db::NewAsset<'_>) -> db::Result<db::Asset> {
         let asset = self.inner.create_asset(asset).await?;
         self.record_create(
@@ -2247,29 +2198,6 @@ impl<D: db::Handler> db::Handler for AuditingHandler<D> {
     // Not audited: the key is derived from the email, which is audited when it is set.
     async fn stamp_person_email_key(&self, id: &str, email: &str) -> db::Result<()> {
         self.inner.stamp_person_email_key(id, email).await
-    }
-
-    async fn update_location_share_position(
-        &self,
-        person_id: &str,
-        position: &db::SharedPosition,
-        updated_at: u64,
-        expires_at: u64,
-    ) -> db::Result<db::LocationShare> {
-        self.inner
-            .update_location_share_position(person_id, position, updated_at, expires_at)
-            .await
-    }
-
-    async fn get_location_shares<T: AsRef<str> + Sync>(
-        &self,
-        person_ids: &[T],
-    ) -> db::Result<Vec<Option<db::LocationShare>>> {
-        self.inner.get_location_shares(person_ids).await
-    }
-
-    async fn list_location_shares(&self, location_id: &str) -> db::Result<Vec<db::LocationShare>> {
-        self.inner.list_location_shares(location_id).await
     }
 
     async fn put_notifications(&self, records: Vec<db::NotificationRecord>) -> db::Result<()> {

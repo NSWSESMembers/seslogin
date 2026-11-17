@@ -19,7 +19,7 @@ use super::error::ApiError;
 use super::query::{Location, Person};
 use super::{LocationId, PersonId};
 use crate::app::{App, HasDb};
-use crate::db::{self, Handler};
+use crate::db::{self, Handler, LocationShareStore};
 use crate::location_share::{self, PositionInput};
 
 /// Where the phone is, as it reports it. Leave out what it doesn't know.
