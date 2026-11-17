@@ -17,7 +17,7 @@ use serde_json::json;
 use common::{FakeDb, fake_app, seed_location, seed_person};
 use seslogin::app::MyApp;
 use seslogin::auth::{self, AuthInfo};
-use seslogin::db::Handler as _;
+use seslogin::db::OAuthGrantStore as _;
 use seslogin::graphql;
 use seslogin::mockmail;
 use seslogin::mockqueue;

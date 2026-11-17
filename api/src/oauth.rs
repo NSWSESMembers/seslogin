@@ -29,7 +29,7 @@ use crate::app::{App, HasDb};
 use crate::auth::{AuthError, AuthInfo, classify_db_err, fetch_update_user_auth_info, hash_token};
 use crate::clock::now_sec;
 use crate::db;
-use crate::db::Handler;
+use crate::db::{Handler, OAuthGrantStore};
 
 pub const ACCESS_TOKEN_PREFIX: &str = "slat_";
 pub const REFRESH_TOKEN_PREFIX: &str = "slrt_";

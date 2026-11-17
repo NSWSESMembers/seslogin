@@ -22,7 +22,7 @@ use crate::auth::{AuthError, hash_token};
 use crate::base_url::{GRAPHQL_RESOURCE_PATH, api_base_url, api_resource};
 use crate::clock::now_sec;
 use crate::db;
-use crate::db::Handler;
+use crate::db::{Handler, OAuthGrantStore};
 use crate::oauth::{self, ACCESS_TOKEN_LIFETIME_S, DEFAULT_SCOPE, TALLY_SIGN_IN_SCOPE};
 use crate::oauth_clients::resolve_client;
 use crate::tally_assertion::{self, Config as AssertionConfig};

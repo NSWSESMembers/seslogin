@@ -58,7 +58,7 @@ const RESOURCE: &str = "https://api.seslogin.com/mcp";
 /// Mint and persist an OAuth grant for `user_id`, bound to [`RESOURCE`], and
 /// return its plaintext `slat_` access token.
 async fn access_token_for(app: &App, user_id: &str) -> String {
-    use seslogin::db::Handler as _;
+    use seslogin::db::OAuthGrantStore as _;
     let (grant, access_token, _refresh) = oauth::mint_grant(
         &oauth::GrantSubject::User(user_id.to_string()),
         "test-client-id",
@@ -75,7 +75,7 @@ async fn access_token_for(app: &App, user_id: &str) -> String {
 /// As [`access_token_for`], but bound to some other resource — for the
 /// audience-mismatch test.
 async fn access_token_for_other_resource(app: &App, user_id: &str) -> String {
-    use seslogin::db::Handler as _;
+    use seslogin::db::OAuthGrantStore as _;
     let (grant, access_token, _refresh) = oauth::mint_grant(
         &oauth::GrantSubject::User(user_id.to_string()),
         "test-client-id",
@@ -219,7 +219,7 @@ async fn a_token_minted_for_a_different_resource_is_rejected() {
 
 #[tokio::test]
 async fn a_graphql_bound_token_is_rejected() {
-    use seslogin::db::Handler as _;
+    use seslogin::db::OAuthGrantStore as _;
     let (app, schema) = setup();
     seed_user(&app, "user-1", true);
     let (grant, token, _refresh) = oauth::mint_grant(

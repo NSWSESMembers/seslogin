@@ -15,7 +15,7 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use seslogin::app::{self, MyApp};
-use seslogin::db::{self, EphemeralState, Location, OAuthGrant, OAuthGrantUpdateShape, User};
+use seslogin::db::{self, EphemeralState, Location, OAuthGrant, User};
 use seslogin::mockmail;
 use seslogin::mockqueue;
 use seslogin::mockrealtime;
@@ -30,6 +30,7 @@ mod login_codes;
 mod map;
 mod notes;
 mod notifications;
+mod oauth_grants;
 mod on_call;
 #[allow(dead_code)] // see `seed_super_user`'s doc comment
 pub(crate) mod passkey;
@@ -314,74 +315,6 @@ impl db::Handler for FakeDb {
     async fn delete_ephemeral_state(&self, id: &str) -> db::Result<()> {
         self.ephemeral_state.lock().unwrap().remove(id);
         Ok(())
-    }
-
-    async fn create_oauth_grant(&self, grant: &OAuthGrant) -> db::Result<()> {
-        self.oauth_grants
-            .lock()
-            .unwrap()
-            .insert(grant.id.clone(), grant.clone());
-        Ok(())
-    }
-
-    async fn get_oauth_grant(&self, id: &str) -> db::Result<Option<OAuthGrant>> {
-        Ok(self.oauth_grants.lock().unwrap().get(id).cloned())
-    }
-
-    async fn update_oauth_grant(&self, id: &str, change: OAuthGrantUpdateShape) -> db::Result<()> {
-        let mut grants = self.oauth_grants.lock().unwrap();
-        let grant = grants
-            .get_mut(id)
-            .ok_or_else(|| db::Error::NotFound(id.to_string()))?;
-        match change {
-            OAuthGrantUpdateShape::Rotate {
-                expected_refresh_token_hash,
-                access_token_hash,
-                access_expires_at,
-                refresh_token_hash,
-                refresh_expires_at,
-            } => {
-                if grant.refresh_token_hash != expected_refresh_token_hash {
-                    return Err(db::Error::NotFound(id.to_string()));
-                }
-                grant.access_token_hash = access_token_hash;
-                grant.access_expires_at = access_expires_at;
-                grant.refresh_token_hash = refresh_token_hash;
-                grant.refresh_expires_at = refresh_expires_at;
-                Ok(())
-            }
-            OAuthGrantUpdateShape::TouchLastUsed => {
-                grant.last_used_at = Some(seslogin::clock::now_sec());
-                Ok(())
-            }
-        }
-    }
-
-    async fn delete_oauth_grant(&self, id: &str) -> db::Result<()> {
-        self.oauth_grants.lock().unwrap().remove(id);
-        Ok(())
-    }
-
-    async fn list_oauth_grants_by_user(&self, user_id: &str) -> db::Result<Vec<OAuthGrant>> {
-        Ok(self
-            .oauth_grants
-            .lock()
-            .unwrap()
-            .values()
-            .filter(|g| g.user_id.as_deref() == Some(user_id))
-            .cloned()
-            .collect())
-    }
-
-    async fn list_oauth_grants_by_person(&self, person_id: &str) -> db::Result<Vec<OAuthGrant>> {
-        Ok(self
-            .oauth_grants
-            .lock()
-            .unwrap()
-            .values()
-            .filter(|g| g.person_id.as_deref() == Some(person_id))
-            .cloned()
-            .collect())
     }
 
     // Everything below is untouched by the OAuth-flow tests. `list_users`,
