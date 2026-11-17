@@ -16,7 +16,7 @@ use seslogin::audit::{self, AuditingHandler};
 use seslogin::auth::AuthInfo;
 use seslogin::db::{
     self, AuditAction, AuditEntityType, CalendarStore as _, EquipmentStore as _, Handler as _,
-    MapStore as _, NoteStore as _, OnCallStore as _, TaskStore as _,
+    MapStore as _, NoteStore as _, OnCallStore as _, SharedContactStore as _, TaskStore as _,
 };
 use seslogin::graphql::{self, ClientIp};
 use seslogin::mockmail;

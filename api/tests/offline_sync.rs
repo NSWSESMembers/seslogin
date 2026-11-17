@@ -17,7 +17,7 @@ use sha2::{Digest, Sha256};
 use common::{fake_app, seed_location, seed_person, seed_user};
 use seslogin::app::{App as _, MyApp};
 use seslogin::auth;
-use seslogin::db::{self, Handler as _};
+use seslogin::db::{self, Handler as _, SharedContactStore as _};
 use seslogin::mockmail;
 use seslogin::mockqueue;
 use seslogin::mockrealtime;

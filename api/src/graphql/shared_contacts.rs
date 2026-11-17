@@ -21,7 +21,7 @@ use super::dataloader::DatabaseLoader;
 use super::error::{ApiError, ErrorCode};
 use super::query::Location;
 use crate::app::{App, HasDb};
-use crate::db::{self, Handler, SharedContactScope};
+use crate::db::{self, Handler, SharedContactScope, SharedContactStore};
 use crate::shared_contact;
 
 pub struct SharedContact<A: App + HasDb + 'static> {

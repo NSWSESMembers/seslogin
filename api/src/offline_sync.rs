@@ -60,7 +60,7 @@ use async_graphql::futures_util::stream::{self, StreamExt};
 
 use crate::app::{App, HasDb, HasQueues};
 use crate::auth::{self, AuthError, AuthInfo};
-use crate::db::{self, Handler};
+use crate::db::{self, Handler, SharedContactStore};
 use crate::graphql::ses_details;
 
 pub const SYNC_PATH: &str = "/api/v1/sync";
