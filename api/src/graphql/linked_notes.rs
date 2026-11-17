@@ -24,7 +24,7 @@ use super::dataloader::DatabaseLoader;
 use super::error::ApiError;
 use super::notes::Note;
 use crate::app::{App, HasDb};
-use crate::db::{self, Handler as _, NoteStore as _};
+use crate::db::{self, AssetStore as _, NoteStore as _};
 
 pub(super) use super::attached_photos::added;
 

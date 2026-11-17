@@ -28,7 +28,7 @@ use super::error::{ApiError, ErrorCode};
 use super::tally::require_member;
 use crate::app::{App, HasDb};
 use crate::clock;
-use crate::db::{self, Handler as _};
+use crate::db::{self, AssetStore as _};
 use crate::photos;
 
 /// A photo in a unit's stream.

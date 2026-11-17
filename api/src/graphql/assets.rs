@@ -23,7 +23,7 @@ use super::error::{ApiError, ErrorCode};
 use crate::app::{App, HasDb, HasStorage};
 use crate::assets;
 use crate::clock;
-use crate::db::{self, Handler as _};
+use crate::db::{self, AssetStore as _, Handler as _};
 use crate::media::{self, ImageVariant};
 use crate::storage::{self, Handler as _};
 

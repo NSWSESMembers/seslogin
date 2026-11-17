@@ -14,7 +14,7 @@ use async_graphql::{Request, Value};
 use common::{FakeDb, seed_location};
 use seslogin::app::{self, MyApp};
 use seslogin::auth::AuthInfo;
-use seslogin::db::{self, Handler as _};
+use seslogin::db::{self, AssetStore as _};
 use seslogin::graphql;
 use seslogin::mockmail;
 use seslogin::mockqueue;

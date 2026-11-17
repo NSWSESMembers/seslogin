@@ -25,7 +25,7 @@ use super::assets::Asset;
 use super::dataloader::DatabaseLoader;
 use super::error::ApiError;
 use crate::app::{App, HasDb};
-use crate::db::{self, Handler as _};
+use crate::db::{self, AssetStore as _};
 
 /// The `asset_ref` owner type of a task's photos.
 pub(super) const TASK: &str = "task";

@@ -7,7 +7,7 @@ mod common;
 
 use common::FakeDb;
 use seslogin::audit::{self, Actor, AuditingHandler};
-use seslogin::db::{self, AuditAction, AuditEntityType, Handler as _};
+use seslogin::db::{self, AssetStore as _, AuditAction, AuditEntityType};
 
 fn handler() -> AuditingHandler<FakeDb> {
     AuditingHandler::new(FakeDb::default())

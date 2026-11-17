@@ -15,7 +15,7 @@ use seslogin::app::{self, MyApp};
 use seslogin::audit::{self, AuditContext, AuditingHandler};
 use seslogin::auth::AuthInfo;
 use seslogin::clock;
-use seslogin::db::{self, AuditAction, AuditEntityType, Handler as _};
+use seslogin::db::{self, AssetStore as _, AuditAction, AuditEntityType};
 use seslogin::graphql;
 use seslogin::mockmail;
 use seslogin::mockqueue;
