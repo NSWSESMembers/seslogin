@@ -22,7 +22,7 @@ use super::notes::Note;
 use super::query::Location;
 use super::{LocationId, MapLayerId};
 use crate::app::{App, HasDb};
-use crate::db::{self, Handler};
+use crate::db::{self, Handler, MapStore};
 use crate::map::{self, MapPinType as Type};
 
 /// What a pin marks, shown in the app as an icon. More types are expected, so clients

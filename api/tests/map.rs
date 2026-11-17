@@ -532,7 +532,7 @@ async fn a_deleted_pin_is_gone() {
 #[tokio::test]
 async fn a_pin_type_is_optional_and_unknown_ones_read_as_none() {
     use seslogin::app::HasDb;
-    use seslogin::db::{Handler, NewMapPin};
+    use seslogin::db::{MapStore, NewMapPin};
 
     let app = app();
     let plain = create(&app, "Shed", "").await;
