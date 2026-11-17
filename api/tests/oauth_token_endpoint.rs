@@ -42,7 +42,7 @@ async fn seed_code(
     >,
     payload: AuthCodePayload,
 ) -> String {
-    use seslogin::db::Handler as _;
+    use seslogin::db::EphemeralStateStore as _;
     use sha2::{Digest, Sha256};
     let code = "test-authorization-code-0123456789";
     // Mirrors `auth::hash_token` (sha256 hex) — that helper is `pub(crate)`, so
