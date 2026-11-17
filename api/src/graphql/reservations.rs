@@ -27,7 +27,7 @@ use super::error::{ApiError, ErrorCode};
 use super::on_call::{check_people, load_people};
 use super::query::{Location, Person};
 use crate::app::{App, HasDb};
-use crate::db::{self, Handler};
+use crate::db::{self, EquipmentStore, Handler};
 use crate::reservations as rules;
 
 pub struct EquipmentReservation<A: App + HasDb + 'static> {

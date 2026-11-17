@@ -32,7 +32,7 @@ use super::tasks::Task;
 use super::{AgendaItemId, MeetingId};
 use crate::agenda_text::MAX_TEXT_CHARS;
 use crate::app::{App, HasDb};
-use crate::db::{self, Handler, NoteStore, TaskStore};
+use crate::db::{self, EquipmentStore, Handler, NoteStore, TaskStore};
 
 pub struct AgendaItem<A: App + HasDb + 'static> {
     _marker: std::marker::PhantomData<A>,

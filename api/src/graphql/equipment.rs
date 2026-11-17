@@ -22,7 +22,7 @@ use super::linked_notes;
 use super::notes::Note;
 use super::query::Location;
 use crate::app::{App, HasDb};
-use crate::db::{self, Handler};
+use crate::db::{self, EquipmentStore, Handler};
 use crate::equipment::{self as rules, EquipmentStatus as Status, EquipmentType as Type};
 
 /// What kind of thing a piece of equipment is. More types are expected, so clients

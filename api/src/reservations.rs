@@ -10,7 +10,7 @@
 //! themselves.
 
 use crate::app::HasDb;
-use crate::db::{self, Handler};
+use crate::db::{self, EquipmentStore};
 use crate::notifications::{Audience, NewNotification, notify};
 
 pub const MAX_EQUIPMENT: usize = 20;

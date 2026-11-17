@@ -13,7 +13,7 @@ use async_graphql::{Request, Value};
 use common::{FakeDb, fake_app, seed_location, seed_person, seed_user};
 use seslogin::app::MyApp;
 use seslogin::auth::AuthInfo;
-use seslogin::db::{self, Handler as _};
+use seslogin::db::{self, EquipmentStore as _};
 use seslogin::graphql;
 use seslogin::mockmail;
 use seslogin::mockqueue;
