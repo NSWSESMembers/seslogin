@@ -18,7 +18,7 @@ use super::error::{ApiError, ErrorCode};
 use super::query::Location;
 use super::{LocationId, NoteFolderId};
 use crate::app::{App, HasDb};
-use crate::db::{self, Handler};
+use crate::db::{self, Handler, NoteStore};
 use crate::notes;
 
 pub struct Note<A: App + HasDb + 'static> {

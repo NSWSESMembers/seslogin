@@ -14,7 +14,9 @@ use common::FakeDb;
 use seslogin::app::{self, MyApp};
 use seslogin::audit::{self, AuditingHandler};
 use seslogin::auth::AuthInfo;
-use seslogin::db::{self, AuditAction, AuditEntityType, Handler as _, TaskStore as _};
+use seslogin::db::{
+    self, AuditAction, AuditEntityType, Handler as _, NoteStore as _, TaskStore as _,
+};
 use seslogin::graphql::{self, ClientIp};
 use seslogin::mockmail;
 use seslogin::mockqueue;
