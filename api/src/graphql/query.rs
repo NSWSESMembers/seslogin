@@ -3652,8 +3652,7 @@ impl<A: App + HasDb + Send + Sync + 'static> Session<A> {
             .db()
             .get_ephemeral_state(&crate::session_key::enroll_state_id(fingerprint))
             .await?;
-        Ok(pending
-            .is_some_and(|s| s.kind == crate::session_key::ENROLL_STATE_KIND && s.expires_at > now))
+        Ok(pending.is_some_and(|s| crate::session_key::is_live_enrollment(&s, now)))
     }
 
     async fn created_at(&self) -> Option<i64> {
@@ -4388,7 +4387,7 @@ impl<A: App + HasDb + HasRealtime + HasStorage + Send + Sync + 'static> QueryRoo
         app.db()
             .get_ephemeral_state(&crate::session_key::enroll_state_id(&fingerprint))
             .await?
-            .filter(|s| s.kind == crate::session_key::ENROLL_STATE_KIND && s.expires_at > now)
+            .filter(|s| crate::session_key::is_live_enrollment(s, now))
             .ok_or_else(|| anyhow!("No pending enrollment for this key"))?;
         let token = app
             .realtime()
@@ -4429,7 +4428,7 @@ impl<A: App + HasDb + HasRealtime + HasStorage + Send + Sync + 'static> QueryRoo
             .db()
             .get_ephemeral_state(&state_id)
             .await?
-            .filter(|s| s.kind == crate::session_key::ENROLL_STATE_KIND && s.expires_at > now);
+            .filter(|s| crate::session_key::is_live_enrollment(s, now));
         Ok(pending.map(|s| PendingEnrollmentKey {
             fingerprint,
             expires_at: s.expires_at as i64,
