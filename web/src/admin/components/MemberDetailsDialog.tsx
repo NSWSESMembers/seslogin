@@ -11,7 +11,6 @@ function MemberDetails({ personId }: { personId: string }) {
     graphql`
       query MemberDetailsDialogQuery($id: ID!) @throwOnFieldError {
         person(id: $id) {
-          id
           firstName
           lastName
           preferredName
@@ -23,20 +22,10 @@ function MemberDetails({ personId }: { personId: string }) {
             number
             types
           }
-          capabilityTags {
-            id
-            name
-            description
-          }
           units {
             entityId
             entityName
             entityCode
-            zone
-            membershipType
-            ranks
-            roles
-            positions
             isPrimary
           }
         }
@@ -93,20 +82,20 @@ function MemberDetails({ personId }: { personId: string }) {
         )}
       </dl>
 
-      <Section title="Qualifications">
-        {person.capabilityTags.length === 0 ? (
+      <Section title="Units">
+        {person.units.length === 0 ? (
           <Muted>None recorded</Muted>
         ) : (
           <ul className="m-0 list-none p-0">
-            {person.capabilityTags.map((tag) => (
-              <li key={tag.id} className="py-0.5">
-                <span title={tag.description ?? undefined}>
-                  {tag.name ?? `Tag ${tag.id}`}
-                </span>
-                {tag.description && (
-                  <span className="text-sm text-ink-muted">
-                    {" "}
-                    — {tag.description}
+            {person.units.map((unit) => (
+              <li key={unit.entityId} className="py-0.5">
+                {unit.entityName ?? `Entity ${unit.entityId}`}
+                {unit.entityCode && (
+                  <span className="text-ink-muted"> ({unit.entityCode})</span>
+                )}
+                {unit.isPrimary && (
+                  <span className="ml-2 rounded-full border border-line px-2 py-px text-xs font-semibold">
+                    Primary
                   </span>
                 )}
               </li>
@@ -115,54 +104,9 @@ function MemberDetails({ personId }: { personId: string }) {
         )}
       </Section>
 
-      <Section title="Units">
-        {person.units.length === 0 ? (
-          <Muted>None recorded</Muted>
-        ) : (
-          <ul className="m-0 list-none p-0">
-            {person.units.map((unit) => (
-              <li
-                key={unit.entityId}
-                className="border-b border-line-faint py-1.5"
-              >
-                <div className="font-semibold">
-                  {unit.entityName ?? `Entity ${unit.entityId}`}
-                  {unit.entityCode && (
-                    <span className="font-normal text-ink-muted">
-                      {" "}
-                      ({unit.entityCode})
-                    </span>
-                  )}
-                  {unit.isPrimary && (
-                    <span className="ml-2 rounded-full border border-line px-2 py-px text-xs font-semibold">
-                      Primary
-                    </span>
-                  )}
-                </div>
-                <dl className="m-0 text-sm">
-                  {unit.zone && <Field label="Zone">{unit.zone}</Field>}
-                  {unit.membershipType && (
-                    <Field label="Membership">{unit.membershipType}</Field>
-                  )}
-                  {unit.ranks.length > 0 && (
-                    <Field label="Ranks">{unit.ranks.join(", ")}</Field>
-                  )}
-                  {unit.roles.length > 0 && (
-                    <Field label="Roles">{unit.roles.join(", ")}</Field>
-                  )}
-                  {unit.positions.length > 0 && (
-                    <Field label="Positions">{unit.positions.join(", ")}</Field>
-                  )}
-                </dl>
-              </li>
-            ))}
-          </ul>
-        )}
-      </Section>
-
       <Muted className="mt-4 text-sm">
         Contact details and units come from the SES directory and are refreshed
-        once a day. Qualifications come from member sync.
+        once a day.
       </Muted>
     </>
   );

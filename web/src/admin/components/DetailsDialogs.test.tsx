@@ -41,20 +41,18 @@ const person = {
     { number: "+61400000123", types: ["SMS"] },
     { number: "+61255500142", types: ["Home Telephone"] },
   ],
-  capabilityTags: [
-    { id: "1", name: "First Aid", description: "Provide first aid" },
-  ],
   units: [
     {
       entityId: "9",
       entityName: "Test A Unit",
       entityCode: "TST-A",
-      zone: "Test Zone",
-      membershipType: "Member",
-      ranks: ["Team Leader"],
-      roles: ["Operator"],
-      positions: [],
       isPrimary: true,
+    },
+    {
+      entityId: "10",
+      entityName: "Test B Unit",
+      entityCode: null,
+      isPrimary: false,
     },
   ],
 };
@@ -81,11 +79,11 @@ describe("MemberDetailsDialog", () => {
       screen.getByRole("link", { name: "+61255500142" }),
     ).toBeInTheDocument();
     expect(screen.getByText("(Home Telephone)")).toBeInTheDocument();
-    expect(screen.getByText("First Aid")).toBeInTheDocument();
-    expect(screen.getByText("Test A Unit")).toBeInTheDocument();
-    expect(screen.getByText("Primary")).toBeInTheDocument();
-    expect(screen.getByText("Team Leader")).toBeInTheDocument();
-    expect(screen.queryByText("Positions")).not.toBeInTheDocument();
+    expect(screen.queryByText("Qualifications")).not.toBeInTheDocument();
+    const units = screen.getAllByRole("listitem");
+    expect(units.at(-2)).toHaveTextContent("Test A Unit (TST-A)Primary");
+    expect(units.at(-1)).toHaveTextContent(/^Test B Unit$/);
+    expect(screen.getAllByText("Primary")).toHaveLength(1);
 
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
     expect(onClose).toHaveBeenCalledTimes(1);
@@ -101,7 +99,7 @@ describe("MemberDetailsDialog", () => {
       />,
       { Person: () => person },
     );
-    await screen.findByText("First Aid");
+    await screen.findByText("Test B Unit");
     fireEvent.keyDown(document, { key: "Escape" });
     expect(onClose).toHaveBeenCalledTimes(1);
   });
@@ -120,13 +118,12 @@ describe("MemberDetailsDialog", () => {
           email: null,
           mobile: null,
           phones: [],
-          capabilityTags: [],
           units: [],
         }),
       },
     );
-    expect(await screen.findByText("Qualifications")).toBeInTheDocument();
-    expect(screen.getAllByText("None recorded")).toHaveLength(2);
+    expect(await screen.findByText("Units")).toBeInTheDocument();
+    expect(screen.getAllByText("None recorded")).toHaveLength(1);
     expect(screen.queryByText(/prefers/)).not.toBeInTheDocument();
     expect(screen.queryByText("Other phones")).not.toBeInTheDocument();
     expect(screen.queryByText(/null/)).not.toBeInTheDocument();

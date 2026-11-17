@@ -806,15 +806,6 @@ pub struct PersonPhone {
     pub types: Vec<String>,
 }
 
-/// A qualification SES records against a member.
-#[derive(SimpleObject, Clone, Debug)]
-pub struct CapabilityTag {
-    /// The SES capability tag id, as text.
-    pub id: String,
-    pub name: Option<String>,
-    pub description: Option<String>,
-}
-
 /// A directory entity (unit, cluster, team, section, ...) a member is assigned to.
 #[derive(SimpleObject, Clone, Debug)]
 pub struct PersonUnitAssignment {
@@ -823,11 +814,6 @@ pub struct PersonUnitAssignment {
     pub entity_code: Option<String>,
     /// The location this entity is, when it is one of ours.
     pub location_id: Option<ID>,
-    pub zone: Option<String>,
-    pub membership_type: Option<String>,
-    pub ranks: Vec<String>,
-    pub roles: Vec<String>,
-    pub positions: Vec<String>,
     /// Whether this is the member's primary location.
     pub is_primary: bool,
     pub updated_at: Option<i64>,
@@ -903,9 +889,8 @@ impl<A: App + HasDb + Send + Sync> Person<A> {
         &self.rec.email
     }
 
-    // The fields below are personal contact details and qualifications, so each one is
-    // limited to users and API tokens with access to any of the member's units (primary or
-    // secondary).
+    // The fields below are personal contact details, so each one is limited to users and
+    // API tokens with access to any of the member's units (primary or secondary).
     // This deliberately narrows the rule that `Person`'s own fields are unchecked (that
     // exists so a kiosk can show a visiting member from another unit): a kiosk never
     // needs these, so sessions are refused outright.
@@ -937,22 +922,6 @@ impl<A: App + HasDb + Send + Sync> Person<A> {
                 .map(|p| PersonPhone {
                     number: p.number,
                     types: p.types,
-                })
-                .collect(),
-        )
-    }
-
-    /// The member's SES qualifications, by id. Same access as `preferredName`.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::UserOrApiToken)")]
-    async fn capability_tags(&self, ctx: &Context<'_>) -> Result<Vec<CapabilityTag>> {
-        require_person_access(ctx, &self.rec)?;
-        Ok(
-            ses_details::read_capability_tags(&self.rec.id, self.rec.capability_tags.as_deref())
-                .into_iter()
-                .map(|t| CapabilityTag {
-                    id: t.id.to_string(),
-                    name: t.name,
-                    description: t.description,
                 })
                 .collect(),
         )
@@ -991,11 +960,6 @@ impl<A: App + HasDb + Send + Sync> Person<A> {
                 entity_name: u.entity_name,
                 entity_code: u.entity_code,
                 location_id: u.location_id.map(ID),
-                zone: u.zone,
-                membership_type: u.membership_type,
-                ranks: u.ranks,
-                roles: u.roles,
-                positions: u.positions,
                 is_primary: u.is_primary,
                 updated_at: u.updated_at.map(|t| t as i64),
             })

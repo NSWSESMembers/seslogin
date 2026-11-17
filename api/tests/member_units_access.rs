@@ -121,7 +121,7 @@ fn assert_forbidden(response: &async_graphql::Response) {
 }
 
 const PERSON: &str = r#"{ person(id: "dana") { id preferredName mobile phones { number }
-    capabilityTags { id } units { entityName } lastPeriod { id } } }"#;
+    units { entityName } lastPeriod { id } } }"#;
 const BY_NUMBER: &str = r#"{ personByRegistrationNumber(memberNumber: "20000002") { id } }"#;
 
 #[tokio::test]

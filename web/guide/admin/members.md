@@ -56,16 +56,12 @@ The panel shows:
 - their email address, mobile number and any other phone numbers, with what
   each number is used for. Tap an email address or number to start a message or
   call;
-- their **qualifications** (SES capability tags), such as first aid or
-  chainsaw operation. Hover over one to see its description;
-- their **units**: every unit, cluster or team they are assigned to in SES, with
-  their membership type, ranks, roles and positions. Their main unit is marked
-  **Primary**.
+- their **units**: every unit, cluster or team they are assigned to in SES.
+  Their main unit is marked **Primary**.
 
 Anything SES doesn't have is left out, or shown as "None recorded". You can't
 change any of it here. Correct it in SES and the change arrives with the next
-update: contact details and units are refreshed once a day, early each morning,
-and qualifications come with the daily member update.
+update: contact details and units are refreshed once a day, early each morning.
 
 > [!NOTE]
 > These are personal details. Only people who can see your unit can open the
