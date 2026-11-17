@@ -1,5 +1,5 @@
-//! Coverage for the SES details exposed on `Person` (contact details, qualifications,
-//! unit assignments) and `Location` (code, zone, coordinates, addresses, accreditations).
+//! Coverage for the SES details exposed on `Person` (contact details, unit assignments)
+//! and `Location` (code, zone, coordinates, addresses, accreditations).
 //!
 //! These are personal and unit contact details, so they need access to the person's
 //! *primary* location and are never served to a kiosk — unlike `Person`'s identity fields,
@@ -75,7 +75,6 @@ fn app() -> Arc<TestApp> {
                 .into(),
         );
         bob.preferred_name = Some("Bobby".into());
-        bob.capability_tags = Some(r#"[{"id":101,"name":"First Aid","description":"d"}]"#.into());
     }
     app.db.person_units.lock().unwrap().insert(
         "bob".to_string(),
@@ -97,7 +96,6 @@ fn app() -> Arc<TestApp> {
                 entity_id: "3".into(),
                 entity_name: Some("Alpha Unit".into()),
                 location_id: Some("loc-a".into()),
-                ranks: vec!["Team Leader".into()],
                 is_primary: true,
                 ..Default::default()
             },
@@ -155,8 +153,7 @@ fn assert_forbidden(response: &async_graphql::Response) {
 const PERSON: &str = r#"{ person(id: "bob") {
     preferredName mobile
     phones { number types }
-    capabilityTags { id name description }
-    units { entityId entityName isPrimary ranks locationId }
+    units { entityId entityName isPrimary locationId }
 } }"#;
 
 const LOCATION: &str = r#"{ location(id: "loc-a") {
@@ -178,8 +175,6 @@ async fn read_only_user_of_the_primary_location_reads_the_person_details() {
     assert_eq!(p["mobile"], "+61400000123");
     assert_eq!(p["phones"][1]["number"], "+61255500142");
     assert_eq!(p["phones"][1]["types"][0], "Home Telephone");
-    assert_eq!(p["capabilityTags"][0]["id"], "101");
-    assert_eq!(p["capabilityTags"][0]["name"], "First Aid");
     // Primary first, then by name.
     let names: Vec<_> = p["units"]
         .as_array()
@@ -189,7 +184,6 @@ async fn read_only_user_of_the_primary_location_reads_the_person_details() {
         .collect();
     assert_eq!(names, ["Alpha Unit", "Beta Unit", "Zeta Cluster"]);
     assert_eq!(p["units"][0]["isPrimary"], true);
-    assert_eq!(p["units"][0]["ranks"][0], "Team Leader");
     assert_eq!(p["units"][0]["locationId"], "loc-a");
     assert!(p["units"][1]["locationId"].is_null());
 }
@@ -201,16 +195,11 @@ async fn unreadable_json_yields_empty_lists_not_an_error() {
         let mut persons = app.db.persons.lock().unwrap();
         let bob = persons.get_mut("bob").unwrap();
         bob.phones = Some("not json".into());
-        bob.capability_tags = Some("{}".into());
     }
     let response = run(&app, user(&[], &["loc-a"]), PERSON).await;
     assert!(response.errors.is_empty(), "{:?}", response.errors);
     let data = response.data.into_json().unwrap();
     assert_eq!(data["person"]["phones"].as_array().unwrap().len(), 0);
-    assert_eq!(
-        data["person"]["capabilityTags"].as_array().unwrap().len(),
-        0
-    );
 }
 
 #[tokio::test]
@@ -241,7 +230,6 @@ async fn kiosk_is_refused_the_person_details_even_at_the_primary_location() {
         "preferredName",
         "mobile",
         "phones { number }",
-        "capabilityTags { id }",
         "units { entityId }",
     ] {
         let query = format!(r#"{{ person(id: "bob") {{ {field} }} }}"#);

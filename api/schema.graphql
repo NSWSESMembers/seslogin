@@ -499,18 +499,6 @@ type CalendarEventOccurrence {
 	endDate: String
 }
 
-"""
-A qualification SES records against a member.
-"""
-type CapabilityTag {
-	"""
-	The SES capability tag id, as text.
-	"""
-	id: String!
-	name: String
-	description: String
-}
-
 type Category {
 	id: ID!
 	name: String!
@@ -2433,10 +2421,6 @@ type Person {
 	"""
 	phones: [PersonPhone!]!
 	"""
-	The member's SES qualifications, by id. Same access as `preferredName`.
-	"""
-	capabilityTags: [CapabilityTag!]!
-	"""
 	The SES directory entities the member is assigned to, primary first and then by
 	name. Same access as `preferredName`.
 	"""
@@ -2569,11 +2553,6 @@ type PersonUnitAssignment {
 	The location this entity is, when it is one of ours.
 	"""
 	locationId: ID
-	zone: String
-	membershipType: String
-	ranks: [String!]!
-	roles: [String!]!
-	positions: [String!]!
 	"""
 	Whether this is the member's primary location.
 	"""
