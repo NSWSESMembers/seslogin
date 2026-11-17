@@ -19,7 +19,7 @@ use super::auth::require_member_location;
 use super::error::ApiError;
 use super::pagination::{build_connection, pagination_args};
 use crate::app::{App, HasDb};
-use crate::db::{self, Handler};
+use crate::db::{self, NotificationStore};
 use crate::notifications::MAX_UNREAD_COUNT;
 
 pub(super) const DEFAULT_PAGE_SIZE: usize = 50;

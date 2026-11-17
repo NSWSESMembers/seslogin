@@ -38,6 +38,7 @@ mod equipment;
 mod location_shares;
 mod map;
 mod notes;
+mod notifications;
 mod on_call;
 mod shared_contacts;
 mod tasks;
@@ -2198,37 +2199,6 @@ impl<D: db::Handler> db::Handler for AuditingHandler<D> {
     // Not audited: the key is derived from the email, which is audited when it is set.
     async fn stamp_person_email_key(&self, id: &str, email: &str) -> db::Result<()> {
         self.inner.stamp_person_email_key(id, email).await
-    }
-
-    async fn put_notifications(&self, records: Vec<db::NotificationRecord>) -> db::Result<()> {
-        self.inner.put_notifications(records).await
-    }
-
-    async fn list_notifications(
-        &self,
-        person_id: &str,
-        after_sk: Option<&str>,
-        limit: usize,
-        unread_only: bool,
-    ) -> db::Result<Vec<db::NotificationRecord>> {
-        self.inner
-            .list_notifications(person_id, after_sk, limit, unread_only)
-            .await
-    }
-
-    async fn count_unread_notifications(&self, person_id: &str, cap: usize) -> db::Result<usize> {
-        self.inner.count_unread_notifications(person_id, cap).await
-    }
-
-    async fn mark_notifications_read(
-        &self,
-        person_id: &str,
-        sks: &[String],
-        read_at: u64,
-    ) -> db::Result<()> {
-        self.inner
-            .mark_notifications_read(person_id, sks, read_at)
-            .await
     }
 
     async fn list_trophy_holders(&self, location_id: &str) -> db::Result<Vec<db::TrophyHolder>> {

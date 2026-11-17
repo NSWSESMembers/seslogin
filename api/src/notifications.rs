@@ -17,7 +17,7 @@ use std::collections::HashSet;
 use tracing::error;
 
 use crate::app::HasDb;
-use crate::db::{self, Handler, NotificationRecord, Person};
+use crate::db::{self, Handler, NotificationRecord, NotificationStore, Person};
 
 /// How long a notification is kept, whether read or not: 90 days.
 pub const TTL_SECS: u64 = 90 * 24 * 60 * 60;
