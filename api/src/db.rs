@@ -12,6 +12,8 @@ mod equipment;
 pub use equipment::*;
 mod map;
 pub use map::*;
+mod calendar;
+pub use calendar::*;
 
 const NANOID_ALPHABET: [char; 62] = [
     '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I',
@@ -733,109 +735,6 @@ impl HasID for NitcGroup {
     fn id(&self) -> &str {
         &self.id
     }
-}
-
-/// A named, coloured calendar a location's events can be put in ("Calendar"). See
-/// SCHEMA.md's `calendar` section.
-///
-/// `color` holds a [`crate::calendar::CalendarColor::as_str`] value.
-#[derive(Clone, Debug, PartialEq)]
-pub struct Calendar {
-    pub id: String,
-    pub location_id: String,
-    pub name: String,
-    pub color: String,
-    pub created_by: Option<String>,
-    pub deleted: Option<u64>,
-    pub created_at: u64,
-    pub updated_at: u64,
-}
-
-impl HasID for Calendar {
-    fn id(&self) -> &str {
-        &self.id
-    }
-}
-
-/// Every write to a calendar. Each fails with [`Error::NotFound`] when the calendar does
-/// not exist or is deleted, and returns it as it is after the write. Deleting a calendar
-/// leaves its events alone: they keep `calendar_id` and show as in no calendar.
-#[derive(Clone, Debug, PartialEq)]
-pub enum CalendarUpdateShape<'a> {
-    Fields { name: &'a str, color: &'a str },
-    Delete,
-}
-
-/// An event in a location's shared calendar ("Calendar"). See SCHEMA.md's
-/// `calendar_event` section and [`crate::calendar`] for the rules.
-///
-/// `calendar_id` optionally puts it in one of the location's [`Calendar`]s. `last_end`
-/// is [`crate::calendar::last_end`] of its timing and recurrence, stored for the index
-/// that finds the events reaching a window.
-#[derive(Clone, Debug, PartialEq)]
-pub struct CalendarEvent {
-    pub id: String,
-    pub location_id: String,
-    pub calendar_id: Option<String>,
-    pub title: String,
-    pub description: String,
-    pub timing: crate::calendar::Timing,
-    pub recurrence: Option<crate::calendar::Recurrence>,
-    pub last_end: u64,
-    /// Notes linked to it, as IDs of live notes at its location, in the order shown (at
-    /// most [`MAX_LINKED_NOTES`]). Each has a `note_ref` owned by it.
-    pub note_ids: Vec<String>,
-    pub created_by: Option<String>,
-    pub updated_by: Option<String>,
-    /// Bumped by every [`CalendarEventUpdateShape`] write.
-    pub version: u64,
-    pub deleted: Option<u64>,
-    pub created_at: u64,
-    pub updated_at: u64,
-}
-
-impl HasID for CalendarEvent {
-    fn id(&self) -> &str {
-        &self.id
-    }
-}
-
-/// The fields of an event being created. See [`CalendarEvent`].
-#[derive(Clone, Debug, PartialEq)]
-pub struct NewCalendarEvent<'a> {
-    /// Made by the caller with [`new_id`], so the notes' `note_ref`s, which name it, can
-    /// be written before it.
-    pub id: &'a str,
-    pub location_id: &'a str,
-    pub calendar_id: Option<&'a str>,
-    pub title: &'a str,
-    pub description: &'a str,
-    pub timing: crate::calendar::Timing,
-    pub recurrence: Option<crate::calendar::Recurrence>,
-    pub note_ids: &'a [String],
-    pub created_by: Option<&'a str>,
-}
-
-/// Every write to an event. Each fails with [`Error::NotFound`] when it does not exist,
-/// is deleted or — for `Fields` — is no longer at `expected_version`. Each returns the
-/// event as it is after the write.
-#[derive(Clone, Debug, PartialEq)]
-pub enum CalendarEventUpdateShape<'a> {
-    /// Replace the editable fields. An absent calendar or recurrence, or an empty
-    /// description, is removed.
-    Fields {
-        calendar_id: Option<&'a str>,
-        title: &'a str,
-        description: &'a str,
-        timing: crate::calendar::Timing,
-        recurrence: Option<crate::calendar::Recurrence>,
-        /// Empty removes every link.
-        note_ids: &'a [String],
-        by: Option<&'a str>,
-        expected_version: u64,
-    },
-    /// Soft-delete the event.
-    Delete { by: Option<&'a str> },
 }
 
 /// A meeting in a location's Agendas ("Agendas" in Tally): a scheduled meeting with its
@@ -2254,6 +2153,7 @@ pub struct ListAuditEntriesQuery {
 /// | Notes and note folders | [`NoteStore`] | `notes.rs` |
 /// | Equipment, its log and reservations | [`EquipmentStore`] | `equipment.rs` |
 /// | Map pins and layers | [`MapStore`] | `map.rs` |
+/// | Calendars and calendar events | [`CalendarStore`] | `calendar.rs` |
 ///
 /// The file of that name under `db/` holds the row types and the trait; the ones under
 /// `dynamodb/`, `audit/`, `mockdb/` and `tests/common/` hold each implementation.
@@ -2268,7 +2168,9 @@ pub struct ListAuditEntriesQuery {
 ///
 /// Domain traits have no default methods either, so `AuditingHandler` still fails to
 /// compile until a new write is classified as audited or passed through.
-pub trait Handler: Sync + TaskStore + NoteStore + EquipmentStore + MapStore {
+pub trait Handler:
+    Sync + TaskStore + NoteStore + EquipmentStore + MapStore + CalendarStore
+{
     fn get_users<T: AsRef<str> + Sync>(
         &self,
         ids: &[T],
@@ -2893,53 +2795,6 @@ pub trait Handler: Sync + TaskStore + NoteStore + EquipmentStore + MapStore {
     ) -> impl Future<Output = Result<Option<EphemeralState>>> + Send;
 
     fn delete_ephemeral_state(&self, id: &str) -> impl Future<Output = Result<()>> + Send;
-
-    // ── Calendar ──────────────────────────────────────────────────────────────
-
-    fn get_calendars<T: AsRef<str> + Sync>(
-        &self,
-        ids: &[T],
-    ) -> impl Future<Output = Result<Vec<Option<Calendar>>>> + Send;
-    /// A location's calendars, deleted ones left out.
-    fn list_calendars(
-        &self,
-        location_id: &str,
-    ) -> impl Future<Output = Result<Vec<Calendar>>> + Send;
-    fn create_calendar(
-        &self,
-        location_id: &str,
-        name: &str,
-        color: &str,
-        created_by: Option<&str>,
-    ) -> impl Future<Output = Result<Calendar>> + Send;
-    fn update_calendar(
-        &self,
-        id: &str,
-        change: CalendarUpdateShape<'_>,
-    ) -> impl Future<Output = Result<Calendar>> + Send;
-
-    fn get_calendar_events<T: AsRef<str> + Sync>(
-        &self,
-        ids: &[T],
-    ) -> impl Future<Output = Result<Vec<Option<CalendarEvent>>>> + Send;
-    /// A location's events whose last occurrence ends after `ending_after` (Unix
-    /// seconds), deleted ones left out, in no particular order. Reads a GSI keyed on
-    /// `last_end`, so finished events cost nothing, and a write may take a moment to
-    /// show up.
-    fn list_calendar_events(
-        &self,
-        location_id: &str,
-        ending_after: u64,
-    ) -> impl Future<Output = Result<Vec<CalendarEvent>>> + Send;
-    fn create_calendar_event(
-        &self,
-        event: NewCalendarEvent<'_>,
-    ) -> impl Future<Output = Result<CalendarEvent>> + Send;
-    fn update_calendar_event(
-        &self,
-        id: &str,
-        change: CalendarEventUpdateShape<'_>,
-    ) -> impl Future<Output = Result<CalendarEvent>> + Send;
 
     // ── On Call ───────────────────────────────────────────────────────────────
 

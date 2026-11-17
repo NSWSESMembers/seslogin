@@ -23,7 +23,7 @@ use super::query::Location;
 use super::{CalendarId, LocationId};
 use crate::app::{App, HasDb};
 use crate::calendar::{self as rules, Recurrence, Repeat, Timing};
-use crate::db::{self, Handler};
+use crate::db::{self, CalendarStore, Handler};
 
 /// The palette a calendar's colour is picked from. Clients decide how each looks.
 #[derive(Enum, Copy, Clone, Debug, Eq, PartialEq)]
