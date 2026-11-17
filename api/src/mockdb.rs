@@ -13,6 +13,7 @@ mod notifications;
 mod on_call;
 mod shared_contacts;
 mod tasks;
+mod trophies;
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct Handler;
@@ -699,35 +700,6 @@ impl db::Handler for Handler {
     }
 
     async fn delete_ephemeral_state(&self, _id: &str) -> db::Result<()> {
-        Self::unsupported()
-    }
-
-    async fn list_trophy_holders(&self, _location_id: &str) -> db::Result<Vec<db::TrophyHolder>> {
-        Self::unsupported()
-    }
-
-    async fn list_trophy_reigns(
-        &self,
-        _location_id: &str,
-        _trophy_id: &str,
-        _limit: usize,
-    ) -> db::Result<Vec<db::TrophyReign>> {
-        Self::unsupported()
-    }
-
-    async fn write_trophy(&self, _write: db::TrophyWrite) -> db::Result<()> {
-        Self::unsupported()
-    }
-
-    async fn list_trophy_notices(
-        &self,
-        _location_id: &str,
-        _person_id: &str,
-    ) -> db::Result<Vec<db::TrophyNotice>> {
-        Self::unsupported()
-    }
-
-    async fn delete_trophy_notices(&self, _notices: &[db::TrophyNotice]) -> db::Result<()> {
         Self::unsupported()
     }
 
