@@ -1,5 +1,5 @@
 //! Coverage for the SES details exposed on `Person` (contact details, unit assignments)
-//! and `Location` (code, zone, coordinates, addresses, accreditations).
+//! and `Location` (code, zone, directory entity).
 //!
 //! These are personal and unit contact details, so they need access to the person's
 //! *primary* location and are never served to a kiosk — unlike `Person`'s identity fields,
@@ -157,11 +157,8 @@ const PERSON: &str = r#"{ person(id: "bob") {
 } }"#;
 
 const LOCATION: &str = r#"{ location(id: "loc-a") {
-    code latitude longitude sesDirectoryEntityId
+    code sesDirectoryEntityId
     zone { id name }
-    address { formatted line1 } postalAddress { formatted }
-    email phone
-    accreditations { type status number note }
 } }"#;
 
 #[tokio::test]
@@ -258,22 +255,10 @@ async fn read_only_user_reads_the_location_details() {
     let data = response.data.into_json().unwrap();
     let l = &data["location"];
     assert_eq!(l["code"], "TST-A");
-    assert_eq!(l["latitude"], -33.5);
-    assert_eq!(l["longitude"], 151.25);
     assert_eq!(l["sesDirectoryEntityId"], "70001");
     // The zone's name, though the caller has no access to the zone itself.
     assert_eq!(l["zone"]["id"], "loc-z");
     assert_eq!(l["zone"]["name"], "Zone Z");
-    assert_eq!(
-        l["address"]["formatted"],
-        "1 Example Street, Exampleville NSW 2000"
-    );
-    assert!(l["postalAddress"].is_null());
-    assert_eq!(l["email"], "unit-a@example.com");
-    assert_eq!(l["phone"], "02 5550 0100");
-    assert_eq!(l["accreditations"][0]["type"], "Flood Rescue");
-    assert_eq!(l["accreditations"][0]["status"], "Accredited");
-    assert!(l["accreditations"][0]["number"].is_null());
 }
 
 #[tokio::test]

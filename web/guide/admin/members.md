@@ -71,9 +71,8 @@ update: contact details and units are refreshed once a day, early each morning.
 
 Next to **Last successful member sync** at the top of the list, press **Unit
 details** to see what SES holds about your unit: its SES code and ID, its
-zone, location on a map, street and postal addresses, contact email and phone, and
-rescue accreditations with their status. Like the member panel it is read-only,
-and it is refreshed once a day.
+zone, and its SES directory entry. Like the member panel it is read-only, and it
+is refreshed once a day.
 
 ## When members leave your unit
 

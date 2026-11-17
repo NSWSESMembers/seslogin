@@ -819,41 +819,6 @@ pub struct PersonUnitAssignment {
     pub updated_at: Option<i64>,
 }
 
-/// A unit's address from the SES directory.
-#[derive(SimpleObject, Clone, Debug)]
-pub struct LocationAddress {
-    pub line1: Option<String>,
-    pub line2: Option<String>,
-    pub suburb: Option<String>,
-    pub state: Option<String>,
-    pub postcode: Option<String>,
-    /// The whole address on one line, when the directory supplies it.
-    pub formatted: Option<String>,
-}
-
-impl From<&db::LocationAddress> for LocationAddress {
-    fn from(a: &db::LocationAddress) -> Self {
-        Self {
-            line1: a.line1.clone(),
-            line2: a.line2.clone(),
-            suburb: a.suburb.clone(),
-            state: a.state.clone(),
-            postcode: a.postcode.clone(),
-            formatted: a.formatted.clone(),
-        }
-    }
-}
-
-/// One of a unit's rescue accreditations from the SES API.
-#[derive(SimpleObject, Clone, Debug)]
-pub struct LocationAccreditation {
-    #[graphql(name = "type")]
-    pub accreditation_type: String,
-    pub status: Option<String>,
-    pub number: Option<String>,
-    pub note: Option<String>,
-}
-
 #[Object]
 impl<A: App + HasDb + Send + Sync> Person<A> {
     async fn id(&self) -> ID {
@@ -2501,20 +2466,6 @@ impl<A: App + HasDb + Send + Sync> Location<A> {
         Ok(self.rec.ses_details.code.clone())
     }
 
-    /// Latitude from the SES API. Same access as `code`.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::UserOrApiToken)")]
-    async fn latitude(&self, ctx: &Context<'_>) -> Result<Option<f64>> {
-        require_location_access(ctx, &self.rec.id)?;
-        Ok(self.rec.ses_details.latitude)
-    }
-
-    /// Longitude from the SES API. Same access as `code`.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::UserOrApiToken)")]
-    async fn longitude(&self, ctx: &Context<'_>) -> Result<Option<f64>> {
-        require_location_access(ctx, &self.rec.id)?;
-        Ok(self.rec.ses_details.longitude)
-    }
-
     /// The SES zone this unit is in, itself a location. Units only. Same access as
     /// `code`; the zone's own fields keep their own checks.
     #[graphql(guard = "AuthGuard::new(AuthRequirement::UserOrApiToken)")]
@@ -2536,56 +2487,6 @@ impl<A: App + HasDb + Send + Sync> Location<A> {
     async fn ses_directory_entity_id(&self, ctx: &Context<'_>) -> Result<Option<String>> {
         require_location_access(ctx, &self.rec.id)?;
         Ok(self.rec.directory_details.entity_id.clone())
-    }
-
-    /// The unit's street address from the directory. Same access as `code`.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::UserOrApiToken)")]
-    async fn address(&self, ctx: &Context<'_>) -> Result<Option<LocationAddress>> {
-        require_location_access(ctx, &self.rec.id)?;
-        Ok(self.rec.directory_details.address.as_ref().map(Into::into))
-    }
-
-    /// The unit's postal address from the directory. Same access as `code`.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::UserOrApiToken)")]
-    async fn postal_address(&self, ctx: &Context<'_>) -> Result<Option<LocationAddress>> {
-        require_location_access(ctx, &self.rec.id)?;
-        Ok(self
-            .rec
-            .directory_details
-            .postal_address
-            .as_ref()
-            .map(Into::into))
-    }
-
-    /// The unit's contact email from the directory. Same access as `code`.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::UserOrApiToken)")]
-    async fn email(&self, ctx: &Context<'_>) -> Result<Option<String>> {
-        require_location_access(ctx, &self.rec.id)?;
-        Ok(self.rec.directory_details.email.clone())
-    }
-
-    /// The unit's contact phone from the directory. Same access as `code`.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::UserOrApiToken)")]
-    async fn phone(&self, ctx: &Context<'_>) -> Result<Option<String>> {
-        require_location_access(ctx, &self.rec.id)?;
-        Ok(self.rec.directory_details.phone.clone())
-    }
-
-    /// The unit's rescue accreditations, sorted by type. Same access as `code`.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::UserOrApiToken)")]
-    async fn accreditations(&self, ctx: &Context<'_>) -> Result<Vec<LocationAccreditation>> {
-        require_location_access(ctx, &self.rec.id)?;
-        Ok(
-            ses_details::read_accreditations(&self.rec.id, self.rec.accreditations.as_deref())
-                .into_iter()
-                .map(|a| LocationAccreditation {
-                    accreditation_type: a.accreditation_type,
-                    status: a.status,
-                    number: a.number,
-                    note: a.note,
-                })
-                .collect(),
-        )
     }
 
     async fn created_at(&self) -> i64 {
