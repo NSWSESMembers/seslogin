@@ -15,6 +15,7 @@ mod on_call;
 mod shared_contacts;
 mod tasks;
 mod trophies;
+mod user_tokens;
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct Handler;
@@ -535,32 +536,6 @@ impl db::Handler for Handler {
         &self,
         _page: db::ListTestPaginationPage,
     ) -> db::Result<Vec<db::TestPaginationRow>> {
-        Self::unsupported()
-    }
-
-    async fn create_user_token(
-        &self,
-        _id: &str,
-        _token_hash: &str,
-        _user_id: &str,
-        _expires_at: u64,
-    ) -> db::Result<db::UserToken> {
-        Self::unsupported()
-    }
-
-    async fn get_user_token(&self, _id: &str) -> db::Result<Option<db::UserToken>> {
-        Self::unsupported()
-    }
-
-    async fn update_user_token(
-        &self,
-        _id: &str,
-        _change: db::UserTokenUpdateShape,
-    ) -> db::Result<()> {
-        Self::unsupported()
-    }
-
-    async fn delete_user_token(&self, _id: &str) -> db::Result<()> {
         Self::unsupported()
     }
 

@@ -28,6 +28,8 @@ mod trophies;
 pub use trophies::*;
 mod login_codes;
 pub use login_codes::*;
+mod user_tokens;
+pub use user_tokens::*;
 
 const NANOID_ALPHABET: [char; 62] = [
     '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I',
@@ -922,21 +924,6 @@ impl HasID for Category {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub struct UserToken {
-    pub id: String,
-    pub token_hash: String,
-    pub user_id: String,
-    pub created_at: u64,
-    pub expires_at: u64,
-    pub last_used_at: Option<u64>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum UserTokenUpdateShape {
-    TouchLastUsed,
-}
-
 /// One authorized OAuth client for a user (MCP and, later, other audiences). Holds
 /// both the current access and refresh token hashes — a grant is the unit of
 /// revocation, so rotating either token rewrites the same row rather than creating a
@@ -1573,6 +1560,7 @@ pub struct ListAuditEntriesQuery {
 /// | Notifications | [`NotificationStore`] | `notifications.rs` |
 /// | Perpetual trophies | [`TrophyStore`] | `trophies.rs` |
 /// | Email login codes | [`LoginCodeStore`] | `login_codes.rs` |
+/// | User tokens | [`UserTokenStore`] | `user_tokens.rs` |
 ///
 /// The file of that name under `db/` holds the row types and the trait; the ones under
 /// `dynamodb/`, `audit/`, `mockdb/` and `tests/common/` hold each implementation.
@@ -1601,6 +1589,7 @@ pub trait Handler:
     + NotificationStore
     + TrophyStore
     + LoginCodeStore
+    + UserTokenStore
 {
     fn get_users<T: AsRef<str> + Sync>(
         &self,
@@ -2074,29 +2063,6 @@ pub trait Handler:
         event_id: &str,
         synced_version: u64,
     ) -> impl Future<Output = Result<()>> + Send;
-
-    // ── User tokens (opaque, hashed, sliding expiry) ─────────────────────────
-
-    /// Caller supplies the id: it is embedded in the token (`slu_<id>.<secret>`), so
-    /// it has to exist before the token can be minted and hashed.
-    fn create_user_token(
-        &self,
-        id: &str,
-        token_hash: &str,
-        user_id: &str,
-        expires_at: u64,
-    ) -> impl Future<Output = Result<UserToken>> + Send;
-
-    /// Strongly consistent, so a token is verifiable the moment it's issued.
-    fn get_user_token(&self, id: &str) -> impl Future<Output = Result<Option<UserToken>>> + Send;
-
-    fn update_user_token(
-        &self,
-        id: &str,
-        change: UserTokenUpdateShape,
-    ) -> impl Future<Output = Result<()>> + Send;
-
-    fn delete_user_token(&self, id: &str) -> impl Future<Output = Result<()>> + Send;
 
     // ── OAuth grants (MCP access/refresh tokens) ─────────────────────────────
 

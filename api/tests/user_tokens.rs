@@ -8,7 +8,7 @@ use sha2::{Digest, Sha256};
 use common::{FakeDb, fake_app, seed_user};
 use seslogin::app::MyApp;
 use seslogin::auth::{self, AuthError, AuthInfo};
-use seslogin::db::Handler as _;
+use seslogin::db::UserTokenStore as _;
 use seslogin::{mockmail, mockqueue, mockrealtime, mockstorage};
 
 type FakeApp = MyApp<
