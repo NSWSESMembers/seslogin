@@ -135,28 +135,7 @@ const location = {
   name: "Test A Unit",
   sesApiHeadquartersId: "900001",
   code: "TST-A",
-  latitude: -33.5,
-  longitude: 151.25,
   sesDirectoryEntityId: "70001",
-  address: {
-    line1: "1 Example Street",
-    line2: null,
-    suburb: "Exampleville",
-    state: "NSW",
-    postcode: "2000",
-    formatted: null,
-  },
-  postalAddress: null,
-  email: "unit@example.com",
-  phone: "02 5550 0100",
-  accreditations: [
-    {
-      type: "Flood Rescue",
-      status: "Accredited",
-      number: "FR-1",
-      note: null,
-    },
-  ],
 };
 
 describe("LocationDetailsDialog", () => {
@@ -174,17 +153,21 @@ describe("LocationDetailsDialog", () => {
           path?.at(-1) === "zone" ? { name: "Test Zone" } : location,
       },
     );
-    expect(
-      await screen.findByText("1 Example Street, Exampleville NSW 2000"),
-    ).toBeInTheDocument();
-    expect(screen.getByText("TST-A")).toBeInTheDocument();
+    expect(await screen.findByText("TST-A")).toBeInTheDocument();
     expect(screen.getByText("Test Zone")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "-33.5, 151.25" })).toHaveAttribute(
-      "href",
-      "https://www.google.com/maps?q=-33.5,151.25",
-    );
-    expect(screen.getByText("Flood Rescue")).toBeInTheDocument();
-    expect(screen.getByText(/FR-1/)).toBeInTheDocument();
+    expect(screen.getByText("900001")).toBeInTheDocument();
+    expect(screen.getByText("70001")).toBeInTheDocument();
+    for (const gone of [
+      "Coordinates",
+      "Address",
+      "Postal address",
+      "Email",
+      "Phone",
+      "Accreditations",
+    ]) {
+      expect(screen.queryByText(gone)).not.toBeInTheDocument();
+    }
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
     expect(onClose).toHaveBeenCalledTimes(1);
@@ -202,20 +185,12 @@ describe("LocationDetailsDialog", () => {
           ...location,
           code: null,
           zone: null,
-          latitude: null,
-          longitude: null,
-          address: null,
-          email: null,
-          phone: null,
-          accreditations: [],
+          sesDirectoryEntityId: null,
         }),
       },
     );
-    expect(await screen.findByText("Accreditations")).toBeInTheDocument();
-    expect(screen.getByText("None recorded")).toBeInTheDocument();
-    expect(
-      screen.queryByRole("link", { name: /maps/ }),
-    ).not.toBeInTheDocument();
+    expect(await screen.findByText("Code")).toBeInTheDocument();
+    expect(screen.getAllByText("—")).toHaveLength(3);
     expect(screen.queryByText(/null/)).not.toBeInTheDocument();
   });
 });

@@ -899,14 +899,6 @@ type Location {
 	"""
 	code: String
 	"""
-	Latitude from the SES API. Same access as `code`.
-	"""
-	latitude: Float
-	"""
-	Longitude from the SES API. Same access as `code`.
-	"""
-	longitude: Float
-	"""
 	The SES zone this unit is in, itself a location. Units only. Same access as
 	`code`; the zone's own fields keep their own checks.
 	"""
@@ -915,26 +907,6 @@ type Location {
 	The SES intranet directory entity this unit resolved to. Same access as `code`.
 	"""
 	sesDirectoryEntityId: String
-	"""
-	The unit's street address from the directory. Same access as `code`.
-	"""
-	address: LocationAddress
-	"""
-	The unit's postal address from the directory. Same access as `code`.
-	"""
-	postalAddress: LocationAddress
-	"""
-	The unit's contact email from the directory. Same access as `code`.
-	"""
-	email: String
-	"""
-	The unit's contact phone from the directory. Same access as `code`.
-	"""
-	phone: String
-	"""
-	The unit's rescue accreditations, sorted by type. Same access as `code`.
-	"""
-	accreditations: [LocationAccreditation!]!
 	createdAt: Int!
 	updatedAt: Int!
 	people: [Person!]!
@@ -963,31 +935,6 @@ type Location {
 	"""
 	trophies: [Trophy!]!
 	badgeLeaderboard(limit: Int): [LocationBadgeLeaderboardEntry!]!
-}
-
-"""
-One of a unit's rescue accreditations from the SES API.
-"""
-type LocationAccreditation {
-	type: String!
-	status: String
-	number: String
-	note: String
-}
-
-"""
-A unit's address from the SES directory.
-"""
-type LocationAddress {
-	line1: String
-	line2: String
-	suburb: String
-	state: String
-	postcode: String
-	"""
-	The whole address on one line, when the directory supplies it.
-	"""
-	formatted: String
 }
 
 type LocationBadgeLeaderboardEntry {
