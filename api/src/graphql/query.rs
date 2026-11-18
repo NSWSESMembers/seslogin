@@ -46,7 +46,6 @@ use super::notifications::{self, NotificationConnection};
 use super::on_call::{self, OnCallRole};
 use super::reservations::{self, EquipmentReservation};
 use super::self_sign_in::{self, SelfSignInStatus};
-use super::ses_details;
 use super::shared_contacts::{self, SharedContact};
 use super::tally;
 use super::tasks::{self, Task};
@@ -798,14 +797,6 @@ pub struct PersonBadgeProgress {
     pub target: Option<i64>,
 }
 
-/// A phone number the SES directory lists for a member.
-#[derive(SimpleObject, Clone, Debug)]
-pub struct PersonPhone {
-    pub number: String,
-    /// The directory's contact types for the number (Primary Telephone, SMS, ...).
-    pub types: Vec<String>,
-}
-
 /// A directory entity (unit, cluster, team, section, ...) a member is assigned to.
 #[derive(SimpleObject, Clone, Debug)]
 pub struct PersonUnitAssignment {
@@ -866,30 +857,6 @@ impl<A: App + HasDb + Send + Sync> Person<A> {
     async fn preferred_name(&self, ctx: &Context<'_>) -> Result<Option<String>> {
         require_person_access(ctx, &self.rec)?;
         Ok(self.rec.preferred_name.clone())
-    }
-
-    /// The member's mobile number from the SES directory (E.164). Same access as
-    /// `preferredName`.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::UserOrApiToken)")]
-    async fn mobile(&self, ctx: &Context<'_>) -> Result<Option<String>> {
-        require_person_access(ctx, &self.rec)?;
-        Ok(self.rec.mobile.clone())
-    }
-
-    /// Every phone number the SES directory lists, mobile first. Same access as
-    /// `preferredName`.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::UserOrApiToken)")]
-    async fn phones(&self, ctx: &Context<'_>) -> Result<Vec<PersonPhone>> {
-        require_person_access(ctx, &self.rec)?;
-        Ok(
-            ses_details::read_phones(&self.rec.id, self.rec.phones.as_deref())
-                .into_iter()
-                .map(|p| PersonPhone {
-                    number: p.number,
-                    types: p.types,
-                })
-                .collect(),
-        )
     }
 
     /// The SES directory entities the member is assigned to, primary first and then by

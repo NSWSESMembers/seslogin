@@ -53,9 +53,7 @@ The panel shows:
 
 - their name, and the name they prefer to be called if SES has one;
 - their SES ID and member number;
-- their email address, mobile number and any other phone numbers, with what
-  each number is used for. Tap an email address or number to start a message or
-  call;
+- their email address. Tap it to start an email;
 - their **units**: every unit, cluster or team they are assigned to in SES.
   Their main unit is marked **Primary**.
 

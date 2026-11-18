@@ -17,11 +17,6 @@ function MemberDetails({ personId }: { personId: string }) {
           registrationNumber
           sesApiPersonId
           email
-          mobile
-          phones {
-            number
-            types
-          }
           units {
             entityId
             entityName
@@ -35,8 +30,6 @@ function MemberDetails({ personId }: { personId: string }) {
   );
 
   const name = `${person.firstName} ${person.lastName}`.trim();
-  // The mobile is also in `phones`; list only the others under "Other phones".
-  const otherPhones = person.phones.filter((p) => p.number !== person.mobile);
 
   return (
     <>
@@ -56,30 +49,6 @@ function MemberDetails({ personId }: { personId: string }) {
             NONE
           )}
         </Field>
-        <Field label="Mobile">
-          {person.mobile ? (
-            <TextLink href={`tel:${person.mobile}`}>{person.mobile}</TextLink>
-          ) : (
-            NONE
-          )}
-        </Field>
-        {otherPhones.length > 0 && (
-          <Field label="Other phones">
-            <ul className="m-0 list-none p-0">
-              {otherPhones.map((p) => (
-                <li key={p.number}>
-                  <TextLink href={`tel:${p.number}`}>{p.number}</TextLink>
-                  {p.types.length > 0 && (
-                    <span className="text-ink-muted">
-                      {" "}
-                      ({p.types.join(", ")})
-                    </span>
-                  )}
-                </li>
-              ))}
-            </ul>
-          </Field>
-        )}
       </dl>
 
       <Section title="Units">

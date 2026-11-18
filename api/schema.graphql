@@ -2358,16 +2358,6 @@ type Person {
 	"""
 	preferredName: String
 	"""
-	The member's mobile number from the SES directory (E.164). Same access as
-	`preferredName`.
-	"""
-	mobile: String
-	"""
-	Every phone number the SES directory lists, mobile first. Same access as
-	`preferredName`.
-	"""
-	phones: [PersonPhone!]!
-	"""
 	The SES directory entities the member is assigned to, primary first and then by
 	name. Same access as `preferredName`.
 	"""
@@ -2455,17 +2445,6 @@ type PersonBadgeProgress {
 	"""
 	current: Int
 	target: Int
-}
-
-"""
-A phone number the SES directory lists for a member.
-"""
-type PersonPhone {
-	number: String!
-	"""
-	The directory's contact types for the number (Primary Telephone, SMS, ...).
-	"""
-	types: [String!]!
 }
 
 type PersonRecentCategory {
