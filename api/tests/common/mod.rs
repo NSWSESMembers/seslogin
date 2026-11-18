@@ -19,7 +19,6 @@ use seslogin::db::{self, EphemeralState, Location, OAuthGrant, OAuthGrantUpdateS
 use seslogin::mockmail;
 use seslogin::mockqueue;
 use seslogin::mockrealtime;
-use seslogin::mockstorage;
 use seslogin::server_secret::ServerSecret;
 
 #[allow(dead_code)] // see `seed_super_user`'s doc comment
@@ -1601,8 +1600,7 @@ impl db::Handler for FakeDb {
 
 #[allow(dead_code)] // see `seed_super_user`'s doc comment
 pub(crate) fn fake_app()
--> MyApp<FakeDb, mockqueue::Handler, mockmail::Handler, mockrealtime::Handler, mockstorage::Handler>
-{
+-> MyApp<FakeDb, mockqueue::Handler, mockmail::Handler, mockrealtime::Handler> {
     let key = ServerSecret::new("test-secret");
     app::new(
         FakeDb::default(),
@@ -1611,18 +1609,11 @@ pub(crate) fn fake_app()
         mockqueue::Handler::new(),
         mockmail::Handler::new(),
         mockrealtime::Handler::new("test"),
-        mockstorage::Handler::in_memory(),
     )
 }
 
 pub(crate) fn seed_user(
-    app: &MyApp<
-        FakeDb,
-        mockqueue::Handler,
-        mockmail::Handler,
-        mockrealtime::Handler,
-        mockstorage::Handler,
-    >,
+    app: &MyApp<FakeDb, mockqueue::Handler, mockmail::Handler, mockrealtime::Handler>,
     id: &str,
     enabled: bool,
 ) {
@@ -1651,13 +1642,7 @@ pub(crate) fn seed_user(
 /// looks locations up by id via `get_locations`).
 #[allow(dead_code)] // see `seed_super_user`'s doc comment
 pub(crate) fn seed_location(
-    app: &MyApp<
-        FakeDb,
-        mockqueue::Handler,
-        mockmail::Handler,
-        mockrealtime::Handler,
-        mockstorage::Handler,
-    >,
+    app: &MyApp<FakeDb, mockqueue::Handler, mockmail::Handler, mockrealtime::Handler>,
     id: &str,
     name: &str,
 ) {
@@ -1685,13 +1670,7 @@ pub(crate) fn seed_location(
 /// Insert a [`db::Person`] directly. `ses_api_person_id` set means member sync owns them.
 #[allow(dead_code)] // see `seed_super_user`'s doc comment
 pub(crate) fn seed_person(
-    app: &MyApp<
-        FakeDb,
-        mockqueue::Handler,
-        mockmail::Handler,
-        mockrealtime::Handler,
-        mockstorage::Handler,
-    >,
+    app: &MyApp<FakeDb, mockqueue::Handler, mockmail::Handler, mockrealtime::Handler>,
     id: &str,
     location_id: &str,
     first_name: &str,
@@ -1732,13 +1711,7 @@ pub(crate) fn seed_person(
 /// helper — `cargo test`'s dead-code lint is per binary.
 #[allow(dead_code)]
 pub(crate) fn seed_super_user(
-    app: &MyApp<
-        FakeDb,
-        mockqueue::Handler,
-        mockmail::Handler,
-        mockrealtime::Handler,
-        mockstorage::Handler,
-    >,
+    app: &MyApp<FakeDb, mockqueue::Handler, mockmail::Handler, mockrealtime::Handler>,
     id: &str,
     enabled: bool,
 ) {
@@ -1757,13 +1730,7 @@ pub(crate) fn seed_super_user(
 /// fields, not the OAuth flow that produces a grant.
 #[allow(dead_code)] // see `seed_super_user`'s doc comment
 pub(crate) fn seed_grant(
-    app: &MyApp<
-        FakeDb,
-        mockqueue::Handler,
-        mockmail::Handler,
-        mockrealtime::Handler,
-        mockstorage::Handler,
-    >,
+    app: &MyApp<FakeDb, mockqueue::Handler, mockmail::Handler, mockrealtime::Handler>,
     id: &str,
     user_id: &str,
     client_name: &str,
@@ -1797,13 +1764,7 @@ pub(crate) fn seed_grant(
 /// Insert a [`db::Category`] directly.
 #[allow(dead_code)] // see `seed_super_user`'s doc comment
 pub(crate) fn seed_category(
-    app: &MyApp<
-        FakeDb,
-        mockqueue::Handler,
-        mockmail::Handler,
-        mockrealtime::Handler,
-        mockstorage::Handler,
-    >,
+    app: &MyApp<FakeDb, mockqueue::Handler, mockmail::Handler, mockrealtime::Handler>,
     id: &str,
     name: &str,
     enabled: bool,
@@ -1830,13 +1791,7 @@ pub(crate) fn seed_category(
 /// open when `end_time` is `None`.
 #[allow(dead_code)] // see `seed_super_user`'s doc comment
 pub(crate) fn seed_period(
-    app: &MyApp<
-        FakeDb,
-        mockqueue::Handler,
-        mockmail::Handler,
-        mockrealtime::Handler,
-        mockstorage::Handler,
-    >,
+    app: &MyApp<FakeDb, mockqueue::Handler, mockmail::Handler, mockrealtime::Handler>,
     period: db::Period,
 ) {
     app.db

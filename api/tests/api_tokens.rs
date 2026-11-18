@@ -9,15 +9,9 @@ use common::{FakeDb, fake_app};
 use seslogin::app::MyApp;
 use seslogin::auth::{self, AuthError, AuthInfo};
 use seslogin::db::Handler as _;
-use seslogin::{mockmail, mockqueue, mockrealtime, mockstorage};
+use seslogin::{mockmail, mockqueue, mockrealtime};
 
-type FakeApp = MyApp<
-    FakeDb,
-    mockqueue::Handler,
-    mockmail::Handler,
-    mockrealtime::Handler,
-    mockstorage::Handler,
->;
+type FakeApp = MyApp<FakeDb, mockqueue::Handler, mockmail::Handler, mockrealtime::Handler>;
 
 fn sha256_hex(s: &str) -> String {
     hex::encode(Sha256::digest(s.as_bytes()))

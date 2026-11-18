@@ -17,15 +17,9 @@ use seslogin::app::MyApp;
 use seslogin::auth::AuthInfo;
 use seslogin::db::{self, TrophyNoticeKind};
 use seslogin::graphql;
-use seslogin::{mockmail, mockqueue, mockrealtime, mockstorage};
+use seslogin::{mockmail, mockqueue, mockrealtime};
 
-type TestApp = MyApp<
-    FakeDb,
-    mockqueue::Handler,
-    mockmail::Handler,
-    mockrealtime::Handler,
-    mockstorage::Handler,
->;
+type TestApp = MyApp<FakeDb, mockqueue::Handler, mockmail::Handler, mockrealtime::Handler>;
 
 const DAY: u64 = 24 * 60 * 60;
 

@@ -9,15 +9,9 @@ mod common;
 use common::{FakeDb, fake_app, seed_location, seed_period, seed_person};
 use seslogin::app::MyApp;
 use seslogin::db::{self, TrophyEndReason, TrophyNoticeKind};
-use seslogin::{mockmail, mockqueue, mockrealtime, mockstorage, trophy_nightly};
+use seslogin::{mockmail, mockqueue, mockrealtime, trophy_nightly};
 
-type App = MyApp<
-    FakeDb,
-    mockqueue::Handler,
-    mockmail::Handler,
-    mockrealtime::Handler,
-    mockstorage::Handler,
->;
+type App = MyApp<FakeDb, mockqueue::Handler, mockmail::Handler, mockrealtime::Handler>;
 
 const DAY: u64 = 24 * 60 * 60;
 const HOUR: u64 = 60 * 60;

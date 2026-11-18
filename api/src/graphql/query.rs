@@ -19,7 +19,7 @@ use xxhash_rust::xxh64::xxh64;
 
 use crate::app::App;
 use crate::app::HasDb;
-use crate::app::{HasRealtime, HasStorage};
+use crate::app::HasRealtime;
 use crate::auth::AuthInfo;
 use crate::badges;
 use crate::db;
@@ -2032,15 +2032,10 @@ pub(super) async fn build_quick_pick<A: App + HasDb + Send + Sync + 'static>(
 mod leaderboard_rank_tests {
     use super::*;
     use crate::app::MyApp;
-    use crate::{mockdb, mockmail, mockqueue, mockrealtime, mockstorage};
+    use crate::{mockdb, mockmail, mockqueue, mockrealtime};
 
-    type TestApp = MyApp<
-        mockdb::Handler,
-        mockqueue::Handler,
-        mockmail::Handler,
-        mockrealtime::Handler,
-        mockstorage::Handler,
-    >;
+    type TestApp =
+        MyApp<mockdb::Handler, mockqueue::Handler, mockmail::Handler, mockrealtime::Handler>;
 
     fn ranks(badge_counts: &[i64]) -> Vec<i64> {
         let mut board: Vec<LocationBadgeLeaderboardEntry<TestApp>> = badge_counts
@@ -3901,7 +3896,7 @@ fn make_ses_client() -> Result<ses_api::SesClient> {
 }
 
 #[Object]
-impl<A: App + HasDb + HasRealtime + HasStorage + Send + Sync + 'static> QueryRoot<A> {
+impl<A: App + HasDb + HasRealtime + Send + Sync + 'static> QueryRoot<A> {
     /// Build and deployment information about this API server.
     ///
     /// Deliberately unauthenticated — the only root field that is. The home page is
