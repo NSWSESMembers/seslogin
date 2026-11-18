@@ -69,11 +69,6 @@ fn app() -> Arc<TestApp> {
     {
         let mut persons = app.db.persons.lock().unwrap();
         let bob = persons.get_mut("bob").unwrap();
-        bob.mobile = Some("+61400000123".into());
-        bob.phones = Some(
-            r#"[{"number":"+61400000123","types":["SMS"]},{"number":"+61255500142","types":["Home Telephone"]}]"#
-                .into(),
-        );
         bob.preferred_name = Some("Bobby".into());
     }
     app.db.person_units.lock().unwrap().insert(
@@ -151,8 +146,7 @@ fn assert_forbidden(response: &async_graphql::Response) {
 }
 
 const PERSON: &str = r#"{ person(id: "bob") {
-    preferredName mobile
-    phones { number types }
+    preferredName
     units { entityId entityName isPrimary locationId }
 } }"#;
 
@@ -169,9 +163,6 @@ async fn read_only_user_of_the_primary_location_reads_the_person_details() {
     let data = response.data.into_json().unwrap();
     let p = &data["person"];
     assert_eq!(p["preferredName"], "Bobby");
-    assert_eq!(p["mobile"], "+61400000123");
-    assert_eq!(p["phones"][1]["number"], "+61255500142");
-    assert_eq!(p["phones"][1]["types"][0], "Home Telephone");
     // Primary first, then by name.
     let names: Vec<_> = p["units"]
         .as_array()
@@ -186,26 +177,12 @@ async fn read_only_user_of_the_primary_location_reads_the_person_details() {
 }
 
 #[tokio::test]
-async fn unreadable_json_yields_empty_lists_not_an_error() {
-    let app = app();
-    {
-        let mut persons = app.db.persons.lock().unwrap();
-        let bob = persons.get_mut("bob").unwrap();
-        bob.phones = Some("not json".into());
-    }
-    let response = run(&app, user(&[], &["loc-a"]), PERSON).await;
-    assert!(response.errors.is_empty(), "{:?}", response.errors);
-    let data = response.data.into_json().unwrap();
-    assert_eq!(data["person"]["phones"].as_array().unwrap().len(), 0);
-}
-
-#[tokio::test]
 async fn user_without_access_to_the_primary_location_is_refused_the_person_details() {
     let app = app();
     seed_person(&app, "carol", "loc-b", "Carol", "Cole", "20000009", None);
     // Another unit's member, reached by id: `Query.person` refuses first, so this also
     // covers the primary-location check the fields repeat.
-    let query = r#"{ person(id: "carol") { mobile } }"#;
+    let query = r#"{ person(id: "carol") { preferredName } }"#;
     assert_forbidden(&run(&app, user(&["loc-a"], &[]), query).await);
     assert_forbidden(&run(&app, user(&[], &["loc-a"]), query).await);
 }
@@ -223,12 +200,7 @@ fn assert_not_for_kiosks(response: &async_graphql::Response) {
 #[tokio::test]
 async fn kiosk_is_refused_the_person_details_even_at_the_primary_location() {
     let app = app();
-    for field in [
-        "preferredName",
-        "mobile",
-        "phones { number }",
-        "units { entityId }",
-    ] {
+    for field in ["preferredName", "units { entityId }"] {
         let query = format!(r#"{{ person(id: "bob") {{ {field} }} }}"#);
         assert_not_for_kiosks(&run(&app, kiosk_at("loc-a"), &query).await);
     }

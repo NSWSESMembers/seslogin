@@ -85,7 +85,6 @@ fn app() -> Arc<TestApp> {
         let dana = people.get_mut("dana").unwrap();
         dana.secondary_location_ids = vec!["loc-a".to_string()];
         dana.preferred_name = Some("Dee".to_string());
-        dana.mobile = Some("+61400000456".to_string());
     }
     Arc::new(app)
 }
@@ -120,7 +119,7 @@ fn assert_forbidden(response: &async_graphql::Response) {
     );
 }
 
-const PERSON: &str = r#"{ person(id: "dana") { id preferredName mobile phones { number }
+const PERSON: &str = r#"{ person(id: "dana") { id preferredName
     units { entityName } lastPeriod { id } } }"#;
 const BY_NUMBER: &str = r#"{ personByRegistrationNumber(memberNumber: "20000002") { id } }"#;
 
@@ -137,7 +136,6 @@ async fn users_and_tokens_at_a_secondary_unit_read_the_member() {
         let data = json(&run(&app, auth.clone(), PERSON).await);
         assert_eq!(data["person"]["id"], "dana");
         assert_eq!(data["person"]["preferredName"], "Dee");
-        assert_eq!(data["person"]["mobile"], "+61400000456");
 
         let data = json(&run(&app, auth, BY_NUMBER).await);
         assert_eq!(data["personByRegistrationNumber"]["id"], "dana");
@@ -165,7 +163,7 @@ async fn a_kiosk_cannot_read_the_contact_fields_even_at_a_secondary_unit() {
         let response = run(
             &app,
             kiosk_at(location),
-            r#"{ person(id: "dana") { id mobile } }"#,
+            r#"{ person(id: "dana") { id units { entityId } } }"#,
         )
         .await;
         assert!(!response.errors.is_empty(), "{location}");

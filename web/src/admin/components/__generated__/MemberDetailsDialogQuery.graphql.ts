@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<31fded82867918ddb1d51ed18eb1b735>>
+ * @generated SignedSource<<7d76c9268946b9e8a016cc26bc7f1928>>
  * @lightSyntaxTransform
  */
 
@@ -16,11 +16,6 @@ export type MemberDetailsDialogQuery$data = {
     readonly email: string | null | undefined;
     readonly firstName: string;
     readonly lastName: string;
-    readonly mobile: string | null | undefined;
-    readonly phones: ReadonlyArray<{
-      readonly number: string;
-      readonly types: ReadonlyArray<string>;
-    }>;
     readonly preferredName: string | null | undefined;
     readonly registrationNumber: string | null | undefined;
     readonly sesApiPersonId: string | null | undefined;
@@ -97,38 +92,6 @@ v7 = {
 v8 = {
   "alias": null,
   "args": null,
-  "kind": "ScalarField",
-  "name": "mobile",
-  "storageKey": null
-},
-v9 = {
-  "alias": null,
-  "args": null,
-  "concreteType": "PersonPhone",
-  "kind": "LinkedField",
-  "name": "phones",
-  "plural": true,
-  "selections": [
-    {
-      "alias": null,
-      "args": null,
-      "kind": "ScalarField",
-      "name": "number",
-      "storageKey": null
-    },
-    {
-      "alias": null,
-      "args": null,
-      "kind": "ScalarField",
-      "name": "types",
-      "storageKey": null
-    }
-  ],
-  "storageKey": null
-},
-v10 = {
-  "alias": null,
-  "args": null,
   "concreteType": "PersonUnitAssignment",
   "kind": "LinkedField",
   "name": "units",
@@ -188,9 +151,7 @@ return {
           (v5/*:: as any*/),
           (v6/*:: as any*/),
           (v7/*:: as any*/),
-          (v8/*:: as any*/),
-          (v9/*:: as any*/),
-          (v10/*:: as any*/)
+          (v8/*:: as any*/)
         ],
         "storageKey": null
       }
@@ -219,8 +180,6 @@ return {
           (v6/*:: as any*/),
           (v7/*:: as any*/),
           (v8/*:: as any*/),
-          (v9/*:: as any*/),
-          (v10/*:: as any*/),
           {
             "alias": null,
             "args": null,
@@ -234,16 +193,16 @@ return {
     ]
   },
   "params": {
-    "cacheID": "8212382d09a0d61d85cd28cea47d3850",
+    "cacheID": "496cfbcc3ac09d257dbe90bfb94e770d",
     "id": null,
     "metadata": {},
     "name": "MemberDetailsDialogQuery",
     "operationKind": "query",
-    "text": "query MemberDetailsDialogQuery(\n  $id: ID!\n) {\n  person(id: $id) {\n    firstName\n    lastName\n    preferredName\n    registrationNumber\n    sesApiPersonId\n    email\n    mobile\n    phones {\n      number\n      types\n    }\n    units {\n      entityId\n      entityName\n      entityCode\n      isPrimary\n    }\n    id\n  }\n}\n"
+    "text": "query MemberDetailsDialogQuery(\n  $id: ID!\n) {\n  person(id: $id) {\n    firstName\n    lastName\n    preferredName\n    registrationNumber\n    sesApiPersonId\n    email\n    units {\n      entityId\n      entityName\n      entityCode\n      isPrimary\n    }\n    id\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "926ecaf841f91eaa99a86bd05e6ca0d8";
+(node as any).hash = "f770b0021d0b84b06f7d01f731377a2d";
 
 export default node;

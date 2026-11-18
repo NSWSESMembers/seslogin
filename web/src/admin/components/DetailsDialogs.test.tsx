@@ -36,11 +36,6 @@ const person = {
   registrationNumber: "10000002",
   sesApiPersonId: "55",
   email: "bob@example.com",
-  mobile: "+61400000123",
-  phones: [
-    { number: "+61400000123", types: ["SMS"] },
-    { number: "+61255500142", types: ["Home Telephone"] },
-  ],
   units: [
     {
       entityId: "9",
@@ -72,13 +67,12 @@ describe("MemberDetailsDialog", () => {
     expect(
       screen.getByRole("link", { name: "bob@example.com" }),
     ).toHaveAttribute("href", "mailto:bob@example.com");
+    for (const gone of ["Mobile", "Other phones"]) {
+      expect(screen.queryByText(gone)).not.toBeInTheDocument();
+    }
     expect(
-      screen.getByRole("link", { name: "+61400000123" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("link", { name: "+61255500142" }),
-    ).toBeInTheDocument();
-    expect(screen.getByText("(Home Telephone)")).toBeInTheDocument();
+      screen.queryByRole("link", { name: /^\+61/ }),
+    ).not.toBeInTheDocument();
     expect(screen.queryByText("Qualifications")).not.toBeInTheDocument();
     const units = screen.getAllByRole("listitem");
     expect(units.at(-2)).toHaveTextContent("Test A Unit (TST-A)Primary");
@@ -116,8 +110,6 @@ describe("MemberDetailsDialog", () => {
           ...person,
           preferredName: null,
           email: null,
-          mobile: null,
-          phones: [],
           units: [],
         }),
       },
@@ -125,7 +117,6 @@ describe("MemberDetailsDialog", () => {
     expect(await screen.findByText("Units")).toBeInTheDocument();
     expect(screen.getAllByText("None recorded")).toHaveLength(1);
     expect(screen.queryByText(/prefers/)).not.toBeInTheDocument();
-    expect(screen.queryByText("Other phones")).not.toBeInTheDocument();
     expect(screen.queryByText(/null/)).not.toBeInTheDocument();
   });
 });
