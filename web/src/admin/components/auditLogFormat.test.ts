@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { formatFullDateTime } from "../../lib/time";
 import {
+  actorKindHint,
   actorText,
   entityTypeLabel,
   formatChangeValue,
@@ -52,5 +53,15 @@ describe("entityTypeLabel", () => {
     expect(entityTypeLabel("PERSON")).toBe("Member");
     expect(entityTypeLabel("PERIOD")).toBe("Activity");
     expect(entityTypeLabel("SESSION")).toBe("Kiosk");
+  });
+});
+
+describe("actorKindHint", () => {
+  it("says where a member made a change", () => {
+    expect(actorKindHint("MEMBER")).toBe("Member, in Tally");
+    expect(actorKindHint("MEMBER", "member_settings")).toBe(
+      "Member, on their email settings page",
+    );
+    expect(actorKindHint("USER", "member_settings")).toBeNull();
   });
 });

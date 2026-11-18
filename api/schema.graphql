@@ -187,7 +187,9 @@ type AuditActor {
 	How a user acted when not through an ordinary web login: `oauth_grant:<id>` (a
 	connected app: an AI client over MCP, or one of SESLogin's own apps over
 	GraphQL), `user_token:<id>` or `oauth_client:<id>`. Super users only;
-	null for everyone else.
+	null for everyone else, except `member_settings` (a member on their own
+	settings page), which names no credential and tells the log's readers where
+	the change was made.
 	"""
 	via: String
 	"""
@@ -1292,6 +1294,22 @@ type MemberPeriodSummary {
 	totalTimeVirtual: Int
 }
 
+"""
+A member's own settings, as their settings page shows them.
+"""
+type MemberSettings {
+	firstName: String!
+	lastName: String!
+	"""
+	The email SESLogin has for them (their service email, from the SES directory).
+	"""
+	email: String
+	"""
+	Whether they get an email when they've forgotten to sign out.
+	"""
+	signedInReminders: Boolean!
+}
+
 type MutationRoot {
 	"""
 	Publish a kiosk's public key as a pending enrollment (public-key/QR flow). The
@@ -1305,6 +1323,25 @@ type MutationRoot {
 	present is not rewritten (write-suppression below).
 	"""
 	submitEnrollmentKey(publicKey: String!): String!
+	"""
+	Email a member settings sign-in code, if exactly one member has that email
+	(see `member_settings`). Always returns true to avoid email enumeration.
+	Requires a valid Cloudflare Turnstile token.
+	"""
+	requestMemberSettingsCode(email: String!, turnstileToken: String!): Boolean!
+	"""
+	Redeem a member settings sign-in code for an `slms_` token to the member's
+	settings page. Fails the same way for any wrong, expired or used-up code.
+	"""
+	signInToMemberSettings(email: String!, code: String!): String!
+	"""
+	Change a member's own settings, by the `slms_` token for their settings page.
+	"""
+	updateMemberSettings(token: String!, signedInReminders: Boolean!): MemberSettings!
+	"""
+	End an `slms_` token, signing out of the member settings page. Always true.
+	"""
+	signOutOfMemberSettings(token: String!): Boolean!
 	"""
 	Email a Tally sign-in code, if that email can sign in to Tally (see
 	`tally_sign_in`). Always returns true to avoid email enumeration. Requires a
@@ -2776,6 +2813,12 @@ type QueryRoot {
 	ses_nonincident_types: [String!]!
 	ses_nonincident_tags: [SesNonIncidentTag!]!
 	ses_participant_types: [String!]!
+	"""
+	A member's own settings, for their member settings page, by the `slms_` token
+	from a reminder email or from signing in with a code. Needs no sign-in: the
+	token is the credential, and fails with `UNAUTHENTICATED` once it has expired.
+	"""
+	memberSettings(token: String!): MemberSettings!
 	"""
 	Check the link the Tally sign-in page was opened with: a member sign-in client
 	and one of its redirects. Needs no sign-in.

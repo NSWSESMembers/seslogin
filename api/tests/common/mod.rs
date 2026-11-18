@@ -648,6 +648,7 @@ impl db::Handler for FakeDb {
             capability_tags: None,
             deleted: None,
             missing_since: None,
+            signed_in_reminders_off_at: None,
             secondary_location_ids: vec![],
             created_at: Some(now),
             updated_at: Some(now),
@@ -692,6 +693,9 @@ impl db::Handler for FakeDb {
             }
             db::PersonUpdateShape::Delete => {
                 person.deleted = Some(seslogin::clock::now_sec());
+            }
+            db::PersonUpdateShape::SignedInReminders { off_at } => {
+                person.signed_in_reminders_off_at = off_at;
             }
             db::PersonUpdateShape::BadgeState {
                 badge_state,
@@ -3570,6 +3574,7 @@ pub(crate) fn seed_person(
             capability_tags: None,
             deleted: None,
             missing_since: None,
+            signed_in_reminders_off_at: None,
             secondary_location_ids: vec![],
             created_at: Some(1_760_000_000),
             updated_at: Some(1_760_000_000),

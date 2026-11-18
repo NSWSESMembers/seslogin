@@ -1952,6 +1952,38 @@ Two rules govern the parsing, both enforced by tests in `client_info.rs`:
 
 Sizes are bounded (2 KB per header, 128 characters per field, 256 for the user agent).
 
+## Member settings page
+
+A standalone page where a member manages their own email settings
+(`api/src/member_settings.rs`, `graphql/member_settings.rs`, `web/src/member/`):
+today, whether they get "still signed in" reminder emails, stored as
+`Person.signed_in_reminders_off_at`. It is neither the admin site nor Tally, and
+issues neither an admin session nor an OAuth grant.
+
+Access is an `slms_` token for one member, passed as a GraphQL **argument**
+(never an `Authorization` header, which refuses it), so it can't authorise any
+other field. It is stored hashed in `ephemeral_state` (see SCHEMA.md). A member
+gets one two ways:
+
+- **A reminder email's link.** `sendPeriodEditLink` ends both of its emails with
+  `<WEB_BASE_URL>/member/settings#token=<slms_…>&email=<email>`, a token good for
+  2 weeks. The email rides along in the fragment (which no server sees) so that
+  an expired link can send the member to `/member/sign-in` with it filled in.
+- **Signing in** at `/member/sign-in`: `requestMemberSettingsCode(email,
+  turnstileToken)` emails a 6-digit code when exactly one live member has that
+  email (always answering `true`), and `signInToMemberSettings(email, code)`
+  redeems it for a token good for 1 day. Codes share the `login_code` table, its
+  10-minute expiry, 30-second resend limit and 5 attempts.
+
+`memberSettings(token)` reads, `updateMemberSettings(token, signedInReminders)`
+writes (audited as the member, `via: member_settings`) and
+`signOutOfMemberSettings(token)` deletes the token. An expired, unknown or
+signed-out token, or a deleted member's, fails with `UNAUTHENTICATED`.
+
+While a member has reminders off, `sendPeriodEditLink` refuses to remind them
+about an **open** entry (`BAD_REQUEST`, naming them); a finished entry's "please
+check" email still goes.
+
 ## Kiosk authentication
 
 Kiosks authenticate only with a signed key. An admin enrols a kiosk by scanning its QR

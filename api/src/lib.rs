@@ -32,6 +32,7 @@ pub mod mail;
 pub mod map;
 pub mod mcp;
 pub mod media;
+pub mod member_settings;
 pub mod member_sync;
 pub mod mockdb;
 pub mod mockmail;
