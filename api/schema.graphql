@@ -569,110 +569,6 @@ type LocationRecentCategory {
 	recentPeople: [Person!]!
 }
 
-type LocationShare {
-	"""
-	The sharing member's person ID: a member has at most one share.
-	"""
-	id: ID!
-	"""
-	Who is sharing: the member's name.
-	"""
-	name: String!
-	"""
-	The sharing member; null if they have since been deleted.
-	"""
-	person: Person
-	"""
-	Whether the caller is the one sharing.
-	"""
-	isMine: Boolean!
-	locationId: ID!
-	"""
-	The location it is shared with.
-	"""
-	location: Location!
-	"""
-	WGS 84 degrees.
-	"""
-	latitude: Float!
-	longitude: Float!
-	"""
-	Radius of uncertainty of the position, in metres; null if the phone didn't say.
-	"""
-	accuracy: Float
-	"""
-	Metres above the WGS 84 ellipsoid.
-	"""
-	altitude: Float
-	altitudeAccuracy: Float
-	"""
-	Direction of travel, degrees clockwise from north; null when unknown.
-	"""
-	heading: Float
-	"""
-	Metres per second; null when unknown.
-	"""
-	speed: Float
-	"""
-	When the phone took the fix (Unix seconds).
-	"""
-	recordedAt: Int!
-	"""
-	When the latest position arrived (Unix seconds).
-	"""
-	updatedAt: Int!
-	"""
-	How often the phone reports in, in seconds (60 to 300).
-	"""
-	intervalSeconds: Int!
-	startedAt: Int!
-	"""
-	When sharing stops (Unix seconds); later positions are refused.
-	"""
-	endsAt: Int!
-	"""
-	When the share stops showing: 7 minutes after the latest position.
-	"""
-	visibleUntil: Int!
-	"""
-	Whether it is still being shared, i.e. `endsAt` has not passed. An ended share
-	still shows until `visibleUntil`.
-	"""
-	active: Boolean!
-}
-
-"""
-Where the phone is, as it reports it. Leave out what it doesn't know.
-"""
-input LocationSharePositionInput {
-	"""
-	WGS 84 degrees.
-	"""
-	latitude: Float!
-	longitude: Float!
-	"""
-	Radius of uncertainty, in metres.
-	"""
-	accuracy: Float
-	"""
-	Metres above the WGS 84 ellipsoid.
-	"""
-	altitude: Float
-	altitudeAccuracy: Float
-	"""
-	Direction of travel, degrees clockwise from north; negative for unknown.
-	"""
-	heading: Float
-	"""
-	Metres per second; negative for unknown.
-	"""
-	speed: Float
-	"""
-	When the phone took the fix (Unix seconds); now when omitted.
-	"""
-	recordedAt: Int
-}
-
 """
 The result of marking notifications read.
 """
@@ -931,51 +827,6 @@ type MutationRoot {
 	"""
 	hidePhoto(id: ID!): Photo!
 	"""
-	Add a note to a location's shared notebook. Any member who can use the
-	unit in Tally may.
-	"""
-	createNote(locationId: ID!, title: String!, content: String, folderId: ID): Note!
-	"""
-	Change a note. Omitted arguments are left as they are; `null` takes it out of
-	its folder. Fails with `CONFLICT` if the note is no longer at
-	`expectedVersion`.
-	"""
-	updateNote(id: ID!, expectedVersion: Int!, title: String, content: String, folderId: ID): Note!
-	"""
-	Link one of the unit's notes as its standard operating procedure for a Tally
-	screen, replacing any note linked there, or unlink the place with `noteId: null`.
-	`BAD_REQUEST` if the note does not exist, is deleted or is another unit's. Any
-	member who can use the unit in Tally may. Returns the unit, for `sopNotes`.
-	"""
-	setSopNote(locationId: ID!, place: SopPlace!, noteId: ID): TallyLocation!
-	"""
-	Delete a note. Returns its ID.
-	"""
-	deleteNote(id: ID!): ID!
-	createNoteFolder(locationId: ID!, name: String!): NoteFolder!
-	renameNoteFolder(id: ID!, name: String!): NoteFolder!
-	"""
-	Delete a note folder. Its notes stay on the location. Returns its ID.
-	"""
-	deleteNoteFolder(id: ID!): ID!
-	"""
-	Share your position with a location's members for `durationMinutes` (5, 15, 30
-	or 60), saying how often you will send it (`intervalSeconds`, 60 to 300).
-	Replaces any share you already have. Any member who can use the unit in
-	Tally may.
-	"""
-	startLocationShare(locationId: ID!, durationMinutes: Int!, intervalSeconds: Int!, position: LocationSharePositionInput!): LocationShare!
-	"""
-	Send your latest position for your share. Fails with `NOT_FOUND` once it has
-	ended or been stopped: stop sending then.
-	"""
-	updateLocationShare(position: LocationSharePositionInput!): LocationShare!
-	"""
-	Stop sharing your position; it stops showing straight away. False if you
-	weren't sharing.
-	"""
-	stopLocationShare: Boolean!
-	"""
 	Mark some of your notifications read (at most 200 IDs). One that is already read,
 	or is not yours, is ignored. Returns how many you still have unread.
 	"""
@@ -985,23 +836,6 @@ type MutationRoot {
 	none).
 	"""
 	markAllNotificationsRead: MarkNotificationsReadPayload!
-	"""
-	Add a contact by hand: to a location's contacts (its Duty Officer phone, …), or,
-	without `locationId`, to the statewide ones (the SOC, the EAP, …). Any member who
-	can use the unit in Tally may add a unit's; only super users a statewide one.
-	`phoneCanSms` is ignored without a phone.
-	"""
-	createSharedContact(locationId: ID, name: String!, description: String, phone: String, phoneCanSms: Boolean, email: String): SharedContact!
-	"""
-	Change a shared contact. Omitted arguments are left as they are; `phone: null`
-	and `email: null` remove them, and removing the phone turns `phoneCanSms` off.
-	Fails with `CONFLICT` if the contact is no longer at `expectedVersion`.
-	"""
-	updateSharedContact(id: ID!, expectedVersion: Int!, name: String, description: String, phone: String, phoneCanSms: Boolean, email: String): SharedContact!
-	"""
-	Delete a shared contact. Returns its ID.
-	"""
-	deleteSharedContact(id: ID!): ID!
 	deleteSession(id: ID!): Boolean!
 	"""
 	Bring back a QR-enrolled kiosk that expired after two weeks offline, without
@@ -1178,47 +1012,6 @@ type NitcGroup {
 	sesTags: [SesNonIncidentTag!]!
 	createdAt: Int
 	updatedAt: Int
-}
-
-type Note {
-	id: ID!
-	"""
-	One line of plain text.
-	"""
-	title: String!
-	"""
-	The body of the note, plain text; empty when there is none.
-	"""
-	content: String!
-	locationId: ID!
-	location: Location!
-	"""
-	The folder the note is in, if any. Null too when that folder has been deleted:
-	the note then just belongs to its location.
-	"""
-	folder: NoteFolder
-	"""
-	Bumped by every change; pass it back to `updateNote`.
-	"""
-	version: Int!
-	createdAt: Int!
-	"""
-	Name of the member who created the note.
-	"""
-	createdBy: String
-	updatedAt: Int!
-	"""
-	Name of the member who last changed the note.
-	"""
-	updatedBy: String
-}
-
-type NoteFolder {
-	id: ID!
-	name: String!
-	locationId: ID!
-	location: Location!
-	createdAt: Int!
 }
 
 """
@@ -1729,15 +1522,6 @@ type QueryRoot {
 	"""
 	selfSignInStatus(locationId: ID): SelfSignInStatus
 	"""
-	One note; null if it does not exist or was deleted.
-	"""
-	note(id: ID!): Note
-	"""
-	The caller's own location share while it still shows (until 7 minutes after its
-	latest position); null otherwise.
-	"""
-	myLocationShare: LocationShare
-	"""
 	The caller's in-app notifications, newest first. `unreadOnly` lists just the ones
 	not yet read. At most 200 per page, 50 by default; a notification about a location
 	the caller can no longer access is left out.
@@ -1748,23 +1532,6 @@ type QueryRoot {
 	"99+" above 99).
 	"""
 	myUnreadNotificationCount: Int!
-	"""
-	The WiFi networks, with their passwords, for members signed in to Tally (its
-	WiFi app). Never for users on their own, kiosks or API tokens. `networks` is null when `knownVersion` is
-	already current.
-	"""
-	wifiNetworks(knownVersion: String): WifiNetworks!
-	"""
-	The statewide contacts added by hand (the SOC, the EAP, peer support, …), by name.
-	Every member signed in to Tally may read them; only super users change them. A
-	unit's own are `TallyLocation.sharedContacts`.
-	"""
-	stateContacts: [SharedContact!]!
-	"""
-	One shared contact, a unit's or statewide; null if it does not exist or was
-	deleted.
-	"""
-	sharedContact(id: ID!): SharedContact
 	session(
 		"""
 		ID for the session to look up
@@ -2109,89 +1876,6 @@ type SessionClientInfo {
 	updatedAt: Int
 }
 
-type SharedContact {
-	id: ID!
-	"""
-	One line, e.g. "Duty Officer" or "Peer Support".
-	"""
-	name: String!
-	"""
-	What the contact is for, or when to use it, plain text; empty when there is none.
-	"""
-	description: String!
-	"""
-	Null when there is none. Kept as written.
-	"""
-	phone: String
-	"""
-	Whether `phone` takes text messages. Always false without a phone.
-	"""
-	phoneCanSms: Boolean!
-	"""
-	Null when there is none.
-	"""
-	email: String
-	"""
-	Whether this is a statewide contact rather than one location's.
-	"""
-	statewide: Boolean!
-	"""
-	The location the contact belongs to; null for a statewide one.
-	"""
-	locationId: ID
-	location: Location
-	"""
-	Whether the caller may change or delete the contact: always for a location's,
-	only for super users for a statewide one.
-	"""
-	viewerCanEdit: Boolean!
-	"""
-	Bumped by every change; pass it back to `updateSharedContact`.
-	"""
-	version: Int!
-	createdAt: Int!
-	"""
-	Name of the member who added the contact.
-	"""
-	createdBy: String
-	updatedAt: Int!
-	"""
-	Name of the member who last changed the contact.
-	"""
-	updatedBy: String
-}
-
-type SopNote {
-	place: SopPlace!
-	noteId: ID!
-	"""
-	The note itself, for its title and content.
-	"""
-	note: Note!
-}
-
-"""
-A screen in Tally that can show the unit's SOP note. More places may be added, so
-clients should cope with a value they don't know.
-"""
-enum SopPlace {
-	ON_CALL
-	"""
-	The equipment list.
-	"""
-	EQUIPMENT
-	"""
-	Shown when a member marks equipment as borrowed.
-	"""
-	EQUIPMENT_BORROWING
-	TASKS
-	CALENDAR
-	MAP
-	RESERVATIONS
-	NOTES
-	PHOTOS
-}
-
 """
 `submitFeedback`'s result: the Toolbox ticket the feedback became.
 """
@@ -2239,34 +1923,6 @@ type TallyLocation {
 	How many more photos the unit may add today (100 a Sydney day), never below 0.
 	"""
 	photoUploadsRemainingToday: Int!
-	"""
-	The unit's notes (its shared notebook), most recently changed first.
-	`folderId` narrows to one of its note folders; without it every note at the
-	unit is listed, whichever folder it is in. `search` keeps notes whose title
-	contains it, ignoring case. See `graphql::notes`.
-	"""
-	notes(folderId: ID, search: String): [Note!]!
-	"""
-	The unit's note folders, by name.
-	"""
-	noteFolders: [NoteFolder!]!
-	"""
-	Everyone sharing their position with the unit ("Locate"), most recently updated
-	first. A share shows until 7 minutes after its latest position, so this
-	includes shares that have just ended (`active: false`). See
-	`graphql::location_share`.
-	"""
-	locationShares: [LocationShare!]!
-	"""
-	The unit's standard operating procedure notes: one per Tally screen that has a
-	linked note that still exists, in a fixed order. See `graphql::sop_notes`.
-	"""
-	sopNotes: [SopNote!]!
-	"""
-	The contacts added by hand to the unit (its Duty Officer phone, …), by name. The
-	statewide ones are `Query.stateContacts`. See `graphql::shared_contacts`.
-	"""
-	sharedContacts: [SharedContact!]!
 }
 
 """
@@ -2625,44 +2281,6 @@ type WhosHereEntry {
 	This is the calling member's own period.
 	"""
 	isMe: Boolean!
-}
-
-type WifiNetwork {
-	"""
-	What the list shows, such as "Shed".
-	"""
-	title: String!
-	ssid: String!
-	"""
-	Empty for an open network.
-	"""
-	password: String!
-	security: WifiSecurity!
-	hidden: Boolean!
-}
-
-type WifiNetworks {
-	"""
-	Changes whenever any network does. Pass it back as `knownVersion` next time.
-	"""
-	version: String!
-	"""
-	Null when `knownVersion` is already the current version, so a client that has
-	the list isn't sent the passwords again.
-	"""
-	networks: [WifiNetwork!]
-}
-
-enum WifiSecurity {
-	"""
-	WPA, WPA2 or WPA3 personal.
-	"""
-	WPA
-	WEP
-	"""
-	An open network, with no password.
-	"""
-	NONE
 }
 
 """

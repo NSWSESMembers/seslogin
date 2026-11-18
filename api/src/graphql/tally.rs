@@ -13,18 +13,14 @@ use async_graphql::dataloader::DataLoader;
 use async_graphql::{Context, ID, Object};
 use std::sync::Arc;
 
+use super::LocationId;
 use super::auth::require_member_location;
 use super::dataloader::DatabaseLoader;
 use super::error::ApiError;
-use super::location_share::{self, LocationShare};
-use super::notes::{self, Note, NoteFolder};
 use super::photos::{self, PhotoConnection};
 use super::query::Person;
-use super::shared_contacts::{self, SharedContact};
-use super::sop_notes;
 use super::tally_passkeys::{self, TallyPasskey};
 use super::tally_sign_ins::{self, TallySignIn};
-use super::{LocationId, PersonId};
 use crate::app::{App, HasDb};
 use crate::auth::AuthInfo;
 use crate::db::{self, Handler as _};
@@ -40,24 +36,6 @@ pub(crate) fn member_id<'a>(ctx: &'a Context<'_>) -> Option<&'a str> {
 /// [`member_id`], refusing anyone who isn't a member signed in to Tally.
 pub(crate) fn require_member<'a>(ctx: &'a Context<'_>) -> Result<&'a str> {
     member_id(ctx).ok_or_else(|| ApiError::forbidden("Only available in Tally").into())
-}
-
-/// "First Last" for the member `id`, as Tally names who made or changed something.
-/// `None` for no ID, or a member who is gone.
-pub(crate) async fn member_name<A: App + HasDb + Send + Sync + 'static>(
-    ctx: &Context<'_>,
-    id: Option<&str>,
-) -> Result<Option<String>> {
-    let Some(id) = id else { return Ok(None) };
-    let loader = ctx.data_unchecked::<DataLoader<DatabaseLoader<A>>>();
-    Ok(loader
-        .load_one(PersonId(ID(id.to_string())))
-        .await
-        .map_err(|e| anyhow!("Failed to load person via DataLoader: {}", e))?
-        .flatten()
-        .filter(|p| p.rec.deleted.is_none())
-        .map(|p| full_name(&p.rec))
-        .filter(|name| !name.is_empty()))
 }
 
 pub(crate) fn full_name(person: &db::Person) -> String {
@@ -286,44 +264,6 @@ impl<A: App + HasDb + Send + Sync + 'static> TallyLocation<A> {
     /// How many more photos the unit may add today (100 a Sydney day), never below 0.
     async fn photo_uploads_remaining_today(&self, ctx: &Context<'_>) -> Result<i64> {
         photos::uploads_remaining_today::<A>(ctx, &self.rec.id).await
-    }
-
-    /// The unit's notes (its shared notebook), most recently changed first.
-    /// `folderId` narrows to one of its note folders; without it every note at the
-    /// unit is listed, whichever folder it is in. `search` keeps notes whose title
-    /// contains it, ignoring case. See `graphql::notes`.
-    async fn notes(
-        &self,
-        ctx: &Context<'_>,
-        folder_id: Option<ID>,
-        search: Option<String>,
-    ) -> Result<Vec<Note<A>>> {
-        notes::location_notes(ctx, &self.rec.id, folder_id, search).await
-    }
-
-    /// The unit's note folders, by name.
-    async fn note_folders(&self, ctx: &Context<'_>) -> Result<Vec<NoteFolder<A>>> {
-        notes::location_note_folders(ctx, &self.rec.id).await
-    }
-
-    /// Everyone sharing their position with the unit ("Locate"), most recently updated
-    /// first. A share shows until 7 minutes after its latest position, so this
-    /// includes shares that have just ended (`active: false`). See
-    /// `graphql::location_share`.
-    async fn location_shares(&self, ctx: &Context<'_>) -> Result<Vec<LocationShare<A>>> {
-        location_share::location_shares(ctx, &self.rec.id).await
-    }
-
-    /// The unit's standard operating procedure notes: one per Tally screen that has a
-    /// linked note that still exists, in a fixed order. See `graphql::sop_notes`.
-    async fn sop_notes(&self, ctx: &Context<'_>) -> Result<Vec<sop_notes::SopNote<A>>> {
-        sop_notes::location_sop_notes(ctx, &self.rec).await
-    }
-
-    /// The contacts added by hand to the unit (its Duty Officer phone, …), by name. The
-    /// statewide ones are `Query.stateContacts`. See `graphql::shared_contacts`.
-    async fn shared_contacts(&self, ctx: &Context<'_>) -> Result<Vec<SharedContact<A>>> {
-        shared_contacts::location_shared_contacts(ctx, &self.rec.id).await
     }
 }
 

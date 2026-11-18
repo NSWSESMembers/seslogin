@@ -42,15 +42,10 @@ use super::auth::{
 };
 use super::dataloader::DatabaseLoader;
 use super::error::{ApiError, ErrorCode};
-use super::location_share::{self, LocationShare, LocationSharePositionInput};
-use super::notes::{self, Note, NoteFolder};
 use super::notifications::{self, MarkNotificationsReadPayload};
 use super::photos::{self, Photo};
 use super::query::{QuickPick, build_quick_pick};
 use super::self_sign_in::{open_period_at, require_linked_person, sign_in_location_id};
-use super::shared_contacts::{self, SharedContact};
-use super::sop_notes;
-use super::tally::TallyLocation;
 use super::{
     ApiToken, Category, Location, NitcGroup, PasskeyInfo, Period, Person, PersonId, Session, User,
 };
@@ -2937,148 +2932,6 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sy
         photos::hide_photo(ctx, self.app.as_ref(), &id).await
     }
 
-    /// Add a note to a location's shared notebook. Any member who can use the
-    /// unit in Tally may.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
-    async fn create_note(
-        &self,
-        ctx: &Context<'_>,
-        location_id: ID,
-        title: String,
-        content: Option<String>,
-        folder_id: Option<ID>,
-    ) -> Result<Note<A>> {
-        notes::create_note(
-            ctx,
-            self.app.as_ref(),
-            notes::CreateNoteArgs {
-                location_id,
-                title,
-                content,
-                folder_id,
-            },
-        )
-        .await
-    }
-
-    /// Change a note. Omitted arguments are left as they are; `null` takes it out of
-    /// its folder. Fails with `CONFLICT` if the note is no longer at
-    /// `expectedVersion`.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
-    async fn update_note(
-        &self,
-        ctx: &Context<'_>,
-        id: ID,
-        expected_version: i32,
-        title: Option<String>,
-        content: Option<String>,
-        folder_id: MaybeUndefined<ID>,
-    ) -> Result<Note<A>> {
-        notes::update_note(
-            ctx,
-            self.app.as_ref(),
-            notes::UpdateNoteArgs {
-                id,
-                expected_version,
-                title,
-                content,
-                folder_id,
-            },
-        )
-        .await
-    }
-
-    /// Link one of the unit's notes as its standard operating procedure for a Tally
-    /// screen, replacing any note linked there, or unlink the place with `noteId: null`.
-    /// `BAD_REQUEST` if the note does not exist, is deleted or is another unit's. Any
-    /// member who can use the unit in Tally may. Returns the unit, for `sopNotes`.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
-    async fn set_sop_note(
-        &self,
-        ctx: &Context<'_>,
-        location_id: ID,
-        place: sop_notes::SopPlace,
-        note_id: Option<ID>,
-    ) -> Result<TallyLocation<A>> {
-        sop_notes::set_sop_note(ctx, self.app.as_ref(), &location_id, place.into(), note_id).await
-    }
-
-    /// Delete a note. Returns its ID.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
-    async fn delete_note(&self, ctx: &Context<'_>, id: ID) -> Result<ID> {
-        notes::delete_note(ctx, self.app.as_ref(), &id).await
-    }
-
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
-    async fn create_note_folder(
-        &self,
-        ctx: &Context<'_>,
-        location_id: ID,
-        name: String,
-    ) -> Result<NoteFolder<A>> {
-        notes::create_note_folder(ctx, self.app.as_ref(), &location_id, &name).await
-    }
-
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
-    async fn rename_note_folder(
-        &self,
-        ctx: &Context<'_>,
-        id: ID,
-        name: String,
-    ) -> Result<NoteFolder<A>> {
-        notes::rename_note_folder(ctx, self.app.as_ref(), &id, &name).await
-    }
-
-    /// Delete a note folder. Its notes stay on the location. Returns its ID.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
-    async fn delete_note_folder(&self, ctx: &Context<'_>, id: ID) -> Result<ID> {
-        notes::delete_note_folder(ctx, self.app.as_ref(), &id).await
-    }
-
-    /// Share your position with a location's members for `durationMinutes` (5, 15, 30
-    /// or 60), saying how often you will send it (`intervalSeconds`, 60 to 300).
-    /// Replaces any share you already have. Any member who can use the unit in
-    /// Tally may.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
-    async fn start_location_share(
-        &self,
-        ctx: &Context<'_>,
-        location_id: ID,
-        duration_minutes: i32,
-        interval_seconds: i32,
-        position: LocationSharePositionInput,
-    ) -> Result<LocationShare<A>> {
-        location_share::start_location_share(
-            ctx,
-            self.app.as_ref(),
-            location_share::StartLocationShareArgs {
-                location_id,
-                duration_minutes,
-                interval_seconds,
-                position,
-            },
-        )
-        .await
-    }
-
-    /// Send your latest position for your share. Fails with `NOT_FOUND` once it has
-    /// ended or been stopped: stop sending then.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
-    async fn update_location_share(
-        &self,
-        ctx: &Context<'_>,
-        position: LocationSharePositionInput,
-    ) -> Result<LocationShare<A>> {
-        location_share::update_location_share(ctx, self.app.as_ref(), position).await
-    }
-
-    /// Stop sharing your position; it stops showing straight away. False if you
-    /// weren't sharing.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
-    async fn stop_location_share(&self, ctx: &Context<'_>) -> Result<bool> {
-        location_share::stop_location_share(ctx, self.app.as_ref()).await
-    }
-
     /// Mark some of your notifications read (at most 200 IDs). One that is already read,
     /// or is not yours, is ignored. Returns how many you still have unread.
     #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
@@ -3098,73 +2951,6 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sy
         ctx: &Context<'_>,
     ) -> Result<MarkNotificationsReadPayload> {
         notifications::mark_all_notifications_read(ctx, self.app.as_ref()).await
-    }
-
-    /// Add a contact by hand: to a location's contacts (its Duty Officer phone, …), or,
-    /// without `locationId`, to the statewide ones (the SOC, the EAP, …). Any member who
-    /// can use the unit in Tally may add a unit's; only super users a statewide one.
-    /// `phoneCanSms` is ignored without a phone.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
-    async fn create_shared_contact(
-        &self,
-        ctx: &Context<'_>,
-        location_id: Option<ID>,
-        name: String,
-        description: Option<String>,
-        phone: Option<String>,
-        phone_can_sms: Option<bool>,
-        email: Option<String>,
-    ) -> Result<SharedContact<A>> {
-        shared_contacts::create_shared_contact(
-            ctx,
-            self.app.as_ref(),
-            shared_contacts::CreateSharedContactArgs {
-                location_id,
-                name,
-                description,
-                phone,
-                phone_can_sms,
-                email,
-            },
-        )
-        .await
-    }
-
-    /// Change a shared contact. Omitted arguments are left as they are; `phone: null`
-    /// and `email: null` remove them, and removing the phone turns `phoneCanSms` off.
-    /// Fails with `CONFLICT` if the contact is no longer at `expectedVersion`.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
-    async fn update_shared_contact(
-        &self,
-        ctx: &Context<'_>,
-        id: ID,
-        expected_version: i32,
-        name: Option<String>,
-        description: Option<String>,
-        phone: MaybeUndefined<String>,
-        phone_can_sms: Option<bool>,
-        email: MaybeUndefined<String>,
-    ) -> Result<SharedContact<A>> {
-        shared_contacts::update_shared_contact(
-            ctx,
-            self.app.as_ref(),
-            shared_contacts::UpdateSharedContactArgs {
-                id,
-                expected_version,
-                name,
-                description,
-                phone,
-                phone_can_sms,
-                email,
-            },
-        )
-        .await
-    }
-
-    /// Delete a shared contact. Returns its ID.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
-    async fn delete_shared_contact(&self, ctx: &Context<'_>, id: ID) -> Result<ID> {
-        shared_contacts::delete_shared_contact(ctx, self.app.as_ref(), &id).await
     }
 
     #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]

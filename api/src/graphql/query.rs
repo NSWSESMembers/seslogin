@@ -35,13 +35,9 @@ use super::auth::{
     AuthGuard, AuthRequirement, can_write_location, require_location_access, require_person_access,
 };
 use super::dataloader::DatabaseLoader;
-use super::location_share::{self, LocationShare};
-use super::notes::{self, Note};
 use super::notifications::{self, NotificationConnection};
 use super::self_sign_in::{self, SelfSignInStatus};
-use super::shared_contacts::{self, SharedContact};
 use super::tally;
-use super::wifi::{self, WifiNetworks};
 use super::{CategoryId, LocationId, NitcEventId, PersonId, SessionId, UserId};
 
 async fn location_name_by_id_for_badges<A: App + HasDb + Send + Sync>(
@@ -4143,19 +4139,6 @@ impl<A: App + HasDb + HasRealtime + HasStorage + Send + Sync + 'static> QueryRoo
         .await
     }
 
-    /// One note; null if it does not exist or was deleted.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
-    async fn note(&self, ctx: &Context<'_>, id: ID) -> Result<Option<Note<A>>> {
-        notes::note(ctx, &id).await
-    }
-
-    /// The caller's own location share while it still shows (until 7 minutes after its
-    /// latest position); null otherwise.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
-    async fn my_location_share(&self, ctx: &Context<'_>) -> Result<Option<LocationShare<A>>> {
-        location_share::my_location_share(ctx).await
-    }
-
     /// The caller's in-app notifications, newest first. `unreadOnly` lists just the ones
     /// not yet read. At most 200 per page, 50 by default; a notification about a location
     /// the caller can no longer access is left out.
@@ -4175,29 +4158,6 @@ impl<A: App + HasDb + HasRealtime + HasStorage + Send + Sync + 'static> QueryRoo
     #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn my_unread_notification_count(&self, ctx: &Context<'_>) -> Result<i32> {
         notifications::my_unread_notification_count::<A>(ctx).await
-    }
-
-    /// The WiFi networks, with their passwords, for members signed in to Tally (its
-    /// WiFi app). Never for users on their own, kiosks or API tokens. `networks` is null when `knownVersion` is
-    /// already current.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
-    async fn wifi_networks(&self, known_version: Option<String>) -> Result<WifiNetworks> {
-        wifi::wifi_networks(known_version.as_deref())
-    }
-
-    /// The statewide contacts added by hand (the SOC, the EAP, peer support, …), by name.
-    /// Every member signed in to Tally may read them; only super users change them. A
-    /// unit's own are `TallyLocation.sharedContacts`.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
-    async fn state_contacts(&self, ctx: &Context<'_>) -> Result<Vec<SharedContact<A>>> {
-        shared_contacts::state_contacts(ctx).await
-    }
-
-    /// One shared contact, a unit's or statewide; null if it does not exist or was
-    /// deleted.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
-    async fn shared_contact(&self, ctx: &Context<'_>, id: ID) -> Result<Option<SharedContact<A>>> {
-        shared_contacts::shared_contact(ctx, &id).await
     }
 
     #[graphql(guard = "AuthGuard::new(AuthRequirement::Authenticated)")]

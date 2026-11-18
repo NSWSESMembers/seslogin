@@ -877,36 +877,9 @@ fn location_fields(l: &Location) -> Fields {
         .with_ses_details(&l.ses_details)
         .with_directory_details(&l.directory_details)
         .with("accreditations", json_text(l.accreditations.as_deref()))
-        .with_sop_notes(&l.sop_notes)
-}
-
-fn sop_field(place: db::SopPlace) -> &'static str {
-    match place {
-        db::SopPlace::OnCall => "sopNote.ON_CALL",
-        db::SopPlace::Equipment => "sopNote.EQUIPMENT",
-        db::SopPlace::EquipmentBorrowing => "sopNote.EQUIPMENT_BORROWING",
-        db::SopPlace::Tasks => "sopNote.TASKS",
-        db::SopPlace::Calendar => "sopNote.CALENDAR",
-        db::SopPlace::Map => "sopNote.MAP",
-        db::SopPlace::Reservations => "sopNote.RESERVATIONS",
-        db::SopPlace::Notes => "sopNote.NOTES",
-        db::SopPlace::Photos => "sopNote.PHOTOS",
-    }
 }
 
 impl Fields {
-    /// One `sopNote.<PLACE>` field per place, so a link, a change of note and an unlink
-    /// each diff on exactly the place they touch.
-    fn with_sop_notes(mut self, notes: &std::collections::BTreeMap<db::SopPlace, String>) -> Self {
-        for place in db::SopPlace::ALL {
-            self.set(
-                sop_field(place),
-                opt_text(notes.get(&place).map(String::as_str)),
-            );
-        }
-        self
-    }
-
     fn with_ses_details(mut self, d: &db::LocationSesDetails) -> Self {
         self.set("code", opt_text(d.code.as_deref()));
         self.set("latitude", d.latitude.map(|v| json!(v)));
@@ -995,9 +968,6 @@ pub fn location_update_changes(
         }
         db::LocationUpdateShape::Accreditations { accreditations } => {
             after.set("accreditations", json_text(*accreditations));
-        }
-        db::LocationUpdateShape::SopNote { place, note_id } => {
-            after.set(sop_field(*place), opt_text(*note_id));
         }
     }
     diff(&before, &after)
@@ -1089,51 +1059,6 @@ fn nitc_tag_fields(t: &db::NitcTag) -> Fields {
 
 // ── Notes ────────────────────────────────────────────────────────────────────
 
-/// Everything about a note a person decides. `version` and the timestamps are
-/// bookkeeping.
-fn note_fields(n: &db::Note) -> Fields {
-    Fields::default()
-        .with("title", text(&n.title))
-        .with(
-            "content",
-            opt_text(Some(n.content.as_str()).filter(|c| !c.is_empty())),
-        )
-        .with("folder_id", opt_text(n.folder_id.as_deref()))
-}
-
-pub fn note_create_changes(n: &db::Note) -> Vec<AuditFieldChange> {
-    creation(&note_fields(n))
-}
-
-/// The diff of one note write, from the note as it was (if it could be read) to how
-/// the write left it.
-pub fn note_update_changes(before: Option<&db::Note>, after: &db::Note) -> Vec<AuditFieldChange> {
-    let before = before.map(note_fields).unwrap_or_default();
-    let after = if after.deleted.is_some() {
-        Fields::default()
-    } else {
-        note_fields(after)
-    };
-    diff(&before, &after)
-}
-
-fn note_folder_fields(f: &db::NoteFolder) -> Fields {
-    Fields::default().with("name", text(&f.name))
-}
-
-pub fn note_folder_update_changes(
-    before: Option<&db::NoteFolder>,
-    after: &db::NoteFolder,
-) -> Vec<AuditFieldChange> {
-    let before = before.map(note_folder_fields).unwrap_or_default();
-    let after = if after.deleted.is_some() {
-        Fields::default()
-    } else {
-        note_folder_fields(after)
-    };
-    diff(&before, &after)
-}
-
 // ── Map ──────────────────────────────────────────────────────────────────────
 
 // ── Calendar ─────────────────────────────────────────────────────────────────
@@ -1142,59 +1067,9 @@ pub fn note_folder_update_changes(
 
 // ── Shared contacts ──────────────────────────────────────────────────────────
 
-/// Everything about a shared contact a person decides. Its scope never changes, so it is
-/// in the entry's locations (none for a statewide one), not its fields.
-fn shared_contact_fields(c: &db::SharedContact) -> Fields {
-    Fields::default()
-        .with("name", text(&c.name))
-        .with(
-            "description",
-            opt_text(Some(c.description.as_str()).filter(|d| !d.is_empty())),
-        )
-        .with("phone", opt_text(c.phone.as_deref()))
-        .with("phone_can_sms", flag(c.phone_can_sms))
-        .with("email", opt_text(c.email.as_deref()))
-}
-
-pub fn shared_contact_create_changes(c: &db::SharedContact) -> Vec<AuditFieldChange> {
-    creation(&shared_contact_fields(c))
-}
-
-/// The diff of one shared contact write, from the contact as it was (if it could be
-/// read) to how the write left it.
-pub fn shared_contact_update_changes(
-    before: Option<&db::SharedContact>,
-    after: &db::SharedContact,
-) -> Vec<AuditFieldChange> {
-    let before = before.map(shared_contact_fields).unwrap_or_default();
-    let after = if after.deleted.is_some() {
-        Fields::default()
-    } else {
-        shared_contact_fields(after)
-    };
-    diff(&before, &after)
-}
-
 // ── Equipment ────────────────────────────────────────────────────────────────
 
 // ── Locate ───────────────────────────────────────────────────────────────────
-
-/// What a person decided about a location share: how long, and how often. Positions
-/// are left out: they change every minute or so, and the audit log is kept forever.
-fn location_share_fields(s: &db::LocationShare) -> Fields {
-    Fields::default()
-        .with("started_at", num(s.started_at))
-        .with("ends_at", num(s.ends_at))
-        .with("interval_secs", num(s.interval_secs))
-}
-
-pub fn location_share_create_changes(s: &db::LocationShare) -> Vec<AuditFieldChange> {
-    creation(&location_share_fields(s))
-}
-
-pub fn location_share_delete_changes(s: &db::LocationShare) -> Vec<AuditFieldChange> {
-    removal(&location_share_fields(s))
-}
 
 // ── Assets and photos ────────────────────────────────────────────────────────
 
@@ -2171,161 +2046,6 @@ impl<D: db::Handler> db::Handler for AuditingHandler<D> {
         Ok(())
     }
 
-    async fn create_note(&self, note: db::NewNote<'_>) -> db::Result<db::Note> {
-        let note = self.inner.create_note(note).await?;
-        self.record_create(
-            AuditEntityType::Note,
-            &note.id,
-            Some(note.title.clone()),
-            vec![note.location_id.clone()],
-            note_create_changes(&note),
-        )
-        .await;
-        Ok(note)
-    }
-
-    async fn update_note(&self, id: &str, change: db::NoteUpdateShape<'_>) -> db::Result<db::Note> {
-        let action = match change {
-            db::NoteUpdateShape::Delete { .. } => AuditAction::Delete,
-            db::NoteUpdateShape::Fields { .. } => AuditAction::Update,
-        };
-        let before = self.before("note", id, first(self.inner.get_notes(&[id]).await));
-        let after = self.inner.update_note(id, change).await?;
-        self.record(Recorded {
-            entity_type: AuditEntityType::Note,
-            entity_id: id,
-            action,
-            label: Some(after.title.clone()),
-            location_ids: vec![after.location_id.clone()],
-            changes: note_update_changes(before.as_ref(), &after),
-        })
-        .await;
-        Ok(after)
-    }
-
-    async fn create_note_folder(
-        &self,
-        location_id: &str,
-        name: &str,
-        created_by: Option<&str>,
-    ) -> db::Result<db::NoteFolder> {
-        let folder = self
-            .inner
-            .create_note_folder(location_id, name, created_by)
-            .await?;
-        self.record_create(
-            AuditEntityType::NoteFolder,
-            &folder.id,
-            Some(folder.name.clone()),
-            vec![folder.location_id.clone()],
-            creation(&note_folder_fields(&folder)),
-        )
-        .await;
-        Ok(folder)
-    }
-
-    async fn update_note_folder(
-        &self,
-        id: &str,
-        change: db::NoteFolderUpdateShape<'_>,
-    ) -> db::Result<db::NoteFolder> {
-        let action = match change {
-            db::NoteFolderUpdateShape::Delete => AuditAction::Delete,
-            db::NoteFolderUpdateShape::Name { .. } => AuditAction::Update,
-        };
-        let before = self.before(
-            "note folder",
-            id,
-            first(self.inner.get_note_folders(&[id]).await),
-        );
-        let after = self.inner.update_note_folder(id, change).await?;
-        self.record(Recorded {
-            entity_type: AuditEntityType::NoteFolder,
-            entity_id: id,
-            action,
-            label: Some(after.name.clone()),
-            location_ids: vec![after.location_id.clone()],
-            changes: note_folder_update_changes(before.as_ref(), &after),
-        })
-        .await;
-        Ok(after)
-    }
-
-    async fn create_shared_contact(
-        &self,
-        contact: db::NewSharedContact<'_>,
-    ) -> db::Result<db::SharedContact> {
-        let contact = self.inner.create_shared_contact(contact).await?;
-        self.record_create(
-            AuditEntityType::SharedContact,
-            &contact.id,
-            Some(contact.name.clone()),
-            contact.location_id.iter().cloned().collect(),
-            shared_contact_create_changes(&contact),
-        )
-        .await;
-        Ok(contact)
-    }
-
-    async fn update_shared_contact(
-        &self,
-        id: &str,
-        change: db::SharedContactUpdateShape<'_>,
-    ) -> db::Result<db::SharedContact> {
-        let action = match change {
-            db::SharedContactUpdateShape::Delete { .. } => AuditAction::Delete,
-            db::SharedContactUpdateShape::Fields { .. } => AuditAction::Update,
-        };
-        let before = self.before(
-            "shared contact",
-            id,
-            first(self.inner.get_shared_contacts(&[id]).await),
-        );
-        let after = self.inner.update_shared_contact(id, change).await?;
-        self.record(Recorded {
-            entity_type: AuditEntityType::SharedContact,
-            entity_id: id,
-            action,
-            label: Some(after.name.clone()),
-            location_ids: after.location_id.iter().cloned().collect(),
-            changes: shared_contact_update_changes(before.as_ref(), &after),
-        })
-        .await;
-        Ok(after)
-    }
-
-    async fn put_location_share(&self, share: &db::LocationShare) -> db::Result<()> {
-        self.inner.put_location_share(share).await?;
-        self.record_create(
-            AuditEntityType::LocationShare,
-            &share.person_id,
-            None,
-            vec![share.location_id.clone()],
-            location_share_create_changes(share),
-        )
-        .await;
-        Ok(())
-    }
-
-    async fn delete_location_share(
-        &self,
-        person_id: &str,
-    ) -> db::Result<Option<db::LocationShare>> {
-        let removed = self.inner.delete_location_share(person_id).await?;
-        if let Some(share) = &removed {
-            self.record(Recorded {
-                entity_type: AuditEntityType::LocationShare,
-                entity_id: person_id,
-                action: AuditAction::Delete,
-                label: None,
-                location_ids: vec![share.location_id.clone()],
-                changes: location_share_delete_changes(share),
-            })
-            .await;
-        }
-        Ok(removed)
-    }
-
     async fn create_asset(&self, asset: db::NewAsset<'_>) -> db::Result<db::Asset> {
         let asset = self.inner.create_asset(asset).await?;
         self.record_create(
@@ -2421,29 +2141,6 @@ impl<D: db::Handler> db::Handler for AuditingHandler<D> {
         self.inner.stamp_person_email_key(id, email).await
     }
 
-    async fn update_location_share_position(
-        &self,
-        person_id: &str,
-        position: &db::SharedPosition,
-        updated_at: u64,
-        expires_at: u64,
-    ) -> db::Result<db::LocationShare> {
-        self.inner
-            .update_location_share_position(person_id, position, updated_at, expires_at)
-            .await
-    }
-
-    async fn get_location_shares<T: AsRef<str> + Sync>(
-        &self,
-        person_ids: &[T],
-    ) -> db::Result<Vec<Option<db::LocationShare>>> {
-        self.inner.get_location_shares(person_ids).await
-    }
-
-    async fn list_location_shares(&self, location_id: &str) -> db::Result<Vec<db::LocationShare>> {
-        self.inner.list_location_shares(location_id).await
-    }
-
     async fn put_notifications(&self, records: Vec<db::NotificationRecord>) -> db::Result<()> {
         self.inner.put_notifications(records).await
     }
@@ -2515,18 +2212,6 @@ impl<D: db::Handler> db::Handler for AuditingHandler<D> {
 
     async fn complete_asset(&self, id: &str, content_type: &str) -> db::Result<db::Asset> {
         self.inner.complete_asset(id, content_type).await
-    }
-
-    async fn list_note_refs(&self, note_id: &str) -> db::Result<Vec<db::NoteRef>> {
-        self.inner.list_note_refs(note_id).await
-    }
-
-    async fn put_note_ref(&self, note_id: &str, owner: &str, location_id: &str) -> db::Result<()> {
-        self.inner.put_note_ref(note_id, owner, location_id).await
-    }
-
-    async fn delete_note_ref(&self, note_id: &str, owner: &str) -> db::Result<()> {
-        self.inner.delete_note_ref(note_id, owner).await
     }
 
     async fn list_asset_refs(&self, asset_id: &str) -> db::Result<Vec<db::AssetRef>> {
@@ -2888,46 +2573,6 @@ impl<D: db::Handler> db::Handler for AuditingHandler<D> {
 
     async fn list_nitc_groups(&self) -> db::Result<Vec<db::NitcGroup>> {
         self.inner.list_nitc_groups().await
-    }
-
-    async fn get_notes<T: AsRef<str> + Sync>(
-        &self,
-        ids: &[T],
-    ) -> db::Result<Vec<Option<db::Note>>> {
-        self.inner.get_notes(ids).await
-    }
-
-    async fn list_notes(&self, location_id: &str) -> db::Result<Vec<db::Note>> {
-        self.inner.list_notes(location_id).await
-    }
-
-    async fn get_note_folders<T: AsRef<str> + Sync>(
-        &self,
-        ids: &[T],
-    ) -> db::Result<Vec<Option<db::NoteFolder>>> {
-        self.inner.get_note_folders(ids).await
-    }
-
-    async fn list_note_folders(&self, location_id: &str) -> db::Result<Vec<db::NoteFolder>> {
-        self.inner.list_note_folders(location_id).await
-    }
-
-    async fn get_shared_contacts<T: AsRef<str> + Sync>(
-        &self,
-        ids: &[T],
-    ) -> db::Result<Vec<Option<db::SharedContact>>> {
-        self.inner.get_shared_contacts(ids).await
-    }
-
-    async fn list_shared_contacts(
-        &self,
-        scope: db::SharedContactScope<'_>,
-    ) -> db::Result<Vec<db::SharedContact>> {
-        self.inner.list_shared_contacts(scope).await
-    }
-
-    async fn list_all_shared_contacts(&self) -> db::Result<Vec<db::SharedContact>> {
-        self.inner.list_all_shared_contacts().await
     }
 
     async fn bump_period_version(&self, period_id: &str) -> db::Result<u64> {
@@ -4020,7 +3665,6 @@ mod tests {
             ses_details: Default::default(),
             directory_details: Default::default(),
             accreditations: None,
-            sop_notes: Default::default(),
             created_at: 1,
             updated_at: 1,
         }

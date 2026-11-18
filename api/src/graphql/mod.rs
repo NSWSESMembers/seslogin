@@ -22,10 +22,7 @@ pub mod dataloader;
 pub mod error;
 #[cfg(debug_assertions)]
 pub mod error_injection;
-pub mod linked_notes;
-pub mod location_share;
 pub mod mutations;
-pub mod notes;
 pub mod notifications;
 pub mod pagination;
 pub mod photos;
@@ -33,14 +30,11 @@ pub mod query;
 pub mod scope;
 pub mod self_sign_in;
 pub mod ses_details;
-pub mod shared_contacts;
-pub mod sop_notes;
 pub mod tally;
 pub mod tally_passkeys;
 pub mod tally_sign_in;
 pub mod tally_sign_ins;
 pub mod trophies;
-pub mod wifi;
 
 pub use self::mutations::MutationRoot;
 pub use self::query::{
@@ -97,25 +91,9 @@ pub struct PeriodId(pub ID);
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct LocationId(pub ID);
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct TaskListId(pub String);
-
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct NoteFolderId(pub String);
-
-/// DataLoader key for a [`notes::Note`]'s row, used by anything that links to a note.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct NoteId(pub String);
-
 /// DataLoader key for [`assets::Asset`]'s row, used by anything that points at an asset.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct AssetId(pub String);
-
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct MapLayerId(pub String);
-
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct CalendarId(pub String);
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct SessionId(pub ID);

@@ -126,38 +126,20 @@ async fn the_grant_carries_primary_then_secondary_units() {
 }
 
 #[tokio::test]
-async fn notes_work_at_a_secondary_unit_but_not_an_unrelated_one() {
+async fn a_secondary_unit_opens_but_an_unrelated_one_does_not() {
     let app = app();
     let auth = dana(&app).await;
     for unit in ["loc-a", "loc-b"] {
-        let note = run(
-            &app,
-            &auth,
-            &format!(r#"mutation {{ createNote(locationId: "{unit}", title: "Keys") {{ id }} }}"#),
-        )
-        .await;
-        data(&note);
+        let opened = data(
+            &run(
+                &app,
+                &auth,
+                &format!(r#"{{ tallyLocation(id: "{unit}") {{ id }} }}"#),
+            )
+            .await,
+        );
+        assert_eq!(opened["tallyLocation"]["id"], unit);
     }
-    let notes = data(
-        &run(
-            &app,
-            &auth,
-            r#"{ tallyLocation(id: "loc-a") { notes { title } } }"#,
-        )
-        .await,
-    );
-    assert_eq!(
-        notes["tallyLocation"]["notes"],
-        json!([{ "title": "Keys" }])
-    );
-
-    let refused = run(
-        &app,
-        &auth,
-        r#"mutation { createNote(locationId: "loc-c", title: "Nope") { id } }"#,
-    )
-    .await;
-    assert_eq!(code_of(&refused).as_deref(), Some("FORBIDDEN"));
     let refused = run(&app, &auth, r#"{ tallyLocation(id: "loc-c") { name } }"#).await;
     assert_eq!(code_of(&refused).as_deref(), Some("FORBIDDEN"));
 }

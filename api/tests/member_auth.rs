@@ -448,7 +448,7 @@ async fn the_viewer_is_the_member_with_their_primary_unit_and_their_users_units(
 #[tokio::test]
 async fn tally_location_is_only_for_a_unit_the_member_can_use() {
     let app = app();
-    let doc = |id: &str| format!(r#"{{ tallyLocation(id: "{id}") {{ name notes {{ id }} }} }}"#);
+    let doc = |id: &str| format!(r#"{{ tallyLocation(id: "{id}") {{ name }} }}"#);
     let primary = data(&run(&app, member_at("loc-a", &[], false), &doc("loc-a")).await);
     assert_eq!(primary["tallyLocation"]["name"], "Unit A");
     let extra = data(&run(&app, member_at("loc-b", &["loc-a"], false), &doc("loc-a")).await);
@@ -500,7 +500,7 @@ async fn a_units_zone_is_named_but_its_tools_stay_closed() {
     assert!(other["tallyLocation"]["zone"].is_null());
 
     // Being in the zone's unit doesn't open the zone's own tools.
-    let tools = r#"{ tallyLocation(id: "loc-a") { zone { notes { id } } } }"#;
+    let tools = r#"{ tallyLocation(id: "loc-a") { zone { photoUploadsRemainingToday } } }"#;
     assert!(!run(&app, alice, tools).await.errors.is_empty());
 }
 

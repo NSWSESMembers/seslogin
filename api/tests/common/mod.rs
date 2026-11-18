@@ -53,16 +53,10 @@ pub(crate) struct FakeDb {
     pub(crate) webauthn_credentials: Mutex<HashMap<String, db::WebauthnCredential>>,
     /// `person_unit` rows by person id.
     pub(crate) person_units: Mutex<HashMap<String, Vec<db::PersonUnit>>>,
-    pub(crate) notes: Mutex<HashMap<String, db::Note>>,
-    pub(crate) note_folders: Mutex<HashMap<String, db::NoteFolder>>,
-    pub(crate) shared_contacts: Mutex<HashMap<String, db::SharedContact>>,
-    pub(crate) location_shares: Mutex<HashMap<String, db::LocationShare>>,
     /// Every notification, across all users' inboxes.
     pub(crate) notifications: Mutex<Vec<db::NotificationRecord>>,
     /// Makes `put_notifications` fail, like the notification table not existing yet.
     pub(crate) fail_notification_writes: AtomicBool,
-    /// Makes `list_all_shared_contacts` fail, like the table not existing yet.
-    pub(crate) fail_shared_contact_reads: AtomicBool,
     /// Trophy holder rows, by (location, trophy).
     pub(crate) trophy_holders: Mutex<HashMap<(String, String), db::TrophyHolder>>,
     /// Finished trophy reigns, in the order they were written.
@@ -72,8 +66,6 @@ pub(crate) struct FakeDb {
     pub(crate) assets: Mutex<HashMap<String, db::Asset>>,
     /// `asset_ref` rows, by (asset id, owner).
     pub(crate) asset_refs: Mutex<HashMap<(String, String), db::AssetRef>>,
-    /// `note_ref` rows, by (note id, owner).
-    pub(crate) note_refs: Mutex<HashMap<(String, String), db::NoteRef>>,
     pub(crate) photos: Mutex<HashMap<String, db::Photo>>,
     /// Daily counters by id, as (count, `expires_at`). Their TTL is not enforced.
     pub(crate) daily_counters: Mutex<HashMap<String, (u64, u64)>>,
@@ -964,7 +956,6 @@ impl db::Handler for FakeDb {
             ses_details: Default::default(),
             directory_details: Default::default(),
             accreditations: None,
-            sop_notes: Default::default(),
             created_at: seslogin::clock::now_sec(),
             updated_at: seslogin::clock::now_sec(),
         };
@@ -1018,14 +1009,6 @@ impl db::Handler for FakeDb {
                     location.badge_emails_enabled = badge_emails;
                 }
             }
-            db::LocationUpdateShape::SopNote { place, note_id } => match note_id {
-                Some(id) => {
-                    location.sop_notes.insert(place, id.to_string());
-                }
-                None => {
-                    location.sop_notes.remove(&place);
-                }
-            },
             _ => return unsupported(),
         }
         Ok(())
@@ -1489,301 +1472,6 @@ impl db::Handler for FakeDb {
         self.webauthn_states.lock().unwrap().remove(id);
         Ok(())
     }
-    async fn get_notes<T: AsRef<str> + Sync>(
-        &self,
-        ids: &[T],
-    ) -> db::Result<Vec<Option<db::Note>>> {
-        let notes = self.notes.lock().unwrap();
-        Ok(ids
-            .iter()
-            .map(|id| notes.get(id.as_ref()).cloned())
-            .collect())
-    }
-    async fn list_notes(&self, location_id: &str) -> db::Result<Vec<db::Note>> {
-        Ok(self
-            .notes
-            .lock()
-            .unwrap()
-            .values()
-            .filter(|n| n.location_id == location_id && n.deleted.is_none())
-            .cloned()
-            .collect())
-    }
-    async fn create_note(&self, note: db::NewNote<'_>) -> db::Result<db::Note> {
-        let now = seslogin::clock::now_sec();
-        let row = db::Note {
-            id: db::new_id(),
-            location_id: note.location_id.to_string(),
-            folder_id: note.folder_id.map(str::to_string),
-            title: note.title.to_string(),
-            content: note.content.to_string(),
-            created_by: note.created_by.map(str::to_string),
-            updated_by: None,
-            version: 1,
-            deleted: None,
-            created_at: now,
-            updated_at: now,
-        };
-        self.notes
-            .lock()
-            .unwrap()
-            .insert(row.id.clone(), row.clone());
-        Ok(row)
-    }
-    async fn update_note(&self, id: &str, change: db::NoteUpdateShape<'_>) -> db::Result<db::Note> {
-        let now = seslogin::clock::now_sec();
-        let mut notes = self.notes.lock().unwrap();
-        let not_found = || db::Error::NotFound(format!("Note {id} not found, or changed"));
-        // The same conditions as the DynamoDB `ConditionExpression`s.
-        let n = notes
-            .get_mut(id)
-            .filter(|n| n.deleted.is_none())
-            .ok_or_else(not_found)?;
-        match change {
-            db::NoteUpdateShape::Fields {
-                folder_id,
-                title,
-                content,
-                by,
-                expected_version,
-            } => {
-                if n.version != expected_version {
-                    return Err(not_found());
-                }
-                n.folder_id = folder_id.map(str::to_string);
-                n.title = title.to_string();
-                n.content = content.to_string();
-                n.updated_by = by.map(str::to_string);
-            }
-            db::NoteUpdateShape::Delete { by } => {
-                n.deleted = Some(now);
-                n.updated_by = by.map(str::to_string);
-            }
-        }
-        n.version += 1;
-        n.updated_at = now;
-        Ok(n.clone())
-    }
-    async fn get_note_folders<T: AsRef<str> + Sync>(
-        &self,
-        ids: &[T],
-    ) -> db::Result<Vec<Option<db::NoteFolder>>> {
-        let folders = self.note_folders.lock().unwrap();
-        Ok(ids
-            .iter()
-            .map(|id| folders.get(id.as_ref()).cloned())
-            .collect())
-    }
-    async fn list_note_folders(&self, location_id: &str) -> db::Result<Vec<db::NoteFolder>> {
-        Ok(self
-            .note_folders
-            .lock()
-            .unwrap()
-            .values()
-            .filter(|f| f.location_id == location_id && f.deleted.is_none())
-            .cloned()
-            .collect())
-    }
-    async fn create_note_folder(
-        &self,
-        location_id: &str,
-        name: &str,
-        created_by: Option<&str>,
-    ) -> db::Result<db::NoteFolder> {
-        let now = seslogin::clock::now_sec();
-        let row = db::NoteFolder {
-            id: db::new_id(),
-            location_id: location_id.to_string(),
-            name: name.to_string(),
-            created_by: created_by.map(str::to_string),
-            deleted: None,
-            created_at: now,
-            updated_at: now,
-        };
-        self.note_folders
-            .lock()
-            .unwrap()
-            .insert(row.id.clone(), row.clone());
-        Ok(row)
-    }
-    async fn update_note_folder(
-        &self,
-        id: &str,
-        change: db::NoteFolderUpdateShape<'_>,
-    ) -> db::Result<db::NoteFolder> {
-        let now = seslogin::clock::now_sec();
-        let mut folders = self.note_folders.lock().unwrap();
-        let f = folders
-            .get_mut(id)
-            .filter(|f| f.deleted.is_none())
-            .ok_or_else(|| db::Error::NotFound(format!("Note folder {id} not found")))?;
-        match change {
-            db::NoteFolderUpdateShape::Name { name } => f.name = name.to_string(),
-            db::NoteFolderUpdateShape::Delete => f.deleted = Some(now),
-        }
-        f.updated_at = now;
-        Ok(f.clone())
-    }
-    async fn get_shared_contacts<T: AsRef<str> + Sync>(
-        &self,
-        ids: &[T],
-    ) -> db::Result<Vec<Option<db::SharedContact>>> {
-        let contacts = self.shared_contacts.lock().unwrap();
-        Ok(ids
-            .iter()
-            .map(|id| contacts.get(id.as_ref()).cloned())
-            .collect())
-    }
-    async fn list_shared_contacts(
-        &self,
-        scope: db::SharedContactScope<'_>,
-    ) -> db::Result<Vec<db::SharedContact>> {
-        Ok(self
-            .shared_contacts
-            .lock()
-            .unwrap()
-            .values()
-            .filter(|c| c.location_id.as_deref() == scope.location_id() && c.deleted.is_none())
-            .cloned()
-            .collect())
-    }
-    async fn list_all_shared_contacts(&self) -> db::Result<Vec<db::SharedContact>> {
-        if self.fail_shared_contact_reads.load(Ordering::SeqCst) {
-            return Err(db::Error::Infrastructure(
-                "ResourceNotFoundException: shared_contact".to_string(),
-            ));
-        }
-        Ok(self
-            .shared_contacts
-            .lock()
-            .unwrap()
-            .values()
-            .filter(|c| c.deleted.is_none())
-            .cloned()
-            .collect())
-    }
-    async fn create_shared_contact(
-        &self,
-        contact: db::NewSharedContact<'_>,
-    ) -> db::Result<db::SharedContact> {
-        let now = seslogin::clock::now_sec();
-        let row = db::SharedContact {
-            id: db::new_id(),
-            location_id: contact.scope.location_id().map(str::to_string),
-            name: contact.name.to_string(),
-            description: contact.description.to_string(),
-            phone: contact.phone.map(str::to_string),
-            phone_can_sms: contact.phone_can_sms,
-            email: contact.email.map(str::to_string),
-            created_by: contact.created_by.map(str::to_string),
-            updated_by: None,
-            version: 1,
-            deleted: None,
-            created_at: now,
-            updated_at: now,
-        };
-        self.shared_contacts
-            .lock()
-            .unwrap()
-            .insert(row.id.clone(), row.clone());
-        Ok(row)
-    }
-    async fn update_shared_contact(
-        &self,
-        id: &str,
-        change: db::SharedContactUpdateShape<'_>,
-    ) -> db::Result<db::SharedContact> {
-        let now = seslogin::clock::now_sec();
-        let mut contacts = self.shared_contacts.lock().unwrap();
-        let not_found =
-            || db::Error::NotFound(format!("Shared contact {id} not found, or changed"));
-        // The same conditions as the DynamoDB `ConditionExpression`s.
-        let c = contacts
-            .get_mut(id)
-            .filter(|c| c.deleted.is_none())
-            .ok_or_else(not_found)?;
-        match change {
-            db::SharedContactUpdateShape::Fields {
-                name,
-                description,
-                phone,
-                phone_can_sms,
-                email,
-                by,
-                expected_version,
-            } => {
-                if c.version != expected_version {
-                    return Err(not_found());
-                }
-                c.name = name.to_string();
-                c.description = description.to_string();
-                c.phone = phone.map(str::to_string);
-                c.phone_can_sms = phone_can_sms;
-                c.email = email.map(str::to_string);
-                c.updated_by = by.map(str::to_string);
-            }
-            db::SharedContactUpdateShape::Delete { by } => {
-                c.deleted = Some(now);
-                c.updated_by = by.map(str::to_string);
-            }
-        }
-        c.version += 1;
-        c.updated_at = now;
-        Ok(c.clone())
-    }
-    async fn get_location_shares<T: AsRef<str> + Sync>(
-        &self,
-        person_ids: &[T],
-    ) -> db::Result<Vec<Option<db::LocationShare>>> {
-        let shares = self.location_shares.lock().unwrap();
-        Ok(person_ids
-            .iter()
-            .map(|id| shares.get(id.as_ref()).cloned())
-            .collect())
-    }
-    async fn list_location_shares(&self, location_id: &str) -> db::Result<Vec<db::LocationShare>> {
-        Ok(self
-            .location_shares
-            .lock()
-            .unwrap()
-            .values()
-            .filter(|s| s.location_id == location_id)
-            .cloned()
-            .collect())
-    }
-    async fn put_location_share(&self, share: &db::LocationShare) -> db::Result<()> {
-        self.location_shares
-            .lock()
-            .unwrap()
-            .insert(share.person_id.clone(), share.clone());
-        Ok(())
-    }
-    async fn update_location_share_position(
-        &self,
-        person_id: &str,
-        position: &db::SharedPosition,
-        updated_at: u64,
-        expires_at: u64,
-    ) -> db::Result<db::LocationShare> {
-        let mut shares = self.location_shares.lock().unwrap();
-        // The same condition as the DynamoDB `ConditionExpression`.
-        let s = shares
-            .get_mut(person_id)
-            .filter(|s| s.ends_at > updated_at)
-            .ok_or_else(|| {
-                db::Error::NotFound(format!("No location share for {person_id}, or it ended"))
-            })?;
-        s.position = *position;
-        s.updated_at = updated_at;
-        s.expires_at = expires_at;
-        Ok(s.clone())
-    }
-    async fn delete_location_share(
-        &self,
-        person_id: &str,
-    ) -> db::Result<Option<db::LocationShare>> {
-        Ok(self.location_shares.lock().unwrap().remove(person_id))
-    }
     async fn put_notifications(&self, records: Vec<db::NotificationRecord>) -> db::Result<()> {
         if self.fail_notification_writes.load(Ordering::SeqCst) {
             return Err(db::Error::Infrastructure(
@@ -2019,40 +1707,6 @@ impl db::Handler for FakeDb {
             .lock()
             .unwrap()
             .remove(&(asset_id.to_string(), owner.to_string()));
-        Ok(())
-    }
-
-    async fn list_note_refs(&self, note_id: &str) -> db::Result<Vec<db::NoteRef>> {
-        let mut refs: Vec<db::NoteRef> = self
-            .note_refs
-            .lock()
-            .unwrap()
-            .values()
-            .filter(|r| r.note_id == note_id)
-            .cloned()
-            .collect();
-        refs.sort_by(|a, b| a.owner.cmp(&b.owner));
-        Ok(refs)
-    }
-
-    async fn put_note_ref(&self, note_id: &str, owner: &str, location_id: &str) -> db::Result<()> {
-        self.note_refs.lock().unwrap().insert(
-            (note_id.to_string(), owner.to_string()),
-            db::NoteRef {
-                note_id: note_id.to_string(),
-                owner: owner.to_string(),
-                location_id: location_id.to_string(),
-                created_at: seslogin::clock::now_sec(),
-            },
-        );
-        Ok(())
-    }
-
-    async fn delete_note_ref(&self, note_id: &str, owner: &str) -> db::Result<()> {
-        self.note_refs
-            .lock()
-            .unwrap()
-            .remove(&(note_id.to_string(), owner.to_string()));
         Ok(())
     }
 
@@ -2346,7 +2000,6 @@ pub(crate) fn seed_location(
             ses_details: Default::default(),
             directory_details: Default::default(),
             accreditations: None,
-            sop_notes: Default::default(),
             created_at: 0,
             updated_at: 0,
         },
