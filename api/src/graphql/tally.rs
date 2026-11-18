@@ -17,26 +17,12 @@ use super::LocationId;
 use super::auth::require_member_location;
 use super::dataloader::DatabaseLoader;
 use super::error::ApiError;
-use super::photos::{self, PhotoConnection};
 use super::query::Person;
 use super::tally_passkeys::{self, TallyPasskey};
 use super::tally_sign_ins::{self, TallySignIn};
 use crate::app::{App, HasDb};
 use crate::auth::AuthInfo;
 use crate::db::{self, Handler as _};
-
-/// The person ID of the member signed in to Tally, if the caller is one.
-pub(crate) fn member_id<'a>(ctx: &'a Context<'_>) -> Option<&'a str> {
-    match ctx.data_opt::<AuthInfo>() {
-        Some(AuthInfo::Member { person_id, .. }) => Some(person_id.as_str()),
-        _ => None,
-    }
-}
-
-/// [`member_id`], refusing anyone who isn't a member signed in to Tally.
-pub(crate) fn require_member<'a>(ctx: &'a Context<'_>) -> Result<&'a str> {
-    member_id(ctx).ok_or_else(|| ApiError::forbidden("Only available in Tally").into())
-}
 
 pub(crate) fn full_name(person: &db::Person) -> String {
     format!("{} {}", person.first_name.trim(), person.last_name.trim())
@@ -247,23 +233,6 @@ impl<A: App + HasDb + Send + Sync + 'static> TallyLocation<A> {
             .map_err(|e| anyhow!("Failed to load location via DataLoader: {}", e))?
             .flatten()
             .map(|zone| TallyLocation::new(zone.rec)))
-    }
-
-    /// The unit's photos, newest first by when they were taken (else when they were
-    /// added), for 30 days. `first` is at most 200. Pass the previous page's `endCursor`
-    /// as `after`. See `graphql::photos`.
-    async fn photos(
-        &self,
-        ctx: &Context<'_>,
-        #[graphql(default_with = "Some(60)")] first: Option<i64>,
-        after: Option<String>,
-    ) -> Result<PhotoConnection<A>> {
-        photos::location_photos(ctx, &self.rec.id, first, after).await
-    }
-
-    /// How many more photos the unit may add today (100 a Sydney day), never below 0.
-    async fn photo_uploads_remaining_today(&self, ctx: &Context<'_>) -> Result<i64> {
-        photos::uploads_remaining_today::<A>(ctx, &self.rec.id).await
     }
 }
 

@@ -35,15 +35,12 @@ use crate::trophy_scan;
 use async_graphql::dataloader::DataLoader;
 use hex;
 
-use super::assets::{self, Asset, AssetUpload, CreateAssetUploadInput};
 use super::auth::{
     AuthGuard, AuthRequirement, require_location_access, require_location_write_access,
     require_not_oauth_grant, require_period_write_access, require_writable,
 };
 use super::dataloader::DatabaseLoader;
 use super::error::{ApiError, ErrorCode};
-use super::notifications::{self, MarkNotificationsReadPayload};
-use super::photos::{self, Photo};
 use super::query::{QuickPick, build_quick_pick};
 use super::self_sign_in::{open_period_at, require_linked_person, sign_in_location_id};
 use super::{
@@ -2887,70 +2884,6 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sy
             &credential_json,
         )
         .await
-    }
-
-    /// Start uploading a JPEG or WebP image from Tally: creates a pending asset and
-    /// returns a form to POST the file to (fields in order, then the file as a part
-    /// named `file` last). Call `completeAssetUpload` once it is posted. Fails
-    /// `RATE_LIMITED` after 200 uploads in a Sydney day, and `BAD_REQUEST` for a file
-    /// type or size that isn't accepted or on an environment with no upload storage.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
-    async fn create_asset_upload(
-        &self,
-        ctx: &Context<'_>,
-        input: CreateAssetUploadInput,
-    ) -> Result<AssetUpload<A>> {
-        assets::create_asset_upload(ctx, self.app.as_ref(), input).await
-    }
-
-    /// Check the file arrived intact and make the asset ready. Completing an asset that
-    /// is already ready returns it. `BAD_REQUEST` if the file hasn't arrived or isn't
-    /// the image that was described.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
-    async fn complete_asset_upload(&self, ctx: &Context<'_>, id: ID) -> Result<Asset<A>> {
-        assets::complete_asset_upload(ctx, self.app.as_ref(), &id).await
-    }
-
-    /// Add a ready image the caller uploaded to a unit's photo stream. `NOT_FOUND` for
-    /// an unknown asset, `BAD_REQUEST` if it isn't complete or belongs to another unit,
-    /// `FORBIDDEN` if someone else uploaded it, `RATE_LIMITED` after 100 photos at the
-    /// unit in a Sydney day.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
-    async fn create_photo(
-        &self,
-        ctx: &Context<'_>,
-        location_id: ID,
-        asset_id: ID,
-    ) -> Result<Photo<A>> {
-        photos::create_photo(ctx, self.app.as_ref(), &location_id, &asset_id).await
-    }
-
-    /// Remove a photo from the stream for everyone now; it is deleted within seven days.
-    /// There is no undo. `NOT_FOUND` if it is unknown or already hidden.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
-    async fn hide_photo(&self, ctx: &Context<'_>, id: ID) -> Result<Photo<A>> {
-        photos::hide_photo(ctx, self.app.as_ref(), &id).await
-    }
-
-    /// Mark some of your notifications read (at most 200 IDs). One that is already read,
-    /// or is not yours, is ignored. Returns how many you still have unread.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
-    async fn mark_notifications_read(
-        &self,
-        ctx: &Context<'_>,
-        ids: Vec<ID>,
-    ) -> Result<MarkNotificationsReadPayload> {
-        notifications::mark_notifications_read(ctx, self.app.as_ref(), ids).await
-    }
-
-    /// Mark all your notifications read. Returns how many you still have unread (usually
-    /// none).
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
-    async fn mark_all_notifications_read(
-        &self,
-        ctx: &Context<'_>,
-    ) -> Result<MarkNotificationsReadPayload> {
-        notifications::mark_all_notifications_read(ctx, self.app.as_ref()).await
     }
 
     #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
