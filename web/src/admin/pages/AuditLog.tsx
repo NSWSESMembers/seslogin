@@ -434,7 +434,7 @@ function Who({ entry, showVia }: { entry: Entry; showVia: boolean }) {
   const { actor } = entry;
   // A failed name lookup falls back to the kind-specific text, like a missing one.
   const label = isValueResult(actor.label) ? actor.label.value : null;
-  const hint = label ? actorKindHint(actor.kind) : null;
+  const hint = label ? actorKindHint(actor.kind, actor.via) : null;
   return (
     <>
       {actorText({ kind: actor.kind, id: actor.actorId, label })}

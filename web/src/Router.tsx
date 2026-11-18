@@ -41,6 +41,14 @@ const TallyAddPasskey = lazyWithReload(
   "tally",
   () => import("./tally/TallyAddPasskey"),
 );
+const MemberSignIn = lazyWithReload(
+  "member",
+  () => import("./member/MemberSignIn"),
+);
+const MemberSettings = lazyWithReload(
+  "member",
+  () => import("./member/MemberSettings"),
+);
 const PeriodEdit = lazyWithReload(
   "period",
   () => import("./period/PeriodEdit"),
@@ -83,6 +91,17 @@ export default function Router() {
                 single-use ticket in the URL fragment (see
                 api/src/graphql/tally_passkeys.rs). */}
             <Route path="/tally/passkey" element={<TallyAddPasskey />} />
+
+            {/* Member email settings - standalone, no admin sign-in. Signed
+                in with an emailed code, or by the slms_ token in the URL
+                fragment of a reminder email's link (see
+                api/src/member_settings.rs). */}
+            <Route path="/member/sign-in" element={<MemberSignIn />} />
+            <Route path="/member/settings" element={<MemberSettings />} />
+            <Route
+              path="/member"
+              element={<Navigate to="/member/sign-in" replace />}
+            />
 
             {/* Admin routes - auth required at /admin/* */}
             <Route path="/admin/*" element={<AdminApp />} />

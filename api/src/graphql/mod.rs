@@ -32,6 +32,7 @@ pub mod location_share;
 pub mod map;
 pub mod meeting_minutes;
 pub mod meetings;
+pub mod member_settings;
 pub mod mutations;
 pub mod notes;
 pub mod notifications;

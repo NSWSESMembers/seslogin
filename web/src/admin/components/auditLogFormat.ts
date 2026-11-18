@@ -86,11 +86,17 @@ export function actorText(actor: {
 }
 
 // A short description of the kind of actor, shown under the name when the name
-// alone would not say (a kiosk called "Front desk", an API token).
-export function actorKindHint(kind: string): string | null {
+// alone would not say (a kiosk called "Front desk", an API token). `via` is
+// "member_settings" for a member's change on their own email settings page.
+export function actorKindHint(
+  kind: string,
+  via?: string | null,
+): string | null {
   switch (kind) {
     case "MEMBER":
-      return "Member, in Tally";
+      return via === "member_settings"
+        ? "Member, on their email settings page"
+        : "Member, in Tally";
     case "SESSION":
       return "Kiosk";
     case "API_TOKEN":

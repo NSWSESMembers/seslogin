@@ -167,6 +167,7 @@ mod tests {
             capability_tags: None,
             deleted: deleted.then_some(1),
             missing_since: None,
+            signed_in_reminders_off_at: None,
             secondary_location_ids: vec![],
             created_at: None,
             updated_at: None,

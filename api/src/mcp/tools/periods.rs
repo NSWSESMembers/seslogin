@@ -198,8 +198,9 @@ pub(super) fn catalogue() -> Vec<Value> {
              a real email to the member's address on record, so only call it when asked. A \
              second link for the same period is refused until a cooldown has passed, a guest \
              period has no member to email, and a member with no email address on record \
-             cannot be sent one. Returns the address it went to. Needs an Admin (or \
-             super-user) grant for the period's location.",
+             cannot be sent one, nor can a member who has turned off reminders for \
+             forgetting to sign out be sent one for a period still open. Returns the address \
+             it went to. Needs an Admin (or super-user) grant for the period's location.",
             input_schema(json!({ "id": period_id() }), &["id"]),
             Effect::External,
         ),

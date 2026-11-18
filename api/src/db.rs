@@ -209,6 +209,10 @@ pub struct Person {
     /// soft-delete — so a marker only ever exists on a live row. Once it is older than
     /// the configured grace window the person is soft-deleted.
     pub missing_since: Option<u64>,
+    /// Unix seconds at which the member turned off "still signed in" reminder emails
+    /// on their member settings page (`member_settings`), or `None` while they get
+    /// them. Written only by `PersonUpdateShape::SignedInReminders`.
+    pub signed_in_reminders_off_at: Option<u64>,
     /// The other units the member is a volunteer at, by location id, sorted: those of
     /// their `person_unit` rows that are one of our locations and carry a Volunteer
     /// assignment (`membership_type`), less `location_id` as it stood when written.
@@ -293,6 +297,11 @@ pub enum PersonUpdateShape<'a> {
     /// `Some` stamps the missing marker, `None` removes it.
     MissingSince {
         missing_since: Option<u64>,
+    },
+    /// The member's own choice on their settings page: `Some` (when) turns off
+    /// "still signed in" reminder emails, `None` turns them back on.
+    SignedInReminders {
+        off_at: Option<u64>,
     },
     /// Replaces the whole badge state, but only if the stored state is still exactly
     /// `expected` (`None`: there is none), failing with [`Error::Conflict`] otherwise, so
@@ -4092,6 +4101,7 @@ mod tests {
             capability_tags: None,
             deleted: None,
             missing_since: None,
+            signed_in_reminders_off_at: None,
             secondary_location_ids: secondary.iter().map(|s| s.to_string()).collect(),
             created_at: None,
             updated_at: None,
