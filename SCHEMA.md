@@ -179,7 +179,7 @@ The `start_time` sort key across the location/person GSIs means DynamoDB returns
 | `location_id-index`              | `location_id`         | —             | ALL        | List all members at a location for admin views and member sync                             |
 | `registration_number-index`      | `registration_number` | —             | KEYS_ONLY  | Batch lookup during kiosk scan-in: registration number → person ID                         |
 | `ses_api_person_id-index`        | `ses_api_person_id`   | —             | KEYS_ONLY  | Member sync reconciliation: HQ person ID → local person ID                                 |
-| `contact_feed-contact_key-index` | `contact_feed`        | `contact_key` | ALL        | Contacts feed: every person, ordered by when a field the contacts API returns last changed |
+| `contact_feed-contact_key-index` | `contact_feed`        | `contact_key` | ALL        | Unused: the removed offline sync's contacts feed. No longer written; to be dropped        |
 | `email_key-index`                | `email_key`           | —             | KEYS_ONLY  | Tally sign-in: email → the member(s) it belongs to (sparse)                                |
 
 `KEYS_ONLY` on the scan-in and sync indexes avoids storing a full copy of each person item per index, since these lookups only need the primary key to drive a subsequent `BatchGetItem` or direct update.
@@ -202,18 +202,8 @@ The `start_time` sort key across the location/person GSIs means DynamoDB returns
   absence pass reads the roster through `location_id-index`, which is `ALL`-projected — a
   `KEYS_ONLY` projection there would hydrate every row with `missing_since: None` and
   silently prevent all deletions.
-- `contact_feed` (S) — always `"all"`: a constant hash key, so every person sits in one
-  ordered partition of `contact_feed-contact_key-index`. The write rate is member sync plus
-  admin edits, far below a partition's limits.
-- `contact_key` (S) — `<Unix microseconds, zero-padded to 20 digits>#<id>`, restamped by
-  every write that changes something the contacts API returns: `create_person`, and
-  `update_person`'s `Fields`, `Location`, `Directory`, `CapabilityTags`, `Undelete` and
-  `Delete` shapes (not `SesApiPersonId`, `MissingSince` or `BadgeState`). Renaming a location
-  restamps every live member there, since their unit name changed, and
-  `replace_person_units` restamps the member when any of their `person_unit` rows changed. Sorting by it orders people by last change; the id suffix
-  keeps it unique when two writes share a microsecond. Soft-deleted rows keep their key, so
-  they double as the feed's tombstones. Rows written before the index existed have neither
-  attribute until `cli person stamp-contacts` backfills them.
+- `contact_feed` (S), `contact_key` (S) — left on older rows by the removed offline sync's
+  contacts feed. Nothing reads or writes them any more; the index over them is to be dropped.
 - `email_key` (S) — `email` trimmed and lowercased (`db::email_key`), present exactly when
   `email` is. Written and removed with `email` by `update_person`'s `Email` shape. Several
   people may share one, and soft-deleted rows keep theirs, so a lookup returns every match

@@ -2161,15 +2161,12 @@ fn address_value(address: &db::LocationAddress) -> AttributeValue {
 
 /// Finish an `update_item` that `SET`s each attribute with a value and `REMOVE`s each one
 /// without, stamping `updated_at`. Attribute names go through placeholders, since some of
-/// them (`code`, `name`) are reserved words. `also_set` adds clauses whose values the
-/// caller binds itself, such as [`CONTACT_STAMP_SET`].
+/// them (`code`, `name`) are reserved words.
 fn set_or_remove(
     mut req: UpdateItemFluentBuilder,
     values: Vec<(&str, Option<AttributeValue>)>,
-    also_set: &[&str],
 ) -> UpdateItemFluentBuilder {
     let mut sets = vec!["updated_at = :updated_at".to_string()];
-    sets.extend(also_set.iter().map(|s| s.to_string()));
     let mut removes = Vec::new();
     for (i, (name, value)) in values.into_iter().enumerate() {
         let placeholder = format!("#a{i}");
@@ -2427,35 +2424,10 @@ fn scan_cursor_from_key(key: Option<HashMap<String, AttributeValue>>) -> Option<
         })
 }
 
-/// The contact feed (`person` GSI `contact_feed-contact_key-index`): every write that
-/// changes a field the contacts API returns stamps the row with a fresh `contact_key`, so
-/// the feed can serve "everything changed since this key". `contact_feed` is a constant
-/// hash key, putting every person in one ordered index partition. See SCHEMA.md.
-const CONTACT_FEED_ATTR: &str = "contact_feed";
-const CONTACT_KEY_ATTR: &str = "contact_key";
-const CONTACT_FEED: &str = "all";
-const CONTACT_FEED_INDEX: &str = "contact_feed-contact_key-index";
-const CONTACT_STAMP_SET: &str = "contact_feed = :contact_feed, contact_key = :contact_key";
-
 /// A person's [`db::email_key`], backing the sparse `person` GSI `email_key-index` that
 /// Tally sign-in looks members up by. Written alongside `email` and removed with it.
 const EMAIL_KEY_ATTR: &str = "email_key";
 const EMAIL_KEY_INDEX: &str = "email_key-index";
-
-/// `<microseconds, zero-padded to 20 digits>#<person id>`: sorts by change time, and the
-/// id suffix makes it unique even when two writes share a microsecond.
-fn contact_key(person_id: &str) -> String {
-    format!("{:020}#{}", crate::clock::now_us(), person_id)
-}
-
-/// Bind the values for [`CONTACT_STAMP_SET`]; the caller adds it to its `SET` clause.
-fn with_contact_stamp(
-    req: aws_sdk_dynamodb::operation::update_item::builders::UpdateItemFluentBuilder,
-    person_id: &str,
-) -> aws_sdk_dynamodb::operation::update_item::builders::UpdateItemFluentBuilder {
-    req.expression_attribute_values(":contact_feed", AttributeValue::S(CONTACT_FEED.to_string()))
-        .expression_attribute_values(":contact_key", AttributeValue::S(contact_key(person_id)))
-}
 
 /// How many times a single `BatchGetItem` chunk is sent before giving up. Four retries
 /// after the first attempt, which at the backoff below spans roughly 750ms — long enough
@@ -3887,11 +3859,6 @@ impl db::Handler for Handler {
             .item("deleted", AttributeValue::N("0".to_string()))
             .item("created_at", AttributeValue::N(now.to_string()))
             .item("updated_at", AttributeValue::N(now.to_string()))
-            .item(
-                CONTACT_FEED_ATTR,
-                AttributeValue::S(CONTACT_FEED.to_string()),
-            )
-            .item(CONTACT_KEY_ATTR, AttributeValue::S(contact_key(&id)))
             .return_consumed_capacity(ReturnConsumedCapacity::Total)
             .send()
             .await
@@ -3929,11 +3896,11 @@ impl db::Handler for Handler {
                 last_name,
                 registration_number,
             } => {
-                let resp = with_contact_stamp(self.client.update_item(), id)
+                let resp = self.client.update_item()
                     .table_name(self.table_name("person"))
                     .key("id", AttributeValue::S(id.to_string()))
                     .condition_expression("attribute_exists(id)")
-                    .update_expression(format!("SET first_name = :first_name, last_name = :last_name, registration_number = :registration_number, updated_at = :updated_at, {CONTACT_STAMP_SET}"))
+                    .update_expression("SET first_name = :first_name, last_name = :last_name, registration_number = :registration_number, updated_at = :updated_at")
                     .expression_attribute_values(":first_name", AttributeValue::S(first_name.to_string()))
                     .expression_attribute_values(":last_name", AttributeValue::S(last_name.to_string()))
                     .expression_attribute_values(":registration_number", AttributeValue::S(registration_number.to_string()))
@@ -3945,13 +3912,13 @@ impl db::Handler for Handler {
                 record_capacity("update_person", resp.consumed_capacity(), CapKind::Write);
             }
             db::PersonUpdateShape::Location { location_id } => {
-                let resp = with_contact_stamp(self.client.update_item(), id)
+                let resp = self
+                    .client
+                    .update_item()
                     .table_name(self.table_name("person"))
                     .key("id", AttributeValue::S(id.to_string()))
                     .condition_expression("attribute_exists(id)")
-                    .update_expression(format!(
-                        "SET location_id = :location_id, updated_at = :updated_at, {CONTACT_STAMP_SET}"
-                    ))
+                    .update_expression("SET location_id = :location_id, updated_at = :updated_at")
                     .expression_attribute_values(
                         ":location_id",
                         AttributeValue::S(location_id.to_string()),
@@ -4010,7 +3977,8 @@ impl db::Handler for Handler {
                 // `email_key` follows `email` (it backs `email_key-index`), and the contacts
                 // feed serves `email`, so this restamps the contact key.
                 let resp = set_or_remove(
-                    with_contact_stamp(self.client.update_item(), id)
+                    self.client
+                        .update_item()
                         .table_name(self.table_name("person"))
                         .key("id", AttributeValue::S(id.to_string()))
                         .condition_expression("attribute_exists(id)"),
@@ -4030,7 +3998,6 @@ impl db::Handler for Handler {
                                 .then(|| AttributeValue::Ss(secondary_location_ids.to_vec())),
                         ),
                     ],
-                    &[CONTACT_STAMP_SET],
                 )
                 .return_consumed_capacity(ReturnConsumedCapacity::Total)
                 .send()
@@ -4039,9 +4006,9 @@ impl db::Handler for Handler {
                 record_capacity("update_person", resp.consumed_capacity(), CapKind::Write);
             }
             db::PersonUpdateShape::CapabilityTags { capability_tags } => {
-                // The contacts feed serves the tags, so this restamps the contact key.
                 let resp = set_or_remove(
-                    with_contact_stamp(self.client.update_item(), id)
+                    self.client
+                        .update_item()
                         .table_name(self.table_name("person"))
                         .key("id", AttributeValue::S(id.to_string()))
                         .condition_expression("attribute_exists(id)"),
@@ -4049,7 +4016,6 @@ impl db::Handler for Handler {
                         "capability_tags",
                         capability_tags.map(|v| AttributeValue::S(v.to_string())),
                     )],
-                    &[CONTACT_STAMP_SET],
                 )
                 .return_consumed_capacity(ReturnConsumedCapacity::Total)
                 .send()
@@ -4146,13 +4112,15 @@ impl db::Handler for Handler {
                 record_capacity("update_person", resp.consumed_capacity(), CapKind::Write);
             }
             db::PersonUpdateShape::Undelete => {
-                let resp = with_contact_stamp(self.client.update_item(), id)
+                let resp = self
+                    .client
+                    .update_item()
                     .table_name(self.table_name("person"))
                     .key("id", AttributeValue::S(id.to_string()))
                     .condition_expression("attribute_exists(id)")
                     // Drop any missing marker: it only ever applies to a live row.
                     .update_expression(
-                        format!("SET deleted = :deleted, updated_at = :updated_at, {CONTACT_STAMP_SET} REMOVE missing_since"),
+                        "SET deleted = :deleted, updated_at = :updated_at REMOVE missing_since",
                     )
                     .expression_attribute_values(":deleted", AttributeValue::N("0".to_string()))
                     .expression_attribute_values(
@@ -4167,14 +4135,16 @@ impl db::Handler for Handler {
             }
             db::PersonUpdateShape::Delete => {
                 let deleted_time = crate::clock::now_sec().to_string();
-                let resp = with_contact_stamp(self.client.update_item(), id)
+                let resp = self
+                    .client
+                    .update_item()
                     .table_name(self.table_name("person"))
                     .key("id", AttributeValue::S(id.to_string()))
                     .condition_expression("attribute_exists(id)")
                     // Drop any missing marker so it can never outlive the live row —
                     // roster reads skip deleted people and could never clear it later.
                     .update_expression(
-                        format!("SET deleted = :deleted, updated_at = :updated_at, {CONTACT_STAMP_SET} REMOVE missing_since"),
+                        "SET deleted = :deleted, updated_at = :updated_at REMOVE missing_since",
                     )
                     .expression_attribute_values(
                         ":deleted",
@@ -4215,133 +4185,6 @@ impl db::Handler for Handler {
             CapKind::Write,
         );
         Ok(())
-    }
-
-    async fn stamp_person_contact(&self, id: &str) -> db::Result<()> {
-        if self.read_only {
-            return Err(db::Error::MutationDisabled);
-        }
-        let resp = with_contact_stamp(self.client.update_item(), id)
-            .table_name(self.table_name("person"))
-            .key("id", AttributeValue::S(id.to_string()))
-            .condition_expression("attribute_exists(id)")
-            .update_expression(format!("SET {CONTACT_STAMP_SET}"))
-            .return_consumed_capacity(ReturnConsumedCapacity::Total)
-            .send()
-            .await
-            .map_err(|e| map_update_err(e, format!("Person {}", id)))?;
-        record_capacity(
-            "stamp_person_contact",
-            resp.consumed_capacity(),
-            CapKind::Write,
-        );
-        Ok(())
-    }
-
-    async fn list_contact_changes(
-        &self,
-        after: Option<&str>,
-        before: &str,
-        include_deleted: bool,
-        limit: usize,
-    ) -> db::Result<db::ContactPage> {
-        // BETWEEN refuses an inverted range. A cursor can sit at or past this read's
-        // bound when this Lambda's clock is a little behind the one that issued it.
-        if after.is_some_and(|a| a >= before) {
-            return Ok(db::ContactPage {
-                changes: Vec::new(),
-                has_more: false,
-            });
-        }
-        let mut changes = Vec::new();
-        let mut exclusive_start_key = None;
-        // One extra row tells us whether there is more.
-        while changes.len() <= limit {
-            let mut query = self
-                .client
-                .query()
-                .table_name(self.table_name("person"))
-                .index_name(CONTACT_FEED_INDEX)
-                .expression_attribute_values(":feed", AttributeValue::S(CONTACT_FEED.to_string()))
-                .expression_attribute_values(":before", AttributeValue::S(before.to_string()))
-                .limit((limit + 1 - changes.len()).min(1000) as i32)
-                .set_exclusive_start_key(exclusive_start_key.take())
-                .return_consumed_capacity(ReturnConsumedCapacity::Total);
-            // A key condition takes one range comparison, so a lower bound means
-            // BETWEEN (inclusive): the row at exactly `after` is dropped below.
-            // `before` has no `#<id>` suffix, so no key ever equals it.
-            query = match after {
-                Some(after) => query
-                    .key_condition_expression(
-                        "contact_feed = :feed AND contact_key BETWEEN :after AND :before",
-                    )
-                    .expression_attribute_values(":after", AttributeValue::S(after.to_string())),
-                None => {
-                    query.key_condition_expression("contact_feed = :feed AND contact_key < :before")
-                }
-            };
-            let resp = query
-                .send()
-                .await
-                .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
-            record_capacity(
-                "list_contact_changes",
-                resp.consumed_capacity(),
-                CapKind::Read,
-            );
-
-            for raw in resp.items.unwrap_or_default() {
-                let key = raw
-                    .get(CONTACT_KEY_ATTR)
-                    .and_then(|v| v.as_s().ok())
-                    .cloned()
-                    .unwrap_or_default();
-                if Some(key.as_str()) == after {
-                    continue;
-                }
-                let person: Person = hydrate_item(raw)?;
-                if !include_deleted && person.deleted.is_some() {
-                    continue;
-                }
-                changes.push(db::ContactChange { key, person });
-            }
-            exclusive_start_key = resp.last_evaluated_key;
-            if exclusive_start_key.is_none() {
-                break;
-            }
-        }
-        let has_more = changes.len() > limit;
-        changes.truncate(limit);
-        Ok(db::ContactPage { changes, has_more })
-    }
-
-    async fn count_contacts(&self, before: &str) -> db::Result<u64> {
-        let mut count = 0u64;
-        let mut exclusive_start_key = None;
-        loop {
-            let resp = self
-                .client
-                .query()
-                .table_name(self.table_name("person"))
-                .index_name(CONTACT_FEED_INDEX)
-                .key_condition_expression("contact_feed = :feed AND contact_key < :before")
-                .filter_expression("attribute_not_exists(deleted) OR deleted = :live")
-                .expression_attribute_values(":feed", AttributeValue::S(CONTACT_FEED.to_string()))
-                .expression_attribute_values(":before", AttributeValue::S(before.to_string()))
-                .expression_attribute_values(":live", AttributeValue::N("0".to_string()))
-                .select(aws_sdk_dynamodb::types::Select::Count)
-                .set_exclusive_start_key(exclusive_start_key.take())
-                .return_consumed_capacity(ReturnConsumedCapacity::Total)
-                .send()
-                .await
-                .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
-            record_capacity("count_contacts", resp.consumed_capacity(), CapKind::Read);
-            count += resp.count as u64;
-            exclusive_start_key = resp.last_evaluated_key;
-            if exclusive_start_key.is_none() {
-                return Ok(count);
-            }
-        }
     }
 
     async fn create_period(
@@ -5485,7 +5328,7 @@ impl db::Handler for Handler {
                         ("phone", directory.phone.clone().map(AttributeValue::S)),
                     ]);
                 }
-                set_or_remove(base, values, &[])
+                set_or_remove(base, values)
             }
             db::LocationUpdateShape::Accreditations { accreditations } => set_or_remove(
                 base,
@@ -5493,7 +5336,6 @@ impl db::Handler for Handler {
                     "accreditations",
                     accreditations.map(|v| AttributeValue::S(v.to_string())),
                 )],
-                &[],
             ),
             // Deliberately leaves `updated_at` alone: a SOP link is nothing sync sees.
             db::LocationUpdateShape::SopNote { place, note_id } => {
@@ -5507,34 +5349,12 @@ impl db::Handler for Handler {
             }
         };
 
-        let new_name = match change {
-            db::LocationUpdateShape::Fields { name, .. }
-            | db::LocationUpdateShape::Name { name } => Some(name),
-            db::LocationUpdateShape::LastSyncTime { .. }
-            | db::LocationUpdateShape::SesDetails { .. }
-            | db::LocationUpdateShape::Accreditations { .. }
-            | db::LocationUpdateShape::SopNote { .. } => None,
-        };
         let resp = req
-            .return_values(aws_sdk_dynamodb::types::ReturnValue::UpdatedOld)
             .send()
             .await
             .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
         record_capacity("update_location", resp.consumed_capacity(), CapKind::Write);
 
-        // The contacts API returns each member's unit name, so a rename is a change to
-        // every member there. `UpdatedOld` returns `name` as it was before this write.
-        let old_name = resp
-            .attributes()
-            .and_then(|a| a.get("name"))
-            .and_then(|v| v.as_s().ok());
-        if let (Some(old), Some(new)) = (old_name, new_name)
-            && old != new
-        {
-            for person in self.list_people_for_location(id, true).await? {
-                self.stamp_person_contact(&person.id).await?;
-            }
-        }
         Ok(())
     }
 
@@ -5906,13 +5726,11 @@ impl db::Handler for Handler {
         let table = self.table_name("person_unit");
         let current = self.list_person_units(person_id).await?;
         let now = crate::clock::now_sec();
-        let mut changed = false;
 
         for old in &current {
             if units.iter().any(|u| u.entity_id == old.entity_id) {
                 continue;
             }
-            changed = true;
             let resp = self
                 .client
                 .delete_item()
@@ -5936,7 +5754,6 @@ impl db::Handler for Handler {
             {
                 continue;
             }
-            changed = true;
             let resp = self
                 .client
                 .put_item()
@@ -5951,14 +5768,6 @@ impl db::Handler for Handler {
                 resp.consumed_capacity(),
                 CapKind::Write,
             );
-        }
-        // The contacts feed serves a member's units, which live outside the person row,
-        // so a change restamps the person. A person row that is gone has no feed entry.
-        if changed {
-            match self.stamp_person_contact(person_id).await {
-                Ok(()) | Err(db::Error::NotFound(_)) => {}
-                Err(e) => return Err(e),
-            }
         }
         Ok(())
     }
@@ -10713,10 +10522,10 @@ impl db::Handler for Handler {
 mod tests {
     use super::{
         AuditQueryPlan, Item, asset_item, asset_ref_item, audit_entries_from_items, audit_items,
-        audit_query_plan, batch_get_backoff, client_info_attributes, contact_key, counter_count,
-        hydrate_items, hydrate_items_lenient, nitc_event_key, note_ref_item, photo_item,
-        scan_cursor_from_key, string_list_value, topic_date_key, trophy_holder_item,
-        trophy_notice_item, trophy_reign_item, unprocessed_keys_for, visible_photo_start_key,
+        audit_query_plan, batch_get_backoff, client_info_attributes, counter_count, hydrate_items,
+        hydrate_items_lenient, nitc_event_key, note_ref_item, photo_item, scan_cursor_from_key,
+        string_list_value, topic_date_key, trophy_holder_item, trophy_notice_item,
+        trophy_reign_item, unprocessed_keys_for, visible_photo_start_key,
     };
     use crate::db;
     use crate::db::Category;
@@ -11476,17 +11285,6 @@ mod tests {
                 "{bad:?} was accepted"
             );
         }
-    }
-
-    #[test]
-    fn contact_keys_sort_by_time_then_id() {
-        let a = contact_key("b");
-        let b = contact_key("a");
-        // Fixed-width time prefix, so string order is time order.
-        assert_eq!(a.find('#'), Some(20));
-        assert!(a.ends_with("#b"));
-        assert!(a < b || a[..20] == b[..20], "{a} sorted after {b}");
-        assert!(format!("{:020}#x", 9u64) < format!("{:020}#x", 10u64));
     }
 
     #[test]

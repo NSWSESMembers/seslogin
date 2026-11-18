@@ -248,22 +248,6 @@ impl Person {
     }
 }
 
-/// One row of the contacts feed: a person and the `contact_key` that orders them.
-/// See [`Handler::list_contact_changes`].
-#[derive(Clone, Debug, PartialEq)]
-pub struct ContactChange {
-    pub key: String,
-    pub person: Person,
-}
-
-/// A page of [`ContactChange`]s, oldest change first.
-#[derive(Clone, Debug, PartialEq)]
-pub struct ContactPage {
-    pub changes: Vec<ContactChange>,
-    /// Whether more rows lie between the last one returned and `before`.
-    pub has_more: bool,
-}
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum PersonUpdateShape<'a> {
     Fields {
@@ -2964,14 +2948,6 @@ pub trait Handler: Sync {
         change: PersonUpdateShape<'_>,
     ) -> impl Future<Output = Result<()>> + Send;
 
-    /// Give the person a fresh `contact_key`, putting them back at the head of the
-    /// contacts feed without changing anything else. Used when something the feed
-    /// returns changed outside the person row (their location's name, their
-    /// `person_unit` rows) and to backfill rows written before the feed existed. The
-    /// writes that change a returned field (`create_person`, and `update_person` other
-    /// than `SesApiPersonId`, `MissingSince` and `BadgeState`) stamp the key themselves.
-    fn stamp_person_contact(&self, id: &str) -> impl Future<Output = Result<()>> + Send;
-
     /// Write the person's `email_key` (see [`email_key`]) from `email`, provided their
     /// email is still exactly `email`; [`Error::NotFound`] otherwise. Changes nothing
     /// else. `update_person`'s `Email` shape writes the key itself; this backfills rows
@@ -2982,20 +2958,6 @@ pub trait Handler: Sync {
         email: &str,
     ) -> impl Future<Output = Result<()>> + Send;
 
-    /// Up to `limit` people from the contacts feed with `after < contact_key < before`,
-    /// in key order. `after: None` starts from the beginning. Soft-deleted people are
-    /// included (as tombstones) only when `include_deleted`.
-    fn list_contact_changes(
-        &self,
-        after: Option<&str>,
-        before: &str,
-        include_deleted: bool,
-        limit: usize,
-    ) -> impl Future<Output = Result<ContactPage>> + Send;
-
-    /// How many live (not soft-deleted) people the contacts feed holds below `before`.
-    /// Reads the whole index, so only for the first page of a full sync.
-    fn count_contacts(&self, before: &str) -> impl Future<Output = Result<u64>> + Send;
     fn create_period(
         &self,
         person_id: &str,
@@ -3191,8 +3153,7 @@ pub trait Handler: Sync {
 
     /// Make a member's `person_unit` rows exactly `units` (every one of which must carry
     /// this `person_id`): rows not in it are deleted, and rows that are new or differ
-    /// are written. An empty `units` removes them all. If anything changed, the person
-    /// gets a fresh `contact_key`, since the contacts feed serves their units.
+    /// are written. An empty `units` removes them all.
     fn replace_person_units(
         &self,
         person_id: &str,

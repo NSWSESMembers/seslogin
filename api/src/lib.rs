@@ -45,7 +45,6 @@ pub mod notifications;
 pub mod oauth;
 pub mod oauth_clients;
 pub mod oauth_http;
-pub mod offline_sync;
 pub mod on_call;
 pub mod passkey;
 pub mod period_link;

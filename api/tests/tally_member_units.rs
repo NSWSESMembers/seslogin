@@ -1,7 +1,7 @@
 //! A member signed in to Tally uses every unit they belong to — their primary unit and
 //! their secondary ones (`Person::member_location_ids`) — with no user signed in
-//! alongside them: the shared tools, `tallyLocation`, `tallyViewer`, self sign-in and
-//! the offline sync's shared contacts. A unit they don't belong to stays closed.
+//! alongside them: the shared tools, `tallyLocation`, `tallyViewer` and self sign-in. A unit
+//! they don't belong to stays closed.
 //!
 //! The caller is resolved the way production does: a Tally grant verified through
 //! `auth::verify_token`, so `AuthInfo::Member::member_location_ids` comes from the

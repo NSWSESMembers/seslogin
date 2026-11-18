@@ -175,25 +175,7 @@ impl db::Handler for Handler {
         Self::unsupported()
     }
 
-    async fn stamp_person_contact(&self, _id: &str) -> db::Result<()> {
-        Self::unsupported()
-    }
-
     async fn stamp_person_email_key(&self, _id: &str, _email: &str) -> db::Result<()> {
-        Self::unsupported()
-    }
-
-    async fn list_contact_changes(
-        &self,
-        _after: Option<&str>,
-        _before: &str,
-        _include_deleted: bool,
-        _limit: usize,
-    ) -> db::Result<db::ContactPage> {
-        Self::unsupported()
-    }
-
-    async fn count_contacts(&self, _before: &str) -> db::Result<u64> {
         Self::unsupported()
     }
 
