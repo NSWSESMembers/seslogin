@@ -19,94 +19,6 @@ type AblyTokenRequest {
 	mac: String!
 }
 
-type AgendaItem {
-	id: ID!
-	meetingId: ID!
-	meeting: Meeting!
-	locationId: ID!
-	"""
-	What the topic is about and what was minuted against it, Markdown as in Notes;
-	empty when there is none.
-	"""
-	text: String!
-	"""
-	The member presenting it; null if they have since been deleted.
-	"""
-	presenter: Person
-	"""
-	The presenter's person ID, even if they have since been deleted.
-	"""
-	presenterId: ID!
-	"""
-	1-based place on the agenda.
-	"""
-	position: Int!
-	"""
-	The linked tasks (at most 10), in the order shown. Deleted ones are left out.
-	"""
-	tasks: [Task!]!
-	"""
-	The linked tasks' IDs, in order, as stored: pass these back, changed, as `taskIds`.
-	"""
-	taskIds: [ID!]!
-	"""
-	The linked equipment (at most 10), in the order shown. Deleted ones are left out.
-	"""
-	equipment: [Equipment!]!
-	"""
-	The linked equipment's IDs, in order, as stored: pass these back, changed, as
-	`equipmentIds`.
-	"""
-	equipmentIds: [ID!]!
-	"""
-	The linked on-call roles (at most 10), in the order shown. Deleted ones are left
-	out.
-	"""
-	onCallRoles: [OnCallRole!]!
-	"""
-	The linked on-call roles' IDs, in order, as stored: pass these back, changed, as
-	`onCallRoleIds`.
-	"""
-	onCallRoleIds: [ID!]!
-	"""
-	The attached photos (at most 10), in the order shown. Their `url(variant:)` is
-	what to show; one that can no longer be read is left out.
-	"""
-	photos: [Asset!]!
-	"""
-	The attached photos' asset IDs, in order: pass these back, changed, as
-	`photoAssetIds`.
-	"""
-	photoAssetIds: [ID!]!
-	"""
-	The linked notes (at most 10), in the order shown. One that was deleted or can
-	no longer be read is left out.
-	"""
-	notes: [Note!]!
-	"""
-	The linked notes' IDs, in order: pass these back, changed, as `noteIds`.
-	"""
-	noteIds: [ID!]!
-	"""
-	Bumped by every change; pass it back to `updateAgendaItem`.
-	"""
-	version: Int!
-	createdAt: Int!
-	"""
-	Name of the member who added the topic.
-	"""
-	createdBy: String
-	"""
-	Person ID of the member who added the topic.
-	"""
-	createdById: ID
-	updatedAt: Int!
-	"""
-	Name of the member who last changed the topic.
-	"""
-	updatedBy: String
-}
-
 type ApiToken {
 	id: ID!
 	name: String!
@@ -1198,79 +1110,6 @@ type MarkNotificationsReadPayload {
 	unreadCount: Int!
 }
 
-type Meeting {
-	id: ID!
-	"""
-	One line of plain text.
-	"""
-	title: String!
-	"""
-	Plain text (where, what for); empty when there is none.
-	"""
-	description: String!
-	"""
-	When it is scheduled to start, Unix seconds.
-	"""
-	startsAt: Int!
-	"""
-	When it was started (Unix seconds); null until then. Kept when it is finished
-	and started again.
-	"""
-	startedAt: Int
-	"""
-	When it was finished (Unix seconds); null until then, and again once it is
-	started again.
-	"""
-	finishedAt: Int
-	status: MeetingStatus!
-	locationId: ID!
-	location: Location!
-	"""
-	The agenda's topics in order: by position, then when added. Live ones only.
-	"""
-	items: [AgendaItem!]!
-	"""
-	The meeting's minutes as Markdown, for sharing, copying or saving as a note: the
-	title, unit and when, then each topic in order under a bare `## n.` heading:
-	its presenter, its text as written, and its linked tasks, equipment, on-call
-	roles, notes and a photo count. Only syntax Tally's notes show; also reads as
-	plain text. See `api/README.md`'s "Agendas".
-	"""
-	minutes: String!
-	"""
-	Bumped by every change; pass it back to the update, start and finish mutations.
-	"""
-	version: Int!
-	createdAt: Int!
-	"""
-	Name of the member who added the meeting.
-	"""
-	createdBy: String
-	updatedAt: Int!
-	"""
-	Name of the member who last changed the meeting.
-	"""
-	updatedBy: String
-}
-
-"""
-Where a meeting is in its life.
-"""
-enum MeetingStatus {
-	"""
-	Not started yet.
-	"""
-	PLANNED
-	"""
-	Started and not finished.
-	"""
-	IN_PROGRESS
-	"""
-	Finished. Starting it again reopens it.
-	"""
-	FINISHED
-}
-
 type MemberCategoryPeriodSummary {
 	personId: ID!
 	person: Person!
@@ -1689,61 +1528,6 @@ type MutationRoot {
 	Delete an event, every occurrence of it. Returns its ID.
 	"""
 	deleteCalendarEvent(id: ID!): ID!
-	"""
-	Add a meeting (Agendas) to a unit, planned for `startsAt` (Unix seconds). Any
-	member who can use the unit in Tally may.
-	"""
-	createMeeting(locationId: ID!, title: String!, description: String, startsAt: Int!): Meeting!
-	"""
-	Change a meeting. Omitted arguments are left as they are. Fails with
-	`CONFLICT` if it is no longer at `expectedVersion`.
-	"""
-	updateMeeting(id: ID!, expectedVersion: Int!, title: String, description: String, startsAt: Int): Meeting!
-	"""
-	Delete a meeting. Returns its ID.
-	"""
-	deleteMeeting(id: ID!): ID!
-	"""
-	Start a meeting now: `startedAt` is set and its status becomes `IN_PROGRESS`. A
-	finished meeting is reopened, keeping its original `startedAt`. One already in
-	progress is refused with `BAD_REQUEST`. Fails with `CONFLICT` if it is no longer
-	at `expectedVersion`.
-	"""
-	startMeeting(id: ID!, expectedVersion: Int!): Meeting!
-	"""
-	Finish a meeting that is in progress. Any other status is refused with
-	`BAD_REQUEST`. Fails with `CONFLICT` if it is no longer at `expectedVersion`.
-	"""
-	finishMeeting(id: ID!, expectedVersion: Int!): Meeting!
-	"""
-	Add a topic to a meeting's agenda (Agendas), at the end, at any status. `text`
-	(Markdown as in Notes) is what it is about; a topic needs text or at least one
-	link. `presenterId` defaults to the caller; the presenter may be a member of any
-	unit. It may link up to ten each of the unit's tasks, equipment, on-call roles,
-	photos (ready image assets) and notes (`taskIds`, `equipmentIds`,
-	`onCallRoleIds`, `photoAssetIds`, `noteIds`), in the order given. Fails with
-	`NOT_FOUND` if the meeting is missing or deleted and `BAD_REQUEST` for a link
-	that is not usable or a topic with neither text nor a link.
-	"""
-	createAgendaItem(meetingId: ID!, text: String, presenterId: ID, taskIds: [ID!], equipmentIds: [ID!], onCallRoleIds: [ID!], photoAssetIds: [ID!], noteIds: [ID!]): AgendaItem!
-	"""
-	Change a topic. Omitted arguments are left as they are; the presenter cannot be
-	cleared. A list of links replaces the topic's (`[]` clears it); ones already
-	linked may stay whatever has become of them. A topic must keep text or at least
-	one link (else `BAD_REQUEST`). Fails with `CONFLICT` if it is no longer at
-	`expectedVersion`.
-	"""
-	updateAgendaItem(id: ID!, expectedVersion: Int!, text: String, presenterId: ID, taskIds: [ID!], equipmentIds: [ID!], onCallRoleIds: [ID!], photoAssetIds: [ID!], noteIds: [ID!]): AgendaItem!
-	"""
-	Delete a topic. Returns its ID.
-	"""
-	deleteAgendaItem(id: ID!): ID!
-	"""
-	Put a meeting's topics in the order of `itemIds`, which must name exactly its
-	live topics, each once (else `BAD_REQUEST`). Returns them in the new order.
-	Fails with `CONFLICT` if a topic changed while this ran.
-	"""
-	reorderAgendaItems(meetingId: ID!, itemIds: [ID!]!): [AgendaItem!]!
 	createCalendar(locationId: ID!, name: String!, color: CalendarColor!): Calendar!
 	"""
 	Rename a calendar or change its colour; omitted arguments are left as they are.
@@ -2624,14 +2408,6 @@ type QueryRoot {
 	"""
 	calendarEvent(id: ID!): CalendarEvent
 	"""
-	One meeting (Agendas); null if it does not exist or was deleted.
-	"""
-	meeting(id: ID!): Meeting
-	"""
-	One agenda item (Agendas topic); null if it does not exist or was deleted.
-	"""
-	agendaItem(id: ID!): AgendaItem
-	"""
 	The caller's own location share while it still shows (until 7 minutes after its
 	latest position); null otherwise.
 	"""
@@ -3204,13 +2980,6 @@ type TallyLocation {
 	`event.calendarId`.
 	"""
 	calendarEvents(from: Int!, to: Int!): [CalendarEventOccurrence!]!
-	"""
-	The unit's meetings (Agendas) scheduled from `startsAfter` (inclusive) to
-	`startsBefore` (exclusive), Unix seconds, either optional: oldest first, or
-	newest first with `newestFirst`. At most `limit` (default 50, at most 200).
-	See `graphql::meetings`.
-	"""
-	meetings(startsAfter: Int, startsBefore: Int, newestFirst: Boolean! = false, limit: Int! = 50): [Meeting!]!
 	"""
 	Everyone sharing their position with the unit ("Locate"), most recently updated
 	first. A share shows until 7 minutes after its latest position, so this

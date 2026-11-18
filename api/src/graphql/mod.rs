@@ -15,7 +15,6 @@ use crate::auth::AuthInfo;
 use crate::request_metrics;
 use crate::telemetry::{self, OperationKind};
 
-pub mod agenda_items;
 pub mod assets;
 pub mod attached_photos;
 pub mod audit_log;
@@ -26,12 +25,9 @@ pub mod equipment;
 pub mod error;
 #[cfg(debug_assertions)]
 pub mod error_injection;
-pub mod linked_items;
 pub mod linked_notes;
 pub mod location_share;
 pub mod map;
-pub mod meeting_minutes;
-pub mod meetings;
 pub mod mutations;
 pub mod notes;
 pub mod notifications;
@@ -127,12 +123,6 @@ pub struct MapLayerId(pub String);
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct CalendarId(pub String);
-
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct MeetingId(pub String);
-
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct AgendaItemId(pub String);
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct SessionId(pub ID);

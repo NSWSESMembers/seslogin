@@ -1041,177 +1041,6 @@ mutation {
 }
 ```
 
-## Agendas
-
-Meeting agendas and minutes for Tally's Agendas app (`src/graphql/meetings.rs` and
-`src/graphql/agenda_items.rs`; storage in SCHEMA.md's `meeting` and `agenda_item` sections). This
-section covers **meetings**, their **topics** (agenda items) and the topics' links to tasks,
-equipment, on-call roles, photos and notes, and the meeting's exported **minutes**.
-
-- **Who:** any member signed in to Tally who can use the unit (`require_meeting_access`, through
-  `require_member_location`: see "Tally (members)" above) may read and write every meeting of it,
-  finished ones included. Users on their own, kiosk sessions, API tokens and edit links are refused.
-  Authors are recorded by person ID (`createdBy` / `updatedBy` read as the member's name).
-- **Reading:** `TallyLocation.meetings(startsAfter, startsBefore, newestFirst, limit)` lists the
-  unit's live meetings scheduled in `[startsAfter, startsBefore)` (Unix seconds, either optional),
-  oldest first or newest first, at most `limit` (default 50, capped at 200). `Query.meeting(id)`
-  reads one (null when missing or deleted).
-- **Status:** `PLANNED` (never started), `IN_PROGRESS` (`startedAt` set, `finishedAt` not) or
-  `FINISHED` (`finishedAt` set), derived from the two timestamps.
-- **Writes:** `createMeeting(locationId, title, description, startsAt)`,
-  `updateMeeting(id, expectedVersion, title, description, startsAt)` (omitted
-  arguments unchanged), `deleteMeeting(id)`,
-  `startMeeting(id, expectedVersion)` and `finishMeeting(id, expectedVersion)`. The title is one
-  line of at most 200 characters; the description is at most 5,000.
-- **Start and finish:** `startMeeting` stamps `startedAt` now. On a `FINISHED` meeting it
-  **reopens** it (clears `finishedAt`, keeps the original `startedAt`); on one already
-  `IN_PROGRESS` it fails with `BAD_REQUEST`. `finishMeeting` works only from `IN_PROGRESS`
-  (otherwise `BAD_REQUEST`).
-- **Concurrency:** every update, start and finish takes `expectedVersion`; if someone else changed
-  the meeting since it was read the call fails with `CONFLICT` rather than overwriting.
-- **Audit:** each write is recorded against the meeting (see CLAUDE.md's audit log).
-
-### Topics (agenda items)
-
-Topics have the same access as meetings (`require_meeting_access` on the topic's location).
-
-- **Reading:** `Meeting.items` lists a meeting's live topics ordered by `position`, then when
-  added, then ID. `Query.agendaItem(id)` reads one (null when missing or deleted). `AgendaItem`
-  has `meetingId`/`meeting`, `locationId`, `text`, `presenter` (the `Person`, null once deleted)
-  and `presenterId`, `position` (1-based), `version`, and `createdBy` (the member's name) /
-  `createdById` (their person ID, for "added by") / `updatedBy`.
-- **One text box:** a topic has no title or separate minutes, just `text`: Markdown as in Notes,
-  kept as written, at most 20,000 characters (only-whitespace counts as empty). Whatever needs a
-  short name for a topic uses the first line of its text as plain text (cut to 100 characters
-  and "…"; `src/agenda_text.rs`), the same rule as Tally's preview. A topic must have text
-  or at least one link (`BAD_REQUEST` otherwise); `text` can be omitted on create when it links
-  something.
-- **Creating:** `createAgendaItem(meetingId, text, presenterId, …links)`. The presenter defaults
-  to the caller and may be a live member of any unit (`NOT_FOUND` otherwise). The topic goes at the
-  end (`position` = highest + 1), whatever the meeting's status: there is no difference between a
-  topic added before and during the meeting. A missing or deleted meeting is `NOT_FOUND`.
-- **Updating:** `updateAgendaItem(id, expectedVersion, text, presenterId, …links)`: omitted
-  arguments are unchanged, and the presenter cannot be cleared (the current presenter may stay even
-  after being deleted). Stale `expectedVersion` is `CONFLICT`. `deleteAgendaItem(id)` returns the
-  ID.
-- **Presenter notifications:** making another member the presenter, on `createAgendaItem` or by
-  changing it in `updateAgendaItem`, tells them in their Tally inbox (see "Notifications": source
-  `agendas`, kind `agenda.presenter_assigned`, target `agenda_item`; the body names the topic by
-  the first line of its text, else its first link's name, else "Topic n"). Best-effort: a failed
-  notification never fails the mutation, and presenting your own topic sends nothing.
-- **Reordering** (at any meeting status): `reorderAgendaItems(meetingId, itemIds)` takes exactly
-  the meeting's live topic
-  IDs, each once, in the wanted order (otherwise `BAD_REQUEST`), renumbers them 1..n, writes only
-  topics whose position changed (each conditional on the version just read; a topic changed in the
-  meantime is `CONFLICT`) and returns them in the new order.
-- **Audit:** create, field changes, moves and deletes are each recorded against the topic
-  (link changes included, as `task_ids`, `equipment_ids`, `on_call_role_ids`, `photo_asset_ids`
-  and `note_ids`).
-- **Links:** a topic links to up to 10 each of the unit's tasks, equipment, on-call roles, photos
-  and notes. `AgendaItem` has `tasks`/`taskIds`, `equipment`/`equipmentIds`,
-  `onCallRoles`/`onCallRoleIds`, `photos`/`photoAssetIds` and `notes`/`noteIds`: the object lists
-  are in order and leave out anything deleted or unreadable, the ID lists are as stored. Both
-  `createAgendaItem` and `updateAgendaItem` take `taskIds`, `equipmentIds`, `onCallRoleIds`,
-  `photoAssetIds` and `noteIds` (all optional `[ID!]`), so a topic and its first link can be made
-  in one call. On an update, omitted leaves a list alone and a list replaces it (`[]` clears it).
-  A task, piece of equipment or role (`src/graphql/linked_items.rs`) must exist, be live and belong
-  to the topic's unit when it is linked; more than 10, or the same one twice, is `BAD_REQUEST`; one
-  already linked may stay whatever has become of it. They have no reference rows. Photos follow
-  "Attached photos" and notes "Linked notes", with owner type `agenda_item`: refs are written
-  before the topic names the asset or note (the topic's ID is chosen first for this) and removed
-  after it stops naming it or is deleted. Linking never changes the thing linked.
-
-```graphql
-mutation {
-  createAgendaItem(meetingId: "…", text: "Budget\n\nAgreed to defer.") {
-    id
-    position
-    text
-    presenter {
-      id
-    }
-  }
-}
-```
-
-### Minutes
-
-`Meeting.minutes: String!` is the meeting's minutes as Markdown, for Tally to show, share, copy
-and save as a note (`src/graphql/meeting_minutes.rs` gathers the data, `src/agendas.rs` renders
-it: a pure function with its own unit tests). It needs the same access as the meeting and is
-built fresh on every read; a deleted task, equipment, role, note or person is left out, as on
-`AgendaItem`. It uses only what Tally's note renderer shows (`#` and `##` headings, paragraphs,
-`- ` lists, `**bold**`, backslash escapes) and also reads as plain text pasted into an email:
-
-```text
-# Monthly unit meeting
-
-Test A Unit · Wed 18 Nov 2026, 7:32–8:41 pm
-
-## 1.
-Presented by Bob Brown
-
-Vehicle servicing schedule
-
-Annual service of KMA56. KMA56 to go in on 21 Nov.
-
-- Task: Book KMA56 service — Bob Brown, due 21 Nov 2026
-- Equipment: KMA56 — Has an issue
-- On call: Duty officer — Dana Dualunit (+ Al Adams)
-- Note: Service checklist
-- Photos: 2 attached
-
-## 2.
-Presented by Bob Brown
-
-Christmas BBQ date
-
-Sat 13 Dec, at the shed.
-```
-
-- **Header:** `# <title>`, then `<unit> · <when>` in Sydney time: "Planned for Wed 18 Nov 2026, 7:30 pm"
-  (the scheduled start) until it is started, "In progress since …" (the actual start) while it
-  runs, and "Wed 18 Nov 2026, 7:32–8:41 pm" once finished (both dates if it ran past midnight).
-  The meeting's description follows as a paragraph.
-- **Topics:** every topic, in agenda order, under a bare `## n.` heading, whatever the meeting's
-  status when it was added (there is no "other business" group). A topic has no title and its text
-  is shown in full, so the heading carries no name. Each topic has "Presented by <name>" (left out
-  if the presenter was deleted), its text, then its links as a bullet list. A meeting with no
-  topics says so.
-- **Text** is inserted exactly as the members wrote it (only line endings and surrounding blank
-  space are normalised), so its own Markdown shows as written, first line included. Everything
-  else a member typed (names, the meeting's title and description) is escaped so it cannot make
-  headings, lists, quotes or formatting of its own (for example, `# Budget` as a title shows as
-  typed).
-- **Links:** "Task: <title> — <assignees>, due <date> (done)", "Equipment: <name> — <status>"
-  (Tally's wording, e.g. "Has an issue"), "On call: <role> — <primary> (+ <secondaries>)" (or
-  "nobody"), "Note: <title>" and "Photos: n attached".
-
-```graphql
-mutation {
-  createMeeting(
-    locationId: "TestAUnit001"
-    title: "Monthly unit meeting"
-    description: "Unit hall"
-    startsAt: 1793000000
-  ) {
-    id
-    version
-    status
-  }
-}
-{
-  tallyLocation(id: "TestAUnit001") {
-    meetings(startsAfter: 1793000000, newestFirst: false, limit: 20) {
-      id
-      title
-      status
-      startsAt
-    }
-  }
-}
-```
-
 ## Map
 
 A location's shared map of pins, used by the Tally app (`src/graphql/map.rs`, rules in
@@ -1404,7 +1233,6 @@ producers' API in `src/notifications.rs`, storage in SCHEMA.md's `notification` 
   | `reservations` | `reservation.for_you` | `reservation`  | `createEquipmentReservation`, or `updateEquipmentReservation`, adds members to `reserved_for_person_ids` (every member it is for, on create)                                                                                     | each added member other than the actor      | "Equipment reserved for you" / "<equipment names, sorted> · <Sun 25 Oct 09:00–11:00, Sydney time>" ("Equipment" if the names can't be read) |
   | `tasks`        | `task.assigned`       | `task`         | `createTask`, or `updateTask`, adds members to `assignee_ids` (every assignee, on create)                                                                                                                                         | each added member other than the actor      | "Task assigned to you" / "<title>" or "<title> · Due <Mon 4 Mar>"                                                                          |
   | `oncall`       | `oncall.assigned`     | `on_call_role` | `createOnCallRole`, or `updateOnCallRole`, makes a person the primary when they were not, or adds them to the secondaries when they were not already there (moving primary to secondary counts; removals and reorderings do not) | that member, once per newly assigned member | "You're now primary for <role>" / "You're now a secondary for <role>"                                                                       |
-  | `agendas`      | `agenda.presenter_assigned` | `agenda_item` | `createAgendaItem` with a `presenterId` other than the caller, or `updateAgendaItem` changing the presenter to someone other than the caller (no notification when the presenter is the caller, is unchanged, or the update leaves the presenter alone) | the new presenter | "You're presenting at <meeting title>" / "<topic> · <Wed 18 Nov 2026, 7:30 pm, Sydney time of the meeting's `startsAt`> · added by <caller name>" (`<topic>` is the first line of the topic's text as plain text, cut to 100 characters, else its first link's name, else "Topic n"; "assigned by" on an update; the " · … by …" part is left out if the caller's name can't be read) |
 
   Equipment going into HAS_ISSUE, OUT_OF_SERVICE or MISSING used to tell the unit's users; it
   notifies nobody for now, while who among a unit's members should hear is rethought
@@ -1549,15 +1377,15 @@ uploads") shown to everyone who can use the unit in Tally (`require_photo_access
 
 ## Attached photos
 
-Tasks, equipment, map pins and agenda items can each carry up to 10 photos (`src/graphql/attached_photos.rs`;
+Tasks, equipment and map pins can each carry up to 10 photos (`src/graphql/attached_photos.rs`;
 storage is each row's `photo_asset_ids` in SCHEMA.md). Access is the owner's own (`require_task_access`,
-`require_equipment_access`, `require_map_access`, `require_meeting_access`).
+`require_equipment_access`, `require_map_access`).
 
-- **Reading:** `Task.photos`, `Equipment.photos`, `MapPin.photos` and `AgendaItem.photos` are the attached assets in
+- **Reading:** `Task.photos`, `Equipment.photos` and `MapPin.photos` are the attached assets in
   order (`url(variant:)` is the image; one that can no longer be read is left out), and
   `photoAssetIds` their IDs.
 - **Writing:** `photoAssetIds` on `createTask`/`updateTask`, `createEquipment`/`updateEquipment`
-  `createMapPin`/`updateMapPin` and `createAgendaItem`/`updateAgendaItem`. On an update, omitted leaves the photos alone and a list
+  and `createMapPin`/`updateMapPin`. On an update, omitted leaves the photos alone and a list
   replaces them, in that order (`[]` removes them all).
 - **What may be attached:** any ready image asset at the owner's unit: one the member just
   uploaded (see "Assets and uploads"), or one from the unit's photo stream (`Photo.asset.id`),
@@ -1565,25 +1393,25 @@ storage is each row's `photo_asset_ids` in SCHEMA.md). Access is the owner's own
   ready or at another unit is `BAD_REQUEST`. A photo already attached may stay attached
   whatever has become of its asset.
 - **References:** each attached asset has an `asset_ref` owned by `task#<id>`, `equipment#<id>`
-  `map_pin#<id>` or `agenda_item#<id>`, written (checking the asset is ready at the unit) before the owner first
+  or `map_pin#<id>`, written (checking the asset is ready at the unit) before the owner first
   names it and removed after the owner stops naming it or is deleted. So a photo taken from
   the stream stays attached after the stream's sweep drops its own reference. A reference left
   behind by a failed write only delays the future garbage collector.
 
 ## Linked notes
 
-Tasks, map pins, equipment, calendar events, on-call roles and agenda items can each link to up to 10 of
+Tasks, map pins, equipment, calendar events, and on-call roles can each link to up to 10 of
 their unit's [notes](#notes) (`src/graphql/linked_notes.rs`; storage is each row's `note_ids`
 and the `note_ref` table in SCHEMA.md). Access is the owner's own (`require_task_access`,
 `require_map_access`, `require_equipment_access`, `require_calendar_access`,
-`require_on_call_access`, `require_meeting_access`). It follows "Attached photos" closely.
+`require_on_call_access`). It follows "Attached photos" closely.
 
-- **Reading:** `notes` on `Task`, `MapPin`, `Equipment`, `CalendarEvent`, `OnCallRole` and `AgendaItem` is
+- **Reading:** `notes` on `Task`, `MapPin`, `Equipment`, `CalendarEvent` and `OnCallRole` is
   the linked notes in order (loaded through the `Note` dataloader; one that was deleted is left
   out), and `noteIds` their IDs, deleted ones included.
 - **Writing:** `noteIds` on `createTask`/`updateTask`, `createMapPin`/`updateMapPin`,
   `createEquipment`/`updateEquipment`, `createCalendarEvent`/`updateCalendarEvent` and
-  `createOnCallRole`/`updateOnCallRole` and `createAgendaItem`/`updateAgendaItem`. On an update, omitted leaves the links alone and a list
+  `createOnCallRole`/`updateOnCallRole`. On an update, omitted leaves the links alone and a list
   replaces them, in that order (`[]` removes them all). `expectedVersion` and `CONFLICT` behave
   as before.
 - **What may be linked:** a live (not deleted) note at the owner's unit. More than 10, the same
@@ -1593,7 +1421,7 @@ and the `note_ref` table in SCHEMA.md). Access is the owner's own (`require_task
 - **The note is never touched:** linking, unlinking and deleting the owner leave the note, and
   its version, as they were.
 - **References:** each link has a `note_ref` row, `(note_id, owner)` with `owner` one of
-  `task#<id>`, `equipment#<id>`, `map_pin#<id>`, `calendar_event#<id>`, `on_call_role#<id>` or `agenda_item#<id>`,
+  `task#<id>`, `equipment#<id>`, `map_pin#<id>`, `calendar_event#<id>` or `on_call_role#<id>`,
   written before the owner first names the note and removed after the owner stops naming it or
   is deleted (a failed removal is logged, not fatal). `db::Handler::list_note_refs(note_id)`
   answers "which items link to this note"; because a failed write can leave a stray row, a reader
