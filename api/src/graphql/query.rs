@@ -34,19 +34,13 @@ use super::audit_log::{self, AuditEntityType, AuditEntryConnection};
 use super::auth::{
     AuthGuard, AuthRequirement, can_write_location, require_location_access, require_person_access,
 };
-use super::calendar::{self, CalendarEvent};
 use super::dataloader::DatabaseLoader;
-use super::equipment::{self, Equipment};
 use super::location_share::{self, LocationShare};
-use super::map::{self, MapPin};
 use super::notes::{self, Note};
 use super::notifications::{self, NotificationConnection};
-use super::on_call::{self, OnCallRole};
-use super::reservations::{self, EquipmentReservation};
 use super::self_sign_in::{self, SelfSignInStatus};
 use super::shared_contacts::{self, SharedContact};
 use super::tally;
-use super::tasks::{self, Task};
 use super::wifi::{self, WifiNetworks};
 use super::{CategoryId, LocationId, NitcEventId, PersonId, SessionId, UserId};
 
@@ -4149,44 +4143,10 @@ impl<A: App + HasDb + HasRealtime + HasStorage + Send + Sync + 'static> QueryRoo
         .await
     }
 
-    /// One task, open or completed; null if it does not exist or was deleted.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
-    async fn task(&self, ctx: &Context<'_>, id: ID) -> Result<Option<Task<A>>> {
-        tasks::task(ctx, &id).await
-    }
-
     /// One note; null if it does not exist or was deleted.
     #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn note(&self, ctx: &Context<'_>, id: ID) -> Result<Option<Note<A>>> {
         notes::note(ctx, &id).await
-    }
-
-    /// One piece of equipment; null if it does not exist or was deleted.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
-    async fn equipment(&self, ctx: &Context<'_>, id: ID) -> Result<Option<Equipment<A>>> {
-        equipment::equipment(ctx, &id).await
-    }
-
-    /// One equipment reservation; null if it does not exist or was deleted.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
-    async fn equipment_reservation(
-        &self,
-        ctx: &Context<'_>,
-        id: ID,
-    ) -> Result<Option<EquipmentReservation<A>>> {
-        reservations::reservation(ctx, &id).await
-    }
-
-    /// One map pin; null if it does not exist or was deleted.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
-    async fn map_pin(&self, ctx: &Context<'_>, id: ID) -> Result<Option<MapPin<A>>> {
-        map::map_pin(ctx, &id).await
-    }
-
-    /// One calendar event; null if it does not exist or was deleted.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
-    async fn calendar_event(&self, ctx: &Context<'_>, id: ID) -> Result<Option<CalendarEvent<A>>> {
-        calendar::calendar_event(ctx, &id).await
     }
 
     /// The caller's own location share while it still shows (until 7 minutes after its
@@ -4223,12 +4183,6 @@ impl<A: App + HasDb + HasRealtime + HasStorage + Send + Sync + 'static> QueryRoo
     #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn wifi_networks(&self, known_version: Option<String>) -> Result<WifiNetworks> {
         wifi::wifi_networks(known_version.as_deref())
-    }
-
-    /// One on-call role; null if it does not exist or was deleted.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
-    async fn on_call_role(&self, ctx: &Context<'_>, id: ID) -> Result<Option<OnCallRole<A>>> {
-        on_call::on_call_role(ctx, &id).await
     }
 
     /// The statewide contacts added by hand (the SOC, the EAP, peer support, …), by name.

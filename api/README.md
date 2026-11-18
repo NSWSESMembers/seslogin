@@ -684,63 +684,15 @@ The apps start from two queries (`graphql/tally.rs`):
   user (`isSuper`) or a developer (`isDev`, which shows Tally's environment
   picker), and every unit they can use (`locations`, by name: the ones they belong to plus
   the user's).
-- `tallyLocation(id)` — one unit's tools: `tasks`, `taskLists`, `notes`,
-  `noteFolders`, `equipment`, `equipmentReservations`,
-  `equipmentReservationConflicts`, `mapPins`, `mapLayers`, `calendars`,
-  `calendarEvents`, `locationShares` and `onCallRoles`. The core `Location` type
+- `tallyLocation(id)` — one unit's tools: `notes`, `noteFolders`, `photos`,
+  `locationShares`, `sopNotes` and `sharedContacts`. The core `Location` type
   carries none of them. Its `zone` is the unit's SES zone, another
   `TallyLocation` whose `id` and `name` anyone who sees the unit may read; its
   tools keep their own checks.
 
 Everything a member writes records their **person ID** — `created_by`,
-`updated_by`, `completed_by`, `reserved_for_person_ids`, the location share's key
-and the notification inbox's key — and `createdBy`/`updatedBy`/`reservedFor` and
-the like show the member's name. Audited writes record `actor_kind: member`.
-
-## Tasks
-
-A location's shared to-do list, used by the Tally app (`src/graphql/tasks.rs`, rules in
-`src/tasks.rs`, storage in SCHEMA.md's `task` and `task_list` sections).
-
-- **Who:** any member signed in to Tally who can use the unit — see "Tally (members)" above. Users on their own, kiosk sessions, API tokens and edit links are refused.
-- **Reading:** `TallyLocation.tasks(view: DUE | SCHEDULED, listId)` lists open tasks. `DUE` (the
-  default) is everything showing today or earlier, overdue first; `SCHEDULED` is everything
-  showing from a later day. Without `listId` every task at the location is listed, whatever
-  list it is on. `TallyLocation.taskLists` and `Query.task(id)` complete the reads.
-- **Dates** are Sydney-local days, `YYYY-MM-DD` in and out. A task shows from its `dueDate`,
-  or from the day it was created when it has none. It is `overdue` from the day after its due
-  date; a task that repeats in **weeks** gets a full week of showing first.
-- **Recurring tasks** (`recurrence: { every, unit: DAYS | WEEKS }`) always have a due date
-  (today if none was given). Completing one moves it to `every` days/weeks after the day it
-  was completed, and it stays open; completing any other task closes it.
-- **Assignees:** a task may be assigned to up to 20 members (`assigneeIds` on `createTask`
-  and `updateTask`, by person ID, from any unit, like an on-call role). With none it is the
-  whole unit's. Assigning changes nothing about who may see, edit or complete it: anyone at
-  the unit still can. `updateTask` without `assigneeIds` leaves them alone; given, it
-  replaces them (`[]` unassigns everyone), and a member already assigned may stay after
-  being deleted, but only live members can be added. `Task.assigneeIds` lists them all,
-  `Task.assignees` the live ones by name, and `Task.assignedToViewer` says whether the caller
-  is one. Members newly assigned get a notification (see "Notifications").
-- **Photos:** up to 10, through `photoAssetIds` on `createTask` and `updateTask`; see "Attached photos".
-- **Linked notes:** up to 10, through `noteIds` on `createTask` and `updateTask`; see "Linked notes".
-- **Concurrency:** `updateTask` and `completeTask` take `expectedVersion`; if the task was
-  changed or completed since (say, two people tapping Complete at once), the second gets a
-  `CONFLICT` error rather than skipping an occurrence.
-- Deleting a list leaves its tasks on the location (`Task.list` becomes null).
-
-```graphql
-mutation {
-  createTask(
-    locationId: "TestAUnit001"
-    title: "Wash the truck"
-    recurrence: { every: 1, unit: WEEKS }
-  ) {
-    id
-    version
-    dueDate
-  }
-}
-```
+`updated_by`, the location share's key and the notification inbox's key — and
+`createdBy`/`updatedBy` and the like show the member's name. Audited writes record `actor_kind: member`.
 
 ## Notes
 
@@ -788,7 +740,7 @@ their member number at a kiosk at their primary unit, or at another unit they ca
 - **Which unit:** `selfSignInStatus` and `selfSignIn` take an optional `locationId`. Without
   it they act at the primary unit. Any unit given must be one the member can use in Tally — one
   they belong to (primary or secondary, no user grant needed), a unit the user signed in alongside them holds either
-  role at, or any unit for a super user (`require_member_location`, as for Tasks) — else
+  role at, or any unit for a super user (`require_member_location`, as for Notes) — else
   `FORBIDDEN`; one that doesn't exist is `NOT_FOUND`. This is the app's version of a member
   signing in at another unit's kiosk.
 - **One unit at a time:** only periods at the chosen unit count, as the kiosk scopes by
@@ -852,272 +804,6 @@ mutation {
 # At another unit the member can use:
 mutation {
   selfSignIn(locationId: "TestBUnit001") {
-    id
-    version
-  }
-}
-```
-
-## Equipment
-
-A location's equipment register, used by the Tally app (`src/graphql/equipment.rs`, rules in
-`src/equipment.rs`, storage in SCHEMA.md's `equipment` and `equipment_log` sections).
-
-- **Who:** any member signed in to Tally who can use the unit — see "Tally (members)" above. Users on their own, kiosk sessions, API tokens and edit links are refused.
-- **Reading:** `TallyLocation.equipment(search)` lists the location's equipment by name, as one flat
-  list. `search` keeps items whose name or description contains it, ignoring case.
-  `Query.equipment(id)` reads one; `Equipment.log` is its log, newest first.
-- **Fields:** `type` is `VEHICLE`, `TRAILER`, `VESSEL`, `RADIO`, `DEVICE`, `BAG`, `BOX` or `TOOL`
-  (more will come, so clients should cope with one they don't know). `name` is one trimmed
-  line (max 200 characters); `description` is trimmed plain text (max 5,000). `status` is
-  `IN_SERVICE`, `HAS_ISSUE` (still usable, but something needs fixing), `OUT_OF_SERVICE`,
-  `MISSING` or `BORROWED`.
-- **Photos:** up to 10, through `photoAssetIds` on `createEquipment` and `updateEquipment`; see "Attached photos".
-- **Linked notes:** up to 10, through `noteIds` on `createEquipment` and `updateEquipment`; see "Linked notes".
-- **The log:** the status is never edited directly. `changeEquipmentStatus(id, status,
-comment)` changes it and logs the change with a comment saying why (required, max 1,000);
-  `checkEquipment(id, comment)` logs that the caller checked it, comment optional, and leaves
-  the status alone (it stamps `lastCheckedAt`). Each entry and its effect on the equipment are
-  written in one DynamoDB transaction, conditional on the status it starts from, so the log
-  always agrees with the status; a change that loses a race fails with `CONFLICT`.
-  `createEquipment` (status `IN_SERVICE` unless given, optional `comment`) writes the first
-  entry, with no `previousStatus`.
-- **Edits:** `updateEquipment` (type, name and description; omitted arguments unchanged) takes
-  `expectedVersion` and fails with `CONFLICT` if someone else edited it since it was read. Log
-  entries don't bump the version. `deleteEquipment` hides the item; its log is kept.
-
-```graphql
-mutation {
-  changeEquipmentStatus(id: "…", status: OUT_OF_SERVICE, comment: "Flat tyre") {
-    status
-    log {
-      kind
-      previousStatus
-      status
-      comment
-      createdBy
-      createdAt
-    }
-  }
-}
-```
-
-## Equipment reservations
-
-Bookings of one or more pieces of a location's equipment (usually a vehicle) for a time
-range, used by the Tally app (`src/graphql/reservations.rs`, rules in `src/reservations.rs`,
-storage in SCHEMA.md's `equipment_reservation` section).
-
-- **Who:** any member signed in to Tally who can use the unit — see "Tally (members)" above. Users on their own, kiosk sessions, API tokens and edit links are refused.
-- **Reading:** `TallyLocation.equipmentReservations(endingAfter, equipmentId)` lists the
-  reservations that end after `endingAfter` (Unix seconds, default now) — upcoming and under
-  way — by start time; `equipmentId` narrows to one piece of equipment. The index is keyed on
-  the end time, so past reservations cost nothing to skip. `Query.equipmentReservation(id)`
-  reads one.
-- **Fields:** `equipmentIds` (at least one, max 20, repeats dropped; equipment deleted since
-  stays) and `equipment` (the live ones, by name); `startTime` / `endTime` (Unix seconds; the
-  end is after the start, at most 366 days later, and must be in the future when the range
-  is set, though it may already have started); `description`, trimmed plain text (max 5,000).
-- **Who it is for:** one or more members, or free text — never both, which is refused.
-  `reservedForMemberIds` names the members by person ID (max 20, repeats dropped; any unit's,
-  as for an on-call role, the caller among them or not; each must exist and not be deleted,
-  though one already on the reservation may stay after they are). Otherwise `reservedFor`
-  names someone or something else — someone outside the organisation, an organisation,
-  "Detailing / clean" — as one trimmed line (max 200). With neither (blank text, no members)
-  it is the caller's. Read back as `reservedFor` (the text, or the members' names by name,
-  comma-separated), `reservedForMemberIds` / `reservedForMembers` (the `Person`s, live ones by
-  name) or `reservedForText` (members and text are never both set) and `reservedForViewer`
-  (whether the caller is among the members).
-- **Overlaps are allowed, and reported.** `EquipmentReservation.conflicts` lists the
-  location's other reservations that overlap it in time and share a piece of equipment with
-  it (times are half-open, so back-to-back reservations don't clash). It costs a query per
-  reservation, so a client listing many should compare them itself.
-  `TallyLocation.equipmentReservationConflicts(equipmentIds, startTime, endTime, excludeId)` asks
-  the same question about a reservation not yet saved, so a client can warn before saving;
-  `excludeId` leaves out the one being edited.
-- **Writes:** `createEquipmentReservation(locationId, equipmentIds, startTime, endTime,
-reservedFor, reservedForMemberIds, description)`. `updateEquipmentReservation` changes only
-  the arguments given — who it is for changes when `reservedFor` or `reservedForMemberIds` is
-  given, decided by the two as on create, so `reservedFor: null` makes it the caller's — and
-  takes `expectedVersion`, failing with
-  `CONFLICT` if someone else changed it since it was read; only a changed time range has to end
-  in the future, so a finished one's description can still be fixed.
-  `deleteEquipmentReservation` cancels it.
-
-```graphql
-mutation {
-  createEquipmentReservation(
-    locationId: "…"
-    equipmentIds: ["…"]
-    startTime: 1793000000
-    endTime: 1793010800
-    reservedFor: "Detailing / clean"
-  ) {
-    id
-    reservedFor
-    conflicts {
-      id
-      reservedFor
-      startTime
-      endTime
-    }
-  }
-}
-```
-
-## Calendar
-
-A location's shared calendar of events, used by the Tally app (`src/graphql/calendar.rs`,
-rules in `src/calendar.rs`, storage in SCHEMA.md's `calendar` and `calendar_event` sections).
-
-- **Who:** any member signed in to Tally who can use the unit — see "Tally (members)" above. Users on their own, kiosk sessions, API tokens and edit links are refused.
-- **Calendars:** `TallyLocation.calendars` (by name), `createCalendar(locationId, name, color)`,
-  `updateCalendar(id, name, color)` (omitted arguments unchanged) and `deleteCalendar`. A colour
-  is one of ten `CalendarColor`s (`RED`, `ORANGE`, `YELLOW`, `GREEN`, `TEAL`, `BLUE`, `INDIGO`,
-  `PURPLE`, `PINK`, `GREY`); clients decide how each looks. An event is in one calendar or none.
-  Deleting a calendar leaves its events, in no calendar (`calendar` and `calendarId` read null).
-- **Timing:** an event is either **timed** — `startTime` / `endTime`, Unix seconds, end after
-  start — or **all day** (`allDay: true`) — `startDate` / `endDate`, `YYYY-MM-DD`, the end
-  inclusive and defaulting to the start. Dates have no time zone: an all-day event on the 5th is
-  on the 5th wherever it is read. One occurrence lasts at most 366 days.
-- **Repeats:** `repeat: DAILY` or `WEEKLY` (on the weekday it starts), through `repeatUntil`
-  (`YYYY-MM-DD`, inclusive: the last date an occurrence may start on) or forever when that is
-  null. A timed event repeats at the same Sydney wall-clock time, so a weekly 7:30pm meeting stays
-  at 7:30pm across daylight saving (a time skipped when daylight saving starts moves an hour
-  later). An occurrence is at most one repeat long (a day for daily, a week for weekly), so an
-  event never overlaps its own next occurrence. Editing changes every occurrence: there are no
-  per-occurrence exceptions.
-- **Reading:** `TallyLocation.calendarEvents(from, to)` (Unix seconds, `to` after `from`, at most 400
-  days) lists every occurrence that overlaps the window, repeats expanded, by start, at most
-  5,000. Each `CalendarEventOccurrence` has its own `startTime` / `endTime` (timed) or
-  `startDate` / `endDate` (all day) and the `event`. All-day occurrences are included when one of
-  their dates overlaps the window in **any** time zone, so a client should check them against its
-  own days. Every event is listed whatever calendar it is in; a client showing only some
-  calendars filters on `event.calendarId`. Events are indexed on when their last occurrence
-  ends, so finished ones cost nothing to skip. `Query.calendarEvent(id)` reads one.
-- **Writes:** `createCalendarEvent`, `updateCalendarEvent` and `deleteCalendarEvent`. Update
-  changes only the arguments given: `calendarId: null` takes it out of its calendar, `repeat:
-null` stops it repeating, `repeatUntil: null` makes it repeat forever; a new start with no end
-  keeps the event's length, and switching `allDay` needs the new start (and end, for timed).
-- **Concurrency:** `updateCalendarEvent` takes `expectedVersion`; if someone else saved the
-  event since it was read, the save fails with `CONFLICT` rather than overwriting their change.
-- **Equipment reservations** are not calendar events: Tally shows them in its calendar as a
-  virtual "Reservations" calendar, read from `TallyLocation.equipmentReservations`.
-
-```graphql
-mutation {
-  createCalendarEvent(
-    locationId: "TestAUnit001"
-    title: "Training night"
-    allDay: false
-    startTime: 1793000000
-    endTime: 1793007200
-    repeat: WEEKLY
-    repeatUntil: "2027-06-30"
-  ) {
-    id
-    version
-  }
-}
-{
-  tallyLocation(id: "TestAUnit001") {
-    calendarEvents(from: 1793000000, to: 1795600000) {
-      startTime
-      endTime
-      startDate
-      endDate
-      event {
-        id
-        title
-        allDay
-        calendarId
-        calendar {
-          name
-          color
-        }
-      }
-    }
-  }
-}
-```
-
-## Map
-
-A location's shared map of pins, used by the Tally app (`src/graphql/map.rs`, rules in
-`src/map.rs`, storage in SCHEMA.md's `map_pin` and `map_layer` sections).
-
-- **Who:** any member signed in to Tally who can use the unit — see "Tally (members)" above. Users on their own, kiosk sessions, API tokens and edit links are refused.
-- **Reading:** `TallyLocation.mapPins(layerId)` lists the location's pins by title. Without
-  `layerId` every pin at the location is listed, whatever layer it is on.
-  `TallyLocation.mapLayers` (by name) and `Query.mapPin(id)` complete the reads.
-- **Fields:** `latitude` / `longitude` are WGS 84 degrees (within ±90 / ±180). `title` is one
-  trimmed line (max 200 characters). `address` is free text, trimmed, not geocoded (max 500).
-  `note` is plain text, kept exactly as written (max 20,000; only-whitespace counts as empty).
-  An absent address or note reads as `""`. `type` (`ACCESS`, `ENTRY`, `FLOOD` or `HAZARD`)
-  says what the pin marks, which the app shows as an icon; null for a plain pin, and for a
-  stored type this server doesn't know, so clients should cope with types being added.
-- **Photos:** up to 10, through `photoAssetIds` on `createMapPin` and `updateMapPin`; see "Attached photos".
-- **Linked notes:** up to 10, through `noteIds` on `createMapPin` and `updateMapPin`; see "Linked notes".
-- **Writes:** `createMapPin`, `updateMapPin` (omitted arguments unchanged, `layerId: null`
-  takes the pin off its layer, `type: null` makes it a plain pin), `deleteMapPin`, `createMapLayer`, `renameMapLayer`,
-  `deleteMapLayer`. Deleting a layer leaves its pins on the location's map (`MapPin.layer`
-  becomes null).
-- **Concurrency:** `updateMapPin` takes `expectedVersion`; if someone else saved the pin since
-  it was read, the save fails with `CONFLICT` rather than overwriting their change.
-
-```graphql
-mutation {
-  createMapPin(
-    locationId: "TestAUnit001"
-    title: "Staging area"
-    latitude: -33.8688
-    longitude: 151.2093
-    type: ACCESS
-    address: "1 Example St"
-    note: "Gate code at the shed"
-  ) {
-    id
-    version
-  }
-}
-```
-
-## On Call
-
-A location's on-call roles (Duty Officer, Duty Incident Controller, …) and who holds each one
-now, used by the Tally app (`src/graphql/on_call.rs`, rules in `src/on_call.rs`, storage in
-SCHEMA.md's `on_call_role` section). Scheduling (who holds a role in a given week) will come
-later; for now a role just has the people in it now.
-
-- **Who:** any member signed in to Tally who can use the unit — see "Tally (members)" above. Users on their own, kiosk sessions, API tokens and edit links are refused.
-- **Reading:** `TallyLocation.onCallRoles` lists the location's roles by name; `Query.onCallRole(id)`
-  reads one. Each has `primary` (who is on call, or null) and `secondaries` (anyone else in it,
-  by name), both `Person`s, and `membersChangedAt`, when the people last changed.
-- **Fields:** `name` is one trimmed line (max 100 characters). `description` is plain text kept
-  as written (max 2,000; only-whitespace counts as empty). `phone` is optional, for a number
-  that reaches whoever holds the role (e.g. a duty phone that diverts to them): digits,
-  spaces, `()-` and a leading `+`, 3–15 digits, kept as written.
-- **People:** anyone in a role is its one primary or a secondary; secondaries need a primary
-  (`BAD_REQUEST` otherwise). Duplicates, and the primary, are dropped from the secondaries
-  (at most 20). People may be members of any location, so a neighbouring unit's member can
-  cover a duty. Newly added people must exist and not be deleted (`NOT_FOUND`); someone
-  deleted after being put in a role drops out of `primary`/`secondaries` but doesn't stop the
-  role being edited.
-- **Writes:** `createOnCallRole`, `updateOnCallRole` (omitted arguments unchanged, `phone: null`
-  removes the number, `primaryPersonId: null, secondaryPersonIds: []` empties the role),
-  `deleteOnCallRole`.
-- **Linked notes:** up to 10, through `noteIds` on `createOnCallRole` and `updateOnCallRole`; see "Linked notes".
-- **Concurrency:** `updateOnCallRole` takes `expectedVersion`; if someone else saved the role
-  since it was read, the save fails with `CONFLICT`.
-
-```graphql
-mutation {
-  createOnCallRole(
-    locationId: "TestAUnit001"
-    name: "Duty Officer"
-    phone: "0400 000 000"
-    primaryPersonId: "TestAMember1"
-  ) {
     id
     version
   }
@@ -1213,8 +899,7 @@ producers' API in `src/notifications.rs`, storage in SCHEMA.md's `notification` 
 
 - **Model:** denormalised and fanned out on write. An event that notifies several members stores
   a full copy per recipient (they share a `notification_id`), so the inbox is one query with no
-  join. A notification has a `source` (the producing app, e.g. `reservations`), a `kind`
-  (`reservation.for_you`), a `title`, an optional `body`, an optional `locationId` and an
+  join. A notification has a `source` (the producing app), a `kind`, a `title`, an optional `body`, an optional `locationId` and an
   optional `targetType`/`targetId` for what tapping it opens. The table is keyed by recipient
   member (person ID) and a time-ordered `sk`, with a sparse `unread-index` for counting and listing unread.
   Rows are removed by the TTL 90 days after creation, read or not.
@@ -1223,23 +908,8 @@ producers' API in `src/notifications.rs`, storage in SCHEMA.md's `notification` 
   `.body()` and `.target(type, id)`. An `Audience` is `Members(person_ids)`. Only live (not
   deleted) members are notified, the acting member (the current audit-context actor, if it is
   a member) is left out, and nobody is notified twice.
-- **Producers:** each fires after its write succeeds, in the GraphQL resolver (so the MCP
-  tools, which run the same documents, are covered; no other path makes these writes), always
-  with `locationId` set. Tally maps `source`/`kind`/`targetType` to icons and screens, so the
-  strings are fixed:
-
-  | source         | kind                  | targetType     | When                                                                                                                                                                                                                             | Audience                                    | Title / body                                                                                                                                |
-  | -------------- | --------------------- | -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-  | `reservations` | `reservation.for_you` | `reservation`  | `createEquipmentReservation`, or `updateEquipmentReservation`, adds members to `reserved_for_person_ids` (every member it is for, on create)                                                                                     | each added member other than the actor      | "Equipment reserved for you" / "<equipment names, sorted> · <Sun 25 Oct 09:00–11:00, Sydney time>" ("Equipment" if the names can't be read) |
-  | `tasks`        | `task.assigned`       | `task`         | `createTask`, or `updateTask`, adds members to `assignee_ids` (every assignee, on create)                                                                                                                                         | each added member other than the actor      | "Task assigned to you" / "<title>" or "<title> · Due <Mon 4 Mar>"                                                                          |
-  | `oncall`       | `oncall.assigned`     | `on_call_role` | `createOnCallRole`, or `updateOnCallRole`, makes a person the primary when they were not, or adds them to the secondaries when they were not already there (moving primary to secondary counts; removals and reorderings do not) | that member, once per newly assigned member | "You're now primary for <role>" / "You're now a secondary for <role>"                                                                       |
-
-  Equipment going into HAS_ISSUE, OUT_OF_SERVICE or MISSING used to tell the unit's users; it
-  notifies nobody for now, while who among a unit's members should hear is rethought
-  (`EquipmentStatus::attention_title` still holds the titles).
-
-  The acting member is never told (so a reservation you make for yourself, a task you assign to
-  yourself, or an on-call role you put yourself in, sends nothing).
+- **Producers:** none any more. The tasks, reservation, on-call and agenda notifications went
+  with those features; the inbox and `notify` remain until the rest of Tally's API is removed.
 
 - **Best-effort:** like the audit log, `notify` returns `()`: a failure is logged at `error!`
   and swallowed, because the thing it announces has already happened. The notification methods
@@ -1375,59 +1045,6 @@ uploads") shown to everyone who can use the unit in Tally (`require_photo_access
   alert, and fails the invocation at the end. By hand: `cli photo sweep` (global `--dry-run`
   to preview). The stored image objects are not deleted by the sweep.
 
-## Attached photos
-
-Tasks, equipment and map pins can each carry up to 10 photos (`src/graphql/attached_photos.rs`;
-storage is each row's `photo_asset_ids` in SCHEMA.md). Access is the owner's own (`require_task_access`,
-`require_equipment_access`, `require_map_access`).
-
-- **Reading:** `Task.photos`, `Equipment.photos` and `MapPin.photos` are the attached assets in
-  order (`url(variant:)` is the image; one that can no longer be read is left out), and
-  `photoAssetIds` their IDs.
-- **Writing:** `photoAssetIds` on `createTask`/`updateTask`, `createEquipment`/`updateEquipment`
-  and `createMapPin`/`updateMapPin`. On an update, omitted leaves the photos alone and a list
-  replaces them, in that order (`[]` removes them all).
-- **What may be attached:** any ready image asset at the owner's unit: one the member just
-  uploaded (see "Assets and uploads"), or one from the unit's photo stream (`Photo.asset.id`),
-  whoever uploaded it. More than 10, the same asset twice, or an asset that is missing, not
-  ready or at another unit is `BAD_REQUEST`. A photo already attached may stay attached
-  whatever has become of its asset.
-- **References:** each attached asset has an `asset_ref` owned by `task#<id>`, `equipment#<id>`
-  or `map_pin#<id>`, written (checking the asset is ready at the unit) before the owner first
-  names it and removed after the owner stops naming it or is deleted. So a photo taken from
-  the stream stays attached after the stream's sweep drops its own reference. A reference left
-  behind by a failed write only delays the future garbage collector.
-
-## Linked notes
-
-Tasks, map pins, equipment, calendar events, and on-call roles can each link to up to 10 of
-their unit's [notes](#notes) (`src/graphql/linked_notes.rs`; storage is each row's `note_ids`
-and the `note_ref` table in SCHEMA.md). Access is the owner's own (`require_task_access`,
-`require_map_access`, `require_equipment_access`, `require_calendar_access`,
-`require_on_call_access`). It follows "Attached photos" closely.
-
-- **Reading:** `notes` on `Task`, `MapPin`, `Equipment`, `CalendarEvent` and `OnCallRole` is
-  the linked notes in order (loaded through the `Note` dataloader; one that was deleted is left
-  out), and `noteIds` their IDs, deleted ones included.
-- **Writing:** `noteIds` on `createTask`/`updateTask`, `createMapPin`/`updateMapPin`,
-  `createEquipment`/`updateEquipment`, `createCalendarEvent`/`updateCalendarEvent` and
-  `createOnCallRole`/`updateOnCallRole`. On an update, omitted leaves the links alone and a list
-  replaces them, in that order (`[]` removes them all). `expectedVersion` and `CONFLICT` behave
-  as before.
-- **What may be linked:** a live (not deleted) note at the owner's unit. More than 10, the same
-  note twice, or a note that is missing, deleted or at another unit is `BAD_REQUEST`. A note
-  already linked may stay linked whatever has become of it (deleting a note does not unlink it;
-  it just stops showing in `notes`).
-- **The note is never touched:** linking, unlinking and deleting the owner leave the note, and
-  its version, as they were.
-- **References:** each link has a `note_ref` row, `(note_id, owner)` with `owner` one of
-  `task#<id>`, `equipment#<id>`, `map_pin#<id>`, `calendar_event#<id>` or `on_call_role#<id>`,
-  written before the owner first names the note and removed after the owner stops naming it or
-  is deleted (a failed removal is logged, not fatal). `db::Handler::list_note_refs(note_id)`
-  answers "which items link to this note"; because a failed write can leave a stray row, a reader
-  must check the owner still names the note. Nothing exposes that in GraphQL yet (a later
-  `Note.linkedFrom`). Not audited, like `asset_ref`; the owner's `note_ids` change is.
-
 ## SOP notes
 
 A unit can link one of its [notes](#notes) per Tally screen as its standard operating
@@ -1454,7 +1071,7 @@ borrowed), `TASKS`, `CALENDAR`, `MAP`, `RESERVATIONS`, `NOTES` and `PHOTOS`.
   ("That note can't be linked. It may have been deleted."); a unit that does not exist is `NOT_FOUND`.
 - **References:** each link has a `note_ref` owned by `location_sop#<location_id>:<PLACE>`, written
   before the location names the note and removed after it stops (a failed removal is logged, not
-  fatal), as in "Linked notes".
+  fatal).
 - **Audit:** an update to the location with a `sopNote.<PLACE>` field diff, filed at that unit.
 
 ## Media

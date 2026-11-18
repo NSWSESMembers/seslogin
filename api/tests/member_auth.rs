@@ -448,7 +448,7 @@ async fn the_viewer_is_the_member_with_their_primary_unit_and_their_users_units(
 #[tokio::test]
 async fn tally_location_is_only_for_a_unit_the_member_can_use() {
     let app = app();
-    let doc = |id: &str| format!(r#"{{ tallyLocation(id: "{id}") {{ name tasks {{ id }} }} }}"#);
+    let doc = |id: &str| format!(r#"{{ tallyLocation(id: "{id}") {{ name notes {{ id }} }} }}"#);
     let primary = data(&run(&app, member_at("loc-a", &[], false), &doc("loc-a")).await);
     assert_eq!(primary["tallyLocation"]["name"], "Unit A");
     let extra = data(&run(&app, member_at("loc-b", &["loc-a"], false), &doc("loc-a")).await);
@@ -500,7 +500,7 @@ async fn a_units_zone_is_named_but_its_tools_stay_closed() {
     assert!(other["tallyLocation"]["zone"].is_null());
 
     // Being in the zone's unit doesn't open the zone's own tools.
-    let tools = r#"{ tallyLocation(id: "loc-a") { zone { tasks { id } } } }"#;
+    let tools = r#"{ tallyLocation(id: "loc-a") { zone { notes { id } } } }"#;
     assert!(!run(&app, alice, tools).await.errors.is_empty());
 }
 
@@ -508,39 +508,27 @@ async fn a_units_zone_is_named_but_its_tools_stay_closed() {
 async fn core_fields_reachable_from_tally_still_refuse_a_member() {
     let app = app();
     let alice = member_at("loc-a", &[], false);
-    let created = data(
-        &run(
-            &app,
-            alice.clone(),
-            r#"mutation { createOnCallRole(locationId: "loc-a", name: "Duty Officer",
-                primaryPersonId: "bob") { id } }"#,
-        )
-        .await,
-    );
-    let id = created["createOnCallRole"]["id"].as_str().unwrap();
 
     // Names are fine; a unit's people and a member's periods are not.
     let names = data(
         &run(
             &app,
             alice.clone(),
-            &format!(
-                r#"{{ onCallRole(id: "{id}") {{ primary {{ firstName }} location {{ name }} }} }}"#
-            ),
+            "{ tallyViewer { member { firstName location { name } } } }",
         )
         .await,
     );
-    assert_eq!(names["onCallRole"]["primary"]["firstName"], "Bob");
-    assert_eq!(names["onCallRole"]["location"]["name"], "Unit A");
+    assert_eq!(names["tallyViewer"]["member"]["firstName"], "Alice");
+    assert_eq!(names["tallyViewer"]["member"]["location"]["name"], "Unit A");
     for field in [
         "location { people { id } }",
         "location { sessions { id } }",
-        "primary { periods(first: 1) { edges { cursor } } }",
+        "periods(first: 1) { edges { cursor } }",
     ] {
         let response = run(
             &app,
             alice.clone(),
-            &format!(r#"{{ onCallRole(id: "{id}") {{ {field} }} }}"#),
+            &format!("{{ tallyViewer {{ member {{ {field} }} }} }}"),
         )
         .await;
         assert!(!response.errors.is_empty(), "a member reached {field}");

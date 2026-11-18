@@ -14,22 +14,16 @@ use async_graphql::{Context, ID, Object};
 use std::sync::Arc;
 
 use super::auth::require_member_location;
-use super::calendar::{self, Calendar, CalendarEventOccurrence};
 use super::dataloader::DatabaseLoader;
-use super::equipment::{self, Equipment};
 use super::error::ApiError;
 use super::location_share::{self, LocationShare};
-use super::map::{self, MapLayer, MapPin};
 use super::notes::{self, Note, NoteFolder};
-use super::on_call::{self, OnCallRole};
 use super::photos::{self, PhotoConnection};
 use super::query::Person;
-use super::reservations::{self, EquipmentReservation};
 use super::shared_contacts::{self, SharedContact};
 use super::sop_notes;
 use super::tally_passkeys::{self, TallyPasskey};
 use super::tally_sign_ins::{self, TallySignIn};
-use super::tasks::{self, Task, TaskList, TaskView};
 use super::{LocationId, PersonId};
 use crate::app::{App, HasDb};
 use crate::auth::AuthInfo;
@@ -277,23 +271,6 @@ impl<A: App + HasDb + Send + Sync + 'static> TallyLocation<A> {
             .map(|zone| TallyLocation::new(zone.rec)))
     }
 
-    /// The unit's open tasks (its shared to-do list): by default those due now,
-    /// overdue first. `listId` narrows to one of its task lists; without it every
-    /// task at the unit is listed, whichever list it is on. See `graphql::tasks`.
-    async fn tasks(
-        &self,
-        ctx: &Context<'_>,
-        #[graphql(default)] view: TaskView,
-        list_id: Option<ID>,
-    ) -> Result<Vec<Task<A>>> {
-        tasks::location_tasks(ctx, &self.rec.id, view, list_id).await
-    }
-
-    /// The unit's task lists, by name.
-    async fn task_lists(&self, ctx: &Context<'_>) -> Result<Vec<TaskList<A>>> {
-        tasks::location_task_lists(ctx, &self.rec.id).await
-    }
-
     /// The unit's photos, newest first by when they were taken (else when they were
     /// added), for 30 days. `first` is at most 200. Pass the previous page's `endCursor`
     /// as `after`. See `graphql::photos`.
@@ -329,95 +306,12 @@ impl<A: App + HasDb + Send + Sync + 'static> TallyLocation<A> {
         notes::location_note_folders(ctx, &self.rec.id).await
     }
 
-    /// The unit's equipment register, by name. `search` keeps equipment whose name or
-    /// description contains it, ignoring case. See `graphql::equipment`.
-    async fn equipment(
-        &self,
-        ctx: &Context<'_>,
-        search: Option<String>,
-    ) -> Result<Vec<Equipment<A>>> {
-        equipment::location_equipment(ctx, &self.rec.id, search).await
-    }
-
-    /// The unit's equipment reservations that end after `endingAfter` (Unix seconds,
-    /// default now) — those still to come or under way — by start time.
-    /// `equipmentId` narrows to reservations of one piece of equipment. See
-    /// `graphql::reservations`.
-    async fn equipment_reservations(
-        &self,
-        ctx: &Context<'_>,
-        ending_after: Option<i64>,
-        equipment_id: Option<ID>,
-    ) -> Result<Vec<EquipmentReservation<A>>> {
-        reservations::location_reservations(ctx, &self.rec.id, ending_after, equipment_id).await
-    }
-
-    /// The unit's reservations a reservation of `equipmentIds` from `startTime` to
-    /// `endTime` would overlap, by start time, leaving out `excludeId` (the one being
-    /// edited). Overlaps are allowed; this is so a client can warn before saving.
-    async fn equipment_reservation_conflicts(
-        &self,
-        ctx: &Context<'_>,
-        equipment_ids: Vec<ID>,
-        start_time: i64,
-        end_time: i64,
-        exclude_id: Option<ID>,
-    ) -> Result<Vec<EquipmentReservation<A>>> {
-        reservations::location_reservation_conflicts(
-            ctx,
-            &self.rec.id,
-            equipment_ids,
-            start_time,
-            end_time,
-            exclude_id,
-        )
-        .await
-    }
-
-    /// The pins on the unit's shared map, by title. `layerId` narrows to one of its map
-    /// layers; without it every pin at the unit is listed, whichever layer it is on.
-    /// See `graphql::map`.
-    async fn map_pins(&self, ctx: &Context<'_>, layer_id: Option<ID>) -> Result<Vec<MapPin<A>>> {
-        map::location_map_pins(ctx, &self.rec.id, layer_id).await
-    }
-
-    /// The unit's map layers, by name.
-    async fn map_layers(&self, ctx: &Context<'_>) -> Result<Vec<MapLayer<A>>> {
-        map::location_map_layers(ctx, &self.rec.id).await
-    }
-
-    /// The unit's calendars, by name. See `graphql::calendar`.
-    async fn calendars(&self, ctx: &Context<'_>) -> Result<Vec<Calendar<A>>> {
-        calendar::location_calendars(ctx, &self.rec.id).await
-    }
-
-    /// Every occurrence of the unit's events that overlaps `from`–`to` (Unix seconds,
-    /// at most 400 days apart), repeats expanded, by start; at most 5,000. All-day
-    /// occurrences are included when one of their dates overlaps the window in any
-    /// time zone, so a client should check them against its own days. Events in every
-    /// calendar, and in none, are listed: a client picking calendars filters on
-    /// `event.calendarId`.
-    async fn calendar_events(
-        &self,
-        ctx: &Context<'_>,
-        from: i64,
-        to: i64,
-    ) -> Result<Vec<CalendarEventOccurrence<A>>> {
-        calendar::location_calendar_events(ctx, &self.rec.id, from, to).await
-    }
-
     /// Everyone sharing their position with the unit ("Locate"), most recently updated
     /// first. A share shows until 7 minutes after its latest position, so this
     /// includes shares that have just ended (`active: false`). See
     /// `graphql::location_share`.
     async fn location_shares(&self, ctx: &Context<'_>) -> Result<Vec<LocationShare<A>>> {
         location_share::location_shares(ctx, &self.rec.id).await
-    }
-
-    /// The unit's on-call roles (Duty Officer, …) and who holds each now, by name. See
-    /// `graphql::on_call`.
-    async fn on_call_roles(&self, ctx: &Context<'_>) -> Result<Vec<OnCallRole<A>>> {
-        on_call::location_on_call_roles(ctx, &self.rec.id).await
     }
 
     /// The unit's standard operating procedure notes: one per Tally screen that has a
