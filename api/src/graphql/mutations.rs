@@ -35,7 +35,6 @@ use crate::trophy_scan;
 use async_graphql::dataloader::DataLoader;
 use hex;
 
-use super::agenda_items::{self, AgendaItem};
 use super::assets::{self, Asset, AssetUpload, CreateAssetUploadInput};
 use super::auth::{
     AuthGuard, AuthRequirement, require_location_access, require_location_write_access,
@@ -47,7 +46,6 @@ use super::equipment::{self, Equipment, EquipmentStatus, EquipmentType};
 use super::error::{ApiError, ErrorCode};
 use super::location_share::{self, LocationShare, LocationSharePositionInput};
 use super::map::{self, MapLayer, MapPin, MapPinType};
-use super::meetings::{self, Meeting};
 use super::notes::{self, Note, NoteFolder};
 use super::notifications::{self, MarkNotificationsReadPayload};
 use super::on_call::{self, OnCallRole};
@@ -3557,182 +3555,6 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sy
     #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn delete_calendar_event(&self, ctx: &Context<'_>, id: ID) -> Result<ID> {
         calendar::delete_event(ctx, self.app.as_ref(), &id).await
-    }
-
-    /// Add a meeting (Agendas) to a unit, planned for `startsAt` (Unix seconds). Any
-    /// member who can use the unit in Tally may.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
-    async fn create_meeting(
-        &self,
-        ctx: &Context<'_>,
-        location_id: ID,
-        title: String,
-        description: Option<String>,
-        starts_at: i64,
-    ) -> Result<Meeting<A>> {
-        meetings::create_meeting(
-            ctx,
-            self.app.as_ref(),
-            meetings::CreateMeetingArgs {
-                location_id,
-                title,
-                description,
-                starts_at,
-            },
-        )
-        .await
-    }
-
-    /// Change a meeting. Omitted arguments are left as they are. Fails with
-    /// `CONFLICT` if it is no longer at `expectedVersion`.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
-    async fn update_meeting(
-        &self,
-        ctx: &Context<'_>,
-        id: ID,
-        expected_version: i32,
-        title: Option<String>,
-        description: Option<String>,
-        starts_at: Option<i64>,
-    ) -> Result<Meeting<A>> {
-        meetings::update_meeting(
-            ctx,
-            self.app.as_ref(),
-            meetings::UpdateMeetingArgs {
-                id,
-                expected_version,
-                title,
-                description,
-                starts_at,
-            },
-        )
-        .await
-    }
-
-    /// Delete a meeting. Returns its ID.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
-    async fn delete_meeting(&self, ctx: &Context<'_>, id: ID) -> Result<ID> {
-        meetings::delete_meeting(ctx, self.app.as_ref(), &id).await
-    }
-
-    /// Start a meeting now: `startedAt` is set and its status becomes `IN_PROGRESS`. A
-    /// finished meeting is reopened, keeping its original `startedAt`. One already in
-    /// progress is refused with `BAD_REQUEST`. Fails with `CONFLICT` if it is no longer
-    /// at `expectedVersion`.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
-    async fn start_meeting(
-        &self,
-        ctx: &Context<'_>,
-        id: ID,
-        expected_version: i32,
-    ) -> Result<Meeting<A>> {
-        meetings::start_meeting(ctx, self.app.as_ref(), &id, expected_version).await
-    }
-
-    /// Finish a meeting that is in progress. Any other status is refused with
-    /// `BAD_REQUEST`. Fails with `CONFLICT` if it is no longer at `expectedVersion`.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
-    async fn finish_meeting(
-        &self,
-        ctx: &Context<'_>,
-        id: ID,
-        expected_version: i32,
-    ) -> Result<Meeting<A>> {
-        meetings::finish_meeting(ctx, self.app.as_ref(), &id, expected_version).await
-    }
-
-    /// Add a topic to a meeting's agenda (Agendas), at the end, at any status. `text`
-    /// (Markdown as in Notes) is what it is about; a topic needs text or at least one
-    /// link. `presenterId` defaults to the caller; the presenter may be a member of any
-    /// unit. It may link up to ten each of the unit's tasks, equipment, on-call roles,
-    /// photos (ready image assets) and notes (`taskIds`, `equipmentIds`,
-    /// `onCallRoleIds`, `photoAssetIds`, `noteIds`), in the order given. Fails with
-    /// `NOT_FOUND` if the meeting is missing or deleted and `BAD_REQUEST` for a link
-    /// that is not usable or a topic with neither text nor a link.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
-    async fn create_agenda_item(
-        &self,
-        ctx: &Context<'_>,
-        meeting_id: ID,
-        text: Option<String>,
-        presenter_id: Option<ID>,
-        task_ids: Option<Vec<ID>>,
-        equipment_ids: Option<Vec<ID>>,
-        on_call_role_ids: Option<Vec<ID>>,
-        photo_asset_ids: Option<Vec<ID>>,
-        note_ids: Option<Vec<ID>>,
-    ) -> Result<AgendaItem<A>> {
-        agenda_items::create_agenda_item(
-            ctx,
-            self.app.as_ref(),
-            agenda_items::CreateAgendaItemArgs {
-                meeting_id,
-                text,
-                presenter_id,
-                task_ids,
-                equipment_ids,
-                on_call_role_ids,
-                photo_asset_ids,
-                note_ids,
-            },
-        )
-        .await
-    }
-
-    /// Change a topic. Omitted arguments are left as they are; the presenter cannot be
-    /// cleared. A list of links replaces the topic's (`[]` clears it); ones already
-    /// linked may stay whatever has become of them. A topic must keep text or at least
-    /// one link (else `BAD_REQUEST`). Fails with `CONFLICT` if it is no longer at
-    /// `expectedVersion`.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
-    async fn update_agenda_item(
-        &self,
-        ctx: &Context<'_>,
-        id: ID,
-        expected_version: i32,
-        text: Option<String>,
-        presenter_id: Option<ID>,
-        task_ids: Option<Vec<ID>>,
-        equipment_ids: Option<Vec<ID>>,
-        on_call_role_ids: Option<Vec<ID>>,
-        photo_asset_ids: Option<Vec<ID>>,
-        note_ids: Option<Vec<ID>>,
-    ) -> Result<AgendaItem<A>> {
-        agenda_items::update_agenda_item(
-            ctx,
-            self.app.as_ref(),
-            agenda_items::UpdateAgendaItemArgs {
-                id,
-                expected_version,
-                text,
-                presenter_id,
-                task_ids,
-                equipment_ids,
-                on_call_role_ids,
-                photo_asset_ids,
-                note_ids,
-            },
-        )
-        .await
-    }
-
-    /// Delete a topic. Returns its ID.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
-    async fn delete_agenda_item(&self, ctx: &Context<'_>, id: ID) -> Result<ID> {
-        agenda_items::delete_agenda_item(ctx, self.app.as_ref(), &id).await
-    }
-
-    /// Put a meeting's topics in the order of `itemIds`, which must name exactly its
-    /// live topics, each once (else `BAD_REQUEST`). Returns them in the new order.
-    /// Fails with `CONFLICT` if a topic changed while this ran.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
-    async fn reorder_agenda_items(
-        &self,
-        ctx: &Context<'_>,
-        meeting_id: ID,
-        item_ids: Vec<ID>,
-    ) -> Result<Vec<AgendaItem<A>>> {
-        agenda_items::reorder_agenda_items(ctx, self.app.as_ref(), &meeting_id, item_ids).await
     }
 
     #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]

@@ -30,7 +30,6 @@ use crate::realtime::Handler as _;
 use crate::ses_api;
 use crate::trophies;
 
-use super::agenda_items::{self, AgendaItem};
 use super::audit_log::{self, AuditEntityType, AuditEntryConnection};
 use super::auth::{
     AuthGuard, AuthRequirement, can_write_location, require_location_access, require_person_access,
@@ -40,7 +39,6 @@ use super::dataloader::DatabaseLoader;
 use super::equipment::{self, Equipment};
 use super::location_share::{self, LocationShare};
 use super::map::{self, MapPin};
-use super::meetings::{self, Meeting};
 use super::notes::{self, Note};
 use super::notifications::{self, NotificationConnection};
 use super::on_call::{self, OnCallRole};
@@ -4189,18 +4187,6 @@ impl<A: App + HasDb + HasRealtime + HasStorage + Send + Sync + 'static> QueryRoo
     #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
     async fn calendar_event(&self, ctx: &Context<'_>, id: ID) -> Result<Option<CalendarEvent<A>>> {
         calendar::calendar_event(ctx, &id).await
-    }
-
-    /// One meeting (Agendas); null if it does not exist or was deleted.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
-    async fn meeting(&self, ctx: &Context<'_>, id: ID) -> Result<Option<Meeting<A>>> {
-        meetings::meeting(ctx, &id).await
-    }
-
-    /// One agenda item (Agendas topic); null if it does not exist or was deleted.
-    #[graphql(guard = "AuthGuard::new(AuthRequirement::Member)")]
-    async fn agenda_item(&self, ctx: &Context<'_>, id: ID) -> Result<Option<AgendaItem<A>>> {
-        agenda_items::agenda_item(ctx, &id).await
     }
 
     /// The caller's own location share while it still shows (until 7 minutes after its
