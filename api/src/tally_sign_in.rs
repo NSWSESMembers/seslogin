@@ -152,20 +152,6 @@ async fn identify_with<H: db::Handler>(
 ) -> db::Result<Option<Identity>> {
     let key = db::email_key(email);
     let user_id = user.as_ref().map_or("none", |u| u.id.as_str());
-    if let Some(person_id) = user.as_ref().and_then(|u| u.person_id.clone()) {
-        if let Some(person) = live_person(db, &person_id).await? {
-            info!(
-                email = %key, user_id, person_id = %person.id,
-                "tally sign-in: lookup found the user's linked member"
-            );
-            return Ok(Some(Identity { user, person }));
-        }
-        info!(
-            email = %key, user_id, person_id,
-            "tally sign-in: the user's linked member is deleted or missing, looking up by email"
-        );
-    }
-
     let ids = db.get_person_ids_by_email(email).await?;
     let mut people: Vec<db::Person> = db
         .get_persons(&ids)

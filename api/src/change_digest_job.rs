@@ -293,7 +293,6 @@ mod tests {
             enabled: true,
             location_grants: vec!["A".into()],
             location_read_only_grants: vec!["B".into()],
-            person_id: None,
             access_time: None,
             email_config: Default::default(),
             disaggregate_virtual_periods: false,

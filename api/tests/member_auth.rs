@@ -130,25 +130,6 @@ async fn a_user_riding_along_adds_their_units_of_either_role() {
 }
 
 #[tokio::test]
-async fn the_users_member_link_wins_over_the_grants_member() {
-    let app = app();
-    seed_user(&app, "u1", true);
-    set_user(&app, "u1", |u| u.person_id = Some("bob".into()));
-    let token = token_for(&app, member_with_user("alice", "u1"), GRAPHQL).await;
-    match verify(&app, &token).await.unwrap() {
-        AuthInfo::Member {
-            person_id,
-            location_id,
-            ..
-        } => {
-            assert_eq!(person_id, "bob");
-            assert_eq!(location_id, "loc-b");
-        }
-        _ => panic!("expected a member"),
-    }
-}
-
-#[tokio::test]
 async fn a_disabled_user_drops_out_but_the_member_stays() {
     let app = app();
     seed_user(&app, "u1", false);
