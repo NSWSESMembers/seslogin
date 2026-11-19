@@ -126,17 +126,10 @@ async fn the_grant_carries_primary_then_secondary_units() {
 }
 
 #[tokio::test]
-async fn tasks_and_notes_work_at_a_secondary_unit_but_not_an_unrelated_one() {
+async fn notes_work_at_a_secondary_unit_but_not_an_unrelated_one() {
     let app = app();
     let auth = dana(&app).await;
     for unit in ["loc-a", "loc-b"] {
-        let task = run(
-            &app,
-            &auth,
-            &format!(r#"mutation {{ createTask(locationId: "{unit}", title: "Sweep") {{ id }} }}"#),
-        )
-        .await;
-        data(&task);
         let note = run(
             &app,
             &auth,
@@ -145,23 +138,23 @@ async fn tasks_and_notes_work_at_a_secondary_unit_but_not_an_unrelated_one() {
         .await;
         data(&note);
     }
-    let tasks = data(
+    let notes = data(
         &run(
             &app,
             &auth,
-            r#"{ tallyLocation(id: "loc-a") { tasks { title } } }"#,
+            r#"{ tallyLocation(id: "loc-a") { notes { title } } }"#,
         )
         .await,
     );
     assert_eq!(
-        tasks["tallyLocation"]["tasks"],
-        json!([{ "title": "Sweep" }])
+        notes["tallyLocation"]["notes"],
+        json!([{ "title": "Keys" }])
     );
 
     let refused = run(
         &app,
         &auth,
-        r#"mutation { createTask(locationId: "loc-c", title: "Nope") { id } }"#,
+        r#"mutation { createNote(locationId: "loc-c", title: "Nope") { id } }"#,
     )
     .await;
     assert_eq!(code_of(&refused).as_deref(), Some("FORBIDDEN"));

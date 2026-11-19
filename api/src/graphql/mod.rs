@@ -16,26 +16,20 @@ use crate::request_metrics;
 use crate::telemetry::{self, OperationKind};
 
 pub mod assets;
-pub mod attached_photos;
 pub mod audit_log;
 pub mod auth;
-pub mod calendar;
 pub mod dataloader;
-pub mod equipment;
 pub mod error;
 #[cfg(debug_assertions)]
 pub mod error_injection;
 pub mod linked_notes;
 pub mod location_share;
-pub mod map;
 pub mod mutations;
 pub mod notes;
 pub mod notifications;
-pub mod on_call;
 pub mod pagination;
 pub mod photos;
 pub mod query;
-pub mod reservations;
 pub mod scope;
 pub mod self_sign_in;
 pub mod ses_details;
@@ -45,7 +39,6 @@ pub mod tally;
 pub mod tally_passkeys;
 pub mod tally_sign_in;
 pub mod tally_sign_ins;
-pub mod tasks;
 pub mod trophies;
 pub mod wifi;
 

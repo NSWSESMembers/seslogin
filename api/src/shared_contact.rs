@@ -39,10 +39,35 @@ pub fn validate_description(description: &str) -> Result<String, String> {
     Ok(description.to_string())
 }
 
-/// A contact's phone number: the same rule as an on-call role's, so it can always be
-/// dialled. Blank means none.
+/// The fewest and most digits a phone number may have.
+const MIN_PHONE_DIGITS: usize = 3;
+const MAX_PHONE_DIGITS: usize = 15;
+
+/// A contact's phone number, checked so it can always be dialled: digits, spaces,
+/// `( ) -` and a leading `+`. Blank means none.
 pub fn validate_phone(phone: &str) -> Result<Option<String>, String> {
-    crate::on_call::validate_phone(phone)
+    let phone = phone.trim();
+    if phone.is_empty() {
+        return Ok(None);
+    }
+    let invalid = || "A phone number can only have digits, spaces, ( ) - and a leading +";
+    let (first, rest) = phone.split_at(1);
+    if !first
+        .chars()
+        .all(|c| c == '+' || c == '(' || c.is_ascii_digit())
+        || !rest
+            .chars()
+            .all(|c| c.is_ascii_digit() || matches!(c, ' ' | '(' | ')' | '-'))
+    {
+        return Err(invalid().to_string());
+    }
+    let digits = phone.chars().filter(char::is_ascii_digit).count();
+    if !(MIN_PHONE_DIGITS..=MAX_PHONE_DIGITS).contains(&digits) {
+        return Err(format!(
+            "A phone number needs {MIN_PHONE_DIGITS} to {MAX_PHONE_DIGITS} digits"
+        ));
+    }
+    Ok(Some(phone.to_string()))
 }
 
 /// Whether the contact's phone takes text messages: never without a phone.

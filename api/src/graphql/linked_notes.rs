@@ -13,55 +13,16 @@
 //! deleted or belongs to another unit is `BAD_REQUEST`. A note already linked to the
 //! owner may stay linked as it is, whatever has become of it.
 
-use anyhow::{Result, anyhow};
-use async_graphql::dataloader::DataLoader;
-use async_graphql::{Context, ID};
+use anyhow::Result;
+use async_graphql::ID;
 use std::collections::HashSet;
 use tracing::warn;
 
-use super::NoteId;
-use super::dataloader::DatabaseLoader;
 use super::error::ApiError;
-use super::notes::Note;
 use crate::app::{App, HasDb};
 use crate::db::{self, Handler as _};
 
-pub(super) use super::attached_photos::added;
-
-/// The `note_ref` owner type of a task's linked notes.
-pub(super) const TASK: &str = "task";
-/// The `note_ref` owner type of a piece of equipment's linked notes.
-pub(super) const EQUIPMENT: &str = "equipment";
-/// The `note_ref` owner type of a map pin's linked notes.
-pub(super) const MAP_PIN: &str = "map_pin";
-/// The `note_ref` owner type of a calendar event's linked notes.
-pub(super) const CALENDAR_EVENT: &str = "calendar_event";
-/// The `note_ref` owner type of an on-call role's linked notes.
-pub(super) const ON_CALL_ROLE: &str = "on_call_role";
-
 const UNAVAILABLE: &str = "That note can't be linked. It may have been deleted.";
-
-/// The linked notes, in order, for an object's `notes` field. Ones that were deleted or
-/// can no longer be read are left out.
-pub(super) async fn load<A>(ctx: &Context<'_>, note_ids: &[String]) -> Result<Vec<Note<A>>>
-where
-    A: App + HasDb + Send + Sync + 'static,
-{
-    if note_ids.is_empty() {
-        return Ok(vec![]);
-    }
-    let loader = ctx.data_unchecked::<DataLoader<DatabaseLoader<A>>>();
-    let mut found = loader
-        .load_many(note_ids.iter().cloned().map(NoteId))
-        .await
-        .map_err(|e| anyhow!("Failed to load notes via DataLoader: {}", e))?;
-    Ok(note_ids
-        .iter()
-        .filter_map(|id| found.remove(&NoteId(id.clone())))
-        .filter(|n| n.deleted.is_none())
-        .map(Note::new)
-        .collect())
-}
 
 /// Checks a requested list of notes for an owner at `location_id` and returns it as note
 /// IDs. `current` is what the owner has now (empty for a new one): those may stay

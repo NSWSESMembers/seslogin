@@ -267,34 +267,10 @@ pub(crate) fn require_member_location(
     }
 }
 
-/// Check the caller may use a location's Tasks (its shared to-do list): read them,
-/// and also create, edit, complete and delete them and manage its task lists. See
-/// [`require_member_location`].
-pub(crate) fn require_task_access(ctx: &Context<'_>, location_id: &str) -> Result<()> {
-    require_member_location(ctx, location_id, "Tasks are only available in Tally")
-}
-
 /// Check the caller may use a location's Notes (its shared notebook). See
 /// [`require_member_location`].
 pub(crate) fn require_note_access(ctx: &Context<'_>, location_id: &str) -> Result<()> {
     require_member_location(ctx, location_id, "Notes are only available in Tally")
-}
-
-/// Check the caller may use a location's Map (its shared map pins and layers). See
-/// [`require_member_location`].
-pub(crate) fn require_map_access(ctx: &Context<'_>, location_id: &str) -> Result<()> {
-    require_member_location(ctx, location_id, "The map is only available in Tally")
-}
-
-/// Check the caller may use a location's On Call roles. See [`require_member_location`].
-pub(crate) fn require_on_call_access(ctx: &Context<'_>, location_id: &str) -> Result<()> {
-    require_member_location(ctx, location_id, "On Call is only available in Tally")
-}
-
-/// Check the caller may use a location's Equipment register, log and reservations. See
-/// [`require_member_location`].
-pub(crate) fn require_equipment_access(ctx: &Context<'_>, location_id: &str) -> Result<()> {
-    require_member_location(ctx, location_id, "Equipment is only available in Tally")
 }
 
 /// Check the caller may upload and complete assets (photos and, later, files) for a
@@ -306,11 +282,6 @@ pub(crate) fn require_asset_access(ctx: &Context<'_>, location_id: &str) -> Resu
 /// Check the caller may see and add to a location's Photos. See [`require_member_location`].
 pub(crate) fn require_photo_access(ctx: &Context<'_>, location_id: &str) -> Result<()> {
     require_member_location(ctx, location_id, "Photos are only available in Tally")
-}
-
-/// Check the caller may use a location's Calendar. See [`require_member_location`].
-pub(crate) fn require_calendar_access(ctx: &Context<'_>, location_id: &str) -> Result<()> {
-    require_member_location(ctx, location_id, "The calendar is only available in Tally")
 }
 
 /// Check the caller may use the shared contacts in `scope`. A location's contacts are
