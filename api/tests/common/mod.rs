@@ -55,9 +55,6 @@ pub(crate) struct FakeDb {
     pub(crate) person_units: Mutex<HashMap<String, Vec<db::PersonUnit>>>,
     pub(crate) tasks: Mutex<HashMap<String, db::Task>>,
     pub(crate) task_lists: Mutex<HashMap<String, db::TaskList>>,
-    /// Each person's contact-feed stamp, as Unix microseconds; the `contact_key` is
-    /// formatted from it on read, as `dynamodb.rs` does. See [`FakeDb::age_contacts`].
-    pub(crate) contact_stamps: Mutex<HashMap<String, u64>>,
     pub(crate) notes: Mutex<HashMap<String, db::Note>>,
     pub(crate) note_folders: Mutex<HashMap<String, db::NoteFolder>>,
     pub(crate) equipment: Mutex<HashMap<String, db::Equipment>>,
@@ -108,22 +105,6 @@ impl FakeDb {
             Err(db::Error::NotFound(format!(
                 "Asset {asset_id} is not ready at location {location_id}"
             )))
-        }
-    }
-
-    fn stamp_contact(&self, id: &str) {
-        self.contact_stamps
-            .lock()
-            .unwrap()
-            .insert(id.to_string(), seslogin::clock::now_us());
-    }
-
-    /// Move every contact-feed stamp `secs` into the past, so writes a test just made
-    /// are old enough for the feed to serve.
-    #[allow(dead_code)] // see `seed_super_user`'s doc comment
-    pub(crate) fn age_contacts(&self, secs: u64) {
-        for stamp in self.contact_stamps.lock().unwrap().values_mut() {
-            *stamp -= secs * 1_000_000;
         }
     }
 
@@ -656,7 +637,6 @@ impl db::Handler for FakeDb {
             .lock()
             .unwrap()
             .insert(person.id.clone(), person.clone());
-        self.stamp_contact(&person.id);
         Ok(person)
     }
     async fn update_person(&self, id: &str, change: db::PersonUpdateShape<'_>) -> db::Result<()> {
@@ -706,49 +686,10 @@ impl db::Handler for FakeDb {
             }
             _ => return unsupported(),
         }
-        drop(persons);
-        self.stamp_contact(id);
-        Ok(())
-    }
-    async fn stamp_person_contact(&self, id: &str) -> db::Result<()> {
-        self.stamp_contact(id);
         Ok(())
     }
     async fn stamp_person_email_key(&self, _id: &str, _email: &str) -> db::Result<()> {
         unsupported()
-    }
-    async fn list_contact_changes(
-        &self,
-        after: Option<&str>,
-        before: &str,
-        include_deleted: bool,
-        limit: usize,
-    ) -> db::Result<db::ContactPage> {
-        let persons = self.persons.lock().unwrap();
-        let mut changes: Vec<db::ContactChange> = self
-            .contact_stamps
-            .lock()
-            .unwrap()
-            .iter()
-            .map(|(id, us)| (format!("{us:020}#{id}"), id))
-            .filter(|(key, _)| after.is_none_or(|a| key.as_str() > a) && key.as_str() < before)
-            .filter_map(|(key, id)| {
-                let person = persons.get(id)?.clone();
-                (include_deleted || person.deleted.is_none())
-                    .then_some(db::ContactChange { key, person })
-            })
-            .collect();
-        changes.sort_by(|a, b| a.key.cmp(&b.key));
-        let has_more = changes.len() > limit;
-        changes.truncate(limit);
-        Ok(db::ContactPage { changes, has_more })
-    }
-    async fn count_contacts(&self, before: &str) -> db::Result<u64> {
-        Ok(self
-            .list_contact_changes(None, before, false, usize::MAX - 1)
-            .await?
-            .changes
-            .len() as u64)
     }
     async fn create_period(
         &self,
@@ -1229,15 +1170,10 @@ impl db::Handler for FakeDb {
         person_id: &str,
         units: &[db::PersonUnit],
     ) -> db::Result<()> {
-        let old = self
-            .person_units
+        self.person_units
             .lock()
             .unwrap()
-            .insert(person_id.to_string(), units.to_vec())
-            .unwrap_or_default();
-        if old != units {
-            self.stamp_contact(person_id);
-        }
+            .insert(person_id.to_string(), units.to_vec());
         Ok(())
     }
     async fn scan_periods(

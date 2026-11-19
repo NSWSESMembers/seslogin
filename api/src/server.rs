@@ -400,35 +400,6 @@ where
     oauth_response(reply)
 }
 
-#[handler]
-async fn offline_sync<H, Q, M, R, S>(
-    app: Data<&SharedApp<H, Q, M, R, S>>,
-    req: &poem::Request,
-) -> impl IntoResponse
-where
-    H: db::Handler + Send + Sync + 'static,
-    Q: queue::Handler + Send + Sync + 'static,
-    M: mail::Handler + Send + Sync + 'static,
-    R: realtime::Handler + Send + Sync + 'static,
-    S: storage::Handler + Send + Sync + 'static,
-{
-    let header = |name: &str| req.headers().get(name).and_then(|v| v.to_str().ok());
-    let reply = crate::offline_sync::sync(
-        &***app,
-        host_header(req.headers()),
-        header("Authorization"),
-        header("Accept-Encoding"),
-        req.uri().query().unwrap_or(""),
-    )
-    .await;
-    let mut builder = poem::Response::builder()
-        .status(StatusCode::from_u16(reply.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR));
-    for (name, value) in &reply.headers {
-        builder = builder.header(name.as_str(), value.as_str());
-    }
-    builder.body(reply.body)
-}
-
 /// `GET /media/{asset_id}/{variant}`: derived images, served from the app's storage with
 /// the same code as the media Lambda ([`crate::media::serve`]). Local dev and the `poem`
 /// server have no CloudFront in front, so they answer it themselves.
@@ -534,12 +505,6 @@ where
         .at(
             "/.well-known/oauth-protected-resource",
             get(oauth_protected_resource_metadata),
-        )
-        .at(
-            crate::offline_sync::SYNC_PATH,
-            get(offline_sync::<H, Q, M, R, S> {
-                ..Default::default()
-            }),
         )
         .at(
             "/media/:asset_id/:variant",
