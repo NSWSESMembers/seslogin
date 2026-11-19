@@ -15,7 +15,6 @@ use crate::auth::AuthInfo;
 use crate::request_metrics;
 use crate::telemetry::{self, OperationKind};
 
-pub mod assets;
 pub mod audit_log;
 pub mod auth;
 pub mod dataloader;
@@ -23,9 +22,7 @@ pub mod error;
 #[cfg(debug_assertions)]
 pub mod error_injection;
 pub mod mutations;
-pub mod notifications;
 pub mod pagination;
-pub mod photos;
 pub mod query;
 pub mod scope;
 pub mod self_sign_in;
@@ -90,10 +87,6 @@ pub struct PeriodId(pub ID);
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct LocationId(pub ID);
-
-/// DataLoader key for [`assets::Asset`]'s row, used by anything that points at an asset.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct AssetId(pub String);
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct SessionId(pub ID);

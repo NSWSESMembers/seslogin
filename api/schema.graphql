@@ -31,52 +31,6 @@ type ApiToken {
 	lastUsedAt: Int
 }
 
-type Asset {
-	id: ID!
-	"""
-	`"image"`.
-	"""
-	kind: String!
-	contentType: String!
-	byteSize: Int!
-	width: Int
-	height: Int
-	"""
-	Unix seconds, from the original's metadata as the phone read it.
-	"""
-	takenAt: Int
-	createdAt: Int!
-	"""
-	Person ID of the member who uploaded it.
-	"""
-	createdBy: ID
-	"""
-	Whether the upload has been completed and the image can be shown.
-	"""
-	ready: Boolean!
-	"""
-	A relative `/media/...` URL for the image at `variant` (a normalised WebP), valid
-	for at least a day; null until the asset is ready.
-	"""
-	url(variant: ImageVariant!): String
-}
-
-type AssetUpload {
-	"""
-	The pending asset; pass its ID to `completeAssetUpload` once the file is posted.
-	"""
-	asset: Asset!
-	"""
-	May be relative: resolve it against the API origin.
-	"""
-	uploadUrl: String!
-	fields: [UploadField!]!
-	"""
-	Unix seconds after which the form stops working.
-	"""
-	expiresAt: Int!
-}
-
 """
 What a recorded write did to its entity.
 """
@@ -335,27 +289,6 @@ type CreateApiTokenResult {
 	secret: String!
 }
 
-input CreateAssetUploadInput {
-	locationId: ID!
-	"""
-	`image/jpeg` or `image/webp`.
-	"""
-	contentType: String!
-	"""
-	Exactly the size of the file to be posted, in bytes (at most 30 MiB).
-	"""
-	byteSize: Int!
-	filename: String
-	width: Int
-	height: Int
-	"""
-	Unix seconds, read from the original before any conversion.
-	"""
-	takenAt: Int
-	cameraMake: String
-	cameraModel: String
-}
-
 type DashboardCategoryPeriodSummary {
 	categoryId: String
 	categoryName: String!
@@ -395,16 +328,6 @@ type Environment {
 	Whether the server is using the production database tables.
 	"""
 	isProdDb: Boolean!
-}
-
-"""
-A size of derived image: THUMB 400 px, DISPLAY 1440 px, FULL 2560 px on the long edge,
-never upscaled.
-"""
-enum ImageVariant {
-	THUMB
-	DISPLAY
-	FULL
 }
 
 """
@@ -567,17 +490,6 @@ type LocationRecentCategory {
 	most-recent first.
 	"""
 	recentPeople: [Person!]!
-}
-
-"""
-The result of marking notifications read.
-"""
-type MarkNotificationsReadPayload {
-	"""
-	How many notifications are still unread, counting no further than 100 (show
-	"99+" above 99). Read from an index that can lag a moment behind the write.
-	"""
-	unreadCount: Int!
 }
 
 type MemberCategoryPeriodSummary {
@@ -800,42 +712,6 @@ type MutationRoot {
 	the ticket up and returns the URL to send the browser back to Tally with.
 	"""
 	finishTallyPasskeySetup(ticket: String!, challengeId: String!, credentialJson: String!): String!
-	"""
-	Start uploading a JPEG or WebP image from Tally: creates a pending asset and
-	returns a form to POST the file to (fields in order, then the file as a part
-	named `file` last). Call `completeAssetUpload` once it is posted. Fails
-	`RATE_LIMITED` after 200 uploads in a Sydney day, and `BAD_REQUEST` for a file
-	type or size that isn't accepted or on an environment with no upload storage.
-	"""
-	createAssetUpload(input: CreateAssetUploadInput!): AssetUpload!
-	"""
-	Check the file arrived intact and make the asset ready. Completing an asset that
-	is already ready returns it. `BAD_REQUEST` if the file hasn't arrived or isn't
-	the image that was described.
-	"""
-	completeAssetUpload(id: ID!): Asset!
-	"""
-	Add a ready image the caller uploaded to a unit's photo stream. `NOT_FOUND` for
-	an unknown asset, `BAD_REQUEST` if it isn't complete or belongs to another unit,
-	`FORBIDDEN` if someone else uploaded it, `RATE_LIMITED` after 100 photos at the
-	unit in a Sydney day.
-	"""
-	createPhoto(locationId: ID!, assetId: ID!): Photo!
-	"""
-	Remove a photo from the stream for everyone now; it is deleted within seven days.
-	There is no undo. `NOT_FOUND` if it is unknown or already hidden.
-	"""
-	hidePhoto(id: ID!): Photo!
-	"""
-	Mark some of your notifications read (at most 200 IDs). One that is already read,
-	or is not yours, is ignored. Returns how many you still have unread.
-	"""
-	markNotificationsRead(ids: [ID!]!): MarkNotificationsReadPayload!
-	"""
-	Mark all your notifications read. Returns how many you still have unread (usually
-	none).
-	"""
-	markAllNotificationsRead: MarkNotificationsReadPayload!
 	deleteSession(id: ID!): Boolean!
 	"""
 	Bring back a QR-enrolled kiosk that expired after two weeks offline, without
@@ -1012,73 +888,6 @@ type NitcGroup {
 	sesTags: [SesNonIncidentTag!]!
 	createdAt: Int
 	updatedAt: Int
-}
-
-"""
-One entry in the caller's notification inbox.
-"""
-type Notification {
-	"""
-	Unique per notification for the caller; also its paging cursor.
-	"""
-	id: ID!
-	"""
-	The app that produced it, e.g. `reservations`.
-	"""
-	source: String!
-	"""
-	What happened, e.g. `reservation.for_you`.
-	"""
-	kind: String!
-	title: String!
-	body: String
-	"""
-	The location it is about, if any.
-	"""
-	locationId: ID
-	"""
-	What to open when it is tapped, e.g. `reservation`, with `targetId`.
-	"""
-	targetType: String
-	targetId: ID
-	"""
-	Unix seconds.
-	"""
-	createdAt: Int!
-	"""
-	Unix seconds when it was marked read; null while unread.
-	"""
-	readAt: Int
-	read: Boolean!
-}
-
-type NotificationConnection {
-	"""
-	Information to aid in pagination.
-	"""
-	pageInfo: PageInfo!
-	"""
-	A list of edges.
-	"""
-	edges: [NotificationEdge!]!
-	"""
-	A list of nodes.
-	"""
-	nodes: [Notification!]!
-}
-
-"""
-An edge in a connection.
-"""
-type NotificationEdge {
-	"""
-	The item at the end of the edge
-	"""
-	node: Notification!
-	"""
-	A cursor for use in pagination
-	"""
-	cursor: String!
 }
 
 """
@@ -1408,45 +1217,6 @@ type PersonUnitAssignment {
 	updatedAt: Int
 }
 
-type Photo {
-	id: ID!
-	locationId: ID!
-	"""
-	The image. Its `url(variant:)` is what to show.
-	"""
-	asset: Asset!
-	"""
-	Unix seconds the photo was taken, as the phone read it from the original.
-	"""
-	takenAt: Int
-	"""
-	What the stream is ordered by: `takenAt`, else `createdAt`.
-	"""
-	sortTime: Int!
-	"""
-	Unix seconds the photo was added.
-	"""
-	createdAt: Int!
-	"""
-	Person ID of the member who added it; Tally shows the name from its directory.
-	"""
-	createdBy: ID
-	"""
-	Unix seconds after which the photo leaves the stream (30 days after it was added,
-	or sooner once hidden).
-	"""
-	expiresAt: Int!
-}
-
-type PhotoConnection {
-	nodes: [Photo!]!
-	"""
-	Pass as `after` for the next page; null when the page is empty. Opaque.
-	"""
-	endCursor: String
-	hasNextPage: Boolean!
-}
-
 type QueryRoot {
 	"""
 	Build and deployment information about this API server.
@@ -1521,17 +1291,6 @@ type QueryRoot {
 	authority (see `graphql::self_sign_in`).
 	"""
 	selfSignInStatus(locationId: ID): SelfSignInStatus
-	"""
-	The caller's in-app notifications, newest first. `unreadOnly` lists just the ones
-	not yet read. At most 200 per page, 50 by default; a notification about a location
-	the caller can no longer access is left out.
-	"""
-	myNotifications(first: Int, after: String, unreadOnly: Boolean): NotificationConnection!
-	"""
-	How many notifications the caller has unread, counting no further than 100 (show
-	"99+" above 99).
-	"""
-	myUnreadNotificationCount: Int!
 	session(
 		"""
 		ID for the session to look up
@@ -1913,16 +1672,6 @@ type TallyLocation {
 	anyone who can see this unit, and its tools keep their own checks. Units only.
 	"""
 	zone: TallyLocation
-	"""
-	The unit's photos, newest first by when they were taken (else when they were
-	added), for 30 days. `first` is at most 200. Pass the previous page's `endCursor`
-	as `after`. See `graphql::photos`.
-	"""
-	photos(first: Int = 60, after: String): PhotoConnection!
-	"""
-	How many more photos the unit may add today (100 a Sydney day), never below 0.
-	"""
-	photoUploadsRemainingToday: Int!
 }
 
 """
@@ -2202,11 +1951,6 @@ type TrophyReign {
 	vacant.
 	"""
 	endedByValueLabel: String
-}
-
-type UploadField {
-	name: String!
-	value: String!
 }
 
 type User {

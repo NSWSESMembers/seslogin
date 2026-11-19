@@ -671,11 +671,12 @@ Tally is for **members**, not users: every Tally field below admits only an
 member can use every unit they belong to (their primary unit and their secondary
 units, `AuthInfo::Member::member_location_ids`), plus every unit the user signed in alongside
 them holds either role at (every unit for a super user); `require_member_location`
-in `graphql/auth.rs` is the one check. Any such member may read **and** write a
-unit's shared tools — they are the unit's own, not admin data. Users on their
-own (even super users), kiosks, API tokens and edit links are refused.
+in `graphql/auth.rs` is the one check. Users on their own (even super users), kiosks,
+API tokens and edit links are refused.
 
-The apps start from two queries (`graphql/tally.rs`):
+Tally's own features (tasks, notes, equipment and the rest) run on Tally's own
+backend now. What is left here is what Tally needs to sign members in and out
+(see "Self sign-in (Tally)"), reached from two queries (`graphql/tally.rs`):
 
 - `tallyViewer` — the member (`member`, `name`, `homeLocationId`, and
   `memberLocationIds`: every unit they belong to, primary first, which tells "my units"
@@ -684,13 +685,11 @@ The apps start from two queries (`graphql/tally.rs`):
   user (`isSuper`) or a developer (`isDev`, which shows Tally's environment
   picker), and every unit they can use (`locations`, by name: the ones they belong to plus
   the user's).
-- `tallyLocation(id)` — one unit's tools: `photos`. The core `Location` type
-  carries none of them. Its `zone` is the unit's SES zone, another
-  `TallyLocation` whose `id` and `name` anyone who sees the unit may read; its
-  tools keep their own checks.
+- `tallyLocation(id)` — one unit the member can use: its `id`, `name` and `zone` (the
+  unit's SES zone, another `TallyLocation` whose `id` and `name` anyone who sees the unit
+  may read). The core `Location` type stays closed to members.
 
-Everything a member writes records their **person ID** — `created_by` and the
-notification inbox's key — and the like show the member's name. Audited writes record `actor_kind: member`.
+Audited writes by a member record `actor_kind: member`.
 
 ## Self sign-in (Tally)
 
@@ -775,67 +774,6 @@ mutation {
 }
 ```
 
-## Notifications
-
-Each member's in-app notification inbox, read by the Tally app (`src/graphql/notifications.rs`,
-producers' API in `src/notifications.rs`, storage in SCHEMA.md's `notification` section).
-
-- **Model:** denormalised and fanned out on write. An event that notifies several members stores
-  a full copy per recipient (they share a `notification_id`), so the inbox is one query with no
-  join. A notification has a `source` (the producing app), a `kind`, a `title`, an optional `body`, an optional `locationId` and an
-  optional `targetType`/`targetId` for what tapping it opens. The table is keyed by recipient
-  member (person ID) and a time-ordered `sk`, with a sparse `unread-index` for counting and listing unread.
-  Rows are removed by the TTL 90 days after creation, read or not.
-- **Producing one:** call `notifications::notify(app, NewNotification, Audience)` _after_ the
-  business write has succeeded. `NewNotification::new(source, kind, title)` takes `.location()`,
-  `.body()` and `.target(type, id)`. An `Audience` is `Members(person_ids)`. Only live (not
-  deleted) members are notified, the acting member (the current audit-context actor, if it is
-  a member) is left out, and nobody is notified twice.
-- **Producers:** none any more. The tasks, reservation, on-call and agenda notifications went
-  with those features; the inbox and `notify` remain until the rest of Tally's API is removed.
-
-- **Best-effort:** like the audit log, `notify` returns `()`: a failure is logged at `error!`
-  and swallowed, because the thing it announces has already happened. The notification methods
-  of `db::Handler` pass through `AuditingHandler` unaudited: the business write is audited where
-  it is made, and read state is a personal marker.
-- **API:** `Query.myNotifications(first, after, unreadOnly)` is a Relay connection, newest
-  first, 50 by default and 200 at most, whose cursor and node `id` are the row's `sk`. Each
-  node has `source`, `kind`, `title`, `body`, `locationId`, `targetType`, `targetId`,
-  `createdAt`, `readAt` and `read`. `Query.myUnreadNotificationCount` is capped at 100 (show
-  "99+" above 99). `markNotificationsRead(ids)` (at most 200) and `markAllNotificationsRead`
-  return `{ unreadCount }`. Marking is idempotent: an ID that is already read, or that is not
-  the caller's or does not exist, is ignored.
-- **Who:** any member signed in to Tally; users on their own, kiosk sessions, API tokens and
-  edit links are refused. Everything is the caller's own, because the table is keyed by their
-  person ID.
-- **Access lost:** a notification with a `locationId` the member can no longer use in Tally
-  is left out of `myNotifications`, so stored text does not
-  reach someone who lost access. `myUnreadNotificationCount` reads an index without the rows
-  and so can still count such a notification, and the count can lag a write by a moment.
-
-```graphql
-{
-  myNotifications(first: 20, unreadOnly: true) {
-    edges {
-      cursor
-      node {
-        id
-        title
-        body
-        targetType
-        targetId
-        createdAt
-      }
-    }
-    pageInfo {
-      hasNextPage
-      endCursor
-    }
-  }
-  myUnreadNotificationCount
-}
-```
-
 ## Storage
 
 Uploaded files live in an S3 bucket, reached through `storage::Handler` (`src/storage.rs`)
@@ -856,77 +794,6 @@ without affecting anything else.
   `key`, `Content-Type` and `policy` (an HMAC-signed token binding key, type, exact size and
   expiry). `poem-local` serves that route: 204 on success, 400 with a short message otherwise.
   Files go to `MOCK_STORAGE_DIR` (default `local/storage/`).
-
-## Assets and uploads
-
-How a Tally member uploads an image (`src/assets.rs` for the rules, `src/graphql/assets.rs` for
-the API; storage is described under "Storage" and the served images under "Media"). Only
-members signed in to Tally may, at any unit they can use (`require_asset_access`, via
-`require_member_location`); users, kiosks and API tokens are refused.
-
-1. `createAssetUpload(input: { locationId, contentType, byteSize, filename, width, height,
-   takenAt, cameraMake, cameraModel })` validates the request, counts it against the member's
-   limit, creates a **pending** asset (`created_by` is the member's person ID) and returns
-   `{ asset, uploadUrl, fields, expiresAt }`.
-2. The client POSTs a `multipart/form-data` request to `uploadUrl` with each of `fields` **in
-   order** and the file as a part named `file` **last**. `uploadUrl` may be relative: resolve
-   it against the API origin (the origin of the GraphQL URL). The form works for 15 minutes
-   and storage itself enforces the key, content type and exact size. It answers 204.
-3. `completeAssetUpload(id)` checks the object arrived, is exactly `byteSize` bytes and starts
-   with the magic bytes of `contentType`, copies it to `originals/{id}`, deletes
-   `pending/{id}` and marks the asset **ready**. Completing a ready asset returns it again. A
-   missing file, wrong size or wrong magic bytes is `BAD_REQUEST` (the last two also delete the
-   pending file); the asset stays pending.
-
-`Asset.url(variant: THUMB | DISPLAY | FULL)` is a relative signed `/media/...` URL (see
-"Media"), null until the asset is ready. `Asset.createdBy` is the uploader's person ID.
-
-- **Accepted:** `image/jpeg` and `image/webp`, 1 byte to 30 MiB (31,457,280). Tally converts
-  HEIC to JPEG on the phone. `width`/`height` (1 to 20000), `takenAt` (not more than a day
-  ahead, not older than five years), `filename` (path stripped, 255 characters) and camera
-  make/model (100 characters) are hints: ones that don't fit are dropped, not refused. No GPS
-  is ever sent or stored.
-- **Limit:** 200 uploads per member per Sydney day, counted when `createAssetUpload` succeeds
-  validation (`assets::upload_counter_id`, a daily counter in `ephemeral_state`). The 201st
-  fails `RATE_LIMITED`: "You've uploaded the most files allowed today". `assets::daily_counter_id`
-  builds the id for any other daily counter.
-- **Errors:** `BAD_REQUEST` for an unaccepted type or size, an upload that hasn't arrived or
-  doesn't match, and storage not configured ("Uploads are not available on this environment",
-  when `ASSET_BUCKET` is unset); `FORBIDDEN` for the wrong kind of caller or unit; `NOT_FOUND`
-  for an unknown location or asset; `RATE_LIMITED` as above; `INTERNAL` if storage fails.
-- **Cleanup:** a pending asset's row expires after a day (DynamoDB TTL) and `pending/` objects
-  after a day (lifecycle rule). Nothing deletes a ready asset yet.
-- **Locally:** `make dev-local` (`poem-local`) uses `mockstorage`: `uploadUrl` is
-  `/dev/storage/upload`, served by `poem-local`, and files land in `MOCK_STORAGE_DIR`.
-
-## Photos
-
-Tally's Photos app: a unit's shared photo stream (`src/photos.rs` for the rules and the sweep,
-`src/graphql/photos.rs` for the API). A photo is a member's ready asset (see "Assets and
-uploads") shown to everyone who can use the unit in Tally (`require_photo_access`, via
-`require_member_location`); users, kiosks and API tokens are refused.
-
-- **Reading:** `TallyLocation.photos(first: Int = 60, after: String)` lists the unit's visible,
-  unexpired photos newest first by `sortTime` (`takenAt`, else `createdAt`), at most 200 a page
-  (`first` is clamped to 1..200). `endCursor` is opaque (the last photo's `sort_key`, base64);
-  a cursor we did not issue is `BAD_REQUEST`. `Photo.asset.url(variant:)` is the image.
-  `TallyLocation.photoUploadsRemainingToday` is 100 minus today's count, never below 0.
-- **Adding:** `createPhoto(locationId, assetId)`. The asset must exist (`NOT_FOUND`), be ready
-  and at that unit (`BAD_REQUEST`) and have been uploaded by the caller (`FORBIDDEN`). The unit's
-  daily counter (`counter#photo#<location>#<Sydney date>`, in `ephemeral_state`) is incremented
-  first; the 101st photo of a Sydney day is `RATE_LIMITED` ("This unit has added 100 photos
-  today. Try again tomorrow."). The photo and its `photo#<id>` asset reference are written in
-  one transaction; if the asset changed under us that is `BAD_REQUEST`.
-- **Hiding:** `hidePhoto(id)`, by any member who can use the photo's unit. The photo leaves the
-  stream for everyone immediately and its `expires_at` becomes at most 7 days after it was
-  hidden. There is no undo. A photo that is unknown, swept or already hidden is `NOT_FOUND`.
-- **Lifetime:** a photo is shown for 30 days after it was added (`db::PHOTO_LIFETIME_SECS`).
-- **The sweep:** `photos::sweep` soft-deletes every photo whose `expires_at` has passed and
-  removes its asset reference, so the future garbage collector can free the asset. It runs
-  daily in the checker Lambda (06:00 Sydney) after session retirement, audited as `system:
-  photo-sweep`; a failure is logged and neither stops session retirement nor the stale-sync
-  alert, and fails the invocation at the end. By hand: `cli photo sweep` (global `--dry-run`
-  to preview). The stored image objects are not deleted by the sweep.
 
 ## Media
 

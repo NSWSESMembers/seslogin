@@ -267,17 +267,6 @@ pub(crate) fn require_member_location(
     }
 }
 
-/// Check the caller may upload and complete assets (photos and, later, files) for a
-/// location. See [`require_member_location`].
-pub(crate) fn require_asset_access(ctx: &Context<'_>, location_id: &str) -> Result<()> {
-    require_member_location(ctx, location_id, "Uploads are only available in Tally")
-}
-
-/// Check the caller may see and add to a location's Photos. See [`require_member_location`].
-pub(crate) fn require_photo_access(ctx: &Context<'_>, location_id: &str) -> Result<()> {
-    require_member_location(ctx, location_id, "Photos are only available in Tally")
-}
-
 /// Whether the caller may make changes at the location — the boolean form of
 /// [`require_location_write_access`] plus [`require_writable`], for resolvers that
 /// report capability (e.g. `Location.viewerCanEdit`) rather than enforce it.

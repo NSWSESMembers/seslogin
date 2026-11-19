@@ -10,9 +10,7 @@ use crate::db;
 use crate::db::Handler;
 
 use super::query::{Category, Location, Person, Session, User};
-use super::{
-    ApiTokenNameId, AssetId, CategoryId, LocationId, NitcEventId, PersonId, SessionId, UserId,
-};
+use super::{ApiTokenNameId, CategoryId, LocationId, NitcEventId, PersonId, SessionId, UserId};
 
 pub struct DatabaseLoader<A: App + HasDb + Send + Sync> {
     app: Arc<A>,
@@ -131,27 +129,6 @@ impl<A: App + HasDb + Send + Sync + 'static> Loader<SessionId> for DatabaseLoade
             .map(|(key, rec)| (key, rec.map(Session::new)))
             .collect();
         Ok(map)
-    }
-}
-
-impl<A: App + HasDb + Send + Sync + 'static> Loader<AssetId> for DatabaseLoader<A> {
-    type Value = db::Asset;
-    type Error = Arc<anyhow::Error>;
-
-    async fn load(
-        &self,
-        keys: &[AssetId],
-    ) -> std::result::Result<HashMap<AssetId, db::Asset>, Arc<anyhow::Error>> {
-        let ids = keys.iter().map(|k| k.0.as_str()).collect::<Vec<&str>>();
-        let recs = self
-            .app
-            .db()
-            .get_assets(&ids)
-            .await
-            .map_err(|e| Arc::new(anyhow!("DB error: {:?}", e)))?;
-        Ok(zip(keys.iter().cloned(), recs)
-            .filter_map(|(key, rec)| rec.map(|r| (key, r)))
-            .collect())
     }
 }
 

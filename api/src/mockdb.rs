@@ -673,33 +673,6 @@ impl db::Handler for Handler {
         Self::unsupported()
     }
 
-    async fn put_notifications(&self, _records: Vec<db::NotificationRecord>) -> db::Result<()> {
-        Self::unsupported()
-    }
-
-    async fn list_notifications(
-        &self,
-        _person_id: &str,
-        _after_sk: Option<&str>,
-        _limit: usize,
-        _unread_only: bool,
-    ) -> db::Result<Vec<db::NotificationRecord>> {
-        Self::unsupported()
-    }
-
-    async fn count_unread_notifications(&self, _person_id: &str, _cap: usize) -> db::Result<usize> {
-        Self::unsupported()
-    }
-
-    async fn mark_notifications_read(
-        &self,
-        _person_id: &str,
-        _sks: &[String],
-        _read_at: u64,
-    ) -> db::Result<()> {
-        Self::unsupported()
-    }
-
     async fn list_trophy_holders(&self, _location_id: &str) -> db::Result<Vec<db::TrophyHolder>> {
         Self::unsupported()
     }
@@ -726,88 +699,6 @@ impl db::Handler for Handler {
     }
 
     async fn delete_trophy_notices(&self, _notices: &[db::TrophyNotice]) -> db::Result<()> {
-        Self::unsupported()
-    }
-
-    async fn create_asset(&self, _asset: db::NewAsset<'_>) -> db::Result<db::Asset> {
-        Self::unsupported()
-    }
-
-    async fn get_assets<T: AsRef<str> + Sync>(
-        &self,
-        _ids: &[T],
-    ) -> db::Result<Vec<Option<db::Asset>>> {
-        Self::unsupported()
-    }
-
-    async fn complete_asset(&self, _id: &str, _content_type: &str) -> db::Result<db::Asset> {
-        Self::unsupported()
-    }
-
-    async fn list_asset_refs(&self, _asset_id: &str) -> db::Result<Vec<db::AssetRef>> {
-        Self::unsupported()
-    }
-
-    async fn put_asset_ref(
-        &self,
-        _asset_id: &str,
-        _owner: &str,
-        _location_id: &str,
-    ) -> db::Result<()> {
-        Self::unsupported()
-    }
-
-    async fn delete_asset_ref(&self, _asset_id: &str, _owner: &str) -> db::Result<()> {
-        Self::unsupported()
-    }
-
-    async fn create_photo(&self, _photo: db::NewPhoto<'_>) -> db::Result<db::Photo> {
-        Self::unsupported()
-    }
-
-    async fn get_photos<T: AsRef<str> + Sync>(
-        &self,
-        _ids: &[T],
-    ) -> db::Result<Vec<Option<db::Photo>>> {
-        Self::unsupported()
-    }
-
-    async fn list_visible_photos(
-        &self,
-        _location_id: &str,
-        _after_sort_key: Option<&str>,
-        _limit: usize,
-        _now: u64,
-    ) -> db::Result<(Vec<db::Photo>, bool)> {
-        Self::unsupported()
-    }
-
-    async fn hide_photo(&self, _id: &str, _hidden_by: &str, _now: u64) -> db::Result<db::Photo> {
-        Self::unsupported()
-    }
-
-    async fn list_photos_due_for_sweep(
-        &self,
-        _now: u64,
-        _limit: usize,
-    ) -> db::Result<Vec<db::Photo>> {
-        Self::unsupported()
-    }
-
-    async fn sweep_photo(&self, _id: &str, _now: u64) -> db::Result<()> {
-        Self::unsupported()
-    }
-
-    async fn increment_daily_counter(
-        &self,
-        _id: &str,
-        _limit: u64,
-        _expires_at: u64,
-    ) -> db::Result<Option<u64>> {
-        Self::unsupported()
-    }
-
-    async fn get_daily_counter(&self, _id: &str) -> db::Result<u64> {
         Self::unsupported()
     }
 
