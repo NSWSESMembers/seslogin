@@ -20,13 +20,11 @@ resource "aws_lambda_function" "qa_api" {
       NITC_EXPORT_QUEUE_URL = aws_sqs_queue.nitc_export.url
       DB_BACKEND            = "dynamodb"
       DB_PREFIX             = var.db_prefix
-      ASSET_BUCKET          = aws_s3_bucket.assets_prod.bucket
       READ_ONLY             = "false"
       TURNSTILE_SECRET_KEY  = var.turnstile_secret_key
       ABLY_API_KEY          = var.ably_api_key
       TOOLBOX_GRAPHQL_URL   = var.toolbox_graphql_url
       TOOLBOX_API_TOKEN     = var.toolbox_api_token
-      WIFI_NETWORKS         = var.wifi_networks
       # Tally's signed assertion grant (api/README.md, "Tally assertion"); a blank
       # TALLY_ASSERTION_KEYS turns it off.
       TALLY_ASSERTION_KEYS          = var.tally_assertion_keys
