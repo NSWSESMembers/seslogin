@@ -774,58 +774,6 @@ mutation {
 }
 ```
 
-## Storage
-
-Uploaded files live in an S3 bucket, reached through `storage::Handler` (`src/storage.rs`)
-with the same trait / AWS impl / mock split as the queue: `s3::Handler` in `poem` and the API
-Lambda, `mockstorage::Handler` in `poem-local` and tests. The bucket is `ASSET_BUCKET`; unset or
-blank turns uploads off (`is_enabled()` is false, every call returns `storage::Error::Unavailable`)
-without affecting anything else.
-
-- **Keys:** `pending/{id}` (where an upload lands, expired by a lifecycle rule),
-  `originals/{id}` and `derived/{id}/{variant}.webp` (`storage::pending_key`,
-  `original_key`, `derived_key`).
-- **Uploads go straight to storage**, never through the API: `presign_post` returns a
-  `PresignedPost { url, fields, expires_at }`, a form the client posts (fields in order, then
-  the file as a part named `file`, last). S3 itself enforces the exact key, content type and
-  size. `aws-sdk-s3` cannot presign a POST, so `s3::sign_post` signs the policy by hand with
-  SigV4; its unit tests pin the signing key against AWS's published example and a full signature.
-- **Locally**, `mockstorage` returns the relative URL `/dev/storage/upload` and the fields
-  `key`, `Content-Type` and `policy` (an HMAC-signed token binding key, type, exact size and
-  expiry). `poem-local` serves that route: 204 on success, 400 with a short message otherwise.
-  Files go to `MOCK_STORAGE_DIR` (default `local/storage/`).
-
-## Media
-
-Members only ever receive **derived** images: `src/media.rs` turns an original in the asset
-bucket into a normalised WebP at one of three sizes, on the first request for it.
-
-- **Variants** (`media::ImageVariant`, GraphQL `ImageVariant { THUMB DISPLAY FULL }`): `thumb`
-  400, `display` 1440, `full` 2560 pixels on the long edge. Never upscaled.
-- **Pipeline** (`media::derive`): decode JPEG or WebP under a 100-megapixel / 768 MiB limit,
-  resize (a cheap pre-shrink first for big sources, then Catmull-Rom), apply the EXIF
-  orientation, convert an embedded ICC profile to sRGB (`qcms`), encode lossy WebP at quality
-  80. The output has no metadata at all, so no GPS. It runs in `spawn_blocking`.
-- **Storage:** the result is written to `derived/{id}/{variant}.webp` and served from there
-  next time. Originals are never served. A failed write is logged and the image still returned.
-- **URL** (`media::media_path(asset_id, variant, now, &secret)`): relative,
-  `/media/{asset_id}/{variant}?e={expires}&s={sig}`; clients resolve it against the API origin.
-  `expires = (floor(now / 86400) + 2) * 86400`, so the URL is identical for a whole UTC day
-  (CDN and app caches hit) and valid for 1 to 2 days from when it was minted. `sig` is the first
-  16 bytes of HMAC-SHA256 over `"{id}/{variant}/{expires}"` (base64url, no padding), keyed by
-  `ServerSecret::media_url_key()` (its own derivation of `JWT_SECRET`).
-- **Responses** (`media::serve`): 200 `image/webp` with `Cache-Control: public, max-age=31536000,
-  immutable`; 400 unknown variant or malformed path; 401 bad, missing or expired signature; 410
-  no original; 422 the original cannot be decoded; 500 storage or encoding failed; 503 no
-  `ASSET_BUCKET`. Every error is `no-store`. **Never 403 or 404**: every CloudFront distribution
-  rewrites those to `/index.html` with a 200.
-- **Where it runs:** `poem` and `poem-local` serve `/media/*` in-process from the app's storage
-  and secret (local dev has no CloudFront). Deployed, the API Lambda does not; CloudFront routes
-  `/media/*` to the media Lambda (`bin/media-lambda.rs`: `ASSET_BUCKET` + `JWT_SECRET`, no
-  DynamoDB, 2048 MB): `seslogin-media` for prod, preprod and qa (prod bucket, deployed from
-  `workers`) and `seslogin-test-media` for test (deployed from `test`). The behaviour's cache
-  policy puts all query strings in the key (`aws_cloudfront_cache_policy.media`).
-
 ## Audit log
 
 Every business write (people, periods, kiosk sessions, users, locations, categories, API tokens, passkeys, OAuth grants, …) is recorded in the `{DB_PREFIX}_audit_log` DynamoDB table: who did it, which location(s) it touched, and which fields changed from what to what. The table is defined in `infra/dynamodb*.tf` and documented in `SCHEMA.md`; it must exist (`terraform apply`) for entries to land. It is read through GraphQL (below); there is no UI for it yet.

@@ -15,7 +15,7 @@ use poem::EndpointExt;
 use poem::endpoint::BoxEndpoint;
 use poem::http::{HeaderMap, StatusCode};
 use poem::middleware::Cors;
-use poem::web::{Data, Path};
+use poem::web::Data;
 use poem::{IntoResponse, Route, Server, get, handler, listener::TcpListener, post, web::Html};
 use std::env;
 use std::error::Error;
@@ -32,15 +32,14 @@ use crate::queue;
 use crate::realtime;
 use crate::request_metrics::{self, RequestMetrics};
 use crate::server_secret::ServerSecret;
-use crate::storage;
 use crate::telemetry;
 
 /// The app as the handlers share it.
-type SharedApp<H, Q, M, R, S> = Arc<MyApp<H, Q, M, R, S>>;
+type SharedApp<H, Q, M, R> = Arc<MyApp<H, Q, M, R>>;
 
-type Schema<H, Q, M, R, S> = async_graphql::Schema<
-    graphql::QueryRoot<MyApp<H, Q, M, R, S>>,
-    graphql::MutationRoot<MyApp<H, Q, M, R, S>>,
+type Schema<H, Q, M, R> = async_graphql::Schema<
+    graphql::QueryRoot<MyApp<H, Q, M, R>>,
+    graphql::MutationRoot<MyApp<H, Q, M, R>>,
     EmptySubscription,
 >;
 
@@ -134,9 +133,9 @@ pub fn init() -> Result<Startup, Box<dyn Error>> {
 }
 
 #[handler]
-async fn index<H, Q, M, R, S>(
-    schema: Data<&Schema<H, Q, M, R, S>>,
-    app: Data<&SharedApp<H, Q, M, R, S>>,
+async fn index<H, Q, M, R>(
+    schema: Data<&Schema<H, Q, M, R>>,
+    app: Data<&SharedApp<H, Q, M, R>>,
     dev_auth: Data<&Arc<Option<auth::DevAuthConfig>>>,
     headers: &HeaderMap,
     body: Vec<u8>,
@@ -146,7 +145,6 @@ where
     Q: queue::Handler + Send + Sync + 'static,
     M: mail::Handler + Send + Sync + 'static,
     R: realtime::Handler + Send + Sync + 'static,
-    S: storage::Handler + Send + Sync + 'static,
 {
     let lag = app.response_lag + crate::local_dev::extra_lag_ms();
     if lag > 0 {
@@ -334,8 +332,8 @@ async fn oauth_protected_resource_metadata(headers: &HeaderMap) -> impl IntoResp
 }
 
 #[handler]
-async fn oauth_register<H, Q, M, R, S>(
-    app: Data<&SharedApp<H, Q, M, R, S>>,
+async fn oauth_register<H, Q, M, R>(
+    app: Data<&SharedApp<H, Q, M, R>>,
     body: Vec<u8>,
 ) -> impl IntoResponse
 where
@@ -343,14 +341,13 @@ where
     Q: queue::Handler + Send + Sync + 'static,
     M: mail::Handler + Send + Sync + 'static,
     R: realtime::Handler + Send + Sync + 'static,
-    S: storage::Handler + Send + Sync + 'static,
 {
     oauth_response(crate::oauth_http::register(&***app, &body))
 }
 
 #[handler]
-async fn oauth_token<H, Q, M, R, S>(
-    app: Data<&SharedApp<H, Q, M, R, S>>,
+async fn oauth_token<H, Q, M, R>(
+    app: Data<&SharedApp<H, Q, M, R>>,
     headers: &HeaderMap,
     body: Vec<u8>,
 ) -> impl IntoResponse
@@ -359,7 +356,6 @@ where
     Q: queue::Handler + Send + Sync + 'static,
     M: mail::Handler + Send + Sync + 'static,
     R: realtime::Handler + Send + Sync + 'static,
-    S: storage::Handler + Send + Sync + 'static,
 {
     let request_start = Instant::now();
     let reply = crate::oauth_http::token(&***app, host_header(headers), &body).await;
@@ -374,9 +370,9 @@ where
 }
 
 #[handler]
-async fn mcp_post<H, Q, M, R, S>(
-    app: Data<&SharedApp<H, Q, M, R, S>>,
-    schema: Data<&Schema<H, Q, M, R, S>>,
+async fn mcp_post<H, Q, M, R>(
+    app: Data<&SharedApp<H, Q, M, R>>,
+    schema: Data<&Schema<H, Q, M, R>>,
     headers: &HeaderMap,
     body: Vec<u8>,
 ) -> impl IntoResponse
@@ -385,7 +381,6 @@ where
     Q: queue::Handler + Send + Sync + 'static,
     M: mail::Handler + Send + Sync + 'static,
     R: realtime::Handler + Send + Sync + 'static,
-    S: storage::Handler + Send + Sync + 'static,
 {
     let header = |name: &str| headers.get(name).and_then(|v| v.to_str().ok());
     let reply = crate::mcp::handle_post(
@@ -400,51 +395,18 @@ where
     oauth_response(reply)
 }
 
-/// `GET /media/{asset_id}/{variant}`: derived images, served from the app's storage with
-/// the same code as the media Lambda ([`crate::media::serve`]). Local dev and the `poem`
-/// server have no CloudFront in front, so they answer it themselves.
-#[handler]
-async fn media_image<H, Q, M, R, S>(
-    app: Data<&SharedApp<H, Q, M, R, S>>,
-    Path((asset_id, variant)): Path<(String, String)>,
-    req: &poem::Request,
-) -> poem::Response
-where
-    H: db::Handler + Send + Sync + 'static,
-    Q: queue::Handler + Send + Sync + 'static,
-    M: mail::Handler + Send + Sync + 'static,
-    R: realtime::Handler + Send + Sync + 'static,
-    S: storage::Handler + Send + Sync + 'static,
-{
-    let reply = crate::media::serve(
-        &app.storage,
-        &asset_id,
-        &variant,
-        req.uri().query().unwrap_or(""),
-        crate::clock::now_sec(),
-        &app.server_secret,
-    )
-    .await;
-    poem::Response::builder()
-        .status(StatusCode::from_u16(reply.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR))
-        .header("Content-Type", reply.content_type)
-        .header("Cache-Control", reply.cache_control)
-        .body(reply.body)
-}
-
 #[handler]
 async fn mcp_method_not_allowed() -> impl IntoResponse {
     oauth_response(crate::mcp::method_not_allowed())
 }
 
 /// Serve the GraphQL API on :8000 until interrupted. `dev_routes`, if any, are mounted at `/dev`.
-pub async fn run<H, Q, M, R, S>(
+pub async fn run<H, Q, M, R>(
     startup: Startup,
     db: H,
     queues: Q,
     mailer: M,
     realtime: R,
-    storage: S,
     dev_routes: Option<BoxEndpoint<'static>>,
 ) -> Result<(), Box<dyn Error>>
 where
@@ -452,7 +414,6 @@ where
     Q: queue::Handler + Send + Sync + 'static,
     M: mail::Handler + Send + Sync + 'static,
     R: realtime::Handler + Send + Sync + 'static,
-    S: storage::Handler + Send + Sync + 'static,
 {
     let Startup {
         cli,
@@ -468,7 +429,6 @@ where
         queues,
         mailer,
         realtime,
-        storage,
     ));
     let schema = graphql::build_schema(app.clone(), webauthn);
     std::fs::write("schema.graphql", schema.sdl())?;
@@ -476,7 +436,7 @@ where
     let mut routes = Route::new()
         .at(
             "/",
-            get(graphiql).post(index::<H, Q, M, R, S> {
+            get(graphiql).post(index::<H, Q, M, R> {
                 ..Default::default()
             }),
         )
@@ -488,13 +448,13 @@ where
         .at("/tally/sign-in", get(redirect_to_web))
         .at(
             "/oauth/register",
-            post(oauth_register::<H, Q, M, R, S> {
+            post(oauth_register::<H, Q, M, R> {
                 ..Default::default()
             }),
         )
         .at(
             "/oauth/token",
-            post(oauth_token::<H, Q, M, R, S> {
+            post(oauth_token::<H, Q, M, R> {
                 ..Default::default()
             }),
         )
@@ -507,16 +467,10 @@ where
             get(oauth_protected_resource_metadata),
         )
         .at(
-            "/media/:asset_id/:variant",
-            get(media_image::<H, Q, M, R, S> {
-                ..Default::default()
-            }),
-        )
-        .at(
             "/mcp",
             get(mcp_method_not_allowed)
                 .delete(mcp_method_not_allowed)
-                .post(mcp_post::<H, Q, M, R, S> {
+                .post(mcp_post::<H, Q, M, R> {
                     ..Default::default()
                 }),
         );

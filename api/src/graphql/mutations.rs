@@ -17,7 +17,7 @@ use crate::app::App;
 use crate::app::HasDb;
 use crate::app::HasMail;
 use crate::app::HasQueues;
-use crate::app::{HasRealtime, HasStorage};
+use crate::app::HasRealtime;
 use crate::auth;
 use crate::auth::AuthInfo;
 use crate::badge_store;
@@ -347,15 +347,11 @@ fn feedback_body(message: &str, user_id: &str, email: &str, site: &str) -> Strin
     )
 }
 
-pub struct MutationRoot<
-    A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sync,
-> {
+pub struct MutationRoot<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync> {
     pub(super) app: Arc<A>,
 }
 
-impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sync + 'static>
-    MutationRoot<A>
-{
+impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static> MutationRoot<A> {
     /// Validate the two per-location grant lists of a user: every location must exist,
     /// and no location may appear in both (a user is Admin or Read only at a location,
     /// never both).
@@ -1287,9 +1283,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sy
 }
 
 #[Object]
-impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + HasStorage + Send + Sync + 'static>
-    MutationRoot<A>
-{
+impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static> MutationRoot<A> {
     /// Publish a kiosk's public key as a pending enrollment (public-key/QR flow). The
     /// kiosk re-submits every ~10 min while unenrolled; an admin then scans the kiosk's
     /// QR code to complete enrollment via [`enroll_session`]. Returns the server-computed

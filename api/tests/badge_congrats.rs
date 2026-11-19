@@ -8,15 +8,10 @@ mod common;
 use common::{FakeDb, fake_app, seed_location, seed_person};
 use seslogin::badge_congrats::{self, CongratsArgs};
 use seslogin::db::{self, TrophyEndReason};
-use seslogin::{mockmail, mockqueue, mockrealtime, mockstorage};
+use seslogin::{mockmail, mockqueue, mockrealtime};
 
-type App = seslogin::app::MyApp<
-    FakeDb,
-    mockqueue::Handler,
-    mockmail::Handler,
-    mockrealtime::Handler,
-    mockstorage::Handler,
->;
+type App =
+    seslogin::app::MyApp<FakeDb, mockqueue::Handler, mockmail::Handler, mockrealtime::Handler>;
 
 const DAY: u64 = 24 * 60 * 60;
 

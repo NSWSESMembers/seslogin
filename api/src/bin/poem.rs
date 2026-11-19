@@ -9,7 +9,6 @@ use std::error::Error;
 use seslogin::ably;
 use seslogin::audit::AuditingHandler;
 use seslogin::dynamodb;
-use seslogin::s3;
 use seslogin::server;
 use seslogin::sesmail;
 use seslogin::sqs;
@@ -26,6 +25,5 @@ async fn run() -> Result<(), Box<dyn Error>> {
     let queues = sqs::Queues::from_env().await?;
     let mailer = sesmail::Mailer::new().await;
     let realtime = ably::Publisher::from_env(startup.db_prefix.clone());
-    let storage = s3::Handler::from_env().await;
-    server::run(startup, db, queues, mailer, realtime, storage, None).await
+    server::run(startup, db, queues, mailer, realtime, None).await
 }

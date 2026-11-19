@@ -15,15 +15,9 @@ use seslogin::app::MyApp;
 use seslogin::auth::AuthInfo;
 use seslogin::db::{self, TrophyEndReason};
 use seslogin::graphql;
-use seslogin::{mockmail, mockqueue, mockrealtime, mockstorage};
+use seslogin::{mockmail, mockqueue, mockrealtime};
 
-type TestApp = MyApp<
-    FakeDb,
-    mockqueue::Handler,
-    mockmail::Handler,
-    mockrealtime::Handler,
-    mockstorage::Handler,
->;
+type TestApp = MyApp<FakeDb, mockqueue::Handler, mockmail::Handler, mockrealtime::Handler>;
 
 fn webauthn() -> Arc<webauthn_rs::prelude::Webauthn> {
     Arc::new(

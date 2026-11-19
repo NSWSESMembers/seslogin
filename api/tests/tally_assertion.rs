@@ -26,18 +26,11 @@ use seslogin::graphql;
 use seslogin::mockmail;
 use seslogin::mockqueue;
 use seslogin::mockrealtime;
-use seslogin::mockstorage;
 use seslogin::oauth::TALLY_SIGN_IN_SCOPE;
 use seslogin::oauth_http::{self, HttpReply};
 use seslogin::tally_assertion::{Config, GRANT_TYPE};
 
-type App = MyApp<
-    FakeDb,
-    mockqueue::Handler,
-    mockmail::Handler,
-    mockrealtime::Handler,
-    mockstorage::Handler,
->;
+type App = MyApp<FakeDb, mockqueue::Handler, mockmail::Handler, mockrealtime::Handler>;
 
 const HOST: &str = "api.seslogin.com";
 const API_BASE: &str = "https://api.seslogin.com";

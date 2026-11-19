@@ -20,11 +20,10 @@ use crate::graphql;
 use crate::mail;
 use crate::queue;
 use crate::realtime;
-use crate::storage;
 
-type GraphQlSchema<H, Q, M, R, S> = async_graphql::Schema<
-    graphql::QueryRoot<app::MyApp<H, Q, M, R, S>>,
-    graphql::MutationRoot<app::MyApp<H, Q, M, R, S>>,
+type GraphQlSchema<H, Q, M, R> = async_graphql::Schema<
+    graphql::QueryRoot<app::MyApp<H, Q, M, R>>,
+    graphql::MutationRoot<app::MyApp<H, Q, M, R>>,
     async_graphql::EmptySubscription,
 >;
 
@@ -33,10 +32,9 @@ pub struct Handler<
     Q: queue::Handler + Send + Sync,
     M: mail::Handler + Send + Sync,
     R: realtime::Handler + Send + Sync,
-    S: storage::Handler + Send + Sync,
 > {
-    app: Arc<app::MyApp<H, Q, M, R, S>>,
-    schema: GraphQlSchema<H, Q, M, R, S>,
+    app: Arc<app::MyApp<H, Q, M, R>>,
+    schema: GraphQlSchema<H, Q, M, R>,
 }
 
 impl<
@@ -44,10 +42,9 @@ impl<
     Q: queue::Handler + Send + Sync + 'static,
     M: mail::Handler + Send + Sync + 'static,
     R: realtime::Handler + Send + Sync + 'static,
-    S: storage::Handler + Send + Sync + 'static,
-> Handler<H, Q, M, R, S>
+> Handler<H, Q, M, R>
 {
-    pub fn new(app: Arc<app::MyApp<H, Q, M, R, S>>, schema: GraphQlSchema<H, Q, M, R, S>) -> Self {
+    pub fn new(app: Arc<app::MyApp<H, Q, M, R>>, schema: GraphQlSchema<H, Q, M, R>) -> Self {
         Self { app, schema }
     }
 

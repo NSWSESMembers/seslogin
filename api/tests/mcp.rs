@@ -26,16 +26,9 @@ use seslogin::mcp;
 use seslogin::mockmail;
 use seslogin::mockqueue;
 use seslogin::mockrealtime;
-use seslogin::mockstorage;
 use seslogin::oauth;
 
-type App = MyApp<
-    FakeDb,
-    mockqueue::Handler,
-    mockmail::Handler,
-    mockrealtime::Handler,
-    mockstorage::Handler,
->;
+type App = MyApp<FakeDb, mockqueue::Handler, mockmail::Handler, mockrealtime::Handler>;
 
 fn webauthn() -> Arc<webauthn_rs::prelude::Webauthn> {
     // No WebAuthn ceremony is exercised by these tests; a fixed origin is fine,
