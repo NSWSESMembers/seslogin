@@ -684,48 +684,13 @@ The apps start from two queries (`graphql/tally.rs`):
   user (`isSuper`) or a developer (`isDev`, which shows Tally's environment
   picker), and every unit they can use (`locations`, by name: the ones they belong to plus
   the user's).
-- `tallyLocation(id)` — one unit's tools: `notes`, `noteFolders`, `photos`,
-  `locationShares`, `sopNotes` and `sharedContacts`. The core `Location` type
+- `tallyLocation(id)` — one unit's tools: `photos`. The core `Location` type
   carries none of them. Its `zone` is the unit's SES zone, another
   `TallyLocation` whose `id` and `name` anyone who sees the unit may read; its
   tools keep their own checks.
 
-Everything a member writes records their **person ID** — `created_by`,
-`updated_by`, the location share's key and the notification inbox's key — and
-`createdBy`/`updatedBy` and the like show the member's name. Audited writes record `actor_kind: member`.
-
-## Notes
-
-A location's shared notebook, used by the Tally app (`src/graphql/notes.rs`, rules in
-`src/notes.rs`, storage in SCHEMA.md's `note` and `note_folder` sections).
-
-- **Who:** any member signed in to Tally who can use the unit — see "Tally (members)" above. Users on their own, kiosk sessions, API tokens and edit links are refused.
-- **Reading:** `TallyLocation.notes(folderId, search)` lists the location's notes, most recently
-  changed first. Without `folderId` every note at the location is listed, whatever folder it
-  is in. `search` keeps notes whose title contains it, ignoring case. `TallyLocation.noteFolders`
-  (by name) and `Query.note(id)` complete the reads.
-- **Fields:** `title` is one trimmed line (max 200 characters). `content` is plain text, kept
-  exactly as written (max 20,000 characters; only-whitespace counts as empty). It is expected
-  to grow markdown-like formatting later.
-- **Writes:** `createNote`, `updateNote` (omitted arguments unchanged, `folderId: null` takes
-  the note out of its folder), `deleteNote`, `createNoteFolder`, `renameNoteFolder`,
-  `deleteNoteFolder`. Deleting a folder leaves its notes on the location (`Note.folder`
-  becomes null).
-- **Concurrency:** `updateNote` takes `expectedVersion`; if someone else saved the note since
-  it was read, the save fails with `CONFLICT` rather than overwriting their change.
-
-```graphql
-mutation {
-  createNote(
-    locationId: "TestAUnit001"
-    title: "Radio channels"
-    content: "Ops: 1\nAdmin: 2"
-  ) {
-    id
-    version
-  }
-}
-```
+Everything a member writes records their **person ID** — `created_by` and the
+notification inbox's key — and the like show the member's name. Audited writes record `actor_kind: member`.
 
 ## Self sign-in (Tally)
 
@@ -740,7 +705,7 @@ their member number at a kiosk at their primary unit, or at another unit they ca
 - **Which unit:** `selfSignInStatus` and `selfSignIn` take an optional `locationId`. Without
   it they act at the primary unit. Any unit given must be one the member can use in Tally — one
   they belong to (primary or secondary, no user grant needed), a unit the user signed in alongside them holds either
-  role at, or any unit for a super user (`require_member_location`, as for Notes) — else
+  role at, or any unit for a super user (`require_member_location`) — else
   `FORBIDDEN`; one that doesn't exist is `NOT_FOUND`. This is the app's version of a member
   signing in at another unit's kiosk.
 - **One unit at a time:** only periods at the chosen unit count, as the kiosk scopes by
@@ -806,88 +771,6 @@ mutation {
   selfSignIn(locationId: "TestBUnit001") {
     id
     version
-  }
-}
-```
-
-## Shared contacts
-
-Contacts added by hand to the Tally app's Contacts, beside the synced member directory: a
-location's own (its Duty Officer phone, a shed landline, …) or statewide ones (the SOC, the EAP,
-peer support, …) (`src/graphql/shared_contacts.rs`, rules in `src/shared_contact.rs`, storage in
-SCHEMA.md's `shared_contact` section).
-
-- **Who:** a location's contacts are like its other shared tools: any member signed in to Tally
-  who can use the unit may read, add, change and delete them — see "Tally (members)" above.
-  Statewide contacts can be read by every member signed in to Tally, but only added, changed or
-  deleted when the user signed in alongside them is a super user (`FORBIDDEN` otherwise).
-  `SharedContact.viewerCanEdit` says which. Users on their own, kiosk sessions, API tokens and
-  edit links are refused.
-- **Reading:** `TallyLocation.sharedContacts` lists a location's contacts by name;
-  `Query.stateContacts` lists the statewide ones by name; `Query.sharedContact(id)` reads one.
-  `statewide` and `locationId` (null for statewide) say which list a contact is on.
-- **Fields:** `name` is one trimmed line (max 100 characters). `description` is plain text kept
-  as written (max 2,000; only-whitespace counts as empty). `phone` is optional, with the same
-  rule as an on-call role's (digits, spaces, `()-` and a leading `+`, 3–15 digits, kept as
-  written). `phoneCanSms` says whether the phone takes text messages, and is always false
-  without a phone. `email` is optional, trimmed, and only checked for a basic `name@domain.tld`
-  shape (max 254).
-- **Writes:** `createSharedContact` (with `locationId` for a location's contact, without it for
-  a statewide one), `updateSharedContact` (omitted arguments unchanged, `phone: null` and
-  `email: null` remove them, and removing the phone turns `phoneCanSms` off), and
-  `deleteSharedContact`. A contact never moves between a location and statewide.
-- **Concurrency:** `updateSharedContact` takes `expectedVersion`; if someone else saved the
-  contact since it was read, the save fails with `CONFLICT`.
-
-```graphql
-mutation {
-  createSharedContact(
-    locationId: "TestAUnit001"
-    name: "Duty Officer"
-    phone: "0400 000 000"
-    phoneCanSms: true
-  ) {
-    id
-    version
-  }
-}
-```
-
-## Locate
-
-Members sharing their phone's position with a location's members, for the Tally app's Locate
-tool and Unit Map (`src/graphql/location_share.rs`, rules in `src/location_share.rs`, storage
-in SCHEMA.md's `location_share` section).
-
-- **Who:** any member signed in to Tally who can use the unit — see "Tally (members)" above. Users on their own, kiosk sessions, API tokens and edit links are refused. A share is always the caller's own: one per member, keyed by their person ID, and only they can change or stop it.
-- **Sharing:** `startLocationShare(locationId, durationMinutes, intervalSeconds, position)`
-  shares for 5, 15, 30 or 60 minutes, with the phone promising a position every
-  `intervalSeconds` (60 to 300). It replaces any share the caller already has, at any
-  location. `updateLocationShare(position)` sends a newer position, and fails with
-  `NOT_FOUND` once the share has ended (`endsAt`) or been stopped, which is the phone's cue
-  to stop. `stopLocationShare` removes it at once (false if there was none).
-- **Positions:** WGS 84 `latitude`/`longitude`, plus optional `accuracy` (metres, at most
-  100 km), `altitude`, `altitudeAccuracy`, `heading` and `speed`. Negative heading and speed
-  mean unknown, as phones report them, and are dropped. `recordedAt` (the fix time, Unix
-  seconds) defaults to now and is never later than now. Only the latest position is kept.
-- **Showing:** `TallyLocation.locationShares` lists every share still showing, most recently
-  updated first; `Query.myLocationShare` is the caller's own. A share shows until
-  `visibleUntil`, 7 minutes after its latest position, even once it has ended (`active` is
-  then false), so a phone that loses signal fades out rather than vanishing at once. Each
-  carries `name` (the member's name), `person`, `isMine`,
-  `intervalSeconds`, `startedAt`, `endsAt`, `updatedAt` and `recordedAt`.
-- **Audit:** starting and stopping are audited against the location (start, end and
-  interval, never the position); position updates are not.
-
-```graphql
-mutation {
-  startLocationShare(
-    locationId: "TestAUnit001"
-    durationMinutes: 15
-    intervalSeconds: 120
-    position: { latitude: -33.70, longitude: 151.10, accuracy: 8 }
-  ) {
-    endsAt
   }
 }
 ```
@@ -1045,35 +928,6 @@ uploads") shown to everyone who can use the unit in Tally (`require_photo_access
   alert, and fails the invocation at the end. By hand: `cli photo sweep` (global `--dry-run`
   to preview). The stored image objects are not deleted by the sweep.
 
-## SOP notes
-
-A unit can link one of its [notes](#notes) per Tally screen as its standard operating
-procedure for that tool; Tally shows the note's title and first line at the top of the screen
-with an info icon (`src/graphql/sop_notes.rs`). The places (`SopPlace`) are `ON_CALL`,
-`EQUIPMENT` (the list), `EQUIPMENT_BORROWING` (shown when a member marks equipment as
-borrowed), `TASKS`, `CALENDAR`, `MAP`, `RESERVATIONS`, `NOTES` and `PHOTOS`.
-
-- **Storage:** one optional attribute per place on the unit's `location` row (`sop_note_on_call`,
-  `sop_note_equipment`, …, holding a note ID; see SCHEMA.md), `Location.sop_notes` in Rust. Absent
-  means nothing linked. It is written only by `LocationUpdateShape::SopNote`, which sets or
-  removes that one attribute and leaves `updated_at` (and so sync) alone.
-- **Reading:** `TallyLocation.sopNotes: [SopNote!]!`, one `{ place, noteId, note }` per place with a
-  linked note that still exists (the `Note` is loaded through its dataloader), in the order above.
-  A deleted note drops out; it is not unlinked.
-- **Writing:** `setSopNote(locationId: ID!, place: SopPlace!, noteId: ID): TallyLocation!` links
-  `noteId` at `place`, replacing any note linked there, or unlinks the place when `noteId` is null;
-  read `sopNotes` off the returned unit. Linking the note already linked, or unlinking an empty
-  place, is a successful no-op that writes nothing.
-- **Access:** `require_note_access` on the unit, for both: only an `AuthInfo::Member` at that unit
-  (users alone, kiosks, API tokens and edit links get `FORBIDDEN`). Any such member may link, not
-  just admins. There is no MCP tool.
-- **Errors:** a note that does not exist, is deleted or belongs to another unit is `BAD_REQUEST`
-  ("That note can't be linked. It may have been deleted."); a unit that does not exist is `NOT_FOUND`.
-- **References:** each link has a `note_ref` owned by `location_sop#<location_id>:<PLACE>`, written
-  before the location names the note and removed after it stops (a failed removal is logged, not
-  fatal).
-- **Audit:** an update to the location with a `sopNote.<PLACE>` field diff, filed at that unit.
-
 ## Media
 
 Members only ever receive **derived** images: `src/media.rs` turns an original in the asset
@@ -1104,45 +958,6 @@ bucket into a normalised WebP at one of three sizes, on the first request for it
   DynamoDB, 2048 MB): `seslogin-media` for prod, preprod and qa (prod bucket, deployed from
   `workers`) and `seslogin-test-media` for test (deployed from `test`). The behaviour's cache
   policy puts all query strings in the key (`aws_cloudfront_cache_policy.media`).
-
-## WiFi networks
-
-The WiFi networks Tally's WiFi app shows signed-in members, with their passwords
-(`src/wifi.rs`, `src/graphql/wifi.rs`).
-
-- **Never committed or stored:** they come from the `WIFI_NETWORKS` environment variable, a
-  JSON array. Deployed, it is `var.wifi_networks`, set only in the git-ignored
-  `infra/terraform.tfvars` and shared by prod, preprod, qa and the test API; `jsonencode` saves
-  escaping there: `wifi_networks = jsonencode([{ title = "Shed", ssid = "SES-Shed", password =
-"..." }])`. Locally, put it in the git-ignored `.env.secret`. Unset or blank means no
-  networks.
-- **Format:** `[{"title": "Shed", "ssid": "SES-Shed", "password": "..."}]`. `title` defaults to
-  the SSID; `security` is `WPA` (WPA/WPA2/WPA3 personal; the default with a password), `WEP` or
-  `nopass` (open; the default without one); `hidden` defaults to false. An entry with no SSID,
-  no password when it needs one, or an unknown field makes the whole value invalid: the query
-  then fails rather than quietly showing fewer networks, and the error is logged without
-  quoting the value.
-- **API:** `Query.wifiNetworks(knownVersion)` returns `{ version, networks }`, each network
-  `{ title, ssid, password, security (WPA | WEP | NONE), hidden }`. `version` is a hash of
-  the list, so it changes whenever any network does without anyone bumping it. When
-  `knownVersion` is already current, `networks` is null and the passwords are not sent again.
-- **Who:** any member signed in to Tally; users on their own, kiosk sessions, API tokens and
-  edit links are refused.
-
-```graphql
-{
-  wifiNetworks(knownVersion: "3f2a9c0d1b7e4a65") {
-    version
-    networks {
-      title
-      ssid
-      password
-      security
-      hidden
-    }
-  }
-}
-```
 
 ## Audit log
 

@@ -11,8 +11,7 @@ use crate::db::Handler;
 
 use super::query::{Category, Location, Person, Session, User};
 use super::{
-    ApiTokenNameId, AssetId, CategoryId, LocationId, NitcEventId, NoteFolderId, NoteId, PersonId,
-    SessionId, UserId,
+    ApiTokenNameId, AssetId, CategoryId, LocationId, NitcEventId, PersonId, SessionId, UserId,
 };
 
 pub struct DatabaseLoader<A: App + HasDb + Send + Sync> {
@@ -132,48 +131,6 @@ impl<A: App + HasDb + Send + Sync + 'static> Loader<SessionId> for DatabaseLoade
             .map(|(key, rec)| (key, rec.map(Session::new)))
             .collect();
         Ok(map)
-    }
-}
-
-impl<A: App + HasDb + Send + Sync + 'static> Loader<NoteFolderId> for DatabaseLoader<A> {
-    type Value = db::NoteFolder;
-    type Error = Arc<anyhow::Error>;
-
-    async fn load(
-        &self,
-        keys: &[NoteFolderId],
-    ) -> std::result::Result<HashMap<NoteFolderId, db::NoteFolder>, Arc<anyhow::Error>> {
-        let ids = keys.iter().map(|k| k.0.as_str()).collect::<Vec<&str>>();
-        let recs = self
-            .app
-            .db()
-            .get_note_folders(&ids)
-            .await
-            .map_err(|e| Arc::new(anyhow!("DB error: {:?}", e)))?;
-        Ok(zip(keys.iter().cloned(), recs)
-            .filter_map(|(key, rec)| rec.map(|r| (key, r)))
-            .collect())
-    }
-}
-
-impl<A: App + HasDb + Send + Sync + 'static> Loader<NoteId> for DatabaseLoader<A> {
-    type Value = db::Note;
-    type Error = Arc<anyhow::Error>;
-
-    async fn load(
-        &self,
-        keys: &[NoteId],
-    ) -> std::result::Result<HashMap<NoteId, db::Note>, Arc<anyhow::Error>> {
-        let ids = keys.iter().map(|k| k.0.as_str()).collect::<Vec<&str>>();
-        let recs = self
-            .app
-            .db()
-            .get_notes(&ids)
-            .await
-            .map_err(|e| Arc::new(anyhow!("DB error: {:?}", e)))?;
-        Ok(zip(keys.iter().cloned(), recs)
-            .filter_map(|(key, rec)| rec.map(|r| (key, r)))
-            .collect())
     }
 }
 

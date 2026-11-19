@@ -471,75 +471,6 @@ pub enum LocationUpdateShape<'a> {
     Accreditations {
         accreditations: Option<&'a str>,
     },
-    /// Written only by Tally's `setSopNote`. Links the unit's note for one [`SopPlace`]
-    /// (`Some`), or unlinks it (`None`, which removes the attribute). Touches nothing else,
-    /// `updated_at` included, so a SOP link is not a change to what sync or the contact
-    /// feeds see of the unit.
-    SopNote {
-        place: SopPlace,
-        note_id: Option<&'a str>,
-    },
-}
-
-/// A place in Tally where a unit can show the note holding its standard operating
-/// procedure for that tool. Each unit links at most one note per place, stored on the
-/// `location` row as one attribute per place (see [`attribute`](Self::attribute)).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum SopPlace {
-    OnCall,
-    Equipment,
-    EquipmentBorrowing,
-    Tasks,
-    Calendar,
-    Map,
-    Reservations,
-    Notes,
-    Photos,
-}
-
-impl SopPlace {
-    /// Every place, in the order Tally lists them.
-    pub const ALL: [SopPlace; 9] = [
-        SopPlace::OnCall,
-        SopPlace::Equipment,
-        SopPlace::EquipmentBorrowing,
-        SopPlace::Tasks,
-        SopPlace::Calendar,
-        SopPlace::Map,
-        SopPlace::Reservations,
-        SopPlace::Notes,
-        SopPlace::Photos,
-    ];
-
-    /// The `location` attribute holding this place's note ID.
-    pub fn attribute(self) -> &'static str {
-        match self {
-            SopPlace::OnCall => "sop_note_on_call",
-            SopPlace::Equipment => "sop_note_equipment",
-            SopPlace::EquipmentBorrowing => "sop_note_equipment_borrowing",
-            SopPlace::Tasks => "sop_note_tasks",
-            SopPlace::Calendar => "sop_note_calendar",
-            SopPlace::Map => "sop_note_map",
-            SopPlace::Reservations => "sop_note_reservations",
-            SopPlace::Notes => "sop_note_notes",
-            SopPlace::Photos => "sop_note_photos",
-        }
-    }
-
-    /// The place's name as used in the `note_ref` owner and GraphQL (`ON_CALL`, …).
-    pub fn as_str(self) -> &'static str {
-        match self {
-            SopPlace::OnCall => "ON_CALL",
-            SopPlace::Equipment => "EQUIPMENT",
-            SopPlace::EquipmentBorrowing => "EQUIPMENT_BORROWING",
-            SopPlace::Tasks => "TASKS",
-            SopPlace::Calendar => "CALENDAR",
-            SopPlace::Map => "MAP",
-            SopPlace::Reservations => "RESERVATIONS",
-            SopPlace::Notes => "NOTES",
-            SopPlace::Photos => "PHOTOS",
-        }
-    }
 }
 
 /// Where a table scan left off. Scanning the base table returns a `LastEvaluatedKey`
@@ -710,169 +641,6 @@ impl HasID for NitcGroup {
     }
 }
 
-/// Every note belongs to its location; `folder_id` optionally files it in one of the
-/// location's [`NoteFolder`]s. `content` is plain text for now (empty when absent).
-#[derive(Clone, Debug, PartialEq)]
-pub struct Note {
-    pub id: String,
-    pub location_id: String,
-    pub folder_id: Option<String>,
-    pub title: String,
-    pub content: String,
-    pub created_by: Option<String>,
-    pub updated_by: Option<String>,
-    pub version: u64,
-    pub deleted: Option<u64>,
-    pub created_at: u64,
-    pub updated_at: u64,
-}
-
-impl HasID for Note {
-    fn id(&self) -> &str {
-        &self.id
-    }
-}
-
-/// The fields of a note being created. See [`Note`].
-#[derive(Clone, Debug, PartialEq)]
-pub struct NewNote<'a> {
-    pub location_id: &'a str,
-    pub folder_id: Option<&'a str>,
-    pub title: &'a str,
-    pub content: &'a str,
-    pub created_by: Option<&'a str>,
-}
-
-/// Every write to a note. Each fails with [`Error::NotFound`] when the note does not
-/// exist, is deleted or — for `Fields` — is no longer at `expected_version`, so two
-/// people saving the same note cannot silently overwrite each other. Each returns the
-/// note as it is after the write.
-#[derive(Clone, Debug, PartialEq)]
-pub enum NoteUpdateShape<'a> {
-    /// Replace the editable fields. An absent folder, or empty content, is removed.
-    Fields {
-        folder_id: Option<&'a str>,
-        title: &'a str,
-        content: &'a str,
-        by: Option<&'a str>,
-        expected_version: u64,
-    },
-    /// Soft-delete the note.
-    Delete { by: Option<&'a str> },
-}
-
-/// A named folder a location's notes can be filed in.
-#[derive(Clone, Debug, PartialEq)]
-pub struct NoteFolder {
-    pub id: String,
-    pub location_id: String,
-    pub name: String,
-    pub created_by: Option<String>,
-    pub deleted: Option<u64>,
-    pub created_at: u64,
-    pub updated_at: u64,
-}
-
-impl HasID for NoteFolder {
-    fn id(&self) -> &str {
-        &self.id
-    }
-}
-
-/// Every write to a note folder. Each fails with [`Error::NotFound`] when the folder
-/// does not exist or is deleted, and returns the folder as it is after the write.
-/// Deleting a folder leaves its notes alone: they keep `folder_id` and stay on their
-/// location.
-#[derive(Clone, Debug, PartialEq)]
-pub enum NoteFolderUpdateShape<'a> {
-    Name { name: &'a str },
-    Delete,
-}
-
-/// A contact added by hand to Tally's Contacts ("shared contacts"): a location's own,
-/// such as its Duty Officer phone, or a statewide one, such as the SOC, the EAP or peer
-/// support. See SCHEMA.md's `shared_contact` section.
-#[derive(Clone, Debug, PartialEq)]
-pub struct SharedContact {
-    pub id: String,
-    /// The location the contact belongs to; `None` for a statewide one.
-    pub location_id: Option<String>,
-    pub name: String,
-    /// Plain text; empty when absent.
-    pub description: String,
-    pub phone: Option<String>,
-    /// Whether `phone` takes text messages. Always false without a phone.
-    pub phone_can_sms: bool,
-    pub email: Option<String>,
-    pub created_by: Option<String>,
-    pub updated_by: Option<String>,
-    pub version: u64,
-    pub deleted: Option<u64>,
-    pub created_at: u64,
-    pub updated_at: u64,
-}
-
-impl HasID for SharedContact {
-    fn id(&self) -> &str {
-        &self.id
-    }
-}
-
-/// Which list a shared contact is on: one location's, or the statewide one.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum SharedContactScope<'a> {
-    Location(&'a str),
-    State,
-}
-
-impl<'a> SharedContactScope<'a> {
-    pub fn of(location_id: Option<&'a str>) -> Self {
-        match location_id {
-            Some(id) => Self::Location(id),
-            None => Self::State,
-        }
-    }
-
-    pub fn location_id(self) -> Option<&'a str> {
-        match self {
-            Self::Location(id) => Some(id),
-            Self::State => None,
-        }
-    }
-}
-
-/// The fields of a shared contact being created. See [`SharedContact`].
-#[derive(Clone, Debug, PartialEq)]
-pub struct NewSharedContact<'a> {
-    pub scope: SharedContactScope<'a>,
-    pub name: &'a str,
-    pub description: &'a str,
-    pub phone: Option<&'a str>,
-    pub phone_can_sms: bool,
-    pub email: Option<&'a str>,
-    pub created_by: Option<&'a str>,
-}
-
-/// Every write to a shared contact. Each fails with [`Error::NotFound`] when the contact
-/// does not exist, is deleted or — for `Fields` — is no longer at `expected_version`.
-/// Each returns the contact as it is after the write. A contact never moves between
-/// scopes.
-#[derive(Clone, Debug, PartialEq)]
-pub enum SharedContactUpdateShape<'a> {
-    /// Replace the editable fields. Absent values and an empty description are removed.
-    Fields {
-        name: &'a str,
-        description: &'a str,
-        phone: Option<&'a str>,
-        phone_can_sms: bool,
-        email: Option<&'a str>,
-        by: Option<&'a str>,
-        expected_version: u64,
-    },
-    /// Soft-delete the contact.
-    Delete { by: Option<&'a str> },
-}
-
 impl HasID for Period {
     fn id(&self) -> &str {
         &self.id
@@ -952,9 +720,6 @@ pub struct Location {
     /// `[{"type", "status", "number", "note"}]` sorted by type. `None` for a location
     /// with no rows (every zone, and State Headquarters).
     pub accreditations: Option<String>,
-    /// The note each Tally place links as the unit's standard operating procedure
-    /// (note IDs, which may name a note deleted since). A place with none is absent.
-    pub sop_notes: std::collections::BTreeMap<SopPlace, String>,
     pub created_at: u64,
     pub updated_at: u64,
 }
@@ -1196,50 +961,6 @@ pub struct EphemeralState {
     pub expires_at: u64,
 }
 
-/// Where a device was when it reported in for a [`LocationShare`]: WGS 84 degrees,
-/// metres and metres per second, as the phone reported them.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct SharedPosition {
-    pub latitude: f64,
-    pub longitude: f64,
-    /// Radius of uncertainty of the position, in metres.
-    pub accuracy: Option<f64>,
-    /// Metres above the WGS 84 ellipsoid.
-    pub altitude: Option<f64>,
-    pub altitude_accuracy: Option<f64>,
-    /// Direction of travel, degrees clockwise from true north (0 ≤ heading < 360).
-    pub heading: Option<f64>,
-    pub speed: Option<f64>,
-    /// Unix seconds when the device took the fix, never later than when it was stored.
-    pub recorded_at: u64,
-}
-
-/// A user sharing their position with a location's members ("Locate"), for a fixed
-/// time. One per user: starting another replaces it. Only the latest position is kept.
-/// See SCHEMA.md's `location_share` section.
-#[derive(Clone, Debug, PartialEq)]
-pub struct LocationShare {
-    /// The sharing member's person ID; also the table's key (`id`).
-    pub person_id: String,
-    pub location_id: String,
-    pub position: SharedPosition,
-    /// How often the device said it would report in, in seconds.
-    pub interval_secs: u64,
-    pub started_at: u64,
-    /// When sharing stops: later reports are refused.
-    pub ends_at: u64,
-    /// When the latest position arrived.
-    pub updated_at: u64,
-    /// When the share stops showing, a while after the latest position (the table's TTL).
-    pub expires_at: u64,
-}
-
-impl HasID for LocationShare {
-    fn id(&self) -> &str {
-        &self.person_id
-    }
-}
-
 // ── Notifications ────────────────────────────────────────────────────────────
 
 /// One notification in one user's inbox. An event notifying several users is stored as
@@ -1470,10 +1191,6 @@ pub const HIDDEN_PHOTO_GRACE_SECS: u64 = 7 * 24 * 60 * 60;
 /// The most photos a task, piece of equipment or map pin can have attached.
 pub const MAX_ATTACHED_PHOTOS: usize = 10;
 
-/// The most notes a task, map pin, piece of equipment, calendar event or on-call role
-/// can link to.
-pub const MAX_LINKED_NOTES: usize = 10;
-
 /// How long an asset may stay `pending` (its upload not completed) before DynamoDB's TTL
 /// removes the row.
 pub const PENDING_ASSET_TTL_SECS: u64 = 24 * 60 * 60;
@@ -1593,21 +1310,6 @@ pub struct AssetRef {
 
 /// The `owner` of an [`AssetRef`], e.g. `photo#abc123`.
 pub fn asset_owner(owner_type: &str, owner_id: &str) -> String {
-    format!("{owner_type}#{owner_id}")
-}
-
-/// One owner's link to a note: a `note_ref` row. See SCHEMA.md.
-#[derive(Clone, Debug, PartialEq)]
-pub struct NoteRef {
-    pub note_id: String,
-    /// `<owner_type>#<owner_id>`; see [`note_owner`].
-    pub owner: String,
-    pub location_id: String,
-    pub created_at: u64,
-}
-
-/// The `owner` of a [`NoteRef`], e.g. `task#abc123`.
-pub fn note_owner(owner_type: &str, owner_id: &str) -> String {
     format!("{owner_type}#{owner_id}")
 }
 
@@ -2538,102 +2240,6 @@ pub trait Handler: Sync {
 
     fn delete_ephemeral_state(&self, id: &str) -> impl Future<Output = Result<()>> + Send;
 
-    // ── Notes ─────────────────────────────────────────────────────────────────
-
-    fn get_notes<T: AsRef<str> + Sync>(
-        &self,
-        ids: &[T],
-    ) -> impl Future<Output = Result<Vec<Option<Note>>>> + Send;
-    /// A location's notes, deleted ones left out, in no particular order. Reads a GSI,
-    /// so a write may take a moment to show up.
-    fn list_notes(&self, location_id: &str) -> impl Future<Output = Result<Vec<Note>>> + Send;
-    fn create_note(&self, note: NewNote<'_>) -> impl Future<Output = Result<Note>> + Send;
-    fn update_note(
-        &self,
-        id: &str,
-        change: NoteUpdateShape<'_>,
-    ) -> impl Future<Output = Result<Note>> + Send;
-
-    fn get_note_folders<T: AsRef<str> + Sync>(
-        &self,
-        ids: &[T],
-    ) -> impl Future<Output = Result<Vec<Option<NoteFolder>>>> + Send;
-    /// A location's note folders, deleted ones left out.
-    fn list_note_folders(
-        &self,
-        location_id: &str,
-    ) -> impl Future<Output = Result<Vec<NoteFolder>>> + Send;
-    fn create_note_folder(
-        &self,
-        location_id: &str,
-        name: &str,
-        created_by: Option<&str>,
-    ) -> impl Future<Output = Result<NoteFolder>> + Send;
-    fn update_note_folder(
-        &self,
-        id: &str,
-        change: NoteFolderUpdateShape<'_>,
-    ) -> impl Future<Output = Result<NoteFolder>> + Send;
-
-    // ── Shared contacts ───────────────────────────────────────────────────────
-
-    fn get_shared_contacts<T: AsRef<str> + Sync>(
-        &self,
-        ids: &[T],
-    ) -> impl Future<Output = Result<Vec<Option<SharedContact>>>> + Send;
-    /// A location's shared contacts, or the statewide ones, deleted ones left out, in no
-    /// particular order. Reads a GSI, so a write may take a moment to show up.
-    fn list_shared_contacts(
-        &self,
-        scope: SharedContactScope<'_>,
-    ) -> impl Future<Output = Result<Vec<SharedContact>>> + Send;
-    /// Every live shared contact, every location's and the statewide ones, in no
-    /// particular order: one strongly consistent scan, for the offline sync, which sends
-    /// a member all of theirs at once, including a write made just before. The table is
-    /// small (a few contacts per location).
-    fn list_all_shared_contacts(&self) -> impl Future<Output = Result<Vec<SharedContact>>> + Send;
-    fn create_shared_contact(
-        &self,
-        contact: NewSharedContact<'_>,
-    ) -> impl Future<Output = Result<SharedContact>> + Send;
-    fn update_shared_contact(
-        &self,
-        id: &str,
-        change: SharedContactUpdateShape<'_>,
-    ) -> impl Future<Output = Result<SharedContact>> + Send;
-
-    // ── Locate ────────────────────────────────────────────────────────────────
-
-    /// Shares by user ID, whether or not they have ended or lapsed.
-    fn get_location_shares<T: AsRef<str> + Sync>(
-        &self,
-        person_ids: &[T],
-    ) -> impl Future<Output = Result<Vec<Option<LocationShare>>>> + Send;
-    /// A location's shares, in no particular order. Includes any that have lapsed but
-    /// not yet been removed by the TTL, so callers check `expires_at`. Reads a GSI, so a
-    /// write may take a moment to show up.
-    fn list_location_shares(
-        &self,
-        location_id: &str,
-    ) -> impl Future<Output = Result<Vec<LocationShare>>> + Send;
-    /// Store a new share, replacing any the user already has.
-    fn put_location_share(&self, share: &LocationShare) -> impl Future<Output = Result<()>> + Send;
-    /// Record a newer position on a share. Fails with [`Error::NotFound`] when the user
-    /// has no share, or it ended at or before `updated_at`. Returns the share as it is
-    /// after the write.
-    fn update_location_share_position(
-        &self,
-        person_id: &str,
-        position: &SharedPosition,
-        updated_at: u64,
-        expires_at: u64,
-    ) -> impl Future<Output = Result<LocationShare>> + Send;
-    /// Remove the user's share; returns it, or None if they had none.
-    fn delete_location_share(
-        &self,
-        person_id: &str,
-    ) -> impl Future<Output = Result<Option<LocationShare>>> + Send;
-
     // ── Notifications ─────────────────────────────────────────────────────────
 
     /// Store notifications (one per recipient), in batches. Anything DynamoDB defers is
@@ -2733,25 +2339,6 @@ pub trait Handler: Sync {
     fn delete_asset_ref(
         &self,
         asset_id: &str,
-        owner: &str,
-    ) -> impl Future<Output = Result<()>> + Send;
-
-    /// Every owner linking to the note. Strongly consistent. A row can be stray (see
-    /// SCHEMA.md's `note_ref`), so a reader must check the owner still names the note.
-    fn list_note_refs(&self, note_id: &str) -> impl Future<Output = Result<Vec<NoteRef>>> + Send;
-    /// Record that `owner` (see [`note_owner`]) links to the note. Writing a reference
-    /// that already exists is not an error. Unlike [`Handler::put_asset_ref`] it checks
-    /// nothing about the note: callers validate it first, and a note is never collected.
-    fn put_note_ref(
-        &self,
-        note_id: &str,
-        owner: &str,
-        location_id: &str,
-    ) -> impl Future<Output = Result<()>> + Send;
-    /// Remove an owner's reference. One that is already gone is not an error.
-    fn delete_note_ref(
-        &self,
-        note_id: &str,
         owner: &str,
     ) -> impl Future<Output = Result<()>> + Send;
 

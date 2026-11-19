@@ -673,86 +673,6 @@ impl db::Handler for Handler {
         Self::unsupported()
     }
 
-    async fn get_notes<T: AsRef<str> + Sync>(
-        &self,
-        _ids: &[T],
-    ) -> db::Result<Vec<Option<db::Note>>> {
-        Self::unsupported()
-    }
-
-    async fn list_notes(&self, _location_id: &str) -> db::Result<Vec<db::Note>> {
-        Self::unsupported()
-    }
-
-    async fn create_note(&self, _note: db::NewNote<'_>) -> db::Result<db::Note> {
-        Self::unsupported()
-    }
-
-    async fn update_note(
-        &self,
-        _id: &str,
-        _change: db::NoteUpdateShape<'_>,
-    ) -> db::Result<db::Note> {
-        Self::unsupported()
-    }
-
-    async fn get_note_folders<T: AsRef<str> + Sync>(
-        &self,
-        _ids: &[T],
-    ) -> db::Result<Vec<Option<db::NoteFolder>>> {
-        Self::unsupported()
-    }
-
-    async fn list_note_folders(&self, _location_id: &str) -> db::Result<Vec<db::NoteFolder>> {
-        Self::unsupported()
-    }
-
-    async fn create_note_folder(
-        &self,
-        _location_id: &str,
-        _name: &str,
-        _created_by: Option<&str>,
-    ) -> db::Result<db::NoteFolder> {
-        Self::unsupported()
-    }
-
-    async fn update_note_folder(
-        &self,
-        _id: &str,
-        _change: db::NoteFolderUpdateShape<'_>,
-    ) -> db::Result<db::NoteFolder> {
-        Self::unsupported()
-    }
-
-    async fn get_location_shares<T: AsRef<str> + Sync>(
-        &self,
-        _user_ids: &[T],
-    ) -> db::Result<Vec<Option<db::LocationShare>>> {
-        Self::unsupported()
-    }
-
-    async fn list_location_shares(&self, _location_id: &str) -> db::Result<Vec<db::LocationShare>> {
-        Self::unsupported()
-    }
-
-    async fn put_location_share(&self, _share: &db::LocationShare) -> db::Result<()> {
-        Self::unsupported()
-    }
-
-    async fn update_location_share_position(
-        &self,
-        _user_id: &str,
-        _position: &db::SharedPosition,
-        _updated_at: u64,
-        _expires_at: u64,
-    ) -> db::Result<db::LocationShare> {
-        Self::unsupported()
-    }
-
-    async fn delete_location_share(&self, _user_id: &str) -> db::Result<Option<db::LocationShare>> {
-        Self::unsupported()
-    }
-
     async fn put_notifications(&self, _records: Vec<db::NotificationRecord>) -> db::Result<()> {
         Self::unsupported()
     }
@@ -777,39 +697,6 @@ impl db::Handler for Handler {
         _sks: &[String],
         _read_at: u64,
     ) -> db::Result<()> {
-        Self::unsupported()
-    }
-
-    async fn get_shared_contacts<T: AsRef<str> + Sync>(
-        &self,
-        _ids: &[T],
-    ) -> db::Result<Vec<Option<db::SharedContact>>> {
-        Self::unsupported()
-    }
-
-    async fn list_shared_contacts(
-        &self,
-        _scope: db::SharedContactScope<'_>,
-    ) -> db::Result<Vec<db::SharedContact>> {
-        Self::unsupported()
-    }
-
-    async fn list_all_shared_contacts(&self) -> db::Result<Vec<db::SharedContact>> {
-        Self::unsupported()
-    }
-
-    async fn create_shared_contact(
-        &self,
-        _contact: db::NewSharedContact<'_>,
-    ) -> db::Result<db::SharedContact> {
-        Self::unsupported()
-    }
-
-    async fn update_shared_contact(
-        &self,
-        _id: &str,
-        _change: db::SharedContactUpdateShape<'_>,
-    ) -> db::Result<db::SharedContact> {
         Self::unsupported()
     }
 
@@ -871,23 +758,6 @@ impl db::Handler for Handler {
     }
 
     async fn delete_asset_ref(&self, _asset_id: &str, _owner: &str) -> db::Result<()> {
-        Self::unsupported()
-    }
-
-    async fn list_note_refs(&self, _note_id: &str) -> db::Result<Vec<db::NoteRef>> {
-        Self::unsupported()
-    }
-
-    async fn put_note_ref(
-        &self,
-        _note_id: &str,
-        _owner: &str,
-        _location_id: &str,
-    ) -> db::Result<()> {
-        Self::unsupported()
-    }
-
-    async fn delete_note_ref(&self, _note_id: &str, _owner: &str) -> db::Result<()> {
         Self::unsupported()
     }
 

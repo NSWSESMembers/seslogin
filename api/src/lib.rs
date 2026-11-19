@@ -22,7 +22,6 @@ pub mod expire;
 pub mod graphql;
 pub mod healthcheck;
 pub mod local_dev;
-pub mod location_share;
 pub mod location_sync;
 pub mod mail;
 pub mod mcp;
@@ -35,7 +34,6 @@ pub mod mockrealtime;
 pub mod mockstorage;
 pub mod nitc_export;
 pub mod nonce;
-pub mod notes;
 pub mod notifications;
 pub mod oauth;
 pub mod oauth_clients;
@@ -53,7 +51,6 @@ pub mod ses_api;
 pub mod sesmail;
 pub mod session_key;
 pub mod session_retire;
-pub mod shared_contact;
 pub mod sqs;
 pub mod storage;
 pub mod tally_assertion;
@@ -65,7 +62,6 @@ pub mod trophies;
 pub mod trophy_nightly;
 pub mod trophy_scan;
 pub mod turnstile;
-pub mod wifi;
 
 /// Load local `.env`/`.env.secret` for CLI / dev binaries. The Lambda binaries
 /// don't call this. AWS profile defaulting is handled natively by

@@ -82,7 +82,7 @@ No GSIs. Locations are always fetched by ID or via a full-table Scan (the table 
 - `nitc_enabled` (N) — Unix timestamp NITC export starts from; `0`/absent means off (legacy rows may still hold a Bool, which reads as off)
 - `nitc_complete_on_export` (Bool) — only written as `false`, for locations that want their exported NITCs left incomplete in SES; absent (the default) means they are marked completed
 - `enabled` (Bool)
-- `sop_note_on_call`, `sop_note_equipment`, `sop_note_equipment_borrowing`, `sop_note_tasks`, `sop_note_calendar`, `sop_note_map`, `sop_note_reservations`, `sop_note_notes`, `sop_note_photos` (S, each optional) — the note the unit links as its standard operating procedure for that Tally screen (`db::SopPlace`). Set or removed by Tally's `setSopNote` alone (never written as Null, and without touching `updated_at`), so location sync and admin edits leave them be. May name a note deleted since. Each has a `note_ref` owned by `location_sop#<location_id>:<PLACE>`
+- `sop_note_on_call`, `sop_note_equipment`, `sop_note_equipment_borrowing`, `sop_note_tasks`, `sop_note_calendar`, `sop_note_map`, `sop_note_reservations`, `sop_note_notes`, `sop_note_photos` (S, each optional) — left on some rows by the removed Tally SOP notes. Nothing reads or writes them any more
 
 Written only by location sync (`api/src/location_sync.rs`), each omitted when SES has no value:
 
