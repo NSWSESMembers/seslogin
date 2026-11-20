@@ -14,7 +14,7 @@ use std::sync::Arc;
 use super::error::{ApiError, ErrorCode};
 use crate::app::{App, HasDb, HasMail};
 use crate::auth::AuthInfo;
-use crate::db::{self, Handler as _};
+use crate::db::{self, Handler as _, PasskeyStore as _};
 
 /// A passkey that signs the member in to Tally. Never carries key material.
 #[derive(SimpleObject, Clone, Debug)]
