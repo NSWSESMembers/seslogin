@@ -32,6 +32,8 @@ use std::future::Future;
 use serde_json::{Value, json};
 use tracing::{error, warn};
 
+mod ephemeral_state;
+
 mod login_codes;
 mod oauth_grants;
 mod passkeys;
@@ -2216,38 +2218,6 @@ impl<D: db::Handler> db::Handler for AuditingHandler<D> {
         page: db::ListTestPaginationPage,
     ) -> db::Result<Vec<db::TestPaginationRow>> {
         self.inner.list_test_pagination(page).await
-    }
-
-    async fn put_ephemeral_state(
-        &self,
-        id: &str,
-        kind: &str,
-        payload: &str,
-        expires_at: u64,
-    ) -> db::Result<()> {
-        self.inner
-            .put_ephemeral_state(id, kind, payload, expires_at)
-            .await
-    }
-
-    async fn create_ephemeral_state_if_absent(
-        &self,
-        id: &str,
-        kind: &str,
-        payload: &str,
-        expires_at: u64,
-    ) -> db::Result<bool> {
-        self.inner
-            .create_ephemeral_state_if_absent(id, kind, payload, expires_at)
-            .await
-    }
-
-    async fn get_ephemeral_state(&self, id: &str) -> db::Result<Option<db::EphemeralState>> {
-        self.inner.get_ephemeral_state(id).await
-    }
-
-    async fn delete_ephemeral_state(&self, id: &str) -> db::Result<()> {
-        self.inner.delete_ephemeral_state(id).await
     }
 
     async fn list_nitc_tags(&self) -> db::Result<Vec<db::NitcTag>> {

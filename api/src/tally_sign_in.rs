@@ -54,7 +54,7 @@ use tracing::{info, warn};
 
 use crate::app::{App, HasDb, HasMail};
 use crate::auth::hash_token;
-use crate::db::{self, Handler as _, LoginCodeStore as _};
+use crate::db::{self, EphemeralStateStore as _, LoginCodeStore as _};
 use crate::graphql::error::ApiError;
 use crate::mail::Handler as _;
 use crate::oauth::DEFAULT_SCOPE;
