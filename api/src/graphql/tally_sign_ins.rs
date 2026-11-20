@@ -17,7 +17,7 @@ use std::sync::Arc;
 use super::error::{ApiError, ErrorCode};
 use crate::app::{App, HasDb};
 use crate::auth::AuthInfo;
-use crate::db::{self, Handler as _};
+use crate::db::{self, OAuthGrantStore as _};
 
 /// A device the member is signed in to Tally on.
 #[derive(SimpleObject, Clone, Debug)]
