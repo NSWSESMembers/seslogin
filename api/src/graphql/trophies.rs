@@ -10,7 +10,7 @@ use super::PersonId;
 use super::dataloader::DatabaseLoader;
 use super::query::Person;
 use crate::app::{App, HasDb};
-use crate::db::{self, Handler};
+use crate::db::{self, TrophyStore};
 use crate::trophies::{self, TrophyDefinition};
 
 /// The most reigns `Trophy.reigns` returns.
