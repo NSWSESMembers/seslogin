@@ -10,6 +10,8 @@ mod login_codes;
 pub use login_codes::*;
 mod user_tokens;
 pub use user_tokens::*;
+mod oauth_grants;
+pub use oauth_grants::*;
 
 const NANOID_ALPHABET: [char; 62] = [
     '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I',
@@ -816,61 +818,6 @@ impl HasID for Category {
     }
 }
 
-/// One authorized OAuth client for a user (MCP and, later, other audiences). Holds
-/// both the current access and refresh token hashes — a grant is the unit of
-/// revocation, so rotating either token rewrites the same row rather than creating a
-/// new one. `expires_at` is the absolute cap (also the DynamoDB TTL attribute):
-/// `refresh_expires_at` slides forward on every rotation but never past it.
-#[derive(Clone, Debug, PartialEq)]
-pub struct OAuthGrant {
-    pub id: String,
-    /// The user the grant acts for. Always set on a grant approved at the consent
-    /// screen; on a Tally sign-in grant (`person_id` set) only when the email they
-    /// signed in with is also a user's.
-    pub user_id: Option<String>,
-    /// Set only on a Tally sign-in grant: the member it acts for. Such a grant resolves
-    /// to [`crate::auth::AuthInfo::Member`] rather than a user.
-    pub person_id: Option<String>,
-    pub client_id: String,
-    pub client_name: String,
-    pub redirect_uri: String,
-    /// The audience (RFC 8707 `resource`) this grant's tokens are bound to, e.g.
-    /// `<base>/mcp`. Checked on every use so a token minted for one audience can't
-    /// authenticate against another.
-    pub resource: String,
-    pub scope: String,
-    pub access_token_hash: String,
-    pub access_expires_at: u64,
-    pub refresh_token_hash: String,
-    pub refresh_expires_at: u64,
-    pub expires_at: u64,
-    pub created_at: u64,
-    pub last_used_at: Option<u64>,
-}
-
-impl HasID for OAuthGrant {
-    fn id(&self) -> &str {
-        &self.id
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum OAuthGrantUpdateShape {
-    /// Refresh-token rotation: replace both secrets, sliding `refresh_expires_at`
-    /// forward (capped by the grant's `expires_at` — enforced by the caller in
-    /// `oauth.rs`, not here). Compare-and-swap on `expected_refresh_token_hash`, so
-    /// of two concurrent refreshes with the same token only one wins; the loser gets
-    /// [`Error::NotFound`], the same as a missing grant.
-    Rotate {
-        expected_refresh_token_hash: String,
-        access_token_hash: String,
-        access_expires_at: u64,
-        refresh_token_hash: String,
-        refresh_expires_at: u64,
-    },
-    TouchLastUsed,
-}
-
 /// Whose passkey a [`WebauthnCredential`] is. A user's passkey signs in to the admin
 /// site (and to Tally, as that user's member); a member's is for Tally sign-in only,
 /// and is made only for a member who signs in with no user alongside them.
@@ -1202,6 +1149,7 @@ pub struct ListAuditEntriesQuery {
 /// | Perpetual trophies | [`TrophyStore`] | `trophies.rs` |
 /// | Email login codes | [`LoginCodeStore`] | `login_codes.rs` |
 /// | User tokens | [`UserTokenStore`] | `user_tokens.rs` |
+/// | OAuth grants | [`OAuthGrantStore`] | `oauth_grants.rs` |
 ///
 /// The file of that name under `db/` holds the row types and the trait; the ones under
 /// `dynamodb/`, `audit/`, `mockdb/` and `tests/common/` hold each implementation.
@@ -1216,7 +1164,7 @@ pub struct ListAuditEntriesQuery {
 ///
 /// Domain traits have no default methods either, so `AuditingHandler` still fails to
 /// compile until a new write is classified as audited or passed through.
-pub trait Handler: Sync + TrophyStore + LoginCodeStore + UserTokenStore {
+pub trait Handler: Sync + TrophyStore + LoginCodeStore + UserTokenStore + OAuthGrantStore {
     fn get_users<T: AsRef<str> + Sync>(
         &self,
         ids: &[T],
@@ -1666,34 +1614,6 @@ pub trait Handler: Sync + TrophyStore + LoginCodeStore + UserTokenStore {
         event_id: &str,
         synced_version: u64,
     ) -> impl Future<Output = Result<()>> + Send;
-
-    // ── OAuth grants (MCP access/refresh tokens) ─────────────────────────────
-
-    /// Caller supplies the id (and every other field), as with `create_user_token`.
-    fn create_oauth_grant(&self, grant: &OAuthGrant) -> impl Future<Output = Result<()>> + Send;
-
-    fn get_oauth_grant(&self, id: &str) -> impl Future<Output = Result<Option<OAuthGrant>>> + Send;
-
-    fn update_oauth_grant(
-        &self,
-        id: &str,
-        change: OAuthGrantUpdateShape,
-    ) -> impl Future<Output = Result<()>> + Send;
-
-    fn delete_oauth_grant(&self, id: &str) -> impl Future<Output = Result<()>> + Send;
-
-    /// Backs the "connected apps" list: every grant a user has authorized.
-    fn list_oauth_grants_by_user(
-        &self,
-        user_id: &str,
-    ) -> impl Future<Output = Result<Vec<OAuthGrant>>> + Send;
-
-    /// Every grant naming this member (`person_id`): their Tally sign-ins, with or
-    /// without a user alongside. Through `person_id-index`.
-    fn list_oauth_grants_by_person(
-        &self,
-        person_id: &str,
-    ) -> impl Future<Output = Result<Vec<OAuthGrant>>> + Send;
 
     // ── WebAuthn passkey credentials ─────────────────────────────────────────
 
