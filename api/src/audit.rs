@@ -32,6 +32,8 @@ use std::future::Future;
 use serde_json::{Value, json};
 use tracing::{error, warn};
 
+mod login_codes;
+
 mod trophies;
 
 use crate::auth::AuthInfo;
@@ -2376,30 +2378,6 @@ impl<D: db::Handler> db::Handler for AuditingHandler<D> {
         page: db::ListTestPaginationPage,
     ) -> db::Result<Vec<db::TestPaginationRow>> {
         self.inner.list_test_pagination(page).await
-    }
-
-    async fn put_login_code(
-        &self,
-        email: &str,
-        code_hash: &str,
-        expires_at: u64,
-        last_sent_at: u64,
-    ) -> db::Result<()> {
-        self.inner
-            .put_login_code(email, code_hash, expires_at, last_sent_at)
-            .await
-    }
-
-    async fn get_login_code(&self, email: &str) -> db::Result<Option<db::LoginCode>> {
-        self.inner.get_login_code(email).await
-    }
-
-    async fn delete_login_code(&self, email: &str) -> db::Result<()> {
-        self.inner.delete_login_code(email).await
-    }
-
-    async fn increment_login_code_attempts(&self, email: &str) -> db::Result<()> {
-        self.inner.increment_login_code_attempts(email).await
     }
 
     async fn get_user_token(&self, id: &str) -> db::Result<Option<db::UserToken>> {
