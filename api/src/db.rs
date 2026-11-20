@@ -6,6 +6,8 @@ use thiserror::Error;
 
 mod trophies;
 pub use trophies::*;
+mod login_codes;
+pub use login_codes::*;
 
 const NANOID_ALPHABET: [char; 62] = [
     '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I',
@@ -813,15 +815,6 @@ impl HasID for Category {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct LoginCode {
-    pub email: String,
-    pub code_hash: String,
-    pub expires_at: u64,
-    pub attempts: u64,
-    pub last_sent_at: u64,
-}
-
-#[derive(Clone, Debug, PartialEq)]
 pub struct UserToken {
     pub id: String,
     pub token_hash: String,
@@ -1220,6 +1213,7 @@ pub struct ListAuditEntriesQuery {
 /// | Domain | Trait | File name |
 /// |---|---|---|
 /// | Perpetual trophies | [`TrophyStore`] | `trophies.rs` |
+/// | Email login codes | [`LoginCodeStore`] | `login_codes.rs` |
 ///
 /// The file of that name under `db/` holds the row types and the trait; the ones under
 /// `dynamodb/`, `audit/`, `mockdb/` and `tests/common/` hold each implementation.
@@ -1234,7 +1228,7 @@ pub struct ListAuditEntriesQuery {
 ///
 /// Domain traits have no default methods either, so `AuditingHandler` still fails to
 /// compile until a new write is classified as audited or passed through.
-pub trait Handler: Sync + TrophyStore {
+pub trait Handler: Sync + TrophyStore + LoginCodeStore {
     fn get_users<T: AsRef<str> + Sync>(
         &self,
         ids: &[T],
@@ -1684,24 +1678,6 @@ pub trait Handler: Sync + TrophyStore {
         event_id: &str,
         synced_version: u64,
     ) -> impl Future<Output = Result<()>> + Send;
-
-    // ── Email login codes ────────────────────────────────────────────────────
-
-    fn put_login_code(
-        &self,
-        email: &str,
-        code_hash: &str,
-        expires_at: u64,
-        last_sent_at: u64,
-    ) -> impl Future<Output = Result<()>> + Send;
-
-    fn get_login_code(&self, email: &str)
-    -> impl Future<Output = Result<Option<LoginCode>>> + Send;
-
-    fn delete_login_code(&self, email: &str) -> impl Future<Output = Result<()>> + Send;
-
-    fn increment_login_code_attempts(&self, email: &str)
-    -> impl Future<Output = Result<()>> + Send;
 
     // ── User tokens (opaque, hashed, sliding expiry) ─────────────────────────
 
