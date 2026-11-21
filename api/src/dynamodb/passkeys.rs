@@ -10,7 +10,7 @@ use crate::db::{self, Error, WebauthnCredential, WebauthnState};
 use super::{
     CapKind, Handler, HydrationError, Item, map_update_err, query_all, record_capacity, sdk_err_msg,
 };
-use crate::db::Handler as _;
+use crate::db::EphemeralStateStore as _;
 
 /// The attribute a passkey's owner is stored under (its GSI is `<attribute>-index`),
 /// and the owner's ID.

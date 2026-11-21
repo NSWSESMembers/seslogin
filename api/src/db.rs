@@ -14,6 +14,8 @@ mod oauth_grants;
 pub use oauth_grants::*;
 mod passkeys;
 pub use passkeys::*;
+mod ephemeral_state;
+pub use ephemeral_state::*;
 
 const NANOID_ALPHABET: [char; 62] = [
     '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I',
@@ -820,19 +822,6 @@ impl HasID for Category {
     }
 }
 
-/// Generic short-lived key/value record in the `ephemeral_state` table. Namespaced
-/// by `kind`, carries an opaque JSON `payload`, and is auto-deleted by DynamoDB TTL
-/// after `expires_at`. Currently backs kiosk public-key enrollment; `webauthn_state`
-/// is intended to migrate onto this shape later.
-#[derive(Clone, Debug, PartialEq)]
-pub struct EphemeralState {
-    pub id: String,
-    pub kind: String,
-    pub payload: String,
-    /// Unix timestamp; DynamoDB TTL auto-deletes after this.
-    pub expires_at: u64,
-}
-
 // ── Audit log ────────────────────────────────────────────────────────────────
 
 /// What an audited write did to its entity.
@@ -1093,6 +1082,7 @@ pub struct ListAuditEntriesQuery {
 /// | User tokens | [`UserTokenStore`] | `user_tokens.rs` |
 /// | OAuth grants | [`OAuthGrantStore`] | `oauth_grants.rs` |
 /// | WebAuthn passkeys and challenge state | [`PasskeyStore`] | `passkeys.rs` |
+/// | Generic ephemeral state | [`EphemeralStateStore`] | `ephemeral_state.rs` |
 ///
 /// The file of that name under `db/` holds the row types and the trait; the ones under
 /// `dynamodb/`, `audit/`, `mockdb/` and `tests/common/` hold each implementation.
@@ -1108,7 +1098,13 @@ pub struct ListAuditEntriesQuery {
 /// Domain traits have no default methods either, so `AuditingHandler` still fails to
 /// compile until a new write is classified as audited or passed through.
 pub trait Handler:
-    Sync + TrophyStore + LoginCodeStore + UserTokenStore + OAuthGrantStore + PasskeyStore
+    Sync
+    + TrophyStore
+    + LoginCodeStore
+    + UserTokenStore
+    + OAuthGrantStore
+    + PasskeyStore
+    + EphemeralStateStore
 {
     fn get_users<T: AsRef<str> + Sync>(
         &self,
@@ -1559,36 +1555,6 @@ pub trait Handler:
         event_id: &str,
         synced_version: u64,
     ) -> impl Future<Output = Result<()>> + Send;
-
-    // ── Generic ephemeral state ───────────────────────────────────────────────
-
-    /// Upsert a record into the `ephemeral_state` table (overwrites any existing
-    /// item with the same `id`).
-    fn put_ephemeral_state(
-        &self,
-        id: &str,
-        kind: &str,
-        payload: &str,
-        expires_at: u64,
-    ) -> impl Future<Output = Result<()>> + Send;
-
-    /// Insert a record into the `ephemeral_state` table only if no item has this `id`.
-    /// `true` means it was created, `false` that one already existed (and is left
-    /// untouched). Atomic, so of two racing callers exactly one gets `true`.
-    fn create_ephemeral_state_if_absent(
-        &self,
-        id: &str,
-        kind: &str,
-        payload: &str,
-        expires_at: u64,
-    ) -> impl Future<Output = Result<bool>> + Send;
-
-    fn get_ephemeral_state(
-        &self,
-        id: &str,
-    ) -> impl Future<Output = Result<Option<EphemeralState>>> + Send;
-
-    fn delete_ephemeral_state(&self, id: &str) -> impl Future<Output = Result<()>> + Send;
 
     // ── Audit log ─────────────────────────────────────────────────────────────
 

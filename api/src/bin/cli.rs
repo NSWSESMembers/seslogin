@@ -11,9 +11,9 @@ use clap::{Parser, Subcommand};
 use seslogin::audit::{self, AuditContext, AuditingHandler};
 use seslogin::badges;
 use seslogin::db::{
-    self, ApiToken, Category, CategoryDisplay, Handler, ListApiTokensFilter, ListLocationsFilter,
-    ListPeriodsPage, ListSessionsQuery, Location, NitcEvent, NitcGroup, Period, PeriodCursor,
-    Person, PersonUpdateShape, ScanCursor, Session, SessionUpdateShape, User,
+    self, ApiToken, Category, CategoryDisplay, EphemeralStateStore, Handler, ListApiTokensFilter,
+    ListLocationsFilter, ListPeriodsPage, ListSessionsQuery, Location, NitcEvent, NitcGroup,
+    Period, PeriodCursor, Person, PersonUpdateShape, ScanCursor, Session, SessionUpdateShape, User,
 };
 use seslogin::dynamodb;
 use seslogin::request_metrics::{self, RequestMetrics};
