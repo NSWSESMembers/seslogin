@@ -7,7 +7,7 @@ use crate::app::HasDb;
 use crate::app::HasQueues;
 use crate::client_info::ClientReport;
 use crate::db;
-use crate::db::Handler;
+use crate::db::{Handler, UserTokenStore};
 use crate::queue::Handler as _;
 
 #[derive(Debug, Error)]

@@ -23,7 +23,7 @@ use crate::auth::AuthInfo;
 use crate::badge_store;
 use crate::badges;
 use crate::db;
-use crate::db::{Handler, LoginCodeStore};
+use crate::db::{Handler, LoginCodeStore, UserTokenStore};
 use crate::mail::Handler as _;
 use crate::oauth;
 use crate::queue;
