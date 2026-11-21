@@ -24,7 +24,7 @@ use crate::auth::AuthInfo;
 use crate::badges;
 use crate::db;
 use crate::db::ListSessionsQuery;
-use crate::db::{Handler, OAuthGrantStore};
+use crate::db::{Handler, OAuthGrantStore, PasskeyStore};
 use crate::realtime;
 use crate::realtime::Handler as _;
 use crate::ses_api;

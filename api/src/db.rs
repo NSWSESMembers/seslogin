@@ -12,6 +12,8 @@ mod user_tokens;
 pub use user_tokens::*;
 mod oauth_grants;
 pub use oauth_grants::*;
+mod passkeys;
+pub use passkeys::*;
 
 const NANOID_ALPHABET: [char; 62] = [
     '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I',
@@ -818,66 +820,6 @@ impl HasID for Category {
     }
 }
 
-/// Whose passkey a [`WebauthnCredential`] is. A user's passkey signs in to the admin
-/// site (and to Tally, as that user's member); a member's is for Tally sign-in only,
-/// and is made only for a member who signs in with no user alongside them.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum PasskeyOwner {
-    /// A user ID: stored as `user_id`.
-    User(String),
-    /// A person ID: stored as `person_id`.
-    Member(String),
-}
-
-impl PasskeyOwner {
-    pub fn user_id(&self) -> Option<&str> {
-        match self {
-            Self::User(id) => Some(id),
-            Self::Member(_) => None,
-        }
-    }
-
-    pub fn person_id(&self) -> Option<&str> {
-        match self {
-            Self::User(_) => None,
-            Self::Member(id) => Some(id),
-        }
-    }
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct WebauthnCredential {
-    /// Credential ID (base64url) — partition key in DynamoDB.
-    pub id: String,
-    pub owner: PasskeyOwner,
-    /// User-supplied label (e.g. "MacBook Touch ID").
-    pub name: String,
-    /// JSON-serialized webauthn_rs::prelude::Passkey (contains counter, public key, etc.).
-    pub passkey_json: String,
-    pub created_at: u64,
-    pub last_used_at: Option<u64>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum WebauthnCredentialUpdate {
-    Rename(String),
-    TouchLastUsed { passkey_json: String },
-}
-
-/// Short-lived challenge state stored between the two WebAuthn round-trips.
-#[derive(Clone, Debug, PartialEq)]
-pub struct WebauthnState {
-    /// Opaque challenge ID returned to the client.
-    pub id: String,
-    pub kind: String,
-    /// Set for registration states.
-    pub user_id: Option<String>,
-    /// JSON-serialized PasskeyRegistration or DiscoverableAuthentication.
-    pub state_json: String,
-    /// Unix timestamp; DynamoDB TTL auto-deletes after this.
-    pub expires_at: u64,
-}
-
 /// Generic short-lived key/value record in the `ephemeral_state` table. Namespaced
 /// by `kind`, carries an opaque JSON `payload`, and is auto-deleted by DynamoDB TTL
 /// after `expires_at`. Currently backs kiosk public-key enrollment; `webauthn_state`
@@ -1150,6 +1092,7 @@ pub struct ListAuditEntriesQuery {
 /// | Email login codes | [`LoginCodeStore`] | `login_codes.rs` |
 /// | User tokens | [`UserTokenStore`] | `user_tokens.rs` |
 /// | OAuth grants | [`OAuthGrantStore`] | `oauth_grants.rs` |
+/// | WebAuthn passkeys and challenge state | [`PasskeyStore`] | `passkeys.rs` |
 ///
 /// The file of that name under `db/` holds the row types and the trait; the ones under
 /// `dynamodb/`, `audit/`, `mockdb/` and `tests/common/` hold each implementation.
@@ -1164,7 +1107,9 @@ pub struct ListAuditEntriesQuery {
 ///
 /// Domain traits have no default methods either, so `AuditingHandler` still fails to
 /// compile until a new write is classified as audited or passed through.
-pub trait Handler: Sync + TrophyStore + LoginCodeStore + UserTokenStore + OAuthGrantStore {
+pub trait Handler:
+    Sync + TrophyStore + LoginCodeStore + UserTokenStore + OAuthGrantStore + PasskeyStore
+{
     fn get_users<T: AsRef<str> + Sync>(
         &self,
         ids: &[T],
@@ -1614,59 +1559,6 @@ pub trait Handler: Sync + TrophyStore + LoginCodeStore + UserTokenStore + OAuthG
         event_id: &str,
         synced_version: u64,
     ) -> impl Future<Output = Result<()>> + Send;
-
-    // ── WebAuthn passkey credentials ─────────────────────────────────────────
-
-    fn create_webauthn_credential(
-        &self,
-        id: &str,
-        owner: &PasskeyOwner,
-        name: &str,
-        passkey_json: &str,
-    ) -> impl Future<Output = Result<WebauthnCredential>> + Send;
-
-    fn get_webauthn_credential(
-        &self,
-        id: &str,
-    ) -> impl Future<Output = Result<Option<WebauthnCredential>>> + Send;
-
-    /// The owner's passkeys: a user's through `user_id-index`, a member's through
-    /// `person_id-index`.
-    fn list_webauthn_credentials_by_owner(
-        &self,
-        owner: &PasskeyOwner,
-    ) -> impl Future<Output = Result<Vec<WebauthnCredential>>> + Send;
-
-    fn count_webauthn_credentials_by_owner(
-        &self,
-        owner: &PasskeyOwner,
-    ) -> impl Future<Output = Result<usize>> + Send;
-
-    fn update_webauthn_credential(
-        &self,
-        id: &str,
-        change: WebauthnCredentialUpdate,
-    ) -> impl Future<Output = Result<()>> + Send;
-
-    fn delete_webauthn_credential(&self, id: &str) -> impl Future<Output = Result<()>> + Send;
-
-    // ── WebAuthn challenge state ──────────────────────────────────────────────
-
-    fn put_webauthn_state(
-        &self,
-        id: &str,
-        kind: &str,
-        user_id: Option<&str>,
-        state_json: &str,
-        expires_at: u64,
-    ) -> impl Future<Output = Result<()>> + Send;
-
-    fn get_webauthn_state(
-        &self,
-        id: &str,
-    ) -> impl Future<Output = Result<Option<WebauthnState>>> + Send;
-
-    fn delete_webauthn_state(&self, id: &str) -> impl Future<Output = Result<()>> + Send;
 
     // ── Generic ephemeral state ───────────────────────────────────────────────
 
