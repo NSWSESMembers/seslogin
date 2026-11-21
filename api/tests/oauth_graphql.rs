@@ -27,7 +27,7 @@ const HOST: &str = "api.seslogin.com";
 /// Mint and store a grant for `user_id` bound to `resource`; returns
 /// `(grant_id, access_token)`.
 async fn grant_for(app: &App, user_id: &str, resource: &str) -> (String, String) {
-    use seslogin::db::Handler as _;
+    use seslogin::db::OAuthGrantStore as _;
     let (grant, access_token, _refresh) = oauth::mint_grant(
         &oauth::GrantSubject::User(user_id.to_string()),
         "tally",
