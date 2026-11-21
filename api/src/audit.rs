@@ -32,6 +32,8 @@ use std::future::Future;
 use serde_json::{Value, json};
 use tracing::{error, warn};
 
+mod trophies;
+
 use crate::auth::AuthInfo;
 use crate::db::{
     self, ApiToken, AuditAction, AuditEntityType, AuditEntry, AuditFieldChange, Category,
@@ -2000,37 +2002,6 @@ impl<D: db::Handler> db::Handler for AuditingHandler<D> {
     // Not audited: the key is derived from the email, which is audited when it is set.
     async fn stamp_person_email_key(&self, id: &str, email: &str) -> db::Result<()> {
         self.inner.stamp_person_email_key(id, email).await
-    }
-
-    async fn list_trophy_holders(&self, location_id: &str) -> db::Result<Vec<db::TrophyHolder>> {
-        self.inner.list_trophy_holders(location_id).await
-    }
-
-    async fn list_trophy_reigns(
-        &self,
-        location_id: &str,
-        trophy_id: &str,
-        limit: usize,
-    ) -> db::Result<Vec<db::TrophyReign>> {
-        self.inner
-            .list_trophy_reigns(location_id, trophy_id, limit)
-            .await
-    }
-
-    async fn write_trophy(&self, write: db::TrophyWrite) -> db::Result<()> {
-        self.inner.write_trophy(write).await
-    }
-
-    async fn list_trophy_notices(
-        &self,
-        location_id: &str,
-        person_id: &str,
-    ) -> db::Result<Vec<db::TrophyNotice>> {
-        self.inner.list_trophy_notices(location_id, person_id).await
-    }
-
-    async fn delete_trophy_notices(&self, notices: &[db::TrophyNotice]) -> db::Result<()> {
-        self.inner.delete_trophy_notices(notices).await
     }
 
     async fn put_audit_entry(&self, entry: &AuditEntry) -> db::Result<()> {
