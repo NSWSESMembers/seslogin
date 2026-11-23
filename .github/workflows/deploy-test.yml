@@ -86,8 +86,20 @@ jobs:
           role-to-assume: ${{ env.DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Deploy to S3
-        run: aws s3 sync --follow-symlinks --delete ./web/dist s3://seslogin-test-web-641079927221
+      # Upload in three stages so S3 never holds an index.html whose assets are
+      # missing: a missing asset is answered with index.html (the SPA fallback
+      # turns 403/404 into a 200), which a browser can then cache under the
+      # hashed asset URL and load as a script. Old assets are never deleted, so
+      # pages still on the old index.html (CloudFront caches it for up to 5
+      # minutes) keep working.
+      - name: Deploy assets to S3
+        run: aws s3 sync --follow-symlinks ./web/dist/assets s3://seslogin-test-web-641079927221/assets
+
+      - name: Deploy other files to S3
+        run: aws s3 sync --follow-symlinks --delete --exclude "assets/*" --exclude index.html ./web/dist s3://seslogin-test-web-641079927221
+
+      - name: Deploy index.html to S3
+        run: aws s3 cp ./web/dist/index.html s3://seslogin-test-web-641079927221/index.html
 
       - name: Invalidate CloudFront
         run: aws cloudfront create-invalidation --distribution-id "E3HQAX3Z0AQJDM" --paths "/*"
