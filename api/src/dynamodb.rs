@@ -594,6 +594,114 @@ impl TryInto<Session> for Item {
     }
 }
 
+/// The row and the [`Session`] for a new key-enrolled session.
+fn new_session_item(
+    location_id: &str,
+    name: &str,
+    config: &serde_json::Map<String, serde_json::Value>,
+    healthcheck_url: Option<&str>,
+    key: db::SessionKeyParams<'_>,
+    now: u64,
+) -> db::Result<(HashMap<String, AttributeValue>, Session)> {
+    let id = new_id();
+    let serialized_config =
+        serde_json::to_string(config).map_err(|e| Error::TypeConversion(e.to_string()))?;
+    let mut item = HashMap::from([
+        ("id".to_string(), AttributeValue::S(id.clone())),
+        ("name".to_string(), AttributeValue::S(name.to_string())),
+        (
+            "location_id".to_string(),
+            AttributeValue::S(location_id.to_string()),
+        ),
+        (
+            "last_contact".to_string(),
+            AttributeValue::N(now.to_string()),
+        ),
+        ("config".to_string(), AttributeValue::S(serialized_config)),
+        ("created_at".to_string(), AttributeValue::N(now.to_string())),
+        ("updated_at".to_string(), AttributeValue::N(now.to_string())),
+        ("active".to_string(), AttributeValue::N("1".to_string())),
+        ("v".to_string(), AttributeValue::N("1".to_string())),
+        (
+            "public_key".to_string(),
+            AttributeValue::S(key.public_key.to_string()),
+        ),
+        (
+            "key_fingerprint".to_string(),
+            AttributeValue::S(key.fingerprint.to_string()),
+        ),
+        (
+            "key_expires_at".to_string(),
+            AttributeValue::N(key.expires_at.to_string()),
+        ),
+    ]);
+    if let Some(healthcheck_url) = healthcheck_url {
+        item.insert(
+            "healthcheck_url".to_string(),
+            AttributeValue::S(healthcheck_url.to_string()),
+        );
+    }
+    let session = Session {
+        id,
+        name: name.to_string(),
+        location_id: location_id.to_string(),
+        active: true,
+        last_contact: Some(now),
+        client_version: None,
+        // A kiosk reports itself on its first authenticated request, not at creation.
+        client_info: None,
+        client_info_updated_at: None,
+        config: config.clone(),
+        healthcheck_url: healthcheck_url.map(str::to_string),
+        public_key: Some(key.public_key.to_string()),
+        key_fingerprint: Some(key.fingerprint.to_string()),
+        key_expires_at: Some(key.expires_at),
+        key_released_at: None,
+        retired_at: None,
+        version: 1,
+        created_at: Some(now),
+        updated_at: Some(now),
+    };
+    Ok((item, session))
+}
+
+/// A condition that a session row is still at `version`, as hydrated: a row written
+/// before sessions were versioned has no `v` and hydrates as 0. With the `:v` value to
+/// bind, when the condition needs one.
+fn version_condition(version: u64) -> (&'static str, Option<AttributeValue>) {
+    if version == 0 {
+        ("attribute_not_exists(v)", None)
+    } else {
+        ("v = :v", Some(AttributeValue::N(version.to_string())))
+    }
+}
+
+/// Which item of a [`db::Handler::bind_session_key`] transaction made it fail: the
+/// enrollment delete first, then one release per holder, then the target. `Err(())`
+/// when it was cancelled by a concurrent transaction rather than a failed condition,
+/// `None` when it wasn't cancelled at all.
+fn bind_conflict(
+    e: &SdkError<aws_sdk_dynamodb::operation::transact_write_items::TransactWriteItemsError>,
+    holders: usize,
+) -> Option<Result<db::SessionKeyBindConflict, ()>> {
+    let SdkError::ServiceError(se) = e else {
+        return None;
+    };
+    let aws_sdk_dynamodb::operation::transact_write_items::TransactWriteItemsError::TransactionCanceledException(tce) = se.err() else {
+        return None;
+    };
+    let reasons = tce.cancellation_reasons();
+    let failed = reasons
+        .iter()
+        .position(|r| r.code() == Some("ConditionalCheckFailed"));
+    Some(match failed {
+        Some(0) => Ok(db::SessionKeyBindConflict::Enrollment),
+        Some(i) if i <= holders => Ok(db::SessionKeyBindConflict::Holder),
+        Some(_) => Ok(db::SessionKeyBindConflict::Target),
+        None => Err(()),
+    })
+}
+
 /// The new session version from an `update_item` that ran `ADD v :one` with
 /// `ReturnValues::UpdatedNew`.
 fn returned_version(attributes: Option<&HashMap<String, AttributeValue>>) -> db::Result<u64> {
@@ -3148,69 +3256,193 @@ impl db::Handler for Handler {
         if self.read_only {
             return Err(db::Error::MutationDisabled);
         }
-        let id = new_id();
-        let unix_time = crate::clock::now_sec();
-        let serialized_config =
-            serde_json::to_string(config).map_err(|e| Error::TypeConversion(e.to_string()))?;
-
-        let mut request = self
+        let (item, session) = new_session_item(
+            location_id,
+            name,
+            config,
+            healthcheck_url,
+            key,
+            crate::clock::now_sec(),
+        )?;
+        let resp = self
             .client
             .put_item()
             .table_name(self.table_name("session"))
-            .item("id", AttributeValue::S(id.clone()))
-            .item("name", AttributeValue::S(name.to_string()))
-            .item("location_id", AttributeValue::S(location_id.to_string()))
-            .item("last_contact", AttributeValue::N(unix_time.to_string()))
-            .item("config", AttributeValue::S(serialized_config))
-            .item("created_at", AttributeValue::N(unix_time.to_string()))
-            .item("updated_at", AttributeValue::N(unix_time.to_string()))
-            .item("active", AttributeValue::N("1".to_string()))
-            .item("v", AttributeValue::N("1".to_string()))
-            .item("public_key", AttributeValue::S(key.public_key.to_string()))
-            .item(
-                "key_fingerprint",
-                AttributeValue::S(key.fingerprint.to_string()),
-            )
-            .item(
-                "key_expires_at",
-                AttributeValue::N(key.expires_at.to_string()),
-            );
-
-        if let Some(healthcheck_url) = healthcheck_url {
-            request = request.item(
-                "healthcheck_url",
-                AttributeValue::S(healthcheck_url.to_string()),
-            );
-        }
-
-        let resp = request
+            .set_item(Some(item))
             .return_consumed_capacity(ReturnConsumedCapacity::Total)
             .send()
             .await
             .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
         record_capacity("create_session", resp.consumed_capacity(), CapKind::Write);
+        Ok(session)
+    }
 
-        Ok(Session {
-            id,
-            name: name.to_string(),
-            location_id: location_id.to_string(),
-            active: true,
-            last_contact: Some(unix_time),
-            client_version: None,
-            // A kiosk reports itself on its first authenticated request, not at creation.
-            client_info: None,
-            client_info_updated_at: None,
-            config: config.clone(),
-            healthcheck_url: healthcheck_url.map(str::to_string),
-            public_key: Some(key.public_key.to_string()),
-            key_fingerprint: Some(key.fingerprint.to_string()),
-            key_expires_at: Some(key.expires_at),
-            key_released_at: None,
-            retired_at: None,
-            version: 1,
-            created_at: Some(unix_time),
-            updated_at: Some(unix_time),
-        })
+    async fn bind_session_key(
+        &self,
+        bind: db::SessionKeyBind<'_>,
+    ) -> db::Result<Result<db::SessionKeyBound, db::SessionKeyBindConflict>> {
+        use aws_sdk_dynamodb::types::{Delete, Put, TransactWriteItem, Update};
+        if self.read_only {
+            return Err(db::Error::MutationDisabled);
+        }
+        let build_err =
+            |e: aws_sdk_dynamodb::error::BuildError| Error::Infrastructure(e.to_string());
+        let sessions = self.table_name("session");
+        let now = AttributeValue::N(bind.now.to_string());
+        let one = AttributeValue::N("1".to_string());
+        let fp = AttributeValue::S(bind.key.fingerprint.to_string());
+        let mut items = Vec::with_capacity(bind.release.len() + 2);
+
+        // Consume the pending enrollment, so of two binds of one device only one can win.
+        items.push(
+            TransactWriteItem::builder()
+                .delete(
+                    Delete::builder()
+                        .table_name(self.table_name("ephemeral_state"))
+                        .key("id", AttributeValue::S(bind.enrollment_id.to_string()))
+                        .condition_expression(
+                            "attribute_exists(id) AND #kind = :kind AND expires_at > :now",
+                        )
+                        .expression_attribute_names("#kind", "kind")
+                        .expression_attribute_values(
+                            ":kind",
+                            AttributeValue::S(crate::session_key::ENROLL_STATE_KIND.to_string()),
+                        )
+                        .expression_attribute_values(":now", now.clone())
+                        .build()
+                        .map_err(build_err)?,
+                )
+                .build(),
+        );
+
+        // Release the key from every other holder, as `SessionUpdateShape::ReleaseKey`
+        // does, while each still holds it at the version read.
+        for holder in bind.release {
+            let (cond, version) = version_condition(holder.version);
+            let mut update = Update::builder()
+                .table_name(&sessions)
+                .key("id", AttributeValue::S(holder.id.clone()))
+                .condition_expression(format!("key_fingerprint = :fp AND {cond}"))
+                .update_expression(
+                    "SET updated_at = :now, key_released_at = :now \
+                     REMOVE key_fingerprint, public_key, key_expires_at ADD v :one",
+                )
+                .expression_attribute_values(":fp", fp.clone())
+                .expression_attribute_values(":now", now.clone())
+                .expression_attribute_values(":one", one.clone());
+            if let Some(version) = version {
+                update = update.expression_attribute_values(":v", version);
+            }
+            items.push(
+                TransactWriteItem::builder()
+                    .update(update.build().map_err(build_err)?)
+                    .build(),
+            );
+        }
+
+        let session = match bind.target {
+            db::SessionKeyTarget::New {
+                location_id,
+                name,
+                config,
+                healthcheck_url,
+            } => {
+                let (item, session) = new_session_item(
+                    location_id,
+                    name,
+                    config,
+                    healthcheck_url,
+                    bind.key,
+                    bind.now,
+                )?;
+                items.push(
+                    TransactWriteItem::builder()
+                        .put(
+                            Put::builder()
+                                .table_name(&sessions)
+                                .set_item(Some(item))
+                                .condition_expression("attribute_not_exists(id)")
+                                .build()
+                                .map_err(build_err)?,
+                        )
+                        .build(),
+                );
+                session
+            }
+            db::SessionKeyTarget::Existing(existing) => {
+                // Conditional on `active` (a deleted or retired kiosk can't come back this
+                // way) and on the version the admin chose it at.
+                let (cond, version) = version_condition(existing.version);
+                let mut update = Update::builder()
+                    .table_name(&sessions)
+                    .key("id", AttributeValue::S(existing.id.clone()))
+                    .condition_expression(format!("attribute_exists(active) AND {cond}"))
+                    .update_expression(
+                        "SET public_key = :pk, key_fingerprint = :fp, key_expires_at = :exp, \
+                         updated_at = :now REMOVE key_released_at ADD v :one",
+                    )
+                    .expression_attribute_values(
+                        ":pk",
+                        AttributeValue::S(bind.key.public_key.to_string()),
+                    )
+                    .expression_attribute_values(":fp", fp.clone())
+                    .expression_attribute_values(
+                        ":exp",
+                        AttributeValue::N(bind.key.expires_at.to_string()),
+                    )
+                    .expression_attribute_values(":now", now.clone())
+                    .expression_attribute_values(":one", one.clone());
+                if let Some(version) = version {
+                    update = update.expression_attribute_values(":v", version);
+                }
+                items.push(
+                    TransactWriteItem::builder()
+                        .update(update.build().map_err(build_err)?)
+                        .build(),
+                );
+                Session {
+                    public_key: Some(bind.key.public_key.to_string()),
+                    key_fingerprint: Some(bind.key.fingerprint.to_string()),
+                    key_expires_at: Some(bind.key.expires_at),
+                    key_released_at: None,
+                    version: existing.version + 1,
+                    updated_at: Some(bind.now),
+                    ..existing.clone()
+                }
+            }
+        };
+
+        let resp = match self
+            .client
+            .transact_write_items()
+            .set_transact_items(Some(items))
+            .return_consumed_capacity(ReturnConsumedCapacity::Total)
+            .send()
+            .await
+        {
+            Ok(resp) => resp,
+            Err(e) => {
+                return match bind_conflict(&e, bind.release.len()) {
+                    Some(Ok(conflict)) => Ok(Err(conflict)),
+                    Some(Err(())) => Err(Error::Conflict(format!(
+                        "another write to key {} was in progress",
+                        bind.key.fingerprint
+                    ))),
+                    None => Err(Error::Infrastructure(sdk_err_msg(e))),
+                };
+            }
+        };
+        for capacity in resp.consumed_capacity() {
+            record_capacity("bind_session_key", Some(capacity), CapKind::Write);
+        }
+        Ok(Ok(db::SessionKeyBound {
+            session,
+            released: bind
+                .release
+                .iter()
+                .map(|s| (s.id.clone(), s.version + 1))
+                .collect(),
+        }))
     }
 
     async fn update_session(
@@ -3344,21 +3576,27 @@ impl db::Handler for Handler {
                 record_capacity("update_session", resp.consumed_capacity(), CapKind::Write);
                 Ok(None)
             }
-            db::SessionUpdateShape::ExtendKey { expires_at } => {
+            db::SessionUpdateShape::ExtendKey {
+                expires_at,
+                fingerprint,
+            } => {
                 // The condition keeps the write honest: a soft-deleted session (no
                 // `active`) or one with no key (no `public_key`) can never grow a
-                // `key_expires_at` attribute, whatever the caller asks for.
+                // `key_expires_at` attribute, whatever the caller asks for, and one whose
+                // key has moved to another computer since it was read is left alone.
                 let resp = self
                     .client
                     .update_item()
                     .table_name(self.table_name("session"))
                     .key("id", AttributeValue::S(id.to_string()))
                     .condition_expression(
-                        "attribute_exists(active) AND attribute_exists(public_key)",
+                        "attribute_exists(active) AND attribute_exists(public_key) \
+                         AND key_fingerprint = :fp",
                     )
                     .update_expression(
                         "SET key_expires_at = :key_expires_at, updated_at = :updated_at",
                     )
+                    .expression_attribute_values(":fp", AttributeValue::S(fingerprint.to_string()))
                     .expression_attribute_values(
                         ":key_expires_at",
                         AttributeValue::N(expires_at.to_string()),
@@ -3370,7 +3608,14 @@ impl db::Handler for Handler {
                     .return_consumed_capacity(ReturnConsumedCapacity::Total)
                     .send()
                     .await
-                    .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
+                    .map_err(|e| {
+                        map_update_err(
+                            e,
+                            format!(
+                                "Session {id} is gone or no longer holds the key {fingerprint}"
+                            ),
+                        )
+                    })?;
                 record_capacity("update_session", resp.consumed_capacity(), CapKind::Write);
                 Ok(None)
             }

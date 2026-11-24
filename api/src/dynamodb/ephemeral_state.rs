@@ -2,7 +2,7 @@
 
 use anyhow::anyhow;
 use aws_sdk_dynamodb::error::SdkError;
-use aws_sdk_dynamodb::types::{AttributeValue, ReturnConsumedCapacity};
+use aws_sdk_dynamodb::types::{AttributeValue, ReturnConsumedCapacity, ReturnValue};
 
 use crate::db::{self, EphemeralState, Error};
 
@@ -114,5 +114,30 @@ impl db::EphemeralStateStore for Handler {
             .await
             .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
         Ok(())
+    }
+
+    async fn take_ephemeral_state(&self, id: &str) -> db::Result<Option<EphemeralState>> {
+        if self.read_only {
+            return Err(db::Error::MutationDisabled);
+        }
+        // Deletes of one item are serialised, so only one concurrent caller gets the old item back.
+        let resp = self
+            .client
+            .delete_item()
+            .table_name(self.table_name("ephemeral_state"))
+            .key("id", AttributeValue::S(id.to_string()))
+            .return_values(ReturnValue::AllOld)
+            .return_consumed_capacity(ReturnConsumedCapacity::Total)
+            .send()
+            .await
+            .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
+        record_capacity(
+            "take_ephemeral_state",
+            resp.consumed_capacity(),
+            CapKind::Write,
+        );
+        let taken: Option<EphemeralState> =
+            resp.attributes.map(|a| Item(a).try_into()).transpose()?;
+        Ok(taken)
     }
 }

@@ -225,6 +225,13 @@ impl db::Handler for Handler {
         Self::unsupported()
     }
 
+    async fn bind_session_key(
+        &self,
+        _bind: db::SessionKeyBind<'_>,
+    ) -> db::Result<Result<db::SessionKeyBound, db::SessionKeyBindConflict>> {
+        Self::unsupported()
+    }
+
     async fn get_api_token(&self, _id: &str) -> db::Result<Option<ApiToken>> {
         Self::unsupported()
     }

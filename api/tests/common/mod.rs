@@ -717,12 +717,106 @@ impl db::Handler for FakeDb {
                 session.key_expires_at = None;
                 session.retired_at = Some(seslogin::clock::now_sec());
             }
-            db::SessionUpdateShape::Info { .. } | db::SessionUpdateShape::ExtendKey { .. } => {
-                return unsupported();
+            // The same conditions as the real conditional write; doesn't bump `version`.
+            db::SessionUpdateShape::ExtendKey {
+                expires_at,
+                fingerprint,
+            } => {
+                if !session.active
+                    || session.public_key.is_none()
+                    || session.key_fingerprint.as_deref() != Some(fingerprint)
+                {
+                    return Err(db::Error::NotFound(format!(
+                        "session {id} no longer holds {fingerprint}"
+                    )));
+                }
+                session.key_expires_at = Some(expires_at);
+                return Ok(None);
             }
+            db::SessionUpdateShape::Info { .. } => return unsupported(),
         }
         session.version += 1;
         Ok(Some(session.version))
+    }
+    /// All or nothing under both locks, with the real transaction's conditions.
+    async fn bind_session_key(
+        &self,
+        bind: db::SessionKeyBind<'_>,
+    ) -> db::Result<Result<db::SessionKeyBound, db::SessionKeyBindConflict>> {
+        let mut pending = self.ephemeral_state.lock().unwrap();
+        let mut sessions = self.sessions.lock().unwrap();
+        if !pending.get(bind.enrollment_id).is_some_and(|s| {
+            s.kind == seslogin::session_key::ENROLL_STATE_KIND && s.expires_at > bind.now
+        }) {
+            return Ok(Err(db::SessionKeyBindConflict::Enrollment));
+        }
+        let holds = |held: Option<&db::Session>, read: &db::Session| {
+            held.is_some_and(|s| {
+                s.key_fingerprint.as_deref() == Some(bind.key.fingerprint)
+                    && s.version == read.version
+            })
+        };
+        if !bind.release.iter().all(|r| holds(sessions.get(&r.id), r)) {
+            return Ok(Err(db::SessionKeyBindConflict::Holder));
+        }
+        if let db::SessionKeyTarget::Existing(existing) = bind.target
+            && !sessions
+                .get(&existing.id)
+                .is_some_and(|s| s.active && s.version == existing.version)
+        {
+            return Ok(Err(db::SessionKeyBindConflict::Target));
+        }
+
+        pending.remove(bind.enrollment_id);
+        let mut released = Vec::new();
+        for r in bind.release {
+            let s = sessions.get_mut(&r.id).unwrap();
+            s.key_fingerprint = None;
+            s.public_key = None;
+            s.key_expires_at = None;
+            s.key_released_at = Some(bind.now);
+            s.version += 1;
+            released.push((s.id.clone(), s.version));
+        }
+        let session = match bind.target {
+            db::SessionKeyTarget::New {
+                location_id,
+                name,
+                config,
+                healthcheck_url,
+            } => db::Session {
+                id: format!("created-{}", sessions.len() + 1),
+                name: name.to_string(),
+                location_id: location_id.to_string(),
+                active: true,
+                last_contact: None,
+                client_version: None,
+                client_info: None,
+                client_info_updated_at: None,
+                config: config.clone(),
+                healthcheck_url: healthcheck_url.map(str::to_string),
+                public_key: Some(bind.key.public_key.to_string()),
+                key_fingerprint: Some(bind.key.fingerprint.to_string()),
+                key_expires_at: Some(bind.key.expires_at),
+                key_released_at: None,
+                retired_at: None,
+                version: 1,
+                created_at: Some(bind.now),
+                updated_at: Some(bind.now),
+            },
+            db::SessionKeyTarget::Existing(existing) => {
+                let mut s = sessions[&existing.id].clone();
+                s.public_key = Some(bind.key.public_key.to_string());
+                s.key_fingerprint = Some(bind.key.fingerprint.to_string());
+                s.key_expires_at = Some(bind.key.expires_at);
+                s.key_released_at = None;
+                s.version += 1;
+                s.updated_at = Some(bind.now);
+                s
+            }
+        };
+        sessions.insert(session.id.clone(), session.clone());
+        Ok(Ok(db::SessionKeyBound { session, released }))
     }
     async fn get_api_token(&self, id: &str) -> db::Result<Option<db::ApiToken>> {
         Ok(self.api_tokens.lock().unwrap().get(id).cloned())

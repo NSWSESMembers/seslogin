@@ -416,6 +416,60 @@ pub struct SessionKeyParams<'a> {
     pub expires_at: u64,
 }
 
+/// Bind a scanned device's key to a session, as one atomic write
+/// ([`Handler::bind_session_key`]): consume the device's pending enrollment, release the
+/// key from every other session holding it, and create a new session or move an
+/// existing one onto it. Either all of it happens or none of it does.
+#[derive(Clone, Copy, Debug)]
+pub struct SessionKeyBind<'a> {
+    /// The device's pending-enrollment `ephemeral_state` id. Deleted by the write, which
+    /// fails unless it is still there, a kiosk enrollment, and unexpired at `now`.
+    pub enrollment_id: &'a str,
+    pub now: u64,
+    pub key: SessionKeyParams<'a>,
+    /// The other sessions holding `key.fingerprint`, as read. Each is released (as
+    /// [`SessionUpdateShape::ReleaseKey`] does), and the write fails unless each still
+    /// holds it at the version read.
+    pub release: &'a [Session],
+    pub target: SessionKeyTarget<'a>,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum SessionKeyTarget<'a> {
+    /// Create a session holding the key.
+    New {
+        location_id: &'a str,
+        name: &'a str,
+        config: &'a serde_json::Map<String, serde_json::Value>,
+        healthcheck_url: Option<&'a str>,
+    },
+    /// Move this session, as read, onto the key: an admin replacing a kiosk's computer,
+    /// so it keeps its name, location and config. Clears `key_released_at`. The write
+    /// fails unless it is still `active` at the version read.
+    Existing(&'a Session),
+}
+
+/// What [`Handler::bind_session_key`] wrote.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SessionKeyBound {
+    /// The session now holding the key, as written.
+    pub session: Session,
+    /// (id, version after) of each session the key was released from.
+    pub released: Vec<(String, u64)>,
+}
+
+/// Which part of a [`SessionKeyBind`] had changed since it was read, so nothing was written.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SessionKeyBindConflict {
+    /// The pending enrollment is gone or expired: someone else set the device up, or it
+    /// left its QR code screen.
+    Enrollment,
+    /// A session to release no longer holds the key at the version read.
+    Holder,
+    /// The existing session was deleted or changed.
+    Target,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct ApiToken {
     pub id: String,
@@ -543,8 +597,12 @@ pub enum SessionUpdateShape<'a> {
     /// Set `key_expires_at` outright (kiosk reactivation). Deliberately leaves
     /// `last_contact` alone, so the admin status dot keeps telling the truth and the
     /// throttle in `auth::touch_session` stays open for the kiosk's redeeming request.
+    ///
+    /// Fails with [`Error::NotFound`] unless the row still holds `fingerprint`, so a
+    /// reactivation can't extend a key that moved to another computer meanwhile.
     ExtendKey {
         expires_at: u64,
+        fingerprint: &'a str,
     },
     /// Drop the key fields from a session that is *not* being deleted, freeing its
     /// `key_fingerprint-index` slot so the same device can enroll into a fresh session,
@@ -1296,6 +1354,13 @@ pub trait Handler:
         id: &str,
         change: SessionUpdateShape<'_>,
     ) -> impl Future<Output = Result<Option<u64>>> + Send;
+    /// See [`SessionKeyBind`]. The inner `Err` names what had changed since it was read;
+    /// nothing is written then. A concurrent transaction on the same rows is
+    /// [`Error::Conflict`].
+    fn bind_session_key(
+        &self,
+        bind: SessionKeyBind<'_>,
+    ) -> impl Future<Output = Result<std::result::Result<SessionKeyBound, SessionKeyBindConflict>>> + Send;
 
     /// Strongly consistent, so a token is verifiable the moment it's created.
     fn get_api_token(&self, id: &str) -> impl Future<Output = Result<Option<ApiToken>>> + Send;

@@ -1,7 +1,7 @@
 import { graphql, useMutation } from "react-relay";
 import { TextLink } from "../components/ui/TextLink";
 import { useSearchParams } from "react-router";
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import SessionForm from "../admin/components/SessionForm";
 import { NEW_SESSION_CONFIG } from "../admin/components/sessionConfig";
 import { useUserInfo } from "../admin/components/useUserInfo";
@@ -15,6 +15,15 @@ import {
 } from "../components/ui/Panel";
 import type { SessionEnrollQuery } from "./__generated__/SessionEnrollQuery.graphql";
 import type { SessionEnrollMutation } from "./__generated__/SessionEnrollMutation.graphql";
+import type { SessionEnrollReplaceMutation } from "./__generated__/SessionEnrollReplaceMutation.graphql";
+import type { SessionEnrollKiosksQuery } from "./__generated__/SessionEnrollKiosksQuery.graphql";
+import { FieldList, FormField } from "../components/ui/FormField";
+import RelayErrorBoundary from "../components/RelayErrorBoundary";
+import { OptionList, OptionRow } from "../components/ui/OptionList";
+import Select from "../components/ui/Select";
+import { Button } from "../components/ui/Button";
+import LoadingIndicator from "../components/LoadingIndicator";
+import { formatFullDateTime } from "../lib/time";
 
 /**
  * Standalone page reached by scanning a kiosk's enrollment QR code (see EnrollApp.tsx
@@ -23,7 +32,8 @@ import type { SessionEnrollMutation } from "./__generated__/SessionEnrollMutatio
  * creates a key-bound session via `enrollSession`.
  *
  * A device already enrolled as another kiosk can simply be enrolled again: the server
- * retires the old kiosk. This page says nothing about that kiosk — it may belong to a
+ * retires the old kiosk. Or it can replace an existing kiosk the admin manages, which keeps that kiosk's name and
+ * settings: for a computer that lost its key, so shows a QR code again. This page says nothing about that kiosk — it may belong to a
  * location this admin has no access to, and the QR code is not a way to look it up.
  */
 export default function SessionEnroll() {
@@ -48,7 +58,8 @@ function SessionEnrollForm({ fingerprint }: { fingerprint: string }) {
   const enabledLocations = locations
     .filter((loc) => loc.enabled)
     .sort((a, b) => a.name.localeCompare(b.name));
-  const [enrolled, setEnrolled] = useState(false);
+  const [done, setDone] = useState<"enrolled" | "replaced" | null>(null);
+  const [replacing, setReplacing] = useState(false);
 
   const data = useRetryableLazyLoadQuery<SessionEnrollQuery>(
     graphql`
@@ -111,14 +122,15 @@ function SessionEnrollForm({ fingerprint }: { fingerprint: string }) {
       return;
     }
 
-    setEnrolled(true);
+    setDone("enrolled");
   }
 
-  if (enrolled) {
+  if (done) {
     return (
-      <Notice title="Kiosk enrolled">
-        The kiosk screen will switch over automatically within a few seconds.
-        You can close this page, or head to{" "}
+      <Notice title={done === "replaced" ? "Kiosk replaced" : "Kiosk enrolled"}>
+        The kiosk screen will switch over automatically within a few seconds
+        {done === "replaced" ? ", keeping its name and settings" : ""}. You can
+        close this page, or head to{" "}
         <TextLink to="/admin/sessions">the kiosks list</TextLink>.
       </Notice>
     );
@@ -152,17 +164,250 @@ function SessionEnrollForm({ fingerprint }: { fingerprint: string }) {
           automatically, no code required.
         </PanelIntro>
 
-        <SessionForm
-          initialName=""
-          initialConfig={NEW_SESSION_CONFIG}
-          initialHealthcheckUrl=""
-          locations={enabledLocations}
-          showHealthcheckUrl={false}
-          isMutationInFlight={isMutationInFlight}
-          onSubmit={handleSubmit}
-        />
+        <OptionList role="radiogroup" aria-label="New or replacement">
+          <OptionRow
+            input={
+              <input
+                type="radio"
+                name="replacing"
+                checked={!replacing}
+                onChange={() => setReplacing(false)}
+                className="mt-0.5"
+              />
+            }
+            title="New kiosk"
+            description="set this computer up as a kiosk of its own"
+          />
+          <OptionRow
+            input={
+              <input
+                type="radio"
+                name="replacing"
+                checked={replacing}
+                onChange={() => setReplacing(true)}
+                className="mt-0.5"
+              />
+            }
+            title="Replace an existing kiosk"
+            description="this computer takes over a kiosk that's already set up, keeping its name and settings; use it when a kiosk that was working shows its QR code again"
+          />
+        </OptionList>
+
+        {replacing ? (
+          <ReplaceKioskForm
+            fingerprint={fingerprint}
+            locations={enabledLocations}
+            onReplaced={() => setDone("replaced")}
+          />
+        ) : (
+          <SessionForm
+            initialName=""
+            initialConfig={NEW_SESSION_CONFIG}
+            initialHealthcheckUrl=""
+            locations={enabledLocations}
+            showHealthcheckUrl={false}
+            isMutationInFlight={isMutationInFlight}
+            onSubmit={handleSubmit}
+          />
+        )}
       </PanelBox>
     </Panel>
+  );
+}
+
+/** A kiosk this computer could take over. */
+type ReplaceableKiosk = {
+  id: string;
+  name: string;
+  lastContact?: number | null;
+  version: number;
+};
+
+/** Seen this recently, a kiosk is probably still running on another computer (the kiosk list's "online" band). */
+const RECENT_CONTACT_SECS = 20 * 60;
+
+/** Pick a location, then one of its kiosks for this computer to take over. */
+function ReplaceKioskForm({
+  fingerprint,
+  locations,
+  onReplaced,
+}: {
+  fingerprint: string;
+  locations: ReadonlyArray<{ readonly id: string; readonly name: string }>;
+  onReplaced: () => void;
+}) {
+  const { notifyError } = useNotify();
+  const [locationId, setLocationId] = useState("");
+  const [kiosk, setKiosk] = useState<ReplaceableKiosk | null>(null);
+  // Bumped to refetch the kiosk list after a replace is refused because a kiosk changed.
+  const [listKey, setListKey] = useState(0);
+  const [commitReplace, isReplaceInFlight] =
+    useMutation<SessionEnrollReplaceMutation>(graphql`
+      mutation SessionEnrollReplaceMutation(
+        $id: ID!
+        $keyFingerprint: String!
+        $expectedVersion: Int!
+      ) {
+        replaceSessionDevice(
+          id: $id
+          keyFingerprint: $keyFingerprint
+          expectedVersion: $expectedVersion
+        ) {
+          id
+          keyEnrolled
+          keyExpiresAt
+          keyReleasedAt
+          reactivatable
+        }
+      }
+    `);
+
+  async function handleSubmit() {
+    if (kiosk == null) return;
+    const recent =
+      kiosk.lastContact != null &&
+      Date.now() / 1000 - kiosk.lastContact < RECENT_CONTACT_SECS;
+    const confirmed = confirm(
+      `Move ${kiosk.name} to this computer? It keeps its name and settings. ` +
+        (recent
+          ? `It was in use within the last 20 minutes, so the computer it's on now will stop working and show its QR code.`
+          : `If another computer is still using it, that one will stop working.`),
+    );
+    if (!confirmed) return;
+    try {
+      await new Promise((resolve, reject) => {
+        commitReplace({
+          variables: {
+            id: kiosk.id,
+            keyFingerprint: fingerprint,
+            expectedVersion: kiosk.version,
+          },
+          onCompleted: resolve,
+          onError: reject,
+          // A kiosk elsewhere in the list may have given up this computer's key.
+          updater: (store) => store.get(locationId)?.invalidateRecord(),
+        });
+      });
+    } catch (err) {
+      notifyError(err, "Couldn't replace kiosk");
+      // What the admin chose from may be out of date: show the kiosks as they are now.
+      setKiosk(null);
+      setListKey((key) => key + 1);
+      return;
+    }
+    onReplaced();
+  }
+
+  return (
+    <form action={handleSubmit}>
+      <FieldList>
+        <FormField label={<label htmlFor="replaceLocationId">Location</label>}>
+          <Select
+            id="replaceLocationId"
+            required
+            value={locationId}
+            onChange={(e) => {
+              setLocationId(e.target.value);
+              setKiosk(null);
+            }}
+          >
+            <option value="" disabled>
+              Select a location…
+            </option>
+            {locations.map((location) => (
+              <option key={location.id} value={location.id}>
+                {location.name}
+              </option>
+            ))}
+          </Select>
+        </FormField>
+        {locationId && (
+          <FormField label={<span>Kiosk</span>}>
+            <RelayErrorBoundary canRetry>
+              <Suspense fallback={<LoadingIndicator />}>
+                <KioskChoice
+                  locationId={locationId}
+                  fetchKey={listKey}
+                  selectedId={kiosk?.id ?? null}
+                  onSelect={setKiosk}
+                />
+              </Suspense>
+            </RelayErrorBoundary>
+          </FormField>
+        )}
+        <FormField>
+          <Button type="submit" disabled={kiosk == null || isReplaceInFlight}>
+            Replace kiosk
+          </Button>
+        </FormField>
+      </FieldList>
+    </form>
+  );
+}
+
+function KioskChoice({
+  locationId,
+  fetchKey,
+  selectedId,
+  onSelect,
+}: {
+  locationId: string;
+  fetchKey: number;
+  selectedId: string | null;
+  onSelect: (kiosk: ReplaceableKiosk) => void;
+}) {
+  const data = useRetryableLazyLoadQuery<SessionEnrollKiosksQuery>(
+    graphql`
+      query SessionEnrollKiosksQuery($location: ID!) @throwOnFieldError {
+        location(id: $location) {
+          viewerCanEdit
+          sessions {
+            id
+            name
+            lastContact
+            version
+          }
+        }
+      }
+    `,
+    { location: locationId },
+    // Always fresh: the confirmation and the replace's version check go by what this shows.
+    { fetchKey, fetchPolicy: "store-and-network" },
+  );
+  const sessions = data.location?.viewerCanEdit ? data.location.sessions : [];
+
+  if (sessions.length === 0) {
+    return (
+      <p className="m-0 text-ink-muted">
+        No kiosks you can replace at this location.
+      </p>
+    );
+  }
+
+  return (
+    <OptionList role="radiogroup" aria-label="Kiosk">
+      {sessions.map((session) => (
+        <OptionRow
+          key={session.id}
+          input={
+            <input
+              type="radio"
+              name="sessionId"
+              value={session.id}
+              checked={selectedId === session.id}
+              onChange={() => onSelect(session)}
+              className="mt-0.5"
+            />
+          }
+          title={session.name}
+          description={
+            session.lastContact
+              ? `last seen ${formatFullDateTime(new Date(session.lastContact * 1000))}`
+              : "never seen"
+          }
+        />
+      ))}
+    </OptionList>
   );
 }
 

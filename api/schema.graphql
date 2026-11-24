@@ -652,6 +652,18 @@ type MutationRoot {
 	who may have no access to that location.
 	"""
 	enrollSession(name: String!, locationId: ID!, config: String, healthcheckUrl: String, keyFingerprint: String!): Session!
+	"""
+	Like [`Self::enroll_session`], but the scanned device takes over an existing kiosk instead of becoming a new
+	one, keeping its name, location, config and history. For a kiosk whose computer lost its key (eg its browser
+	storage was cleared) and so shows its QR code again with a new one. Any device still on the old key stops
+	working; any other session holding the new key releases it, as in `enrollSession`.
+	"""
+	replaceSessionDevice(		id: ID!,		keyFingerprint: String!,
+		"""
+		The kiosk's `version` when the admin chose it. Refused if it has changed since, so the admin decides with what is true now (eg that it isn't back online).
+		"""
+		expectedVersion: Int!
+	): Session!
 	createApiToken(name: String!, locationGrants: [String!]!, readOnly: Boolean!, expiresAt: Int): CreateApiTokenResult!
 	updateApiToken(id: ID!, name: String!, locationGrants: [String!]!, readOnly: Boolean!, expiresAt: Int): ApiToken!
 	revokeApiToken(id: ID!): Boolean!

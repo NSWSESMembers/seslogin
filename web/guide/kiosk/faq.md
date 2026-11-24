@@ -18,7 +18,8 @@ delete the entry if it shouldn't count.
 
 The kiosk needs setting up again, usually because it's been switched off for a
 while. Let your unit's administrators know. They can bring it back in a minute
-(see [When a kiosk expires](../admin/kiosks.md#when-a-kiosk-expires)).
+(see [When a kiosk expires](../admin/kiosks.md#when-a-kiosk-expires) and [When a
+working kiosk shows its QR code again](../admin/kiosks.md#when-a-working-kiosk-shows-its-qr-code-again)).
 
 ## The kiosk says its clock is wrong
 

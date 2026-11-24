@@ -16,7 +16,7 @@ use async_graphql::Request;
 use common::{FakeDb, fake_app, seed_location, seed_user};
 use seslogin::app::MyApp;
 use seslogin::auth::AuthInfo;
-use seslogin::db::{self, EphemeralStateStore as _};
+use seslogin::db::{self, EphemeralStateStore as _, Handler as _};
 use seslogin::graphql;
 use seslogin::mockmail;
 use seslogin::mockqueue;
@@ -231,4 +231,196 @@ async fn re_enrolling_a_live_kiosk_tells_its_old_session_to_refetch() {
             },
         }
     );
+}
+
+/// A kiosk whose computer lost its key shows a QR code with a new one, and was also enrolled by mistake as a
+/// new session. Replacing moves the new key onto the original kiosk, keeping it, and releases the mistake.
+#[tokio::test]
+async fn replacing_a_kiosks_device_moves_the_new_key_onto_it() {
+    let app = app_with_session();
+    app.db.sessions.lock().unwrap().extend([
+        (
+            "sess-old".to_string(),
+            session("sess-old", "loc-a", Some("fp-old")),
+        ),
+        (
+            "sess-dup".to_string(),
+            session("sess-dup", "loc-a", Some("fp-new")),
+        ),
+    ]);
+    app.db
+        .put_ephemeral_state(
+            &seslogin::session_key::enroll_state_id("fp-new"),
+            seslogin::session_key::ENROLL_STATE_KIND,
+            r#"{"public_key":"pk-new","submitted_at":0}"#,
+            u64::MAX,
+        )
+        .await
+        .unwrap();
+
+    let response = run(
+        &app,
+        auth(&["loc-a"], &[]),
+        r#"mutation { replaceSessionDevice(id: "sess-old", keyFingerprint: "fp-new", expectedVersion: 1) { id name keyFingerprint } }"#,
+    )
+    .await;
+    assert_eq!(
+        json(&response)["replaceSessionDevice"],
+        serde_json::json!({"id": "sess-old", "name": "Front desk", "keyFingerprint": "fp-new"})
+    );
+
+    let sessions = app.db.sessions.lock().unwrap();
+    assert_eq!(sessions["sess-old"].public_key.as_deref(), Some("pk-new"));
+    assert_eq!(sessions["sess-dup"].key_fingerprint, None);
+    assert!(sessions["sess-dup"].key_released_at.is_some());
+    drop(sessions);
+
+    let channels: Vec<String> =
+        app.realtime
+            .published()
+            .iter()
+            .map(|e| match e {
+                Event::EnrollmentCompleted { channel, .. }
+                | Event::SessionChanged { channel, .. } => channel.clone(),
+                other => panic!("unexpected {other:?}"),
+            })
+            .collect();
+    assert_eq!(
+        channels,
+        vec![
+            "kiosk-enroll:test:fp-new",
+            "kiosk:test:session:sess-dup",
+            "kiosk:test:session:sess-old",
+        ]
+    );
+}
+
+#[tokio::test]
+async fn replacing_a_kiosks_device_needs_admin_at_its_location() {
+    let app = app_with_session();
+    app.db.sessions.lock().unwrap().insert(
+        "sess-old".to_string(),
+        session("sess-old", "loc-a", Some("fp-old")),
+    );
+
+    for caller in [auth(&["loc-b"], &[]), auth(&[], &["loc-a"])] {
+        let response = run(
+            &app,
+            caller,
+            r#"mutation { replaceSessionDevice(id: "sess-old", keyFingerprint: "fp-new", expectedVersion: 1) { id } }"#,
+        )
+        .await;
+        assert!(!response.errors.is_empty());
+    }
+    assert_eq!(
+        app.db.sessions.lock().unwrap()["sess-old"]
+            .key_fingerprint
+            .as_deref(),
+        Some("fp-old")
+    );
+}
+
+/// Two admins scan the same QR code: one replaces a kiosk, the other enrols the device as new. The first claims the
+/// device's pending enrolment, so the second is refused and the key never ends up on two kiosks.
+#[tokio::test]
+async fn only_one_enrolment_of_a_device_succeeds() {
+    let app = app_with_session();
+    app.db.sessions.lock().unwrap().insert(
+        "sess-old".to_string(),
+        session("sess-old", "loc-a", Some("fp-old")),
+    );
+    app.db
+        .put_ephemeral_state(
+            &seslogin::session_key::enroll_state_id("fp-new"),
+            seslogin::session_key::ENROLL_STATE_KIND,
+            r#"{"public_key":"pk-new","submitted_at":0}"#,
+            u64::MAX,
+        )
+        .await
+        .unwrap();
+
+    let replaced = run(
+        &app,
+        auth(&["loc-a"], &[]),
+        r#"mutation { replaceSessionDevice(id: "sess-old", keyFingerprint: "fp-new", expectedVersion: 1) { id } }"#,
+    )
+    .await;
+    json(&replaced);
+    let enrolled = run(
+        &app,
+        auth(&["loc-a"], &[]),
+        r#"mutation { enrollSession(name: "New", locationId: "loc-a", keyFingerprint: "fp-new") { id } }"#,
+    )
+    .await;
+    assert!(!enrolled.errors.is_empty());
+
+    assert_eq!(
+        app.db
+            .get_session_id_by_key_fingerprint("fp-new")
+            .await
+            .unwrap(),
+        vec!["sess-old".to_string()]
+    );
+}
+
+/// The admin chose the kiosk at one version and it changed before they confirmed (eg it came back online and was
+/// renamed, or someone else replaced it): refused, and nothing is written, so the device can still be set up.
+#[tokio::test]
+async fn replacing_a_kiosk_that_changed_since_it_was_chosen_is_refused() {
+    let app = app_with_session();
+    app.db.sessions.lock().unwrap().extend([
+        (
+            "sess-old".to_string(),
+            db::Session {
+                version: 2,
+                ..session("sess-old", "loc-a", Some("fp-old"))
+            },
+        ),
+        (
+            "sess-dup".to_string(),
+            session("sess-dup", "loc-a", Some("fp-new")),
+        ),
+    ]);
+    let enrollment_id = seslogin::session_key::enroll_state_id("fp-new");
+    app.db
+        .put_ephemeral_state(
+            &enrollment_id,
+            seslogin::session_key::ENROLL_STATE_KIND,
+            r#"{"public_key":"pk-new","submitted_at":0}"#,
+            u64::MAX,
+        )
+        .await
+        .unwrap();
+
+    let response = run(
+        &app,
+        auth(&["loc-a"], &[]),
+        r#"mutation { replaceSessionDevice(id: "sess-old", keyFingerprint: "fp-new", expectedVersion: 1) { id } }"#,
+    )
+    .await;
+    assert!(
+        response.errors[0].message.contains("changed since"),
+        "{:?}",
+        response.errors
+    );
+
+    {
+        let sessions = app.db.sessions.lock().unwrap();
+        assert_eq!(
+            sessions["sess-old"].key_fingerprint.as_deref(),
+            Some("fp-old")
+        );
+        assert_eq!(
+            sessions["sess-dup"].key_fingerprint.as_deref(),
+            Some("fp-new")
+        );
+    }
+    assert!(
+        app.db
+            .get_ephemeral_state(&enrollment_id)
+            .await
+            .unwrap()
+            .is_some()
+    );
+    assert!(app.realtime.published().is_empty());
 }

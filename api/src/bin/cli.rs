@@ -2299,6 +2299,7 @@ async fn run_session_edit(
         id,
         SessionUpdateShape::ExtendKey {
             expires_at: key_expires_at,
+            fingerprint: &fingerprint,
         },
     )
     .await?;
