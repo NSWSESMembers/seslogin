@@ -41,7 +41,7 @@ resource "aws_s3_bucket_policy" "test_web" {
 # "Amazon CloudFront". Authorization can't be listed in an origin request
 # policy, and needn't be for POST: CloudFront passes it through unmodified there,
 # and /graphql, /mcp and /oauth/* are POSTs (GET /graphql only serves GraphiQL,
-# which is unauthenticated). The GETs under /api/* get it via api_get below.
+# which is unauthenticated).
 resource "aws_cloudfront_origin_request_policy" "api" {
   name = "seslogin-api"
 
@@ -62,60 +62,6 @@ resource "aws_cloudfront_origin_request_policy" "api" {
   }
   query_strings_config {
     query_string_behavior = "none"
-  }
-}
-
-# GET /api/* needs Authorization and its query string at the origin. Unlike on
-# POST, CloudFront strips Authorization from a GET unless it is in the cache key,
-# and forwards only the query strings in the cache key or the origin request
-# policy, so the managed CachingDisabled policy loses both. Putting them in the
-# key forwards them. Responses are `no-store`, so nothing is actually cached;
-# max_ttl is 1 only because CloudFront refuses cache key settings when it is 0.
-resource "aws_cloudfront_cache_policy" "api_get" {
-  name        = "seslogin-api-get"
-  min_ttl     = 0
-  default_ttl = 0
-  max_ttl     = 1
-
-  parameters_in_cache_key_and_forwarded_to_origin {
-    enable_accept_encoding_gzip = true
-    headers_config {
-      header_behavior = "whitelist"
-      headers {
-        items = ["Authorization"]
-      }
-    }
-    query_strings_config {
-      query_string_behavior = "all"
-    }
-    cookies_config {
-      cookie_behavior = "none"
-    }
-  }
-}
-
-# /media/* serves signed, immutable derived images. The signature and expiry are query
-# parameters, so all query strings are in the cache key (and so reach the origin);
-# no headers or cookies are. The origin sends `max-age=31536000, immutable`; errors are
-# `no-store`.
-resource "aws_cloudfront_cache_policy" "media" {
-  name        = "seslogin-media"
-  min_ttl     = 0
-  default_ttl = 86400
-  max_ttl     = 31536000
-
-  parameters_in_cache_key_and_forwarded_to_origin {
-    enable_accept_encoding_gzip   = false
-    enable_accept_encoding_brotli = false
-    headers_config {
-      header_behavior = "none"
-    }
-    query_strings_config {
-      query_string_behavior = "all"
-    }
-    cookies_config {
-      cookie_behavior = "none"
-    }
   }
 }
 
@@ -169,19 +115,6 @@ resource "aws_cloudfront_distribution" "test" {
   origin {
     origin_id   = "test-api-lambda"
     domain_name = trimsuffix(trimprefix(aws_lambda_function_url.test_api.function_url, "https://"), "/")
-    custom_origin_config {
-      http_port              = 80
-      https_port             = 443
-      origin_protocol_policy = "https-only"
-      origin_ssl_protocols   = ["TLSv1.2"]
-    }
-  }
-
-  # Derived images (/media/*), served by the media Lambda. Same Function URL
-  # constraints as the API origin above.
-  origin {
-    origin_id   = "test-media-lambda"
-    domain_name = trimsuffix(trimprefix(aws_lambda_function_url.test_media.function_url, "https://"), "/")
     custom_origin_config {
       http_port              = 80
       https_port             = 443
@@ -248,37 +181,6 @@ resource "aws_cloudfront_distribution" "test" {
       origin_request_policy_id   = aws_cloudfront_origin_request_policy.api.id
       response_headers_policy_id = aws_cloudfront_response_headers_policy.test_oauth_mcp_cors.id
     }
-  }
-
-  # /api/* is the REST surface for SESLogin's own apps (Tally's offline sync). Its
-  # calls are GETs, so it needs aws_cloudfront_cache_policy.api_get (defined in
-  # web_test.tf) to get Authorization and the query string to the Lambda.
-  ordered_cache_behavior {
-    path_pattern               = "/api/*"
-    target_origin_id           = "test-api-lambda"
-    viewer_protocol_policy     = "https-only"
-    allowed_methods            = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
-    cached_methods             = ["GET", "HEAD"]
-    compress                   = true
-    cache_policy_id            = aws_cloudfront_cache_policy.api_get.id
-    origin_request_policy_id   = aws_cloudfront_origin_request_policy.api.id
-    response_headers_policy_id = aws_cloudfront_response_headers_policy.test_oauth_mcp_cors.id
-  }
-
-  # Derived images. The path is signed (api/src/media.rs), so the query string is in
-  # the cache key (aws_cloudfront_cache_policy.media, defined in web_test.tf). The
-  # custom_error_response blocks below are distribution-wide, so the media code never
-  # returns 403/404 (400/401/410/422/500/503 only). Ordered behaviours match in
-  # order and nothing above this pattern overlaps /media/*.
-  ordered_cache_behavior {
-    path_pattern             = "/media/*"
-    target_origin_id         = "test-media-lambda"
-    viewer_protocol_policy   = "https-only"
-    allowed_methods          = ["GET", "HEAD"]
-    cached_methods           = ["GET", "HEAD"]
-    compress                 = false
-    cache_policy_id          = aws_cloudfront_cache_policy.media.id
-    origin_request_policy_id = aws_cloudfront_origin_request_policy.api.id
   }
 
   # OAC returns 403 (not 404) for missing S3 keys — catch both for SPA routing

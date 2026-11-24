@@ -15,9 +15,7 @@
 # Durable business + auth data only. The two short-lived TTL'd tables
 # (prod_login_code, prod_ephemeral_state) are intentionally excluded — they hold
 # only ephemeral challenge/code state, so backing them up adds cost with no
-# value. They keep PITR regardless. So do Tally's two TTL'd tables,
-# prod_location_share (positions that expire within minutes) and
-# prod_notification (an inbox the TTL clears after 90 days), excluded likewise.
+# value. They keep PITR regardless.
 
 locals {
   backup_tables = [
@@ -35,31 +33,9 @@ locals {
     aws_dynamodb_table.prod_webauthn_credential,
     aws_dynamodb_table.prod_audit_log,
     aws_dynamodb_table.prod_person_unit,
-    aws_dynamodb_table.prod_task,
-    aws_dynamodb_table.prod_task_list,
-    aws_dynamodb_table.prod_note,
-    aws_dynamodb_table.prod_note_folder,
-    aws_dynamodb_table.prod_map_pin,
-    aws_dynamodb_table.prod_map_layer,
-    aws_dynamodb_table.prod_on_call_role,
-    aws_dynamodb_table.prod_shared_contact,
-    aws_dynamodb_table.prod_equipment,
-    aws_dynamodb_table.prod_equipment_log,
-    aws_dynamodb_table.prod_equipment_reservation,
-    aws_dynamodb_table.prod_calendar,
-    aws_dynamodb_table.prod_calendar_event,
-    aws_dynamodb_table.prod_meeting,
-    aws_dynamodb_table.prod_agenda_item,
     # Holders can be worked out again from periods, but the reign history can't:
     # it records who held each trophy when.
     aws_dynamodb_table.prod_trophy,
-    # Assets and photos are the only record of who uploaded what; the files
-    # themselves are in the assets bucket.
-    aws_dynamodb_table.prod_asset,
-    aws_dynamodb_table.prod_asset_ref,
-    # Reverse index of note links; rebuildable from the owners but slow to.
-    aws_dynamodb_table.prod_note_ref,
-    aws_dynamodb_table.prod_photo,
   ]
 }
 
