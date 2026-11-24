@@ -91,20 +91,7 @@ fn app() -> Arc<TestApp> {
     seed_user(&app, "bob-user", true);
     seed_user(&app, "gone-user", true);
     seed_user(&app, "nobody", true);
-    link(&app, "alice-user", "p-alice");
-    link(&app, "bob-user", "p-bob");
-    link(&app, "gone-user", "p-gone");
     Arc::new(app)
-}
-
-fn link(app: &TestApp, user_id: &str, person_id: &str) {
-    app.db
-        .users
-        .lock()
-        .unwrap()
-        .get_mut(user_id)
-        .unwrap()
-        .person_id = Some(person_id.to_string());
 }
 
 async fn run(app: &Arc<TestApp>, auth: AuthInfo, query: &str) -> async_graphql::Response {

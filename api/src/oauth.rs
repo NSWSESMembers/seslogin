@@ -294,13 +294,9 @@ pub(crate) async fn grant_auth_info<A: App + HasDb>(
             .filter(|u| u.enabled),
         None => None,
     };
-    let person_id = user
-        .as_ref()
-        .and_then(|u| u.person_id.clone())
-        .unwrap_or_else(|| grant_person_id.clone());
     let person = app
         .db()
-        .get_persons(&[&person_id])
+        .get_persons(&[&grant_person_id])
         .await
         .map_err(|e| classify_db_err("fetch person from db", e))?
         .into_iter()

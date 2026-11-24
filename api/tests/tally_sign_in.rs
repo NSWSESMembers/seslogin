@@ -85,27 +85,6 @@ async fn a_member_alone_signs_in_as_the_member_whatever_the_case() {
 }
 
 #[tokio::test]
-async fn a_user_linked_to_a_member_signs_in_as_both() {
-    let app = app();
-    set_user(&app, "u1", |u| u.person_id = Some("bob".into()));
-    assert_eq!(
-        who(&app, "u1@example.com").await,
-        Some((Some("u1".into()), "bob".into()))
-    );
-}
-
-#[tokio::test]
-async fn the_link_wins_over_a_member_with_the_users_email() {
-    let app = app();
-    set_email(&app, "alice", "u1@example.com");
-    set_user(&app, "u1", |u| u.person_id = Some("bob".into()));
-    assert_eq!(
-        who(&app, "u1@example.com").await,
-        Some((Some("u1".into()), "bob".into()))
-    );
-}
-
-#[tokio::test]
 async fn an_unlinked_user_signs_in_with_the_member_sharing_their_email() {
     let app = app();
     set_email(&app, "alice", "u1@example.com");
@@ -119,24 +98,6 @@ async fn an_unlinked_user_signs_in_with_the_member_sharing_their_email() {
 async fn a_user_with_no_member_cannot_sign_in() {
     let app = app();
     assert_eq!(who(&app, "u1@example.com").await, None);
-}
-
-#[tokio::test]
-async fn a_link_to_a_deleted_member_falls_back_to_the_email() {
-    let app = app();
-    set_email(&app, "alice", "u1@example.com");
-    set_user(&app, "u1", |u| u.person_id = Some("bob".into()));
-    app.db
-        .persons
-        .lock()
-        .unwrap()
-        .get_mut("bob")
-        .unwrap()
-        .deleted = Some(1);
-    assert_eq!(
-        who(&app, "u1@example.com").await,
-        Some((Some("u1".into()), "alice".into()))
-    );
 }
 
 #[tokio::test]
@@ -593,8 +554,8 @@ async fn token_for(app: &Arc<App>, url: &str) -> AuthInfo {
 #[tokio::test]
 async fn a_users_passkey_signs_in_as_their_member() {
     let app = app();
+    set_email(&app, "alice", "u1@example.com");
     set_user(&app, "u1", |u| {
-        u.person_id = Some("alice".into());
         u.location_grants = vec!["loc-b".into()];
     });
     let passkey = SoftPasskey::new("u1-phone");
@@ -659,8 +620,8 @@ async fn a_passkey_whose_user_has_no_member_is_refused() {
 #[tokio::test]
 async fn a_disabled_users_passkey_is_refused_even_with_a_member() {
     let app = app();
+    set_email(&app, "alice", "u1@example.com");
     set_user(&app, "u1", |u| {
-        u.person_id = Some("alice".into());
         u.enabled = false;
     });
     let passkey = SoftPasskey::new("u1-phone");
@@ -758,7 +719,7 @@ async fn an_unknown_passkey_is_refused() {
 #[tokio::test]
 async fn a_passkey_signature_from_another_key_is_refused() {
     let app = app();
-    set_user(&app, "u1", |u| u.person_id = Some("alice".into()));
+    set_email(&app, "alice", "u1@example.com");
     let passkey = SoftPasskey::new("u1-phone");
     seed_passkey(&app, &passkey, PasskeyOwner::User("u1".into()));
     // Same credential ID, so the stored key is found, but signed with another key.
@@ -780,7 +741,7 @@ async fn a_passkey_signature_from_another_key_is_refused() {
 #[tokio::test]
 async fn an_assertion_made_for_another_site_is_refused() {
     let app = app();
-    set_user(&app, "u1", |u| u.person_id = Some("alice".into()));
+    set_email(&app, "alice", "u1@example.com");
     let passkey = SoftPasskey::new("u1-phone");
     seed_passkey(&app, &passkey, PasskeyOwner::User("u1".into()));
 
@@ -793,7 +754,7 @@ async fn an_assertion_made_for_another_site_is_refused() {
 #[tokio::test]
 async fn a_passkey_challenge_is_used_once() {
     let app = app();
-    set_user(&app, "u1", |u| u.person_id = Some("alice".into()));
+    set_email(&app, "alice", "u1@example.com");
     let passkey = SoftPasskey::new("u1-phone");
     seed_passkey(&app, &passkey, PasskeyOwner::User("u1".into()));
 
@@ -808,7 +769,7 @@ async fn a_passkey_challenge_is_used_once() {
 #[tokio::test]
 async fn a_passkey_checks_the_link_before_the_passkey() {
     let app = app();
-    set_user(&app, "u1", |u| u.person_id = Some("alice".into()));
+    set_email(&app, "alice", "u1@example.com");
     let passkey = SoftPasskey::new("u1-phone");
     seed_passkey(&app, &passkey, PasskeyOwner::User("u1".into()));
 
@@ -826,7 +787,7 @@ async fn a_passkey_checks_the_link_before_the_passkey() {
 #[tokio::test]
 async fn only_a_developers_passkey_signs_in_to_a_development_build() {
     let app = app();
-    set_user(&app, "u1", |u| u.person_id = Some("alice".into()));
+    set_email(&app, "alice", "u1@example.com");
     let passkey = SoftPasskey::new("u1-phone");
     seed_passkey(&app, &passkey, PasskeyOwner::User("u1".into()));
 
@@ -1019,7 +980,7 @@ async fn a_member_saves_a_passkey_of_their_own_and_signs_in_with_it_next_time() 
 #[tokio::test]
 async fn a_passkey_saved_alongside_a_user_is_the_users_and_works_on_the_admin_site() {
     let app = app();
-    set_user(&app, "u1", |u| u.person_id = Some("alice".into()));
+    set_email(&app, "alice", "u1@example.com");
     let ticket = redeem(&app, "u1@example.com", true).await["passkeyTicket"]
         .as_str()
         .unwrap()

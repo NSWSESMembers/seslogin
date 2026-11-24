@@ -341,18 +341,11 @@ async fn finish_setup(
     schema.execute(request).await
 }
 
-/// p1's email, which is no user's; u1 (linked to p1) has `u1@example.com`; p2 is
+/// p1's email, which is no user's; u1 has `u1@example.com`; p2 is
 /// someone else, with their own email.
 fn seed_emails(app: &TestApp) {
     app.db.persons.lock().unwrap().get_mut("p1").unwrap().email = Some("casey@example.com".into());
     seed_user(app, "u1", true);
-    app.db
-        .users
-        .lock()
-        .unwrap()
-        .get_mut("u1")
-        .unwrap()
-        .person_id = Some("p1".into());
     seed_person(app, "p2", "loc", "Other", "Person", "88888888", None);
     app.db.persons.lock().unwrap().get_mut("p2").unwrap().email = Some("other@example.com".into());
 }
@@ -437,7 +430,9 @@ async fn an_email_that_is_no_users_adds_the_members_own_passkey() {
 async fn a_users_email_adds_the_users_passkey() {
     let app = app();
     seed_emails(&app);
-    let ticket = confirmed_setup(&app, "u1@example.com").await;
+    // The member's email is also u1's, so it signs in as both.
+    app.db.users.lock().unwrap().get_mut("u1").unwrap().email = "casey@example.com".into();
+    let ticket = confirmed_setup(&app, "casey@example.com").await;
     let passkey = SoftPasskey::new("new-laptop");
     add_passkey(&app, &ticket, &passkey).await;
     assert_eq!(
