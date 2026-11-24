@@ -193,8 +193,8 @@ token (`AuthInfo::User { grant_id: Some(_), .. }`) is refused, by
 `graphql::auth::require_not_oauth_grant`, anything that would hand out a
 credential outliving or escaping the grant: `createApiToken`,
 `beginPasskeyRegistration`/`finishPasskeyRegistration`,
-`approveOauthAuthorization`, and `enrollSession`/`reactivateSession` (which
-bind a kiosk key to a location). Revoking, deleting and renaming stay allowed:
+`approveOauthAuthorization`, and `enrollSession`/`reactivateSession`/`replaceSessionDevice`
+(which bind a kiosk key to a location). Revoking, deleting and renaming stay allowed:
 they are within the user's own permissions. This applies to MCP and GraphQL
 grants alike. Writes through either are audited with
 `actor_via = oauth_grant:<id>`.
@@ -504,7 +504,7 @@ the MCP authorization spec's discovery flow.
   so a grant must not be able to mint one. The API token tools never return a secret or
   hash.
 - _Enrolling or reactivating kiosks, and the pending-enrolment lookup_ (`enrollSession`,
-  `reactivateSession`, `pendingEnrollmentKey`). A device is only bound to a location by a
+  `reactivateSession`, `replaceSessionDevice`, `pendingEnrollmentKey`). A device is only bound to a location by a
   person scanning its QR code in the browser.
 - _Login, logout and auth codes._ They mint or end the credentials this endpoint is
   already authenticated with.
@@ -858,7 +858,12 @@ Sizes are bounded (2 KB per header, 128 characters per field, 256 for the user a
 ## Kiosk authentication
 
 Kiosks authenticate only with a signed key. An admin enrols a kiosk by scanning its QR
-code (`submitEnrollmentKey` / `enrollSession`). From then on, the kiosk sends
+code (`submitEnrollmentKey` / `enrollSession`), or moves a scanned device onto an existing
+kiosk (`replaceSessionDevice`, which takes the kiosk's `expectedVersion` and refuses a kiosk
+that changed since the admin chose it) when its computer lost its key. Both go through
+`db::Handler::bind_session_key`: one DynamoDB transaction consumes the pending enrolment,
+releases the key from any other kiosk still holding it at the version read, and creates or
+rekeys the target, so a lost race writes nothing. From then on, the kiosk sends
 `Authorization: SLKey <fingerprint>.<timestamp>.<signature>` with every request, signing
 the request body with its non-extractable P-256 key (`api/src/session_key.rs`,
 `auth::verify_signed_key`).

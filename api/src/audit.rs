@@ -771,7 +771,7 @@ pub fn session_update_changes(
             after.set("healthcheck_url", opt_text(*healthcheck_url));
         }
         db::SessionUpdateShape::Info { .. } => {}
-        db::SessionUpdateShape::ExtendKey { expires_at } => {
+        db::SessionUpdateShape::ExtendKey { expires_at, .. } => {
             after.set("key_expires_at", num(*expires_at));
         }
         db::SessionUpdateShape::ReleaseKey { .. } => {
@@ -794,6 +794,19 @@ pub fn session_update_changes(
         }
     }
     (action, diff(&before, &after))
+}
+
+/// An existing session moved onto another device's key by
+/// [`db::Handler::bind_session_key`].
+pub fn session_rekey_changes(before: &Session, expires_at: u64, now: u64) -> Vec<AuditFieldChange> {
+    let before = session_fields(before);
+    let mut after = before.clone();
+    // The keys are redacted alike, so mark the move: else it reads like a reactivation.
+    after.set("key_replaced_at", num(now));
+    after.set("public_key", redacted());
+    after.set("key_expires_at", num(expires_at));
+    after.set("key_released_at", None);
+    diff(&before, &after)
 }
 
 fn session_label_after(
@@ -1538,6 +1551,56 @@ impl<D: db::Handler> db::Handler for AuditingHandler<D> {
         })
         .await;
         Ok(version)
+    }
+
+    async fn bind_session_key(
+        &self,
+        bind: db::SessionKeyBind<'_>,
+    ) -> db::Result<Result<db::SessionKeyBound, db::SessionKeyBindConflict>> {
+        // The befores are the rows the write was conditional on, so no read is needed.
+        let bound = match self.inner.bind_session_key(bind).await? {
+            Ok(bound) => bound,
+            Err(conflict) => return Ok(Err(conflict)),
+        };
+        let release = db::SessionUpdateShape::ReleaseKey {
+            fingerprint: bind.key.fingerprint,
+        };
+        for holder in bind.release {
+            let (action, changes) = session_update_changes(Some(holder), &release, bind.now);
+            self.record(Recorded {
+                entity_type: AuditEntityType::Session,
+                entity_id: &holder.id,
+                action,
+                label: Some(holder.name.clone()),
+                location_ids: vec![holder.location_id.clone()],
+                changes,
+            })
+            .await;
+        }
+        match bind.target {
+            db::SessionKeyTarget::New { .. } => {
+                self.record_create(
+                    AuditEntityType::Session,
+                    &bound.session.id,
+                    Some(bound.session.name.clone()),
+                    vec![bound.session.location_id.clone()],
+                    session_create_changes(&bound.session),
+                )
+                .await;
+            }
+            db::SessionKeyTarget::Existing(existing) => {
+                self.record(Recorded {
+                    entity_type: AuditEntityType::Session,
+                    entity_id: &existing.id,
+                    action: AuditAction::Update,
+                    label: Some(existing.name.clone()),
+                    location_ids: vec![existing.location_id.clone()],
+                    changes: session_rekey_changes(existing, bind.key.expires_at, bind.now),
+                })
+                .await;
+            }
+        }
+        Ok(Ok(bound))
     }
 
     async fn create_api_token(
@@ -2948,7 +3011,10 @@ mod tests {
 
         let (action, changes) = session_update_changes(
             Some(&keyed),
-            &db::SessionUpdateShape::ExtendKey { expires_at: 9000 },
+            &db::SessionUpdateShape::ExtendKey {
+                expires_at: 9000,
+                fingerprint: "fp",
+            },
             1,
         );
         assert_eq!(action, AuditAction::Update);
@@ -2966,6 +3032,26 @@ mod tests {
         );
         assert_eq!(change(&changes, "public_key").before, Some(json!(REDACTED)));
         assert_eq!(change(&changes, "key_released_at").after, Some(json!(77)));
+
+        // A released leftover given a new device's key: key back, released stamp gone.
+        let mut released = session();
+        released.key_released_at = Some(77);
+        let changes = session_rekey_changes(&released, 9000, 1);
+        assert_eq!(
+            fields(&changes),
+            vec![
+                "public_key",
+                "key_expires_at",
+                "key_released_at",
+                "key_replaced_at"
+            ]
+        );
+        assert_eq!(change(&changes, "public_key").after, Some(json!(REDACTED)));
+
+        // A working kiosk moved to another computer: marked, not just a new expiry like a reactivation.
+        let changes = session_rekey_changes(&keyed, 9000, 77);
+        assert_eq!(fields(&changes), vec!["key_expires_at", "key_replaced_at"]);
+        assert_eq!(change(&changes, "key_replaced_at").after, Some(json!(77)));
 
         let (action, changes) =
             session_update_changes(Some(&keyed), &db::SessionUpdateShape::Delete, 1);
@@ -3014,7 +3100,10 @@ mod tests {
         }));
         assert!(session_shape_is_audited(&db::SessionUpdateShape::Delete));
         assert!(session_shape_is_audited(
-            &db::SessionUpdateShape::ExtendKey { expires_at: 1 }
+            &db::SessionUpdateShape::ExtendKey {
+                expires_at: 1,
+                fingerprint: "fp",
+            }
         ));
     }
 

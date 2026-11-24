@@ -45,4 +45,10 @@ pub trait EphemeralStateStore: Sync {
     ) -> impl Future<Output = Result<Option<EphemeralState>>> + Send;
 
     fn delete_ephemeral_state(&self, id: &str) -> impl Future<Output = Result<()>> + Send;
+
+    /// Delete a record and return it, or `None` if there was none. Of two concurrent takes, only one gets it.
+    fn take_ephemeral_state(
+        &self,
+        id: &str,
+    ) -> impl Future<Output = Result<Option<EphemeralState>>> + Send;
 }

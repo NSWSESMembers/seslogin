@@ -55,4 +55,8 @@ impl db::EphemeralStateStore for FakeDb {
         self.ephemeral_state.lock().unwrap().remove(id);
         Ok(())
     }
+
+    async fn take_ephemeral_state(&self, id: &str) -> db::Result<Option<EphemeralState>> {
+        Ok(self.ephemeral_state.lock().unwrap().remove(id))
+    }
 }

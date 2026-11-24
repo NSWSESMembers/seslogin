@@ -39,4 +39,8 @@ impl<D: db::Handler> db::EphemeralStateStore for AuditingHandler<D> {
     async fn delete_ephemeral_state(&self, id: &str) -> db::Result<()> {
         self.inner.delete_ephemeral_state(id).await
     }
+
+    async fn take_ephemeral_state(&self, id: &str) -> db::Result<Option<db::EphemeralState>> {
+        self.inner.take_ephemeral_state(id).await
+    }
 }
