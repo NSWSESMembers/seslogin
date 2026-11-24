@@ -880,6 +880,7 @@ async fn multi_unit_app() -> Arc<TestApp> {
             capability_tags: None,
             deleted: None,
             missing_since: None,
+            signed_in_reminders_off_at: None,
             secondary_location_ids: vec!["loc-b".into()],
             created_at: Some(0),
             updated_at: Some(0),
@@ -983,4 +984,38 @@ async fn a_member_with_no_secondary_unit_is_logged_at_the_primary_unit_only() {
     for loc in ["loc-b", "loc-c"] {
         assert!(nodes(&log(&app, super_user(), Some(loc), json!({})).await).is_empty());
     }
+}
+
+#[tokio::test]
+async fn a_members_settings_page_change_says_so_to_the_units_admins() {
+    let app = multi_unit_app().await;
+    let token = seslogin::member_settings::issue_token(&app.db, "p1", 60)
+        .await
+        .unwrap();
+    // The settings page sends no credentials: only the token, as an argument.
+    let schema = graphql::build_schema(app.clone(), webauthn());
+    let request = Request::new(
+        "mutation($t: String!) { updateMemberSettings(token: $t, signedInReminders: false) { signedInReminders } }",
+    )
+    .variables(Variables::from_json(json!({ "t": token })))
+    .data(app.clone())
+    .data(ClientIp(Some(IP.to_string())))
+    .data(graphql::get_dataloader(app.clone()));
+    json_of(&audit::scope_for_request(None, Some(IP), schema.execute(request)).await);
+
+    let connection = log(
+        &app,
+        user("a-admin", &["loc-a"], &[]),
+        Some("loc-a"),
+        json!({}),
+    )
+    .await;
+    let entries = nodes(&connection);
+    assert_eq!(entries.len(), 1);
+    let entry = entries[0];
+    assert_eq!(entry["actor"]["kind"], "MEMBER");
+    assert_eq!(entry["actor"]["id"], "p1");
+    assert_eq!(entry["actor"]["via"], "member_settings");
+    assert!(entry["ip"].is_null(), "{entry}");
+    assert_eq!(entry["changes"][0]["field"], "signed_in_reminders_off_at");
 }

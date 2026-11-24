@@ -74,6 +74,12 @@ it asks them to check it.
 You can send one reminder per entry every 15 minutes. **Remind** isn't offered
 for guests, and fails if SES has no email address for the member.
 
+Every reminder also ends with a link to the member's own
+[email settings](../kiosk/email-settings.md), where they can turn off reminders
+for forgetting to sign out. If a member has turned them off, **Remind** on one
+of their open entries fails and says so; reminders to check a finished entry
+still go.
+
 ## Adding time by hand
 
 If a member forgot to use the kiosk altogether, record their time with **New

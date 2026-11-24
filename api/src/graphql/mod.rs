@@ -21,6 +21,7 @@ pub mod dataloader;
 pub mod error;
 #[cfg(debug_assertions)]
 pub mod error_injection;
+pub mod member_settings;
 pub mod mutations;
 pub mod pagination;
 pub mod query;

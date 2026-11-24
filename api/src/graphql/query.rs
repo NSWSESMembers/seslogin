@@ -4439,6 +4439,18 @@ impl<A: App + HasDb + HasRealtime + Send + Sync + 'static> QueryRoot<A> {
         Ok((*types).clone())
     }
 
+    /// A member's own settings, for their member settings page, by the `slms_` token
+    /// from a reminder email or from signing in with a code. Needs no sign-in: the
+    /// token is the credential, and fails with `UNAUTHENTICATED` once it has expired.
+    async fn member_settings(
+        &self,
+        ctx: &Context<'_>,
+        token: String,
+    ) -> Result<super::member_settings::MemberSettings> {
+        let app = ctx.data_unchecked::<Arc<A>>();
+        super::member_settings::settings(&**app, &token).await
+    }
+
     /// Check the link the Tally sign-in page was opened with: a member sign-in client
     /// and one of its redirects. Needs no sign-in.
     async fn tally_sign_in_request(

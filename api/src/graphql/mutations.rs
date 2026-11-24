@@ -95,6 +95,17 @@ fn reminder_greeting(first_name: &str) -> String {
     }
 }
 
+/// The end of every reminder email: a link to the member's settings page, signed
+/// in already, where they can turn off reminders for forgetting to sign out.
+fn reminder_settings_footer(settings_url: &str) -> String {
+    format!(
+        "--\n\
+         Don't want emails when you forget to sign out? Manage your SESLogin email \
+         settings here (this link works for 2 weeks):\n\
+         {settings_url}\n"
+    )
+}
+
 fn reminder_activity_line(category_name: Option<&str>) -> String {
     category_name
         .map(|c| format!("  Activity: {c}\n"))
@@ -114,6 +125,7 @@ fn build_period_reminder_email(
     start_time: u64,
     end_time: u64,
     url: &str,
+    settings_url: &str,
 ) -> String {
     format!(
         "{}\n\n\
@@ -124,11 +136,13 @@ fn build_period_reminder_email(
          This link works for the next 48 hours and only opens this one entry. \
          If the details above are already correct, you don't need to do anything.\n\n\
          Thanks,\n\
-         SESLogin administrators\n",
+         SESLogin administrators\n\n\
+         {}",
         reminder_greeting(first_name),
         reminder_activity_line(category_name),
         format_reminder_datetime(start_time),
         format_reminder_datetime(end_time),
+        reminder_settings_footer(settings_url),
     )
 }
 
@@ -145,6 +159,7 @@ fn build_period_still_open_reminder_email(
     category_name: Option<&str>,
     start_time: u64,
     url: &str,
+    settings_url: &str,
 ) -> String {
     format!(
         "{}\n\n\
@@ -158,10 +173,12 @@ fn build_period_still_open_reminder_email(
          If you aren't ready to sign out yet you can come back here and click \
          link later.\n\n\
          Thanks,\n\
-         SESLogin administrators\n",
+         SESLogin administrators\n\n\
+         {}",
         reminder_greeting(first_name),
         reminder_activity_line(category_name),
         format_reminder_datetime(start_time),
+        reminder_settings_footer(settings_url),
     )
 }
 
@@ -1452,6 +1469,38 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         Ok(fingerprint)
     }
 
+    /// Email a member settings sign-in code, if exactly one member has that email
+    /// (see `member_settings`). Always returns true to avoid email enumeration.
+    /// Requires a valid Cloudflare Turnstile token.
+    async fn request_member_settings_code(
+        &self,
+        ctx: &Context<'_>,
+        email: String,
+        turnstile_token: String,
+    ) -> bool {
+        super::member_settings::request_code(ctx, &*self.app, &email, &turnstile_token).await
+    }
+
+    /// Redeem a member settings sign-in code for an `slms_` token to the member's
+    /// settings page. Fails the same way for any wrong, expired or used-up code.
+    async fn sign_in_to_member_settings(&self, email: String, code: String) -> Result<String> {
+        super::member_settings::sign_in(&*self.app, &email, &code).await
+    }
+
+    /// Change a member's own settings, by the `slms_` token for their settings page.
+    async fn update_member_settings(
+        &self,
+        token: String,
+        signed_in_reminders: bool,
+    ) -> Result<super::member_settings::MemberSettings> {
+        super::member_settings::update(&*self.app, &token, signed_in_reminders).await
+    }
+
+    /// End an `slms_` token, signing out of the member settings page. Always true.
+    async fn sign_out_of_member_settings(&self, token: String) -> Result<bool> {
+        super::member_settings::sign_out(&*self.app, &token).await
+    }
+
     /// Email a Tally sign-in code, if that email can sign in to Tally (see
     /// `tally_sign_in`). Always returns true to avoid email enumeration. Requires a
     /// valid Cloudflare Turnstile token.
@@ -2432,8 +2481,25 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
             None => None,
         };
 
+        // An open entry's email is a "still signed in" reminder, which the member
+        // can turn off on their settings page.
+        if period.end_time.is_none() && person.signed_in_reminders_off_at.is_some() {
+            return Err(ApiError::bad_request(format!(
+                "{} {} has turned off emails reminding them to sign out",
+                person.first_name, person.last_name
+            ))
+            .into());
+        }
+
         let token = crate::period_link::issue_period_link_token(self.app.db(), &id).await?;
         let url = crate::period_link::edit_link_url(&token);
+        let settings_token = crate::member_settings::issue_token(
+            self.app.db(),
+            &person.id,
+            crate::member_settings::LINK_LIFETIME_S,
+        )
+        .await?;
+        let settings_url = crate::member_settings::settings_url(&settings_token, &email);
         let (subject, body) = match period.end_time {
             Some(end_time) => (
                 PERIOD_REMINDER_SUBJECT,
@@ -2444,6 +2510,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
                     period.start_time,
                     end_time,
                     &url,
+                    &settings_url,
                 ),
             ),
             None => (
@@ -2454,6 +2521,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
                     category.as_ref().map(|c| c.name.as_str()),
                     period.start_time,
                     &url,
+                    &settings_url,
                 ),
             ),
         };
@@ -4393,6 +4461,8 @@ mod tests {
 
         // 2026-07-24 09:53 and 09:55 Sydney time.
         const START: u64 = 1784850780;
+        const SETTINGS: &str =
+            "https://new.seslogin.com/member/settings#token=slms_x&email=sam%40example.com";
         const END: u64 = 1784850959;
 
         fn body(first_name: &str, category: Option<&str>, end: u64) -> String {
@@ -4403,6 +4473,7 @@ mod tests {
                 START,
                 end,
                 "https://new.seslogin.com/period#slp_abc",
+                SETTINGS,
             )
         }
 
@@ -4414,6 +4485,13 @@ mod tests {
             assert!(out.contains("Activity: Training"));
             assert!(out.contains("https://new.seslogin.com/period#slp_abc"));
             assert!(out.contains("48 hours"));
+        }
+
+        #[test]
+        fn ends_with_the_settings_link() {
+            let out = body("Sam", None, END);
+            assert!(out.trim_end().ends_with(SETTINGS), "got: {out}");
+            assert!(out.contains("2 weeks"));
         }
 
         #[test]
@@ -4441,6 +4519,8 @@ mod tests {
 
         // 2026-07-24 09:53 Sydney time.
         const START: u64 = 1784850780;
+        const SETTINGS: &str =
+            "https://new.seslogin.com/member/settings#token=slms_x&email=sam%40example.com";
 
         fn body(first_name: &str, category: Option<&str>) -> String {
             build_period_still_open_reminder_email(
@@ -4449,6 +4529,7 @@ mod tests {
                 category,
                 START,
                 "https://new.seslogin.com/period#slp_abc",
+                SETTINGS,
             )
         }
 
@@ -4462,6 +4543,13 @@ mod tests {
             assert!(out.contains("You signed in at:"));
             assert!(out.contains("https://new.seslogin.com/period#slp_abc"));
             assert!(out.contains("48 hours"));
+        }
+
+        #[test]
+        fn ends_with_the_settings_link() {
+            let out = body("Sam", None);
+            assert!(out.trim_end().ends_with(SETTINGS), "got: {out}");
+            assert!(out.contains("forget to sign out"));
         }
 
         #[test]

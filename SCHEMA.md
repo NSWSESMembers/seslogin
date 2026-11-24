@@ -202,6 +202,10 @@ The `start_time` sort key across the location/person GSIs means DynamoDB returns
   absence pass reads the roster through `location_id-index`, which is `ALL`-projected — a
   `KEYS_ONLY` projection there would hydrate every row with `missing_since: None` and
   silently prevent all deletions.
+- `signed_in_reminders_off_at` (N) — unix seconds at which the member turned off "still
+  signed in" reminder emails on their member settings page (`api/src/member_settings.rs`).
+  Absent while they get them. Written only by `update_person`'s `SignedInReminders` shape.
+  `sendPeriodEditLink` refuses an open entry's reminder while it is set.
 - `contact_feed` (S), `contact_key` (S) — left on older rows by the removed offline sync's
   contacts feed. Nothing reads or writes them any more; the index over them is to be dropped.
 - `email_key` (S) — `email` trimmed and lowercased (`db::email_key`), present exactly when
@@ -958,6 +962,8 @@ A generic key/value store with native TTL (`expires_at`). Items are namespaced b
 
 - `counter#photo#<location_id>#<date>` — photos added to a unit; limit 100
 - `counter#asset-upload#<person_id>#<date>` — uploads started by a member; limit 200
+
+**Member settings tokens** (`kind` = `member_settings`) are the `slms_` tokens that open a member's own settings page. The `id` is `member_settings_<sha256 hex of the token>` (never the token), and `payload` is JSON `{person_id, auth_expires_at, issued_at}`. The token works until `auth_expires_at` (2 weeks for a reminder email's link, 1 day after signing in with a code), checked in code; `expires_at` is 7 days later, so TTL lag never decides. Signing out deletes the row.
 
 **Tally assertion ids** (`kind` = `tally_assertion`) record that a Tally-signed assertion (`jti`) has been used, so it can't be replayed. The `id` is `tally_assertion_jti_<sha256 hex of "<iss>|<jti>">` and `payload` is empty. The row is written with a PutItem conditional on `attribute_not_exists(id)`, so of two racing uses exactly one succeeds, and `expires_at` is the assertion's `exp` plus 60 seconds, after which the assertion would be refused as expired anyway.
 
