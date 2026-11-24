@@ -33,6 +33,7 @@ use serde_json::{Value, json};
 use tracing::{error, warn};
 
 mod ephemeral_state;
+mod kiosk_keys;
 
 mod login_codes;
 mod oauth_grants;

@@ -16,6 +16,8 @@ mod passkeys;
 pub use passkeys::*;
 mod ephemeral_state;
 pub use ephemeral_state::*;
+mod kiosk_keys;
+pub use kiosk_keys::*;
 
 const NANOID_ALPHABET: [char; 62] = [
     '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I',
@@ -1143,6 +1145,7 @@ pub struct ListAuditEntriesQuery {
 /// | OAuth grants | [`OAuthGrantStore`] | `oauth_grants.rs` |
 /// | WebAuthn passkeys and challenge state | [`PasskeyStore`] | `passkeys.rs` |
 /// | Generic ephemeral state | [`EphemeralStateStore`] | `ephemeral_state.rs` |
+/// | Kiosk device keys | [`KioskKeyStore`] | `kiosk_keys.rs` |
 ///
 /// The file of that name under `db/` holds the row types and the trait; the ones under
 /// `dynamodb/`, `audit/`, `mockdb/` and `tests/common/` hold each implementation.
@@ -1165,6 +1168,7 @@ pub trait Handler:
     + OAuthGrantStore
     + PasskeyStore
     + EphemeralStateStore
+    + KioskKeyStore
 {
     fn get_users<T: AsRef<str> + Sync>(
         &self,

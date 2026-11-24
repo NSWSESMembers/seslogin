@@ -24,7 +24,8 @@ use crate::badge_store;
 use crate::badges;
 use crate::db;
 use crate::db::{
-    EphemeralStateStore, Handler, LoginCodeStore, OAuthGrantStore, PasskeyStore, UserTokenStore,
+    EphemeralStateStore, Handler, KioskKeyStore, LoginCodeStore, OAuthGrantStore, PasskeyStore,
+    UserTokenStore,
 };
 use crate::mail::Handler as _;
 use crate::oauth;
@@ -1452,11 +1453,21 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
             return Ok(fingerprint);
         }
 
+        let expires_at = now + crate::session_key::PENDING_ENROLLMENT_TTL_S;
+        // The `kiosk_key` shadow (plans/kiosk-key-binding.md). Nothing reads it yet, so
+        // a failure only logs; the record below still decides enrolment.
+        if let Err(e) = self
+            .app
+            .db()
+            .record_kiosk_key_request(&fingerprint, &public_key, now, expires_at)
+            .await
+        {
+            warn!("Failed to record kiosk key request {fingerprint}: {e}");
+        }
         let payload = serde_json::to_string(&crate::session_key::EnrollPayload {
             public_key,
             submitted_at: now,
         })?;
-        let expires_at = now + crate::session_key::PENDING_ENROLLMENT_TTL_S;
         self.app
             .db()
             .put_ephemeral_state(

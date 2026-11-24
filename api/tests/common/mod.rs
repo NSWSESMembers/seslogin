@@ -22,6 +22,7 @@ use seslogin::mockrealtime;
 use seslogin::server_secret::ServerSecret;
 
 mod ephemeral_state;
+mod kiosk_keys;
 
 mod login_codes;
 mod oauth_grants;
@@ -44,6 +45,7 @@ pub(crate) struct FakeDb {
     pub(crate) oauth_grants: Mutex<HashMap<String, OAuthGrant>>,
     pub(crate) locations: Mutex<HashMap<String, Location>>,
     pub(crate) sessions: Mutex<HashMap<String, db::Session>>,
+    pub(crate) kiosk_keys: Mutex<HashMap<String, db::KioskKey>>,
     pub(crate) persons: Mutex<HashMap<String, db::Person>>,
     pub(crate) periods: Mutex<HashMap<String, db::Period>>,
     pub(crate) categories: Mutex<HashMap<String, db::Category>>,
