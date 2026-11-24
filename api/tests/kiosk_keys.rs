@@ -7,9 +7,10 @@ use std::sync::Arc;
 
 use async_graphql::Request;
 
-use common::{FakeDb, fake_app};
+use common::{FakeDb, fake_app, seed_location, seed_user};
 use seslogin::app::MyApp;
-use seslogin::db;
+use seslogin::auth::AuthInfo;
+use seslogin::db::{self, EphemeralStateStore as _};
 use seslogin::graphql;
 use seslogin::mockmail;
 use seslogin::mockqueue;
@@ -41,6 +42,75 @@ async fn run_anonymous(app: &Arc<TestApp>, query: &str) -> async_graphql::Respon
         .data(app.clone())
         .data(graphql::get_dataloader(app.clone()));
     schema.execute(request).await
+}
+
+/// Run `query` as an Admin at `loc-a`.
+async fn run_admin(app: &Arc<TestApp>, query: &str) -> serde_json::Value {
+    let schema = graphql::build_schema(app.clone(), webauthn());
+    let request = Request::new(query)
+        .data(AuthInfo::User {
+            id: "caller".to_string(),
+            is_super: false,
+            location_grants: vec!["loc-a".to_string()],
+            location_read_only_grants: vec![],
+            token_id: None,
+            grant_id: None,
+        })
+        .data(app.clone())
+        .data(graphql::get_dataloader(app.clone()));
+    let response = schema.execute(request).await;
+    assert!(response.errors.is_empty(), "{:?}", response.errors);
+    response.data.into_json().unwrap()
+}
+
+fn app_at_loc_a() -> Arc<TestApp> {
+    let app = fake_app();
+    seed_location(&app, "loc-a", "Unit A");
+    seed_user(&app, "caller", true);
+    Arc::new(app)
+}
+
+fn session(id: &str, fingerprint: &str) -> db::Session {
+    db::Session {
+        id: id.to_string(),
+        name: "Front desk".to_string(),
+        location_id: "loc-a".to_string(),
+        active: true,
+        last_contact: None,
+        client_version: None,
+        client_info: None,
+        client_info_updated_at: None,
+        config: serde_json::Map::new(),
+        healthcheck_url: None,
+        public_key: Some(format!("pk-{fingerprint}")),
+        key_fingerprint: Some(fingerprint.to_string()),
+        key_expires_at: Some(u64::MAX),
+        key_released_at: None,
+        retired_at: None,
+        version: 1,
+        created_at: Some(0),
+        updated_at: Some(0),
+    }
+}
+
+/// A session holding `fingerprint`, with its `kiosk_key` row bound to it.
+fn seed_bound(app: &TestApp, id: &str, fingerprint: &str) {
+    app.db
+        .sessions
+        .lock()
+        .unwrap()
+        .insert(id.to_string(), session(id, fingerprint));
+    app.db.kiosk_keys.lock().unwrap().insert(
+        fingerprint.to_string(),
+        db::KioskKey {
+            fingerprint: fingerprint.to_string(),
+            public_key: Some(format!("pk-{fingerprint}")),
+            session_id: Some(id.to_string()),
+            bound_at: Some(0),
+            version: 1,
+            ..db::KioskKey::default()
+        },
+    );
 }
 
 async fn submit(app: &Arc<TestApp>) {
@@ -90,4 +160,101 @@ async fn a_request_never_changes_a_binding() {
     assert_eq!(row.public_key.as_deref(), Some("bound-pk"));
     assert_eq!(row.version, 3);
     assert!(row.is_requested(seslogin::clock::now_sec()));
+}
+
+fn row(app: &TestApp, fingerprint: &str) -> Option<db::KioskKey> {
+    app.db.kiosk_keys.lock().unwrap().get(fingerprint).cloned()
+}
+
+/// The QR code a device shows, with its `kiosk_key` request, as `submitEnrollmentKey` leaves them.
+async fn device_asking(app: &TestApp, fingerprint: &str) {
+    app.db
+        .put_ephemeral_state(
+            &seslogin::session_key::enroll_state_id(fingerprint),
+            seslogin::session_key::ENROLL_STATE_KIND,
+            &format!(r#"{{"public_key":"pk-{fingerprint}","submitted_at":0}}"#),
+            u64::MAX,
+        )
+        .await
+        .unwrap();
+    app.db.kiosk_keys.lock().unwrap().insert(
+        fingerprint.to_string(),
+        db::KioskKey {
+            fingerprint: fingerprint.to_string(),
+            public_key: Some(format!("pk-{fingerprint}")),
+            requested_at: Some(0),
+            request_expires_at: Some(u64::MAX),
+            ..db::KioskKey::default()
+        },
+    );
+}
+
+#[tokio::test]
+async fn enrolling_binds_the_key_row_and_uses_up_the_request() {
+    let app = app_at_loc_a();
+    seed_bound(&app, "sess-old", "fp1");
+    device_asking(&app, "fp1").await;
+    // `device_asking` replaced the bound row with a request, as a missed mirror would.
+
+    let data = run_admin(
+        &app,
+        r#"mutation { enrollSession(name: "New", locationId: "loc-a", keyFingerprint: "fp1") { id } }"#,
+    )
+    .await;
+    let new_id = data["enrollSession"]["id"].as_str().unwrap();
+
+    let key = row(&app, "fp1").unwrap();
+    assert_eq!(key.session_id.as_deref(), Some(new_id));
+    assert_eq!(key.public_key.as_deref(), Some("pk-fp1"));
+    assert_eq!(key.request_expires_at, None);
+}
+
+#[tokio::test]
+async fn replacing_moves_the_key_row_and_drops_the_old_one() {
+    let app = app_at_loc_a();
+    seed_bound(&app, "sess-1", "fp-old");
+    device_asking(&app, "fp-new").await;
+
+    run_admin(
+        &app,
+        r#"mutation { replaceSessionDevice(id: "sess-1", keyFingerprint: "fp-new", expectedVersion: 1) { id } }"#,
+    )
+    .await;
+
+    assert_eq!(
+        row(&app, "fp-new").unwrap().session_id.as_deref(),
+        Some("sess-1")
+    );
+    assert_eq!(row(&app, "fp-old"), None);
+}
+
+#[tokio::test]
+async fn deleting_a_kiosk_drops_its_key_row() {
+    let app = app_at_loc_a();
+    seed_bound(&app, "sess-1", "fp1");
+
+    run_admin(&app, r#"mutation { deleteSession(id: "sess-1") }"#).await;
+
+    assert_eq!(row(&app, "fp1"), None);
+}
+
+/// The shadow only ever removes a row still bound to the session giving the key up.
+#[tokio::test]
+async fn deleting_a_kiosk_leaves_a_key_row_bound_elsewhere() {
+    let app = app_at_loc_a();
+    seed_bound(&app, "sess-1", "fp1");
+    app.db
+        .kiosk_keys
+        .lock()
+        .unwrap()
+        .get_mut("fp1")
+        .unwrap()
+        .session_id = Some("sess-2".to_string());
+
+    run_admin(&app, r#"mutation { deleteSession(id: "sess-1") }"#).await;
+
+    assert_eq!(
+        row(&app, "fp1").unwrap().session_id.as_deref(),
+        Some("sess-2")
+    );
 }

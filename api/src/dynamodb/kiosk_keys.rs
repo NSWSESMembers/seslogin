@@ -4,6 +4,8 @@ use aws_sdk_dynamodb::error::SdkError;
 use aws_sdk_dynamodb::operation::update_item::UpdateItemError;
 use aws_sdk_dynamodb::types::{AttributeValue, ReturnConsumedCapacity};
 
+use tracing::warn;
+
 use crate::db::{self, Error, KioskKey};
 
 use super::{CapKind, Handler, HydrationError, Item, record_capacity, sdk_err_msg};
@@ -33,6 +35,34 @@ fn is_condition_failed(e: &SdkError<UpdateItemError>) -> bool {
 }
 
 impl Handler {
+    /// The `kiosk_key` shadow of a session giving up `fingerprint`: delete its row if it
+    /// is still bound to `session_id`. Best effort, after the session write: nothing
+    /// reads the table yet, and `cli kiosk-key reconcile` repairs a row this misses.
+    pub(super) async fn unbind_kiosk_key_shadow(&self, fingerprint: &str, session_id: &str) {
+        let result = self
+            .client
+            .delete_item()
+            .table_name(self.table_name("kiosk_key"))
+            .key("fingerprint", AttributeValue::S(fingerprint.to_string()))
+            .condition_expression("session_id = :s")
+            .expression_attribute_values(":s", AttributeValue::S(session_id.to_string()))
+            .return_consumed_capacity(ReturnConsumedCapacity::Total)
+            .send()
+            .await;
+        match result {
+            Ok(resp) => {
+                record_capacity("unbind_kiosk_key", resp.consumed_capacity(), CapKind::Write)
+            }
+            // Missing, or bound to another session: nothing of this session's to remove.
+            Err(SdkError::ServiceError(se)) if se.err().is_conditional_check_failed_exception() => {
+            }
+            Err(e) => warn!(
+                "Failed to unbind kiosk key {fingerprint} from session {session_id}: {}",
+                sdk_err_msg(e)
+            ),
+        }
+    }
+
     /// Refresh the request on a bound row. `Ok(false)` when the row isn't bound.
     async fn refresh_bound_kiosk_key_request(
         &self,
@@ -68,6 +98,24 @@ impl Handler {
 }
 
 impl db::KioskKeyStore for Handler {
+    async fn get_kiosk_key(&self, fingerprint: &str) -> db::Result<Option<KioskKey>> {
+        let resp = self
+            .client
+            .get_item()
+            .table_name(self.table_name("kiosk_key"))
+            .key("fingerprint", AttributeValue::S(fingerprint.to_string()))
+            .consistent_read(true)
+            .return_consumed_capacity(ReturnConsumedCapacity::Total)
+            .send()
+            .await
+            .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
+        record_capacity("get_kiosk_key", resp.consumed_capacity(), CapKind::Read);
+        match resp.item {
+            Some(item) => Ok(Some(Item(item).try_into()?)),
+            None => Ok(None),
+        }
+    }
+
     async fn record_kiosk_key_request(
         &self,
         fingerprint: &str,
