@@ -265,9 +265,11 @@ impl<A: App + HasDb + Send + Sync + 'static> AuditActor<A> {
     /// How a user acted when not through an ordinary web login: `oauth_grant:<id>` (a
     /// connected app: an AI client over MCP, or one of SESLogin's own apps over
     /// GraphQL), `user_token:<id>` or `oauth_client:<id>`. Super users only;
-    /// null for everyone else.
+    /// null for everyone else, except `member_settings` (a member on their own
+    /// settings page), which names no credential and tells the log's readers where
+    /// the change was made.
     async fn via(&self, ctx: &Context<'_>) -> Option<&str> {
-        if viewer_is_super(ctx) {
+        if viewer_is_super(ctx) || self.via.as_deref() == Some(crate::member_settings::AUDIT_VIA) {
             self.via.as_deref()
         } else {
             None

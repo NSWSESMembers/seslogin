@@ -24,6 +24,7 @@ pub mod local_dev;
 pub mod location_sync;
 pub mod mail;
 pub mod mcp;
+pub mod member_settings;
 pub mod member_sync;
 pub mod mockdb;
 pub mod mockmail;

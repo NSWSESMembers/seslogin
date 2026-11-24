@@ -453,6 +453,10 @@ impl TryInto<Person> for Item {
                 .i64_field("missing_since")?
                 .map(|i| i as u64)
                 .filter(|&i| i != 0),
+            signed_in_reminders_off_at: self
+                .i64_field("signed_in_reminders_off_at")?
+                .map(|i| i as u64)
+                .filter(|&i| i != 0),
             secondary_location_ids: {
                 let mut ids = self.string_set_field("secondary_location_ids")?;
                 ids.sort();
@@ -2564,6 +2568,7 @@ impl db::Handler for Handler {
             capability_tags: None,
             deleted: None,
             missing_since: None,
+            signed_in_reminders_off_at: None,
             secondary_location_ids: vec![],
             created_at: Some(now),
             updated_at: Some(now),
@@ -2737,6 +2742,24 @@ impl db::Handler for Handler {
                     .send()
                     .await
                     .map_err(|e| map_update_err(e, format!("Person {}", id)))?;
+                record_capacity("update_person", resp.consumed_capacity(), CapKind::Write);
+            }
+            db::PersonUpdateShape::SignedInReminders { off_at } => {
+                let resp = set_or_remove(
+                    self.client
+                        .update_item()
+                        .table_name(self.table_name("person"))
+                        .key("id", AttributeValue::S(id.to_string()))
+                        .condition_expression("attribute_exists(id)"),
+                    vec![(
+                        "signed_in_reminders_off_at",
+                        off_at.map(|v| AttributeValue::N(v.to_string())),
+                    )],
+                )
+                .return_consumed_capacity(ReturnConsumedCapacity::Total)
+                .send()
+                .await
+                .map_err(|e| map_update_err(e, format!("Person {}", id)))?;
                 record_capacity("update_person", resp.consumed_capacity(), CapKind::Write);
             }
             db::PersonUpdateShape::BadgeState {

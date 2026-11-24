@@ -836,6 +836,7 @@ async fn show_persons(db: &impl Handler, persons: &[Person]) {
             capability_tags,
             deleted,
             missing_since,
+            signed_in_reminders_off_at,
             secondary_location_ids,
             created_at,
             updated_at,
@@ -863,6 +864,10 @@ async fn show_persons(db: &impl Handler, persons: &[Person]) {
             ),
             ("deleted", opt_ts(*deleted)),
             ("missing_since", opt_ts(*missing_since)),
+            (
+                "signed_in_reminders_off_at",
+                opt_ts(*signed_in_reminders_off_at),
+            ),
             (
                 "secondary_location_ids",
                 if secondary_location_ids.is_empty() {

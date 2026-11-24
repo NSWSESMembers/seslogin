@@ -64,8 +64,9 @@ pub enum Actor {
         via: Option<String>,
     },
     /// A member signed in to Tally. `via` is `oauth_grant:<id>`, or
-    /// `oauth_client:<client_id>` for the token endpoint acting for them. A user signed
-    /// in alongside is not recorded here: the grant names them.
+    /// `oauth_client:<client_id>` for the token endpoint acting for them, or
+    /// `member_settings` for their own member settings page. A user signed in
+    /// alongside is not recorded here: the grant names them.
     Member {
         person_id: String,
         via: Option<String>,
@@ -442,6 +443,10 @@ fn person_fields(p: &Person) -> Fields {
         .with("deleted", opt_num(p.deleted))
         .with("missing_since", opt_num(p.missing_since))
         .with(
+            "signed_in_reminders_off_at",
+            opt_num(p.signed_in_reminders_off_at),
+        )
+        .with(
             "secondary_location_ids",
             string_set(&p.secondary_location_ids),
         )
@@ -503,6 +508,9 @@ pub fn person_update_changes(
         }
         db::PersonUpdateShape::MissingSince { missing_since } => {
             after.set("missing_since", opt_num(*missing_since));
+        }
+        db::PersonUpdateShape::SignedInReminders { off_at } => {
+            after.set("signed_in_reminders_off_at", opt_num(*off_at));
         }
         db::PersonUpdateShape::BadgeState { .. } => {}
         db::PersonUpdateShape::Undelete => {
@@ -2304,6 +2312,7 @@ mod tests {
             capability_tags: None,
             deleted: None,
             missing_since: None,
+            signed_in_reminders_off_at: None,
             secondary_location_ids: vec![],
             created_at: Some(1),
             updated_at: Some(1),
