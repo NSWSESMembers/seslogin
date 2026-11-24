@@ -272,6 +272,27 @@ There is no `code-index`, `active-super-index` or `legacy_id-index`. Setup codes
 
 ---
 
+### `{prefix}kiosk_key`
+
+One row per kiosk device key: the session it is bound to, and whether the device is on its QR screen asking to be set up. Being introduced by [plans/kiosk-key-binding.md](plans/kiosk-key-binding.md). Until that plan's phase 2 it is a **shadow** of the session table's key fields: written alongside them, read by nothing but `cli kiosk-key reconcile`. The session row and `key_fingerprint-index` still decide sign-in.
+
+| Attribute     | Type | Role          |
+| ------------- | ---- | ------------- |
+| `fingerprint` | S    | Hash key (PK) |
+
+No GSIs. Native TTL on `ttl`.
+
+**Non-obvious attributes:**
+
+- `public_key` (S) — base64 SPKI DER of the device's P-256 key, as `session.public_key`
+- `session_id` (S) — the session holding this key. Present **if and only if** the key is bound. When the plan is done, `kiosk_key(f).session_id = s` exactly when `session(s).key_fingerprint = f` and `s` is active, and both sides are written in one transaction
+- `bound_at` (N) — when it was bound
+- `requested_at` (N), `request_expires_at` (N) — when the device last published the key from its QR screen (`submitEnrollmentKey`), and 30 minutes after. The device is asking to be set up while `request_expires_at` is in the future. A request never changes `session_id`
+- `ttl` (N) — set only on unbound rows (to `request_expires_at`), so a request nobody acted on disappears. Absent on bound rows
+- `v` (N) — version, bumped when the binding changes; not by a request
+
+---
+
 ### `{prefix}nitc_event`
 
 | Attribute     | Type | Role                 |

@@ -423,6 +423,22 @@ resource "aws_dynamodb_table" "test_ephemeral_state" {
   }
 }
 
+resource "aws_dynamodb_table" "test_kiosk_key" {
+  name         = "${var.db_prefix_test}_kiosk_key"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "fingerprint"
+
+  attribute {
+    name = "fingerprint"
+    type = "S"
+  }
+
+  ttl {
+    attribute_name = "ttl"
+    enabled        = true
+  }
+}
+
 resource "aws_dynamodb_table" "test_oauth_grant" {
   name         = "${var.db_prefix_test}_oauth_grant"
   billing_mode = "PAY_PER_REQUEST"

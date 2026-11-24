@@ -242,6 +242,14 @@ const TABLES: &[Table] = &[
         ttl: Some("expires_at"),
     },
     Table {
+        name: "kiosk_key",
+        hash: "fingerprint",
+        range: None,
+        attrs: &[Attr("fingerprint", S)],
+        gsis: &[],
+        ttl: Some("ttl"),
+    },
+    Table {
         name: "oauth_grant",
         hash: "id",
         range: None,

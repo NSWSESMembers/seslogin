@@ -517,6 +517,33 @@ resource "aws_dynamodb_table" "prod_ephemeral_state" {
   }
 }
 
+resource "aws_dynamodb_table" "prod_kiosk_key" {
+  # One row per kiosk device key: which session it is bound to, and whether the
+  # device is asking to be set up. See plans/kiosk-key-binding.md. Written in
+  # shadow of the session table's key fields until that plan's phase 2.
+  name         = "${var.db_prefix}_kiosk_key"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "fingerprint"
+
+  deletion_protection_enabled = true
+
+  point_in_time_recovery {
+    enabled                 = true
+    recovery_period_in_days = 35
+  }
+
+  attribute {
+    name = "fingerprint"
+    type = "S"
+  }
+
+  # Set only on unbound rows, so a request nobody acted on disappears.
+  ttl {
+    attribute_name = "ttl"
+    enabled        = true
+  }
+}
+
 resource "aws_dynamodb_table" "prod_oauth_grant" {
   name         = "${var.db_prefix}_oauth_grant"
   billing_mode = "PAY_PER_REQUEST"
