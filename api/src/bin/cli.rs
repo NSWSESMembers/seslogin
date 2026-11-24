@@ -59,6 +59,11 @@ enum Object {
         #[command(subcommand)]
         cmd: SessionCmd,
     },
+    /// The `kiosk_key` table: which session each kiosk device key is bound to.
+    KioskKey {
+        #[command(subcommand)]
+        cmd: KioskKeyCmd,
+    },
     /// Attendance periods.
     Period {
         #[command(subcommand)]
@@ -510,6 +515,17 @@ enum NitcTagCmd {
     /// List NITC tags mirrored into our DB (the local copy `load-nitc-tags`
     /// populates from the SES API).
     List,
+}
+
+#[derive(Subcommand, Debug)]
+enum KioskKeyCmd {
+    /// Make `kiosk_key` agree with the session rows, which still decide which session
+    /// holds which key (plans/kiosk-key-binding.md): bind missing, unbound and wrong
+    /// rows to the session holding their key, and unbind rows naming a session that
+    /// doesn't. A key more than one live session holds is reported and left alone, and
+    /// exits non-zero. WRITES to the `kiosk_key` table — pass the global `--dry-run` to
+    /// preview instead.
+    Reconcile,
 }
 
 #[derive(Subcommand, Debug)]
@@ -1493,6 +1509,14 @@ async fn run_cli() -> Result<()> {
         return run_person_stamp_email_keys(&db_prefix, cli.dry_run).await;
     }
 
+    // And for reconciling the kiosk_key shadow.
+    if let Object::KioskKey {
+        cmd: KioskKeyCmd::Reconcile,
+    } = &cli.object
+    {
+        return run_kiosk_key_reconcile(&db_prefix, cli.dry_run).await;
+    }
+
     // And for retiring dead sessions.
     if let Object::Session {
         cmd: SessionCmd::RetireStale { grace_days },
@@ -1786,6 +1810,86 @@ async fn run_person_stamp_email_keys(db_prefix: &str, dry_run: bool) -> Result<(
 ///
 /// `value_json` and `clear` are mutually exclusive and clap enforces that exactly
 /// one is given, so `value_json.is_some() == !clear` always holds here.
+async fn run_kiosk_key_reconcile(db_prefix: &str, dry_run: bool) -> Result<()> {
+    let db = AuditingHandler::new(dynamodb::Handler::new(db_prefix, dry_run).await);
+    let summary = seslogin::kiosk_key_reconcile::run(&db, now_secs(), dry_run).await?;
+    let plan = &summary.plan;
+
+    let mut rows: Vec<Vec<String>> = plan
+        .bind
+        .iter()
+        .map(|b| {
+            vec![
+                b.fingerprint.clone(),
+                "bind".to_string(),
+                b.session_id.clone(),
+                b.reason.describe(),
+            ]
+        })
+        .collect();
+    rows.extend(plan.unbind.iter().map(|k| {
+        vec![
+            k.fingerprint.clone(),
+            "unbind".to_string(),
+            k.session_id.clone().unwrap_or_default(),
+            "session doesn't hold it".to_string(),
+        ]
+    }));
+    rows.extend(plan.duplicates.iter().map(|(fingerprint, ids)| {
+        vec![
+            fingerprint.clone(),
+            "LEFT ALONE".to_string(),
+            ids.join(", "),
+            "held by more than one live session".to_string(),
+        ]
+    }));
+    rows.extend(plan.keyless.iter().map(|id| {
+        vec![
+            String::new(),
+            "LEFT ALONE".to_string(),
+            id.clone(),
+            "fingerprint but no public key".to_string(),
+        ]
+    }));
+    print_table(&["fingerprint", "action", "session", "why"], &rows);
+
+    let changes = plan.bind.len() + plan.unbind.len();
+    println!(
+        "\n{} session(s) and {} kiosk_key row(s) scanned; {}{}{}{}",
+        summary.sessions_scanned,
+        summary.keys_scanned,
+        if dry_run {
+            format!("{changes} would be repaired")
+        } else {
+            format!("{} repaired", summary.repaired)
+        },
+        if summary.skipped_changed > 0 {
+            format!(
+                "; {} left alone (changed since the scan)",
+                summary.skipped_changed
+            )
+        } else {
+            String::new()
+        },
+        if summary.failed > 0 {
+            format!("; {} failed", summary.failed)
+        } else {
+            String::new()
+        },
+        if summary.unreadable > 0 {
+            format!("; {} unreadable row(s)", summary.unreadable)
+        } else {
+            String::new()
+        },
+    );
+    if summary.needs_attention() {
+        return Err(anyhow!(
+            "kiosk_key reconcile needs attention: see the rows marked LEFT ALONE and the log"
+        ));
+    }
+    Ok(())
+}
+
 async fn run_session_retire_stale(db_prefix: &str, grace_days: u64, dry_run: bool) -> Result<()> {
     let db = AuditingHandler::new(dynamodb::Handler::new(db_prefix, dry_run).await);
     let now = now_secs();
@@ -3315,6 +3419,9 @@ async fn run(db: &impl Handler, object: Object) -> Result<()> {
         }
 
         // Handled in `main` before the shared read-only DB is opened.
+        Object::KioskKey { .. } => {
+            unreachable!("kiosk-key reconcile is handled before the read-only DB is opened")
+        }
         Object::Id { .. } => unreachable!("id is handled before DB setup"),
         Object::Ses { .. } => unreachable!("ses is handled before DB setup"),
         // Handled in `main` before the shared read-only DB is opened.

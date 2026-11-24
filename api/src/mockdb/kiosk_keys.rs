@@ -7,6 +7,23 @@ impl db::KioskKeyStore for Handler {
         Self::unsupported()
     }
 
+    async fn list_kiosk_keys(&self) -> db::Result<Vec<db::Result<db::KioskKey>>> {
+        Self::unsupported()
+    }
+
+    async fn repair_kiosk_key_binding(
+        &self,
+        _fingerprint: &str,
+        _public_key: &str,
+        _session_id: &str,
+    ) -> db::Result<bool> {
+        Self::unsupported()
+    }
+
+    async fn repair_kiosk_key_unbind(&self, _row: &db::KioskKey, _now: u64) -> db::Result<bool> {
+        Self::unsupported()
+    }
+
     async fn record_kiosk_key_request(
         &self,
         _fingerprint: &str,

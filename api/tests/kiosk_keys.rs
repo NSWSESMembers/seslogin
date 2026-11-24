@@ -258,3 +258,73 @@ async fn deleting_a_kiosk_leaves_a_key_row_bound_elsewhere() {
         Some("sess-2")
     );
 }
+
+/// `cli kiosk-key reconcile`'s pass: rows the mirroring missed are repaired from the
+/// session rows, a request is kept, and a key two live sessions hold is left alone.
+#[tokio::test]
+async fn reconcile_repairs_the_shadow_from_the_session_rows() {
+    let app = app_at_loc_a();
+    {
+        let mut sessions = app.db.sessions.lock().unwrap();
+        for (id, fp) in [
+            ("missing", "f-missing"),
+            ("wrong", "f-wrong"),
+            ("dup1", "f-dup"),
+            ("dup2", "f-dup"),
+        ] {
+            sessions.insert(id.to_string(), session(id, fp));
+        }
+    }
+    {
+        let mut keys = app.db.kiosk_keys.lock().unwrap();
+        for (fp, bound_to, asking) in [
+            ("f-wrong", "someone-else", false),
+            ("f-stale", "gone", false),
+            ("f-stale-asking", "gone", true),
+        ] {
+            keys.insert(
+                fp.to_string(),
+                db::KioskKey {
+                    fingerprint: fp.to_string(),
+                    public_key: Some(format!("pk-{fp}")),
+                    session_id: Some(bound_to.to_string()),
+                    request_expires_at: asking.then_some(u64::MAX),
+                    ..db::KioskKey::default()
+                },
+            );
+        }
+    }
+
+    let now = seslogin::clock::now_sec();
+    let dry = seslogin::kiosk_key_reconcile::run(&app.db, now, true)
+        .await
+        .unwrap();
+    assert_eq!(dry.plan.bind.len(), 2);
+    assert_eq!(dry.plan.unbind.len(), 2);
+    assert_eq!(dry.repaired, 0);
+    assert!(row(&app, "f-missing").is_none(), "a dry run writes nothing");
+
+    let summary = seslogin::kiosk_key_reconcile::run(&app.db, now, false)
+        .await
+        .unwrap();
+    assert_eq!(summary.repaired, 4);
+    assert!(summary.needs_attention(), "the duplicate needs a human");
+    assert_eq!(
+        row(&app, "f-missing").unwrap().session_id.as_deref(),
+        Some("missing")
+    );
+    assert_eq!(
+        row(&app, "f-wrong").unwrap().session_id.as_deref(),
+        Some("wrong")
+    );
+    assert_eq!(row(&app, "f-stale"), None);
+    let asking = row(&app, "f-stale-asking").unwrap();
+    assert_eq!(asking.session_id, None);
+    assert!(asking.is_requested(now));
+    assert_eq!(row(&app, "f-dup"), None);
+
+    let again = seslogin::kiosk_key_reconcile::run(&app.db, now, false)
+        .await
+        .unwrap();
+    assert!(again.plan.bind.is_empty() && again.plan.unbind.is_empty());
+}

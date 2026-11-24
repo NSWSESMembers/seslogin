@@ -46,6 +46,31 @@ pub trait KioskKeyStore: Sync {
         fingerprint: &str,
     ) -> impl Future<Output = Result<Option<KioskKey>>> + Send;
 
+    /// Every row, for `cli kiosk-key reconcile`. A row that can't be read is an `Err`
+    /// in the list rather than failing the scan.
+    fn list_kiosk_keys(&self) -> impl Future<Output = Result<Vec<Result<KioskKey>>>> + Send;
+
+    /// Reconcile repair: bind `fingerprint`'s row to `session_id`, as the session row
+    /// already says it should be. Conditional on the session still holding the key and
+    /// being active, in one transaction. `Ok(false)` when it no longer does.
+    fn repair_kiosk_key_binding(
+        &self,
+        fingerprint: &str,
+        public_key: &str,
+        session_id: &str,
+    ) -> impl Future<Output = Result<bool>> + Send;
+
+    /// Reconcile repair: unbind `row`, which names a session that doesn't hold its key.
+    /// A row the device is still asking with (see [`KioskKey::is_requested`]) is kept
+    /// as an unbound request; any other is deleted. Conditional on the row still naming
+    /// that session and the session still not holding the key, in one transaction.
+    /// `Ok(false)` when either changed.
+    fn repair_kiosk_key_unbind(
+        &self,
+        row: &KioskKey,
+        now: u64,
+    ) -> impl Future<Output = Result<bool>> + Send;
+
     /// Record that the device holding `fingerprint` published it from its QR screen
     /// at `now`, asking to be set up until `request_expires_at`. Never changes which
     /// session the key is bound to: on an unbound (or new) row it also stores

@@ -1,8 +1,13 @@
 //! The `kiosk_key` table: hydration and [`db::KioskKeyStore`].
 
+use std::collections::HashMap;
+
 use aws_sdk_dynamodb::error::SdkError;
+use aws_sdk_dynamodb::operation::transact_write_items::TransactWriteItemsError;
 use aws_sdk_dynamodb::operation::update_item::UpdateItemError;
-use aws_sdk_dynamodb::types::{AttributeValue, ReturnConsumedCapacity};
+use aws_sdk_dynamodb::types::{
+    AttributeValue, ConditionCheck, Delete, ReturnConsumedCapacity, TransactWriteItem, Update,
+};
 
 use tracing::warn;
 
@@ -34,7 +39,44 @@ fn is_condition_failed(e: &SdkError<UpdateItemError>) -> bool {
     matches!(e, SdkError::ServiceError(se) if se.err().is_conditional_check_failed_exception())
 }
 
+/// Whether a transaction was cancelled because one of its conditions failed.
+fn is_transaction_condition_failed(e: &SdkError<TransactWriteItemsError>) -> bool {
+    matches!(e, SdkError::ServiceError(se)
+        if matches!(se.err(), TransactWriteItemsError::TransactionCanceledException(tce)
+            if tce.cancellation_reasons().iter().any(|r| r.code() == Some("ConditionalCheckFailed"))))
+}
+
+fn build_err(e: aws_sdk_dynamodb::error::BuildError) -> Error {
+    Error::Infrastructure(e.to_string())
+}
+
 impl Handler {
+    /// Run a reconcile repair. `Ok(false)` when a condition failed: the rows moved on
+    /// since they were read, which the next reconcile will see.
+    async fn transact_repair(
+        &self,
+        op: &'static str,
+        items: Vec<TransactWriteItem>,
+    ) -> db::Result<bool> {
+        match self
+            .client
+            .transact_write_items()
+            .set_transact_items(Some(items))
+            .return_consumed_capacity(ReturnConsumedCapacity::Total)
+            .send()
+            .await
+        {
+            Ok(resp) => {
+                for capacity in resp.consumed_capacity() {
+                    record_capacity(op, Some(capacity), CapKind::Write);
+                }
+                Ok(true)
+            }
+            Err(e) if is_transaction_condition_failed(&e) => Ok(false),
+            Err(e) => Err(Error::Infrastructure(sdk_err_msg(e))),
+        }
+    }
+
     /// The `kiosk_key` shadow of a session giving up `fingerprint`: delete its row if it
     /// is still bound to `session_id`. Best effort, after the session write: nothing
     /// reads the table yet, and `cli kiosk-key reconcile` repairs a row this misses.
@@ -114,6 +156,139 @@ impl db::KioskKeyStore for Handler {
             Some(item) => Ok(Some(Item(item).try_into()?)),
             None => Ok(None),
         }
+    }
+
+    async fn list_kiosk_keys(&self) -> db::Result<Vec<db::Result<KioskKey>>> {
+        let mut rows = Vec::new();
+        let mut start: Option<HashMap<String, AttributeValue>> = None;
+        loop {
+            let resp = self
+                .client
+                .scan()
+                .table_name(self.table_name("kiosk_key"))
+                .set_exclusive_start_key(start.take())
+                .return_consumed_capacity(ReturnConsumedCapacity::Total)
+                .send()
+                .await
+                .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
+            record_capacity("list_kiosk_keys", resp.consumed_capacity(), CapKind::Read);
+            for item in resp.items.unwrap_or_default() {
+                rows.push(Item(item).try_into().map_err(db::Error::from));
+            }
+            start = resp.last_evaluated_key;
+            if start.is_none() {
+                return Ok(rows);
+            }
+        }
+    }
+
+    async fn repair_kiosk_key_binding(
+        &self,
+        fingerprint: &str,
+        public_key: &str,
+        session_id: &str,
+    ) -> db::Result<bool> {
+        if self.read_only {
+            return Err(db::Error::MutationDisabled);
+        }
+        let fp = AttributeValue::S(fingerprint.to_string());
+        let items = vec![
+            TransactWriteItem::builder()
+                .condition_check(
+                    ConditionCheck::builder()
+                        .table_name(self.table_name("session"))
+                        .key("id", AttributeValue::S(session_id.to_string()))
+                        .condition_expression("attribute_exists(active) AND key_fingerprint = :fp")
+                        .expression_attribute_values(":fp", fp.clone())
+                        .build()
+                        .map_err(build_err)?,
+                )
+                .build(),
+            // Keeps any request the device is making; a bound row has no TTL.
+            TransactWriteItem::builder()
+                .update(
+                    Update::builder()
+                        .table_name(self.table_name("kiosk_key"))
+                        .key("fingerprint", fp)
+                        .update_expression(
+                            "SET public_key = :pk, session_id = :s REMOVE #ttl ADD v :one",
+                        )
+                        .expression_attribute_names("#ttl", "ttl")
+                        .expression_attribute_values(
+                            ":pk",
+                            AttributeValue::S(public_key.to_string()),
+                        )
+                        .expression_attribute_values(
+                            ":s",
+                            AttributeValue::S(session_id.to_string()),
+                        )
+                        .expression_attribute_values(":one", AttributeValue::N("1".to_string()))
+                        .build()
+                        .map_err(build_err)?,
+                )
+                .build(),
+        ];
+        self.transact_repair("repair_kiosk_key_binding", items)
+            .await
+    }
+
+    async fn repair_kiosk_key_unbind(&self, row: &KioskKey, now: u64) -> db::Result<bool> {
+        if self.read_only {
+            return Err(db::Error::MutationDisabled);
+        }
+        let Some(session_id) = row.session_id.as_deref() else {
+            return Ok(false);
+        };
+        let fp = AttributeValue::S(row.fingerprint.clone());
+        let s = AttributeValue::S(session_id.to_string());
+        let check = TransactWriteItem::builder()
+            .condition_check(
+                ConditionCheck::builder()
+                    .table_name(self.table_name("session"))
+                    .key("id", s.clone())
+                    // True of a missing session too: nothing there holds the key.
+                    .condition_expression(
+                        "attribute_not_exists(active) OR attribute_not_exists(key_fingerprint) \
+                         OR key_fingerprint <> :fp",
+                    )
+                    .expression_attribute_values(":fp", fp.clone())
+                    .build()
+                    .map_err(build_err)?,
+            )
+            .build();
+        let write = match row.request_expires_at.filter(|_| row.is_requested(now)) {
+            Some(request_expires_at) => TransactWriteItem::builder()
+                .update(
+                    Update::builder()
+                        .table_name(self.table_name("kiosk_key"))
+                        .key("fingerprint", fp)
+                        .condition_expression("session_id = :s")
+                        .update_expression("SET #ttl = :exp REMOVE session_id, bound_at ADD v :one")
+                        .expression_attribute_names("#ttl", "ttl")
+                        .expression_attribute_values(":s", s)
+                        .expression_attribute_values(
+                            ":exp",
+                            AttributeValue::N(request_expires_at.to_string()),
+                        )
+                        .expression_attribute_values(":one", AttributeValue::N("1".to_string()))
+                        .build()
+                        .map_err(build_err)?,
+                )
+                .build(),
+            None => TransactWriteItem::builder()
+                .delete(
+                    Delete::builder()
+                        .table_name(self.table_name("kiosk_key"))
+                        .key("fingerprint", fp)
+                        .condition_expression("session_id = :s")
+                        .expression_attribute_values(":s", s)
+                        .build()
+                        .map_err(build_err)?,
+                )
+                .build(),
+        };
+        self.transact_repair("repair_kiosk_key_unbind", vec![check, write])
+            .await
     }
 
     async fn record_kiosk_key_request(
