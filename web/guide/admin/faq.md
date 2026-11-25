@@ -14,8 +14,9 @@ in their own history.
 ## People keep signing in as the wrong person
 
 That's almost always a mistyped SES ID that happens to belong to someone at
-another unit. Check that [Confirm visitors](kiosks.md#options) is on for the
-kiosk (it is unless someone turned it off): it asks anyone who isn't a member of your unit to confirm their name before signing them in.
+another unit. Every kiosk now asks anyone who isn't a member of your unit to
+[confirm their name](kiosks.md#how-members-use-a-kiosk) before signing them in,
+so ask your members to read that question rather than tapping straight through it.
 
 ## Can we have more than one kiosk?
 

@@ -80,8 +80,6 @@ interface BasicSessionModeFieldsProps {
   onQuickPickCategoriesChange: (next: boolean) => void;
   categorySearch: boolean;
   onCategorySearchChange: (next: boolean) => void;
-  confirmVisitors: boolean;
-  onConfirmVisitorsChange: (next: boolean) => void;
   showGamification: boolean;
   gamification: boolean;
   onGamificationChange: (next: boolean) => void;
@@ -209,24 +207,6 @@ function getCategorySearchFromConfig(config: ConfigObject): boolean {
   return !!config.categorySearch;
 }
 
-// On by default: an absent key means on, so only turning it off is stored.
-function withConfirmVisitors(
-  config: ConfigObject,
-  enabled: boolean,
-): ConfigObject {
-  const next = { ...config };
-  if (enabled) {
-    delete next.confirmVisitors;
-  } else {
-    next.confirmVisitors = false;
-  }
-  return next;
-}
-
-function getConfirmVisitorsFromConfig(config: ConfigObject): boolean {
-  return config.confirmVisitors !== false;
-}
-
 function withGamification(
   config: ConfigObject,
   enabled: boolean,
@@ -312,6 +292,9 @@ function getSignedInStatusModeFromConfig(
 
 function initializeConfigState(initialConfig: string): InitialConfigState {
   const parsed = parseConfigObject(initialConfig);
+  // The retired "Confirm visitors" option: the kiosk now always asks, so drop a
+  // stored `confirmVisitors: false` rather than carry it forward.
+  delete parsed.confirmVisitors;
   const sessionMode = getSessionModeFromConfig(parsed);
   const normalizedConfig = withSessionMode(parsed, sessionMode);
 
@@ -432,8 +415,6 @@ function BasicSessionModeFields({
   onQuickPickCategoriesChange,
   categorySearch,
   onCategorySearchChange,
-  confirmVisitors,
-  onConfirmVisitorsChange,
   showGamification,
   gamification,
   onGamificationChange,
@@ -531,18 +512,6 @@ function BasicSessionModeFields({
                 </span>
               }
               description="on the sign-out screen, add a search box so people can find a category by typing a few letters instead of tapping into each group"
-            />
-            <OptionRow
-              input={
-                <input
-                  type="checkbox"
-                  checked={confirmVisitors}
-                  onChange={(e) => onConfirmVisitorsChange(e.target.checked)}
-                  className="mt-0.5"
-                />
-              }
-              title="Confirm visitors"
-              description="before signing in a member from another unit, ask them to confirm their name and unit, so a mistyped member ID doesn't sign in the wrong person"
             />
             {showGamification && (
               <OptionRow
@@ -706,7 +675,6 @@ export default function SessionForm({
   const guests = getGuestsFromConfig(parsedConfig);
   const quickPickCategories = getQuickPickCategoriesFromConfig(parsedConfig);
   const categorySearch = getCategorySearchFromConfig(parsedConfig);
-  const confirmVisitors = getConfirmVisitorsFromConfig(parsedConfig);
   const gamification = getGamificationFromConfig(parsedConfig);
   const interfaceMode = getInterfaceModeFromConfig(parsedConfig);
   const signedInStatusMode = getSignedInStatusModeFromConfig(parsedConfig);
@@ -739,14 +707,6 @@ export default function SessionForm({
 
   function handleCategorySearchChange(enabled: boolean) {
     const nextConfig = withCategorySearch(
-      parseConfigObject(configJson),
-      enabled,
-    );
-    setConfigJson(JSON.stringify(nextConfig, null, 2));
-  }
-
-  function handleConfirmVisitorsChange(enabled: boolean) {
-    const nextConfig = withConfirmVisitors(
       parseConfigObject(configJson),
       enabled,
     );
@@ -800,8 +760,6 @@ export default function SessionForm({
             onQuickPickCategoriesChange={handleQuickPickCategoriesChange}
             categorySearch={categorySearch}
             onCategorySearchChange={handleCategorySearchChange}
-            confirmVisitors={confirmVisitors}
-            onConfirmVisitorsChange={handleConfirmVisitorsChange}
             showGamification={showGamification}
             gamification={gamification}
             onGamificationChange={handleGamificationChange}

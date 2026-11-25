@@ -32,8 +32,8 @@ administrators, who can add you.
 You can sign in at any unit's kiosk with the same SES ID. Your time is recorded
 at the unit you're visiting, and it also appears in your own history.
 
-Most kiosks check first when you're visiting, meaning the unit isn't one of
-yours: they show your name and primary unit and ask **Are you …?**. Press **Yes, sign me in** if it's you. If it isn't, press **No**
+The kiosk checks first when you're visiting, meaning the unit isn't one of
+yours: it shows your name and primary unit and asks **Are you …?**. Press **Yes, sign me in** if it's you. If it isn't, press **No**
 — you've probably mistyped your SES ID — and enter it again.
 
 ![The kiosk asking "Are you Crossunit Tester?", with the Yes, sign me in button highlighted](../screenshots/kiosk-confirm-visitor.png "A kiosk checking a visitor's name before signing them in.")

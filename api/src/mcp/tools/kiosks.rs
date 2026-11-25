@@ -80,7 +80,7 @@ pub(super) fn catalogue() -> Vec<Value> {
                 "Change a kiosk's name, `config` or `healthcheckUrl`. Only the fields you pass \
                  change; anything omitted keeps its current value. `config` is a JSON object \
                  (the kiosk's settings, e.g. `status`, `theme`, `guests`, `quickPickCategories`, \
-                 `interfaceMode`; `confirmVisitors` is on unless set to `false`) that replaces \
+                 `interfaceMode`) that replaces \
                  the whole current one, so start from `get_kiosk`'s \
                  `config`; `{{}}` resets it. `healthcheckUrl` must be an absolute http or https \
                  URL of at most 255 characters: passing `null` (or an empty string) clears it, \
