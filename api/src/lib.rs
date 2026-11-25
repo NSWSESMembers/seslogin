@@ -20,6 +20,7 @@ pub mod environment;
 pub mod expire;
 pub mod graphql;
 pub mod healthcheck;
+pub mod kiosk_key_reconcile;
 pub mod local_dev;
 pub mod location_sync;
 pub mod mail;

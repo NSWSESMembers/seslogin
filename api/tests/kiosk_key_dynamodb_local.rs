@@ -192,4 +192,64 @@ async fn binds_and_unbinds_mirror_into_kiosk_key() {
     h.update_session(&s1.id, db::SessionUpdateShape::Delete)
         .await
         .unwrap();
+
+    // Reconcile's repairs. Binding needs the session to hold the key, and unbinding
+    // needs it not to; each is refused, writing nothing, when that isn't so.
+    let fp_c = format!("dynamodb-local-test-{now}-c");
+    ask(&h, &fp_c, now).await;
+    let s3 = h
+        .bind_session_key(db::SessionKeyBind {
+            enrollment_id: &eid(&fp_c),
+            now,
+            key: key(&fp_c, now),
+            release: &[],
+            target: new("three"),
+        })
+        .await
+        .unwrap()
+        .unwrap()
+        .session;
+    let bound_row = h.get_kiosk_key(&fp_c).await.unwrap().unwrap();
+    assert!(
+        !h.repair_kiosk_key_unbind(&bound_row, now).await.unwrap(),
+        "s3 holds it"
+    );
+    assert!(
+        h.repair_kiosk_key_binding(&fp_c, "pk", &s3.id)
+            .await
+            .unwrap()
+    );
+    assert_eq!(h.get_kiosk_key(&fp_c).await.unwrap().unwrap().version, 2);
+
+    h.update_session(&s3.id, db::SessionUpdateShape::Delete)
+        .await
+        .unwrap();
+    assert!(
+        !h.repair_kiosk_key_binding(&fp_c, "pk", &s3.id)
+            .await
+            .unwrap()
+    );
+    assert_eq!(
+        h.get_kiosk_key(&fp_c).await.unwrap(),
+        None,
+        "unbound by the delete"
+    );
+    // A plan read before the delete's unbind: the row is gone, so nothing to do.
+    assert!(!h.repair_kiosk_key_unbind(&bound_row, now).await.unwrap());
+    // The device asking again leaves an unbound row, which an unbind doesn't touch.
+    h.record_kiosk_key_request(&fp_c, "pk", now, now + 600)
+        .await
+        .unwrap();
+    let asking_plan = db::KioskKey {
+        request_expires_at: Some(now + 600),
+        ..bound_row
+    };
+    assert!(!h.repair_kiosk_key_unbind(&asking_plan, now).await.unwrap());
+    assert!(
+        h.get_kiosk_key(&fp_c)
+            .await
+            .unwrap()
+            .unwrap()
+            .is_requested(now)
+    );
 }
