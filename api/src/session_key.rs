@@ -55,6 +55,41 @@ pub fn is_live_enrollment(state: &crate::db::EphemeralState, now: u64) -> bool {
     state.kind == ENROLL_STATE_KIND && state.expires_at > now
 }
 
+/// When the device holding `fingerprint` stops asking to be set up, if it is asking now:
+/// it is on its QR screen and has published its key. `None` when it isn't.
+///
+/// Read from the key's `kiosk_key` row (plans/kiosk-key-binding.md, phase 2), falling
+/// back to the `kiosk_enroll_<fp>` `ephemeral_state` record, which still decides
+/// enrolment until phase 3. A request only the old record knows about means a writer
+/// missed its shadow write, and is logged with [`crate::auth::KIOSK_KEY_FALLBACK`].
+pub async fn pending_request_expiry<D: crate::db::Handler>(
+    db: &D,
+    fingerprint: &str,
+    now: u64,
+) -> crate::db::Result<Option<u64>> {
+    if let Some(expires_at) = db
+        .get_kiosk_key(fingerprint)
+        .await?
+        .filter(|row| row.is_requested(now))
+        .and_then(|row| row.request_expires_at)
+    {
+        return Ok(Some(expires_at));
+    }
+    let Some(state) = db
+        .get_ephemeral_state(&enroll_state_id(fingerprint))
+        .await?
+        .filter(|s| is_live_enrollment(s, now))
+    else {
+        return Ok(None);
+    };
+    tracing::warn!(
+        "{}: kiosk key {fingerprint} is asking to be set up only according to its \
+         ephemeral_state record",
+        crate::auth::KIOSK_KEY_FALLBACK
+    );
+    Ok(Some(state.expires_at))
+}
+
 /// JSON payload stored in the pending-enrollment `ephemeral_state` record.
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct EnrollPayload {

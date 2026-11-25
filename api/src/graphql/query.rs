@@ -24,7 +24,7 @@ use crate::auth::AuthInfo;
 use crate::badges;
 use crate::db;
 use crate::db::ListSessionsQuery;
-use crate::db::{EphemeralStateStore, Handler, OAuthGrantStore, PasskeyStore};
+use crate::db::{Handler, OAuthGrantStore, PasskeyStore};
 use crate::realtime;
 use crate::realtime::Handler as _;
 use crate::ses_api;
@@ -3579,11 +3579,11 @@ impl<A: App + HasDb + Send + Sync + 'static> Session<A> {
         }
 
         let app = ctx.data_unchecked::<Arc<A>>();
-        let pending = app
-            .db()
-            .get_ephemeral_state(&crate::session_key::enroll_state_id(fingerprint))
-            .await?;
-        Ok(pending.is_some_and(|s| crate::session_key::is_live_enrollment(&s, now)))
+        Ok(
+            crate::session_key::pending_request_expiry(app.db(), fingerprint, now)
+                .await?
+                .is_some(),
+        )
     }
 
     async fn created_at(&self) -> Option<i64> {
@@ -4206,10 +4206,8 @@ impl<A: App + HasDb + HasRealtime + Send + Sync + 'static> QueryRoot<A> {
             .map_err(|e| anyhow!("Invalid public key: {e:#}"))?;
         let app = ctx.data_unchecked::<Arc<A>>();
         let now = crate::clock::now_sec();
-        app.db()
-            .get_ephemeral_state(&crate::session_key::enroll_state_id(&fingerprint))
+        crate::session_key::pending_request_expiry(app.db(), &fingerprint, now)
             .await?
-            .filter(|s| crate::session_key::is_live_enrollment(s, now))
             .ok_or_else(|| anyhow!("No pending enrollment for this key"))?;
         let token = app
             .realtime()
@@ -4245,15 +4243,11 @@ impl<A: App + HasDb + HasRealtime + Send + Sync + 'static> QueryRoot<A> {
     ) -> Result<Option<PendingEnrollmentKey>> {
         let app = ctx.data_unchecked::<Arc<A>>().clone();
         let now = crate::clock::now_sec();
-        let state_id = crate::session_key::enroll_state_id(&fingerprint);
-        let pending = app
-            .db()
-            .get_ephemeral_state(&state_id)
-            .await?
-            .filter(|s| crate::session_key::is_live_enrollment(s, now));
-        Ok(pending.map(|s| PendingEnrollmentKey {
+        let expires_at =
+            crate::session_key::pending_request_expiry(app.db(), &fingerprint, now).await?;
+        Ok(expires_at.map(|expires_at| PendingEnrollmentKey {
             fingerprint,
-            expires_at: s.expires_at as i64,
+            expires_at: expires_at as i64,
         }))
     }
 

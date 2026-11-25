@@ -328,3 +328,103 @@ async fn reconcile_repairs_the_shadow_from_the_session_rows() {
         .unwrap();
     assert!(again.plan.bind.is_empty() && again.plan.unbind.is_empty());
 }
+
+// Phase 2: reads of a request go to kiosk_key first, falling back to ephemeral_state.
+
+/// Only the `kiosk_key` row says the device is asking.
+fn request_only_in_kiosk_key(app: &TestApp, fingerprint: &str, expires_at: u64) {
+    app.db.kiosk_keys.lock().unwrap().insert(
+        fingerprint.to_string(),
+        db::KioskKey {
+            fingerprint: fingerprint.to_string(),
+            public_key: Some(format!("pk-{fingerprint}")),
+            requested_at: Some(0),
+            request_expires_at: Some(expires_at),
+            ..db::KioskKey::default()
+        },
+    );
+}
+
+#[tokio::test]
+async fn a_request_is_read_from_the_kiosk_key_row() {
+    let app = app_at_loc_a();
+    let expires_at = seslogin::clock::now_sec() + 600;
+    request_only_in_kiosk_key(&app, "fp1", expires_at);
+
+    let data = run_admin(
+        &app,
+        r#"{ pendingEnrollmentKey(fingerprint: "fp1") { expiresAt } }"#,
+    )
+    .await;
+    assert_eq!(
+        data["pendingEnrollmentKey"]["expiresAt"],
+        serde_json::json!(expires_at)
+    );
+}
+
+/// A request only the old record knows about is still honoured (and logged as drift).
+#[tokio::test]
+async fn a_request_missing_from_kiosk_key_falls_back_to_ephemeral_state() {
+    let app = app_at_loc_a();
+    app.db
+        .put_ephemeral_state(
+            &seslogin::session_key::enroll_state_id("fp1"),
+            seslogin::session_key::ENROLL_STATE_KIND,
+            r#"{"public_key":"pk-fp1","submitted_at":0}"#,
+            u64::MAX,
+        )
+        .await
+        .unwrap();
+
+    let now = seslogin::clock::now_sec();
+    assert_eq!(
+        seslogin::session_key::pending_request_expiry(&app.db, "fp1", now)
+            .await
+            .unwrap(),
+        Some(u64::MAX)
+    );
+}
+
+#[tokio::test]
+async fn an_expired_request_in_either_place_is_no_request() {
+    let app = app_at_loc_a();
+    let now = seslogin::clock::now_sec();
+    request_only_in_kiosk_key(&app, "fp1", now - 1);
+    app.db
+        .put_ephemeral_state(
+            &seslogin::session_key::enroll_state_id("fp1"),
+            seslogin::session_key::ENROLL_STATE_KIND,
+            r#"{"public_key":"pk-fp1","submitted_at":0}"#,
+            now - 1,
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(
+        seslogin::session_key::pending_request_expiry(&app.db, "fp1", now)
+            .await
+            .unwrap(),
+        None
+    );
+    let data = run_admin(
+        &app,
+        r#"{ pendingEnrollmentKey(fingerprint: "fp1") { expiresAt } }"#,
+    )
+    .await;
+    assert!(data["pendingEnrollmentKey"].is_null());
+}
+
+/// Deleting a kiosk deletes its key row, request and all, while the ephemeral_state
+/// record lives on. The device's next publish must record the request again rather
+/// than being suppressed by the old record.
+#[tokio::test]
+async fn a_fresh_ephemeral_record_does_not_suppress_a_missing_kiosk_key_request() {
+    let app = Arc::new(fake_app());
+    submit(&app).await;
+    app.db.kiosk_keys.lock().unwrap().remove(FINGERPRINT);
+
+    submit(&app).await;
+
+    let row = key_row(&app).expect("the request recorded again");
+    assert!(row.is_requested(seslogin::clock::now_sec()));
+}
