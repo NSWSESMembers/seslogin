@@ -1367,7 +1367,11 @@ pub trait Handler:
         key: SessionKeyParams<'_>,
     ) -> impl Future<Output = Result<Session>> + Send;
     /// Returns the session's new [`version`](Session::version) for the shapes that bump
-    /// it (`Fields`, `ReleaseKey`, `Delete`), `None` for those that don't.
+    /// it (`Fields`, `ReleaseKey`, `Delete`, `Retire`), `None` for those that don't.
+    ///
+    /// `ReleaseKey`, `Delete` and `Retire` give up the session's key: in the same
+    /// transaction they delete its `kiosk_key` row, if that is bound to this session.
+    /// A missing session is [`Error::NotFound`].
     fn update_session(
         &self,
         id: &str,

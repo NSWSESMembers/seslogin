@@ -9,8 +9,6 @@ use aws_sdk_dynamodb::types::{
     AttributeValue, ConditionCheck, Delete, ReturnConsumedCapacity, TransactWriteItem, Update,
 };
 
-use tracing::warn;
-
 use crate::db::{self, Error, KioskKey};
 
 use super::{CapKind, Handler, HydrationError, Item, record_capacity, sdk_err_msg};
@@ -46,6 +44,34 @@ fn is_transaction_condition_failed(e: &SdkError<TransactWriteItemsError>) -> boo
             if tce.cancellation_reasons().iter().any(|r| r.code() == Some("ConditionalCheckFailed"))))
 }
 
+/// Why a transaction was cancelled.
+enum Cancelled {
+    /// The item at this position failed its condition.
+    Condition(usize),
+    /// Another transaction was writing one of its items.
+    Conflict,
+}
+
+/// `None` when `e` isn't a cancelled transaction.
+fn cancelled_item(e: &SdkError<TransactWriteItemsError>) -> Option<Cancelled> {
+    let SdkError::ServiceError(se) = e else {
+        return None;
+    };
+    let TransactWriteItemsError::TransactionCanceledException(tce) = se.err() else {
+        return None;
+    };
+    let reasons = tce.cancellation_reasons();
+    Some(
+        match reasons
+            .iter()
+            .position(|r| r.code() == Some("ConditionalCheckFailed"))
+        {
+            Some(i) => Cancelled::Condition(i),
+            None => Cancelled::Conflict,
+        },
+    )
+}
+
 fn build_err(e: aws_sdk_dynamodb::error::BuildError) -> Error {
     Error::Infrastructure(e.to_string())
 }
@@ -77,32 +103,94 @@ impl Handler {
         }
     }
 
-    /// The `kiosk_key` shadow of a session giving up `fingerprint`: delete its row if it
-    /// is still bound to `session_id`. Best effort, after the session write: nothing
-    /// reads the table yet, and `cli kiosk-key reconcile` repairs a row this misses.
-    pub(super) async fn unbind_kiosk_key_shadow(&self, fingerprint: &str, session_id: &str) {
-        let result = self
-            .client
-            .delete_item()
-            .table_name(self.table_name("kiosk_key"))
-            .key("fingerprint", AttributeValue::S(fingerprint.to_string()))
-            .condition_expression("session_id = :s")
-            .expression_attribute_values(":s", AttributeValue::S(session_id.to_string()))
-            .return_consumed_capacity(ReturnConsumedCapacity::Total)
-            .send()
-            .await;
-        match result {
-            Ok(resp) => {
-                record_capacity("unbind_kiosk_key", resp.consumed_capacity(), CapKind::Write)
+    /// A session write that gives up the session's key (`ReleaseKey`, `Delete`,
+    /// `Retire`), in one transaction with deleting the key's `kiosk_key` row
+    /// (plans/kiosk-key-binding.md, phase 3). Returns the session's new version.
+    ///
+    /// The session is read first, strongly consistent, to learn which key it holds, and
+    /// the write is conditional on its version as read as well as on `condition`. The
+    /// row is unbound only if it is bound to this session, conditional on that still
+    /// being so: a row bound elsewhere isn't this session's to remove. A device still
+    /// asking keeps its request (see [`Self::unbind_kiosk_key_item`]). A concurrent
+    /// change to either is re-read and retried. A session that is missing, or fails
+    /// `condition` at the version read, is [`Error::NotFound`] with `not_found`.
+    pub(super) async fn unbind_session_key(
+        &self,
+        op: &'static str,
+        id: &str,
+        condition: Option<&str>,
+        update_expression: &str,
+        values: &[(&str, AttributeValue)],
+        not_found: impl Fn() -> String,
+    ) -> db::Result<u64> {
+        use db::{Handler as _, KioskKeyStore as _};
+        const ATTEMPTS: usize = 3;
+        let s = AttributeValue::S(id.to_string());
+        for _ in 0..ATTEMPTS {
+            let Some(session) = self.get_session_consistent(id).await? else {
+                return Err(Error::NotFound(not_found()));
+            };
+            let (version_cond, version) = super::version_condition(session.version);
+            let mut session_cond = format!("attribute_exists(id) AND {version_cond}");
+            if let Some(condition) = condition {
+                session_cond = format!("{session_cond} AND ({condition})");
             }
-            // Missing, or bound to another session: nothing of this session's to remove.
-            Err(SdkError::ServiceError(se)) if se.err().is_conditional_check_failed_exception() => {
+            let mut update = Update::builder()
+                .table_name(self.table_name("session"))
+                .key("id", s.clone())
+                .condition_expression(session_cond)
+                .update_expression(update_expression);
+            for (name, value) in values {
+                update = update.expression_attribute_values(*name, value.clone());
             }
-            Err(e) => warn!(
-                "Failed to unbind kiosk key {fingerprint} from session {session_id}: {}",
-                sdk_err_msg(e)
-            ),
+            if let Some(version) = version {
+                update = update.expression_attribute_values(":v", version);
+            }
+            let mut items = vec![
+                TransactWriteItem::builder()
+                    .update(update.build().map_err(build_err)?)
+                    .build(),
+            ];
+            if let Some(fingerprint) = session.key_fingerprint.as_deref()
+                && let Some(row) = self
+                    .get_kiosk_key(fingerprint)
+                    .await?
+                    .filter(|row| row.session_id.as_deref() == Some(id))
+            {
+                items.push(self.unbind_kiosk_key_item(&row, id, crate::clock::now_sec())?);
+            }
+            match self
+                .client
+                .transact_write_items()
+                .set_transact_items(Some(items))
+                .return_consumed_capacity(ReturnConsumedCapacity::Total)
+                .send()
+                .await
+            {
+                Ok(resp) => {
+                    for capacity in resp.consumed_capacity() {
+                        record_capacity(op, Some(capacity), CapKind::Write);
+                    }
+                    return Ok(session.version + 1);
+                }
+                Err(e) => match cancelled_item(&e) {
+                    // The session failed its condition: if it is still at the version
+                    // read, that was `condition`, so it isn't in the state asked for.
+                    Some(Cancelled::Condition(0)) => {
+                        let now = self.get_session_consistent(id).await?;
+                        if now.is_none_or(|now| now.version == session.version) {
+                            return Err(Error::NotFound(not_found()));
+                        }
+                    }
+                    // The row moved, or another transaction was writing: read again.
+                    Some(Cancelled::Condition(_) | Cancelled::Conflict) => {}
+                    None => return Err(Error::Infrastructure(sdk_err_msg(e))),
+                },
+            }
         }
+        Err(Error::Conflict(format!(
+            "session {id} kept changing while its key was being given up"
+        )))
     }
 
     /// Refresh the request on a bound row. `Ok(false)` when the row isn't bound.

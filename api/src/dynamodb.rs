@@ -722,24 +722,6 @@ fn returned_version(attributes: Option<&HashMap<String, AttributeValue>>) -> db:
         })
 }
 
-/// From a session write that ran `ADD v :one` and removed the key fields, with
-/// `ReturnValues::UpdatedOld`: the new version, and the fingerprint the row held
-/// before, if any.
-fn version_and_old_fingerprint(
-    attributes: Option<&HashMap<String, AttributeValue>>,
-) -> (u64, Option<String>) {
-    let old_version = attributes
-        .and_then(|a| a.get("v"))
-        .and_then(|v| v.as_n().ok())
-        .and_then(|n| n.parse::<u64>().ok())
-        .unwrap_or(0);
-    let fingerprint = attributes
-        .and_then(|a| a.get("key_fingerprint"))
-        .and_then(|v| v.as_s().ok())
-        .cloned();
-    (old_version + 1, fingerprint)
-}
-
 /// The session attributes backing [`crate::client_info::ClientInfo`], paired with the
 /// value to write. `None` means the client didn't report that field, so it is removed
 /// from the item rather than stored as Null.
@@ -3713,39 +3695,22 @@ impl db::Handler for Handler {
                 // another admin enrolling the same device: release only while the row still
                 // holds *this* fingerprint. A conditional-check failure surfaces as
                 // `NotFound`, which the caller reads as "this key has already moved on".
-                let now = crate::clock::now_sec();
-                let resp = self
-                    .client
-                    .update_item()
-                    .table_name(self.table_name("session"))
-                    .key("id", AttributeValue::S(id.to_string()))
-                    .condition_expression(
-                        "attribute_exists(key_fingerprint) AND key_fingerprint = :fp",
-                    )
-                    .update_expression(
+                let now = AttributeValue::N(crate::clock::now_sec().to_string());
+                let version = self
+                    .unbind_session_key(
+                        "release_session_key",
+                        id,
+                        Some("attribute_exists(key_fingerprint) AND key_fingerprint = :fp"),
                         "SET updated_at = :now, key_released_at = :now \
                          REMOVE key_fingerprint, public_key, key_expires_at ADD v :one",
+                        &[
+                            (":fp", AttributeValue::S(fingerprint.to_string())),
+                            (":now", now),
+                            (":one", AttributeValue::N("1".to_string())),
+                        ],
+                        || format!("Session {id} no longer holds the key {fingerprint}"),
                     )
-                    .expression_attribute_values(":fp", AttributeValue::S(fingerprint.to_string()))
-                    .expression_attribute_values(":now", AttributeValue::N(now.to_string()))
-                    .expression_attribute_values(":one", AttributeValue::N("1".to_string()))
-                    .return_values(ReturnValue::UpdatedOld)
-                    .return_consumed_capacity(ReturnConsumedCapacity::Total)
-                    .send()
-                    .await
-                    .map_err(|e| {
-                        map_update_err(
-                            e,
-                            format!("Session {id} no longer holds the key {fingerprint}"),
-                        )
-                    })?;
-                record_capacity(
-                    "release_session_key",
-                    resp.consumed_capacity(),
-                    CapKind::Write,
-                );
-                let (version, _) = version_and_old_fingerprint(resp.attributes());
-                self.unbind_kiosk_key_shadow(fingerprint, id).await;
+                    .await?;
                 Ok(Some(version))
             }
             db::SessionUpdateShape::Delete => {
@@ -3753,29 +3718,23 @@ impl db::Handler for Handler {
                 // a disabled key-enrolled session releases its fingerprint (the GSI row
                 // disappears): its next signed request 401s, and the same key is free to
                 // re-enroll into a fresh session.
-                let resp = self
-                    .client
-                    .update_item()
-                    .table_name(self.table_name("session"))
-                    .key("id", AttributeValue::S(id.to_string()))
-                    .update_expression(
-                        "SET updated_at = :updated_at REMOVE active, key_fingerprint, public_key, key_expires_at ADD v :one",
+                let version = self
+                    .unbind_session_key(
+                        "delete_session",
+                        id,
+                        None,
+                        "SET updated_at = :updated_at \
+                         REMOVE active, key_fingerprint, public_key, key_expires_at ADD v :one",
+                        &[
+                            (
+                                ":updated_at",
+                                AttributeValue::N(crate::clock::now_sec().to_string()),
+                            ),
+                            (":one", AttributeValue::N("1".to_string())),
+                        ],
+                        || format!("Session {id} not found"),
                     )
-                    .expression_attribute_values(
-                        ":updated_at",
-                        AttributeValue::N(crate::clock::now_sec().to_string()),
-                    )
-                    .expression_attribute_values(":one", AttributeValue::N("1".to_string()))
-                    .return_values(ReturnValue::UpdatedOld)
-                    .return_consumed_capacity(ReturnConsumedCapacity::Total)
-                    .send()
-                    .await
-                    .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
-                record_capacity("delete_session", resp.consumed_capacity(), CapKind::Write);
-                let (version, fingerprint) = version_and_old_fingerprint(resp.attributes());
-                if let Some(fingerprint) = fingerprint {
-                    self.unbind_kiosk_key_shadow(&fingerprint, id).await;
-                }
+                    .await?;
                 Ok(Some(version))
             }
             db::SessionUpdateShape::Retire {
@@ -3799,39 +3758,25 @@ impl db::Handler for Handler {
                          AND attribute_not_exists(key_released_at) AND last_contact < :before"
                     }
                 };
-                let now = crate::clock::now_sec();
-                let resp = self
-                    .client
-                    .update_item()
-                    .table_name(self.table_name("session"))
-                    .key("id", AttributeValue::S(id.to_string()))
-                    .condition_expression(condition)
-                    .update_expression(
+                let version = self
+                    .unbind_session_key(
+                        "retire_session",
+                        id,
+                        Some(condition),
                         "SET updated_at = :now, retired_at = :now \
                          REMOVE active, key_fingerprint, public_key, key_expires_at \
                          ADD v :one",
+                        &[
+                            (":before", AttributeValue::N(unusable_before.to_string())),
+                            (
+                                ":now",
+                                AttributeValue::N(crate::clock::now_sec().to_string()),
+                            ),
+                            (":one", AttributeValue::N("1".to_string())),
+                        ],
+                        || format!("Session {id} is no longer retirable as {}", reason.as_str()),
                     )
-                    .expression_attribute_values(
-                        ":before",
-                        AttributeValue::N(unusable_before.to_string()),
-                    )
-                    .expression_attribute_values(":now", AttributeValue::N(now.to_string()))
-                    .expression_attribute_values(":one", AttributeValue::N("1".to_string()))
-                    .return_values(ReturnValue::UpdatedOld)
-                    .return_consumed_capacity(ReturnConsumedCapacity::Total)
-                    .send()
-                    .await
-                    .map_err(|e| {
-                        map_update_err(
-                            e,
-                            format!("Session {id} is no longer retirable as {}", reason.as_str()),
-                        )
-                    })?;
-                record_capacity("retire_session", resp.consumed_capacity(), CapKind::Write);
-                let (version, fingerprint) = version_and_old_fingerprint(resp.attributes());
-                if let Some(fingerprint) = fingerprint {
-                    self.unbind_kiosk_key_shadow(&fingerprint, id).await;
-                }
+                    .await?;
                 Ok(Some(version))
             }
         }
