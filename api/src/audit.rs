@@ -1598,13 +1598,28 @@ impl<D: db::Handler> db::Handler for AuditingHandler<D> {
                 .await;
             }
             db::SessionKeyTarget::Existing(existing) => {
+                // Bound to the key it already held: a reactivation, recorded as the key
+                // extension it is rather than as a move to another computer.
+                let changes = if existing.key_fingerprint.as_deref() == Some(bind.key.fingerprint) {
+                    session_update_changes(
+                        Some(existing),
+                        &db::SessionUpdateShape::ExtendKey {
+                            expires_at: bind.key.expires_at,
+                            fingerprint: bind.key.fingerprint,
+                        },
+                        bind.now,
+                    )
+                    .1
+                } else {
+                    session_rekey_changes(existing, bind.key.expires_at, bind.now)
+                };
                 self.record(Recorded {
                     entity_type: AuditEntityType::Session,
                     entity_id: &existing.id,
                     action: AuditAction::Update,
                     label: Some(existing.name.clone()),
                     location_ids: vec![existing.location_id.clone()],
-                    changes: session_rekey_changes(existing, bind.key.expires_at, bind.now),
+                    changes,
                 })
                 .await;
             }

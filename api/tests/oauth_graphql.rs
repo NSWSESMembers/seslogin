@@ -159,6 +159,7 @@ async fn a_graphql_grant_reads_but_cannot_mint_credentials() {
         r#"mutation { approveOauthAuthorization(clientId: "tally", redirectUri: "tally://oauth/callback", codeChallenge: "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM", codeChallengeMethod: "S256") }"#,
         r#"mutation { enrollSession(name: "k", locationId: "loc-1", keyFingerprint: "fp") { id } }"#,
         r#"mutation { reactivateSession(id: "s-1") { id } }"#,
+        r#"mutation { bindKioskDevice(keyFingerprint: "fp", expectedKeyVersion: 0, target: { existing: { id: "s-1", expectedVersion: 1 } }) { id } }"#,
     ] {
         let response = run(&app, auth.clone(), mutation).await;
         assert_eq!(response.errors.len(), 1, "{mutation}: {:?}", response.data);

@@ -60,8 +60,8 @@
 //!   an `slgn_` token is a long-lived credential that works on `/graphql` outside this
 //!   tool set, so a grant must not be able to mint one. The API token tools list, edit and
 //!   revoke only and never return a secret or hash.
-//! - *Enrolling, reactivating and looking up pending kiosks* (`enrollSession`,
-//!   `reactivateSession`, `pendingEnrollmentKey`): a device is only bound to a location by a
+//! - *Enrolling, reactivating and looking up pending kiosks* (`bindKioskDevice`,
+//!   `enrollSession`, `reactivateSession`, `pendingEnrollmentKey`): a device is only bound to a location by a
 //!   person scanning its QR code in the browser.
 //! - *Login, logout and auth codes*: they mint or end the credentials this endpoint is
 //!   already authenticated with.

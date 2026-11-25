@@ -8,6 +8,7 @@ use async_graphql::ID;
 use async_graphql::MaybeUndefined;
 use async_graphql::Object;
 use async_graphql::SimpleObject;
+use async_graphql::{InputObject, OneofObject};
 use std::sync::Arc;
 use tracing::debug;
 use tracing::info;
@@ -1359,6 +1360,127 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         Ok(bound)
     }
 
+    /// Make the device holding `row`'s key a new kiosk. See [`MutationRoot::bind_kiosk_device`].
+    async fn bind_as_new_kiosk(
+        &self,
+        ctx: &Context<'_>,
+        row: &db::KioskKey,
+        kiosk: NewKioskInput,
+    ) -> Result<Session<A>> {
+        require_location_write_access(ctx, &kiosk.location_id)?;
+        self.app
+            .db()
+            .get_locations(&[&kiosk.location_id])
+            .await?
+            .into_iter()
+            .next()
+            .flatten()
+            .ok_or_else(|| anyhow!("Location {:?} not found", kiosk.location_id))?;
+        let config = parse_session_config_json(kiosk.config.as_deref())?;
+        let healthcheck_url = normalize_healthcheck_url(kiosk.healthcheck_url.as_deref())?;
+
+        let release = self.key_holder_to_release(row, None).await?;
+        let bound = self
+            .bind_session_key(
+                row,
+                crate::clock::now_sec() + crate::session_key::KEY_LIFETIME_S,
+                release.as_ref(),
+                db::SessionKeyTarget::New {
+                    location_id: &kiosk.location_id,
+                    name: &kiosk.name,
+                    config: &config,
+                    healthcheck_url: healthcheck_url.as_deref(),
+                },
+                &format!("{:?} at location {}", kiosk.name, *kiosk.location_id),
+            )
+            .await?;
+        self.publish_enrollment_completed(
+            &row.fingerprint,
+            &format!("enrolled:{}", bound.session.id),
+        )
+        .await;
+        // A kiosk re-enrolled from its status dialog is still running as the session it
+        // was released from, and listening on that session's channel. Only now, with
+        // the new session written, does its refetch resolve the key to it.
+        if let Some((session_id, version)) = bound.released {
+            self.publish_session_changed(&session_id, version).await;
+        }
+        Ok(Session::new(bound.session))
+    }
+
+    /// Make the device holding `row`'s key the existing kiosk `kiosk.id`, which keeps its
+    /// name, location, config and history. If the kiosk already holds this key, that is
+    /// reactivation: only a short window is granted, which the kiosk's first signed
+    /// request widens. See [`MutationRoot::bind_kiosk_device`].
+    async fn bind_as_existing_kiosk(
+        &self,
+        ctx: &Context<'_>,
+        row: &db::KioskKey,
+        kiosk: ExistingKioskInput,
+    ) -> Result<Session<A>> {
+        let existing = self
+            .app
+            .db()
+            .get_session_consistent(&kiosk.id)
+            .await?
+            .ok_or_else(|| anyhow!("Session with ID {:?} missing", kiosk.id))?;
+        require_location_write_access(ctx, &existing.location_id)?;
+        if !existing.active {
+            return Err(anyhow!("This kiosk has been deleted."));
+        }
+        if i64::try_from(existing.version) != Ok(kiosk.expected_version) {
+            return Err(ApiError::new(
+                ErrorCode::Conflict,
+                "This kiosk was changed since you opened this page — check it and try again",
+            )
+            .into());
+        }
+
+        let now = crate::clock::now_sec();
+        let reactivating = existing.key_fingerprint.as_deref() == Some(row.fingerprint.as_str());
+        let expires_at = if reactivating {
+            crate::session_key::reactivated_key_expiry(existing.key_expires_at, now)
+        } else {
+            now + crate::session_key::KEY_LIFETIME_S
+        };
+        let release = self.key_holder_to_release(row, Some(&existing.id)).await?;
+        let bound = self
+            .bind_session_key(
+                row,
+                expires_at,
+                release.as_ref(),
+                db::SessionKeyTarget::Existing(&existing),
+                &format!("{:?} at location {}", existing.name, existing.location_id),
+            )
+            .await?;
+        if reactivating {
+            info!(
+                "Reactivated kiosk session {} at location {} until {}",
+                existing.id, existing.location_id, expires_at
+            );
+        } else {
+            info!(
+                "Kiosk session {} at location {} replaced its device with key {}",
+                existing.id, existing.location_id, row.fingerprint
+            );
+        }
+        self.publish_enrollment_completed(
+            &row.fingerprint,
+            &format!("bound:{}:{}", existing.id, bound.session.version),
+        )
+        .await;
+        // The released kiosk, and (unless this is the device it was already on) the old
+        // device still running as this kiosk, refetch and find their key gone.
+        let changed = bound
+            .released
+            .into_iter()
+            .chain((!reactivating).then(|| (bound.session.id.clone(), bound.session.version)));
+        for (session_id, version) in changed {
+            self.publish_session_changed(&session_id, version).await;
+        }
+        Ok(Session::new(bound.session))
+    }
+
     /// Reject the mutation if any non-deleted person already holds `registration_number`.
     ///
     /// Registration numbers (member numbers) are intended to be globally unique. DynamoDB cannot
@@ -1410,6 +1532,32 @@ fn enrollment_gone() -> anyhow::Error {
         "Enrollment request not found or expired — make sure the kiosk is still showing its QR code, and that no one \
          else has just set it up"
     )
+}
+
+/// What `bindKioskDevice` makes the device: exactly one of a new kiosk or an existing one.
+#[derive(OneofObject)]
+pub enum KioskBindTarget {
+    New(NewKioskInput),
+    Existing(ExistingKioskInput),
+}
+
+/// A kiosk to create for the device.
+#[derive(InputObject)]
+pub struct NewKioskInput {
+    pub location_id: ID,
+    pub name: String,
+    /// JSON object of kiosk settings.
+    pub config: Option<String>,
+    pub healthcheck_url: Option<String>,
+}
+
+/// An existing kiosk for the device to become.
+#[derive(InputObject)]
+pub struct ExistingKioskInput {
+    pub id: ID,
+    /// The kiosk's `version` when the admin chose it. Refused if it has changed since,
+    /// so the admin decides with what is true now (eg that it isn't back online).
+    pub expected_version: i64,
 }
 
 #[Object]
@@ -2584,19 +2732,47 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         Ok(true)
     }
 
-    /// Complete a public-key kiosk enrollment: create a session bound to the public key a
-    /// kiosk previously published via [`submit_enrollment_key`], identified by its
-    /// `key_fingerprint`. The kiosk then authenticates every request by signing it.
-    /// Reached from the admin SessionEnroll page after scanning
-    /// the kiosk's QR code.
+    /// Set up the device on a kiosk's QR screen (identified by its key fingerprint, from
+    /// the QR code) as a new kiosk or an existing one. This is the one way a device is
+    /// bound to a kiosk (plans/kiosk-key-binding.md): it covers enrolling a new kiosk,
+    /// moving an existing kiosk to a computer that lost its key, and reactivating a kiosk
+    /// that expired, which is binding it to the device it is already on.
     ///
-    /// Works whatever state the device's current enrollment is in — live, expired, or
-    /// deleted. Any session still holding the key has it released (`key_released_at`
-    /// stamped, key material dropped) before the new one takes it, so a kiosk set up as
-    /// the wrong kiosk, or at the wrong location, is fixed by re-enrolling the device
-    /// itself. The released record stays listed at its own location so the admins there
-    /// can see the kiosk was replaced; nothing about it is reported back to the caller,
-    /// who may have no access to that location.
+    /// Refused unless the device is still asking and its key is still at
+    /// `expectedKeyVersion`, the `version` the admin's page read from
+    /// `pendingEnrollmentKey`: so a page left open after someone else set the device up
+    /// can't move it again. Any other kiosk holding the key gives it up, wherever it is.
+    /// It stays listed at its own location so the admins there can see what became of
+    /// it, and nothing about it is reported back to the caller, who may have no access
+    /// to that location.
+    #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
+    async fn bind_kiosk_device(
+        &self,
+        ctx: &Context<'_>,
+        key_fingerprint: String,
+        #[graphql(desc = "The `version` from `pendingEnrollmentKey` when the page loaded.")]
+        expected_key_version: i64,
+        target: KioskBindTarget,
+    ) -> Result<Session<A>> {
+        require_writable(ctx)?;
+        require_not_oauth_grant(ctx, "Setting up a kiosk")?;
+        let row = self.requested_kiosk_key(&key_fingerprint).await?;
+        if i64::try_from(row.version) != Ok(expected_key_version) {
+            return Err(ApiError::new(
+                ErrorCode::Conflict,
+                "This computer was set up by someone else since you opened this page — check it and try again",
+            )
+            .into());
+        }
+        match target {
+            KioskBindTarget::New(kiosk) => self.bind_as_new_kiosk(ctx, &row, kiosk).await,
+            KioskBindTarget::Existing(kiosk) => self.bind_as_existing_kiosk(ctx, &row, kiosk).await,
+        }
+    }
+
+    /// Set the device up as a new kiosk. Superseded by `bindKioskDevice`, and
+    /// kept until the web app has moved to it (plans/kiosk-key-binding.md, phase 4).
+    /// Binds at the key's version as read now, with no check on what the page saw.
     #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
     async fn enroll_session(
         &self,
@@ -2609,54 +2785,24 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
     ) -> Result<Session<A>> {
         require_writable(ctx)?;
         require_not_oauth_grant(ctx, "Adding a kiosk")?;
+        // Checked before the device's state, so a caller without access learns nothing.
         require_location_write_access(ctx, &location_id)?;
-        self.app
-            .db()
-            .get_locations(&[&location_id])
-            .await?
-            .into_iter()
-            .next()
-            .flatten()
-            .ok_or_else(|| anyhow!("Location {:?} not found", location_id))?;
-
-        let config = parse_session_config_json(config.as_deref())?;
-        let healthcheck_url = normalize_healthcheck_url(healthcheck_url.as_deref())?;
-
         let row = self.requested_kiosk_key(&key_fingerprint).await?;
-        let release = self.key_holder_to_release(&row, None).await?;
-        let bound = self
-            .bind_session_key(
-                &row,
-                crate::clock::now_sec() + crate::session_key::KEY_LIFETIME_S,
-                release.as_ref(),
-                db::SessionKeyTarget::New {
-                    location_id: &location_id,
-                    name: &name,
-                    config: &config,
-                    healthcheck_url: healthcheck_url.as_deref(),
-                },
-                &format!("{name:?} at location {}", *location_id),
-            )
-            .await?;
-        self.publish_enrollment_completed(
-            &key_fingerprint,
-            &format!("enrolled:{}", bound.session.id),
+        self.bind_as_new_kiosk(
+            ctx,
+            &row,
+            NewKioskInput {
+                location_id,
+                name,
+                config,
+                healthcheck_url,
+            },
         )
-        .await;
-        // A kiosk re-enrolled from its status dialog is still running as the session it
-        // was released from, and listening on that session's channel. Only now, with
-        // the new session written, does its refetch resolve the key to it.
-        if let Some((session_id, version)) = bound.released {
-            self.publish_session_changed(&session_id, version).await;
-        }
-
-        Ok(Session::new(bound.session))
+        .await
     }
 
-    /// Like [`Self::enroll_session`], but the scanned device takes over an existing kiosk instead of becoming a new
-    /// one, keeping its name, location, config and history. For a kiosk whose computer lost its key (eg its browser
-    /// storage was cleared) and so shows its QR code again with a new one. Any device still on the old key stops
-    /// working; any other session holding the new key releases it, as in `enrollSession`.
+    /// Move an existing kiosk to the device. Superseded by `bindKioskDevice`,
+    /// and kept until the web app has moved to it (plans/kiosk-key-binding.md, phase 4).
     #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
     async fn replace_session_device(
         &self,
@@ -2680,50 +2826,18 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
             .next()
             .flatten()
             .ok_or_else(|| anyhow!("Session with ID {:?} missing", id))?;
+        // Checked before the device's state, so a caller without access learns nothing.
         require_location_write_access(ctx, &existing.location_id)?;
-        if !existing.active {
-            return Err(anyhow!("This kiosk has been deleted."));
-        }
-        if i64::try_from(existing.version) != Ok(expected_version) {
-            return Err(ApiError::new(
-                ErrorCode::Conflict,
-                "This kiosk was changed since you opened this page — check it and try again",
-            )
-            .into());
-        }
-
         let row = self.requested_kiosk_key(&key_fingerprint).await?;
-        let release = self.key_holder_to_release(&row, Some(&existing.id)).await?;
-        let expires_at = crate::clock::now_sec() + crate::session_key::KEY_LIFETIME_S;
-        let bound = self
-            .bind_session_key(
-                &row,
-                expires_at,
-                release.as_ref(),
-                db::SessionKeyTarget::Existing(&existing),
-                &format!("{:?} at location {}", existing.name, existing.location_id),
-            )
-            .await?;
-        info!(
-            "Kiosk session {} at location {} replaced its device with key {}",
-            existing.id, existing.location_id, key_fingerprint
-        );
-
-        self.publish_enrollment_completed(
-            &key_fingerprint,
-            &format!("replaced:{}:{}", existing.id, expires_at),
+        self.bind_as_existing_kiosk(
+            ctx,
+            &row,
+            ExistingKioskInput {
+                id,
+                expected_version,
+            },
         )
-        .await;
-        // The old device, if still running as this session, refetches and finds its key gone.
-        for (session_id, version) in bound
-            .released
-            .into_iter()
-            .chain([(bound.session.id.clone(), bound.session.version)])
-        {
-            self.publish_session_changed(&session_id, version).await;
-        }
-
-        Ok(Session::new(bound.session))
+        .await
     }
 
     #[graphql(guard = "AuthGuard::new(AuthRequirement::SuperUser)")]
@@ -3033,8 +3147,11 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
     /// Only succeeds while the kiosk is switched on and showing its enrollment QR screen,
     /// and only grants a short window: the kiosk must come back with one signed request,
     /// which restores its normal two-week window. Otherwise the grant simply lapses.
-    // Implementation: the "switched on" test is a live pending-enrollment record (the
-    // kiosk republishes its key every 10 min), and the short window is
+    ///
+    /// Superseded by `bindKioskDevice` with the kiosk as an existing target,
+    /// and kept until the web app has moved to it (plans/kiosk-key-binding.md, phase 4).
+    // Implementation: the "switched on" test is a live request in the key's kiosk_key
+    // row (the kiosk republishes its key every 10 min), and the short window is
     // session_key::REACTIVATE_GRACE_S, widened back to KEY_LIFETIME_S by
     // auth::touch_session on the redeeming request.
     #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
@@ -3075,53 +3192,28 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
 
         // The kiosk republishes its key every 10 minutes while it sits on the enrollment
         // screen, so a live request means the device is switched on and asking to come
-        // back. Its `kiosk_key` row decides (plans/kiosk-key-binding.md, phase 3).
+        // back. Reactivating is binding the kiosk to the device it is already on.
         let now = crate::clock::now_sec();
-        self.app
+        let row = self
+            .app
             .db()
             .get_kiosk_key(key_fingerprint)
             .await?
-            .filter(|row| row.is_requested(now))
+            .filter(|row| row.is_requested(now) && row.public_key.is_some())
             .ok_or_else(|| {
                 anyhow!(
                     "The kiosk isn't currently asking to be re-enrolled — switch it on, wait for the QR code screen, then try again."
                 )
             })?;
-
-        let expires_at = crate::session_key::reactivated_key_expiry(existing.key_expires_at, now);
-        self.app
-            .db()
-            .update_session(
-                &id,
-                db::SessionUpdateShape::ExtendKey {
-                    expires_at,
-                    fingerprint: key_fingerprint,
-                },
-            )
-            .await
-            .map_err(|e| match e {
-                // Deleted, or moved to another computer, since it was read above.
-                db::Error::NotFound(_) => ApiError::new(
-                    ErrorCode::Conflict,
-                    "This kiosk was changed since you opened this page — refresh and try again",
-                )
-                .into(),
-                e => anyhow::Error::from(e),
-            })?;
-        info!(
-            "Reactivated kiosk session {} at location {} until {}",
-            existing.id, existing.location_id, expires_at
-        );
-        self.publish_enrollment_completed(
-            key_fingerprint,
-            &format!("reactivated:{}:{}", existing.id, expires_at),
+        self.bind_as_existing_kiosk(
+            ctx,
+            &row,
+            ExistingKioskInput {
+                id: ID(existing.id.clone()),
+                expected_version: existing.version as i64,
+            },
         )
-        .await;
-
-        let rec = self.app.db().get_sessions(&[&id]).await?;
-        Ok(Session::new(rec.into_iter().next().flatten().ok_or_else(
-            || anyhow!("Session with ID {:?} missing", id),
-        )?))
+        .await
     }
 
     #[graphql(guard = "AuthGuard::new(AuthRequirement::SuperUser)")]

@@ -333,9 +333,29 @@ type Environment {
 }
 
 """
+An existing kiosk for the device to become.
+"""
+input ExistingKioskInput {
+	id: ID!
+	"""
+	The kiosk's `version` when the admin chose it. Refused if it has changed since,
+	so the admin decides with what is true now (eg that it isn't back online).
+	"""
+	expectedVersion: Int!
+}
+
+"""
 A scalar that can represent any JSON value.
 """
 scalar JSON
+
+"""
+What `bindKioskDevice` makes the device: exactly one of a new kiosk or an existing one.
+"""
+input KioskBindTarget @oneOf {
+	new: NewKioskInput
+	existing: ExistingKioskInput
+}
 
 """
 A signed realtime token together with the exact channel it authorizes.
@@ -663,26 +683,35 @@ type MutationRoot {
 	sendPeriodEditLink(id: ID!): String!
 	deletePeriod(id: ID!): Boolean!
 	"""
-	Complete a public-key kiosk enrollment: create a session bound to the public key a
-	kiosk previously published via [`submit_enrollment_key`], identified by its
-	`key_fingerprint`. The kiosk then authenticates every request by signing it.
-	Reached from the admin SessionEnroll page after scanning
-	the kiosk's QR code.
+	Set up the device on a kiosk's QR screen (identified by its key fingerprint, from
+	the QR code) as a new kiosk or an existing one. This is the one way a device is
+	bound to a kiosk (plans/kiosk-key-binding.md): it covers enrolling a new kiosk,
+	moving an existing kiosk to a computer that lost its key, and reactivating a kiosk
+	that expired, which is binding it to the device it is already on.
 	
-	Works whatever state the device's current enrollment is in — live, expired, or
-	deleted. Any session still holding the key has it released (`key_released_at`
-	stamped, key material dropped) before the new one takes it, so a kiosk set up as
-	the wrong kiosk, or at the wrong location, is fixed by re-enrolling the device
-	itself. The released record stays listed at its own location so the admins there
-	can see the kiosk was replaced; nothing about it is reported back to the caller,
-	who may have no access to that location.
+	Refused unless the device is still asking and its key is still at
+	`expectedKeyVersion`, the `version` the admin's page read from
+	`pendingEnrollmentKey`: so a page left open after someone else set the device up
+	can't move it again. Any other kiosk holding the key gives it up, wherever it is.
+	It stays listed at its own location so the admins there can see what became of
+	it, and nothing about it is reported back to the caller, who may have no access
+	to that location.
+	"""
+	bindKioskDevice(		keyFingerprint: String!,
+		"""
+		The `version` from `pendingEnrollmentKey` when the page loaded.
+		"""
+		expectedKeyVersion: Int!,		target: KioskBindTarget!
+	): Session!
+	"""
+	Set the device up as a new kiosk. Superseded by `bindKioskDevice`, and
+	kept until the web app has moved to it (plans/kiosk-key-binding.md, phase 4).
+	Binds at the key's version as read now, with no check on what the page saw.
 	"""
 	enrollSession(name: String!, locationId: ID!, config: String, healthcheckUrl: String, keyFingerprint: String!): Session!
 	"""
-	Like [`Self::enroll_session`], but the scanned device takes over an existing kiosk instead of becoming a new
-	one, keeping its name, location, config and history. For a kiosk whose computer lost its key (eg its browser
-	storage was cleared) and so shows its QR code again with a new one. Any device still on the old key stops
-	working; any other session holding the new key releases it, as in `enrollSession`.
+	Move an existing kiosk to the device. Superseded by `bindKioskDevice`,
+	and kept until the web app has moved to it (plans/kiosk-key-binding.md, phase 4).
 	"""
 	replaceSessionDevice(		id: ID!,		keyFingerprint: String!,
 		"""
@@ -758,6 +787,9 @@ type MutationRoot {
 	Only succeeds while the kiosk is switched on and showing its enrollment QR screen,
 	and only grants a short window: the kiosk must come back with one signed request,
 	which restores its normal two-week window. Otherwise the grant simply lapses.
+	
+	Superseded by `bindKioskDevice` with the kiosk as an existing target,
+	and kept until the web app has moved to it (plans/kiosk-key-binding.md, phase 4).
 	"""
 	reactivateSession(id: ID!): Session!
 	createLocation(name: String!, nitcEnabled: Int): Location!
@@ -915,6 +947,19 @@ type MutationRoot {
 	revokeOauthGrant(id: ID!): Boolean!
 }
 
+"""
+A kiosk to create for the device.
+"""
+input NewKioskInput {
+	locationId: ID!
+	name: String!
+	"""
+	JSON object of kiosk settings.
+	"""
+	config: String
+	healthcheckUrl: String
+}
+
 enum NitcExportStatus {
 	SYNCED
 	PENDING
@@ -1019,13 +1064,24 @@ type PasskeyInfo {
 	lastUsedAt: Int
 }
 
-"""
-A still-valid pending kiosk enrollment, surfaced to the admin SessionEnroll page so
-it can confirm the kiosk is still waiting before showing the enrollment form.
-"""
 type PendingEnrollmentKey {
 	fingerprint: String!
+	"""
+	When the device stops asking, unless it publishes its key again.
+	"""
 	expiresAt: Int!
+	"""
+	The device key's version: pass it back as `bindKioskDevice`'s
+	`expectedKeyVersion`, so a page left open after someone else set the device up
+	can't move it again.
+	"""
+	version: Int!
+	"""
+	The kiosk this computer is now, if it is one at a location you can see. A
+	computer that is a kiosk you can't see reads as no kiosk: scanning a QR code is
+	not a lookup tool for another location's kiosks.
+	"""
+	currentKiosk: Session
 }
 
 type Period {
@@ -1371,12 +1427,9 @@ type QueryRoot {
 	"""
 	feedbackAvailable: Boolean!
 	"""
-	Look up a pending kiosk enrollment by its key fingerprint (from the QR code).
-	Returns `None` if it never existed or has expired — the admin SessionEnroll page
-	uses this to tell the operator to rescan.
-	
-	Deliberately says nothing about the kiosk this device may already be enrolled as:
-	scanning a QR code is not a lookup tool for another location's kiosks.
+	Look up a device asking to be set up as a kiosk, by its key fingerprint (from the
+	QR code). Returns `None` if it never asked or has stopped — the admin
+	SessionEnroll page uses this to tell the operator to rescan.
 	"""
 	pendingEnrollmentKey(fingerprint: String!): PendingEnrollmentKey
 	category(
@@ -2071,6 +2124,10 @@ directive @deprecated(reason: String = "No longer supported") on FIELD_DEFINITIO
 Directs the executor to include this field or fragment only when the `if` argument is true.
 """
 directive @include(if: Boolean!) on FIELD | FRAGMENT_SPREAD | INLINE_FRAGMENT
+"""
+Indicates that an Input Object is a OneOf Input Object (and thus requires exactly one of its field be provided)
+"""
+directive @oneOf on INPUT_OBJECT
 """
 Directs the executor to skip this field or fragment when the `if` argument is true.
 """

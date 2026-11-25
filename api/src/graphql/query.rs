@@ -24,7 +24,7 @@ use crate::auth::AuthInfo;
 use crate::badges;
 use crate::db;
 use crate::db::ListSessionsQuery;
-use crate::db::{Handler, OAuthGrantStore, PasskeyStore};
+use crate::db::{Handler, KioskKeyStore, OAuthGrantStore, PasskeyStore};
 use crate::realtime;
 use crate::realtime::Handler as _;
 use crate::ses_api;
@@ -279,12 +279,40 @@ pub struct PasskeyInfo {
     pub last_used_at: Option<i64>,
 }
 
-/// A still-valid pending kiosk enrollment, surfaced to the admin SessionEnroll page so
-/// it can confirm the kiosk is still waiting before showing the enrollment form.
-#[derive(SimpleObject, Clone, Debug)]
-pub struct PendingEnrollmentKey {
-    pub fingerprint: String,
-    pub expires_at: i64,
+/// A device asking to be set up as a kiosk, surfaced to the admin SessionEnroll page so
+/// it can confirm the device is still waiting, and say what it is now, before showing
+/// the form.
+pub struct PendingEnrollmentKey<A: App + HasDb + Send + Sync> {
+    fingerprint: String,
+    expires_at: u64,
+    version: u64,
+    current_kiosk: Option<Session<A>>,
+}
+
+#[Object]
+impl<A: App + HasDb + Send + Sync + 'static> PendingEnrollmentKey<A> {
+    async fn fingerprint(&self) -> &str {
+        &self.fingerprint
+    }
+
+    /// When the device stops asking, unless it publishes its key again.
+    async fn expires_at(&self) -> i64 {
+        self.expires_at as i64
+    }
+
+    /// The device key's version: pass it back as `bindKioskDevice`'s
+    /// `expectedKeyVersion`, so a page left open after someone else set the device up
+    /// can't move it again.
+    async fn version(&self) -> i64 {
+        self.version as i64
+    }
+
+    /// The kiosk this computer is now, if it is one at a location you can see. A
+    /// computer that is a kiosk you can't see reads as no kiosk: scanning a QR code is
+    /// not a lookup tool for another location's kiosks.
+    async fn current_kiosk(&self) -> Option<&Session<A>> {
+        self.current_kiosk.as_ref()
+    }
 }
 
 /// An Ably `TokenRequest`, signed server-side, that a kiosk can hand straight
@@ -4229,25 +4257,48 @@ impl<A: App + HasDb + HasRealtime + Send + Sync + 'static> QueryRoot<A> {
         crate::toolbox::Config::from_env().is_some()
     }
 
-    /// Look up a pending kiosk enrollment by its key fingerprint (from the QR code).
-    /// Returns `None` if it never existed or has expired — the admin SessionEnroll page
-    /// uses this to tell the operator to rescan.
-    ///
-    /// Deliberately says nothing about the kiosk this device may already be enrolled as:
-    /// scanning a QR code is not a lookup tool for another location's kiosks.
+    /// Look up a device asking to be set up as a kiosk, by its key fingerprint (from the
+    /// QR code). Returns `None` if it never asked or has stopped — the admin
+    /// SessionEnroll page uses this to tell the operator to rescan.
     #[graphql(guard = "AuthGuard::new(AuthRequirement::User)")]
     async fn pending_enrollment_key(
         &self,
         ctx: &Context<'_>,
         fingerprint: String,
-    ) -> Result<Option<PendingEnrollmentKey>> {
+    ) -> Result<Option<PendingEnrollmentKey<A>>> {
         let app = ctx.data_unchecked::<Arc<A>>().clone();
         let now = crate::clock::now_sec();
-        let expires_at =
-            crate::session_key::pending_request_expiry(app.db(), &fingerprint, now).await?;
-        Ok(expires_at.map(|expires_at| PendingEnrollmentKey {
+        let row = app
+            .db()
+            .get_kiosk_key(&fingerprint)
+            .await?
+            .filter(|row| row.is_requested(now));
+        let Some(row) = row else {
+            // Only the old record says it's asking (and logs that as drift). It can't be
+            // bound, but the page says so when the admin tries rather than claiming the
+            // device has stopped asking.
+            let expires_at =
+                crate::session_key::pending_request_expiry(app.db(), &fingerprint, now).await?;
+            return Ok(expires_at.map(|expires_at| PendingEnrollmentKey {
+                fingerprint,
+                expires_at,
+                version: 0,
+                current_kiosk: None,
+            }));
+        };
+        let current_kiosk = match row.session_id.as_deref() {
+            Some(id) => app.db().get_session_consistent(id).await?.filter(|s| {
+                s.is_live()
+                    && s.key_fingerprint.as_deref() == Some(fingerprint.as_str())
+                    && require_location_access(ctx, &s.location_id).is_ok()
+            }),
+            None => None,
+        };
+        Ok(Some(PendingEnrollmentKey {
+            expires_at: row.request_expires_at.unwrap_or(0),
+            version: row.version,
+            current_kiosk: current_kiosk.map(Session::new),
             fingerprint,
-            expires_at: expires_at as i64,
         }))
     }
 
