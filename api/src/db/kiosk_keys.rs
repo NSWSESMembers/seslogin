@@ -5,6 +5,11 @@
 //! Being introduced by `plans/kiosk-key-binding.md`. Until that plan's phase 2 this is
 //! a shadow of the session table's key fields: written alongside them, and decides
 //! nothing. Sign-in and enrolment still go by `session.key_fingerprint`.
+//!
+//! Binding and unbinding a key are not methods here: they happen inside the session
+//! writes that change `session.key_fingerprint` ([`super::Handler::bind_session_key`],
+//! and the `ReleaseKey`, `Delete` and `Retire` shapes of `update_session`), so the two
+//! tables move together.
 
 use super::Result;
 
@@ -35,6 +40,12 @@ impl KioskKey {
 
 /// The `kiosk_key` table. One of the domain traits [`super::Handler`] is made of.
 pub trait KioskKeyStore: Sync {
+    /// Strongly consistent.
+    fn get_kiosk_key(
+        &self,
+        fingerprint: &str,
+    ) -> impl Future<Output = Result<Option<KioskKey>>> + Send;
+
     /// Record that the device holding `fingerprint` published it from its QR screen
     /// at `now`, asking to be set up until `request_expires_at`. Never changes which
     /// session the key is bound to: on an unbound (or new) row it also stores

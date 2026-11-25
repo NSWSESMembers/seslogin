@@ -8,6 +8,10 @@ use super::AuditingHandler;
 impl<D: db::Handler> db::KioskKeyStore for AuditingHandler<D> {
     // ── Straight delegation ───────────────────────────────────────────────────
 
+    async fn get_kiosk_key(&self, fingerprint: &str) -> db::Result<Option<db::KioskKey>> {
+        self.inner.get_kiosk_key(fingerprint).await
+    }
+
     /// A device asking to be set up: plumbing, like the `ephemeral_state` record it
     /// shadows. It never changes a binding.
     async fn record_kiosk_key_request(

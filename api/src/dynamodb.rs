@@ -701,6 +701,7 @@ fn bind_conflict(
     Some(match failed {
         Some(0) => Ok(db::SessionKeyBindConflict::Enrollment),
         Some(i) if i <= holders => Ok(db::SessionKeyBindConflict::Holder),
+        // The target. The `kiosk_key` items after it have no condition.
         Some(_) => Ok(db::SessionKeyBindConflict::Target),
         None => Err(()),
     })
@@ -716,6 +717,24 @@ fn returned_version(attributes: Option<&HashMap<String, AttributeValue>>) -> db:
         .ok_or_else(|| {
             Error::Infrastructure("Missing version in session update response".to_string())
         })
+}
+
+/// From a session write that ran `ADD v :one` and removed the key fields, with
+/// `ReturnValues::UpdatedOld`: the new version, and the fingerprint the row held
+/// before, if any.
+fn version_and_old_fingerprint(
+    attributes: Option<&HashMap<String, AttributeValue>>,
+) -> (u64, Option<String>) {
+    let old_version = attributes
+        .and_then(|a| a.get("v"))
+        .and_then(|v| v.as_n().ok())
+        .and_then(|n| n.parse::<u64>().ok())
+        .unwrap_or(0);
+    let fingerprint = attributes
+        .and_then(|a| a.get("key_fingerprint"))
+        .and_then(|v| v.as_s().ok())
+        .cloned();
+    (old_version + 1, fingerprint)
 }
 
 /// The session attributes backing [`crate::client_info::ClientInfo`], paired with the
@@ -3403,6 +3422,50 @@ impl db::Handler for Handler {
             }
         };
 
+        // The `kiosk_key` shadow (plans/kiosk-key-binding.md), after every conditional
+        // item so `bind_conflict` can still tell those apart by position. Unconditional:
+        // nothing reads the table yet, so a row that disagrees must never block a bind.
+        items.push(
+            TransactWriteItem::builder()
+                .update(
+                    Update::builder()
+                        .table_name(self.table_name("kiosk_key"))
+                        .key("fingerprint", fp.clone())
+                        .update_expression(
+                            "SET public_key = :pk, session_id = :s, bound_at = :now \
+                             REMOVE #ttl, requested_at, request_expires_at ADD v :one",
+                        )
+                        .expression_attribute_names("#ttl", "ttl")
+                        .expression_attribute_values(
+                            ":pk",
+                            AttributeValue::S(bind.key.public_key.to_string()),
+                        )
+                        .expression_attribute_values(":s", AttributeValue::S(session.id.clone()))
+                        .expression_attribute_values(":now", now.clone())
+                        .expression_attribute_values(":one", one.clone())
+                        .build()
+                        .map_err(build_err)?,
+                )
+                .build(),
+        );
+        // A rekeyed kiosk's old key is bound to nothing now.
+        if let db::SessionKeyTarget::Existing(existing) = bind.target
+            && let Some(old) = existing.key_fingerprint.as_deref()
+            && old != bind.key.fingerprint
+        {
+            items.push(
+                TransactWriteItem::builder()
+                    .delete(
+                        Delete::builder()
+                            .table_name(self.table_name("kiosk_key"))
+                            .key("fingerprint", AttributeValue::S(old.to_string()))
+                            .build()
+                            .map_err(build_err)?,
+                    )
+                    .build(),
+            );
+        }
+
         let resp = match self
             .client
             .transact_write_items()
@@ -3637,7 +3700,7 @@ impl db::Handler for Handler {
                     .expression_attribute_values(":fp", AttributeValue::S(fingerprint.to_string()))
                     .expression_attribute_values(":now", AttributeValue::N(now.to_string()))
                     .expression_attribute_values(":one", AttributeValue::N("1".to_string()))
-                    .return_values(ReturnValue::UpdatedNew)
+                    .return_values(ReturnValue::UpdatedOld)
                     .return_consumed_capacity(ReturnConsumedCapacity::Total)
                     .send()
                     .await
@@ -3652,7 +3715,9 @@ impl db::Handler for Handler {
                     resp.consumed_capacity(),
                     CapKind::Write,
                 );
-                Ok(Some(returned_version(resp.attributes())?))
+                let (version, _) = version_and_old_fingerprint(resp.attributes());
+                self.unbind_kiosk_key_shadow(fingerprint, id).await;
+                Ok(Some(version))
             }
             db::SessionUpdateShape::Delete => {
                 // Removing `active` soft-deletes the session. Also drop the key fields so
@@ -3672,13 +3737,17 @@ impl db::Handler for Handler {
                         AttributeValue::N(crate::clock::now_sec().to_string()),
                     )
                     .expression_attribute_values(":one", AttributeValue::N("1".to_string()))
-                    .return_values(ReturnValue::UpdatedNew)
+                    .return_values(ReturnValue::UpdatedOld)
                     .return_consumed_capacity(ReturnConsumedCapacity::Total)
                     .send()
                     .await
                     .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
                 record_capacity("delete_session", resp.consumed_capacity(), CapKind::Write);
-                Ok(Some(returned_version(resp.attributes())?))
+                let (version, fingerprint) = version_and_old_fingerprint(resp.attributes());
+                if let Some(fingerprint) = fingerprint {
+                    self.unbind_kiosk_key_shadow(&fingerprint, id).await;
+                }
+                Ok(Some(version))
             }
             db::SessionUpdateShape::Retire {
                 reason,
@@ -3719,7 +3788,7 @@ impl db::Handler for Handler {
                     )
                     .expression_attribute_values(":now", AttributeValue::N(now.to_string()))
                     .expression_attribute_values(":one", AttributeValue::N("1".to_string()))
-                    .return_values(ReturnValue::UpdatedNew)
+                    .return_values(ReturnValue::UpdatedOld)
                     .return_consumed_capacity(ReturnConsumedCapacity::Total)
                     .send()
                     .await
@@ -3730,7 +3799,11 @@ impl db::Handler for Handler {
                         )
                     })?;
                 record_capacity("retire_session", resp.consumed_capacity(), CapKind::Write);
-                Ok(Some(returned_version(resp.attributes())?))
+                let (version, fingerprint) = version_and_old_fingerprint(resp.attributes());
+                if let Some(fingerprint) = fingerprint {
+                    self.unbind_kiosk_key_shadow(&fingerprint, id).await;
+                }
+                Ok(Some(version))
             }
         }
     }

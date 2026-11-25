@@ -657,6 +657,7 @@ impl db::Handler for FakeDb {
         let Some(session) = sessions.get_mut(id) else {
             return Err(db::Error::NotFound(format!("session {id}")));
         };
+        let old_fingerprint = session.key_fingerprint.clone();
         match change {
             db::SessionUpdateShape::Fields {
                 name,
@@ -732,7 +733,14 @@ impl db::Handler for FakeDb {
             db::SessionUpdateShape::Info { .. } => return unsupported(),
         }
         session.version += 1;
-        Ok(Some(session.version))
+        let version = session.version;
+        // Releasing, deleting and retiring drop the key: mirror it, as DynamoDB does.
+        let unbound = old_fingerprint.filter(|_| session.key_fingerprint.is_none());
+        drop(sessions);
+        if let Some(fingerprint) = unbound {
+            self.unbind_kiosk_key_shadow(&fingerprint, id);
+        }
+        Ok(Some(version))
     }
     /// All or nothing under both locks, with the real transaction's conditions.
     async fn bind_session_key(
@@ -812,6 +820,27 @@ impl db::Handler for FakeDb {
             }
         };
         sessions.insert(session.id.clone(), session.clone());
+        drop((pending, sessions));
+        // The `kiosk_key` shadow, as the DynamoDB transaction writes it.
+        let mut keys = self.kiosk_keys.lock().unwrap();
+        if let db::SessionKeyTarget::Existing(existing) = bind.target
+            && let Some(old) = existing.key_fingerprint.as_deref()
+            && old != bind.key.fingerprint
+        {
+            keys.remove(old);
+        }
+        let row = keys
+            .entry(bind.key.fingerprint.to_string())
+            .or_insert_with(|| db::KioskKey {
+                fingerprint: bind.key.fingerprint.to_string(),
+                ..db::KioskKey::default()
+            });
+        row.public_key = Some(bind.key.public_key.to_string());
+        row.session_id = Some(session.id.clone());
+        row.bound_at = Some(bind.now);
+        row.requested_at = None;
+        row.request_expires_at = None;
+        row.version += 1;
         Ok(Ok(db::SessionKeyBound { session, released }))
     }
     async fn get_api_token(&self, id: &str) -> db::Result<Option<db::ApiToken>> {

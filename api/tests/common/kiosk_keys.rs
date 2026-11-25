@@ -4,7 +4,24 @@ use seslogin::db::{self, KioskKey};
 
 use super::FakeDb;
 
+impl FakeDb {
+    /// What the DynamoDB session writes do to the shadow when a session gives up `fingerprint`.
+    pub(crate) fn unbind_kiosk_key_shadow(&self, fingerprint: &str, session_id: &str) {
+        let mut keys = self.kiosk_keys.lock().unwrap();
+        if keys
+            .get(fingerprint)
+            .is_some_and(|k| k.session_id.as_deref() == Some(session_id))
+        {
+            keys.remove(fingerprint);
+        }
+    }
+}
+
 impl db::KioskKeyStore for FakeDb {
+    async fn get_kiosk_key(&self, fingerprint: &str) -> db::Result<Option<KioskKey>> {
+        Ok(self.kiosk_keys.lock().unwrap().get(fingerprint).cloned())
+    }
+
     async fn record_kiosk_key_request(
         &self,
         fingerprint: &str,

@@ -3,6 +3,10 @@ use crate::db;
 use super::Handler;
 
 impl db::KioskKeyStore for Handler {
+    async fn get_kiosk_key(&self, _fingerprint: &str) -> db::Result<Option<db::KioskKey>> {
+        Self::unsupported()
+    }
+
     async fn record_kiosk_key_request(
         &self,
         _fingerprint: &str,
