@@ -600,6 +600,7 @@ impl TryInto<Session> for Item {
 
 /// The row and the [`Session`] for a new key-enrolled session.
 fn new_session_item(
+    id: &str,
     location_id: &str,
     name: &str,
     config: &serde_json::Map<String, serde_json::Value>,
@@ -607,7 +608,7 @@ fn new_session_item(
     key: db::SessionKeyParams<'_>,
     now: u64,
 ) -> db::Result<(HashMap<String, AttributeValue>, Session)> {
-    let id = new_id();
+    let id = id.to_string();
     let serialized_config =
         serde_json::to_string(config).map_err(|e| Error::TypeConversion(e.to_string()))?;
     let mut item = HashMap::from([
@@ -681,9 +682,10 @@ fn version_condition(version: u64) -> (&'static str, Option<AttributeValue>) {
 }
 
 /// Which item of a [`db::Handler::bind_session_key`] transaction made it fail: the
-/// enrollment delete first, then one release per holder, then the target. `Err(())`
-/// when it was cancelled by a concurrent transaction rather than a failed condition,
-/// `None` when it wasn't cancelled at all.
+/// `kiosk_key` row first, then the holder if there is one, then the target, then the
+/// unconditional enrollment-record delete and the target's old key row. `Err(())` when
+/// it was cancelled by a concurrent transaction rather than a failed condition, `None`
+/// when it wasn't cancelled at all.
 fn bind_conflict(
     e: &SdkError<aws_sdk_dynamodb::operation::transact_write_items::TransactWriteItemsError>,
     holders: usize,
@@ -701,7 +703,8 @@ fn bind_conflict(
     Some(match failed {
         Some(0) => Ok(db::SessionKeyBindConflict::Enrollment),
         Some(i) if i <= holders => Ok(db::SessionKeyBindConflict::Holder),
-        // The target. The `kiosk_key` items after it have no condition.
+        // The target, or its old key's row (bound elsewhere): either way, the kiosk
+        // being moved isn't as it was read.
         Some(_) => Ok(db::SessionKeyBindConflict::Target),
         None => Err(()),
     })
@@ -3289,6 +3292,7 @@ impl db::Handler for Handler {
             return Err(db::Error::MutationDisabled);
         }
         let (item, session) = new_session_item(
+            &new_id(),
             location_id,
             name,
             config,
@@ -3314,6 +3318,7 @@ impl db::Handler for Handler {
         bind: db::SessionKeyBind<'_>,
     ) -> db::Result<Result<db::SessionKeyBound, db::SessionKeyBindConflict>> {
         use aws_sdk_dynamodb::types::{Delete, Put, TransactWriteItem, Update};
+        use db::KioskKeyStore as _;
         if self.read_only {
             return Err(db::Error::MutationDisabled);
         }
@@ -3323,33 +3328,47 @@ impl db::Handler for Handler {
         let now = AttributeValue::N(bind.now.to_string());
         let one = AttributeValue::N("1".to_string());
         let fp = AttributeValue::S(bind.key.fingerprint.to_string());
-        let mut items = Vec::with_capacity(bind.release.len() + 2);
+        let target_id = match bind.target {
+            db::SessionKeyTarget::New { .. } => new_id(),
+            db::SessionKeyTarget::Existing(existing) => existing.id.clone(),
+        };
+        let mut items = Vec::with_capacity(5);
 
-        // Consume the pending enrollment, so of two binds of one device only one can win.
+        // The key row decides: still at the version read, and the device still asking.
+        // Binding it uses the request up, so of two binds of one device only one wins.
+        let (key_cond, key_version) = if bind.key_version == 0 {
+            ("attribute_not_exists(v)", None)
+        } else {
+            (
+                "v = :kv",
+                Some(AttributeValue::N(bind.key_version.to_string())),
+            )
+        };
+        let mut key_update = Update::builder()
+            .table_name(self.table_name("kiosk_key"))
+            .key("fingerprint", fp.clone())
+            .condition_expression(format!("{key_cond} AND request_expires_at > :now"))
+            .update_expression(
+                "SET public_key = :pk, session_id = :s, bound_at = :now \
+                 REMOVE #ttl, requested_at, request_expires_at ADD v :one",
+            )
+            .expression_attribute_names("#ttl", "ttl")
+            .expression_attribute_values(":pk", AttributeValue::S(bind.key.public_key.to_string()))
+            .expression_attribute_values(":s", AttributeValue::S(target_id.clone()))
+            .expression_attribute_values(":now", now.clone())
+            .expression_attribute_values(":one", one.clone());
+        if let Some(key_version) = key_version {
+            key_update = key_update.expression_attribute_values(":kv", key_version);
+        }
         items.push(
             TransactWriteItem::builder()
-                .delete(
-                    Delete::builder()
-                        .table_name(self.table_name("ephemeral_state"))
-                        .key("id", AttributeValue::S(bind.enrollment_id.to_string()))
-                        .condition_expression(
-                            "attribute_exists(id) AND #kind = :kind AND expires_at > :now",
-                        )
-                        .expression_attribute_names("#kind", "kind")
-                        .expression_attribute_values(
-                            ":kind",
-                            AttributeValue::S(crate::session_key::ENROLL_STATE_KIND.to_string()),
-                        )
-                        .expression_attribute_values(":now", now.clone())
-                        .build()
-                        .map_err(build_err)?,
-                )
+                .update(key_update.build().map_err(build_err)?)
                 .build(),
         );
 
-        // Release the key from every other holder, as `SessionUpdateShape::ReleaseKey`
-        // does, while each still holds it at the version read.
-        for holder in bind.release {
+        // Release the key from the session the row was bound to, as
+        // `SessionUpdateShape::ReleaseKey` does, while it still holds it at the version read.
+        if let Some(holder) = bind.release {
             let (cond, version) = version_condition(holder.version);
             let mut update = Update::builder()
                 .table_name(&sessions)
@@ -3380,6 +3399,7 @@ impl db::Handler for Handler {
                 healthcheck_url,
             } => {
                 let (item, session) = new_session_item(
+                    &target_id,
                     location_id,
                     name,
                     config,
@@ -3444,48 +3464,39 @@ impl db::Handler for Handler {
             }
         };
 
-        // The `kiosk_key` shadow (plans/kiosk-key-binding.md), after every conditional
-        // item so `bind_conflict` can still tell those apart by position. Unconditional:
-        // nothing reads the table yet, so a row that disagrees must never block a bind.
+        // The old `ephemeral_state` request, which API versions from before phase 3
+        // still bind by (prod, preprod and qa share this table). Deleting it here means
+        // they can't bind this device again on the strength of it. Unconditional: it may
+        // be gone already.
         items.push(
             TransactWriteItem::builder()
-                .update(
-                    Update::builder()
-                        .table_name(self.table_name("kiosk_key"))
-                        .key("fingerprint", fp.clone())
-                        .update_expression(
-                            "SET public_key = :pk, session_id = :s, bound_at = :now \
-                             REMOVE #ttl, requested_at, request_expires_at ADD v :one",
+                .delete(
+                    Delete::builder()
+                        .table_name(self.table_name("ephemeral_state"))
+                        .key(
+                            "id",
+                            AttributeValue::S(crate::session_key::enroll_state_id(
+                                bind.key.fingerprint,
+                            )),
                         )
-                        .expression_attribute_names("#ttl", "ttl")
-                        .expression_attribute_values(
-                            ":pk",
-                            AttributeValue::S(bind.key.public_key.to_string()),
-                        )
-                        .expression_attribute_values(":s", AttributeValue::S(session.id.clone()))
-                        .expression_attribute_values(":now", now.clone())
-                        .expression_attribute_values(":one", one.clone())
                         .build()
                         .map_err(build_err)?,
                 )
                 .build(),
         );
-        // A rekeyed kiosk's old key is bound to nothing now.
+        // A rekeyed kiosk's old key is bound to nothing now. Its row is unbound only if
+        // it is this kiosk's; a missing or unbound one has nothing of this kiosk's to
+        // remove, and one bound elsewhere means the kiosk isn't as it was read.
         if let db::SessionKeyTarget::Existing(existing) = bind.target
             && let Some(old) = existing.key_fingerprint.as_deref()
             && old != bind.key.fingerprint
+            && let Some(old_row) = self.get_kiosk_key(old).await?
+            && let Some(holder) = old_row.session_id.as_deref()
         {
-            items.push(
-                TransactWriteItem::builder()
-                    .delete(
-                        Delete::builder()
-                            .table_name(self.table_name("kiosk_key"))
-                            .key("fingerprint", AttributeValue::S(old.to_string()))
-                            .build()
-                            .map_err(build_err)?,
-                    )
-                    .build(),
-            );
+            if holder != existing.id {
+                return Ok(Err(db::SessionKeyBindConflict::Target));
+            }
+            items.push(self.unbind_kiosk_key_item(&old_row, &existing.id, bind.now)?);
         }
 
         let resp = match self
@@ -3498,7 +3509,7 @@ impl db::Handler for Handler {
         {
             Ok(resp) => resp,
             Err(e) => {
-                return match bind_conflict(&e, bind.release.len()) {
+                return match bind_conflict(&e, usize::from(bind.release.is_some())) {
                     Some(Ok(conflict)) => Ok(Err(conflict)),
                     Some(Err(())) => Err(Error::Conflict(format!(
                         "another write to key {} was in progress",
@@ -3513,11 +3524,7 @@ impl db::Handler for Handler {
         }
         Ok(Ok(db::SessionKeyBound {
             session,
-            released: bind
-                .release
-                .iter()
-                .map(|s| (s.id.clone(), s.version + 1))
-                .collect(),
+            released: bind.release.map(|s| (s.id.clone(), s.version + 1)),
         }))
     }
 

@@ -745,46 +745,63 @@ impl db::Handler for FakeDb {
         }
         Ok(Some(version))
     }
-    /// All or nothing under both locks, with the real transaction's conditions.
+    /// All or nothing under every lock, with the real transaction's conditions.
     async fn bind_session_key(
         &self,
         bind: db::SessionKeyBind<'_>,
     ) -> db::Result<Result<db::SessionKeyBound, db::SessionKeyBindConflict>> {
+        let mut keys = self.kiosk_keys.lock().unwrap();
         let mut pending = self.ephemeral_state.lock().unwrap();
         let mut sessions = self.sessions.lock().unwrap();
-        if !pending.get(bind.enrollment_id).is_some_and(|s| {
-            s.kind == seslogin::session_key::ENROLL_STATE_KIND && s.expires_at > bind.now
-        }) {
+        if !keys
+            .get(bind.key.fingerprint)
+            .is_some_and(|k| k.version == bind.key_version && k.is_requested(bind.now))
+        {
             return Ok(Err(db::SessionKeyBindConflict::Enrollment));
         }
-        let holds = |held: Option<&db::Session>, read: &db::Session| {
-            held.is_some_and(|s| {
-                s.key_fingerprint.as_deref() == Some(bind.key.fingerprint)
-                    && s.version == read.version
+        if let Some(r) = bind.release
+            && !sessions.get(&r.id).is_some_and(|s| {
+                s.key_fingerprint.as_deref() == Some(bind.key.fingerprint) && s.version == r.version
             })
-        };
-        if !bind.release.iter().all(|r| holds(sessions.get(&r.id), r)) {
+        {
             return Ok(Err(db::SessionKeyBindConflict::Holder));
         }
-        if let db::SessionKeyTarget::Existing(existing) = bind.target
-            && !sessions
-                .get(&existing.id)
-                .is_some_and(|s| s.active && s.version == existing.version)
-        {
-            return Ok(Err(db::SessionKeyBindConflict::Target));
-        }
+        let old_key = match bind.target {
+            db::SessionKeyTarget::Existing(existing) => {
+                if !sessions
+                    .get(&existing.id)
+                    .is_some_and(|s| s.active && s.version == existing.version)
+                {
+                    return Ok(Err(db::SessionKeyBindConflict::Target));
+                }
+                let old = existing
+                    .key_fingerprint
+                    .as_deref()
+                    .filter(|old| *old != bind.key.fingerprint);
+                if let Some(old) = old
+                    && keys.get(old).is_some_and(|k| {
+                        k.session_id.is_some() && k.session_id.as_deref() != Some(&existing.id)
+                    })
+                {
+                    return Ok(Err(db::SessionKeyBindConflict::Target));
+                }
+                old
+            }
+            db::SessionKeyTarget::New { .. } => None,
+        };
 
-        pending.remove(bind.enrollment_id);
-        let mut released = Vec::new();
-        for r in bind.release {
+        pending.remove(&seslogin::session_key::enroll_state_id(
+            bind.key.fingerprint,
+        ));
+        let released = bind.release.map(|r| {
             let s = sessions.get_mut(&r.id).unwrap();
             s.key_fingerprint = None;
             s.public_key = None;
             s.key_expires_at = None;
             s.key_released_at = Some(bind.now);
             s.version += 1;
-            released.push((s.id.clone(), s.version));
-        }
+            (s.id.clone(), s.version)
+        });
         let session = match bind.target {
             db::SessionKeyTarget::New {
                 location_id,
@@ -823,21 +840,10 @@ impl db::Handler for FakeDb {
             }
         };
         sessions.insert(session.id.clone(), session.clone());
-        drop((pending, sessions));
-        // The `kiosk_key` shadow, as the DynamoDB transaction writes it.
-        let mut keys = self.kiosk_keys.lock().unwrap();
-        if let db::SessionKeyTarget::Existing(existing) = bind.target
-            && let Some(old) = existing.key_fingerprint.as_deref()
-            && old != bind.key.fingerprint
-        {
-            keys.remove(old);
+        if let (Some(old), db::SessionKeyTarget::Existing(existing)) = (old_key, bind.target) {
+            kiosk_keys::unbind_row(&mut keys, old, &existing.id, bind.now);
         }
-        let row = keys
-            .entry(bind.key.fingerprint.to_string())
-            .or_insert_with(|| db::KioskKey {
-                fingerprint: bind.key.fingerprint.to_string(),
-                ..db::KioskKey::default()
-            });
+        let row = keys.get_mut(bind.key.fingerprint).unwrap();
         row.public_key = Some(bind.key.public_key.to_string());
         row.session_id = Some(session.id.clone());
         row.bound_at = Some(bind.now);

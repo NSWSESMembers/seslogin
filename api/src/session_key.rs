@@ -59,9 +59,10 @@ pub fn is_live_enrollment(state: &crate::db::EphemeralState, now: u64) -> bool {
 /// it is on its QR screen and has published its key. `None` when it isn't.
 ///
 /// Read from the key's `kiosk_key` row (plans/kiosk-key-binding.md, phase 2), falling
-/// back to the `kiosk_enroll_<fp>` `ephemeral_state` record, which still decides
-/// enrolment until phase 3. A request only the old record knows about means a writer
-/// missed its shadow write, and is logged with [`crate::auth::KIOSK_KEY_FALLBACK`].
+/// back to the `kiosk_enroll_<fp>` `ephemeral_state` record, which API versions from
+/// before phase 3 still write. A request only the old record knows about means a writer
+/// missed its `kiosk_key` write, and is logged with [`crate::auth::KIOSK_KEY_FALLBACK`].
+/// It shows the device as asking, but can't be bound: binds go by the row alone.
 pub async fn pending_request_expiry<D: crate::db::Handler>(
     db: &D,
     fingerprint: &str,

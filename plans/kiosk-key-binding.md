@@ -1,8 +1,10 @@
 # Kiosk key binding: one row per key
 
-Status: **phase 2 in progress**. Phase 1 (#629–#633) deployed to every environment
-2026-11-25, followed by the prod `kiosk-key reconcile` backfill. Phase 2 written as a
-stack on top of it.
+Status: **phase 3 in progress**. Phase 1 (#629–#633) deployed to every environment
+2026-11-25, followed by the prod `kiosk-key reconcile` backfill. Phase 2 (#635–#637)
+tested on qa against prod's tables the same day, with no fallbacks and no drift; the
+week's soak was cut short by decision, with every writer exercised by hand instead.
+Phase 3 written as a stack on top of it.
 
 This plan replaces the way a kiosk's key is tied to its session. Today that link is
 kept up by application code across several rows. Each new feature that touches it

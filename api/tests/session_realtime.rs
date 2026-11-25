@@ -16,7 +16,7 @@ use async_graphql::Request;
 use common::{FakeDb, fake_app, seed_location, seed_user};
 use seslogin::app::MyApp;
 use seslogin::auth::AuthInfo;
-use seslogin::db::{self, EphemeralStateStore as _, Handler as _};
+use seslogin::db::{self, Handler as _};
 use seslogin::graphql;
 use seslogin::mockmail;
 use seslogin::mockqueue;
@@ -193,15 +193,8 @@ async fn re_enrolling_a_live_kiosk_tells_its_old_session_to_refetch() {
         "sess-old".to_string(),
         session("sess-old", "loc-a", Some("fp1")),
     );
-    app.db
-        .put_ephemeral_state(
-            &seslogin::session_key::enroll_state_id("fp1"),
-            seslogin::session_key::ENROLL_STATE_KIND,
-            r#"{"public_key":"pk","submitted_at":0}"#,
-            u64::MAX,
-        )
-        .await
-        .unwrap();
+    app.db.bind_key_row("fp1", "sess-old");
+    app.db.device_asking("fp1", "pk");
 
     let response = run(
         &app,
@@ -248,15 +241,9 @@ async fn replacing_a_kiosks_device_moves_the_new_key_onto_it() {
             session("sess-dup", "loc-a", Some("fp-new")),
         ),
     ]);
-    app.db
-        .put_ephemeral_state(
-            &seslogin::session_key::enroll_state_id("fp-new"),
-            seslogin::session_key::ENROLL_STATE_KIND,
-            r#"{"public_key":"pk-new","submitted_at":0}"#,
-            u64::MAX,
-        )
-        .await
-        .unwrap();
+    app.db.bind_key_row("fp-old", "sess-old");
+    app.db.bind_key_row("fp-new", "sess-dup");
+    app.db.device_asking("fp-new", "pk-fp-new");
 
     let response = run(
         &app,
@@ -270,7 +257,10 @@ async fn replacing_a_kiosks_device_moves_the_new_key_onto_it() {
     );
 
     let sessions = app.db.sessions.lock().unwrap();
-    assert_eq!(sessions["sess-old"].public_key.as_deref(), Some("pk-new"));
+    assert_eq!(
+        sessions["sess-old"].public_key.as_deref(),
+        Some("pk-fp-new")
+    );
     assert_eq!(sessions["sess-dup"].key_fingerprint, None);
     assert!(sessions["sess-dup"].key_released_at.is_some());
     drop(sessions);
@@ -320,8 +310,8 @@ async fn replacing_a_kiosks_device_needs_admin_at_its_location() {
     );
 }
 
-/// Two admins scan the same QR code: one replaces a kiosk, the other enrols the device as new. The first claims the
-/// device's pending enrolment, so the second is refused and the key never ends up on two kiosks.
+/// Two admins scan the same QR code: one replaces a kiosk, the other enrols the device as new. The first uses up the
+/// device's request in its `kiosk_key` row, so the second is refused and the key never ends up on two kiosks.
 #[tokio::test]
 async fn only_one_enrolment_of_a_device_succeeds() {
     let app = app_with_session();
@@ -329,15 +319,8 @@ async fn only_one_enrolment_of_a_device_succeeds() {
         "sess-old".to_string(),
         session("sess-old", "loc-a", Some("fp-old")),
     );
-    app.db
-        .put_ephemeral_state(
-            &seslogin::session_key::enroll_state_id("fp-new"),
-            seslogin::session_key::ENROLL_STATE_KIND,
-            r#"{"public_key":"pk-new","submitted_at":0}"#,
-            u64::MAX,
-        )
-        .await
-        .unwrap();
+    app.db.bind_key_row("fp-old", "sess-old");
+    app.db.device_asking("fp-new", "pk-new");
 
     let replaced = run(
         &app,
@@ -381,16 +364,9 @@ async fn replacing_a_kiosk_that_changed_since_it_was_chosen_is_refused() {
             session("sess-dup", "loc-a", Some("fp-new")),
         ),
     ]);
-    let enrollment_id = seslogin::session_key::enroll_state_id("fp-new");
-    app.db
-        .put_ephemeral_state(
-            &enrollment_id,
-            seslogin::session_key::ENROLL_STATE_KIND,
-            r#"{"public_key":"pk-new","submitted_at":0}"#,
-            u64::MAX,
-        )
-        .await
-        .unwrap();
+    app.db.bind_key_row("fp-old", "sess-old");
+    app.db.bind_key_row("fp-new", "sess-dup");
+    app.db.device_asking("fp-new", "pk-new");
 
     let response = run(
         &app,
@@ -415,12 +391,8 @@ async fn replacing_a_kiosk_that_changed_since_it_was_chosen_is_refused() {
             Some("fp-new")
         );
     }
-    assert!(
-        app.db
-            .get_ephemeral_state(&enrollment_id)
-            .await
-            .unwrap()
-            .is_some()
-    );
+    let request = app.db.kiosk_keys.lock().unwrap()["fp-new"].clone();
+    assert_eq!(request.session_id.as_deref(), Some("sess-dup"));
+    assert!(request.is_requested(seslogin::clock::now_sec()));
     assert!(app.realtime.published().is_empty());
 }

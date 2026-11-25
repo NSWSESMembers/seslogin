@@ -1,10 +1,9 @@
 //! Make the `kiosk_key` table agree with the session rows (`plans/kiosk-key-binding.md`).
 //!
-//! Until that plan's phase 3 the session rows decide which session holds which key, and
-//! `kiosk_key` is a shadow written alongside them. A shadow write can be missed: one
-//! made before the mirroring code was deployed, by an environment still running older
-//! code (prod, preprod and qa share a database), or by a best-effort write that failed.
-//! This finds and repairs every disagreement, so that reads can move to `kiosk_key`.
+//! Both tables say which session holds which key, and every write keeps them together.
+//! A write can still be missed: one made before the mirroring code was deployed, by an
+//! environment still running older code (prod, preprod and qa share a database), or by
+//! a best-effort write that failed. This finds and repairs every disagreement.
 //!
 //! The session side is the truth here. Each repair is a transaction conditional on the
 //! session row still saying what the plan read, so a kiosk being set up in the meantime

@@ -421,20 +421,25 @@ pub struct SessionKeyParams<'a> {
 }
 
 /// Bind a scanned device's key to a session, as one atomic write
-/// ([`Handler::bind_session_key`]): consume the device's pending enrollment, release the
-/// key from every other session holding it, and create a new session or move an
-/// existing one onto it. Either all of it happens or none of it does.
+/// ([`Handler::bind_session_key`]): use up the device's request in its `kiosk_key` row
+/// and bind the row to the target, release the key from the session the row was bound
+/// to, and create a new session or move an existing one onto it. Either all of it
+/// happens or none of it does.
+///
+/// The `kiosk_key` row decides (plans/kiosk-key-binding.md, phase 3): the request and
+/// the previous holder both come from it, read strongly consistent, so two binds of
+/// one device can't both succeed and no holder is missed by a lagging index.
 #[derive(Clone, Copy, Debug)]
 pub struct SessionKeyBind<'a> {
-    /// The device's pending-enrollment `ephemeral_state` id. Deleted by the write, which
-    /// fails unless it is still there, a kiosk enrollment, and unexpired at `now`.
-    pub enrollment_id: &'a str,
     pub now: u64,
     pub key: SessionKeyParams<'a>,
-    /// The other sessions holding `key.fingerprint`, as read. Each is released (as
-    /// [`SessionUpdateShape::ReleaseKey`] does), and the write fails unless each still
-    /// holds it at the version read.
-    pub release: &'a [Session],
+    /// The `kiosk_key` row's [`version`](KioskKey::version) as read. The write fails
+    /// unless the row is still at it and still asking to be set up at `now`.
+    pub key_version: u64,
+    /// The session the row was bound to, as read, when it isn't the target and still
+    /// holds the key. Released (as [`SessionUpdateShape::ReleaseKey`] does), and the
+    /// write fails unless it still holds the key at the version read.
+    pub release: Option<&'a Session>,
     pub target: SessionKeyTarget<'a>,
 }
 
@@ -458,19 +463,20 @@ pub enum SessionKeyTarget<'a> {
 pub struct SessionKeyBound {
     /// The session now holding the key, as written.
     pub session: Session,
-    /// (id, version after) of each session the key was released from.
-    pub released: Vec<(String, u64)>,
+    /// (id, version after) of the session the key was released from, if any.
+    pub released: Option<(String, u64)>,
 }
 
 /// Which part of a [`SessionKeyBind`] had changed since it was read, so nothing was written.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SessionKeyBindConflict {
-    /// The pending enrollment is gone or expired: someone else set the device up, or it
-    /// left its QR code screen.
+    /// The device's request is gone or expired, or its `kiosk_key` row changed: someone
+    /// else set the device up, or it left its QR code screen.
     Enrollment,
-    /// A session to release no longer holds the key at the version read.
+    /// The session to release no longer holds the key at the version read.
     Holder,
-    /// The existing session was deleted or changed.
+    /// The existing session was deleted or changed, or its old key's row is now bound
+    /// to another session.
     Target,
 }
 
