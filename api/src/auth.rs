@@ -359,9 +359,128 @@ pub async fn verify_signed_key<A: App + HasDb + HasQueues>(
         }
     })?;
 
+    let (session, public_key) = match session_by_kiosk_key(app, &header.fingerprint).await? {
+        KioskKeyLookup::Found {
+            session,
+            public_key,
+        } => (*session, public_key),
+        KioskKeyLookup::Miss(why) => {
+            let session = session_by_key_index(app, &header.fingerprint).await?;
+            // The index knew a key the `kiosk_key` table didn't: a writer missed its
+            // shadow write. Phase 2 of plans/kiosk-key-binding.md can't move on while
+            // this happens, so the message starts with a fixed marker to count it by.
+            warn!(
+                "{KIOSK_KEY_FALLBACK}: kiosk key {} resolved to session {} only through \
+                 key_fingerprint-index ({why})",
+                header.fingerprint, session.id
+            );
+            let public_key = session
+                .public_key
+                .clone()
+                .ok_or_else(|| AuthError::Permanent("Session has no enrolled key".into()))?;
+            (session, public_key)
+        }
+    };
+
+    if crate::session_key::key_expired(session.key_expires_at, now) {
+        return Err(AuthError::Permanent("Enrolled key has expired".into()));
+    }
+
+    crate::session_key::verify_signature(
+        &public_key,
+        &header.fingerprint,
+        header.timestamp,
+        body_hash_hex,
+        &header.signature,
+    )
+    .map_err(|e| AuthError::Permanent(format!("{e:#}")))?;
+
+    touch_session(app, &session, client, true).await?;
+
+    Ok(AuthInfo::Session {
+        id: session.id,
+        location: session.location_id,
+    })
+}
+
+/// Start of the warning logged whenever kiosk sign-in finds its session through
+/// `key_fingerprint-index` rather than the `kiosk_key` table. A stable log contract:
+/// CloudWatch Logs Insights counts it (`filter @message like /kiosk_key fallback/`) to
+/// decide when the index can go (plans/kiosk-key-binding.md, phase 2 gate).
+pub const KIOSK_KEY_FALLBACK: &str = "kiosk_key fallback";
+
+/// What the `kiosk_key` table says about a signing key.
+enum KioskKeyLookup {
+    /// Bound to a live session that holds the key back.
+    Found {
+        session: Box<db::Session>,
+        public_key: String,
+    },
+    /// The table doesn't settle it; the reason is logged if the index does.
+    Miss(&'static str),
+}
+
+/// Find the session a signing key is bound to through the `kiosk_key` row, read
+/// strongly consistent, then the session it names, also strongly consistent. The
+/// session must point back at the key and be live, so a stale row can never sign
+/// anyone in: at worst it is a [`KioskKeyLookup::Miss`].
+async fn session_by_kiosk_key<A: App + HasDb>(
+    app: &A,
+    fingerprint: &str,
+) -> Result<KioskKeyLookup, AuthError> {
+    use crate::db::KioskKeyStore as _;
+
+    let Some(row) = app
+        .db()
+        .get_kiosk_key(fingerprint)
+        .await
+        .map_err(|e| classify_db_err("look up kiosk key", e))?
+    else {
+        return Ok(KioskKeyLookup::Miss("no kiosk_key row"));
+    };
+    let Some(session_id) = row.session_id.as_deref() else {
+        return Ok(KioskKeyLookup::Miss("kiosk_key row unbound"));
+    };
+    let Some(public_key) = row.public_key else {
+        return Ok(KioskKeyLookup::Miss("kiosk_key row has no public key"));
+    };
+    let Some(session) = app
+        .db()
+        .get_session_consistent(session_id)
+        .await
+        .map_err(|e| classify_db_err("fetch session by kiosk key", e))?
+    else {
+        return Ok(KioskKeyLookup::Miss(
+            "kiosk_key row names a missing session",
+        ));
+    };
+    if session.key_fingerprint.as_deref() != Some(fingerprint) {
+        return Ok(KioskKeyLookup::Miss(
+            "kiosk_key row names a session holding another key",
+        ));
+    }
+    if !session.is_live() {
+        return Ok(KioskKeyLookup::Miss(
+            "kiosk_key row names a session that isn't live",
+        ));
+    }
+    Ok(KioskKeyLookup::Found {
+        session: Box::new(session),
+        public_key,
+    })
+}
+
+/// The lookup sign-in used before the `kiosk_key` table: every session the
+/// `key_fingerprint-index` GSI lists for the key, which must come to exactly one live
+/// one. The GSI is eventually consistent and not unique, which is why this is now only
+/// the fallback. Goes in plan phase 4.
+async fn session_by_key_index<A: App + HasDb>(
+    app: &A,
+    fingerprint: &str,
+) -> Result<db::Session, AuthError> {
     let ids = app
         .db()
-        .get_session_id_by_key_fingerprint(&header.fingerprint)
+        .get_session_id_by_key_fingerprint(fingerprint)
         .await
         .map_err(|e| classify_db_err("look up session by key fingerprint", e))?;
     let sessions = app
@@ -383,33 +502,9 @@ pub async fn verify_signed_key<A: App + HasDb + HasQueues>(
             "Multiple active sessions share this key fingerprint".into(),
         ));
     }
-    let session = active
+    active
         .pop()
-        .ok_or_else(|| AuthError::Permanent("Session not found".into()))?;
-
-    let public_key = session
-        .public_key
-        .as_deref()
-        .ok_or_else(|| AuthError::Permanent("Session has no enrolled key".into()))?;
-    if crate::session_key::key_expired(session.key_expires_at, now) {
-        return Err(AuthError::Permanent("Enrolled key has expired".into()));
-    }
-
-    crate::session_key::verify_signature(
-        public_key,
-        &header.fingerprint,
-        header.timestamp,
-        body_hash_hex,
-        &header.signature,
-    )
-    .map_err(|e| AuthError::Permanent(format!("{e:#}")))?;
-
-    touch_session(app, &session, client, true).await?;
-
-    Ok(AuthInfo::Session {
-        id: session.id,
-        location: session.location_id,
-    })
+        .ok_or_else(|| AuthError::Permanent("Session not found".into()))
 }
 
 pub(crate) fn hash_token(secret: &str) -> String {

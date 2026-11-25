@@ -283,6 +283,9 @@ impl db::Handler for FakeDb {
             .map(|id| sessions.get(id.as_ref()).cloned())
             .collect())
     }
+    async fn get_session_consistent(&self, id: &str) -> db::Result<Option<db::Session>> {
+        Ok(self.sessions.lock().unwrap().get(id).cloned())
+    }
     async fn get_session_id_by_key_fingerprint(
         &self,
         fingerprint: &str,

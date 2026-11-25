@@ -1218,6 +1218,13 @@ pub trait Handler:
         &self,
         ids: &[T],
     ) -> impl Future<Output = Result<Vec<Option<Session>>>> + Send;
+    /// One session, strongly consistent, so kiosk sign-in sees a key the moment it is
+    /// bound (see `plans/kiosk-key-binding.md`). [`get_sessions`](Self::get_sessions)
+    /// is eventually consistent.
+    fn get_session_consistent(
+        &self,
+        id: &str,
+    ) -> impl Future<Output = Result<Option<Session>>> + Send;
     fn list_sessions(
         &self,
         query: ListSessionsQuery,

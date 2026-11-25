@@ -1975,6 +1975,28 @@ impl db::Handler for Handler {
         self.get_records("session", ids).await
     }
 
+    async fn get_session_consistent(&self, id: &str) -> db::Result<Option<Session>> {
+        let resp = self
+            .client
+            .get_item()
+            .table_name(self.table_name("session"))
+            .key("id", AttributeValue::S(id.to_string()))
+            .consistent_read(true)
+            .return_consumed_capacity(ReturnConsumedCapacity::Total)
+            .send()
+            .await
+            .map_err(|e| Error::Infrastructure(sdk_err_msg(e)))?;
+        record_capacity(
+            "get_session_consistent",
+            resp.consumed_capacity(),
+            CapKind::Read,
+        );
+        match resp.item {
+            Some(item) => Ok(Some(hydrate_item(item)?)),
+            None => Ok(None),
+        }
+    }
+
     async fn get_session_id_by_key_fingerprint(
         &self,
         fingerprint: &str,
