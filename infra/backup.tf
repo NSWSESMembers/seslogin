@@ -25,6 +25,8 @@ locals {
     aws_dynamodb_table.prod_period,
     aws_dynamodb_table.prod_person,
     aws_dynamodb_table.prod_session,
+    # Which device key is bound to which kiosk. Bound rows have no TTL.
+    aws_dynamodb_table.prod_kiosk_key,
     aws_dynamodb_table.prod_api_token,
     aws_dynamodb_table.prod_nitc_group,
     aws_dynamodb_table.prod_nitc_tag,
