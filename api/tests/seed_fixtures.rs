@@ -66,6 +66,13 @@ fn id(row: &Value) -> String {
     s(row, "id").expect("every fixture row needs an id")
 }
 
+/// A row's key: its `id`, or for `kiosk_key`, which is keyed by it, its `fingerprint`.
+fn row_key(row: &Value) -> String {
+    s(row, "id")
+        .or_else(|| s(row, "fingerprint"))
+        .expect("every fixture row needs an id or a fingerprint")
+}
+
 fn synthetic() -> Value {
     read_json("local/seed/synthetic.json")
 }
@@ -167,14 +174,16 @@ fn demo_references_resolve_and_times_parse() {
     for table in demo["tables"].as_object().expect("tables").keys() {
         for row in rows(&demo, table) {
             assert!(
-                seen.insert(id(row)),
+                seen.insert(row_key(row)),
                 "{} appears twice in demo.json",
-                id(row)
+                row_key(row)
             );
             assert!(
-                !rows(&base, table).iter().any(|b| id(b) == id(row)),
+                !rows(&base, table)
+                    .iter()
+                    .any(|b| row_key(b) == row_key(row)),
                 "demo.json's {} would overwrite synthetic.json's",
-                id(row)
+                row_key(row)
             );
             for (attr, value) in row.as_object().expect("row") {
                 if let Some(n) = value["N"]
@@ -183,7 +192,7 @@ fn demo_references_resolve_and_times_parse() {
                 {
                     let now = chrono::Utc::now();
                     seslogin::local_dev::resolve_relative_time(n, now)
-                        .unwrap_or_else(|e| panic!("{}.{attr}: {e}", id(row)));
+                        .unwrap_or_else(|e| panic!("{}.{attr}: {e}", row_key(row)));
                 }
             }
         }
@@ -458,4 +467,35 @@ fn identifiers_hard_coded_in_the_examples_exist() {
         checked > 0,
         "found no seed identifiers in local/examples — has the scan stopped matching?"
     );
+}
+
+/// Each key-enrolled kiosk has its `kiosk_key` row bound to it, as a bind leaves it, and
+/// every row names a kiosk holding its key. The row decides which kiosk a key is
+/// (plans/kiosk-key-binding.md): without it the set-up page doesn't recognise the
+/// computer, and sign-in falls back to the index.
+#[test]
+fn keyed_kiosks_have_their_kiosk_key_rows() {
+    for doc in [synthetic(), read_json("local/seed/demo.json")] {
+        let sessions = rows(&doc, "session");
+        let keys = rows(&doc, "kiosk_key");
+        for session in sessions {
+            let Some(fingerprint) = s(session, "key_fingerprint") else {
+                continue;
+            };
+            let row = keys
+                .iter()
+                .find(|k| s(k, "fingerprint").as_deref() == Some(fingerprint.as_str()))
+                .unwrap_or_else(|| panic!("{} has no kiosk_key row", id(session)));
+            assert_eq!(s(row, "session_id"), Some(id(session)));
+            assert_eq!(s(row, "public_key"), s(session, "public_key"));
+        }
+        for key in keys {
+            let holder = s(key, "session_id").expect("a seeded key row is bound");
+            assert!(
+                sessions.iter().any(|session| id(session) == holder
+                    && s(session, "key_fingerprint") == s(key, "fingerprint")),
+                "kiosk_key row for {holder} names a kiosk that doesn't hold its key"
+            );
+        }
+    }
 }

@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<1c6d73d330bfe5ecc817e7977afe9ffb>>
+ * @generated SignedSource<<b9709ea6a801073226e7a47112a089ae>>
  * @lightSyntaxTransform
  */
 
@@ -15,6 +15,8 @@ export type SessionEnrollKiosksQuery$data = {
   readonly location: {
     readonly sessions: ReadonlyArray<{
       readonly id: string;
+      readonly keyEnrolled: boolean;
+      readonly keyReleasedAt: number | null | undefined;
       readonly lastContact: number | null | undefined;
       readonly name: string;
       readonly version: number;
@@ -85,6 +87,20 @@ v4 = {
       "kind": "ScalarField",
       "name": "version",
       "storageKey": null
+    },
+    {
+      "alias": null,
+      "args": null,
+      "kind": "ScalarField",
+      "name": "keyEnrolled",
+      "storageKey": null
+    },
+    {
+      "alias": null,
+      "args": null,
+      "kind": "ScalarField",
+      "name": "keyReleasedAt",
+      "storageKey": null
     }
   ],
   "storageKey": null
@@ -138,16 +154,16 @@ return {
     ]
   },
   "params": {
-    "cacheID": "5a6f3186871dacc135feca3b4d11bd64",
+    "cacheID": "743f06ecf48527204e5790c86ecd313c",
     "id": null,
     "metadata": {},
     "name": "SessionEnrollKiosksQuery",
     "operationKind": "query",
-    "text": "query SessionEnrollKiosksQuery(\n  $location: ID!\n) {\n  location(id: $location) {\n    viewerCanEdit\n    sessions {\n      id\n      name\n      lastContact\n      version\n    }\n    id\n  }\n}\n"
+    "text": "query SessionEnrollKiosksQuery(\n  $location: ID!\n) {\n  location(id: $location) {\n    viewerCanEdit\n    sessions {\n      id\n      name\n      lastContact\n      version\n      keyEnrolled\n      keyReleasedAt\n    }\n    id\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "d6078d7a8f53e1f12d8e4a1d5dd9b28a";
+(node as any).hash = "19f0e1bbed36cf6824741ebf2bfbd3ad";
 
 export default node;

@@ -63,8 +63,8 @@ Yes, once NITC export is turned on for your unit. See [NITC export](nitc.md).
 ## Our kiosk stopped working
 
 If it shows a QR code, it has expired, usually after two weeks switched off.
-Press **Reactivate** next to it on the **Kiosks** page — within two weeks, or it
-has to be set up again. See [When a kiosk expires](kiosks.md#when-a-kiosk-expires).
+Scan the QR code and press **Bring kiosk back** — within two weeks, or it has to
+be set up again. See [When a kiosk expires](kiosks.md#when-a-kiosk-expires).
 
 If it says **This computer's clock is wrong**, the kiosk is still set up — don't
 scan anything. Fix the computer's date and time and the kiosk carries on by

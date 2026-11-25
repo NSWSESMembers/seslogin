@@ -29,10 +29,13 @@ sign in to the admin dashboard on).
 
    ![The kiosk setup screen with its QR code highlighted](../screenshots/kiosk-qr.png "The kiosk waiting to be set up.")
 
-2. Scan the QR code with your phone's camera. It opens the setup page for this
-   kiosk — sign in if you're asked to.
-3. Choose your unit under **Location**, and give the kiosk a **Name** that says
-   where it is, such as "Front desk" or "Training room".
+2. Scan the QR code with your phone's camera. It opens **Set up this computer**
+   — sign in if you're asked to. The page says what the computer is now: for a
+   computer that's new to SESLogin, "This computer isn't a kiosk at any of your
+   units".
+3. Leave **New kiosk** chosen. Choose your unit under **Location**, and give the
+   kiosk a **Name** that says where it is, such as "Front desk" or "Training
+   room".
 
    ![The setup page on a phone, with the Location and Name fields highlighted](../screenshots/kiosk-enrol.png "On your phone: choose the unit and name the kiosk.")
 
@@ -147,11 +150,14 @@ Only Admins can add, change or delete kiosks.
 ### When a kiosk expires
 
 A kiosk that hasn't been in touch for **two weeks** expires — usually because
-the computer was switched off or the browser closed. To bring it back, switch the
-kiosk on and wait for it to show its QR code, then press **Reactivate** next to
-it on the **Kiosks** page.
+the computer was switched off or the browser closed. It's marked **Expired** on
+the **Kiosks** page. To bring it back, switch the kiosk on, wait for it to show
+its QR code, and scan the code with your phone. **Set up this computer** says
+"This computer is the kiosk …" with that kiosk already chosen under **An existing
+kiosk**. Press **Bring kiosk back**, and the kiosk carries on within a few
+seconds with its name and settings.
 
-You have **two more weeks** to reactivate it. After that the kiosk is retired: it
+You have **two more weeks** to bring it back. After that the kiosk is retired: it
 disappears from the **Kiosks** page (the [audit log](audit-log.md) records it),
 and the computer has to be [set up again](#setting-up-a-kiosk). Very old kiosks
 set up with a six-digit setup code (rather than a QR code) can't be reactivated
@@ -159,19 +165,21 @@ at all — set them up again instead.
 
 ### When a working kiosk shows its QR code again
 
-If a kiosk shows its QR code but **Reactivate** isn't offered next to it, its
-computer has lost what tied it to the kiosk. This happens when the browser's data
-is cleared (by a browser or system update, a privacy setting, or a different
-browser profile), or when the browser opens a different address for SESLogin.
+If you scan a kiosk's QR code and **Set up this computer** says "This computer
+isn't a kiosk at any of your units", the computer has lost what tied it to the
+kiosk. This happens when the browser's data is cleared (by a browser or system
+update, a privacy setting, or a different browser profile), or when the browser
+opens a different address for SESLogin.
 
-Scan the QR code as when [setting up a kiosk](#setting-up-a-kiosk), but choose
-**Replace an existing kiosk**, then the unit and the kiosk this computer was.
-Press **Replace kiosk** and confirm. The kiosk keeps its name and settings, and
-switches over by itself within a few seconds. If another computer is still using
-that kiosk, it stops working, so check you've picked the right one. If the kiosk
-was changed while you were choosing (someone else edited or replaced it, for
-example), SESLogin says so and shows the kiosks again so you can check before
-trying again.
+Choose **An existing kiosk**, then the unit and the kiosk this computer was. Each
+kiosk says where it stands: **online on another computer**, **offline since** a
+date, or **no computer**. Press **Use this computer** and confirm. The kiosk keeps
+its name and settings, and switches over by itself within a few seconds. If
+another computer is still using that kiosk, it's disconnected and shows its QR
+code, so check you've picked the right one. If the kiosk or the computer was
+changed while you were choosing (someone else set it up first, for example),
+SESLogin says so and shows them as they are now so you can check before trying
+again.
 
 To stop it happening again, see [Keeping a kiosk running](#keeping-a-kiosk-running).
 

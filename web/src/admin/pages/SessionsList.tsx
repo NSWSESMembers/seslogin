@@ -15,12 +15,9 @@ import type {
   SessionsListQuery$data,
 } from "./__generated__/SessionsListQuery.graphql";
 import type { SessionsListDeleteMutation } from "./__generated__/SessionsListDeleteMutation.graphql";
-import type { SessionsListReactivateMutation } from "./__generated__/SessionsListReactivateMutation.graphql";
 import { useNotify } from "../components/useNotify";
 import { AdminTable, Th, Td } from "../../components/ui/Table";
-import { Muted } from "../../components/ui/Muted";
 import { Button, ButtonLink } from "../../components/ui/Button";
-import { Dialog, DialogActions, DialogTitle } from "../../components/ui/Dialog";
 import { FingerprintChip } from "../../components/FingerprintChip";
 import { Popover } from "../../components/ui/Popover";
 
@@ -75,7 +72,6 @@ function Row({
   canEdit: boolean;
 }) {
   const [now] = useState(() => Math.round(Date.now() / 1000));
-  const [confirmingReactivate, setConfirmingReactivate] = useState(false);
   const { notifyError, notifySuccess } = useNotify();
   // Its computer was set up again by scanning its QR code, which moved the key onto a new
   // entry. Nothing here can revive this one — it's a leftover kept so the change is
@@ -86,20 +82,6 @@ function Row({
     useMutation<SessionsListDeleteMutation>(graphql`
       mutation SessionsListDeleteMutation($id: ID!) {
         deleteSession(id: $id)
-      }
-    `);
-  // Selecting the same fields the list does lets Relay normalise the response straight
-  // into the store, so the row updates itself without an explicit updater.
-  const [commitReactivate, isReactivateInFlight] =
-    useMutation<SessionsListReactivateMutation>(graphql`
-      mutation SessionsListReactivateMutation($id: ID!) {
-        reactivateSession(id: $id) {
-          id
-          keyEnrolled
-          keyExpiresAt
-          reactivatable
-          lastContact
-        }
       }
     `);
 
@@ -128,26 +110,7 @@ function Row({
     }
   }
 
-  async function reactivateSession() {
-    setConfirmingReactivate(false);
-    try {
-      await new Promise((resolve, reject) => {
-        commitReactivate({
-          variables: { id: session.id },
-          onCompleted: resolve,
-          onError: reject,
-        });
-      });
-      notifySuccess(
-        `Kiosk ${session.name} reactivated — it should come back online within a few minutes`,
-      );
-    } catch (err) {
-      notifyError(err, `Couldn't reactivate kiosk ${session.name}`);
-    }
-  }
-
-  // An expired kiosk that isn't currently asking to be re-enrolled can't be reactivated
-  // yet — it has to be switched on first.
+  // An expired kiosk comes back by scanning its QR code (the setup page offers it).
   const isExpiredKiosk =
     !isReplacedKiosk &&
     session.keyEnrolled &&
@@ -211,22 +174,14 @@ function Row({
         {canEdit && (
           <>
             <div className="flex items-center justify-end gap-1">
-              {session.reactivatable ? (
-                <Button
-                  size="row"
-                  onClick={() => setConfirmingReactivate(true)}
-                  disabled={isReactivateInFlight}
-                >
-                  Reactivate
-                </Button>
-              ) : isExpiredKiosk ? (
+              {isExpiredKiosk && (
                 <span
                   className="mr-1 text-xs text-ink-muted"
-                  title="Switch this kiosk on and wait for it to show its QR code, then reload this page to reactivate it."
+                  title="Switch this kiosk on and scan the QR code it shows to bring it back."
                 >
                   Expired
                 </span>
-              ) : null}
+              )}
               {!isReplacedKiosk && (
                 <ButtonLink size="row" to={`/admin/sessions/${session.id}`}>
                   Edit
@@ -241,60 +196,10 @@ function Row({
                 Delete
               </Button>
             </div>
-            {confirmingReactivate && (
-              <ReactivateDialog
-                session={session}
-                onConfirm={reactivateSession}
-                onCancel={() => setConfirmingReactivate(false)}
-              />
-            )}
           </>
         )}
       </Td>
     </tr>
-  );
-}
-
-// Reactivation grants a lapsed key a fresh window, so it has to be the right device:
-// the admin checks the fingerprint here against the one on the kiosk's QR screen before
-// confirming.
-function ReactivateDialog({
-  session,
-  onConfirm,
-  onCancel,
-}: {
-  session: Session;
-  onConfirm: () => void;
-  onCancel: () => void;
-}) {
-  return (
-    <Dialog onDismiss={onCancel} width="w-120">
-      <DialogTitle>Reactivate {session.name}?</DialogTitle>
-      <p className="m-0 text-left">
-        Check the device key shown under the QR code on the kiosk screen. It
-        must match:
-      </p>
-      <p className="m-0 text-center text-lg">
-        {session.keyFingerprint ? (
-          <FingerprintChip
-            fingerprint={session.keyFingerprint}
-            className="text-lg"
-          />
-        ) : (
-          "-"
-        )}
-      </p>
-      <Muted className="text-left text-sm">
-        If it doesn't match, cancel — you would be reactivating a different
-        computer.
-      </Muted>
-      <DialogActions>
-        <Button variant="secondary" onClick={onCancel}>
-          Cancel
-        </Button>
-        <Button onClick={onConfirm}>Reactivate</Button>
-      </DialogActions>
-    </Dialog>
   );
 }
 
@@ -319,7 +224,6 @@ export default function SessionsList() {
             keyEnrolled
             keyExpiresAt
             keyFingerprint
-            reactivatable
             keyReleasedAt
             clientInfo {
               env
@@ -352,10 +256,10 @@ export default function SessionsList() {
         not access the system for a period of 2 weeks.
       </p>
       <p className="my-4">
-        An expired kiosk that was set up by scanning a QR code can be brought
-        back with the <strong>Reactivate</strong> button: switch the kiosk on,
-        wait for it to show its QR code screen, then reactivate it here. A kiosk
-        set up with a setup code has to be set up again from scratch.
+        To bring back an expired kiosk, switch it on and scan the QR code it
+        shows: the setup page knows which kiosk the computer is, and brings it
+        back. A kiosk set up with a setup code has to be set up again from
+        scratch.
       </p>
       <p className="my-4">
         A kiosk marked <strong>Replaced</strong> is one whose computer has since

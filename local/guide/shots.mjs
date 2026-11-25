@@ -125,7 +125,7 @@ export const SHOTS = [
           },
         ],
         frame: [
-          phone.getByRole("heading", { name: "Enroll this kiosk" }),
+          phone.getByRole("heading", { name: "Set up this computer" }),
           phone.locator("#name"),
         ],
         pad: 16,
