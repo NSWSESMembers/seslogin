@@ -18,6 +18,7 @@ use aws_sdk_dynamodb::{Client, types::AttributeValue};
 use std::collections::{HashMap, HashSet};
 
 mod ephemeral_state;
+mod kiosk_keys;
 
 mod login_codes;
 mod oauth_grants;

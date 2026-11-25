@@ -11,9 +11,10 @@ use clap::{Parser, Subcommand};
 use seslogin::audit::{self, AuditContext, AuditingHandler};
 use seslogin::badges;
 use seslogin::db::{
-    self, ApiToken, Category, CategoryDisplay, EphemeralStateStore, Handler, ListApiTokensFilter,
-    ListLocationsFilter, ListPeriodsPage, ListSessionsQuery, Location, NitcEvent, NitcGroup,
-    Period, PeriodCursor, Person, PersonUpdateShape, ScanCursor, Session, SessionUpdateShape, User,
+    self, ApiToken, Category, CategoryDisplay, EphemeralStateStore, Handler, KioskKeyStore,
+    ListApiTokensFilter, ListLocationsFilter, ListPeriodsPage, ListSessionsQuery, Location,
+    NitcEvent, NitcGroup, Period, PeriodCursor, Person, PersonUpdateShape, ScanCursor, Session,
+    SessionUpdateShape, User,
 };
 use seslogin::dynamodb;
 use seslogin::request_metrics::{self, RequestMetrics};
@@ -2267,7 +2268,7 @@ async fn run_session_edit(
     let enroll_id = seslogin::session_key::enroll_state_id(&fingerprint);
     let enroll_expires_at = now + seslogin::session_key::PENDING_ENROLLMENT_TTL_S;
     let payload = serde_json::to_string(&seslogin::session_key::EnrollPayload {
-        public_key,
+        public_key: public_key.clone(),
         submitted_at: now,
     })?;
 
@@ -2310,6 +2311,13 @@ async fn run_session_edit(
         enroll_expires_at,
     )
     .await?;
+    // The `kiosk_key` shadow (plans/kiosk-key-binding.md), as `submitEnrollmentKey` writes it.
+    if let Err(e) = db
+        .record_kiosk_key_request(&fingerprint, &public_key, now, enroll_expires_at)
+        .await
+    {
+        println!("warning: couldn't record the kiosk_key request: {e}");
+    }
 
     println!("\ndone — session {id} should now show as reactivatable in the admin kiosk list.");
     Ok(())

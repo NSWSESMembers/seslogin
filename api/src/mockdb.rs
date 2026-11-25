@@ -2,6 +2,7 @@ use crate::db;
 use crate::db::{ApiToken, Category, ListSessionsQuery, Location, Period, Person, Session, User};
 
 mod ephemeral_state;
+mod kiosk_keys;
 
 mod login_codes;
 mod oauth_grants;
