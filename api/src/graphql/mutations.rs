@@ -1442,20 +1442,31 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         let id = crate::session_key::enroll_state_id(&fingerprint);
         let now = crate::clock::now_sec();
 
-        // Write-suppression: if a fresh record already exists (written in roughly the last
-        // 10 min, i.e. >20 min TTL remaining), skip the write. The kiosk polls every
-        // ~10 min, so steady state is about one write per 20 min per kiosk.
+        // Write-suppression: if fresh records already exist (written in roughly the last
+        // 10 min, i.e. >20 min TTL remaining), skip the writes. The kiosk polls every
+        // ~10 min, so steady state is about one write per 20 min per kiosk. Both must be
+        // fresh: unbinding a key (deleting or retiring its kiosk) deletes its kiosk_key
+        // row, request and all, while the ephemeral_state record lives on, and the
+        // reads of a request now go to kiosk_key first.
         let fresh_threshold = now + crate::session_key::PENDING_ENROLLMENT_TTL_S - 10 * 60;
         if let Some(existing) = self.app.db().get_ephemeral_state(&id).await?
             && existing.kind == crate::session_key::ENROLL_STATE_KIND
             && existing.expires_at > fresh_threshold
+            && self
+                .app
+                .db()
+                .get_kiosk_key(&fingerprint)
+                .await?
+                .and_then(|row| row.request_expires_at)
+                .is_some_and(|t| t > fresh_threshold)
         {
             return Ok(fingerprint);
         }
 
         let expires_at = now + crate::session_key::PENDING_ENROLLMENT_TTL_S;
-        // The `kiosk_key` shadow (plans/kiosk-key-binding.md). Nothing reads it yet, so
-        // a failure only logs; the record below still decides enrolment.
+        // The `kiosk_key` shadow (plans/kiosk-key-binding.md). Reads of a request fall
+        // back to the record below, which still decides enrolment, so a failure only
+        // logs.
         if let Err(e) = self
             .app
             .db()
