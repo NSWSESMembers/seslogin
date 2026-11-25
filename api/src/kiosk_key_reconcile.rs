@@ -151,6 +151,87 @@ impl Summary {
     }
 }
 
+/// Most lines of each kind [`Summary::report`] lists before summarising the rest.
+const REPORT_LINES_PER_KIND: usize = 20;
+
+impl Summary {
+    /// A plain-text account of what disagrees, for an alert. `None` when nothing does
+    /// and nothing needs a human: the tables agree.
+    pub fn report(&self) -> Option<String> {
+        if self.plan.is_clean() && !self.needs_attention() {
+            return None;
+        }
+        let mut out = format!(
+            "kiosk_key disagrees with the session rows ({} session(s) and {} key row(s) \
+             scanned).\n",
+            self.sessions_scanned, self.keys_scanned
+        );
+        let mut section = |title: &str, lines: Vec<String>| {
+            if lines.is_empty() {
+                return;
+            }
+            out.push_str(&format!("\n{title} ({}):\n", lines.len()));
+            for line in lines.iter().take(REPORT_LINES_PER_KIND) {
+                out.push_str(&format!("  - {line}\n"));
+            }
+            if lines.len() > REPORT_LINES_PER_KIND {
+                out.push_str(&format!(
+                    "  … and {} more\n",
+                    lines.len() - REPORT_LINES_PER_KIND
+                ));
+            }
+        };
+        section(
+            "Key rows to bind to the session holding the key",
+            self.plan
+                .bind
+                .iter()
+                .map(|b| {
+                    format!(
+                        "{} → {} ({})",
+                        b.fingerprint,
+                        b.session_id,
+                        b.reason.describe()
+                    )
+                })
+                .collect(),
+        );
+        section(
+            "Key rows naming a session that doesn't hold the key",
+            self.plan
+                .unbind
+                .iter()
+                .map(|k| {
+                    format!(
+                        "{} → {}",
+                        k.fingerprint,
+                        k.session_id.as_deref().unwrap_or("?")
+                    )
+                })
+                .collect(),
+        );
+        section(
+            "Keys held by more than one live session (not repairable)",
+            self.plan
+                .duplicates
+                .iter()
+                .map(|(fp, ids)| format!("{fp}: {}", ids.join(", ")))
+                .collect(),
+        );
+        section(
+            "Sessions with a fingerprint but no public key (not repairable)",
+            self.plan.keyless.clone(),
+        );
+        if self.unreadable > 0 {
+            out.push_str(&format!("\n{} row(s) couldn't be read.\n", self.unreadable));
+        }
+        if self.failed > 0 {
+            out.push_str(&format!("\n{} repair(s) failed.\n", self.failed));
+        }
+        Some(out)
+    }
+}
+
 /// Read both tables, plan, and (unless `dry_run`) repair. Fails only if a scan does.
 pub async fn run<D: Handler + KioskKeyStore>(
     db: &D,
@@ -325,6 +406,55 @@ mod tests {
         let unbind: Vec<&str> = plan.unbind.iter().map(|k| k.fingerprint.as_str()).collect();
         assert_eq!(unbind, vec!["f5", "f6"]);
         assert!(plan.duplicates.is_empty());
+    }
+
+    #[test]
+    fn agreeing_tables_report_nothing() {
+        let summary = Summary {
+            sessions_scanned: 1,
+            keys_scanned: 1,
+            plan: plan(&[session("s1", Some("f1"), true)], &[key("f1", Some("s1"))]),
+            ..Summary::default()
+        };
+        assert_eq!(summary.report(), None);
+    }
+
+    #[test]
+    fn the_report_lists_each_kind_of_disagreement() {
+        let summary = Summary {
+            sessions_scanned: 3,
+            keys_scanned: 1,
+            plan: plan(
+                &[
+                    session("s1", Some("f1"), true),
+                    session("s2", Some("f2"), true),
+                    session("s3", Some("f2"), true),
+                ],
+                &[key("f9", Some("gone"))],
+            ),
+            unreadable: 1,
+            ..Summary::default()
+        };
+        let report = summary.report().expect("a report");
+        assert!(report.contains("f1 → s1 (no row)"), "{report}");
+        assert!(report.contains("f9 → gone"), "{report}");
+        assert!(report.contains("f2: s2, s3"), "{report}");
+        assert!(report.contains("1 row(s) couldn't be read"), "{report}");
+    }
+
+    #[test]
+    fn a_long_report_is_cut_short() {
+        let sessions: Vec<Session> = (0..25)
+            .map(|i| session(&format!("s{i:02}"), Some(&format!("f{i:02}")), true))
+            .collect();
+        let summary = Summary {
+            plan: plan(&sessions, &[]),
+            ..Summary::default()
+        };
+        let report = summary.report().unwrap();
+        assert!(report.contains("(25):"), "{report}");
+        assert!(report.contains("… and 5 more"), "{report}");
+        assert!(!report.contains("f24"), "{report}");
     }
 
     /// Neither session row says which is right, so the key's row is left alone too.
