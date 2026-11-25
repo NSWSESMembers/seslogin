@@ -1976,6 +1976,10 @@ impl<D: db::Handler> db::Handler for AuditingHandler<D> {
         self.inner.get_sessions(ids).await
     }
 
+    async fn get_session_consistent(&self, id: &str) -> db::Result<Option<Session>> {
+        self.inner.get_session_consistent(id).await
+    }
+
     async fn get_session_id_by_key_fingerprint(
         &self,
         fingerprint: &str,

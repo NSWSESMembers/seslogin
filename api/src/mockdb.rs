@@ -85,6 +85,10 @@ impl db::Handler for Handler {
         Self::unsupported()
     }
 
+    async fn get_session_consistent(&self, _id: &str) -> db::Result<Option<Session>> {
+        Self::unsupported()
+    }
+
     async fn get_session_id_by_key_fingerprint(
         &self,
         _fingerprint: &str,
