@@ -17,9 +17,9 @@ export type VisitorConfirmation = {
 };
 
 /**
- * Asked before signing in a member who doesn't belong to this kiosk's location (neither their primary unit nor another of theirs)
- * (the kiosk's "Confirm visitors" option). Most mistyped member IDs belong to
- * someone at another unit, so this is where they get caught. Nothing has been
+ * Asked before signing in a member who doesn't belong to this kiosk's location
+ * (neither their primary unit nor another of theirs). Most mistyped member IDs
+ * belong to someone at another unit, so this is where they get caught. Nothing has been
  * written yet: "Yes" signs them in, "No" (or no answer) drops the scan.
  */
 export default function ScanVisitorConfirmDialog(props: {

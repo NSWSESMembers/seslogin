@@ -464,7 +464,7 @@ export const SHOTS = [
         minWidth: 0,
       });
 
-      // Crossunit Tester belongs to Test B Unit, so Confirm visitors asks first.
+      // Crossunit Tester belongs to Test B Unit, so the kiosk asks them to confirm first.
       // No leaves nothing behind for the shots after this one.
       await enter("20000001");
       const question = kiosk.getByRole("heading", { name: /^Are you / });

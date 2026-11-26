@@ -1866,7 +1866,6 @@ describe("KioskMain confirm visitors", () => {
 
   it("asks a visitor to confirm, then signs them in on Yes", async () => {
     const calls: Array<Record<string, unknown>> = [];
-    // On by default: a config that doesn't mention it still asks.
     server.use(sessionConfigHandler({}), visitorHandler(calls));
     const user = await setupTest();
 
@@ -1891,10 +1890,7 @@ describe("KioskMain confirm visitors", () => {
 
   it("drops the scan on No without signing anyone in", async () => {
     const calls: Array<Record<string, unknown>> = [];
-    server.use(
-      sessionConfigHandler({ confirmVisitors: true }),
-      visitorHandler(calls),
-    );
+    server.use(sessionConfigHandler({}), visitorHandler(calls));
     const user = await setupTest();
 
     await user.type(screen.getByRole("textbox"), `${VISITOR}{enter}`);
@@ -1909,7 +1905,7 @@ describe("KioskMain confirm visitors", () => {
     expect(screen.getByRole("textbox")).not.toBeDisabled();
   });
 
-  it("doesn't ask when the kiosk option is off", async () => {
+  it("still asks on a kiosk saved with the retired option off", async () => {
     const calls: Array<Record<string, unknown>> = [];
     server.use(
       sessionConfigHandler({ confirmVisitors: false }),
@@ -1918,11 +1914,11 @@ describe("KioskMain confirm visitors", () => {
     const user = await setupTest();
 
     await user.type(screen.getByRole("textbox"), `${VISITOR}{enter}`);
-    await waitFor(() =>
-      expect(screen.getByText("Vic Visitor")).toBeInTheDocument(),
-    );
+    expect(
+      await screen.findByRole("heading", { name: "Are you Vic Visitor?" }),
+    ).toBeInTheDocument();
     expect(calls).toHaveLength(1);
-    expect(calls[0].confirmVisitor).toBe(false);
+    expect(calls[0].confirmVisitor).toBe(true);
   });
 });
 

@@ -3,7 +3,6 @@ import { describe, it, expect, vi } from "vitest";
 import UserEvent from "@testing-library/user-event";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import SessionForm from "./SessionForm";
-import { NEW_SESSION_CONFIG } from "./sessionConfig";
 
 // The config is only in React state until the form is submitted, so the way to
 // see what an admin would save is to submit and read what the form posts.
@@ -107,56 +106,26 @@ describe("SessionForm Who's here", () => {
   });
 });
 
-describe("SessionForm Confirm visitors", () => {
-  async function toggleAndSave(initialConfig: Record<string, unknown>) {
-    cleanup();
+describe("SessionForm retired Confirm visitors option", () => {
+  it("has no checkbox, and drops a stored value on save", async () => {
     const onSubmit = vi.fn();
     render(
       <SessionForm
         initialName="Kiosk"
-        initialConfig={JSON.stringify(initialConfig)}
+        initialConfig={JSON.stringify({ guests: true, confirmVisitors: false })}
         initialHealthcheckUrl=""
         isMutationInFlight={false}
         onSubmit={onSubmit}
       />,
     );
-    const user = UserEvent.setup();
-    await user.click(
-      screen.getByRole("checkbox", { name: /Confirm visitors/ }),
-    );
-    await user.click(screen.getByRole("button", { name: "Save" }));
-    const formData = onSubmit.mock.calls[0][0] as FormData;
-    return JSON.parse(formData.get("config") as string);
-  }
-
-  it("is on when the config doesn't mention it", () => {
-    render(
-      <SessionForm
-        initialName="Kiosk"
-        initialConfig={NEW_SESSION_CONFIG}
-        initialHealthcheckUrl=""
-        isMutationInFlight={false}
-        onSubmit={vi.fn()}
-      />,
-    );
     expect(
-      screen.getByRole("checkbox", { name: /Confirm visitors/ }),
-    ).toBeChecked();
-  });
-
-  it("stores false when turned off", async () => {
-    const config = await toggleAndSave({ guests: true });
-    expect(config).toEqual({ guests: true, confirmVisitors: false });
-  });
-
-  it("drops the key when turned back on", async () => {
-    const config = await toggleAndSave({ confirmVisitors: false });
-    expect(config).toEqual({});
-  });
-
-  it("turns off a config saved with it explicitly on", async () => {
-    const config = await toggleAndSave({ confirmVisitors: true });
-    expect(config).toEqual({ confirmVisitors: false });
+      screen.queryByRole("checkbox", { name: /Confirm visitors/ }),
+    ).not.toBeInTheDocument();
+    await UserEvent.setup().click(screen.getByRole("button", { name: "Save" }));
+    const formData = onSubmit.mock.calls[0][0] as FormData;
+    expect(JSON.parse(formData.get("config") as string)).toEqual({
+      guests: true,
+    });
   });
 });
 
