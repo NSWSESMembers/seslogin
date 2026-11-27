@@ -70,15 +70,15 @@ impl FakeDb {
         );
     }
 
-    /// What the DynamoDB session writes do to the shadow when a session gives up `fingerprint`.
+    /// What the DynamoDB session writes do to `kiosk_key` when a session gives up
+    /// `fingerprint`, in the same transaction: see [`unbind_row`].
     pub(crate) fn unbind_kiosk_key_shadow(&self, fingerprint: &str, session_id: &str) {
-        let mut keys = self.kiosk_keys.lock().unwrap();
-        if keys
-            .get(fingerprint)
-            .is_some_and(|k| k.session_id.as_deref() == Some(session_id))
-        {
-            keys.remove(fingerprint);
-        }
+        unbind_row(
+            &mut self.kiosk_keys.lock().unwrap(),
+            fingerprint,
+            session_id,
+            seslogin::clock::now_sec(),
+        );
     }
 }
 

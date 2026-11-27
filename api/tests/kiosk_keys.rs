@@ -558,3 +558,23 @@ async fn replacing_keeps_the_old_computers_request() {
     )
     .await;
 }
+
+/// Deleting a kiosk whose computer is showing its QR code keeps the request, so an
+/// admin can set the computer up again straight away.
+#[tokio::test]
+async fn deleting_a_kiosk_keeps_its_computers_request() {
+    let app = app_at_loc_a();
+    seed_bound(&app, "sess-1", "fp1");
+    app.db.device_asking("fp1", "pk-fp1");
+
+    run_admin(&app, r#"mutation { deleteSession(id: "sess-1") }"#).await;
+
+    let key = row(&app, "fp1").unwrap();
+    assert_eq!(key.session_id, None);
+    assert!(key.is_requested(seslogin::clock::now_sec()));
+    run_admin(
+        &app,
+        r#"mutation { enrollSession(name: "Again", locationId: "loc-a", keyFingerprint: "fp1") { id } }"#,
+    )
+    .await;
+}

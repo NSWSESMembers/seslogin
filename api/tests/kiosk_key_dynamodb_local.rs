@@ -284,6 +284,82 @@ async fn kiosk_key_decides_binds_and_unbinds() {
             .unwrap();
     }
 
+    // Retiring a kiosk drops its key row in the same write; one no longer retirable is
+    // refused and keeps it.
+    let fp_f = format!("dynamodb-local-test-{now}-f");
+    ask(&h, &fp_f, now).await;
+    let s6 = bind(&h, &fp_f, now, None, new("six"))
+        .await
+        .unwrap()
+        .session;
+    let expired = |unusable_before| db::SessionUpdateShape::Retire {
+        reason: db::RetireReason::KeyExpired,
+        unusable_before,
+    };
+    assert!(matches!(
+        h.update_session(&s6.id, expired(now)).await,
+        Err(db::Error::NotFound(_))
+    ));
+    assert!(h.get_kiosk_key(&fp_f).await.unwrap().is_some());
+    assert_eq!(
+        h.update_session(&s6.id, expired(now + 2000)).await.unwrap(),
+        Some(2)
+    );
+    assert_eq!(h.get_kiosk_key(&fp_f).await.unwrap(), None);
+
+    // Deleting a kiosk whose computer is asking keeps the request on an unbound row.
+    let fp_k = format!("dynamodb-local-test-{now}-k");
+    ask(&h, &fp_k, now).await;
+    let s11 = bind(&h, &fp_k, now, None, new("eleven"))
+        .await
+        .unwrap()
+        .session;
+    ask(&h, &fp_k, now).await;
+    h.update_session(&s11.id, db::SessionUpdateShape::Delete)
+        .await
+        .unwrap();
+    let kept = h.get_kiosk_key(&fp_k).await.unwrap().unwrap();
+    assert_eq!(kept.session_id, None);
+    assert!(kept.is_requested(now));
+
+    // Deleting a kiosk whose key row is bound to another session leaves the row alone.
+    // Drift made by hand: s8 takes fp_g's row without s7 being released.
+    let fp_g = format!("dynamodb-local-test-{now}-g");
+    let fp_h = format!("dynamodb-local-test-{now}-h");
+    ask(&h, &fp_g, now).await;
+    let s7 = bind(&h, &fp_g, now, None, new("seven"))
+        .await
+        .unwrap()
+        .session;
+    ask(&h, &fp_h, now).await;
+    let s8 = bind(&h, &fp_h, now, None, new("eight"))
+        .await
+        .unwrap()
+        .session;
+    ask(&h, &fp_g, now).await;
+    bind(&h, &fp_g, now, None, SessionKeyTarget::Existing(&s8))
+        .await
+        .unwrap();
+    assert_eq!(
+        h.update_session(&s7.id, db::SessionUpdateShape::Delete)
+            .await
+            .unwrap(),
+        Some(2)
+    );
+    assert_eq!(
+        h.get_kiosk_key(&fp_g).await.unwrap().unwrap().session_id,
+        Some(s8.id.clone())
+    );
+    h.update_session(&s8.id, db::SessionUpdateShape::Delete)
+        .await
+        .unwrap();
+    assert_eq!(h.get_kiosk_key(&fp_g).await.unwrap(), None);
+    assert!(matches!(
+        h.update_session("no-such-session", db::SessionUpdateShape::Delete)
+            .await,
+        Err(db::Error::NotFound(_))
+    ));
+
     // Reconcile's repairs. Binding needs the session to hold the key, and unbinding
     // needs it not to; each is refused, writing nothing, when that isn't so.
     let fp_c = format!("dynamodb-local-test-{now}-c");
