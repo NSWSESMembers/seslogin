@@ -4,7 +4,7 @@
 //! location. These mirror the admin Kiosks page (`SessionsList`, `SessionsEdit`).
 //!
 //! **Deliberately not exposed:** enrolling a kiosk, `pendingEnrollmentKey`,
-//! `reactivateSession` and `replaceSessionDevice`. A device is only bound to a location by a person scanning its
+//! `bindKioskDevice`, `reactivateSession` and `replaceSessionDevice`. A device is only bound to a location by a person scanning its
 //! QR code in the browser, so the descriptions point the user to the admin site's
 //! Kiosks page for those.
 //!

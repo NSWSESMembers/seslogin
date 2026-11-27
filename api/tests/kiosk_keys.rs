@@ -578,3 +578,144 @@ async fn deleting_a_kiosk_keeps_its_computers_request() {
     )
     .await;
 }
+
+// bindKioskDevice: one mutation for new, moved and reactivated kiosks.
+
+fn bind_new(fingerprint: &str, key_version: u64) -> String {
+    format!(
+        r#"mutation {{ bindKioskDevice(keyFingerprint: "{fingerprint}", expectedKeyVersion: {key_version}, target: {{ new: {{ locationId: "loc-a", name: "New" }} }}) {{ id }} }}"#
+    )
+}
+
+fn bind_existing(fingerprint: &str, key_version: u64, id: &str, version: u64) -> String {
+    format!(
+        r#"mutation {{ bindKioskDevice(keyFingerprint: "{fingerprint}", expectedKeyVersion: {key_version}, target: {{ existing: {{ id: "{id}", expectedVersion: {version} }} }}) {{ id keyExpiresAt }} }}"#
+    )
+}
+
+#[tokio::test]
+async fn binding_a_new_kiosk_at_the_key_version_the_page_read() {
+    let app = app_at_loc_a();
+    app.db.device_asking("fp1", "pk-fp1");
+
+    let data = run_admin(&app, &bind_new("fp1", 0)).await;
+    let id = data["bindKioskDevice"]["id"].as_str().unwrap();
+
+    let key = row(&app, "fp1").unwrap();
+    assert_eq!(key.session_id.as_deref(), Some(id));
+    assert_eq!(key.version, 1);
+    assert!(!key.is_requested(seslogin::clock::now_sec()));
+}
+
+/// Race 3 in the plan: a second admin's page, still open from before someone else set the
+/// device up, can't then move the device off the kiosk just made, even though the device
+/// is showing its QR code again.
+#[tokio::test]
+async fn a_page_left_open_after_the_device_was_set_up_is_refused() {
+    let app = app_at_loc_a();
+    app.db.device_asking("fp1", "pk-fp1");
+    let first = run_admin(&app, &bind_new("fp1", 0)).await;
+    let first = first["bindKioskDevice"]["id"].as_str().unwrap().to_string();
+    app.db.device_asking("fp1", "pk-fp1");
+
+    let stale = run_admin_response(&app, &bind_new("fp1", 0)).await;
+    assert!(
+        stale.errors[0].message.contains("set up by someone else"),
+        "{:?}",
+        stale.errors
+    );
+    assert_eq!(app.db.sessions.lock().unwrap().len(), 1);
+    assert_eq!(
+        row(&app, "fp1").unwrap().session_id.as_deref(),
+        Some(first.as_str())
+    );
+}
+
+#[tokio::test]
+async fn binding_an_existing_kiosk_to_another_device_moves_it() {
+    let app = app_at_loc_a();
+    seed_bound(&app, "sess-1", "fp-old");
+    app.db.device_asking("fp-new", "pk-fp-new");
+
+    run_admin(&app, &bind_existing("fp-new", 0, "sess-1", 1)).await;
+
+    assert_eq!(
+        row(&app, "fp-new").unwrap().session_id.as_deref(),
+        Some("sess-1")
+    );
+    assert_eq!(row(&app, "fp-old"), None);
+    let channels: Vec<_> = app
+        .realtime
+        .published()
+        .into_iter()
+        .map(|event| match event {
+            mockrealtime::Event::EnrollmentCompleted { channel, .. }
+            | mockrealtime::Event::SessionChanged { channel, .. } => channel,
+            other => panic!("unexpected {other:?}"),
+        })
+        .collect();
+    // The old computer, still running as sess-1, is told to refetch.
+    assert_eq!(
+        channels,
+        vec!["kiosk-enroll:test:fp-new", "kiosk:test:session:sess-1"]
+    );
+}
+
+/// Binding a kiosk to the device it is already on is reactivation: a short window,
+/// which the kiosk's first signed request widens, and no refetch sent to itself.
+#[tokio::test]
+async fn binding_an_existing_kiosk_to_the_key_it_holds_reactivates_it() {
+    let app = app_at_loc_a();
+    seed_bound(&app, "sess-1", "fp1");
+    app.db
+        .sessions
+        .lock()
+        .unwrap()
+        .get_mut("sess-1")
+        .unwrap()
+        .key_expires_at = Some(1);
+    app.db.device_asking("fp1", "pk-fp1");
+    let now = seslogin::clock::now_sec();
+
+    let data = run_admin(&app, &bind_existing("fp1", 1, "sess-1", 1)).await;
+
+    let expires_at = data["bindKioskDevice"]["keyExpiresAt"].as_u64().unwrap();
+    assert!(expires_at > now);
+    assert!(expires_at <= now + seslogin::session_key::REACTIVATE_GRACE_S + 5);
+    let key = row(&app, "fp1").unwrap();
+    assert_eq!(key.session_id.as_deref(), Some("sess-1"));
+    assert!(!key.is_requested(now));
+    assert!(matches!(
+        app.realtime.published().as_slice(),
+        [mockrealtime::Event::EnrollmentCompleted { .. }]
+    ));
+}
+
+#[tokio::test]
+async fn pending_enrollment_key_says_which_kiosk_the_computer_is() {
+    let app = app_at_loc_a();
+    seed_bound(&app, "sess-1", "fp1");
+    app.db.device_asking("fp1", "pk-fp1");
+    let query =
+        r#"{ pendingEnrollmentKey(fingerprint: "fp1") { version currentKiosk { id name } } }"#;
+
+    let data = run_admin(&app, query).await;
+    assert_eq!(
+        data["pendingEnrollmentKey"],
+        serde_json::json!({"version": 1, "currentKiosk": {"id": "sess-1", "name": "Front desk"}})
+    );
+
+    // A kiosk at a location the viewer can't see reads as none.
+    app.db
+        .sessions
+        .lock()
+        .unwrap()
+        .get_mut("sess-1")
+        .unwrap()
+        .location_id = "loc-b".to_string();
+    let data = run_admin(&app, query).await;
+    assert_eq!(
+        data["pendingEnrollmentKey"],
+        serde_json::json!({"version": 1, "currentKiosk": null})
+    );
+}
