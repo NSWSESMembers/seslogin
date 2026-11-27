@@ -187,6 +187,20 @@
         "updated_at": { "N": "1767225600" }
       }
     ],
+    "kiosk_key": [
+      {
+        "_comment": "TestAKiosk02's key row, bound to it as a bind leaves it. The kiosk_key row decides which kiosk a key is (plans/kiosk-key-binding.md), so without it the set-up page doesn't recognise the computer and sign-in falls back to key_fingerprint-index.",
+        "fingerprint": {
+          "S": "23d64be11f5c92f98670c4326e88ff12b06ec78ce329145c6c3f3573bbbe5dba"
+        },
+        "public_key": {
+          "S": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEvALkIay5sYTuasJMSVwCz2AVMihxpHowsPsaocqd10H8nVd69Byl/9saRdjwSGDC0+Inl8OhgYf+XCq1/ridwA=="
+        },
+        "session_id": { "S": "TestAKiosk02" },
+        "bound_at": { "N": "1767225600" },
+        "v": { "N": "1" }
+      }
+    ],
     "person_unit": [
       {
         "_comment": "Invented directory assignments for Bob Brown, so the member Details panel has units to show: his primary unit and a cluster with no location of ours.",

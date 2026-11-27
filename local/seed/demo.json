@@ -1066,6 +1066,30 @@
         }
       }
     ],
+    "kiosk_key": [
+      {
+        "fingerprint": {
+          "S": "916a7adfae8da395f86602997c902a6e6626656f6ecf19571ca25dd97fd7acce"
+        },
+        "public_key": {
+          "S": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEBFAoBzsGAxXhhfOgtLaRCbRzo/qvpR1p6SGDqWIKZ9aDOrLzOkLzfANQ09zDUtgtxT2kbByiuNhtnASiivYMgQ=="
+        },
+        "session_id": { "S": "TestCKiosk01" },
+        "bound_at": { "N": "1767225600" },
+        "v": { "N": "1" }
+      },
+      {
+        "fingerprint": {
+          "S": "3f58c617148987b6cc1ae6c9ed9d672183e31ba10a9e88f83c25789dcbc67830"
+        },
+        "public_key": {
+          "S": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE3Xvpirr9pC7xUT5RlEFtTiuUeheMRDkzRw/zPG2F879HrER/jqJa5IPjBioHyKqsvguQDs8P6al4jYYcHe0/0Q=="
+        },
+        "session_id": { "S": "TestCKiosk02" },
+        "bound_at": { "N": "1767225600" },
+        "v": { "N": "1" }
+      }
+    ],
     "period": [
       {
         "id": {

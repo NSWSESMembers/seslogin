@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<47c3dabc0f74fa4dd083eab6ec3d6b9e>>
+ * @generated SignedSource<<af56d49115936150314a6e573c07e475>>
  * @lightSyntaxTransform
  */
 
@@ -8,13 +8,30 @@
 // @ts-nocheck
 
 import { ConcreteRequest } from 'relay-runtime';
-export type SessionEnrollReplaceMutation$variables = {
+export type KioskBindTarget = {
+  existing?: never;
+  new: NewKioskInput;
+} | {
+  existing: ExistingKioskInput;
+  new?: never;
+};
+export type NewKioskInput = {
+  config?: string | null | undefined;
+  healthcheckUrl?: string | null | undefined;
+  locationId: string;
+  name: string;
+};
+export type ExistingKioskInput = {
   expectedVersion: number;
   id: string;
-  keyFingerprint: string;
 };
-export type SessionEnrollReplaceMutation$data = {
-  readonly replaceSessionDevice: {
+export type SessionEnrollBindMutation$variables = {
+  expectedKeyVersion: number;
+  keyFingerprint: string;
+  target: KioskBindTarget;
+};
+export type SessionEnrollBindMutation$data = {
+  readonly bindKioskDevice: {
     readonly id: string;
     readonly keyEnrolled: boolean;
     readonly keyExpiresAt: number | null | undefined;
@@ -22,26 +39,26 @@ export type SessionEnrollReplaceMutation$data = {
     readonly reactivatable: boolean;
   };
 };
-export type SessionEnrollReplaceMutation = {
-  response: SessionEnrollReplaceMutation$data;
-  variables: SessionEnrollReplaceMutation$variables;
+export type SessionEnrollBindMutation = {
+  response: SessionEnrollBindMutation$data;
+  variables: SessionEnrollBindMutation$variables;
 };
 
 const node: ConcreteRequest = (function(){
 var v0 = {
   "defaultValue": null,
   "kind": "LocalArgument",
-  "name": "expectedVersion"
+  "name": "expectedKeyVersion"
 },
 v1 = {
   "defaultValue": null,
   "kind": "LocalArgument",
-  "name": "id"
+  "name": "keyFingerprint"
 },
 v2 = {
   "defaultValue": null,
   "kind": "LocalArgument",
-  "name": "keyFingerprint"
+  "name": "target"
 },
 v3 = [
   {
@@ -49,23 +66,23 @@ v3 = [
     "args": [
       {
         "kind": "Variable",
-        "name": "expectedVersion",
-        "variableName": "expectedVersion"
-      },
-      {
-        "kind": "Variable",
-        "name": "id",
-        "variableName": "id"
+        "name": "expectedKeyVersion",
+        "variableName": "expectedKeyVersion"
       },
       {
         "kind": "Variable",
         "name": "keyFingerprint",
         "variableName": "keyFingerprint"
+      },
+      {
+        "kind": "Variable",
+        "name": "target",
+        "variableName": "target"
       }
     ],
     "concreteType": "Session",
     "kind": "LinkedField",
-    "name": "replaceSessionDevice",
+    "name": "bindKioskDevice",
     "plural": false,
     "selections": [
       {
@@ -116,7 +133,7 @@ return {
     ],
     "kind": "Fragment",
     "metadata": null,
-    "name": "SessionEnrollReplaceMutation",
+    "name": "SessionEnrollBindMutation",
     "selections": (v3/*:: as any*/),
     "type": "MutationRoot",
     "abstractKey": null
@@ -125,24 +142,24 @@ return {
   "operation": {
     "argumentDefinitions": [
       (v1/*:: as any*/),
-      (v2/*:: as any*/),
-      (v0/*:: as any*/)
+      (v0/*:: as any*/),
+      (v2/*:: as any*/)
     ],
     "kind": "Operation",
-    "name": "SessionEnrollReplaceMutation",
+    "name": "SessionEnrollBindMutation",
     "selections": (v3/*:: as any*/)
   },
   "params": {
-    "cacheID": "914147c2340eaf0a7b49f458c9c932ff",
+    "cacheID": "ec2b87f104d097d524b118bb27adb3bc",
     "id": null,
     "metadata": {},
-    "name": "SessionEnrollReplaceMutation",
+    "name": "SessionEnrollBindMutation",
     "operationKind": "mutation",
-    "text": "mutation SessionEnrollReplaceMutation(\n  $id: ID!\n  $keyFingerprint: String!\n  $expectedVersion: Int!\n) {\n  replaceSessionDevice(id: $id, keyFingerprint: $keyFingerprint, expectedVersion: $expectedVersion) {\n    id\n    keyEnrolled\n    keyExpiresAt\n    keyReleasedAt\n    reactivatable\n  }\n}\n"
+    "text": "mutation SessionEnrollBindMutation(\n  $keyFingerprint: String!\n  $expectedKeyVersion: Int!\n  $target: KioskBindTarget!\n) {\n  bindKioskDevice(keyFingerprint: $keyFingerprint, expectedKeyVersion: $expectedKeyVersion, target: $target) {\n    id\n    keyEnrolled\n    keyExpiresAt\n    keyReleasedAt\n    reactivatable\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "190ae7c9345fae1c5773267090c5c46e";
+(node as any).hash = "63db9a12333a60aa6a6834f44d946f3b";
 
 export default node;

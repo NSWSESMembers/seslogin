@@ -7,7 +7,7 @@ import { FingerprintChip } from "../../components/FingerprintChip";
  * The enrollment QR code, on demand, from inside the kiosk status dialog — the way to
  * rescue a kiosk that was enrolled as the wrong session or at the wrong location
  * without having to identify the device from the admin side first. Enrolling it again
- * releases the key from the kiosk it is enrolled as now (see `enrollSession`), so the
+ * releases the key from the kiosk it is enrolled as now (see `bindKioskDevice`), so the
  * code works whatever state that kiosk is in and needs no clean-up beforehand.
  *
  * Hidden behind a button because showing it publishes this device's public key to the
