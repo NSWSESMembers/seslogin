@@ -2,9 +2,10 @@
 //! bound to and whether the device is asking to be set up. The row type and
 //! [`KioskKeyStore`], the slice of the database that stores them.
 //!
-//! Being introduced by `plans/kiosk-key-binding.md`. Until that plan's phase 2 this is
-//! a shadow of the session table's key fields: written alongside them, and decides
-//! nothing. Sign-in and enrolment still go by `session.key_fingerprint`.
+//! Being introduced by `plans/kiosk-key-binding.md`. Since phase 3 it decides binds:
+//! a device is set up only by using up the request in its row, and the session the row
+//! names is the one that gives the key up. Sign-in reads it first and still falls back
+//! to `session.key_fingerprint` until phase 4.
 //!
 //! Binding and unbinding a key are not methods here: they happen inside the session
 //! writes that change `session.key_fingerprint` ([`super::Handler::bind_session_key`],

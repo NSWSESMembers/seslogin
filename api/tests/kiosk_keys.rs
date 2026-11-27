@@ -1,5 +1,5 @@
-//! The `kiosk_key` shadow table (plans/kiosk-key-binding.md): what each writer leaves
-//! in it. Nothing reads it yet, so these check the rows directly.
+//! The `kiosk_key` table (plans/kiosk-key-binding.md): what each writer leaves in it,
+//! the phase 2 reads that fall back to the old records, and the phase 3 binds it decides.
 
 mod common;
 
@@ -44,8 +44,15 @@ async fn run_anonymous(app: &Arc<TestApp>, query: &str) -> async_graphql::Respon
     schema.execute(request).await
 }
 
-/// Run `query` as an Admin at `loc-a`.
+/// Run `query` as an Admin at `loc-a`, failing the test on any error.
 async fn run_admin(app: &Arc<TestApp>, query: &str) -> serde_json::Value {
+    let response = run_admin_response(app, query).await;
+    assert!(response.errors.is_empty(), "{:?}", response.errors);
+    response.data.into_json().unwrap()
+}
+
+/// Run `query` as an Admin at `loc-a`.
+async fn run_admin_response(app: &Arc<TestApp>, query: &str) -> async_graphql::Response {
     let schema = graphql::build_schema(app.clone(), webauthn());
     let request = Request::new(query)
         .data(AuthInfo::User {
@@ -58,9 +65,7 @@ async fn run_admin(app: &Arc<TestApp>, query: &str) -> serde_json::Value {
         })
         .data(app.clone())
         .data(graphql::get_dataloader(app.clone()));
-    let response = schema.execute(request).await;
-    assert!(response.errors.is_empty(), "{:?}", response.errors);
-    response.data.into_json().unwrap()
+    schema.execute(request).await
 }
 
 fn app_at_loc_a() -> Arc<TestApp> {
@@ -427,4 +432,129 @@ async fn a_fresh_ephemeral_record_does_not_suppress_a_missing_kiosk_key_request(
 
     let row = key_row(&app).expect("the request recorded again");
     assert!(row.is_requested(seslogin::clock::now_sec()));
+}
+
+// Phase 3: the `kiosk_key` row decides binds.
+
+/// A request only the old `ephemeral_state` record knows about (from an API version that
+/// never wrote `kiosk_key`) isn't enough to set the device up.
+#[tokio::test]
+async fn a_request_only_in_ephemeral_state_cannot_be_enrolled() {
+    let app = app_at_loc_a();
+    app.db
+        .put_ephemeral_state(
+            &seslogin::session_key::enroll_state_id("fp1"),
+            seslogin::session_key::ENROLL_STATE_KIND,
+            r#"{"public_key":"pk-fp1","submitted_at":0}"#,
+            u64::MAX,
+        )
+        .await
+        .unwrap();
+
+    let response = run_admin_response(
+        &app,
+        r#"mutation { enrollSession(name: "New", locationId: "loc-a", keyFingerprint: "fp1") { id } }"#,
+    )
+    .await;
+    assert!(!response.errors.is_empty());
+    assert!(app.db.sessions.lock().unwrap().is_empty());
+}
+
+/// Binding deletes the old record as well, so an API version from before phase 3 (prod
+/// and preprod share the tables) can't bind the device a second time on the strength of it.
+#[tokio::test]
+async fn binding_deletes_the_old_ephemeral_state_request() {
+    let app = app_at_loc_a();
+    device_asking(&app, "fp1").await;
+
+    run_admin(
+        &app,
+        r#"mutation { enrollSession(name: "New", locationId: "loc-a", keyFingerprint: "fp1") { id } }"#,
+    )
+    .await;
+
+    assert_eq!(
+        app.db
+            .get_ephemeral_state(&seslogin::session_key::enroll_state_id("fp1"))
+            .await
+            .unwrap(),
+        None
+    );
+}
+
+/// The session to release comes from the key row: the one it names gives the key up,
+/// and the new kiosk takes it.
+#[tokio::test]
+async fn enrolling_releases_the_session_the_key_row_names() {
+    let app = app_at_loc_a();
+    seed_bound(&app, "sess-old", "fp1");
+    app.db.device_asking("fp1", "pk-fp1");
+
+    let data = run_admin(
+        &app,
+        r#"mutation { enrollSession(name: "New", locationId: "loc-a", keyFingerprint: "fp1") { id } }"#,
+    )
+    .await;
+    let new_id = data["enrollSession"]["id"].as_str().unwrap();
+
+    let sessions = app.db.sessions.lock().unwrap();
+    assert_eq!(sessions["sess-old"].key_fingerprint, None);
+    assert!(sessions["sess-old"].key_released_at.is_some());
+    assert_eq!(sessions[new_id].key_fingerprint.as_deref(), Some("fp1"));
+    drop(sessions);
+    let key = row(&app, "fp1").unwrap();
+    assert_eq!(key.session_id.as_deref(), Some(new_id));
+    assert_eq!(key.version, 2);
+}
+
+/// Reactivation goes by the key row's request too.
+#[tokio::test]
+async fn reactivating_needs_a_request_in_the_key_row() {
+    let app = app_at_loc_a();
+    seed_bound(&app, "sess-1", "fp1");
+    app.db
+        .put_ephemeral_state(
+            &seslogin::session_key::enroll_state_id("fp1"),
+            seslogin::session_key::ENROLL_STATE_KIND,
+            r#"{"public_key":"pk-fp1","submitted_at":0}"#,
+            u64::MAX,
+        )
+        .await
+        .unwrap();
+    let reactivate = r#"mutation { reactivateSession(id: "sess-1") { id } }"#;
+
+    let refused = run_admin_response(&app, reactivate).await;
+    assert!(
+        refused.errors[0].message.contains("isn't currently asking"),
+        "{:?}",
+        refused.errors
+    );
+
+    app.db.device_asking("fp1", "pk-fp1");
+    run_admin(&app, reactivate).await;
+}
+
+/// Moving a kiosk off a computer that's showing its QR code leaves that computer asking,
+/// so it can be set up straight away instead of after its next publish.
+#[tokio::test]
+async fn replacing_keeps_the_old_computers_request() {
+    let app = app_at_loc_a();
+    seed_bound(&app, "sess-1", "fp-old");
+    app.db.device_asking("fp-old", "pk-fp-old");
+    app.db.device_asking("fp-new", "pk-fp-new");
+
+    run_admin(
+        &app,
+        r#"mutation { replaceSessionDevice(id: "sess-1", keyFingerprint: "fp-new", expectedVersion: 1) { id } }"#,
+    )
+    .await;
+
+    let old = row(&app, "fp-old").unwrap();
+    assert_eq!(old.session_id, None);
+    assert!(old.is_requested(seslogin::clock::now_sec()));
+    run_admin(
+        &app,
+        r#"mutation { enrollSession(name: "Again", locationId: "loc-a", keyFingerprint: "fp-old") { id } }"#,
+    )
+    .await;
 }

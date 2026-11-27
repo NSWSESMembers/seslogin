@@ -1574,7 +1574,7 @@ impl<D: db::Handler> db::Handler for AuditingHandler<D> {
         let release = db::SessionUpdateShape::ReleaseKey {
             fingerprint: bind.key.fingerprint,
         };
-        for holder in bind.release {
+        if let Some(holder) = bind.release {
             let (action, changes) = session_update_changes(Some(holder), &release, bind.now);
             self.record(Recorded {
                 entity_type: AuditEntityType::Session,

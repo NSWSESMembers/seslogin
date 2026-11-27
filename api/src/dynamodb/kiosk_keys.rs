@@ -137,6 +137,57 @@ impl Handler {
             Err(e) => Err(Error::Infrastructure(sdk_err_msg(e))),
         }
     }
+
+    /// The transaction item that unbinds `row` from `session_id`, the session giving up
+    /// its key, conditional on the row still being bound to it.
+    ///
+    /// A row the device is still asking with (see [`KioskKey::is_requested`]) is kept,
+    /// as an unbound request that expires with its TTL: its computer is on its QR
+    /// screen, and an admin may scan it straight away. Any other row is deleted,
+    /// conditional on the device not having started asking since `row` was read.
+    pub(super) fn unbind_kiosk_key_item(
+        &self,
+        row: &KioskKey,
+        session_id: &str,
+        now: u64,
+    ) -> db::Result<TransactWriteItem> {
+        let fp = AttributeValue::S(row.fingerprint.clone());
+        let s = AttributeValue::S(session_id.to_string());
+        Ok(if row.is_requested(now) {
+            TransactWriteItem::builder()
+                .update(
+                    Update::builder()
+                        .table_name(self.table_name("kiosk_key"))
+                        .key("fingerprint", fp)
+                        .condition_expression("session_id = :s")
+                        .update_expression(
+                            "SET #ttl = request_expires_at REMOVE session_id, bound_at ADD v :one",
+                        )
+                        .expression_attribute_names("#ttl", "ttl")
+                        .expression_attribute_values(":s", s)
+                        .expression_attribute_values(":one", AttributeValue::N("1".to_string()))
+                        .build()
+                        .map_err(build_err)?,
+                )
+                .build()
+        } else {
+            TransactWriteItem::builder()
+                .delete(
+                    Delete::builder()
+                        .table_name(self.table_name("kiosk_key"))
+                        .key("fingerprint", fp)
+                        .condition_expression(
+                            "session_id = :s AND (attribute_not_exists(request_expires_at) \
+                                 OR request_expires_at <= :now)",
+                        )
+                        .expression_attribute_values(":s", s)
+                        .expression_attribute_values(":now", AttributeValue::N(now.to_string()))
+                        .build()
+                        .map_err(build_err)?,
+                )
+                .build()
+        })
+    }
 }
 
 impl db::KioskKeyStore for Handler {

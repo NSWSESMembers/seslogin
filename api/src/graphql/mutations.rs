@@ -1257,87 +1257,74 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         }
     }
 
-    /// The pending enrollment a kiosk published for `fingerprint` (kept alive by re-submitting while it shows its
-    /// QR code). Only read here: [`db::Handler::bind_session_key`] consumes it in the same write that binds the
-    /// key, so of two admins enrolling one device at once only one succeeds.
-    async fn pending_enrollment(
-        &self,
-        fingerprint: &str,
-    ) -> Result<(String, crate::session_key::EnrollPayload)> {
+    /// The `kiosk_key` row of a device asking to be set up: on its QR screen, having
+    /// published its key (it re-publishes while it shows the QR code). Only read here:
+    /// [`db::Handler::bind_session_key`] uses the request up in the same write that binds
+    /// the key, conditional on the row's version as read, so of two admins setting up one
+    /// device at once only one succeeds.
+    async fn requested_kiosk_key(&self, fingerprint: &str) -> Result<db::KioskKey> {
         let now = crate::clock::now_sec();
-        let id = crate::session_key::enroll_state_id(fingerprint);
-        let pending = self
-            .app
+        self.app
             .db()
-            .get_ephemeral_state(&id)
+            .get_kiosk_key(fingerprint)
             .await?
-            .filter(|s| crate::session_key::is_live_enrollment(s, now))
-            .ok_or_else(enrollment_gone)?;
-        let payload = serde_json::from_str(&pending.payload)
-            .map_err(|e| anyhow!("Corrupt enrollment record: {e}"))?;
-        Ok((id, payload))
+            .filter(|row| row.is_requested(now) && row.public_key.is_some())
+            .ok_or_else(enrollment_gone)
     }
 
-    /// Every session other than `keep` that holds `fingerprint` and must give it up so one device can take it.
+    /// The session `row` is bound to, as read now, if it isn't `keep` and still holds the
+    /// key: it gives the key up so the device can become another kiosk.
     ///
-    /// Enrollment never dead-ends here: a soft-deleted holder has already given its key up, and any other one — a
-    /// stale record from a kiosk that sat offline past KEY_LIFETIME_S, or a working kiosk being re-enrolled because
-    /// it was set up as the wrong kiosk or at the wrong location — has its key released so this device can enroll
-    /// afresh. Only one session may hold a fingerprint at a time (`auth` rejects the key outright if two ever do).
+    /// Enrollment never dead-ends here: whatever that session is (a stale record from a
+    /// kiosk that sat offline past KEY_LIFETIME_S, or a working kiosk being re-enrolled
+    /// because it was set up as the wrong kiosk or at the wrong location) it has its key
+    /// released so this device can enroll afresh.
     ///
-    /// No location check on the old record, and nothing about it reported back: it may belong to a location this
-    /// admin cannot see, and requiring rights there would block the very case this exists for. Releasing is safe
-    /// regardless of location — only the device holding the matching private key ever authenticated as that
-    /// record, and that device is the one in front of the admin asking to enroll. The record is left in place
-    /// rather than deleted, so its own location's admins can see what became of it.
-    async fn fingerprint_holders_to_release(
+    /// No location check on it, and nothing about it reported back: it may belong to a
+    /// location this admin cannot see, and requiring rights there would block the very
+    /// case this exists for. Releasing is safe regardless of location — only the device
+    /// holding the matching private key ever authenticated as that record, and that
+    /// device is the one in front of the admin asking to enroll. The record is left in
+    /// place rather than deleted, so its own location's admins can see what became of it.
+    async fn key_holder_to_release(
         &self,
-        fingerprint: &str,
+        row: &db::KioskKey,
         keep: Option<&str>,
-    ) -> Result<Vec<db::Session>> {
-        let now = crate::clock::now_sec();
-        let ids = self
-            .app
-            .db()
-            .get_session_id_by_key_fingerprint(fingerprint)
-            .await?;
+    ) -> Result<Option<db::Session>> {
+        let Some(holder_id) = row.session_id.as_deref().filter(|id| Some(*id) != keep) else {
+            return Ok(None);
+        };
         Ok(self
             .app
             .db()
-            .get_sessions(&ids)
+            .get_session_consistent(holder_id)
             .await?
-            .into_iter()
-            .flatten()
-            .filter(|s| {
-                keep != Some(s.id.as_str())
-                    && crate::session_key::classify_fingerprint_holder(
-                        s.active,
-                        s.key_expires_at,
-                        now,
-                    )
-                    .needs_release()
-            })
-            .collect())
+            .filter(|s| s.key_fingerprint.as_deref() == Some(row.fingerprint.as_str())))
     }
 
     /// Bind a scanned device's key in one atomic write (see [`db::SessionKeyBind`]), answering a write that lost a
-    /// race with what to do about it. The caller tells the kiosks it released to refetch, once the enrolling
-    /// device has been told.
+    /// race with what to do about it. The caller tells the kiosk it released to refetch, once the enrolling device
+    /// has been told.
     async fn bind_session_key(
         &self,
-        enrollment_id: &str,
-        key: db::SessionKeyParams<'_>,
-        release: &[db::Session],
+        row: &db::KioskKey,
+        expires_at: u64,
+        release: Option<&db::Session>,
         target: db::SessionKeyTarget<'_>,
         enrolling_as: &str,
     ) -> Result<db::SessionKeyBound> {
+        let public_key = row.public_key.as_deref().ok_or_else(enrollment_gone)?;
         let bound = self
             .app
             .db()
             .bind_session_key(db::SessionKeyBind {
-                enrollment_id,
                 now: crate::clock::now_sec(),
-                key,
+                key: db::SessionKeyParams {
+                    public_key,
+                    fingerprint: &row.fingerprint,
+                    expires_at,
+                },
+                key_version: row.version,
                 release,
                 target,
             })
@@ -1363,10 +1350,10 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
                 )
                 .into(),
             })?;
-        for holder in release {
+        if let Some(holder) = release {
             info!(
                 "Released key {} from kiosk session {} ({:?}) at location {} so its device could enroll as {}",
-                key.fingerprint, holder.id, holder.name, holder.location_id, enrolling_as
+                row.fingerprint, holder.id, holder.name, holder.location_id, enrolling_as
             );
         }
         Ok(bound)
@@ -1464,17 +1451,13 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         }
 
         let expires_at = now + crate::session_key::PENDING_ENROLLMENT_TTL_S;
-        // The `kiosk_key` shadow (plans/kiosk-key-binding.md). Reads of a request fall
-        // back to the record below, which still decides enrolment, so a failure only
-        // logs.
-        if let Err(e) = self
-            .app
+        // The `kiosk_key` row decides enrolment (plans/kiosk-key-binding.md, phase 3), so
+        // this must succeed. The `ephemeral_state` record below is still written for API
+        // versions from before phase 3, which share prod's tables.
+        self.app
             .db()
             .record_kiosk_key_request(&fingerprint, &public_key, now, expires_at)
-            .await
-        {
-            warn!("Failed to record kiosk key request {fingerprint}: {e}");
-        }
+            .await?;
         let payload = serde_json::to_string(&crate::session_key::EnrollPayload {
             public_key,
             submitted_at: now,
@@ -2639,19 +2622,13 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         let config = parse_session_config_json(config.as_deref())?;
         let healthcheck_url = normalize_healthcheck_url(healthcheck_url.as_deref())?;
 
-        let (enrollment_id, payload) = self.pending_enrollment(&key_fingerprint).await?;
-        let release = self
-            .fingerprint_holders_to_release(&key_fingerprint, None)
-            .await?;
+        let row = self.requested_kiosk_key(&key_fingerprint).await?;
+        let release = self.key_holder_to_release(&row, None).await?;
         let bound = self
             .bind_session_key(
-                &enrollment_id,
-                db::SessionKeyParams {
-                    public_key: &payload.public_key,
-                    fingerprint: &key_fingerprint,
-                    expires_at: crate::clock::now_sec() + crate::session_key::KEY_LIFETIME_S,
-                },
-                &release,
+                &row,
+                crate::clock::now_sec() + crate::session_key::KEY_LIFETIME_S,
+                release.as_ref(),
                 db::SessionKeyTarget::New {
                     location_id: &location_id,
                     name: &name,
@@ -2669,7 +2646,7 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         // A kiosk re-enrolled from its status dialog is still running as the session it
         // was released from, and listening on that session's channel. Only now, with
         // the new session written, does its refetch resolve the key to it.
-        for (session_id, version) in bound.released {
+        if let Some((session_id, version)) = bound.released {
             self.publish_session_changed(&session_id, version).await;
         }
 
@@ -2715,20 +2692,14 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
             .into());
         }
 
-        let (enrollment_id, payload) = self.pending_enrollment(&key_fingerprint).await?;
-        let release = self
-            .fingerprint_holders_to_release(&key_fingerprint, Some(&existing.id))
-            .await?;
+        let row = self.requested_kiosk_key(&key_fingerprint).await?;
+        let release = self.key_holder_to_release(&row, Some(&existing.id)).await?;
         let expires_at = crate::clock::now_sec() + crate::session_key::KEY_LIFETIME_S;
         let bound = self
             .bind_session_key(
-                &enrollment_id,
-                db::SessionKeyParams {
-                    public_key: &payload.public_key,
-                    fingerprint: &key_fingerprint,
-                    expires_at,
-                },
-                &release,
+                &row,
+                expires_at,
+                release.as_ref(),
                 db::SessionKeyTarget::Existing(&existing),
                 &format!("{:?} at location {}", existing.name, existing.location_id),
             )
@@ -3103,13 +3074,14 @@ impl<A: App + HasDb + HasQueues + HasMail + HasRealtime + Send + Sync + 'static>
         };
 
         // The kiosk republishes its key every 10 minutes while it sits on the enrollment
-        // screen, so a live record means the device is switched on and asking to come back.
+        // screen, so a live request means the device is switched on and asking to come
+        // back. Its `kiosk_key` row decides (plans/kiosk-key-binding.md, phase 3).
         let now = crate::clock::now_sec();
         self.app
             .db()
-            .get_ephemeral_state(&crate::session_key::enroll_state_id(key_fingerprint))
+            .get_kiosk_key(key_fingerprint)
             .await?
-            .filter(|s| crate::session_key::is_live_enrollment(s, now))
+            .filter(|row| row.is_requested(now))
             .ok_or_else(|| {
                 anyhow!(
                     "The kiosk isn't currently asking to be re-enrolled — switch it on, wait for the QR code screen, then try again."
